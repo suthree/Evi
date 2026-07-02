@@ -24,6 +24,10 @@ import {
   listHarnessReplayAudits,
   type HarnessReplayAuditReport
 } from "./harness_replay.js";
+import {
+  listContextPressure,
+  type ContextPressureSummary
+} from "./context_pressure.js";
 import type { EpisodeArchiveRecord } from "./memory_store.js";
 import {
   getOpportunityBacklog,
@@ -286,13 +290,7 @@ export async function renderContextBundleWithManifest(
   const markdown = sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n");
   const archiveSection = sections.find((section) => section.title === "Episode Archives");
   const opportunitySection = sections.find((section) => section.title === "Opportunity Backlog");
-  const contextBudget = deriveContextBudget({
-    model_id: options.runtimeConfig?.active_model.id ?? null,
-    model: options.runtimeConfig?.active_model.model,
-    source_ref: options.runtimeConfig?.active_model.source_ref,
-    context_window_tokens: options.runtimeConfig?.active_model.context_window_tokens,
-    max_output_tokens: options.runtimeConfig?.active_model.max_output_tokens
-  });
+  const contextBudget = contextBudgetFromOptions(options);
   return {
     markdown,
     manifest: {
@@ -332,6 +330,7 @@ async function buildContextSections(
   const skillRefs = getStringArray(snapshot.recall_context.skill_refs);
   const taskReferences = await taskReferencesSection(store, snapshot);
   const harnessReplayAudits = await harnessReplayAuditSection(store);
+  const attentionPlan = await attentionPlanSection(store, snapshot, options);
   return [
     {
       title: "Stable Core",
@@ -348,6 +347,7 @@ async function buildContextSections(
     await serviceRuntimeSection(store),
     await workspaceStatusSection(store),
     runtimeConfigSection(options.runtimeConfig),
+    ...(attentionPlan ? [attentionPlan] : []),
     capabilityCatalogSection(),
     await semanticMemorySection(store),
     ...(taskReferences ? [taskReferences] : []),
@@ -622,6 +622,119 @@ function runtimeConfigSection(summary: ContextRuntimeConfigSummary | undefined):
     refs: summary.refs,
     item_count: summary.refs.length
   };
+}
+
+async function attentionPlanSection(
+  store: AgentStore,
+  snapshot: TurnSnapshot,
+  options: ContextRenderOptions
+): Promise<ContextSection | null> {
+  const contextBudget = contextBudgetFromOptions(options);
+  const pressureResult = await listContextPressure(store, {
+    limit: 1,
+    contextBudget
+  });
+  const pressure = pressureResult.pressures[0] ?? null;
+  const working = snapshot.working_context;
+  const checkpoint = isRecord(working.checkpoint_record) ? working.checkpoint_record : null;
+  const workingCheckpointRef = getString(working.checkpoint_ref);
+  const workingCheckpointText = getString(working.checkpoint) ?? "none";
+  const acceptedGoal = getString((snapshot.task_context as Record<string, unknown>).accepted_goal) ?? "";
+  const stopSignalActive = Boolean((snapshot.task_context as Record<string, unknown>).stop_signal_active);
+  const memoryHits = getRecordArray(snapshot.recall_context.memory_hits).length;
+  const selectedSkills = getStringArray(snapshot.recall_context.skill_refs).length;
+  const disciplineActive = isQueryTodoDiscipline(snapshot.working_context.discipline);
+  if (!pressure && !checkpoint && !contextBudget) return null;
+  const focusOrder = attentionFocusOrder({
+    pressure,
+    checkpoint,
+    selectedSkills,
+    disciplineActive
+  });
+  const lines = [
+    "Read-only attention plan; no compaction, raw artifact reads, tool calls, or mutation.",
+    `- goal: ${truncate(acceptedGoal, 180)}`,
+    `- stop_signal_active: ${stopSignalActive}`,
+    `- selected: memory=${memoryHits} skills=${selectedSkills} discipline=${disciplineActive}`,
+    `- focus_order: ${focusOrder.join(" -> ")}`
+  ];
+  if (contextBudget) {
+    lines.push(`- budget: input_tokens=${contextBudget.estimated_input_budget_tokens} soft_chars=${contextBudget.total_soft_limit_chars} hard_chars=${contextBudget.total_hard_limit_chars}`);
+    if (contextBudget.warning) lines.push(`- context_budget_warning: ${contextBudget.warning}`);
+  }
+  if (pressure) {
+    lines.push(`- prior_context_pressure: ${pressure.status}`);
+    lines.push(`- prior_context: session=${pressure.session_id} manifest=${pressure.ref} chars=${pressure.total_chars}`);
+    lines.push(`- prior_context_largest_section: ${pressure.largest_section.title}`);
+    lines.push(`- prior_context_largest: chars=${pressure.largest_section.chars} share=${pressure.largest_section.share}`);
+    lines.push(`- prior_context_pressure_sections: ${pressure.pressure_sections.map((section) => section.title).join(", ") || "none"}`);
+    lines.push(`- prior_context_mitigation: ${pressure.operator_guidance.mitigation_kind}`);
+    lines.push(`- prior_context_inspect: ${pressure.operator_guidance.inspect_command}`);
+    lines.push(`- attention_hint: ${attentionHintForPressure(pressure)}`);
+  } else {
+    lines.push("- prior_context_pressure: none");
+  }
+  if (checkpoint) {
+    lines.push(`- working_checkpoint: ref=${workingCheckpointRef ?? "none"} step=${truncate(getString(checkpoint.current_step) ?? workingCheckpointText, 160)}`);
+    lines.push(`- working_next: ${truncate(getString(checkpoint.next_action) ?? "none", 180)} questions=${getStringArray(checkpoint.open_questions).length} evidence=${getStringArray(checkpoint.recent_evidence_refs).length}`);
+  }
+
+  return {
+    title: "Attention Plan",
+    body: lines.join("\n"),
+    refs: unique([
+      "packages/core/src/context.ts",
+      "packages/core/src/context_pressure.ts",
+      ...(pressure ? [pressure.ref] : []),
+      ...(workingCheckpointRef ? [workingCheckpointRef] : []),
+      ...(options.runtimeConfig?.active_model.source_ref ? [options.runtimeConfig.active_model.source_ref] : [])
+    ]),
+    item_count: [
+      acceptedGoal ? "goal" : "",
+      pressure ? "context_pressure" : "",
+      checkpoint ? "working_checkpoint" : "",
+      contextBudget ? "context_budget" : "",
+      selectedSkills > 0 ? "selected_skills" : "",
+      memoryHits > 0 ? "episode_recall" : "",
+      disciplineActive ? "discipline" : ""
+    ].filter(Boolean).length
+  };
+}
+
+function contextBudgetFromOptions(options: ContextRenderOptions): ContextBudgetSummary | null {
+  return options.runtimeConfig?.active_model.context_budget ?? deriveContextBudget({
+    model_id: options.runtimeConfig?.active_model.id ?? null,
+    model: options.runtimeConfig?.active_model.model,
+    source_ref: options.runtimeConfig?.active_model.source_ref,
+    context_window_tokens: options.runtimeConfig?.active_model.context_window_tokens,
+    max_output_tokens: options.runtimeConfig?.active_model.max_output_tokens
+  });
+}
+
+function attentionFocusOrder(args: {
+  pressure: ContextPressureSummary | null;
+  checkpoint: Record<string, unknown> | null;
+  selectedSkills: number;
+  disciplineActive: boolean;
+}): string[] {
+  const focus = ["accepted_goal"];
+  if (args.disciplineActive) focus.push("query_todo");
+  if (args.checkpoint) focus.push("working_checkpoint");
+  if (args.pressure?.status === "over_budget") focus.push("context_pressure");
+  if (args.selectedSkills > 0) focus.push("selected_skill_metadata");
+  if (args.pressure?.status === "watch") focus.push("context_pressure_watch");
+  focus.push("allowed_actions");
+  return focus;
+}
+
+function attentionHintForPressure(pressure: ContextPressureSummary): string {
+  if (pressure.operator_guidance.mitigation_kind === "reduce_episode_recall") {
+    return "Previous context pressure came from recall; prefer the current goal, checkpoint, archive summaries, and cited refs before adding more episode recall.";
+  }
+  if (pressure.operator_guidance.mitigation_kind === "narrow_selected_skills") {
+    return "Previous context pressure came from selected skills; use selected-skill metadata first and avoid broad skill-body dependence unless the task directly needs it.";
+  }
+  return "Previous context pressure was section-balanced; inspect the manifest metadata before changing context assembly or adding broad sections.";
 }
 
 function capabilityCatalogSection(): ContextSection {

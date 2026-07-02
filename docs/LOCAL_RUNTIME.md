@@ -446,6 +446,14 @@ Opportunity Backlog decisions after external mitigation is understood; they do
 not read raw context Markdown, compact transcripts, rewrite context assembly,
 invoke the model, or run shell commands.
 
+Live context may render a short bounded `Attention Plan` section when there is
+an actual attention signal: model context budget metadata, prior context
+pressure, or a current working checkpoint. The section summarizes only the
+accepted goal, selected recall/skill counts, budget metadata, pressure manifest
+metadata, and checkpoint metadata. It does not render on quiet first turns, read
+raw context Markdown or raw artifacts, compact context, invoke tools, or
+authorize mutation.
+
 Context manifest sidecar health is exposed through `context health` and Feishu
 `/context health`. It reads `memory/episodes` manifest JSON refs and file
 names only, reports invalid manifests, missing `*-context.md` sidecars, and

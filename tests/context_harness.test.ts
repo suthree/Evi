@@ -2189,7 +2189,14 @@ test("context opportunity backlog includes context pressure without raw context 
 
     const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
     const opportunitySection = rendered.manifest.sections.find((section) => section.title === "Opportunity Backlog");
+    const attentionSection = rendered.manifest.sections.find((section) => section.title === "Attention Plan");
 
+    assert.match(rendered.markdown, /## Attention Plan/);
+    assert.match(rendered.markdown, /prior_context_pressure: over_budget/);
+    assert.match(rendered.markdown, /prior_context: session=session_context_pressure manifest=memory\/episodes\/session_context_pressure-context\.json chars=96000/);
+    assert.match(rendered.markdown, /prior_context_largest_section: Episode Recall/);
+    assert.match(rendered.markdown, /prior_context_mitigation: reduce_episode_recall/);
+    assert.match(rendered.markdown, /attention_hint: Previous context pressure came from recall/);
     assert.match(rendered.markdown, /context_pressure: over_budget/);
     assert.match(rendered.markdown, /context_pressure_session: session_context_pressure/);
     assert.match(rendered.markdown, /context_pressure_largest_section: Episode Recall/);
@@ -2203,6 +2210,8 @@ test("context opportunity backlog includes context pressure without raw context 
     assert.match(rendered.markdown, /opportunity_decision_action_chain: inspect\/read_only -> complete_after_mitigation\/state_decision -> retire_historical\/state_decision -> record_decision\/state_decision/);
     assert.match(rendered.markdown, /action_chain: inspect -> complete_after_mitigation -> retire_historical -> record_decision/);
     assert.match(rendered.markdown, /decision_command: pnpm run runtime -- governance decide-opportunity --opportunity context_pressure_session_context_pressure --status open --reason "\.\.\." --state-root <state-root>/);
+    assert.equal(attentionSection?.refs.includes("memory/episodes/session_context_pressure-context.json"), true);
+    assert.equal(attentionSection?.refs.includes("memory/episodes/session_context_pressure-context.md"), false);
     assert.equal(opportunitySection?.refs.includes("memory/episodes/session_context_pressure-context.json"), true);
     assert.doesNotMatch(rendered.markdown, /RAW_CONTEXT_PRESSURE_MARKDOWN_SHOULD_NOT_BE_IN_CONTEXT/);
   } finally {

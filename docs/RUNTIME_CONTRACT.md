@@ -299,22 +299,30 @@ includes only:
 2. selected project docs
 3. query/todo files when discipline mode is active
 4. bounded task references from the accepted goal
-5. bounded accepted semantic memory
-6. bounded background review history
-7. bounded workspace status
-8. bounded pipeline history
-9. bounded governance queue visibility
-10. bounded governance outcome visibility
-11. bounded episode-memory recall
-12. bounded daily episode archive summaries
-13. selected local skills with recall metadata and bounded instructions
-14. current working checkpoint
-15. bounded local capability catalog
-16. allowed tool contract
-17. output schema
+5. optional bounded attention plan when prior pressure, model budget, or a
+   working checkpoint exists
+6. bounded accepted semantic memory
+7. bounded background review history
+8. bounded workspace status
+9. bounded pipeline history
+10. bounded governance queue visibility
+11. bounded governance outcome visibility
+12. bounded episode-memory recall
+13. bounded daily episode archive summaries
+14. selected local skills with recall metadata and bounded instructions
+15. current working checkpoint
+16. bounded local capability catalog
+17. allowed tool contract
+18. output schema
 
 The context bundle must not dump all docs, all sessions, all skills, or all
 future roadmap material.
+
+When rendered, `Attention Plan` is a short read-only routing hint over the
+accepted goal, non-secret model context budget, latest context-pressure
+manifest metadata, and current working checkpoint metadata. It must not read
+raw context Markdown, raw skill/SOP/review artifacts, compact context, invoke
+tools, authorize mutation, or appear when no attention signal exists.
 
 The `Workspace Status` context section uses the same fixed
 `workspace status` read model. It is pre-write orientation only: it may show

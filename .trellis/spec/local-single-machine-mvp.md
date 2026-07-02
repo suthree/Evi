@@ -97,6 +97,9 @@ Runtime control keeps core execution bounded:
 - read-only context pressure diagnostics for oversized context manifests
 - explicit context pressure operator guidance for bounded inspect and
   append-only decisioning without context artifact mutation
+- optional bounded Attention Plan context section when model budget, prior
+  context pressure, or a working checkpoint exists, keeping attention routing
+  visible without reading raw artifacts or compacting context
 - read-only local capability catalog over implemented tools, harness actions,
   read models, local-learning gates, service runtime, entrypoints, and
   boundaries

@@ -2430,3 +2430,22 @@ artifacts, write the repo, write the active vault, manage services, or mutate
 SOP/skill/semantic-memory state. Context, aggregate governance status, CLI
 `review replays`, and Feishu `/review replays` may render bounded replay
 summaries and refs as evidence only.
+
+## 2026-07-02 Context Attention Plan
+
+GA/avatar and Hermes both reduce model distraction by making the active task,
+summary state, and context pressure explicit before the next model step.
+XingZhe should borrow that attention-routing pattern without adopting Hermes
+automatic compaction in the first-version local runtime.
+
+Live context may therefore render an optional bounded `Attention Plan` section
+only when there is an actual attention signal: model context budget metadata,
+prior context-pressure manifest metadata, or a current working checkpoint. The
+section keeps focus order, pressure mitigation kind, and checkpoint next action
+visible to the model while remaining read-only.
+
+`Attention Plan` must not read raw context Markdown, raw skill/SOP/review
+artifacts, run tools, invoke the model, compact context, rewrite context
+assembly, write state, write the repo, or write the active vault. Quiet first
+turns with no pressure, budget, or checkpoint do not render the section, so the
+hint does not become a new default token tax.
