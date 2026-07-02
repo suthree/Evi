@@ -1,0 +1,2 @@
+{"type":"model","id":"cpa-gpt-5.5","provider":"openai-compatible","api":"responses","base_url":"https://cpa.suthree.dpdns.org/v1","model":"gpt-5.5","auth_id":"cpa","reasoning_effort":"medium","max_output_tokens":2400,"store":false,"json_object":true}
+{"type":"image_model","id":"cpa-gpt-image-2","provider":"openai-compatible","api":"images_generations","base_url":"https://cpa.suthree.dpdns.org/v1","model":"gpt-image-2","auth_id":"cpa","size":"1024x1024","timeout_ms":120000}

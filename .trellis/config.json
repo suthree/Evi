@@ -1,0 +1,25 @@
+{
+  "rootPath": ".",
+  "ignorePatterns": [
+    "node_modules",
+    ".git",
+    ".trellis",
+    "dist",
+    "build",
+    ".DS_Store",
+    "*.log",
+    "__pycache__",
+    "*.py[cod]",
+    ".pytest_cache",
+    ".runtime-*",
+    ".runtime-smoke",
+    ".runtime-smoke-ts",
+    ".runtime-ab-*",
+    ".runtime-state"
+  ],
+  "debounceMs": 300,
+  "defaultBranch": "develop",
+  "indexWorkspace": false,
+  "agentId": "agent:local",
+  "createdAt": "2026-07-02T08:46:40.583Z"
+}

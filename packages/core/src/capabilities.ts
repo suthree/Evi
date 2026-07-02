@@ -1,0 +1,828 @@
+import { allowedActions, type AllowedAction } from "./action_contracts.js";
+import { coreToolContracts } from "./tool_contracts.js";
+
+export type CapabilityCategoryId =
+  | "core_tools"
+  | "harness_actions"
+  | "context_read_models"
+  | "memory_and_learning"
+  | "runtime_service"
+  | "entrypoints"
+  | "boundaries";
+
+export type CapabilityStatus = "implemented" | "guarded" | "out_of_scope";
+
+export interface CapabilitySummary {
+  id: string;
+  title: string;
+  summary: string;
+  status: CapabilityStatus;
+  commands?: string[];
+  refs?: string[];
+  boundaries?: string[];
+}
+
+export interface CapabilityCategory {
+  id: CapabilityCategoryId;
+  title: string;
+  summary: string;
+  status: CapabilityStatus;
+  capabilities: CapabilitySummary[];
+}
+
+export interface CapabilityCatalog {
+  schema_version: 1;
+  catalog_id: "local_runtime_capabilities";
+  catalog_version: "2026-06-30";
+  count: number;
+  categories: CapabilityCategory[];
+  refs: string[];
+  boundary: string;
+}
+
+export type CapabilityAcceptanceGateStatus = "ready" | "operator_check";
+
+export interface CapabilityAcceptanceGate {
+  id: string;
+  title: string;
+  summary: string;
+  status: CapabilityAcceptanceGateStatus;
+  evidence_refs: string[];
+  verification_commands: string[];
+  boundaries: string[];
+}
+
+export interface CapabilityNextSlice {
+  id: string;
+  title: string;
+  reason: string;
+  success_criteria: string[];
+  refs: string[];
+}
+
+export interface CapabilityAcceptanceAudit {
+  schema_version: 1;
+  audit_id: "local_runtime_next_version_capability_acceptance";
+  audit_version: "2026-07-01";
+  status: "operator_check_required";
+  summary: string;
+  gates: CapabilityAcceptanceGate[];
+  verification_commands: string[];
+  next_slices: CapabilityNextSlice[];
+  refs: string[];
+  boundary: string;
+}
+
+const harnessActionSummaries: Record<AllowedAction, string> = {
+  respond: "Return the final user-facing message for the current run.",
+  use_tool: "Ask the harness to execute one allowed core tool after contract validation.",
+  delegate_agent: "Ask for bounded structured analysis or critique that must pass a delegated-result contract and still be verified by the main harness.",
+  update_working_state: "Write a bounded working checkpoint under local state for later context.",
+  record_evidence: "Append a state-only evidence note for the current episode.",
+  propose_sop: "Create a state-only SOP draft candidate only on an explicit not_done claim.",
+  propose_memory: "Record a candidate semantic memory proposal without promoting it.",
+  request_audit: "Record a state-only audit request without executing promotion or confirmations.",
+  pause_autonomy: "Record a stop signal for future autonomous exploration without stopping the resident service."
+};
+
+export function getCapabilityCatalog(): CapabilityCatalog {
+  const categories: CapabilityCategory[] = [
+    coreToolsCategory(),
+    harnessActionsCategory(),
+    contextReadModelsCategory(),
+    memoryAndLearningCategory(),
+    runtimeServiceCategory(),
+    entrypointsCategory(),
+    boundariesCategory()
+  ];
+  return {
+    schema_version: 1,
+    catalog_id: "local_runtime_capabilities",
+    catalog_version: "2026-06-30",
+    count: categories.reduce((total, category) => total + category.capabilities.length, 0),
+    categories,
+    refs: [
+      "docs/RUNTIME_CONTRACT.md",
+      "docs/LOCAL_RUNTIME.md",
+      "docs/LOCAL_LEARNING.md",
+      ".trellis/spec/local-single-machine-mvp.md",
+      "packages/core/src/capabilities.ts",
+      "packages/core/src/action_contracts.ts",
+      "packages/core/src/tool_contracts.ts",
+      "packages/core/src/context.ts",
+      "packages/core/src/harness_replay.ts",
+      "packages/core/src/content_pipeline.ts",
+      "packages/core/src/self_evolution_gaps.ts",
+      "packages/core/src/workspace_status.ts",
+      "packages/runtime/src/runner.ts",
+      "packages/runtime/src/sop_loop_rehearsal.ts",
+      "packages/runtime/src/content_pipeline.ts",
+      "packages/runtime/src/content_daily_service.ts",
+      "packages/runtime/src/xiaohongshu_mcp.ts",
+      "apps/cli/src/main.ts",
+      "packages/runtime/src/channels/feishu/adapter.ts"
+    ],
+    boundary: "local-only read model; does not read secrets, invoke the model, execute tools, mutate runtime state, write the active vault, or manage services"
+  };
+}
+
+export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
+  return {
+    schema_version: 1,
+    audit_id: "local_runtime_next_version_capability_acceptance",
+    audit_version: "2026-07-01",
+    status: "operator_check_required",
+    summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, service, and SOP self-evolution surfaces. It records what must be checked before another feature slice is considered stable.",
+    gates: [
+      {
+        id: "core_execution",
+        title: "Core execution",
+        summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, and Node execution.",
+        status: "ready",
+        evidence_refs: [
+          "packages/core/src/tool_contracts.ts",
+          "packages/runtime/src/tools.ts",
+          "tests/runtime_tools.test.ts",
+          "tests/capabilities.test.ts"
+        ],
+        verification_commands: [
+          "pnpm run check",
+          "pnpm run runtime -- capabilities"
+        ],
+        boundaries: [
+          "tool requests must pass harness contracts before execution",
+          "repo writes record bounded workspace status evidence but do not mutate git state"
+        ]
+      },
+      {
+        id: "basic_entrypoints",
+        title: "Basic entrypoints",
+        summary: "CLI, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
+        status: "operator_check",
+        evidence_refs: [
+          "apps/cli/src/main.ts",
+          "packages/runtime/src/channels/feishu/adapter.ts",
+          "packages/runtime/src/service.ts",
+          "tests/cli.test.ts",
+          "tests/feishu_adapter.test.ts",
+          "tests/service.test.ts"
+        ],
+        verification_commands: [
+          "pnpm run runtime -- doctor --no-auth --no-im",
+          "pnpm run runtime -- service health --target im",
+          "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
+        ],
+        boundaries: [
+          "Feishu operator commands are read-only",
+          "resident service is single-user local launchd, not hosted service governance"
+        ]
+      },
+      {
+        id: "agent_harness",
+        title: "Agent harness",
+        summary: "Action envelopes, delegated-result validation, staged pipeline checkpoints, completion verification, working checkpoints, live-run trace read models, and bounded harness replay audits are implemented.",
+        status: "ready",
+        evidence_refs: [
+          "packages/core/src/action_contracts.ts",
+          "packages/runtime/src/runner.ts",
+          "packages/runtime/src/stage_runner.ts",
+          "packages/core/src/completion_verification_history.ts",
+          "packages/core/src/live_run_trace.ts",
+          "packages/core/src/harness_replay.ts",
+          "tests/stage_runner.test.ts",
+          "tests/completion_verification_history.test.ts",
+          "tests/harness_replay.test.ts"
+        ],
+        verification_commands: [
+          "pnpm run check",
+          "pnpm run runtime -- review traces --limit 5",
+          "pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>",
+          "pnpm run runtime -- review replays --limit 10 --state-root <state-root>"
+        ],
+        boundaries: [
+          "model proposals do not prove completion",
+          "pipeline resume is an explicit CLI gate",
+          "harness replay audit reads bounded trace metadata only; it does not invoke the model, execute tools, write the repo, or write the active vault"
+        ]
+      },
+      {
+        id: "context_runtime",
+        title: "Context runtime",
+        summary: "Context bundles, manifests, usage, pressure diagnostics, pressure operator guidance, health diagnostics, repair guidance, capability catalog context, runtime config context, and service health context are implemented.",
+        status: "ready",
+        evidence_refs: [
+          "packages/core/src/context.ts",
+          "packages/core/src/context_health.ts",
+          "packages/core/src/context_usage.ts",
+          "packages/core/src/context_pressure.ts",
+          "packages/runtime/src/context_manifest.ts",
+          "tests/context_harness.test.ts",
+          "tests/context_health.test.ts",
+          "tests/context_usage.test.ts",
+          "tests/context_pressure.test.ts"
+        ],
+        verification_commands: [
+          "pnpm run runtime -- context health --limit 10",
+          "pnpm run runtime -- context usage --limit 10",
+          "pnpm run runtime -- context pressure --limit 10",
+          "pnpm run runtime -- governance opportunities --limit 10"
+        ],
+        boundaries: [
+          "read models do not read raw context Markdown",
+          "pressure guidance is explicit operator guidance and never auto-compacts or rewrites context",
+          "repair is explicit and selected by operator"
+        ]
+      },
+      {
+        id: "sop_self_evolution",
+        title: "SOP self-evolution",
+        summary: "Review-to-SOP draft, audit, promotion, chain inspection, confirmation gates, skill telemetry, registry health, and explicit event retirement gates are implemented.",
+        status: "ready",
+        evidence_refs: [
+          "packages/core/src/sop_evolution_ledger.ts",
+          "packages/core/src/skill_registry_health.ts",
+          "packages/core/src/skill_registry_events.ts",
+          "packages/runtime/src/background_review.ts",
+          "packages/runtime/src/sop_loop_rehearsal.ts",
+          "tests/sop_flow.test.ts",
+          "tests/sop_loop_rehearsal.test.ts",
+          "tests/sop_evolution_ledger.test.ts",
+          "tests/skill_registry_health.test.ts",
+          "tests/skill_registry_events.test.ts"
+        ],
+        verification_commands: [
+          "pnpm run runtime -- governance evolution --limit 10",
+          "pnpm run runtime -- review rehearse-sop-loop",
+          "pnpm run runtime -- skills health --limit 10",
+          "pnpm run runtime -- skills events --limit 10"
+        ],
+        boundaries: [
+          "promotion requires explicit audited state-only SOP gates",
+          "rehearsal writes only to a state-scoped sandbox and never to the real active vault",
+          "skill repair and registry retirement are explicit local write gates, never Feishu execution"
+        ]
+      }
+    ],
+    verification_commands: [
+      "pnpm run check",
+      "pnpm run runtime -- doctor --no-auth --no-im",
+      "pnpm run runtime -- service health --target im",
+      "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>",
+      "pnpm run runtime -- capabilities acceptance",
+      "pnpm run runtime -- context pressure --limit 10 --state-root <state-root>",
+      "pnpm run runtime -- review rehearse-sop-loop --state-root <state-root>",
+      "pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>",
+      "pnpm run runtime -- review replays --limit 10 --state-root <state-root>"
+    ],
+    next_slices: [
+      {
+        id: "active_exploration_publish_plan",
+        title: "Active exploration to publish plan",
+        reason: "The next active-exploration slice needs a bounded daily research-to-content plan before the runtime gains any external publishing authority.",
+        success_criteria: [
+          "a local workflow spec can describe source acquisition, synthesis, image generation, publish gating, and evidence capture without executing external writes",
+          "the plan records xiaohongshu-mcp and agent-browser-cli as external adapters behind explicit operator gates",
+          "completion claims for publishing remain impossible without executed external-write evidence"
+        ],
+        refs: [
+          "docs/ACTIVE_EXPLORATION.md",
+          ".trellis/tasks/159-active-exploration-publish-plan.md"
+        ]
+      },
+      {
+        id: "self_evolution_gap_intake",
+        title: "Self-evolution gap intake",
+        reason: "Active exploration now needs a focused gap-intake read model that turns observed runtime shortcomings into bounded implementation slices before any external-write authority is added.",
+        success_criteria: [
+          "a gap report can cite content run refs, source evidence refs, completion verification, trace, replay, skill telemetry, context pressure, archive health, and operator corrections as evidence",
+          "each gap maps to one owner surface, one proposed implementation slice, and explicit verification commands",
+          "derived gaps can appear in Opportunity Backlog and support append-only decisions",
+          "the report remains proposal-only and cannot mutate SOP, skill, memory, service, or repository state without later explicit gates"
+        ],
+        refs: [
+          "docs/ACTIVE_EXPLORATION.md",
+          "packages/core/src/self_evolution_gaps.ts",
+          ".trellis/tasks/160-self-evolution-gap-intake.md"
+        ]
+      },
+      {
+        id: "active_exploration_daily_job",
+        title: "Active exploration daily job",
+        reason: "Daily active exploration needs a date-keyed local job that can run source collection, Xiaohongshu drafting, image generation, and preflight without acquiring automatic publishing authority.",
+        success_criteria: [
+          "content daily writes a content/daily/YYYY-MM-DD.json job artifact and linked content run",
+          "the job fetches bounded public source evidence by default and blocks duplicate same-date runs unless forced",
+          "non-dry-run jobs can generate the configured image and optionally record preflight evidence",
+          "daily jobs may publish only after preflight_ok plus explicit external-write confirmation"
+        ],
+        refs: [
+          "docs/ACTIVE_EXPLORATION.md",
+          "packages/runtime/src/content_pipeline.ts",
+          ".trellis/tasks/164-active-exploration-daily-job.md"
+        ]
+      },
+      {
+        id: "active_exploration_daily_service_loop",
+        title: "Active exploration daily service loop",
+        reason: "The manual daily job needs a local resident trigger so active exploration can run once per date without becoming an external publish daemon.",
+        success_criteria: [
+          "resident service can run content daily once per date when explicitly enabled in runtime config",
+          "the loop writes services/im/content_daily.json status and skips duplicate same-date jobs",
+          "autonomy pause signals stop daily active exploration without creating content jobs",
+          "the loop may publish through xiaohongshu-mcp only when daily publish and external-write gates are enabled"
+        ],
+        refs: [
+          "packages/runtime/src/content_daily_service.ts",
+          "packages/runtime/src/channels/feishu/service.ts",
+          ".trellis/tasks/165-active-exploration-daily-service-loop.md"
+        ]
+      },
+      {
+        id: "active_exploration_daily_advance",
+        title: "Active exploration daily advance",
+        reason: "Resident dry-run daily jobs need a controlled operator step for image generation and optional read-only Xiaohongshu preflight before any external publish command is considered.",
+        success_criteria: [
+          "content daily-advance reads an existing content/daily/YYYY-MM-DD.json job and linked content run",
+          "the command generates or reuses configured image evidence and can record read-only publish preflight evidence",
+          "the updated daily job keeps external_write=false, rejects linked runs that are already published, and does not call publish_content",
+          "the next publish step remains explicit publish-execute with external-write confirmation"
+        ],
+        refs: [
+          "docs/ACTIVE_EXPLORATION.md",
+          "packages/runtime/src/content_pipeline.ts",
+          ".trellis/tasks/171-content-daily-advance.md"
+        ]
+      },
+      {
+        id: "active_exploration_adapter_execution",
+        title: "Active exploration publish execution",
+        reason: "Typed image generation and publish preflight evidence can now be recorded, so the next slice is the confirmed Xiaohongshu publish adapter execution layer.",
+        success_criteria: [
+          "image generation evidence from the configured Image API remains a prerequisite before external publishing",
+          "content publish-preflight records source/image/login/adapter readiness without publishing",
+          "publish execution requires explicit external-write confirmation and records typed external_publish evidence",
+          "agent-browser-cli remains a browser fallback with screenshot evidence, not a core tool contract"
+        ],
+        refs: [
+          "docs/ACTIVE_EXPLORATION.md",
+          "packages/core/src/content_pipeline.ts",
+          "packages/runtime/src/content_pipeline.ts",
+          "packages/runtime/src/xiaohongshu_mcp.ts",
+          ".trellis/tasks/163-xiaohongshu-publish-execution.md"
+        ]
+      }
+    ],
+    refs: [
+      "docs/RUNTIME_CONTRACT.md",
+      "docs/LOCAL_RUNTIME.md",
+      "docs/LOCAL_LEARNING.md",
+      "docs/ACTIVE_EXPLORATION.md",
+      ".trellis/spec/local-single-machine-mvp.md",
+      ".trellis/decisions.md",
+      "packages/core/src/capabilities.ts"
+    ],
+    boundary: "read-only acceptance read model; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
+  };
+}
+
+function coreToolsCategory(): CapabilityCategory {
+  return {
+    id: "core_tools",
+    title: "Core tools",
+    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution.",
+    status: "implemented",
+    capabilities: coreToolContracts.map((contract) => ({
+      id: contract.tool,
+      title: contract.tool,
+      summary: contract.rationale,
+      status: "implemented",
+      refs: contract.tool === "file.write_repo"
+        ? ["packages/core/src/tool_contracts.ts", "packages/runtime/src/tools.ts", "packages/core/src/workspace_status.ts"]
+        : ["packages/core/src/tool_contracts.ts"],
+      boundaries: [
+        `side_effect_level: ${contract.side_effect_level}`,
+        "arguments must match the tool contract before execution",
+        ...(contract.tool === "file.write_repo"
+          ? ["records fixed pre/post workspace status evidence; does not read file bodies, mutate git state, block writes, or roll back"]
+          : [])
+      ]
+    }))
+  };
+}
+
+function harnessActionsCategory(): CapabilityCategory {
+  return {
+    id: "harness_actions",
+    title: "Harness actions",
+    summary: "Model action envelope types the runtime may accept before the harness validates what actually happens.",
+    status: "implemented",
+    capabilities: allowedActions.map((action) => ({
+      id: action,
+      title: action,
+      summary: harnessActionSummaries[action] ?? "Allowed model action.",
+      status: "implemented",
+      refs: ["packages/core/src/action_contracts.ts", "packages/core/src/context.ts", "packages/runtime/src/runner.ts"],
+      boundaries: [
+        "model proposes; harness decides execution and completion evidence",
+        "state-only governance actions cannot prove a done claim by themselves"
+      ]
+    }))
+  };
+}
+
+function contextReadModelsCategory(): CapabilityCategory {
+  return {
+    id: "context_read_models",
+    title: "Context and review read models",
+    summary: "Bounded state summaries for local runtime orientation without raw artifact dumps.",
+    status: "implemented",
+    capabilities: [
+      {
+        id: "context.manifests",
+        title: "Context manifests",
+        summary: "List and inspect JSON sidecars for recent context bundles.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- context list", "pnpm run runtime -- context show --context <ref>", "/context", "/context <ref>"],
+        refs: ["packages/runtime/src/context_manifest.ts"],
+        boundaries: ["does not read raw context Markdown"]
+      },
+      {
+        id: "context.health",
+        title: "Context health",
+        summary: "Detect invalid manifests, missing sidecars, and orphan context Markdown files.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- context health", "pnpm run runtime -- context repair --context <ref>", "/context health"],
+        refs: ["packages/core/src/context_health.ts", "packages/runtime/src/context_manifest.ts"],
+        boundaries: [
+          "health is read-only and does not repair or delete sidecars",
+          "repair is an explicit local state write for one selected missing manifest sidecar; it does not invoke the model, rewrite context Markdown, mutate repo files, or write the active vault"
+        ]
+      },
+      {
+        id: "context.usage",
+        title: "Context usage",
+        summary: "Summarize recent context manifest usage, section distribution, model-aware budget status, and pressure status from metadata only.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- context usage", "/context usage", "/usage"],
+        refs: ["packages/core/src/context_usage.ts"],
+        boundaries: ["uses optional non-secret model context_window_tokens when configured; does not read raw context Markdown, compact context, invoke the model, or mutate state"]
+      },
+      {
+        id: "context.pressure",
+        title: "Context pressure",
+        summary: "Find oversized context manifests and dominant sections using manifest metadata and optional model-aware budgets, with explicit operator guidance for decisioning pressure without mutating context artifacts.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- context pressure", "/context pressure"],
+        refs: ["packages/core/src/context_pressure.ts"],
+        boundaries: ["guidance commands are explicit operator decisions only", "does not compact transcripts, rewrite context assembly, or infer budget from secrets or remote model calls"]
+      },
+      {
+        id: "review.history",
+        title: "Review history",
+        summary: "Read background review reports, completion verification reports, review ticks, inbox items, live run traces, and harness replay audit reports.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- review reports", "pnpm run runtime -- review completions", "pnpm run runtime -- review ticks", "pnpm run runtime -- review traces", "pnpm run runtime -- review replays"],
+        refs: [
+          "packages/core/src/background_review_history.ts",
+          "packages/core/src/completion_verification_history.ts",
+          "packages/core/src/review_tick_history.ts",
+          "packages/core/src/live_run_trace.ts",
+          "packages/core/src/harness_replay.ts"
+        ],
+        boundaries: [
+          "does not render raw model responses, tool results, or final response artifacts",
+          "live run traces may show model failure kind, stage, refs, and sanitized previews from diagnostic artifacts",
+          "completion-verification backlog items may show bounded model diagnostic summaries and review tick may turn them into runtime-gap proposals",
+          "archive-health and skill-registry-health backlog items may become bounded review tick runtime-gap proposals without executing repair commands",
+          "live run traces may show repo-write workspace guard summaries parsed from bounded event metadata only",
+          "harness replay audit reports are metadata-only evidence and do not rerun traces or execute tools"
+        ]
+      },
+      {
+        id: "working.checkpoints",
+        title: "Working checkpoints",
+        summary: "Expose current and recent working state snapshots and next actions.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- memory working", "/working"],
+        refs: ["packages/core/src/working_checkpoints.ts"],
+        boundaries: ["does not resume work or execute checkpoint next actions"]
+      }
+    ]
+  };
+}
+
+function memoryAndLearningCategory(): CapabilityCategory {
+  return {
+    id: "memory_and_learning",
+    title: "Memory and local learning",
+    summary: "Local episode recall, semantic memory confirmation, and SOP/skill self-evolution gates.",
+    status: "implemented",
+    capabilities: [
+      {
+        id: "episode.memory",
+        title: "Episode memory",
+        summary: "Rebuild/search local episode evidence, replay bounded session windows, and recap sessions from evidence metadata.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- memory search --query <query>", "pnpm run runtime -- memory session --session <id>", "pnpm run runtime -- memory recap --session <id>", "/memory search <query>", "/memory session <id>", "/recap <id>"],
+        refs: ["packages/core/src/memory_store.ts", "packages/core/src/session_recap.ts"],
+        boundaries: ["episode JSONL remains the append-only source of truth", "recap reads metadata only and does not render raw model responses, tool outputs, or context Markdown"]
+      },
+      {
+        id: "episode.archives",
+        title: "Episode archives",
+        summary: "Generate, inspect, and diagnose daily episode-memory summaries.",
+        status: "implemented",
+        commands: [
+          "pnpm run runtime -- memory archive",
+          "pnpm run runtime -- memory archives",
+          "pnpm run runtime -- memory archive-health",
+          "/memory archives",
+          "/memory archive <date-or-ref>",
+          "/memory archive health"
+        ],
+        refs: [
+          "packages/runtime/src/episode_archives.ts",
+          "packages/core/src/archive_health.ts"
+        ],
+        boundaries: [
+          "Feishu archive commands are read-only and do not generate archives",
+          "archive health reads episode event metadata and archive JSON only; it does not read raw episode artifacts, write archives, rebuild indexes, or invoke the model"
+        ]
+      },
+      {
+        id: "semantic.memory",
+        title: "Semantic memory confirmations",
+        summary: "Propose, inspect, confirm, and accept local semantic memory through explicit CLI gates.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- memory candidates", "pnpm run runtime -- memory confirmations", "pnpm run runtime -- memory execute-candidate-confirmation --confirmation <ref>"],
+        refs: ["packages/runtime/src/memory_candidates.ts"],
+        boundaries: ["IM surfaces do not execute confirmations"]
+      },
+      {
+        id: "sop.evolution",
+        title: "SOP self-evolution",
+        summary: "Draft, audit, promote, inspect, and recover local SOP/skill evolution chains through explicit gates.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- review draft-sop", "pnpm run runtime -- review audit-sop", "pnpm run runtime -- review promote-sop", "pnpm run runtime -- review rehearse-sop-loop", "pnpm run runtime -- governance evolution", "/evolution"],
+        refs: ["packages/core/src/sop_evolution_ledger.ts", "packages/runtime/src/background_review.ts", "packages/runtime/src/sop_loop_rehearsal.ts"],
+        boundaries: ["promotion can write only the configured local active vault after explicit audit gates"]
+      },
+      {
+        id: "skill.catalog",
+        title: "Skill catalog",
+        summary: "List and inspect bounded local skill metadata, explicitly sync registry snapshots, and retire historical orphan events through append-only gates.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- skills", "pnpm run runtime -- skills --skill-name <name-or-ref>", "pnpm run runtime -- skills --action sync", "pnpm run runtime -- skills retire-event --event <ref>", "pnpm run runtime -- skills health", "/skills", "/skill <name-or-ref>", "/skill health"],
+        refs: [
+          "packages/core/src/skill_catalog.ts",
+          "packages/core/src/skill_registry.ts",
+          "packages/core/src/skill_registry_health.ts",
+          "packages/core/src/skill_registry_events.ts"
+        ],
+        boundaries: ["catalog and health views are read-only; sync is explicit CLI-only registry metadata mutation with bounded synced events; retire-event is explicit CLI-only append-only event retirement; no raw skill body rendering, model invocation, shell command, remote publish, or SOP promotion"]
+      },
+      {
+        id: "skill.telemetry",
+        title: "Skill telemetry",
+        summary: "Read selected-skill outcome, drift, registry event, and reused-skill coverage summaries.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- skills outcomes", "pnpm run runtime -- skills drifts", "pnpm run runtime -- skills events", "pnpm run runtime -- review coverage --sop <ref>"],
+        refs: [
+          "packages/core/src/selected_skill_outcome_history.ts",
+          "packages/core/src/skill_registry_events.ts",
+          "packages/core/src/reused_skill_coverage.ts"
+        ],
+        boundaries: ["read models do not render raw skill bodies or mutate registries"]
+      },
+      {
+        id: "self_evolution.gaps",
+        title: "Self-evolution gaps",
+        summary: "Derive proposal-only implementation gaps from bounded local evidence, suppress superseded publish-run noise, and surface current gaps through governance gaps and Opportunity Backlog.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- governance gaps", "pnpm run runtime -- governance gaps --gap <gap-id>", "pnpm run runtime -- governance opportunities"],
+        refs: [
+          "packages/core/src/self_evolution_gaps.ts",
+          "packages/core/src/opportunity_backlog.ts",
+          "docs/ACTIVE_EXPLORATION.md"
+        ],
+        boundaries: ["gap intake reads bounded state refs only; superseded publish-gap suppression is read-model filtering, not historical state rewriting; it does not read draft bodies, invoke models, execute tools, publish externally, mutate state, write repo files, or write the active vault"]
+      }
+    ]
+  };
+}
+
+function runtimeServiceCategory(): CapabilityCategory {
+  return {
+    id: "runtime_service",
+    title: "Resident local service",
+    summary: "Single-user macOS launchd runtime for Feishu IM intake, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
+    status: "implemented",
+    capabilities: [
+      {
+        id: "service.lifecycle",
+        title: "Service lifecycle",
+        summary: "Install, start, stop, restart, status, logs, and uninstall the resident IM service.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im"],
+        refs: ["packages/runtime/src/service.ts", "docs/LOCAL_RUNTIME.md"],
+        boundaries: ["local single-user launchd service only; not hosted service design"]
+      },
+      {
+        id: "service.health",
+        title: "Service health",
+        summary: "Read service-scoped heartbeat freshness, runtime build metadata, repo HEAD deployment status, review tick state, content loop state, feedback refresh state, creator metrics state, and pause signals from bounded local inputs.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- service health --target im", "/health", "/status"],
+        refs: ["packages/core/src/service_health.ts"],
+        boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
+      },
+      {
+        id: "service.content_daily_loop",
+        title: "Daily content loop",
+        summary: "Optionally run the local content daily job from the resident IM service, writing one date-keyed job and service status when explicitly enabled.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target im"],
+        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
+        boundaries: [
+          "disabled by default",
+          "skips duplicate same-date jobs instead of forcing replacement",
+          "honors autonomy pause signals",
+          "publishes externally only when content_daily_dry_run=false, preflight passes, and daily publish plus external-write confirmation are configured"
+        ]
+      },
+      {
+        id: "service.content_feedback_refresh_loop",
+        title: "Content feedback refresh loop",
+        summary: "Optionally refresh Xiaohongshu post-publish feedback from the resident IM service, appending typed local feedback evidence after a stable follow-up window.",
+        status: "implemented",
+        commands: [
+          "pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled",
+          "pnpm run runtime -- service status --target im"
+        ],
+        refs: [
+          "packages/runtime/src/content_feedback_refresh_service.ts",
+          "packages/runtime/src/channels/feishu/service.ts",
+          "tests/content_feedback_refresh_service.test.ts"
+        ],
+        boundaries: [
+          "disabled by default",
+          "honors autonomy pause signals",
+          "first feedback snapshots may be captured immediately, but follow-up snapshots wait for the configured stable window",
+          "reads only the Xiaohongshu MCP current-user feed and appends typed feedback evidence; never publishes, opens browsers, reads cookies, calls models, writes repo files, or writes the active vault"
+        ]
+      },
+      {
+        id: "service.content_creator_metrics_loop",
+        title: "Content creator metrics loop",
+        summary: "Optionally capture Xiaohongshu creator-backend view_count from the resident IM service for posts whose typed feedback lacks creator metrics.",
+        status: "implemented",
+        commands: [
+          "pnpm run runtime -- config set-runtime --content-creator-metrics-enabled",
+          "pnpm run runtime -- service status --target im"
+        ],
+        refs: [
+          "packages/runtime/src/content_creator_metrics_service.ts",
+          "packages/runtime/src/channels/feishu/service.ts",
+          "tests/content_creator_metrics_service.test.ts"
+        ],
+        boundaries: [
+          "disabled by default",
+          "honors autonomy pause signals",
+          "checks the creator-metrics-needed queue before resolving any browser client",
+          "may use agent-browser-cli only to read creator-backend page text after typed publish proof; never publishes, reads cookies directly, calls models, writes repo files, or writes the active vault"
+        ]
+      },
+      {
+        id: "workspace.status",
+        title: "Workspace status",
+        summary: "Read the current repo branch, ahead/behind state, and bounded dirty-file summary through a fixed git status diagnostic.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- workspace status", "/workspace"],
+        refs: ["packages/core/src/workspace_status.ts"],
+        boundaries: ["runs fixed `git status --porcelain=v1 -b` only; does not accept shell text, read file bodies, stage, commit, reset, checkout, or mutate state"]
+      },
+      {
+        id: "feishu.private_chat",
+        title: "Feishu private chat",
+        summary: "Receive allowed private messages, preserve local channel evidence, queue same-sender follow-ups in process, and run normal tasks through the agent.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- im serve --scenario im-default", "normal Feishu private-chat task"],
+        refs: ["packages/runtime/src/channels/feishu/adapter.ts"],
+        boundaries: [
+          "group messages and unauthorized open_ids are rejected by local policy",
+          "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
+        ]
+      }
+    ]
+  };
+}
+
+function entrypointsCategory(): CapabilityCategory {
+  return {
+    id: "entrypoints",
+    title: "Entrypoints",
+    summary: "Foreground and resident command surfaces for the local runtime.",
+    status: "implemented",
+    capabilities: [
+      {
+        id: "cli.doctor.config",
+        title: "Doctor and config",
+        summary: "Check local readiness using file-first auth records, report non-secret auth source diagnostics, inspect non-secret effective runtime configuration, and append guarded local runtime config updates.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- doctor", "pnpm run runtime -- config", "pnpm run runtime -- config set-runtime", "pnpm run runtime -- capabilities"],
+        refs: ["apps/cli/src/main.ts", "packages/runtime/src/doctor.ts", "packages/runtime/src/config.ts"],
+        boundaries: ["config summaries do not read auth records or print auth secrets", "config set-runtime appends only non-secret runtime records to the local home config and does not restart services or execute external writes", "doctor may read auth metadata but never renders API keys, app ids, app secrets, or env values", "direct auth.jsonl fields win over legacy env aliases"]
+      },
+      {
+        id: "cli.live.pipeline",
+        title: "Live and pipeline runs",
+        summary: "Run direct tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
+        refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts"],
+        boundaries: ["pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"]
+      },
+      {
+        id: "cli.content_dry_run",
+        title: "Content planning and evidence",
+        summary: "Create local content publish-plan artifacts, run date-keyed daily active-exploration jobs across default AI application and compute/market tracks, generate configured Image API outputs, execute confirmed xiaohongshu-mcp publishes, and record typed image/publish evidence without widening read-only surfaces.",
+        status: "implemented",
+        commands: [
+          "pnpm run runtime -- content run --dry-run",
+          "pnpm run runtime -- content run --dry-run --live-sources",
+          "pnpm run runtime -- content daily --date <YYYY-MM-DD> --track ai_applications --preflight",
+          "pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from <content_run_id>",
+          "pnpm run runtime -- content daily-readiness --date <YYYY-MM-DD>",
+          "pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check",
+          "pnpm run runtime -- content daily-advance --date <YYYY-MM-DD> --track ai_applications --preflight",
+          "pnpm run runtime -- content generate-image --run <ref>",
+          "pnpm run runtime -- content image-evidence --run <ref> --image <path>",
+          "pnpm run runtime -- content publish-preflight --run <ref> --login-status logged_in --adapter-available",
+          "pnpm run runtime -- content publish-execute --run <ref> --external-write --confirmed",
+          "pnpm run runtime -- content publish-evidence --run <ref> --publish-status published --external-write --confirmed --post-url <url>",
+          "pnpm run runtime -- content feedback-evidence --run <ref> --views <count> --likes <count>",
+          "pnpm run runtime -- content reconcile-publish-evidence --source-state-root <path> --dry-run",
+          "pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp",
+          "pnpm run runtime -- content feedback-history --captured-by operator",
+          "pnpm run runtime -- content feedback-review --captured-by operator",
+          "pnpm run runtime -- content feedback-needed --captured-by operator",
+          "pnpm run runtime -- content creator-metrics-needed --captured-by xiaohongshu-mcp",
+          "pnpm run runtime -- content creator-metrics-capture --run <ref>",
+          "pnpm run runtime -- content creator-metrics-capture --run <ref> --page-text-file <creator-page.txt>",
+          "pnpm run runtime -- content feedback-trends --captured-by operator",
+          "pnpm run runtime -- content feedback-strategy --captured-by operator",
+          "pnpm run runtime -- content feedback-capture --run <ref> --server-url http://localhost:18060/mcp",
+          "pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp",
+          "pnpm run runtime -- content runs",
+          "pnpm run runtime -- content show --run <ref>"
+        ],
+        refs: ["packages/core/src/content_pipeline.ts", "packages/runtime/src/content_pipeline.ts", "packages/runtime/src/content_channel_readiness.ts", "packages/runtime/src/xiaohongshu_mcp.ts", "apps/cli/src/main.ts", "docs/ACTIVE_EXPLORATION.md"],
+        boundaries: ["dry-run writes local state artifacts only", "live-source mode fetches bounded public source refs only", "live-source source index records freshness metadata and watchlist-local market hotness ranking without making investment advice claims", "content daily writes a default or tracked date-keyed job and publishes externally only after preflight_ok plus explicit external-write confirmation", "daily-readiness audits resident daily config gates and typed daily jobs without reading secrets or mutating state", "channel-readiness may run local agent-browser diagnostics including about:blank launch and read-only xiaohongshu-mcp probes, but never opens Xiaohongshu pages, reads cookies, publishes, calls models, writes repo files, or writes the active vault", "resident default daily scheduling can create ai_applications and ai_compute_market jobs for the same date when no custom topic/source/ticker config is active", "content daily --strategy-from reads typed feedback strategy from a source run and only applies reuse_baseline or revise_next_post copy guidance to a new local draft; incomplete feedback postures are recorded as not applied", "content daily-advance only advances an existing date-keyed job through image generation and optional read-only preflight, keeps external_write=false, and must never call publish_content", "generate-image, daily-advance, and non-dry-run daily jobs may call only the configured OpenAI-compatible Image API and must write output under the state root", "publish-preflight may call only read-only Xiaohongshu MCP initialize, initialized notification, tools/list, and login-status probes when a server URL is configured and must never call publish_content", "publish-preflight requires fresh daily source coverage before an external publication can become preflight_ok", "publish-execute may perform a read-only current-user feed lookup after a confirmed adapter call only to recover platform proof", "external publishing through publish-execute or daily publish gates may call only xiaohongshu-mcp after generated image evidence, preflight_ok evidence, and explicit external-write confirmation", "publish-history reads typed run metadata, publish evidence, and bounded feedback capture summaries for channel attribution without reading draft bodies or mutating state", "feedback-capture may call only the Xiaohongshu MCP current-user feed after publish completion proof and records typed feedback evidence without publishing or browser automation", "feedback-refresh reads the feedback-needed queue and may call only xiaohongshu-mcp current-user feed to append typed feedback evidence, never publishing or opening browsers", "creator-metrics-needed lists posts whose typed feedback lacks creator-backend view_count and emits channel-readiness, browser-backed capture, and page-text recovery command shapes without opening browsers or reading cookies", "creator-metrics-capture may read operator/browser-supplied creator page text or agent-browser-cli page text after publish proof and records typed feedback only when creator view_count is parsed", "feedback-evidence records operator or adapter supplied post-publish metrics only after publish completion proof", "feedback-history reads typed feedback evidence without reading draft bodies, image bytes, cookies, or platform state", "feedback-review derives bounded post-publish recommendations from typed feedback only and may surface self-evolution gaps for missing or weak feedback", "feedback-needed lists published posts that need first, retry, or follow-up feedback snapshots and emits operator commands without opening browsers or reading platform state", "feedback-trends compares multiple typed feedback snapshots per post and reports view/engagement deltas without fetching platform state", "feedback-strategy turns review, trend, and needed queues into next-run title/cover/hook/CTA examples without changing drafts or fetching platform state", "evidence commands record operator-supplied results and validate proof shape", "reconcile-publish-evidence copies typed proof between state roots only for equivalent same-day daily Xiaohongshu runs and marks provenance", "no Xiaohongshu browser automation, repo writes, or active-vault writes from publish/feedback evidence commands"]
+      },
+      {
+        id: "feishu.operator_commands",
+        title: "Feishu operator commands",
+        summary: "Read-only local status, content, config, context, memory, review, skill, capability, and governance views.",
+        status: "implemented",
+        commands: ["/help", "/capabilities", "/config", "/status", "/content", "/content <date-or-ref>", "/governance", "/review inbox"],
+        refs: ["packages/runtime/src/channels/feishu/adapter.ts"],
+        boundaries: ["operator commands do not invoke the model or execute follow-up mutations", "/content reads daily job and linked content run metadata only; it does not read draft bodies or image bytes, generate images, call MCP, publish, or mutate state"]
+      }
+    ]
+  };
+}
+
+function boundariesCategory(): CapabilityCategory {
+  return {
+    id: "boundaries",
+    title: "Explicit boundaries",
+    summary: "Known non-goals that keep the first version local, inspectable, and bounded.",
+    status: "guarded",
+    capabilities: [
+      {
+        id: "boundary.local_only",
+        title: "Local-only single machine",
+        summary: "The local runtime is scoped to one local user and one machine for the first version.",
+        status: "guarded",
+        refs: ["docs/RUNTIME_CONTRACT.md", ".trellis/spec/local-single-machine-mvp.md"],
+        boundaries: ["no hosted service, multi-user runtime, cross-machine state, Docker/Kubernetes deployment, or production daemon governance"]
+      },
+      {
+        id: "boundary.no_marketplace",
+        title: "No sharing or marketplace layer",
+        summary: "Active vault learning is local procedural memory, not sync, sharing, compatibility, or marketplace infrastructure.",
+        status: "guarded",
+        refs: ["docs/LOCAL_LEARNING.md"],
+        boundaries: ["no public marketplaces, shared vaults, or multi-machine skill conflict handling"]
+      },
+      {
+        id: "boundary.read_only_surfaces",
+        title: "Read-only operator surfaces",
+        summary: "Status, capability, context, memory, governance, and review views are observability surfaces.",
+        status: "guarded",
+        refs: ["docs/LOCAL_RUNTIME.md"],
+        boundaries: ["read models do not mutate state, invoke the model, or execute confirmations; workspace status is limited to a fixed git status diagnostic"]
+      }
+    ]
+  };
+}

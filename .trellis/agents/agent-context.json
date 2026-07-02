@@ -1,0 +1,12 @@
+{
+  "domain": "local single-machine self-growing agent runtime",
+  "ecosystem": "node",
+  "tools": [
+    "pnpm",
+    "tsx",
+    "trellis"
+  ],
+  "ontologies": [],
+  "generatedAt": "2026-07-02T08:46:40.588Z",
+  "confidence": "high"
+}
