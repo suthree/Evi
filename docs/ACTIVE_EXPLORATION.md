@@ -77,8 +77,8 @@ tool contract.
 Example config records:
 
 ```jsonl
-{"type":"active_image_model","model_id":"cpa-gpt-image-2"}
-{"type":"image_model","id":"cpa-gpt-image-2","provider":"openai-compatible","api":"images_generations","base_url":"https://cpa.suthree.dpdns.org/v1","model":"gpt-image-2","auth_id":"cpa","size":"1024x1024"}
+{"type":"active_image_model","model_id":"default-image-model"}
+{"type":"image_model","id":"default-image-model","provider":"openai-compatible","api":"images_generations","base_url":"https://api.example.com/v1","model":"gpt-image-2","auth_id":"model","size":"1024x1024"}
 ```
 
 ## Example: Daily AI And Market Brief

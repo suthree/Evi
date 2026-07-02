@@ -1732,7 +1732,7 @@ tick enablement. local runtime should expose a read-only runtime config summary 
 CLI `config` and Feishu `/config`.
 
 The summary may read `config.jsonl`, `models.jsonl`, and `settings.jsonl` from
-the configured repo, home, and state layers. It may render active
+the configured repo, ignored local, home, and state layers. It may render active
 model/channel/scenario selectors, non-secret model metadata, runtime promotion
 and review tick flags, source row refs, defaulted runtime fields, vault roots,
 and restart guidance. It must not read `auth.jsonl`, API keys, app secrets,
@@ -2210,9 +2210,10 @@ or run shell commands.
 ## 2026-06-30 Local Auth File Priority
 
 local runtime should not require `.env` or process environment secrets for the local
-first-version model and Feishu baseline. The repo-level `config/auth.jsonl`
-remains a blank template, while the machine-local
-`<LOCAL_RUNTIME_HOME>/config/auth.jsonl` is the expected source for API keys,
+first-version model and Feishu baseline. The repo-level `config/auth.example.jsonl`
+remains a template, ignored `config/auth.local.jsonl` may hold repo-local
+machine secrets, and `<LOCAL_RUNTIME_HOME>/config/auth.jsonl` is the expected
+home source for API keys,
 OpenAI-compatible model auth, Feishu app ids, and Feishu app secrets.
 
 Direct auth fields win over legacy env aliases when both are present. Env

@@ -217,7 +217,7 @@ export interface ConfigSourceOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-export type ConfigSummaryLayer = "repo" | "home" | "state" | "default";
+export type ConfigSummaryLayer = "repo" | "local" | "home" | "state" | "default";
 
 export interface RuntimeConfigSummary {
   action: "config-summary";
@@ -413,8 +413,9 @@ export interface RuntimeConfigUpdateResult {
 export async function loadConfigSelectors(options: ConfigSourceOptions = {}): Promise<ConfigSelectors> {
   const configDir = resolve(options.configDir ?? "config");
   const repoConfigRaw = await readRequired(configDir, "config.jsonl");
+  const localConfigRaw = await readOptional(configDir, localConfigFile("config.jsonl"));
   const homeRecords = parseJsonl<HomeRecord>(
-    repoConfigRaw,
+    joinJsonl([repoConfigRaw, localConfigRaw]),
     homeRecordSchema,
     "home"
   );
@@ -422,6 +423,7 @@ export async function loadConfigSelectors(options: ConfigSourceOptions = {}): Pr
   const homeConfigDir = resolve(homeRoot, "config");
   const configRaw = joinJsonl([
     repoConfigRaw,
+    localConfigRaw,
     await readOptional(homeConfigDir, "config.jsonl")
   ]);
   const stateRecords = parseJsonl<StateRecord>(
@@ -750,7 +752,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
     },
     refs,
     restart_guidance: "Changes to active model, channel, scenario, vault, runtime review_tick settings, runtime content_daily settings, runtime content_feedback_refresh settings, or runtime content_creator_metrics settings take effect in the resident IM service after service restart.",
-    boundary: "read-only runtime config summary; reads config.jsonl, models.jsonl, and settings.jsonl only; never reads auth.jsonl, API keys, app secrets, non-config runtime state artifacts, launchd, logs, or raw memory/SOP/skill bodies; does not mutate config or service state"
+    boundary: "read-only runtime config summary; reads config.jsonl, models.jsonl, settings.jsonl, and ignored local overlays only; never reads auth.jsonl, API keys, app secrets, non-config runtime state artifacts, launchd, logs, or raw memory/SOP/skill bodies; does not mutate config or service state"
   };
 }
 
@@ -832,7 +834,7 @@ export async function loadRuntimeAuthDiagnostics(options: ConfigSourceOptions = 
       channel?.ref,
       channelAuth?.source_ref ?? undefined
     ]),
-    boundary: "read-only auth source diagnostics; reads auth.jsonl metadata and checks whether direct or explicitly named env-backed fields are configured; never renders API keys, app ids, app secrets, or env values; does not mutate config, state, service, repo, or active vault"
+    boundary: "read-only auth source diagnostics; reads auth.jsonl metadata across tracked, ignored local, home, and state layers and checks whether direct or explicitly named env-backed fields are configured; never renders API keys, app ids, app secrets, or env values; does not mutate config, state, service, repo, or active vault"
   };
 }
 
@@ -844,6 +846,7 @@ export async function loadSettingsRecords<T>(
   const selectors = await loadConfigSelectors(options);
   return [
     ...parseJsonl<T>(await readOptional(selectors.configDir, "settings.jsonl"), schema, type),
+    ...parseJsonl<T>(await readOptional(selectors.configDir, localConfigFile("settings.jsonl")), schema, type),
     ...parseJsonl<T>(await readOptional(selectors.homeConfigDir, "settings.jsonl"), schema, type),
     ...parseJsonl<T>(await readOptional(selectors.stateRoot, "settings.jsonl"), schema, type)
   ];
@@ -888,6 +891,7 @@ async function loadAuthRecords<T>(
 ): Promise<T[]> {
   return [
     ...parseJsonl<T>(await readOptional(selectors.configDir, "auth.jsonl"), schema, type),
+    ...parseJsonl<T>(await readOptional(selectors.configDir, localConfigFile("auth.jsonl")), schema, type),
     ...parseJsonl<T>(await readOptional(selectors.homeConfigDir, "auth.jsonl"), schema, type),
     ...parseJsonl<T>(await readOptional(selectors.stateRoot, "auth.jsonl"), schema, type)
   ];
@@ -896,6 +900,7 @@ async function loadAuthRecords<T>(
 async function readLayeredConfig(selectors: ConfigSelectors, file: string): Promise<string> {
   return joinJsonl([
     await readRequired(selectors.configDir, file),
+    await readOptional(selectors.configDir, localConfigFile(file)),
     await readOptional(selectors.homeConfigDir, file),
     await readOptional(selectors.stateRoot, file)
   ]);
@@ -926,9 +931,14 @@ interface ConfigRecordWithRef<T> {
 async function readConfigSourceLayers(selectors: ConfigSelectors, file: string): Promise<ConfigSourceLayer[]> {
   return [
     { layer: "repo", file, raw: await readOptional(selectors.configDir, file) },
+    { layer: "local", file: localConfigFile(file), raw: await readOptional(selectors.configDir, localConfigFile(file)) },
     { layer: "home", file, raw: await readOptional(selectors.homeConfigDir, file) },
     { layer: "state", file, raw: await readOptional(selectors.stateRoot, file) }
   ];
+}
+
+function localConfigFile(file: string): string {
+  return file.replace(/\.jsonl$/u, ".local.jsonl");
 }
 
 function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean): string {

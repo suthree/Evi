@@ -518,20 +518,23 @@ Model and Feishu credentials are local config records, not `.env` defaults.
 Put machine-local secrets in:
 
 ```text
+config/auth.local.jsonl
 <LOCAL_RUNTIME_HOME>/config/auth.jsonl
 ```
 
 The expected shape is:
 
 ```jsonl
-{"type":"api_key","id":"cpa","key":"..."}
+{"type":"api_key","id":"model","key":"..."}
 {"type":"app_secret","id":"feishu-main","app_id":"...","app_secret":"..."}
 ```
 
-Repository `config/auth.jsonl` is only a blank template. The resident service
-copies repo config into its runtime snapshot, then still layers the local home
-config, so real API keys and Feishu app secrets should stay in
-`<LOCAL_RUNTIME_HOME>/config/auth.jsonl`. If an auth record contains both a direct
+Repository `config/auth.example.jsonl` is only a template. The tracked
+`config/*.jsonl` files are neutral defaults; ignored `config/*.local.jsonl`
+files override those defaults on this machine before home and state config.
+The resident service copies repo config into its runtime snapshot, then still
+layers local config, so real API keys and Feishu app secrets should stay in
+ignored repo-local or home config. If an auth record contains both a direct
 field and a legacy env alias, the direct field wins. `API_KEY`,
 `FEISHU_APP_ID`, and `FEISHU_APP_SECRET` are accepted only for legacy or test
 fixtures that explicitly opt into env-backed auth records. Feishu channel and
@@ -801,7 +804,8 @@ bodies, image bytes, cookies, or platform-private payloads.
 
 `config` renders an effective runtime configuration summary for operators and
 later agents. It reads only `config.jsonl`, `models.jsonl`, and
-`settings.jsonl` from the configured repo, home, and state layers. It shows
+`settings.jsonl` from the configured repo, ignored local, home, and state
+layers. It shows
 active model/channel/scenario selectors, model base URL, active image model
 metadata, auth ids, max output tokens, optional `context_window_tokens`,
 derived context budget thresholds, Feishu follow-up queue size, vault roots,

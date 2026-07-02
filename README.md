@@ -118,7 +118,7 @@ repo/
 ├── apps/cli/                 # TypeScript CLI entrypoint
 ├── packages/core/            # schemas, store, context, audit, skills
 ├── packages/runtime/         # config, model, runner, tools, channels
-├── config/                   # JSONL local config and auth references
+├── config/                   # tracked defaults plus ignored local overlays
 ├── core/                     # stable identity and memory policy text
 ├── context/                  # context assembly notes
 ├── harness/                  # runtime enforcement notes
@@ -159,8 +159,8 @@ Run a structural readiness check without model or IM credentials:
 pnpm run runtime -- doctor --no-auth --no-im
 ```
 
-Run one live task after model auth is configured in
-`<LOCAL_RUNTIME_HOME>/config/auth.jsonl`:
+Run one live task after model auth is configured in either ignored repo-local
+`config/auth.local.jsonl` or `<LOCAL_RUNTIME_HOME>/config/auth.jsonl`:
 
 ```bash
 pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime-state

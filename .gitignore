@@ -3,11 +3,17 @@ __pycache__/
 .pytest_cache/
 node_modules/
 dist/
+.env
+.env.*
+!.env.example
+*.log
 .runtime-*/
 .runtime-smoke/
 .runtime-smoke-ts/
 .runtime-ab-*/
 .runtime-state/
+config/auth.jsonl
+config/*.local.jsonl
 .trellis/blobs/
 .trellis/worktrees/
 .trellis/state.json

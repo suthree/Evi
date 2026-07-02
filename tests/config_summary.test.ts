@@ -234,6 +234,82 @@ test("image model config resolves auth without exposing secrets in summaries", a
   }
 });
 
+test("repo-local ignored config overlays tracked defaults before home and state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-local-config-overlay-"));
+  const configDir = join(root, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  await mkdir(configDir, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  try {
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "tracked-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "tracked-channel" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "config.local.jsonl"), [
+      JSON.stringify({ type: "active_model", model_id: "local-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "local-channel" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "tracked-model",
+      provider: "openai-compatible",
+      api: "responses",
+      base_url: "https://tracked.example.test/v1",
+      model: "tracked",
+      auth_id: "tracked-auth"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "models.local.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "local-model",
+      provider: "openai-compatible",
+      api: "responses",
+      base_url: "https://local.example.test/v1",
+      model: "local",
+      auth_id: "local-auth"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "settings.jsonl"), `${JSON.stringify({
+      type: "channel",
+      id: "tracked-channel",
+      kind: "feishu",
+      transport: "websocket",
+      auth_id: "tracked-feishu",
+      domain: "feishu",
+      mode: "private_chat"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "settings.local.jsonl"), `${JSON.stringify({
+      type: "channel",
+      id: "local-channel",
+      kind: "feishu",
+      transport: "websocket",
+      auth_id: "local-feishu",
+      domain: "feishu",
+      mode: "private_chat"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "auth.local.jsonl"), `${JSON.stringify({
+      type: "api_key",
+      id: "local-auth",
+      key: "LOCAL_SECRET_SHOULD_NOT_APPEAR"
+    })}\n`, "utf8");
+
+    const config = await loadConfig({ configDir });
+    assert.equal(config.model.id, "local-model");
+    assert.equal(config.model.api_key, "LOCAL_SECRET_SHOULD_NOT_APPEAR");
+
+    const summary = await loadRuntimeConfigSummary({ configDir });
+    assert.equal(summary.active_model.id, "local-model");
+    assert.equal(summary.active_model.source_ref, "local:models.local.jsonl#1");
+    assert.equal(summary.active_channel.id, "local-channel");
+    assert.equal(summary.active_channel.source_ref, "local:settings.local.jsonl#1");
+    assert.equal(summary.refs.includes("local:config.local.jsonl#1"), true);
+    assert.doesNotMatch(JSON.stringify(summary), /LOCAL_SECRET_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runtime config update appends safe content daily settings to home config", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-runtime-config-update-"));
   const configDir = join(root, "config");
