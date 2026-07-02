@@ -517,8 +517,7 @@ async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<
   await cp(sourceDist, resolve(definition.runtimeNextRoot, "dist"), { recursive: true, force: true });
   await cp(sourceNodeModules, resolve(definition.runtimeNextRoot, "node_modules"), {
     recursive: true,
-    force: true,
-    dereference: true
+    force: true
   });
   await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
   await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
