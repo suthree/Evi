@@ -1,5 +1,14 @@
 # Local Runtime
 
+## Documentation Languages
+
+This English README is the default entrypoint for models, tools, and external
+references. The Simplified Chinese companion is
+[`docs/README.cn.md`](docs/README.cn.md), which is the fast operator-facing
+entrypoint for local reading. Keep commands, code
+identifiers, JSON fields, protocol literals, API names, and quoted evidence in
+their original language unless translation is explicitly requested.
+
 This repository contains a local-first, single-machine runtime for a
 self-growing agent.
 
@@ -129,7 +138,8 @@ repo/
 │   └── ACTIVE_EXPLORATION.md # opt-in active-exploration examples
 ├── vault/                    # repo seed/dev skill material
 ├── skills/                   # repo seed/dev skill material
-└── README.md
+├── README.md                 # English default entrypoint for models/tools
+└── docs/README.cn.md         # Simplified Chinese quick entrypoint
 ```
 
 ## Local Commands

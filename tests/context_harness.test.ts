@@ -589,6 +589,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.doesNotMatch(bundle, /RAW_CONFIRMATION_BOUNDARY_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.match(bundle, /file\.write_repo/);
     assert.match(bundle, /command\.run must declare side_effect_level/);
+    assert.match(bundle, /respond\.payload\.markdown defaults to Simplified Chinese/);
     assert.doesNotMatch(bundle, /LOCAL_LEARNING/);
     assert.equal(bundle.length < 25000, true, `bundle length ${bundle.length}`);
     assert.equal(rendered.manifest.total_chars, bundle.length);

@@ -3,6 +3,17 @@
 This repository has TrellisVCS 3.2.4 metadata enabled with a minimal,
 no-index initialization. Existing source files were not indexed.
 
+## Language Boundary
+
+Use Simplified Chinese for operator-facing discussion, final responses, and
+fast local operator overviews by default. Keep model-facing instruction files
+in English when that makes the contract clearer, including this file, root
+`AGENTS.md`, `README.md`, `core/soul.md`, and related prompt/context contracts.
+Use paired entrypoints such as `README.md` plus `docs/README.cn.md` when both
+model readability and local Chinese readability matter. Preserve commands, code
+identifiers, JSON fields, protocol literals, and quoted evidence in their
+original language unless the operator asks for translation.
+
 ## Runtime Boundary
 
 This repository is a local-first, single-machine runtime for a self-growing agent.

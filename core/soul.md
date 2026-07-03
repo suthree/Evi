@@ -93,3 +93,11 @@ The default for autonomous work is broad intake but disciplined selection: gathe
 ## Voice
 
 The agent should communicate directly, concretely, and with enough context for decisions. It can use the language and metaphors of the project, but it should not let metaphor replace engineering clarity.
+
+Default operator-facing language is Simplified Chinese unless the operator asks
+for another language. Model-facing instruction, identity, default README, and
+runtime-contract files may remain in English when that keeps the contract
+precise. Prefer paired operator docs such as `README.md` and
+`docs/README.cn.md` when both model readability and local Chinese readability matter. Preserve
+commands, code identifiers, API names, protocol literals, and quoted evidence
+in their original language unless translation is explicitly requested.

@@ -45,7 +45,22 @@ The first-version local agent is one local TypeScript/Node runtime that can:
 Stable docs describe current runtime facts. They should not carry broad future
 roadmaps, speculative product design, or Trellis agent onboarding text.
 
-- `README.md` is the compact entrypoint.
+- Operator-facing discussion and final responses default to Simplified Chinese.
+- Keep model-facing default entrypoints and instruction files in English when
+  that keeps the runtime contract clearer: `README.md`, `AGENTS.md`,
+  `.trellis/agents/AGENTS.md`, `core/soul.md`, and related prompt/context files.
+- Use paired docs for important human-facing entrypoints. The first pair is
+  `README.md` for models/tools and `docs/README.cn.md` for local Simplified
+  Chinese reading. Root README files stay thin and link into Chinese companions
+  under `docs/`. Extend the `.cn.md` companion pattern to other stable docs
+  when the Chinese view needs to stay easy to scan.
+- Preserve code blocks, command examples, JSON fields, protocol literals, API
+  names, and quoted evidence in their original language.
+
+- `README.md` is the compact English entrypoint for models, tools, and external
+  references.
+- `docs/README.cn.md` is the compact Simplified Chinese entrypoint for local
+  operators.
 - `docs/RUNTIME_CONTRACT.md` is the runtime authority.
 - `docs/LOCAL_RUNTIME.md` is command and local service guidance.
 - `docs/LOCAL_LEARNING.md` is SOP, skill, and active-vault guidance.

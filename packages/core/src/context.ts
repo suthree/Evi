@@ -2394,11 +2394,12 @@ Available tools:
 ${renderCoreToolExamples()}
 
 Harness policy:
-- file.write_repo changes repository files and must only be used for requested repo edits.
-- command.run must declare side_effect_level and include timeout_ms plus max_output_chars.
-- repo.search and file.read are preferred before making claims about local source files.
+- file.write_repo is only for requested repo edits.
+- command.run must declare side_effect_level, timeout_ms, and max_output_chars.
+- Use repo.search or file.read before source-file claims.
 - A done completion claim is verified by the harness against final response and tool evidence.
 - Failed write/run tool results block verified completion.
+- respond.payload.markdown defaults to Simplified Chinese unless asked otherwise; keep commands, code, JSON fields, protocols, and quotes literal.
 
 Available delegated agent action:
 {
@@ -2435,8 +2436,7 @@ State-only harness actions:
   }
 }
 
-The harness writes these actions only under the selected state root and appends episode evidence.
-They do not write repo files, write the active vault, publish externally, or make a done claim verified by themselves.
+State-only harness actions write selected state evidence only; they do not mutate the repo, active vault, external systems, or verify done claims.
 
 State-only governance actions:
 {

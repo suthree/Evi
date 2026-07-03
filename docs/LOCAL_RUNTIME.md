@@ -32,6 +32,10 @@ runtime entrypoints.
 
 The first-version command surface should be:
 
+Operator-facing final-response Markdown and local discussion text should default
+to Simplified Chinese unless the operator explicitly requests another language.
+Command names, option names, JSON fields, and evidence refs remain literal.
+
 ```bash
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
