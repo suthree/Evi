@@ -1527,7 +1527,15 @@ test("context selected skills include recall metadata before skill body", async 
         instructions_ref: "vault/skills/context-selected/SKILL.md",
         metadata_ref: "vault/registry/skills.jsonl#context-selected",
         source: "seed",
-        score: 17
+        score: 17,
+        base_score: 23,
+        quality: {
+          outcome_count: 2,
+          passed_count: 1,
+          attention_count: 1,
+          score_adjustment: -6,
+          latest_outcome_ref: "memory/skills/usage/session_context-selected.json"
+        }
       }]
     });
 
@@ -1541,6 +1549,9 @@ test("context selected skills include recall metadata before skill body", async 
     assert.match(bundle, /metadata_ref: vault\/registry\/skills\.jsonl#context-selected/);
     assert.match(bundle, /source: seed/);
     assert.match(bundle, /score: 17/);
+    assert.match(bundle, /base_score: 23/);
+    assert.match(bundle, /outcome_quality: outcomes=2; passed=1; attention=1; adjustment=-6/);
+    assert.match(bundle, /latest_outcome_ref: memory\/skills\/usage\/session_context-selected\.json/);
     assert.match(bundle, /SELECTED_SKILL_BODY_SHOULD_APPEAR/);
     assert.doesNotMatch(bundle, /UNSELECTED_SKILL_BODY_SHOULD_NOT_APPEAR/);
     assert.deepEqual(selectedSection?.refs, ["vault/skills/context-selected/SKILL.md"]);

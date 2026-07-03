@@ -2494,3 +2494,21 @@ the existing context-pressure read model, records a bounded evidence event, and
 does not compact context, rewrite previous artifacts, delete memory, rebuild the
 episode index, change selected-skill recall, or introduce a general context
 rewriter.
+
+## 2026-07-03 Outcome-Aware Skill Recall
+
+Selected-skill outcome telemetry should improve the next skill selection
+without becoming automatic skill editing. Skill recall may read recent bounded
+`memory/skills/usage/*.json` summaries and apply small capped score adjustments:
+verified passed outcomes can raise a candidate, while failed, skipped, blocked,
+unfinished, or unverified outcomes can lower it.
+
+The live context may render final score, base score, aggregate outcome-quality
+counts, score adjustment, and latest outcome ref before the selected skill
+body. This keeps GA-style attention focused on higher-confidence procedures
+while preserving local runtime's audit boundary.
+
+This ranking feedback must not read raw prior context Markdown, final
+responses, completion Markdown, model prompts, tool results, or unselected
+skill bodies. It must not revise, retire, or rewrite skills, mutate registry
+metadata, execute governance actions, or create confirmations.

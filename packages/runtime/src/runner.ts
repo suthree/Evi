@@ -193,7 +193,10 @@ export class LiveAgentRunner {
         name: skill.name,
         instructions_ref: skill.instructions_ref,
         metadata_ref: skill.metadata_ref,
-        score: skill.score
+        source: skill.source,
+        score: skill.score,
+        base_score: skill.base_score,
+        quality: skill.quality
       })),
       discipline: discipline?.refs
     });

@@ -1089,6 +1089,15 @@ count. They must not read raw selected skill bodies, raw context Markdown, raw
 final responses, completion Markdown, invoke the model, mutate skill metadata,
 write the active vault, or run shell commands.
 
+Live skill recall also uses those recent selected-skill outcome summaries as a
+bounded ranking signal. Verified passed runs can add a small capped bonus, and
+failed, skipped, blocked, unfinished, or unverified runs can apply a capped
+penalty. The next `Selected Skills` context section may show final score, base
+score, aggregate quality counts, adjustment, and latest outcome ref. This does
+not revise, retire, or rewrite skills automatically, and it does not read raw
+prior contexts, final responses, completion Markdown, model prompts, or tool
+results.
+
 `skills drifts`, `skills drifts --skill-name <name>`, Feishu `/skill drifts`,
 and Feishu `/skill drift <skill-name>` group repeated failed, skipped, blocked,
 unfinished, or unverified selected-skill outcomes by skill. They may show

@@ -617,6 +617,16 @@ causal proof that the skill made the run succeed. Operator history views may
 list and inspect this JSON metadata, but must not read the raw selected skill
 body, context Markdown, final response, or completion Markdown.
 
+Skill recall may use recent selected-skill outcome summaries as bounded ranking
+signals. Verified passed outcomes can add a small capped score bonus. Failed,
+skipped, blocked, unfinished, or unverified outcomes can apply a capped score
+penalty. This feedback changes only recall ordering and optional selection; it
+must not revise skills, retire skills, rewrite registry metadata, confirm
+governance actions, or read raw selected skill bodies, raw context Markdown,
+final responses, completion Markdown, model prompts, or tool results. Context
+may render only the final score, base score, aggregate quality counts,
+adjustment, and latest outcome ref before the selected `SKILL.md` body.
+
 ## Tool Contracts
 
 ### `file.read`

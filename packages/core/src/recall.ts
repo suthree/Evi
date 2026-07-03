@@ -1,7 +1,29 @@
 import type { SOPDraft } from "./schemas.js";
+import {
+  readLatestSelectedSkillOutcomeSummaries,
+  type SelectedSkillOutcomeHistorySummary
+} from "./selected_skill_outcome_history.js";
 import { recordRegistrySkillUsage, scanSkillRegistry, type SkillRegistryEntry } from "./skill_registry.js";
 import type { SkillResolverLike } from "./skill_resolver.js";
 import { AgentStore } from "./store.js";
+
+const RECENT_SELECTED_SKILL_OUTCOME_LIMIT = 50;
+const RECENT_OUTCOMES_PER_SKILL = 5;
+const ATTENTION_OUTCOME_PENALTY = 8;
+const PASSED_OUTCOME_BONUS = 2;
+const MIN_QUALITY_ADJUSTMENT = -16;
+const MAX_QUALITY_ADJUSTMENT = 4;
+
+export interface SkillRecallQuality {
+  outcome_count: number;
+  passed_count: number;
+  attention_count: number;
+  failed_count: number;
+  blocked_count: number;
+  skipped_count: number;
+  score_adjustment: number;
+  latest_outcome_ref: string | null;
+}
 
 export interface SkillRecallHit {
   name: string;
@@ -9,6 +31,8 @@ export interface SkillRecallHit {
   instructions_ref: string;
   metadata_ref: string;
   score: number;
+  base_score: number;
+  quality: SkillRecallQuality;
   source: SkillRegistryEntry["source"];
 }
 
@@ -22,10 +46,16 @@ export interface SkillUsageSnapshot {
 
 export async function recallSkills(store: AgentStore, query: string, limit = 2, vaultRoot: SkillResolverLike = "vault"): Promise<SkillRecallHit[]> {
   const hits: SkillRecallHit[] = [];
+  const quality = await readSkillRecallQuality(store);
 
   for (const entry of await scanSkillRegistry(store, vaultRoot)) {
     if (entry.status !== "active") continue;
-    const score = scoreRegistrySkill(query, entry);
+    const baseScore = scoreRegistrySkill(query, entry);
+    if (baseScore <= 0) continue;
+    const outcomeQuality = quality.byInstructionsRef.get(entry.instructions_ref)
+      ?? quality.bySkillName.get(entry.name)
+      ?? emptySkillRecallQuality();
+    const score = baseScore + outcomeQuality.score_adjustment;
     if (score <= 0) continue;
     hits.push({
       name: entry.name,
@@ -33,11 +63,17 @@ export async function recallSkills(store: AgentStore, query: string, limit = 2, 
       instructions_ref: entry.instructions_ref,
       metadata_ref: entry.metadata_ref,
       score,
+      base_score: baseScore,
+      quality: outcomeQuality,
       source: entry.source
     });
   }
 
-  return hits.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, limit);
+  return hits.sort((a, b) =>
+    b.score - a.score
+    || b.base_score - a.base_score
+    || a.name.localeCompare(b.name)
+  ).slice(0, limit);
 }
 
 export async function recordSkillUsage(store: AgentStore, hit: SkillRecallHit, vaultRoot: SkillResolverLike = "vault"): Promise<SkillUsageSnapshot | null> {
@@ -83,6 +119,90 @@ function scoreRegistrySkill(query: string, skill: SkillRegistryEntry): number {
 
   if (hasGrowthSignal(query) && hasGrowthSignal(haystack)) score += 5;
   return score;
+}
+
+async function readSkillRecallQuality(store: AgentStore): Promise<{
+  byInstructionsRef: Map<string, SkillRecallQuality>;
+  bySkillName: Map<string, SkillRecallQuality>;
+}> {
+  const outcomes = await readLatestSelectedSkillOutcomeSummaries(store, RECENT_SELECTED_SKILL_OUTCOME_LIMIT);
+  const byInstructionsRef = new Map<string, SelectedSkillOutcomeHistorySummary[]>();
+  const bySkillName = new Map<string, SelectedSkillOutcomeHistorySummary[]>();
+  for (const outcome of outcomes) {
+    pushOutcome(byInstructionsRef, outcome.instructions_ref, outcome);
+    pushOutcome(bySkillName, outcome.skill_name, outcome);
+  }
+
+  return {
+    byInstructionsRef: summarizeOutcomeMap(byInstructionsRef),
+    bySkillName: summarizeOutcomeMap(bySkillName)
+  };
+}
+
+function summarizeOutcomeMap(
+  groups: Map<string, SelectedSkillOutcomeHistorySummary[]>
+): Map<string, SkillRecallQuality> {
+  return new Map(
+    [...groups.entries()].map(([key, outcomes]) => [key, summarizeRecallQuality(outcomes)])
+  );
+}
+
+function summarizeRecallQuality(outcomes: SelectedSkillOutcomeHistorySummary[]): SkillRecallQuality {
+  const selected = [...outcomes]
+    .sort((left, right) =>
+      right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id) || right.outcome_ref.localeCompare(left.outcome_ref)
+    )
+    .slice(0, RECENT_OUTCOMES_PER_SKILL);
+  const attention = selected.filter(needsOutcomeAttention);
+  const passed = selected.filter((outcome) => outcome.verified && outcome.verification_status === "passed");
+  const adjustment = clamp(
+    (passed.length * PASSED_OUTCOME_BONUS) - (attention.length * ATTENTION_OUTCOME_PENALTY),
+    MIN_QUALITY_ADJUSTMENT,
+    MAX_QUALITY_ADJUSTMENT
+  );
+  return {
+    outcome_count: selected.length,
+    passed_count: passed.length,
+    attention_count: attention.length,
+    failed_count: selected.filter((outcome) => outcome.verification_status === "failed").length,
+    blocked_count: selected.filter((outcome) => outcome.completion_status === "blocked").length,
+    skipped_count: selected.filter((outcome) => outcome.verification_status === "skipped").length,
+    score_adjustment: adjustment,
+    latest_outcome_ref: selected[0]?.outcome_ref ?? null
+  };
+}
+
+function needsOutcomeAttention(outcome: SelectedSkillOutcomeHistorySummary): boolean {
+  return outcome.completion_status !== "done"
+    || outcome.verification_status !== "passed"
+    || outcome.verified !== true;
+}
+
+function pushOutcome(
+  groups: Map<string, SelectedSkillOutcomeHistorySummary[]>,
+  key: string,
+  outcome: SelectedSkillOutcomeHistorySummary
+): void {
+  const existing = groups.get(key) ?? [];
+  existing.push(outcome);
+  groups.set(key, existing);
+}
+
+function emptySkillRecallQuality(): SkillRecallQuality {
+  return {
+    outcome_count: 0,
+    passed_count: 0,
+    attention_count: 0,
+    failed_count: 0,
+    blocked_count: 0,
+    skipped_count: 0,
+    score_adjustment: 0,
+    latest_outcome_ref: null
+  };
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function overlapScore(left: string, right: string): number {

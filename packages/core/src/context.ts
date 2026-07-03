@@ -2248,17 +2248,34 @@ async function selectedSkills(store: AgentStore, snapshot: TurnSnapshot): Promis
   const blocks = [];
   for (const [index, ref] of refs.entries()) {
     const hit = hits.find((item) => getString(item.instructions_ref) === ref);
+    const score = getNumber(hit?.score);
+    const baseScore = getNumber(hit?.base_score);
+    const quality = getRecord(hit?.quality);
     const metadata = [
       `### ${index + 1}. ${getString(hit?.name) ?? ref.split("/").at(-2) ?? ref}`,
       `- instructions_ref: ${ref}`,
       `- metadata_ref: ${getString(hit?.metadata_ref) ?? "unknown"}`,
       `- source: ${getString(hit?.source) ?? "unknown"}`,
-      `- score: ${typeof hit?.score === "number" ? hit.score : "unknown"}`,
+      `- score: ${score ?? "unknown"}`,
+      ...(baseScore !== null && baseScore !== score ? [`- base_score: ${baseScore}`] : []),
+      ...selectedSkillQualityLines(quality),
       "- boundary: selected procedure context only; usage telemetry is recorded by the harness after the run"
     ].join("\n");
     blocks.push([metadata, refBlock(ref, await readArtifactText(store, ref, 2400))].join("\n\n"));
   }
   return blocks.join("\n\n");
+}
+
+function selectedSkillQualityLines(quality: Record<string, unknown> | null): string[] {
+  if (!quality) return [];
+  const outcomeCount = getNumber(quality.outcome_count);
+  if (outcomeCount === null || outcomeCount <= 0) return [];
+  const lines = [
+    `- outcome_quality: outcomes=${outcomeCount}; passed=${getNumber(quality.passed_count) ?? 0}; attention=${getNumber(quality.attention_count) ?? 0}; adjustment=${getNumber(quality.score_adjustment) ?? 0}`
+  ];
+  const latest = getString(quality.latest_outcome_ref);
+  if (latest) lines.push(`- latest_outcome_ref: ${latest}`);
+  return lines;
 }
 
 async function stableCore(store: AgentStore): Promise<string> {
@@ -2316,6 +2333,10 @@ function getRecordArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value)
     ? value.filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item))
     : [];
+}
+
+function getRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
 function getString(value: unknown): string | null {

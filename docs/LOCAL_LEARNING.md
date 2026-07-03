@@ -155,10 +155,18 @@ mutate learning state.
 
 When skill recall selects a local skill for live context, the `Selected Skills`
 section shows the recall metadata first: skill name, instructions ref,
-metadata ref, source, and score. The selected `SKILL.md` instructions then
-follow as bounded procedure context. Usage telemetry is still written after the
-run by the harness; the context section only explains why the skill was
-injected.
+metadata ref, source, score, and any bounded outcome-quality adjustment. The
+selected `SKILL.md` instructions then follow as bounded procedure context.
+Usage telemetry is still written after the run by the harness; the context
+section only explains why the skill was injected.
+
+Skill recall is outcome-aware but not self-editing. Before selecting skills for
+live context, recall reads recent selected-skill outcome summaries from
+`memory/skills/usage/*.json`, applies a small bonus for verified passed runs,
+and applies a capped penalty for failed, skipped, blocked, unfinished, or
+unverified runs. The model sees only aggregate counts, adjustment, and latest
+outcome ref; raw prior contexts, final responses, completion Markdown, and
+skill bodies are not read for this scoring step.
 
 Operators can inspect current skill catalog metadata without reading raw skill
 bodies through `skills`, `skills --skill-name <name-or-ref>`, Feishu `/skills`,
