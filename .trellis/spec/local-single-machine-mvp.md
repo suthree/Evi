@@ -537,8 +537,9 @@ The MVP is healthy when:
   runtime flags, source refs, defaulted fields, vault roots, and restart
   guidance without reading `auth.jsonl` or mutating config/service state
 - model and Feishu auth can be resolved from direct local
-  `<LOCAL_RUNTIME_HOME>/config/auth.jsonl` records without process env secrets; direct
-  auth fields win over legacy env aliases when both are present
+  `<LOCAL_RUNTIME_HOME>/config/auth.jsonl` records without process env secrets;
+  direct auth fields win over explicitly named env-backed fields when both are
+  present
 - `doctor` can report non-secret active model and Feishu auth source
   diagnostics without rendering API keys, app ids, app secrets, or env values
 - live context can include the same bounded non-secret runtime config summary

@@ -167,12 +167,17 @@ test("content daily loop uses local timezone date keys", async () => {
   }
 });
 
-test("content daily loop treats legacy all-in-one daily topic as default tracks", () => {
+test("content daily loop uses only the current default daily topic for default tracks", () => {
+  assert.equal(shouldUseDefaultContentDailyTracks({
+    topic: "daily AI news and AI stock hotspots",
+    sourceUrls: [],
+    tickers: []
+  }), true);
   assert.equal(shouldUseDefaultContentDailyTracks({
     topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
     sourceUrls: [],
     tickers: []
-  }), true);
+  }), false);
   assert.equal(shouldUseDefaultContentDailyTracks({
     topic: "custom daily AI apps only",
     sourceUrls: [],

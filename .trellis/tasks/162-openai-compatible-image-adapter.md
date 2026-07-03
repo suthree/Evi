@@ -14,7 +14,7 @@ through a configured OpenAI-compatible Image API and immediately record typed
 - Add `image_model` records in `models.jsonl`
 - Load image model auth through existing local JSONL auth records
 - Add an OpenAI-compatible `/images/generations` client
-- Decode `b64_json` responses and accept URL responses as a compatibility path
+- Decode `b64_json` responses
 - Add `content generate-image`
 - Require generated image output paths to stay under the selected state root
 - Reuse the existing image evidence contract after writing the generated file

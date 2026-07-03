@@ -147,7 +147,7 @@ export class OpenAICompatibleImageClient implements ImageGenerationClient {
     if (this.config.moderation) body.moderation = this.config.moderation;
 
     const raw = await this.postJson("images/generations", body);
-    const image = await extractImageBytes(raw, this.config.timeout_ms);
+    const image = extractImageBytes(raw);
     return {
       provider: this.config.provider,
       api: this.config.api,
@@ -203,7 +203,7 @@ function extractChatOutputText(raw: Record<string, unknown>): string {
   return typeof content === "string" ? content.trim() : "";
 }
 
-async function extractImageBytes(raw: Record<string, unknown>, timeoutMs: number): Promise<{ bytes: Uint8Array; mimeType: string }> {
+function extractImageBytes(raw: Record<string, unknown>): { bytes: Uint8Array; mimeType: string } {
   const data = Array.isArray(raw.data) ? raw.data : [];
   const first = data.find(isRecord);
   if (!first) throw new Error("Image generation response did not include data[0].");
@@ -214,30 +214,9 @@ async function extractImageBytes(raw: Record<string, unknown>, timeoutMs: number
     };
   }
   if (typeof first.url === "string" && first.url.trim()) {
-    return downloadImage(first.url, timeoutMs);
+    throw new Error("Image generation URL responses are unsupported; configure the image model to return b64_json.");
   }
-  throw new Error("Image generation response did not include b64_json or url.");
-}
-
-async function downloadImage(url: string, timeoutMs: number): Promise<{ bytes: Uint8Array; mimeType: string }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Image download failed (${response.status} ${response.statusText})`);
-    }
-    const contentType = response.headers.get("content-type") ?? "application/octet-stream";
-    if (!contentType.startsWith("image/")) {
-      throw new Error(`Image download returned non-image content-type: ${contentType}`);
-    }
-    return {
-      bytes: new Uint8Array(await response.arrayBuffer()),
-      mimeType: contentType
-    };
-  } finally {
-    clearTimeout(timeout);
-  }
+  throw new Error("Image generation response did not include b64_json.");
 }
 
 function extractResponseOutputText(raw: Record<string, unknown>): string {

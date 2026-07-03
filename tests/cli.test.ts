@@ -20,12 +20,12 @@ test("config command parses read-only config summary options", () => {
     "--config-dir",
     "config",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "config");
   assert.equal(options.configDir, "config");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("config set-runtime parses safe content daily update options", () => {
@@ -101,10 +101,10 @@ test("config set-runtime parses review tick update options", () => {
 });
 
 test("capabilities command parses read-only catalog options", () => {
-  const options = parseArgs(["capabilities", "--state-root", ".runtime-state"]);
+  const options = parseArgs(["capabilities", "--state-root", ".runtime/state"]);
 
   assert.equal(options.command, "capabilities");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 
   const acceptance = parseArgs(["capabilities", "acceptance"]);
   assert.equal(acceptance.command, "capabilities");
@@ -121,7 +121,7 @@ test("workspace status command parses read-only git diagnostic options", () => {
     "--repo-root",
     "/repo/local-runtime",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "8"
   ]);
@@ -129,10 +129,10 @@ test("workspace status command parses read-only git diagnostic options", () => {
   assert.equal(options.command, "workspace");
   assert.equal(options.workspaceAction, "status");
   assert.equal(options.repoRoot, "/repo/local-runtime");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 8);
 
-  const defaultAction = parseArgs(["workspace", "--state-root", ".runtime-state"]);
+  const defaultAction = parseArgs(["workspace", "--state-root", ".runtime/state"]);
   assert.equal(defaultAction.command, "workspace");
   assert.equal(defaultAction.workspaceAction, undefined);
 
@@ -192,7 +192,7 @@ test("im serve routes through the project-level IM command", () => {
     "--channel",
     "feishu-main",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--runtime-build",
     "/home/user/.local-runtime/service/runtime/current/build.json",
     "--query-todo"
@@ -202,7 +202,7 @@ test("im serve routes through the project-level IM command", () => {
   assert.equal(options.imAction, "serve");
   assert.equal(options.scenarioId, "im-default");
   assert.equal(options.channelId, "feishu-main");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.runtimeBuildPath, "/home/user/.local-runtime/service/runtime/current/build.json");
   assert.equal(options.discipline, "query_todo");
 });
@@ -218,7 +218,7 @@ test("service command parses launchd lifecycle options", () => {
     "--channel",
     "feishu-main",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "20"
   ]);
@@ -228,7 +228,7 @@ test("service command parses launchd lifecycle options", () => {
   assert.equal(options.serviceTarget, "im");
   assert.equal(options.scenarioId, "im-default");
   assert.equal(options.channelId, "feishu-main");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 20);
 
   const health = parseArgs([
@@ -237,12 +237,12 @@ test("service command parses launchd lifecycle options", () => {
     "--target",
     "im",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(health.command, "service");
   assert.equal(health.serviceAction, "health");
   assert.equal(health.serviceTarget, "im");
-  assert.equal(health.stateRoot, ".runtime-state");
+  assert.equal(health.stateRoot, ".runtime/state");
 });
 
 test("pipeline runs command parses read-only history selection", () => {
@@ -252,7 +252,7 @@ test("pipeline runs command parses read-only history selection", () => {
     "--pipeline",
     "pipeline_run_1",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "4"
   ]);
@@ -260,7 +260,7 @@ test("pipeline runs command parses read-only history selection", () => {
   assert.equal(options.command, "pipeline");
   assert.equal(options.pipelineAction, "runs");
   assert.equal(options.pipelineRef, "pipeline_run_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 4);
 });
 
@@ -273,7 +273,7 @@ test("pipeline resume command parses explicit checkpoint and stage selection", (
     "--from-stage",
     "tool_check",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--query-todo"
   ]);
 
@@ -281,7 +281,7 @@ test("pipeline resume command parses explicit checkpoint and stage selection", (
   assert.equal(options.pipelineAction, "resume");
   assert.equal(options.pipelineRef, "pipeline_run_1");
   assert.equal(options.fromStage, "tool_check");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.discipline, "query_todo");
 });
 
@@ -292,14 +292,14 @@ test("memory command parses search and session options", () => {
     "--query",
     "feishu service",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "5"
   ]);
   assert.equal(search.command, "memory");
   assert.equal(search.memoryAction, "search");
   assert.equal(search.query, "feishu service");
-  assert.equal(search.stateRoot, ".runtime-state");
+  assert.equal(search.stateRoot, ".runtime/state");
   assert.equal(search.limit, 5);
 
   const session = parseArgs(["memory", "session", "--session", "session_1"]);
@@ -329,10 +329,10 @@ test("memory command parses search and session options", () => {
   assert.equal(archiveHealth.archiveRef, "2026-06-30");
   assert.equal(archiveHealth.limit, 3);
 
-  const layers = parseArgs(["memory", "layers", "--state-root", ".runtime-state"]);
+  const layers = parseArgs(["memory", "layers", "--state-root", ".runtime/state"]);
   assert.equal(layers.command, "memory");
   assert.equal(layers.memoryAction, "layers");
-  assert.equal(layers.stateRoot, ".runtime-state");
+  assert.equal(layers.stateRoot, ".runtime/state");
 
   const working = parseArgs([
     "memory",
@@ -340,12 +340,12 @@ test("memory command parses search and session options", () => {
     "--checkpoint",
     "memory/working/current.json",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(working.command, "memory");
   assert.equal(working.memoryAction, "working");
   assert.equal(working.workingCheckpointRef, "memory/working/current.json");
-  assert.equal(working.stateRoot, ".runtime-state");
+  assert.equal(working.stateRoot, ".runtime/state");
 
   const candidates = parseArgs([
     "memory",
@@ -411,13 +411,13 @@ test("governance status command parses scoped status options", () => {
     "--limit",
     "4",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(status.command, "governance");
   assert.equal(status.governanceAction, "status");
   assert.equal(status.limit, 4);
-  assert.equal(status.stateRoot, ".runtime-state");
+  assert.equal(status.stateRoot, ".runtime/state");
 
   const opportunities = parseArgs([
     "governance",
@@ -425,12 +425,12 @@ test("governance status command parses scoped status options", () => {
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(opportunities.command, "governance");
   assert.equal(opportunities.governanceAction, "opportunities");
   assert.equal(opportunities.limit, 3);
-  assert.equal(opportunities.stateRoot, ".runtime-state");
+  assert.equal(opportunities.stateRoot, ".runtime/state");
 
   const evolution = parseArgs([
     "governance",
@@ -438,12 +438,12 @@ test("governance status command parses scoped status options", () => {
     "--limit",
     "2",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(evolution.command, "governance");
   assert.equal(evolution.governanceAction, "evolution");
   assert.equal(evolution.limit, 2);
-  assert.equal(evolution.stateRoot, ".runtime-state");
+  assert.equal(evolution.stateRoot, ".runtime/state");
 
   const decision = parseArgs([
     "governance",
@@ -455,14 +455,14 @@ test("governance status command parses scoped status options", () => {
     "--reason",
     "Handled in the current iteration.",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(decision.command, "governance");
   assert.equal(decision.governanceAction, "decide-opportunity");
   assert.equal(decision.opportunityRef, "opportunity_open_a");
   assert.equal(decision.opportunityStatus, "completed");
   assert.equal(decision.reason, "Handled in the current iteration.");
-  assert.equal(decision.stateRoot, ".runtime-state");
+  assert.equal(decision.stateRoot, ".runtime/state");
 
   const resume = parseArgs([
     "governance",
@@ -470,12 +470,12 @@ test("governance status command parses scoped status options", () => {
     "--reason",
     "Operator reviewed the pause signal.",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
   assert.equal(resume.command, "governance");
   assert.equal(resume.governanceAction, "resume-autonomy");
   assert.equal(resume.reason, "Operator reviewed the pause signal.");
-  assert.equal(resume.stateRoot, ".runtime-state");
+  assert.equal(resume.stateRoot, ".runtime/state");
 
   assert.throws(
     () => parseArgs(["governance", "opportunities", "--status", "completed"]),
@@ -488,13 +488,13 @@ test("context command parses list and show options", () => {
     "context",
     "list",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "4"
   ]);
   assert.equal(list.command, "context");
   assert.equal(list.contextAction, "list");
-  assert.equal(list.stateRoot, ".runtime-state");
+  assert.equal(list.stateRoot, ".runtime/state");
   assert.equal(list.limit, 4);
 
   const show = parseArgs([
@@ -516,14 +516,14 @@ test("context pressure command parses read-only pressure diagnostics", () => {
     "context",
     "pressure",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "3"
   ]);
 
   assert.equal(options.command, "context");
   assert.equal(options.contextAction, "pressure");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 3);
 });
 
@@ -532,14 +532,14 @@ test("context usage command parses read-only usage diagnostics", () => {
     "context",
     "usage",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "4"
   ]);
 
   assert.equal(options.command, "context");
   assert.equal(options.contextAction, "usage");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 4);
 });
 
@@ -548,7 +548,7 @@ test("context health command parses read-only sidecar diagnostics", () => {
     "context",
     "health",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "2",
     "--context",
@@ -557,7 +557,7 @@ test("context health command parses read-only sidecar diagnostics", () => {
 
   assert.equal(options.command, "context");
   assert.equal(options.contextAction, "health");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 2);
   assert.equal(options.contextRef, "memory/episodes/session_missing-context.json");
 });
@@ -567,14 +567,14 @@ test("context repair command parses explicit manifest repair options", () => {
     "context",
     "repair",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--context",
     "memory/episodes/session_orphan-context.md"
   ]);
 
   assert.equal(options.command, "context");
   assert.equal(options.contextAction, "repair");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.contextRef, "memory/episodes/session_orphan-context.md");
 });
 
@@ -587,7 +587,7 @@ test("review background command parses scoped review options", () => {
     "--session",
     "session_1",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "7"
   ]);
@@ -596,7 +596,7 @@ test("review background command parses scoped review options", () => {
   assert.equal(options.reviewAction, "background");
   assert.equal(options.query, "skill promotion");
   assert.equal(options.sessionId, "session_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 7);
 });
 
@@ -609,7 +609,7 @@ test("review tick command parses scoped review options", () => {
     "--session",
     "session_1",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "9"
   ]);
@@ -618,7 +618,7 @@ test("review tick command parses scoped review options", () => {
   assert.equal(options.reviewAction, "tick");
   assert.equal(options.query, "self evolution");
   assert.equal(options.sessionId, "session_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 9);
 });
 
@@ -629,7 +629,7 @@ test("review ticks command parses read-only tick history selection", () => {
     "--tick",
     "review_tick_1",
     "--state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--limit",
     "3"
   ]);
@@ -637,7 +637,7 @@ test("review ticks command parses read-only tick history selection", () => {
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "ticks");
   assert.equal(options.tickRef, "review_tick_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
   assert.equal(options.limit, 3);
 });
 
@@ -669,14 +669,14 @@ test("review confirmations command parses confirmation selection", () => {
     "--limit",
     "4",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "confirmations");
   assert.equal(options.confirmationRef, "follow_up_confirmation_1");
   assert.equal(options.limit, 4);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review confirmations command parses gate filter", () => {
@@ -768,14 +768,14 @@ test("review reports command parses read-only report history selection", () => {
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "reports");
   assert.equal(options.reviewRef, "background_review_1");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review completions command parses read-only completion verification history selection", () => {
@@ -787,14 +787,14 @@ test("review completions command parses read-only completion verification histor
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "completions");
   assert.equal(options.completionRef, "completion_verification_1");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review traces command parses read-only live run trace selection", () => {
@@ -806,14 +806,14 @@ test("review traces command parses read-only live run trace selection", () => {
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "traces");
   assert.equal(options.traceRef, "completion_verification_1");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review replay-audit command parses selected live run trace", () => {
@@ -823,13 +823,13 @@ test("review replay-audit command parses selected live run trace", () => {
     "--trace",
     "completion_verification_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "replay-audit");
   assert.equal(options.traceRef, "completion_verification_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review replays command parses replay report selection", () => {
@@ -839,13 +839,13 @@ test("review replays command parses replay report selection", () => {
     "--replay",
     "harness_replay_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "replays");
   assert.equal(options.replayRef, "harness_replay_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills outcomes command parses read-only selected skill outcome history selection", () => {
@@ -857,14 +857,14 @@ test("skills outcomes command parses read-only selected skill outcome history se
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
   assert.equal(options.action, "outcomes");
   assert.equal(options.skillOutcomeRef, "skill_usage_1");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills catalog command parses read-only skill metadata selection", () => {
@@ -875,14 +875,14 @@ test("skills catalog command parses read-only skill metadata selection", () => {
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
   assert.equal(options.action, undefined);
   assert.equal(options.skillName, "catalog-visible");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills health command parses read-only skill registry diagnostics", () => {
@@ -894,14 +894,14 @@ test("skills health command parses read-only skill registry diagnostics", () => 
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
   assert.equal(options.action, "health");
   assert.equal(options.skillName, "registry-health");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills drifts command parses read-only selected skill drift summaries", () => {
@@ -913,14 +913,14 @@ test("skills drifts command parses read-only selected skill drift summaries", ()
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
   assert.equal(options.action, "drifts");
   assert.equal(options.skillName, "repeat-drift");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills events command parses read-only skill registry event history selection", () => {
@@ -934,7 +934,7 @@ test("skills events command parses read-only skill registry event history select
     "--limit",
     "3",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
@@ -942,7 +942,7 @@ test("skills events command parses read-only skill registry event history select
   assert.equal(options.skillEventRef, "skill_event_1");
   assert.equal(options.skillName, "repeat-drift");
   assert.equal(options.limit, 3);
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("skills retire-event command parses explicit event retirement options", () => {
@@ -954,14 +954,14 @@ test("skills retire-event command parses explicit event retirement options", () 
     "--reason",
     "Historical renamed skill.",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "skills");
   assert.equal(options.action, "retire-event");
   assert.equal(options.skillEventRef, "skill_event_1");
   assert.equal(options.reason, "Historical renamed skill.");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review draft-sop command parses explicit proposal selection", () => {
@@ -973,14 +973,14 @@ test("review draft-sop command parses explicit proposal selection", () => {
     "--proposal",
     "review_proposal_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "draft-sop");
   assert.equal(options.reviewRef, "background_review_1");
   assert.equal(options.proposalId, "review_proposal_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review audit-sop command parses explicit SOP selection", () => {
@@ -990,13 +990,13 @@ test("review audit-sop command parses explicit SOP selection", () => {
     "--sop",
     "sop_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "audit-sop");
   assert.equal(options.sopRef, "sop_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review promote-sop command parses explicit audit gate selection", () => {
@@ -1010,7 +1010,7 @@ test("review promote-sop command parses explicit audit gate selection", () => {
     "--skill-name",
     "review-runtime-failures",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
@@ -1018,7 +1018,7 @@ test("review promote-sop command parses explicit audit gate selection", () => {
   assert.equal(options.sopRef, "sop_1");
   assert.equal(options.auditRef, "audit_1");
   assert.equal(options.skillName, "review-runtime-failures");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review chain command parses explicit SOP selection", () => {
@@ -1028,13 +1028,13 @@ test("review chain command parses explicit SOP selection", () => {
     "--sop",
     "sop_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "chain");
   assert.equal(options.sopRef, "sop_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review coverage command parses explicit SOP selection", () => {
@@ -1044,13 +1044,13 @@ test("review coverage command parses explicit SOP selection", () => {
     "--sop",
     "sop_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "coverage");
   assert.equal(options.sopRef, "sop_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review rehearse-sop-loop command parses explicit local rehearsal", () => {
@@ -1058,12 +1058,12 @@ test("review rehearse-sop-loop command parses explicit local rehearsal", () => {
     "review",
     "rehearse-sop-loop",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "rehearse-sop-loop");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review plan-follow-up command parses explicit proposal selection", () => {
@@ -1075,14 +1075,14 @@ test("review plan-follow-up command parses explicit proposal selection", () => {
     "--proposal",
     "review_proposal_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "plan-follow-up");
   assert.equal(options.reviewRef, "background_review_1");
   assert.equal(options.proposalId, "review_proposal_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review execute-follow-up command parses explicit action selection", () => {
@@ -1096,7 +1096,7 @@ test("review execute-follow-up command parses explicit action selection", () => 
     "--action",
     "follow_up_action_inspect_chain_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
@@ -1104,7 +1104,7 @@ test("review execute-follow-up command parses explicit action selection", () => 
   assert.equal(options.reviewRef, "background_review_1");
   assert.equal(options.proposalId, "review_proposal_1");
   assert.equal(options.followUpActionId, "follow_up_action_inspect_chain_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review request-follow-up command parses explicit action selection", () => {
@@ -1118,7 +1118,7 @@ test("review request-follow-up command parses explicit action selection", () => 
     "--action",
     "follow_up_action_promote_sop_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
@@ -1126,7 +1126,7 @@ test("review request-follow-up command parses explicit action selection", () => 
   assert.equal(options.reviewRef, "background_review_1");
   assert.equal(options.proposalId, "review_proposal_1");
   assert.equal(options.followUpActionId, "follow_up_action_promote_sop_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("review execute-confirmed-follow-up command parses confirmation selection", () => {
@@ -1136,13 +1136,13 @@ test("review execute-confirmed-follow-up command parses confirmation selection",
     "--confirmation",
     "follow_up_confirmation_1",
     "--state-root",
-    ".runtime-state"
+    ".runtime/state"
   ]);
 
   assert.equal(options.command, "review");
   assert.equal(options.reviewAction, "execute-confirmed-follow-up");
   assert.equal(options.confirmationRef, "follow_up_confirmation_1");
-  assert.equal(options.stateRoot, ".runtime-state");
+  assert.equal(options.stateRoot, ".runtime/state");
 });
 
 test("provider-first Feishu CLI surface is not a first-version command", () => {

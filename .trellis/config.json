@@ -11,11 +11,7 @@
     "__pycache__",
     "*.py[cod]",
     ".pytest_cache",
-    ".runtime-*",
-    ".runtime-smoke",
-    ".runtime-smoke-ts",
-    ".runtime-ab-*",
-    ".runtime-state"
+    ".runtime"
   ],
   "debounceMs": 300,
   "defaultBranch": "develop",

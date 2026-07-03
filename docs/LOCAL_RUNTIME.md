@@ -168,9 +168,9 @@ top-level `.runtime-*` directories:
 - `.runtime/state` is the default repo-local interactive state root.
 - `.runtime/stage` is for explicit pipeline experiments.
 - `.runtime/smoke/<name>` is for one-off smoke runs.
-- Legacy top-level `.runtime-*` directories are still ignored for compatibility
-  with older local runs, but new commands and docs should not create more of
-  them.
+- Top-level `.runtime-*` and `.runtime_*` directories are unsupported. Delete
+  them, or move needed evidence into `.runtime/state`, `.runtime/stage`, or
+  `.runtime/smoke/<name>`.
 
 Runtime state is local, ignored by git, and safe to delete for throwaway smoke
 runs when the operator no longer needs the evidence:
@@ -570,12 +570,13 @@ Repository `config/auth.example.jsonl` is only a template. The tracked
 files override those defaults on this machine before home and state config.
 The resident service copies repo config into its runtime snapshot, then still
 layers local config, so real API keys and Feishu app secrets should stay in
-ignored repo-local or home config. If an auth record contains both a direct
-field and a legacy env alias, the direct field wins. `API_KEY`,
-`FEISHU_APP_ID`, and `FEISHU_APP_SECRET` are accepted only for legacy or test
-fixtures that explicitly opt into env-backed auth records. Feishu channel and
-scenario shape stays in `settings.jsonl`; missing channel records are reported
-as local config gaps, not reconstructed from `FEISHU_*` env values.
+ignored repo-local or home config. Auth records support direct secret fields or
+explicit env-backed fields that name the exact environment variable to read; if
+both are present, the direct field wins. There is no implicit `API_KEY`,
+`FEISHU_APP_ID`, or `FEISHU_APP_SECRET` fallback when the auth record omits an
+env field. Feishu channel and scenario shape stays in `settings.jsonl`; missing
+channel records are reported as local config gaps, not reconstructed from
+`FEISHU_*` env values.
 
 `active_model` selects the text model. `active_image_model` selects the image
 model used by `content generate-image`; both resolve their `auth_id` through
@@ -1040,11 +1041,11 @@ ahead/behind, dirty-file counts, and bounded path/status entries. They do not
 read file bodies, stage, commit, reset, checkout, mutate state, invoke the
 model, write the repo, or write the active vault.
 `workspace runtime` is the companion repo-local runtime workspace diagnostic.
-It scans top-level directory names only, reports legacy `.runtime-*` and
-`.runtime_*` directories, and recommends `.runtime/state`, `.runtime/stage`,
-`.runtime/smoke/<name>`, or `.runtime/legacy/<name>` targets. It does not read
-file bodies, move, delete, mutate state, invoke the model, write the repo, or
-write the active vault.
+It scans top-level directory names only and reports unsupported `.runtime-*`
+and `.runtime_*` directories. The only supported repo-local runtime layout is
+`.runtime/state`, `.runtime/stage`, and `.runtime/smoke/<name>`. It does not
+read file bodies, move, delete, mutate state, invoke the model, write the repo,
+or write the active vault.
 Live context includes the same bounded `Workspace Status` section so the agent
 can see checkout cleanliness before proposing repo edits. The section is
 orientation only: a clean workspace does not prove resident service deployment,

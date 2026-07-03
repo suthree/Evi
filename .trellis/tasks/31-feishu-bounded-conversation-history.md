@@ -9,8 +9,8 @@ without turning channel logs into a second memory system.
 
 - Read prior local inbound records for the same `open_id` and `chat_id`.
 - Read prior local outbound records for the same `open_id`.
-- Require outbound records to match the same `chat_id`; legacy outbound records
-  without `chat_id` are not injected.
+- Require outbound records to match the same `chat_id`; outbound records without
+  `chat_id` are not injected.
 - Sort history by local `created_at`.
 - Inject only a small recent window into the task passed to the live runner.
 - Truncate history row text before injection.

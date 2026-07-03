@@ -7,7 +7,7 @@ Status: done
 After local auth switched to file-first records, `doctor` could say whether
 model and Feishu auth resolved, but it did not explain which local source was
 active. Operators still had to infer whether the runtime was using direct
-`auth.jsonl` fields, a legacy env alias, or a missing field.
+`auth.jsonl` fields, an explicitly named env-backed field, or a missing field.
 
 ## Scope
 

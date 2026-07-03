@@ -15,7 +15,7 @@ test("launchd plist uses explicit local runner and does not contain secrets", ()
   const definition = buildImServiceDefinition({
     repoRoot: "/work/runtime",
     configDir: "/work/runtime/config",
-    stateRoot: "/work/runtime/.runtime-state",
+    stateRoot: "/work/runtime/.runtime/state",
     homeRoot: "/home/user/.local-runtime",
     channelId: "feishu-main",
     scenarioId: "im-default",

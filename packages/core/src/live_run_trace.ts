@@ -327,7 +327,7 @@ async function readEpisodeEvents(store: AgentStore): Promise<EpisodeEvent[]> {
       const parsed = evidenceEventSchema.safeParse(JSON.parse(line));
       if (parsed.success) events.push(parsed.data);
     } catch {
-      // Ignore legacy or partially written JSONL rows.
+      // Ignore malformed or partially written JSONL rows.
     }
   }
   return events;

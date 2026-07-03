@@ -579,7 +579,7 @@ test("review inbox collapses duplicate active items without mutating history", a
     await store.writeJson("autonomy/inbox/review_inbox_distinct.json", reviewInboxItem({
       id: "review_inbox_distinct",
       title: "Inspect separate SOP chain",
-      command: "pnpm run runtime -- review chain --sop sop_other --state-root .runtime-state",
+      command: "pnpm run runtime -- review chain --sop sop_other --state-root .runtime/state",
       required_refs: ["sop/drafts/sop_other.json"],
       updated_at: "2026-06-30T00:00:01.000Z"
     }));
@@ -2678,7 +2678,7 @@ function reviewInboxItem(overrides: Record<string, unknown>): Record<string, unk
     action_kind: "inspect_chain",
     title: "Inspect duplicated SOP chain",
     rationale: "Chain latest decision is reused_skill; inspect provenance before selecting a mutation command.",
-    command: "pnpm run runtime -- review chain --sop sop_dup --state-root .runtime-state",
+    command: "pnpm run runtime -- review chain --sop sop_dup --state-root .runtime/state",
     required_refs: ["sop/drafts/sop_dup.json"],
     would_write: [],
     seen_count: 1,

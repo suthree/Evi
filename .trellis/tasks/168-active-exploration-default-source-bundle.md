@@ -44,4 +44,4 @@ for frontier AI news and AI-related market hotspots.
 
 - `pnpm exec tsx --test tests/content_pipeline.test.ts`
 - `pnpm exec tsc -p tsconfig.json`
-- `pnpm run runtime -- content run --dry-run --live-sources --topic "daily frontier AI news and AI stock hotspots for Xiaohongshu" --state-root <tmp-state>`
+- `pnpm run runtime -- content run --dry-run --live-sources --topic "daily AI news and AI stock hotspots" --state-root <tmp-state>`

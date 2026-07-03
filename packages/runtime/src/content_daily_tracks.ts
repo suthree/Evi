@@ -1,9 +1,6 @@
 export const DEFAULT_CONTENT_DAILY_TOPIC = "daily AI news and AI stock hotspots";
 
-const DEFAULT_CONTENT_DAILY_TOPIC_ALIASES = new Set([
-  DEFAULT_CONTENT_DAILY_TOPIC,
-  "daily frontier AI news and AI stock hotspots for Xiaohongshu"
-]);
+const DEFAULT_CONTENT_DAILY_TOPICS = new Set([DEFAULT_CONTENT_DAILY_TOPIC]);
 
 export interface ContentDailyTrackOptions {
   id?: string;
@@ -34,7 +31,7 @@ export function shouldUseDefaultContentDailyTracks(args: {
   sourceUrls?: string[];
   tickers?: string[];
 }): boolean {
-  return (args.topic === undefined || DEFAULT_CONTENT_DAILY_TOPIC_ALIASES.has(args.topic))
+  return (args.topic === undefined || DEFAULT_CONTENT_DAILY_TOPICS.has(args.topic))
     && (args.sourceUrls?.length ?? 0) === 0
     && (args.tickers?.length ?? 0) === 0;
 }

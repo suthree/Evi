@@ -13,7 +13,7 @@ tick status, and active autonomy pause state.
 
 ## Acceptance Criteria
 
-- `pnpm run runtime -- governance status --state-root .runtime-state` returns a
+- `pnpm run runtime -- governance status --state-root .runtime/state` returns a
   JSON aggregate with counts and latest refs.
 - Feishu `/governance` and `/governance status` render the same aggregate as a
   concise private-chat operator view.

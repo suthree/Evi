@@ -68,3 +68,39 @@ test("OpenAI-compatible image client posts image generation requests and decodes
     });
   }
 });
+
+test("OpenAI-compatible image client rejects URL-only image responses", async () => {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({
+      id: "img_response_url",
+      data: [{ url: "https://example.test/generated.png" }]
+    }));
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("expected TCP server address");
+    const client = new OpenAICompatibleImageClient({
+      type: "image_model",
+      id: "image-local",
+      provider: "openai-compatible",
+      api: "images_generations",
+      base_url: `http://127.0.0.1:${address.port}/v1`,
+      model: "gpt-image-2",
+      auth_id: "image-auth",
+      api_key: "test-image-key",
+      timeout_ms: 5000
+    });
+
+    await assert.rejects(
+      () => client.generate({ prompt: "Generate a cover" }),
+      /URL responses are unsupported/
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});

@@ -8,11 +8,6 @@ dist/
 !.env.example
 *.log
 .runtime/
-.runtime-*/
-.runtime-smoke/
-.runtime-smoke-ts/
-.runtime-ab-*/
-.runtime-state/
 config/auth.jsonl
 config/*.local.jsonl
 .trellis/blobs/

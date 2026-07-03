@@ -175,7 +175,7 @@ test("content live-source defaults cover official AI feeds and market tickers", 
     const store = new AgentStore(root.repoRoot, root.stateRoot);
     const requestedUrls: string[] = [];
     const run = await runContentDryRun(store, {
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily AI news and AI stock hotspots",
       liveSources: true,
       fetchText: async (url) => {
         requestedUrls.push(url);
@@ -282,7 +282,7 @@ test("content live-source ranks and de-duplicates usable draft sources", async (
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
     const run = await runContentDryRun(store, {
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily AI news and AI stock hotspots",
       sourceUrls: [
         "https://example.com/duplicate-a.json",
         "https://example.com/duplicate-b.json",
@@ -369,7 +369,7 @@ test("content live-source draft strips HTML navigation and localizes market line
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
     const run = await runContentDryRun(store, {
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily frontier AI compute infrastructure and semiconductor stock hotspots",
       sourceUrls: ["https://example.com/newsroom"],
       tickers: ["NVDA"],
       liveSources: true,
@@ -1510,7 +1510,7 @@ test("content evidence records image and publish completion proof", async () => 
   }
 });
 
-test("content feedback strategy classifies legacy workflow by topic and title", async () => {
+test("content feedback strategy classifies untracked workflow by topic and title", async () => {
   const root = await createFixture();
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
@@ -1524,8 +1524,8 @@ test("content feedback strategy classifies legacy workflow by topic and title", 
       externalWrite: true,
       confirmedByOperator: true,
       loginStatus: "logged_in",
-      postId: "xhs-legacy-apps",
-      postUrl: "https://www.xiaohongshu.com/explore/xhs-legacy-apps"
+      postId: "xhs-untracked-apps",
+      postUrl: "https://www.xiaohongshu.com/explore/xhs-untracked-apps"
     });
 
     const firstFeedback = await recordContentFeedbackEvidence(store, {
@@ -1537,7 +1537,7 @@ test("content feedback strategy classifies legacy workflow by topic and title", 
       collectCount: 1,
       shareCount: 0,
       followCount: 0,
-      sourceRef: "channels/xhs/feedback/legacy-apps-first.json"
+      sourceRef: "channels/xhs/feedback/untracked-apps-first.json"
     });
     await store.writeJson(firstFeedback.evidence_ref, {
       ...firstFeedback.evidence,
@@ -1552,7 +1552,7 @@ test("content feedback strategy classifies legacy workflow by topic and title", 
       collectCount: 5,
       shareCount: 1,
       followCount: 1,
-      sourceRef: "channels/xhs/feedback/legacy-apps-second.json"
+      sourceRef: "channels/xhs/feedback/untracked-apps-second.json"
     });
     await store.writeJson(secondFeedback.evidence_ref, {
       ...secondFeedback.evidence,
@@ -4000,7 +4000,7 @@ test("content CLI args parse dry-run inputs", () => {
     "content",
     "reconcile-publish-evidence",
     "--source-state-root",
-    ".runtime-state",
+    ".runtime/state",
     "--dry-run",
     "--run",
     "content_run_2",
@@ -4008,7 +4008,7 @@ test("content CLI args parse dry-run inputs", () => {
     "content_run_1"
   ]);
   assert.equal(reconcilePublishEvidence.contentAction, "reconcile-publish-evidence");
-  assert.equal(reconcilePublishEvidence.sourceStateRoot, ".runtime-state");
+  assert.equal(reconcilePublishEvidence.sourceStateRoot, ".runtime/state");
   assert.equal(reconcilePublishEvidence.dryRun, true);
   assert.equal(reconcilePublishEvidence.contentRunRef, "content_run_2");
   assert.equal(reconcilePublishEvidence.sourceRunRef, "content_run_1");

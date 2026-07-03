@@ -196,10 +196,10 @@ test("private text message includes bounded local conversation history", async (
       text: "不应该混入其他聊天回复",
       created_at: "2026-06-29T00:00:02.500Z"
     });
-    await fixture.store.writeJson("channels/feishu/outbound/om_legacy.json", {
-      source_message_id: "om_legacy",
+    await fixture.store.writeJson("channels/feishu/outbound/om_unscoped.json", {
+      source_message_id: "om_unscoped",
       open_id: "ou_allowed",
-      text: "旧的无 chat_id 回复不应该进入上下文",
+      text: "无 chat_id 回复不应该进入上下文",
       created_at: "2026-06-29T00:00:02.750Z"
     });
     await fixture.store.writeJson("channels/feishu/inbound/om_other.json", {
@@ -230,7 +230,7 @@ test("private text message includes bounded local conversation history", async (
     assert.match(runner.tasks[0], /之前我问过部署状态/);
     assert.match(runner.tasks[0], /之前的回答是服务正在运行/);
     assert.doesNotMatch(runner.tasks[0], /不应该混入其他聊天回复/);
-    assert.doesNotMatch(runner.tasks[0], /旧的无 chat_id 回复不应该进入上下文/);
+    assert.doesNotMatch(runner.tasks[0], /无 chat_id 回复不应该进入上下文/);
     assert.doesNotMatch(runner.tasks[0], /不应该出现在当前上下文/);
     assert.match(runner.tasks[0], /User message:\n现在呢？/);
 
@@ -634,7 +634,7 @@ test("operator content command replies with latest daily job and linked run with
     const job = await runDailyContentJob(fixture.store, {
       dateKey: "2026-07-01",
       dryRun: true,
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily AI news and AI stock hotspots",
       sourceUrls: ["https://example.test/frontier-ai"],
       tickers: ["NVDA"],
       fetchText: async (url) => ({
@@ -746,7 +746,7 @@ test("operator content run command replies with bounded run metadata only", asyn
     const job = await runDailyContentJob(fixture.store, {
       dateKey: "2026-07-01",
       dryRun: true,
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily AI news and AI stock hotspots",
       sourceUrls: ["https://example.test/frontier-ai"],
       tickers: ["NVDA"],
       fetchText: async (url) => ({
@@ -1567,7 +1567,7 @@ test("operator governance command explains decision-closed self-evolution gaps",
     const job = await runDailyContentJob(fixture.store, {
       dateKey: "2026-07-01",
       dryRun: true,
-      topic: "daily frontier AI news and AI stock hotspots for Xiaohongshu",
+      topic: "daily AI news and AI stock hotspots",
       sourceUrls: ["https://example.test/frontier-ai"],
       tickers: ["NVDA"],
       fetchText: async (url) => ({

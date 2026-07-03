@@ -12,7 +12,7 @@ const homeRecordSchema = z.object({
 
 const stateRecordSchema = z.object({
   type: z.literal("state"),
-  root: z.string().default(".runtime-state")
+  root: z.string().default(".runtime/state")
 });
 
 const runtimeRecordSchema = z.object({
@@ -452,7 +452,7 @@ export async function loadConfigSelectors(options: ConfigSourceOptions = {}): Pr
     "active_scenario"
   );
 
-  const stateRoot = resolve(options.stateRoot ?? stateRecords.at(-1)?.root ?? ".runtime-state");
+  const stateRoot = resolve(options.stateRoot ?? stateRecords.at(-1)?.root ?? ".runtime/state");
   return {
     configDir,
     homeConfigDir,

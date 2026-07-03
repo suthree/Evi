@@ -741,8 +741,7 @@ function parseEnvelope(outputText: string): ModelActionEnvelope {
   if (!trimmed) {
     throw new Error("Model returned empty output; no ModelActionEnvelope to parse.");
   }
-  const parsed = normalizeEnvelope(JSON.parse(extractJsonObject(trimmed)));
-  return modelActionEnvelopeSchema.parse(parsed);
+  return modelActionEnvelopeSchema.parse(JSON.parse(extractJsonObject(trimmed)));
 }
 
 function extractJsonObject(text: string): string {
@@ -753,51 +752,6 @@ function extractJsonObject(text: string): string {
     throw new Error(`Model output did not contain a JSON object: ${text.slice(0, 300)}`);
   }
   return text.slice(start, end + 1);
-}
-
-function normalizeEnvelope(value: unknown): unknown {
-  if (!isRecord(value)) return value;
-  if (typeof value.summary === "string" && Array.isArray(value.actions)) {
-    return {
-      ...value,
-      completion_claim: normalizeCompletionClaim(value.completion_claim)
-    };
-  }
-
-  if (typeof value.action === "string") {
-    const payload = isRecord(value.payload) ? value.payload : {};
-    const markdown = typeof payload.markdown === "string" ? payload.markdown : "";
-    return {
-      summary: summaryFromMarkdown(markdown) || `Stage requested ${value.action}.`,
-      actions: [{
-        type: value.action,
-        rationale: "normalized legacy single-action stage response",
-        payload
-      }],
-      completion_claim: normalizeCompletionClaim(value.completion_claim)
-    };
-  }
-
-  return value;
-}
-
-function normalizeCompletionClaim(value: unknown): unknown {
-  if (!isRecord(value)) return { status: "not_done", verification_refs: [] };
-  const status = value.status === "completed" ? "done" : value.status;
-  return {
-    ...value,
-    status,
-    verification_refs: Array.isArray(value.verification_refs) ? value.verification_refs : []
-  };
-}
-
-function summaryFromMarkdown(markdown: string): string {
-  const line = markdown.split("\n").map((item) => item.trim()).find(Boolean) ?? "";
-  return line.replace(/^#+\s*/, "").slice(0, 180);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function titleCase(text: string): string {

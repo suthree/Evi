@@ -12,7 +12,8 @@ machine-local config files, not in process environment variables.
 
 ## Scope
 
-- Make direct auth fields win over legacy env aliases when both are present.
+- Make direct auth fields win over explicitly named env-backed fields when both
+  are present.
 - Change the repo auth template to blank direct fields instead of env names.
 - Remove the naked Feishu channel fallback that built channel settings directly
   from `FEISHU_*` process env values when no `settings.jsonl` channel existed.
@@ -25,8 +26,8 @@ machine-local config files, not in process environment variables.
 ## Non-Goals
 
 - Do not commit real API keys, Feishu app secrets, or user-local config values.
-- Do not remove legacy env alias support for explicit compatibility/test
-  records.
+- Do not remove explicit env-backed auth records; they are supported only when a
+  record names the exact env variable.
 - Do not make CLI `config`, Feishu `/config`, context config summaries, or the
   capability catalog read or render secrets.
 - Do not change service launchd environment beyond its existing runtime
@@ -43,4 +44,4 @@ pnpm run check
 
 Implemented file-first auth resolution, repo-local blank auth templates, and
 settings-backed Feishu channel loading while preserving explicit env-backed
-auth records as compatibility fixtures.
+auth records as a named local-config form.

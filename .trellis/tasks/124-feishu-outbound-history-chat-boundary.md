@@ -10,7 +10,7 @@ that cannot prove they belong to the current private chat.
 - Persist `chat_id` on new `channels/feishu/outbound/*.json` final-reply
   records.
 - Require outbound history rows to match the current `open_id` and `chat_id`.
-- Skip legacy outbound records that do not carry `chat_id`.
+- Skip outbound records that do not carry `chat_id`.
 - Add regression coverage for same-chat inclusion, wrong-chat exclusion, and
   missing-chat-id exclusion.
 - Update stable docs, Trellis spec, and decisions.
@@ -18,7 +18,7 @@ that cannot prove they belong to the current private chat.
 ## Non-goals
 
 - No remote Feishu history fetch.
-- No state migration or legacy outbound backfill.
+- No state migration or outbound backfill.
 - No raw Feishu event payload injection.
 - No MemoryStore rebuild or new long-term memory source.
 - No changes to operator command, confirmation, or follow-up execution gates.

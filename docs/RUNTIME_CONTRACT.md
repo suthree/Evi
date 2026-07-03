@@ -194,11 +194,11 @@ or write the active vault.
 
 The CLI also exposes `workspace runtime` as a read-only repo-local runtime
 workspace diagnostic. It may scan only top-level directory names under the
-configured repo root, report legacy `.runtime-*` and `.runtime_*` directories,
-and recommend targets under `.runtime/state`, `.runtime/stage`,
-`.runtime/smoke/<name>`, or `.runtime/legacy/<name>`. It must not read file
-bodies, move, delete, migrate, mutate state, accept shell text, invoke the
-model, write the repo, or write the active vault.
+configured repo root and report unsupported `.runtime-*` and `.runtime_*`
+directories. The only supported repo-local runtime layout is `.runtime/state`,
+`.runtime/stage`, and `.runtime/smoke/<name>`. It must not read file bodies,
+move, delete, migrate, mutate state, accept shell text, invoke the model, write
+the repo, or write the active vault.
 
 ### Capability Catalog Read Model
 
@@ -241,20 +241,22 @@ Forbidden behavior:
 
 Model and Feishu credentials are resolved from local JSONL auth records. The
 machine-local source of truth is `<LOCAL_RUNTIME_HOME>/config/auth.jsonl`; repository
-`config/auth.jsonl` is a blank template. Direct fields win over legacy env
-aliases when both are present:
+`config/auth.jsonl` is a blank template. Direct secret fields and explicit
+env-backed fields are the only supported forms; direct fields win when both are
+present:
 
 ```jsonl
 {"type":"api_key","id":"cpa","key":"..."}
 {"type":"app_secret","id":"feishu-main","app_id":"...","app_secret":"..."}
 ```
 
-Env aliases such as `API_KEY`, `FEISHU_APP_ID`, and `FEISHU_APP_SECRET` are
-only compatibility fields for auth records that explicitly name them. Runtime
-config summaries, context config summaries, Feishu `/config`, and capability
-catalog reads must not read `auth.jsonl` or render secret values. `doctor`,
-`live`, `pipeline`, foreground IM, and resident service validation may resolve
-the active auth records because they need real local credentials to run.
+An auth record may explicitly name an env variable through `env`,
+`app_id_env`, or `app_secret_env`; there is no implicit `API_KEY`,
+`FEISHU_APP_ID`, or `FEISHU_APP_SECRET` fallback. Runtime config summaries,
+context config summaries, Feishu `/config`, and capability catalog reads must
+not read `auth.jsonl` or render secret values. `doctor`, `live`, `pipeline`,
+foreground IM, and resident service validation may resolve the active auth
+records because they need real local credentials to run.
 
 `doctor` may also render non-secret auth source diagnostics for those active
 records: auth id, source ref, direct/env/missing mode, env name, and whether an
@@ -2471,9 +2473,9 @@ first-version command contract.
 
 Repo-local runtime artifacts should stay under `.runtime/`: `.runtime/state`
 for default interactive state, `.runtime/stage` for pipeline experiments, and
-`.runtime/smoke/<name>` for one-off smoke runs. Historical top-level
-`.runtime-*` directories are legacy ignored local artifacts, not the preferred
-shape for new commands or docs. Resident service state keeps its existing
+`.runtime/smoke/<name>` for one-off smoke runs. Top-level `.runtime-*` and
+`.runtime_*` directories are unsupported and should be deleted or moved into
+the supported `.runtime/` layout. Resident service state keeps its existing
 checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime` unless
 an operator explicitly passes `--state-root`.
 

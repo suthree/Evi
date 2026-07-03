@@ -1013,15 +1013,15 @@ test("self-evolution gaps suppress older equivalent publish gaps after later pro
   }
 });
 
-test("self-evolution gaps suppress legacy daily publish gaps after tracked proof", async () => {
+test("self-evolution gaps suppress untracked daily publish gaps after tracked proof", async () => {
   const root = await createFixture();
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
-    const legacy = await createLiveSourceContentRun(store, {
+    const untracked = await createLiveSourceContentRun(store, {
       workflowId: "daily_ai_market_xhs",
       topic: "daily AI news and AI stock hotspots"
     });
-    await rewriteContentRunTime(store, legacy, "2026-07-01T09:00:00Z");
+    await rewriteContentRunTime(store, untracked, "2026-07-01T09:00:00Z");
 
     const tracked = await createLiveSourceContentRun(store, {
       workflowId: "daily_ai_compute_market_xhs",
@@ -1040,7 +1040,7 @@ test("self-evolution gaps suppress legacy daily publish gaps after tracked proof
     await rewriteContentRunTime(store, preflight.run, "2026-07-01T09:10:00Z");
 
     const result = await listSelfEvolutionGaps(store, { limit: 10 });
-    assert.equal(result.gaps.some((gap) => gap.source_ref === legacy.refs.run_ref), false);
+    assert.equal(result.gaps.some((gap) => gap.source_ref === untracked.refs.run_ref), false);
     const trackedGap = result.gaps.find((gap) => gap.source_ref === tracked.refs.run_ref);
     assert.ok(trackedGap);
     assert.equal(trackedGap.proposed_slice, "external_publish_execution_contract");

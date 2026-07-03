@@ -42,4 +42,4 @@ become a self-evolution signal instead of only living in raw evidence files.
 
 - `pnpm exec tsx --test tests/content_pipeline.test.ts tests/self_evolution_gaps.test.ts`
 - `pnpm exec tsc -p tsconfig.json`
-- `pnpm run runtime -- content run --dry-run --live-sources --topic "daily frontier AI news and AI stock hotspots for Xiaohongshu" --state-root <tmp-state>`
+- `pnpm run runtime -- content run --dry-run --live-sources --topic "daily AI news and AI stock hotspots" --state-root <tmp-state>`

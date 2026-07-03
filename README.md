@@ -178,9 +178,9 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 
 Repo-local runtime artifacts are grouped under `.runtime/`: `.runtime/state`
 for default interactive state, `.runtime/stage` for pipeline experiments, and
-`.runtime/smoke/<name>` for one-off smoke runs. Older top-level `.runtime-*`
-directories are legacy ignored local artifacts and should not be used for new
-examples.
+`.runtime/smoke/<name>` for one-off smoke runs. Top-level `.runtime-*` or
+`.runtime_*` directories are unsupported and should be deleted or moved into
+the supported `.runtime/` layout.
 
 Inspect current repo-local runtime workspace hygiene:
 

@@ -1,14 +1,14 @@
 import { readdir } from "node:fs/promises";
 import type { AgentStore } from "./store.js";
 
-const BOUNDARY = "read-only repo-local runtime workspace diagnostic; scans top-level directory names only; does not read file bodies, move, delete, mutate state, stage, commit, invoke the model, or write the active vault";
+const BOUNDARY = "read-only repo-local runtime workspace diagnostic; scans top-level directory names only; reports unsupported top-level runtime dirs; does not read file bodies, move, delete, mutate state, stage, commit, invoke the model, or write the active vault";
 const RUNTIME_ROOT = ".runtime";
 
-export type RuntimeWorkspaceStatus = "ok" | "legacy_present" | "error";
+export type RuntimeWorkspaceStatus = "ok" | "invalid_layout" | "error";
 
-export interface RuntimeWorkspaceLegacyDir {
+export interface RuntimeWorkspaceInvalidDir {
   path: string;
-  recommended_target: string;
+  recommended_action: string;
   reason: string;
 }
 
@@ -18,8 +18,8 @@ export interface RuntimeWorkspaceStatusResult {
   repo_root: string;
   runtime_root: typeof RUNTIME_ROOT;
   runtime_root_exists: boolean;
-  legacy_dir_count: number;
-  legacy_dirs: RuntimeWorkspaceLegacyDir[];
+  invalid_dir_count: number;
+  invalid_dirs: RuntimeWorkspaceInvalidDir[];
   recommended_layout: string[];
   boundary: typeof BOUNDARY;
   error?: string;
@@ -36,18 +36,18 @@ export async function getRuntimeWorkspaceStatus(
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
       .sort();
-    const legacyDirs = dirs
-      .filter(isLegacyRuntimeDir)
-      .map(runtimeLegacyDir);
+    const invalidDirs = dirs
+      .filter(isUnsupportedRuntimeDir)
+      .map(runtimeInvalidDir);
 
     return {
       created_at: now.toISOString(),
-      status: legacyDirs.length > 0 ? "legacy_present" : "ok",
+      status: invalidDirs.length > 0 ? "invalid_layout" : "ok",
       repo_root: store.repoRoot,
       runtime_root: RUNTIME_ROOT,
       runtime_root_exists: dirs.includes(RUNTIME_ROOT),
-      legacy_dir_count: legacyDirs.length,
-      legacy_dirs: legacyDirs,
+      invalid_dir_count: invalidDirs.length,
+      invalid_dirs: invalidDirs,
       recommended_layout: recommendedRuntimeLayout(),
       boundary: BOUNDARY
     };
@@ -58,8 +58,8 @@ export async function getRuntimeWorkspaceStatus(
       repo_root: store.repoRoot,
       runtime_root: RUNTIME_ROOT,
       runtime_root_exists: false,
-      legacy_dir_count: 0,
-      legacy_dirs: [],
+      invalid_dir_count: 0,
+      invalid_dirs: [],
       recommended_layout: recommendedRuntimeLayout(),
       boundary: BOUNDARY,
       error: error instanceof Error ? error.message : String(error)
@@ -67,37 +67,37 @@ export async function getRuntimeWorkspaceStatus(
   }
 }
 
-function isLegacyRuntimeDir(name: string): boolean {
+function isUnsupportedRuntimeDir(name: string): boolean {
   return name !== RUNTIME_ROOT && /^\.runtime[-_]/.test(name);
 }
 
-function runtimeLegacyDir(name: string): RuntimeWorkspaceLegacyDir {
-  const slug = name.replace(/^\.runtime[-_]/, "").replace(/[^a-zA-Z0-9._-]+/g, "-") || "legacy";
+function runtimeInvalidDir(name: string): RuntimeWorkspaceInvalidDir {
+  const slug = name.replace(/^\.runtime[-_]/, "").replace(/[^a-zA-Z0-9._-]+/g, "-") || "runtime";
   if (name === ".runtime-state") {
     return {
       path: name,
-      recommended_target: ".runtime/state",
-      reason: "default repo-local interactive state belongs under the unified runtime workspace"
+      recommended_action: "delete it after copying any needed evidence into .runtime/state",
+      reason: "default repo-local interactive state must use .runtime/state"
     };
   }
   if (/smoke/i.test(name)) {
     return {
       path: name,
-      recommended_target: `.runtime/smoke/${slug}`,
-      reason: "one-off smoke state belongs under the smoke namespace"
+      recommended_action: `move needed evidence to .runtime/smoke/${slug}, otherwise delete it`,
+      reason: "one-off smoke state must use the .runtime/smoke namespace"
     };
   }
   if (/stage|pipeline/i.test(name)) {
     return {
       path: name,
-      recommended_target: `.runtime/stage/${slug}`,
-      reason: "pipeline or staged experiment state belongs under the stage namespace"
+      recommended_action: `move needed evidence to .runtime/stage/${slug}, otherwise delete it`,
+      reason: "pipeline or staged experiment state must use the .runtime/stage namespace"
     };
   }
   return {
     path: name,
-    recommended_target: `.runtime/legacy/${slug}`,
-    reason: "unclassified legacy runtime state should be archived under the unified runtime workspace"
+    recommended_action: "delete it; there is no supported repo-local runtime archive namespace",
+    reason: "repo-local runtime state supports only .runtime/state, .runtime/stage, and .runtime/smoke/<name>"
   };
 }
 
@@ -105,7 +105,6 @@ function recommendedRuntimeLayout(): string[] {
   return [
     ".runtime/state",
     ".runtime/stage",
-    ".runtime/smoke/<name>",
-    ".runtime/legacy/<name>"
+    ".runtime/smoke/<name>"
   ];
 }

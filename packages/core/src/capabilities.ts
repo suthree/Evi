@@ -740,7 +740,7 @@ function entrypointsCategory(): CapabilityCategory {
         status: "implemented",
         commands: ["pnpm run runtime -- doctor", "pnpm run runtime -- config", "pnpm run runtime -- config set-runtime", "pnpm run runtime -- capabilities"],
         refs: ["apps/cli/src/main.ts", "packages/runtime/src/doctor.ts", "packages/runtime/src/config.ts"],
-        boundaries: ["config summaries do not read auth records or print auth secrets", "config set-runtime appends only non-secret runtime records to the local home config and does not restart services or execute external writes", "doctor may read auth metadata but never renders API keys, app ids, app secrets, or env values", "direct auth.jsonl fields win over legacy env aliases"]
+        boundaries: ["config summaries do not read auth records or print auth secrets", "config set-runtime appends only non-secret runtime records to the local home config and does not restart services or execute external writes", "doctor may read auth metadata but never renders API keys, app ids, app secrets, or env values", "direct auth.jsonl fields win over explicitly named env-backed fields"]
       },
       {
         id: "cli.live.pipeline",

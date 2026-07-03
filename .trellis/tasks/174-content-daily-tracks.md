@@ -12,7 +12,7 @@ AI application/product news and AI compute/market hotspots.
 
 - Add optional daily track ids for `content daily` and `content daily-advance`.
 - Store tracked jobs under `content/daily/<track>/YYYY-MM-DD.json` while keeping
-  the legacy default `content/daily/YYYY-MM-DD.json` path.
+  the untracked default `content/daily/YYYY-MM-DD.json` path.
 - Let the resident content-daily loop run multiple configured tracks in one
   tick and report bounded multi-job status.
 - Use built-in default tracks for `ai_applications` and `ai_compute_market`
@@ -26,7 +26,7 @@ AI application/product news and AI compute/market hotspots.
 - No resident external publishing by default.
 - No browser automation.
 - No model-based topic discovery in this slice.
-- No deletion or migration of existing legacy daily jobs.
+- No deletion of existing operator evidence under the untracked daily job path.
 - No repository storage of platform cookies or auth secrets.
 
 ## Acceptance

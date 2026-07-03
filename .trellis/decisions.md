@@ -1851,11 +1851,11 @@ active vault.
 Normal Feishu private-chat context may include prior assistant replies only when
 those outbound records prove the same `open_id` and `chat_id` as the current
 message. The adapter should write `chat_id` onto new outbound final-reply
-records and skip legacy outbound records that do not carry a chat id.
+records and skip outbound records that do not carry a chat id.
 
 This keeps the same-chat history window from mixing contexts for the same user.
 It must not fetch remote Feishu history, infer chat identity from text,
-backfill legacy state, read raw event payloads into the prompt, rebuild memory
+backfill invalid state, read raw event payloads into the prompt, rebuild memory
 indexes, or turn channel logs into durable semantic memory.
 
 ## 2026-06-30 Delegated Result Contract
@@ -2229,11 +2229,12 @@ machine secrets, and `<LOCAL_RUNTIME_HOME>/config/auth.jsonl` is the expected
 home source for API keys,
 OpenAI-compatible model auth, Feishu app ids, and Feishu app secrets.
 
-Direct auth fields win over legacy env aliases when both are present. Env
-aliases remain accepted only for explicit compatibility/test records that name
-them. This lets the resident launchd service run from copied repo config plus
-home-layer secrets without carrying `API_KEY`, `FEISHU_APP_ID`, or
-`FEISHU_APP_SECRET` in its environment.
+Direct auth fields and explicit env-backed fields are the only supported auth
+forms; direct fields win when both are present. The runtime does not infer
+`API_KEY`, `FEISHU_APP_ID`, or `FEISHU_APP_SECRET` from process env unless an
+auth record names that exact env field. This lets the resident launchd service
+run from copied repo config plus home-layer secrets without carrying implicit
+secret defaults in its environment.
 
 Feishu channel shape belongs in `settings.jsonl`; when no channel record is
 configured, the runtime should report missing local config instead of
@@ -2470,9 +2471,9 @@ workspace instead of creating many top-level `.runtime-*` directories.
 Interactive local runs use `.runtime/state`, explicit pipeline experiments may
 use `.runtime/stage`, and one-off smoke runs use `.runtime/smoke/<name>`.
 
-Legacy top-level `.runtime-*` directories remain ignored so older local runs do
-not become git noise, but new docs, config defaults, and package smoke scripts
-should not introduce more of them.
+Top-level `.runtime-*` and `.runtime_*` directories are unsupported. They
+should not be ignored as a compatibility surface, and they should be deleted or
+moved into the supported `.runtime/` layout when discovered.
 
 This rule is scoped to repo-local foreground work. The resident IM service keeps
 its checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime`
@@ -2528,13 +2529,13 @@ metadata, execute governance actions, or create confirmations.
 
 ## 2026-07-03 Runtime Workspace Hygiene Diagnostic
 
-Repo-local runtime state should be discoverable without deleting historical
-ignored artifacts. `workspace runtime` may report top-level legacy `.runtime-*`
-and `.runtime_*` directories and recommend targets under the unified
-`.runtime/` workspace.
+Repo-local runtime state should be discoverable without preserving unsupported
+historical layout. `workspace runtime` reports top-level `.runtime-*` and
+`.runtime_*` directories as invalid layout and names the supported `.runtime/`
+workspace shape.
 
 This diagnostic is intentionally read-only. It scans directory names only and
 does not read file bodies, move or delete local state, mutate state, invoke the
-model, write the repo, or write the active vault. Actual migration remains an
-operator action because legacy runtime directories can contain local evidence
-or smoke artifacts that should not be discarded automatically.
+model, write the repo, or write the active vault. Cleanup remains an operator
+action because unsupported runtime directories can contain local evidence or
+smoke artifacts that should be inspected before deletion.

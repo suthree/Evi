@@ -61,10 +61,11 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 
 本仓库推荐把 repo-local runtime 产物统一放在 `.runtime/` 下：
 `.runtime/state` 是默认交互状态根，`.runtime/stage` 可用于 pipeline
-实验，`.runtime/smoke/<name>` 用于一次性 smoke。旧的顶层
-`.runtime-*` 目录只是历史本地产物或临时 smoke，不应继续新增。
+实验，`.runtime/smoke/<name>` 用于一次性 smoke。顶层 `.runtime-*`
+或 `.runtime_*` 目录不是受支持结构，应删除或移入 `.runtime/` 的正式
+子目录。
 可以用 `pnpm run runtime -- workspace runtime --state-root .runtime/state`
-只读检查当前 checkout 里还有哪些 legacy runtime 目录以及推荐归档目标。
+只读检查当前 checkout 里是否还有不受支持的 runtime 目录。
 可以用 `pnpm run runtime -- memory layers --state-root .runtime/state`
 只读查看哪些记忆和本地学习层会进入上下文、按需召回、影响技能选择或仅作诊断。
 

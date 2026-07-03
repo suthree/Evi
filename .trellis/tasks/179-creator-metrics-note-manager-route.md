@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-The Xiaohongshu creator backend no longer uses the legacy creator-notes route
+The Xiaohongshu creator backend no longer uses the retired creator-notes route
 for note management.
 Logged-in Chrome redirects creator work to
 `https://creator.xiaohongshu.com/new/note-manager`, where the published note
@@ -29,7 +29,7 @@ the old route, making browser-backed creator metrics less reliable.
 
 ## Acceptance
 
-- No runtime, CLI, test, or docs references to the legacy creator-notes route
+- No runtime, CLI, test, or docs references to the retired creator-notes route
   remain.
 - `content creator-metrics-capture` defaults to `/new/note-manager`.
 - Config summaries show `/new/note-manager`; service health shows the resident
@@ -38,7 +38,7 @@ the old route, making browser-backed creator metrics less reliable.
 
 ## Verification
 
-- Search runtime, CLI, tests, and docs for the legacy creator-notes route.
+- Search runtime, CLI, tests, and docs for the retired creator-notes route.
 - `pnpm exec node --import tsx --test tests/content_pipeline.test.ts tests/content_creator_metrics_service.test.ts tests/config_summary.test.ts tests/service.test.ts`
 - `pnpm exec tsc -p tsconfig.json --noEmit`
 - `pnpm run runtime -- service health --target im`

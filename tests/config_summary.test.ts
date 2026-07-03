@@ -468,7 +468,7 @@ test("runtime config update requires explicit confirmation for resident external
   }
 });
 
-test("direct auth fields win over legacy env aliases", async () => {
+test("direct auth fields win over explicitly named env-backed fields", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-config-direct-auth-"));
   const configDir = join(root, "config");
   const homeRoot = join(root, "home");
@@ -587,7 +587,7 @@ test("auth diagnostics expose source metadata without secret values", async () =
   }
 });
 
-test("auth diagnostics report explicit env aliases without rendering env values", async () => {
+test("auth diagnostics report explicitly named env-backed fields without rendering env values", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-config-env-auth-diagnostics-"));
   const configDir = join(root, "config");
   const homeRoot = join(root, "home");
