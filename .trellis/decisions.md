@@ -2465,3 +2465,19 @@ This rule is scoped to repo-local foreground work. The resident IM service keeps
 its checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime`
 when no explicit `--state-root` is passed, preserving the service health and
 restart behavior already established for long-lived local operation.
+
+## 2026-07-03 Feishu Operator Notification Outbox
+
+Progress notifications should be state-first so local agents can request an
+operator update without owning Feishu credentials or a live transport. The CLI
+therefore exposes provider-neutral `notify queue` and `notify list` commands
+over `operator/notifications/outbox/`.
+
+Only the resident Feishu service may drain queued Feishu notifications. The
+drain path reuses the configured `open_id` allowlist, text chunking, Feishu
+transport, and `channels/feishu/events.jsonl` audit stream, then marks each
+request `sent` or `failed`.
+
+This does not introduce provider-first `feishu` CLI commands, group chat sends,
+interactive cards, remote Feishu queueing, direct CLI sends, or a general
+external notification API.

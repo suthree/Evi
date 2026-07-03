@@ -209,6 +209,12 @@ Normal Feishu private-chat tasks also include a bounded local history window
 from the same private chat, using only truncated inbound/outbound state that
 the local runtime has already recorded locally.
 
+Operator progress notifications use a state-first outbox. `notify queue`
+writes `operator/notifications/outbox/*.json`; it does not call Feishu directly.
+The resident Feishu service drains queued notifications through the same
+allowlist, chunking, and event-recording path, then marks each request `sent` or
+`failed`.
+
 Inspect the local learning seed packages:
 
 ```bash
@@ -466,6 +472,7 @@ Current first-version scope:
 - local review inbox operator decision log consumed by backlog, context, and
   Feishu read models
 - Feishu bounded local private-chat history in task context
+- Feishu operator notification outbox drained by the resident IM service
 - single-user local service runtime for Feishu IM
 - state-only `service health` CLI read model for resident IM diagnostics
 - core tool capability tests

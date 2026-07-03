@@ -137,6 +137,44 @@ test("workspace status command parses read-only git diagnostic options", () => {
   assert.equal(defaultAction.workspaceAction, undefined);
 });
 
+test("notify command parses operator notification queue and list options", () => {
+  const queue = parseArgs([
+    "notify",
+    "queue",
+    "--open-id",
+    "ou_allowed",
+    "--text",
+    "进度更新：检查通过。",
+    "--source",
+    "codex",
+    "--notification-ref",
+    "memory/episodes/session_notify.json",
+    "--state-root",
+    ".runtime/state"
+  ]);
+
+  assert.equal(queue.command, "notify");
+  assert.equal(queue.notifyAction, "queue");
+  assert.equal(queue.notifyOpenId, "ou_allowed");
+  assert.equal(queue.notifyText, "进度更新：检查通过。");
+  assert.equal(queue.notifySource, "codex");
+  assert.deepEqual(queue.notifyRefs, ["memory/episodes/session_notify.json"]);
+  assert.equal(queue.stateRoot, ".runtime/state");
+
+  const list = parseArgs([
+    "notify",
+    "list",
+    "--status",
+    "queued",
+    "--limit",
+    "5"
+  ]);
+  assert.equal(list.command, "notify");
+  assert.equal(list.notifyAction, "list");
+  assert.equal(list.notifyStatus, "queued");
+  assert.equal(list.limit, 5);
+});
+
 test("im serve routes through the project-level IM command", () => {
   const options = parseArgs([
     "im",

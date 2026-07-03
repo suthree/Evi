@@ -2161,6 +2161,8 @@ First-version IM supports:
   build metadata when service mode is enabled
 - bounded local conversation history for normal private-chat task context
 - bounded same-sender in-memory follow-up queue for normal private-chat tasks
+- state-only operator notification outbox drained by the resident Feishu
+  service
 - read-only local operator commands in private chat:
   `/status`, `/config`, `/runtime config`, `/service config`, `/health`,
   `/service health`, `/logs [lines]`, `/service logs [lines]`,
@@ -2292,6 +2294,15 @@ to operator commands, cross users, group chats, remote Feishu state, service
 restart recovery, multi-process coordination, durable replay, steering,
 cancel/resume semantics, model invocation outside the normal task runner, or
 self-evolution confirmation execution.
+
+Operator progress notifications are not Feishu operator commands and are not a
+general send API. `notify queue` writes a local request under
+`operator/notifications/outbox/`; the CLI must not call Feishu directly. The
+resident Feishu service may poll queued requests, apply the same `open_id`
+allowlist as inbound private chat, send text through the configured Feishu
+transport, record bounded channel events, and mark each request `sent` or
+`failed`. Failed or denied requests must remain visible in state for operator
+inspection.
 
 First-version IM does not support:
 

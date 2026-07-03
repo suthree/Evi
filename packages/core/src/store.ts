@@ -33,7 +33,8 @@ export class AgentStore {
       "autonomy/inbox",
       "autonomy/reviews",
       "autonomy/reports",
-      "autonomy/ticks"
+      "autonomy/ticks",
+      "operator/notifications/outbox"
     ]) {
       await mkdir(this.statePath(rel), { recursive: true });
     }

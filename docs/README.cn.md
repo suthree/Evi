@@ -73,6 +73,14 @@ pnpm run runtime -- service restart --target im --scenario im-default --channel 
 pnpm run runtime -- service logs --target im --limit 40
 ```
 
+主动给 Feishu 操作者发进度时，CLI 只写本地通知 outbox，不直接调用
+Feishu。resident IM 服务会从同一个状态根 drain 并发送：
+
+```bash
+pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "进度更新..." --source codex --state-root ~/.local-runtime/state/runtime
+pnpm run runtime -- notify list --status queued --state-root ~/.local-runtime/state/runtime
+```
+
 ## 文档入口
 
 - `README.md`：英文主入口，适合模型、工具和外部引用。

@@ -930,6 +930,7 @@ The first version only needs:
 - local foreground serve process or local single-user service process
 - private text messages
 - optional allowlist
+- operator notification outbox drained by the resident Feishu service
 - read-only local operator commands: `/status`, `/health`,
   `/service health`, `/logs [lines]`, `/service logs [lines]`,
   `/governance`, `/help`, `/capabilities`, `/evolution`,
@@ -1373,6 +1374,14 @@ older outbound records without `chat_id` are skipped because they cannot prove
 same-chat provenance. This is prompt context only. It does not fetch remote
 history, dump raw Feishu events, rebuild memory indexes, mix chats, or create a
 second long-term memory source.
+
+Operator notifications are initiated through `notify queue`, which writes a
+state-only request under `operator/notifications/outbox/`. The CLI does not call
+Feishu. The resident Feishu service polls queued requests, reuses the configured
+allowlist and text chunking, records `channels/feishu/events.jsonl`, and marks
+each request `sent` or `failed`. Use the resident service state root, normally
+`~/.local-runtime/state/runtime`, when the notification should be sent by the
+running IM service.
 
 The first version does not need group chat, attachments, cards, multi-user
 session management, hosted service deployment, or production daemon behavior.

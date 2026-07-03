@@ -19,6 +19,7 @@ import type {
   FeishuSendResult,
   FeishuTransport
 } from "../packages/runtime/src/channels/feishu/types.js";
+import { queueOperatorNotification } from "../packages/runtime/src/operator_notifications.js";
 import {
   recordContentFeedbackEvidence,
   recordContentImageEvidence,
@@ -97,6 +98,75 @@ test("private text message runs the agent and sends final response", async () =>
 
     const memoryEvents = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
     assert.equal(memoryEvents.some((event) => String(event.summary).includes("Handled Feishu private message om_run")), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("operator notification drain sends queued Feishu notifications", async () => {
+  const fixture = await createFixture();
+  try {
+    const queued = await queueOperatorNotification(fixture.store, {
+      openId: "ou_allowed",
+      text: "进度更新：runtime 检查通过。",
+      source: "codex",
+      refs: ["memory/episodes/session_notify.json"]
+    });
+    const runner = new StubRunner(fixture.store, "unused");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
+      transport,
+      runner,
+      store: fixture.store
+    });
+
+    const result = await adapter.drainOperatorNotifications();
+
+    assert.equal(result.queued_count, 1);
+    assert.equal(result.sent_count, 1);
+    assert.equal(result.failed_count, 0);
+    assert.deepEqual(transport.sent.map((item) => item.text), ["进度更新：runtime 检查通过。"]);
+    assert.equal(transport.sent[0]?.openId, "ou_allowed");
+
+    const stored = JSON.parse(await readFile(join(fixture.stateRoot, queued.ref), "utf8")) as Record<string, unknown>;
+    assert.equal(stored.status, "sent");
+    assert.equal(stored.source, "codex");
+    assert.equal(stored.attempts, 1);
+
+    const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
+    assert.equal(channelEvents.some((event) => event.kind === "operator_notification_sent"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("operator notification drain fails unauthorized Feishu targets without sending", async () => {
+  const fixture = await createFixture();
+  try {
+    const queued = await queueOperatorNotification(fixture.store, {
+      openId: "ou_denied",
+      text: "这条不应发送。"
+    });
+    const runner = new StubRunner(fixture.store, "unused");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
+      transport,
+      runner,
+      store: fixture.store
+    });
+
+    const result = await adapter.drainOperatorNotifications();
+
+    assert.equal(result.failed_count, 1);
+    assert.equal(transport.sent.length, 0);
+    const stored = JSON.parse(await readFile(join(fixture.stateRoot, queued.ref), "utf8")) as Record<string, unknown>;
+    assert.equal(stored.status, "failed");
+    assert.match(String(stored.error), /unauthorized open_id ou_denied/);
+
+    const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
+    assert.equal(channelEvents.some((event) => event.kind === "operator_notification_denied"), true);
   } finally {
     await fixture.cleanup();
   }

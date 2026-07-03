@@ -102,6 +102,11 @@ import {
 } from "../../../packages/runtime/src/xiaohongshu_mcp.js";
 import { loadFeishuScenarioConfig } from "../../../packages/runtime/src/channels/feishu/config.js";
 import { serveFeishuPrivateChat } from "../../../packages/runtime/src/channels/feishu/service.js";
+import {
+  listOperatorNotifications,
+  queueOperatorNotification,
+  type OperatorNotificationStatus
+} from "../../../packages/runtime/src/operator_notifications.js";
 import { resumeAutonomy } from "../../../packages/runtime/src/autonomy_pause.js";
 import { runDoctor } from "../../../packages/runtime/src/doctor.js";
 import { getGovernanceStatus } from "../../../packages/runtime/src/governance_status.js";
@@ -143,6 +148,12 @@ interface CliOptions {
   serviceAction?: ServiceAction | "health";
   capabilitiesAction?: "catalog" | "acceptance";
   workspaceAction?: "status";
+  notifyAction?: "queue" | "list";
+  notifyOpenId?: string;
+  notifyText?: string;
+  notifySource?: string;
+  notifyRefs: string[];
+  notifyStatus?: OperatorNotificationStatus;
   serviceTarget: ServiceTarget;
   contentAction?: "run" | "daily" | "daily-readiness" | "channel-readiness" | "daily-advance" | "runs" | "show" | "publish-history" | "feedback-history" | "feedback-review" | "feedback-needed" | "creator-metrics-needed" | "creator-metrics-capture" | "feedback-trends" | "feedback-strategy" | "feedback-capture" | "feedback-refresh" | "generate-image" | "image-evidence" | "publish-preflight" | "publish-execute" | "publish-evidence" | "feedback-evidence" | "reconcile-publish-evidence";
   dryRun: boolean;
@@ -307,6 +318,32 @@ export async function main(): Promise<number> {
     const result = await getWorkspaceStatus(store, { limit: options.limit });
     console.log(JSON.stringify({ action: options.workspaceAction ?? "status", ...result }, null, 2));
     return result.status === "error" ? 1 : 0;
+  }
+
+  if (options.command === "notify") {
+    const config = await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      skipAuth: true
+    });
+    const store = new AgentStore(resolve(options.repoRoot), config.state.root);
+    const action = options.notifyAction ?? "list";
+    if (action === "queue") {
+      const result = await queueOperatorNotification(store, {
+        openId: required(options.notifyOpenId, "notify queue requires --open-id"),
+        text: required(options.notifyText, "notify queue requires --text"),
+        source: options.notifySource,
+        refs: options.notifyRefs
+      });
+      console.log(JSON.stringify({ action, ...result }, null, 2));
+      return 0;
+    }
+    const result = await listOperatorNotifications(store, {
+      status: options.notifyStatus,
+      limit: options.limit
+    });
+    console.log(JSON.stringify({ action, ...result }, null, 2));
+    return 0;
   }
 
   if (options.command === "service") {
@@ -1345,6 +1382,7 @@ export function parseArgs(argv: string[]): CliOptions {
     browserLaunchCheck: false,
     externalWrite: false,
     confirmedByOperator: false,
+    notifyRefs: [],
     sourceUrls: [],
     tickers: []
   };
@@ -1356,6 +1394,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
+    else if (options.command === "notify" && (arg === "queue" || arg === "list")) options.notifyAction = arg;
     else if (options.command === "memory" && isMemoryAction(arg)) options.memoryAction = arg;
     else if (options.command === "pipeline" && (arg === "runs" || arg === "resume")) options.pipelineAction = arg;
     else if (options.command === "content" && isContentAction(arg)) options.contentAction = arg;
@@ -1446,6 +1485,10 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--config-dir") options.configDir = required(rest[++index], "--config-dir requires a value");
     else if (arg === "--repo-root") options.repoRoot = required(rest[++index], "--repo-root requires a value");
     else if (arg === "--state-root") options.stateRoot = required(rest[++index], "--state-root requires a value");
+    else if (arg === "--open-id") options.notifyOpenId = required(rest[++index], "--open-id requires a value");
+    else if (arg === "--text") options.notifyText = required(rest[++index], "--text requires a value");
+    else if (arg === "--source") options.notifySource = required(rest[++index], "--source requires a value");
+    else if (arg === "--notification-ref") options.notifyRefs.push(required(rest[++index], "--notification-ref requires a value"));
     else if (arg === "--target") options.serviceTarget = parseServiceTarget(required(rest[++index], "--target requires a value"));
     else if (arg === "--channel") options.channelId = required(rest[++index], "--channel requires a value");
     else if (arg === "--scenario") options.scenarioId = required(rest[++index], "--scenario requires a value");
@@ -1486,6 +1529,8 @@ export function parseArgs(argv: string[]): CliOptions {
         options.inboxDecisionStatus = parseReviewInboxDecisionStatus(value);
       } else if (options.command === "review") {
         options.inboxStatus = parseReviewInboxStatus(value);
+      } else if (options.command === "notify") {
+        options.notifyStatus = parseOperatorNotificationStatus(value);
       } else {
         throw new Error(`--status is not supported for ${options.command} ${options.governanceAction ?? ""}`.trim());
       }
@@ -1757,6 +1802,11 @@ function parseReviewInboxStatus(value: string): "active" | "all" | "open" | "con
   throw new Error(`Unsupported review inbox status: ${value}`);
 }
 
+function parseOperatorNotificationStatus(value: string): OperatorNotificationStatus {
+  if (value === "queued" || value === "sent" || value === "failed") return value;
+  throw new Error(`Unsupported operator notification status: ${value}`);
+}
+
 function parseReviewConfirmationGate(value: string): ReviewFollowUpConfirmationGateFilter {
   if (value === "all" || value === "current" || value === "stale" || value === "executed") return value;
   throw new Error(`Unsupported review confirmation gate: ${value}`);
@@ -1821,6 +1871,8 @@ function printUsage(): void {
   pnpm run runtime -- im serve [--scenario im-default] [--channel feishu-main] [--config-dir config] [--state-root .runtime-state] [--runtime-build <path>] [--query-todo]
   pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target im] [--scenario im-default] [--channel feishu-main] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime-state]
+  pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- notify list [--status queued|sent|failed] [--limit 20] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md] [--action list|validate|sync|health|retire-event]
   pnpm run runtime -- skills health [--skill-name name] [--limit 20] [--state-root .runtime-state]
   pnpm run runtime -- skills outcomes [--outcome skill_usage_...] [--limit 20] [--state-root .runtime-state]

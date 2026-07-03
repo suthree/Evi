@@ -146,6 +146,12 @@ import {
   type ContextManifestSummary
 } from "../../context_manifest.js";
 import {
+  listOperatorNotifications,
+  markOperatorNotificationFailed,
+  markOperatorNotificationSent,
+  type OperatorNotificationEntry
+} from "../../operator_notifications.js";
+import {
   getEpisodeArchive,
   listEpisodeArchives,
   type EpisodeArchiveSummary
@@ -179,6 +185,19 @@ interface FeishuQueuedFollowup {
   queue_ref: string;
 }
 
+interface OperatorNotificationDrainResult {
+  queued_count: number;
+  sent_count: number;
+  failed_count: number;
+  skipped_count: number;
+  notifications: Array<{
+    id: string;
+    ref: string;
+    status: "sent" | "failed" | "skipped";
+    error?: string;
+  }>;
+}
+
 export class FeishuPrivateChatAdapter {
   private readonly config: FeishuChannelConfig;
   private readonly transport: FeishuTransport;
@@ -192,6 +211,8 @@ export class FeishuPrivateChatAdapter {
   private readonly followupQueues = new Map<string, FeishuQueuedFollowup[]>();
   private readonly seenMessageIds: string[] = [];
   private readonly seenSet = new Set<string>();
+  private notificationPollTimer: ReturnType<typeof setInterval> | null = null;
+  private notificationDrainActive = false;
   private loaded = false;
 
   constructor(args: {
@@ -223,10 +244,139 @@ export class FeishuPrivateChatAdapter {
     await this.transport.start((event) => {
       void this.handleInboundEvent(event);
     });
+    await this.drainOperatorNotifications();
+    this.startOperatorNotificationPoll();
   }
 
   async stop(): Promise<void> {
+    this.stopOperatorNotificationPoll();
     await this.transport.stop();
+  }
+
+  async drainOperatorNotifications(limit = 10): Promise<OperatorNotificationDrainResult> {
+    if (this.notificationDrainActive) {
+      return {
+        queued_count: 0,
+        sent_count: 0,
+        failed_count: 0,
+        skipped_count: 1,
+        notifications: []
+      };
+    }
+    this.notificationDrainActive = true;
+    try {
+      const queued = await listOperatorNotifications(this.store, {
+        channel: "feishu",
+        status: "queued",
+        limit,
+        oldestFirst: true
+      });
+      const result: OperatorNotificationDrainResult = {
+        queued_count: queued.count,
+        sent_count: 0,
+        failed_count: 0,
+        skipped_count: 0,
+        notifications: []
+      };
+      for (const entry of queued.notifications) {
+        const drained = await this.drainOperatorNotification(entry);
+        if (drained.status === "sent") result.sent_count += 1;
+        if (drained.status === "failed") result.failed_count += 1;
+        if (drained.status === "skipped") result.skipped_count += 1;
+        result.notifications.push(drained);
+      }
+      return result;
+    } finally {
+      this.notificationDrainActive = false;
+    }
+  }
+
+  private startOperatorNotificationPoll(): void {
+    if (this.notificationPollTimer) return;
+    this.notificationPollTimer = setInterval(() => {
+      void this.drainOperatorNotifications().catch((error: unknown) => {
+        console.error(errorMessage(error));
+      });
+    }, 5000);
+    this.notificationPollTimer.unref?.();
+  }
+
+  private stopOperatorNotificationPoll(): void {
+    if (!this.notificationPollTimer) return;
+    clearInterval(this.notificationPollTimer);
+    this.notificationPollTimer = null;
+  }
+
+  private async drainOperatorNotification(
+    entry: OperatorNotificationEntry
+  ): Promise<OperatorNotificationDrainResult["notifications"][number]> {
+    const openId = entry.notification.target.open_id;
+    if (!this.isAllowed(openId)) {
+      const error = `Denied operator notification to unauthorized open_id ${openId}.`;
+      await markOperatorNotificationFailed(this.store, entry, error);
+      await this.recordChannelEvent("operator_notification_denied", error, {
+        notification_id: entry.notification.id,
+        notification_ref: entry.ref,
+        open_id: openId,
+        source: entry.notification.source
+      });
+      return {
+        id: entry.notification.id,
+        ref: entry.ref,
+        status: "failed",
+        error
+      };
+    }
+
+    try {
+      const sends = await this.sendChunks(openId, entry.notification.text);
+      const failedSend = sends.find((send) => !send.ok);
+      if (failedSend) {
+        const failed = await markOperatorNotificationFailed(this.store, entry, failedSend.summary, sends);
+        await this.recordChannelEvent("operator_notification_failed", failedSend.summary, {
+          notification_id: failed.notification.id,
+          notification_ref: failed.ref,
+          open_id: openId,
+          source: failed.notification.source,
+          send_count: sends.length
+        });
+        return {
+          id: failed.notification.id,
+          ref: failed.ref,
+          status: "failed",
+          error: failedSend.summary
+        };
+      }
+
+      const sent = await markOperatorNotificationSent(this.store, entry, sends);
+      await this.recordChannelEvent("operator_notification_sent", `Sent operator notification ${sent.notification.id}.`, {
+        notification_id: sent.notification.id,
+        notification_ref: sent.ref,
+        open_id: openId,
+        source: sent.notification.source,
+        send_count: sends.length
+      });
+      return {
+        id: sent.notification.id,
+        ref: sent.ref,
+        status: "sent"
+      };
+    } catch (error) {
+      const message = errorMessage(error);
+      const failed = await markOperatorNotificationFailed(this.store, entry, message);
+      await this.recordChannelEvent("operator_notification_failed", `Operator notification ${failed.notification.id} failed: ${message}`, {
+        notification_id: failed.notification.id,
+        notification_ref: failed.ref,
+        open_id: openId,
+        source: failed.notification.source
+      });
+      return {
+        id: failed.notification.id,
+        ref: failed.ref,
+        status: "failed",
+        error: message
+      };
+    }
   }
 
   async handleInboundEvent(event: FeishuInboundEvent): Promise<void> {
