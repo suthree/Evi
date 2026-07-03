@@ -742,7 +742,7 @@ function capabilityCatalogSection(): ContextSection {
   return {
     title: "Capability Catalog",
     body: [
-      "Read-only capability index; use CLI/Feishu /capabilities for detail; do not infer extra authority.",
+      "Read-only index; use /capabilities for detail; do not infer extra authority.",
       `- catalog: ${catalog.catalog_id}@${catalog.catalog_version}; count: ${catalog.count}; boundary: local-only read model; no secrets, model calls, tool execution, state mutation, repo writes, or active-vault writes`,
       "",
       ...catalog.categories.map(renderCapabilityCatalogCategory)

@@ -65,6 +65,8 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 `.runtime-*` 目录只是历史本地产物或临时 smoke，不应继续新增。
 可以用 `pnpm run runtime -- workspace runtime --state-root .runtime/state`
 只读检查当前 checkout 里还有哪些 legacy runtime 目录以及推荐归档目标。
+可以用 `pnpm run runtime -- memory layers --state-root .runtime/state`
+只读查看哪些记忆和本地学习层会进入上下文、按需召回、影响技能选择或仅作诊断。
 
 管理本地 resident IM 服务：
 

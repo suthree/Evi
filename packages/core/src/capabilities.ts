@@ -528,6 +528,15 @@ function memoryAndLearningCategory(): CapabilityCategory {
         boundaries: ["episode JSONL remains the append-only source of truth", "recap reads metadata only and does not render raw model responses, tool outputs, or context Markdown"]
       },
       {
+        id: "memory.layers",
+        title: "Memory layer diagnostics",
+        summary: "Show memory and local-learning layers by context role and attention signal.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- memory layers"],
+        refs: ["packages/core/src/memory_layers.ts"],
+        boundaries: ["metadata-only; no index sync, raw artifacts, content rendering, state writes, model calls, or confirmations"]
+      },
+      {
         id: "episode.archives",
         title: "Episode archives",
         summary: "Generate, inspect, and diagnose daily episode-memory summaries.",

@@ -133,10 +133,18 @@ pnpm run runtime -- memory recap --session session_... --state-root .runtime/sta
 pnpm run runtime -- memory archive --state-root .runtime/state
 pnpm run runtime -- memory archives --state-root .runtime/state
 pnpm run runtime -- memory archive-health --state-root .runtime/state
+pnpm run runtime -- memory layers --state-root .runtime/state
 ```
 
 The MemoryStore index is local and rebuildable. It does not replace the episode
 JSONL log, and it is not vector or hybrid search.
+
+`memory layers` is a read-only diagnostic for the attention budget. It reports
+which memory and local-learning layers feed selected context, on-demand recall,
+bounded governance context, selected-skill recall quality, or diagnostics only.
+It does not rebuild the MemoryStore index, render semantic memory content, read
+raw episode artifacts, execute confirmations, mutate state, or invoke the
+model.
 
 Daily episode archives are deterministic bounded summaries generated from the
 append-only episode JSONL. `memory archive-health` compares event metadata with

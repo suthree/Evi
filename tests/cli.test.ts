@@ -329,6 +329,11 @@ test("memory command parses search and session options", () => {
   assert.equal(archiveHealth.archiveRef, "2026-06-30");
   assert.equal(archiveHealth.limit, 3);
 
+  const layers = parseArgs(["memory", "layers", "--state-root", ".runtime-state"]);
+  assert.equal(layers.command, "memory");
+  assert.equal(layers.memoryAction, "layers");
+  assert.equal(layers.stateRoot, ".runtime-state");
+
   const working = parseArgs([
     "memory",
     "working",

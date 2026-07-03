@@ -49,6 +49,7 @@ import { getCapabilityAcceptanceAudit, getCapabilityCatalog } from "../../../pac
 import { getContextHealth } from "../../../packages/core/src/context_health.js";
 import { listContextPressure } from "../../../packages/core/src/context_pressure.js";
 import { getContextUsage } from "../../../packages/core/src/context_usage.js";
+import { getMemoryLayerDiagnostics } from "../../../packages/core/src/memory_layers.js";
 import {
   getWorkingCheckpoint,
   listWorkingCheckpoints
@@ -229,7 +230,7 @@ interface CliOptions {
   channelId?: string;
   scenarioId?: string;
   runtimeBuildPath?: string;
-  memoryAction?: "status" | "sync" | "search" | "session" | "recap" | "archive" | "archives" | "archive-health" | "working" | "candidates" | "confirmations" | "accepted" | "request-candidate-confirmation" | "execute-candidate-confirmation";
+  memoryAction?: "status" | "sync" | "search" | "session" | "recap" | "archive" | "archives" | "archive-health" | "layers" | "working" | "candidates" | "confirmations" | "accepted" | "request-candidate-confirmation" | "execute-candidate-confirmation";
   governanceAction?: "status" | "opportunities" | "evolution" | "gaps" | "act-next" | "decide-opportunity" | "resume-autonomy";
   contextAction?: "list" | "show" | "pressure" | "health" | "usage" | "repair";
   reviewAction?: "background" | "reports" | "completions" | "traces" | "replays" | "replay-audit" | "tick" | "ticks" | "inbox" | "confirmations" | "request-inbox-confirmation" | "request-sop-confirmation" | "decide-sop-recovery" | "decide-inbox" | "draft-sop" | "audit-sop" | "promote-sop" | "chain" | "coverage" | "rehearse-sop-loop" | "plan-follow-up" | "execute-follow-up" | "request-follow-up" | "execute-confirmed-follow-up";
@@ -840,6 +841,11 @@ export async function main(): Promise<number> {
     });
     const store = new AgentStore(resolve(options.repoRoot), config.state.root);
     const action = options.memoryAction ?? "status";
+    if (action === "layers") {
+      const result = await getMemoryLayerDiagnostics(store);
+      console.log(JSON.stringify(result, null, 2));
+      return 0;
+    }
     if (action === "working") {
       const result = options.workingCheckpointRef
         ? await getWorkingCheckpoint(store, { checkpointRef: options.workingCheckpointRef })
@@ -1658,7 +1664,7 @@ function parseSkillAction(value: string): "list" | "validate" | "sync" | "health
   throw new Error(`Unsupported skills action: ${value}`);
 }
 
-function isMemoryAction(value: string): value is "status" | "sync" | "search" | "session" | "recap" | "archive" | "archives" | "archive-health" | "working" | "candidates" | "confirmations" | "accepted" | "request-candidate-confirmation" | "execute-candidate-confirmation" {
+function isMemoryAction(value: string): value is "status" | "sync" | "search" | "session" | "recap" | "archive" | "archives" | "archive-health" | "layers" | "working" | "candidates" | "confirmations" | "accepted" | "request-candidate-confirmation" | "execute-candidate-confirmation" {
   return value === "status"
     || value === "sync"
     || value === "search"
@@ -1667,6 +1673,7 @@ function isMemoryAction(value: string): value is "status" | "sync" | "search" | 
     || value === "archive"
     || value === "archives"
     || value === "archive-health"
+    || value === "layers"
     || value === "working"
     || value === "candidates"
     || value === "confirmations"
@@ -1887,7 +1894,7 @@ function printUsage(): void {
   pnpm run runtime -- skills drifts [--skill-name name] [--limit 20] [--state-root .runtime-state]
   pnpm run runtime -- skills events [--event skill_event_...] [--skill-name name] [--limit 20] [--state-root .runtime-state]
   pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." [--state-root .runtime-state]
-  pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|working|candidates|confirmations|accepted [--query "..."] [--session session_...] [--archive 2026-06-30] [--checkpoint memory/working/current.json] [--candidate memory/semantic/candidates/...] [--confirmation memory/semantic/confirmations/...] [--semantic memory/semantic/accepted/...] [--state-root .runtime-state]
+  pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|layers|working|candidates|confirmations|accepted [--query "..."] [--session session_...] [--archive 2026-06-30] [--checkpoint memory/working/current.json] [--candidate memory/semantic/candidates/...] [--confirmation memory/semantic/confirmations/...] [--semantic memory/semantic/accepted/...] [--state-root .runtime-state]
   pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... [--state-root .runtime-state]
   pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... [--state-root .runtime-state]
   pnpm run runtime -- governance status|opportunities|evolution|gaps [--gap gap_external_publish_evidence_...] [--limit 10] [--state-root .runtime-state]

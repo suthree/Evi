@@ -546,6 +546,14 @@ summaries or inspect one accepted record by stable ref or semantic memory id. It
 must not accept candidates, request confirmations, rebuild MemoryStore indexes,
 write state, write the active vault, or invoke the model.
 
+`memory layers` is a read-only memory and local-learning layer diagnostic. It
+may report counts, state refs, context roles, attention signals, and next
+inspection commands for episode recall, accepted semantic memory, memory
+governance queue, working checkpoints, episode archives, and selected-skill
+outcomes. It must not rebuild MemoryStore indexes, read raw episode artifacts,
+render semantic memory or candidate content, write state, write the active
+vault, execute confirmations, run shell commands, or invoke the model.
+
 `memory archives` is a read-only view over `memory/archives/*.json`. It may
 list daily episode archive summaries or inspect one archive by date or state
 ref. It must not generate archive files, rebuild MemoryStore indexes, read raw
@@ -2420,8 +2428,9 @@ pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
 pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
-pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|working|candidates|confirmations|accepted --state-root .runtime/state
+pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|candidates|confirmations|accepted --state-root .runtime/state
 pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
+pnpm run runtime -- memory layers --state-root .runtime/state
 pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
 pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
 pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state

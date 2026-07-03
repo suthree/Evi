@@ -87,6 +87,19 @@ operator-confirmed and includes at least one platform id, URL, or screenshot
 ref. Real `gpt-image-2`, `xiaohongshu-mcp`, and `agent-browser-cli` execution
 remain later adapter slices that must write this evidence shape.
 
+## 2026-07-03 Memory Layer Attention Diagnostic
+
+Memory and local-learning state should be visible by context role before it is
+used as prompt context. The runtime exposes `memory layers` as a read-only
+diagnostic that classifies accepted semantic memory, working checkpoints,
+governance queue items, episode recall, episode archives, and selected-skill
+outcome telemetry.
+
+This diagnostic may report counts, refs, context roles, attention signals, and
+next inspection commands. It must not rebuild indexes, render semantic memory
+or candidate content, read raw episode artifacts, execute confirmations, mutate
+state, write the active vault, or invoke the model.
+
 ## 2026-06-29 IM Baseline
 
 Provider-first Feishu CLI commands are not retained as a compatibility surface

@@ -188,6 +188,13 @@ Inspect current repo-local runtime workspace hygiene:
 pnpm run runtime -- workspace runtime --state-root .runtime/state
 ```
 
+Inspect which memory and learning layers currently feed context or remain
+on-demand diagnostics:
+
+```bash
+pnpm run runtime -- memory layers --state-root .runtime/state
+```
+
 Live task text may include bounded repo references such as
 `@file:docs/RUNTIME_CONTRACT.md:120-160` or `@folder:docs`. These become a
 `Task References` context section and stay repo-local/read-only.
