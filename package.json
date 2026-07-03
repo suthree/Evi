@@ -11,8 +11,8 @@
     "doctor": "tsx apps/cli/src/main.ts doctor",
     "skills:validate": "tsx apps/cli/src/main.ts skills --action validate",
     "skills:sync": "tsx apps/cli/src/main.ts skills --action sync",
-    "smoke:vault": "tsx apps/cli/src/main.ts live --query-todo --task \"Verify the active vault SOP-to-skill promotion loop.\" --state-root .runtime-vault-smoke",
-    "show:events": "tsx apps/cli/src/main.ts show-events --state-root .runtime-vault-smoke",
+    "smoke:vault": "tsx apps/cli/src/main.ts live --query-todo --task \"Verify the active vault SOP-to-skill promotion loop.\" --state-root .runtime/smoke/vault",
+    "show:events": "tsx apps/cli/src/main.ts show-events --state-root .runtime/smoke/vault",
     "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {

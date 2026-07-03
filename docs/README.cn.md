@@ -56,8 +56,13 @@ pnpm run runtime -- doctor --no-auth --no-im
 有模型配置后运行一次 live task：
 
 ```bash
-pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime-state
+pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime/state
 ```
+
+本仓库推荐把 repo-local runtime 产物统一放在 `.runtime/` 下：
+`.runtime/state` 是默认交互状态根，`.runtime/stage` 可用于 pipeline
+实验，`.runtime/smoke/<name>` 用于一次性 smoke。旧的顶层
+`.runtime-*` 目录只是历史本地产物或临时 smoke，不应继续新增。
 
 管理本地 resident IM 服务：
 

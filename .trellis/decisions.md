@@ -2449,3 +2449,19 @@ artifacts, run tools, invoke the model, compact context, rewrite context
 assembly, write state, write the repo, or write the active vault. Quiet first
 turns with no pressure, budget, or checkpoint do not render the section, so the
 hint does not become a new default token tax.
+
+## 2026-07-03 Repo-Local Runtime Workspace
+
+Repo-local state and smoke artifacts should use one ignored `.runtime/`
+workspace instead of creating many top-level `.runtime-*` directories.
+Interactive local runs use `.runtime/state`, explicit pipeline experiments may
+use `.runtime/stage`, and one-off smoke runs use `.runtime/smoke/<name>`.
+
+Legacy top-level `.runtime-*` directories remain ignored so older local runs do
+not become git noise, but new docs, config defaults, and package smoke scripts
+should not introduce more of them.
+
+This rule is scoped to repo-local foreground work. The resident IM service keeps
+its checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime`
+when no explicit `--state-root` is passed, preserving the service health and
+restart behavior already established for long-lived local operation.

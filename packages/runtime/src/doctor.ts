@@ -214,21 +214,21 @@ async function checkStateRoot(checks: DoctorCheck[], stateRoot: string): Promise
     return;
   }
 
-  const parent = dirname(stateRoot);
+  const parent = nearestExistingParent(dirname(stateRoot));
   try {
     await access(parent, constants.R_OK | constants.W_OK);
     checks.push({
       name: "state_root",
       level: "warn",
       summary: "State root does not exist yet; live and pipeline runs will create it.",
-      details: { state_root: stateRoot, parent }
+      details: { state_root: stateRoot, nearest_existing_parent: parent }
     });
   } catch (error) {
     checks.push({
       name: "state_root",
       level: "error",
-      summary: `State root does not exist and parent is not writable: ${errorMessage(error)}`,
-      details: { state_root: stateRoot, parent }
+      summary: `State root does not exist and no writable parent was found: ${errorMessage(error)}`,
+      details: { state_root: stateRoot, nearest_existing_parent: parent }
     });
   }
 }

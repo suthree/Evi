@@ -40,6 +40,31 @@ test("doctor passes with readable config, auth, state parent, vault, and skills"
   }
 });
 
+test("doctor accepts nested missing state root when nearest parent is writable", async () => {
+  const fixture = await createDoctorFixture();
+  const previous = process.env[TEST_ENV];
+  process.env[TEST_ENV] = "test-key";
+  try {
+    const report = await runDoctor({
+      repoRoot: fixture.repoRoot,
+      configDir: fixture.configDir,
+      stateRoot: join(fixture.repoRoot, ".runtime/state"),
+      requireAuth: false,
+      requireIm: false
+    });
+
+    assert.equal(report.ok, true);
+    assert.equal(check(report, "state_root")?.level, "warn");
+    assert.equal(
+      (check(report, "state_root")?.details as Record<string, unknown>).nearest_existing_parent,
+      fixture.repoRoot
+    );
+  } finally {
+    restoreEnv(TEST_ENV, previous);
+    await fixture.cleanup();
+  }
+});
+
 test("doctor reports missing active model auth as an error", async () => {
   const fixture = await createDoctorFixture();
   const previous = process.env[TEST_ENV];

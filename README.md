@@ -173,8 +173,14 @@ Run one live task after model auth is configured in either ignored repo-local
 `config/auth.local.jsonl` or `<LOCAL_RUNTIME_HOME>/config/auth.jsonl`:
 
 ```bash
-pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime-state
+pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime/state
 ```
+
+Repo-local runtime artifacts are grouped under `.runtime/`: `.runtime/state`
+for default interactive state, `.runtime/stage` for pipeline experiments, and
+`.runtime/smoke/<name>` for one-off smoke runs. Older top-level `.runtime-*`
+directories are legacy ignored local artifacts and should not be used for new
+examples.
 
 Live task text may include bounded repo references such as
 `@file:docs/RUNTIME_CONTRACT.md:120-160` or `@folder:docs`. These become a
@@ -214,21 +220,21 @@ pnpm run runtime -- skills --action validate
 Search local episode evidence:
 
 ```bash
-pnpm run runtime -- memory search --query "feishu" --state-root .runtime-state
-pnpm run runtime -- memory recap --session session_... --state-root .runtime-state
+pnpm run runtime -- memory search --query "feishu" --state-root .runtime/state
+pnpm run runtime -- memory recap --session session_... --state-root .runtime/state
 ```
 
 Inspect context assembly manifests:
 
 ```bash
-pnpm run runtime -- context list --state-root .runtime-state
-pnpm run runtime -- context show --context memory/episodes/session_...-context.json --state-root .runtime-state
+pnpm run runtime -- context list --state-root .runtime/state
+pnpm run runtime -- context show --context memory/episodes/session_...-context.json --state-root .runtime/state
 ```
 
 Inspect the SOP and skill evolution ledger:
 
 ```bash
-pnpm run runtime -- governance evolution --state-root .runtime-state
+pnpm run runtime -- governance evolution --state-root .runtime/state
 ```
 
 Open draft and promote-ready SOP chains include structured next-command
@@ -237,7 +243,7 @@ guidance, but these read models never execute the command.
 Request a confirmation for the current SOP chain next command:
 
 ```bash
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
 ```
 
 SOP-chain confirmations show `source=sop_evolution_chain` and the SOP id/ref in
@@ -250,7 +256,7 @@ Filter review confirmations by SOP-chain gate when clearing stale operator
 queues:
 
 ```bash
-pnpm run runtime -- review confirmations --gate stale --state-root .runtime-state
+pnpm run runtime -- review confirmations --gate stale --state-root .runtime/state
 ```
 
 `--gate current|stale|executed|all` is read-only visibility. It does not mutate
@@ -268,7 +274,7 @@ Operators may record how a stale recovery was handled through an explicit
 append-only CLI decision:
 
 ```bash
-pnpm run runtime -- review decide-sop-recovery --confirmation follow_up_confirmation_... --status deferred --reason "..." --state-root .runtime-state
+pnpm run runtime -- review decide-sop-recovery --confirmation follow_up_confirmation_... --status deferred --reason "..." --state-root .runtime/state
 ```
 
 The command writes only to `autonomy/sop-recovery-decisions.jsonl`. Later stale
@@ -282,7 +288,7 @@ gate from the active attention queue.
 Open SOP evolution chains also appear in the ranked Opportunity Backlog:
 
 ```bash
-pnpm run runtime -- governance opportunities --state-root .runtime-state
+pnpm run runtime -- governance opportunities --state-root .runtime/state
 ```
 
 `governance status` and Feishu `/governance` also include the active backlog
@@ -294,29 +300,29 @@ command as copyable guidance; read-only views do not append the decision.
 Run a proposal-only background review:
 
 ```bash
-pnpm run runtime -- review background --query "skill promotion" --state-root .runtime-state
+pnpm run runtime -- review background --query "skill promotion" --state-root .runtime/state
 ```
 
 Inspect recent background review reports without rerunning background review:
 
 ```bash
-pnpm run runtime -- review reports --state-root .runtime-state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime-state
+pnpm run runtime -- review reports --state-root .runtime/state
+pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
 ```
 
 Inspect completion verification reports without reading raw final responses or
 tool artifacts:
 
 ```bash
-pnpm run runtime -- review completions --state-root .runtime-state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime-state
+pnpm run runtime -- review completions --state-root .runtime/state
+pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
 ```
 
 Inspect recent review tick history without rerunning review tick:
 
 ```bash
-pnpm run runtime -- review ticks --state-root .runtime-state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime-state
+pnpm run runtime -- review ticks --state-root .runtime/state
+pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
 ```
 
 Feishu also supports `/review ticks` and `/review tick <ref-or-id>` as
@@ -328,7 +334,7 @@ references a state SOP draft.
 Run one self-evolution review tick and materialize an operator inbox:
 
 ```bash
-pnpm run runtime -- review tick --query "skill promotion" --state-root .runtime-state
+pnpm run runtime -- review tick --query "skill promotion" --state-root .runtime/state
 ```
 
 The tick runs background review, plans follow-up actions for each proposal, and
@@ -349,11 +355,11 @@ operator gates.
 Inspect or gate an inbox item:
 
 ```bash
-pnpm run runtime -- review inbox --state-root .runtime-state
-pnpm run runtime -- review inbox --status all --state-root .runtime-state
-pnpm run runtime -- review inbox --item review_inbox_... --state-root .runtime-state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root .runtime-state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime-state
+pnpm run runtime -- review inbox --state-root .runtime/state
+pnpm run runtime -- review inbox --status all --state-root .runtime/state
+pnpm run runtime -- review inbox --item review_inbox_... --state-root .runtime/state
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root .runtime/state
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
 ```
 
 Inbox confirmation requests reuse the same follow-up confirmation envelope as
@@ -380,7 +386,7 @@ or `--status executed` for audit history.
 Plan follow-up actions for one review proposal without executing them:
 
 ```bash
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime-state
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
 ```
 
 The plan is a dry run. It can suggest later commands such as draft, audit,
@@ -392,7 +398,7 @@ the same action.
 Execute a read-only follow-up action:
 
 ```bash
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
 ```
 
 This gate currently executes only `inspect_chain`. It rejects actions that
@@ -401,7 +407,7 @@ would write state or the active vault.
 Request confirmation for a mutation follow-up action:
 
 ```bash
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
 ```
 
 This writes a pending confirmation envelope under `autonomy/followups/` and
@@ -410,7 +416,7 @@ appends evidence. It does not execute the selected action.
 Execute a confirmed mutation follow-up:
 
 ```bash
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime-state
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
 ```
 
 This currently supports `collect_evidence`, `narrow_review`, `draft_sop`,
@@ -422,25 +428,25 @@ active vault only for confirmed `promote_sop` actions and confirmed
 Create a state-only SOP draft from an eligible review proposal:
 
 ```bash
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime-state
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
 ```
 
 Audit a state-only SOP draft:
 
 ```bash
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
 ```
 
 Promote an audited SOP draft into the local active vault:
 
 ```bash
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime-state
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
 ```
 
 Inspect the SOP self-evolution chain:
 
 ```bash
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
 ```
 
 ## Current Boundaries

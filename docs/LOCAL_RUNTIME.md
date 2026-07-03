@@ -40,84 +40,84 @@ Command names, option names, JSON fields, and evidence refs remain literal.
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime-state
+pnpm run runtime -- config --state-root .runtime/state
 pnpm run runtime -- capabilities
 pnpm run runtime -- capabilities acceptance
-pnpm run runtime -- live --query-todo --task "..." --state-root .runtime-state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime-stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime-state
-pnpm run runtime -- pipeline runs --state-root .runtime-state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime-state
-pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root .runtime-state
-pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root .runtime-state
-pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime-state
-pnpm run runtime -- content daily-readiness --date 2026-07-01 --state-root .runtime-state
-pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root .runtime-state
-pnpm run runtime -- content daily-advance --date 2026-07-01 --image-model gpt-image-2 --preflight --server-url http://localhost:18060/mcp --tool publish_content --state-root .runtime-state
-pnpm run runtime -- content runs --state-root .runtime-state
-pnpm run runtime -- content show --run content_run_... --state-root .runtime-state
-pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root .runtime-state
-pnpm run runtime -- content feedback-evidence --run content_run_... --views 0 --likes 0 --comments 0 --state-root .runtime-state
-pnpm run runtime -- content feedback-history --captured-by operator --state-root .runtime-state
-pnpm run runtime -- content feedback-review --captured-by operator --state-root .runtime-state
-pnpm run runtime -- content feedback-needed --captured-by operator --state-root .runtime-state
-pnpm run runtime -- content creator-metrics-needed --captured-by xiaohongshu-mcp --state-root .runtime-state
-pnpm run runtime -- content feedback-trends --captured-by operator --state-root .runtime-state
-pnpm run runtime -- content feedback-strategy --captured-by operator --state-root .runtime-state
-pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root .runtime-state
-pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root .runtime-state
-pnpm run runtime -- content generate-image --run content_run_... --image-model gpt-image-2 --state-root .runtime-state
-pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png --image-status generated --state-root .runtime-state
-pnpm run runtime -- content publish-preflight --run content_run_... --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --adapter-available --state-root .runtime-state
-pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --state-root .runtime-state
-pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime-state
-pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime-state --dry-run --state-root ~/.local-runtime/state/runtime
-pnpm run runtime -- im serve --scenario im-default --state-root .runtime-state
+pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
+pnpm run runtime -- pipeline runs --state-root .runtime/state
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
+pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root .runtime/state
+pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root .runtime/state
+pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime/state
+pnpm run runtime -- content daily-readiness --date 2026-07-01 --state-root .runtime/state
+pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root .runtime/state
+pnpm run runtime -- content daily-advance --date 2026-07-01 --image-model gpt-image-2 --preflight --server-url http://localhost:18060/mcp --tool publish_content --state-root .runtime/state
+pnpm run runtime -- content runs --state-root .runtime/state
+pnpm run runtime -- content show --run content_run_... --state-root .runtime/state
+pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root .runtime/state
+pnpm run runtime -- content feedback-evidence --run content_run_... --views 0 --likes 0 --comments 0 --state-root .runtime/state
+pnpm run runtime -- content feedback-history --captured-by operator --state-root .runtime/state
+pnpm run runtime -- content feedback-review --captured-by operator --state-root .runtime/state
+pnpm run runtime -- content feedback-needed --captured-by operator --state-root .runtime/state
+pnpm run runtime -- content creator-metrics-needed --captured-by xiaohongshu-mcp --state-root .runtime/state
+pnpm run runtime -- content feedback-trends --captured-by operator --state-root .runtime/state
+pnpm run runtime -- content feedback-strategy --captured-by operator --state-root .runtime/state
+pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root .runtime/state
+pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root .runtime/state
+pnpm run runtime -- content generate-image --run content_run_... --image-model gpt-image-2 --state-root .runtime/state
+pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png --image-status generated --state-root .runtime/state
+pnpm run runtime -- content publish-preflight --run content_run_... --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --adapter-available --state-root .runtime/state
+pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --state-root .runtime/state
+pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime/state
+pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state --dry-run --state-root ~/.local-runtime/state/runtime
+pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
-pnpm run runtime -- workspace status --state-root .runtime-state
+pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills health [--skill-name skill-name] --state-root .runtime-state
-pnpm run runtime -- skills outcomes [--outcome skill_usage_...] --state-root .runtime-state
-pnpm run runtime -- skills drifts [--skill-name skill-name] --state-root .runtime-state
-pnpm run runtime -- skills events [--event skill_event_...] [--skill-name skill-name] --state-root .runtime-state
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime-state
-pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|working|candidates|confirmations|accepted --state-root .runtime-state
-pnpm run runtime -- memory recap --session session_... --state-root .runtime-state
-pnpm run runtime -- memory archives --archive 2026-06-30 --state-root .runtime-state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime-state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime-state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime-state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime-state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime-state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime-state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime-state
-pnpm run runtime -- governance status|opportunities|evolution|gaps --state-root .runtime-state
-pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_... --state-root .runtime-state
-pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] --state-root .runtime-state
-pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." --state-root .runtime-state
-pnpm run runtime -- governance resume-autonomy --reason "..." --state-root .runtime-state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime-state
-pnpm run runtime -- review background --state-root .runtime-state
-pnpm run runtime -- review reports --state-root .runtime-state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime-state
-pnpm run runtime -- review tick --state-root .runtime-state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime-state
-pnpm run runtime -- review confirmations [--gate all|current|stale|executed] --state-root .runtime-state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime-state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime-state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime-state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime-state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime-state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime-state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime-state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime-state
-pnpm run runtime -- show-events --state-root .runtime-state
+pnpm run runtime -- skills health [--skill-name skill-name] --state-root .runtime/state
+pnpm run runtime -- skills outcomes [--outcome skill_usage_...] --state-root .runtime/state
+pnpm run runtime -- skills drifts [--skill-name skill-name] --state-root .runtime/state
+pnpm run runtime -- skills events [--event skill_event_...] [--skill-name skill-name] --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
+pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|working|candidates|confirmations|accepted --state-root .runtime/state
+pnpm run runtime -- memory recap --session session_... --state-root .runtime/state
+pnpm run runtime -- memory archives --archive 2026-06-30 --state-root .runtime/state
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
+pnpm run runtime -- governance status|opportunities|evolution|gaps --state-root .runtime/state
+pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_... --state-root .runtime/state
+pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] --state-root .runtime/state
+pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." --state-root .runtime/state
+pnpm run runtime -- governance resume-autonomy --reason "..." --state-root .runtime/state
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
+pnpm run runtime -- review background --state-root .runtime/state
+pnpm run runtime -- review reports --state-root .runtime/state
+pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
+pnpm run runtime -- review tick --state-root .runtime/state
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
+pnpm run runtime -- review confirmations [--gate all|current|stale|executed] --state-root .runtime/state
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
+pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
+pnpm run runtime -- show-events --state-root .runtime/state
 ```
 
 Live and IM task text may include bounded repo-local task references:
@@ -161,11 +161,21 @@ downgrade. They should not be the default health posture.
 
 ## Local State
 
+Repo-local runtime artifacts are grouped under `.runtime/` to avoid scattered
+top-level `.runtime-*` directories:
+
+- `.runtime/state` is the default repo-local interactive state root.
+- `.runtime/stage` is for explicit pipeline experiments.
+- `.runtime/smoke/<name>` is for one-off smoke runs.
+- Legacy top-level `.runtime-*` directories are still ignored for compatibility
+  with older local runs, but new commands and docs should not create more of
+  them.
+
 Runtime state is local, ignored by git, and safe to delete for throwaway smoke
-runs:
+runs when the operator no longer needs the evidence:
 
 ```text
-.runtime-state/
+.runtime/state/
 ├── memory/episodes/
 ├── memory/archives/
 ├── memory/index/
@@ -187,6 +197,12 @@ The state root stores evidence, prompts, model responses, tool results,
 completion verification reports, channel events, daily episode archive
 summaries, working checkpoints, service heartbeat files, and pipeline
 artifacts.
+
+The resident IM service remains separate by default: service lifecycle commands
+without `--state-root` use `<LOCAL_RUNTIME_HOME>/state/runtime`, so the
+long-lived service state does not depend on the repo checkout. Passing
+`--state-root .runtime/state` is still available for intentional local
+foreground IM experiments.
 
 Content dry-runs write local publish-plan artifacts under `content/runs/`.
 They are planning artifacts for active exploration. Default dry-runs do not
@@ -869,7 +885,7 @@ After local code changes, use:
 
 ```bash
 pnpm run check
-pnpm run runtime -- workspace status --state-root .runtime-state
+pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main
 pnpm run runtime -- service status --target im
 pnpm run runtime -- service health --target im

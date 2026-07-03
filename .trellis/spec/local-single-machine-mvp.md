@@ -55,6 +55,8 @@ Runtime control keeps core execution bounded:
 
 - context assembly
 - turn snapshots
+- grouped repo-local runtime workspace under `.runtime/` for interactive,
+  pipeline, and smoke state roots
 - tool contracts
 - path boundaries
 - side-effect labels

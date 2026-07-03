@@ -126,13 +126,13 @@ events when the registry snapshot is already current.
 Rebuild and query episode evidence:
 
 ```bash
-pnpm run runtime -- memory sync --state-root .runtime-state
-pnpm run runtime -- memory search --query "feishu" --state-root .runtime-state
-pnpm run runtime -- memory session --session session_... --state-root .runtime-state
-pnpm run runtime -- memory recap --session session_... --state-root .runtime-state
-pnpm run runtime -- memory archive --state-root .runtime-state
-pnpm run runtime -- memory archives --state-root .runtime-state
-pnpm run runtime -- memory archive-health --state-root .runtime-state
+pnpm run runtime -- memory sync --state-root .runtime/state
+pnpm run runtime -- memory search --query "feishu" --state-root .runtime/state
+pnpm run runtime -- memory session --session session_... --state-root .runtime/state
+pnpm run runtime -- memory recap --session session_... --state-root .runtime/state
+pnpm run runtime -- memory archive --state-root .runtime/state
+pnpm run runtime -- memory archives --state-root .runtime/state
+pnpm run runtime -- memory archive-health --state-root .runtime/state
 ```
 
 The MemoryStore index is local and rebuildable. It does not replace the episode
@@ -360,8 +360,8 @@ or command strings, and it does not replay or authorize another execution.
 Inspect memory proposal candidates without promotion:
 
 ```bash
-pnpm run runtime -- memory candidates --state-root .runtime-state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime-state
+pnpm run runtime -- memory candidates --state-root .runtime/state
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/memory candidates` and
@@ -372,8 +372,8 @@ request confirmations, or write the active vault.
 Accept a reviewed memory candidate through an explicit local confirmation gate:
 
 ```bash
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime-state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime-state
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime/state
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime/state
 ```
 
 The request step writes a pending confirmation and marks the candidate as
@@ -388,8 +388,8 @@ revise skills, call the model, or publish externally.
 Inspect memory candidate confirmations:
 
 ```bash
-pnpm run runtime -- memory confirmations --state-root .runtime-state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime-state
+pnpm run runtime -- memory confirmations --state-root .runtime/state
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/memory confirmations` and
@@ -402,8 +402,8 @@ channel operator artifacts.
 Inspect accepted semantic memory:
 
 ```bash
-pnpm run runtime -- memory accepted --state-root .runtime-state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/semantic_memory_123.json --state-root .runtime-state
+pnpm run runtime -- memory accepted --state-root .runtime/state
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/semantic_memory_123.json --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/memory accepted` and
@@ -414,7 +414,7 @@ MemoryStore indexes, write state, or call the model.
 Inspect aggregate governance status:
 
 ```bash
-pnpm run runtime -- governance status --state-root .runtime-state
+pnpm run runtime -- governance status --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/governance` and
@@ -431,7 +431,7 @@ render raw artifacts, run shell commands, or call the model.
 Inspect effective runtime config without reading secrets:
 
 ```bash
-pnpm run runtime -- config --state-root .runtime-state
+pnpm run runtime -- config --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/config`, `/runtime config`, and
@@ -446,7 +446,7 @@ or restart the service.
 Inspect SOP and skill evolution across local state and the active vault:
 
 ```bash
-pnpm run runtime -- governance evolution --state-root .runtime-state
+pnpm run runtime -- governance evolution --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/evolution` and
@@ -479,9 +479,9 @@ or local operator commands.
 Run a proposal-only background review:
 
 ```bash
-pnpm run runtime -- review background --state-root .runtime-state
-pnpm run runtime -- review background --query "skill promotion" --state-root .runtime-state
-pnpm run runtime -- review background --session session_... --state-root .runtime-state
+pnpm run runtime -- review background --state-root .runtime/state
+pnpm run runtime -- review background --query "skill promotion" --state-root .runtime/state
+pnpm run runtime -- review background --session session_... --state-root .runtime/state
 ```
 
 Background review writes `autonomy/reviews/*.json` and `autonomy/reviews/*.md`
@@ -496,8 +496,8 @@ decision.
 Inspect recent background review reports without rerunning background review:
 
 ```bash
-pnpm run runtime -- review reports --state-root .runtime-state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime-state
+pnpm run runtime -- review reports --state-root .runtime/state
+pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/review reports` and
@@ -510,7 +510,7 @@ vault, or call the model.
 Plan follow-up actions for one review proposal without executing them:
 
 ```bash
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime-state
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
 ```
 
 This command returns a dry-run plan with suggested actions, optional commands,
@@ -524,7 +524,7 @@ evidence.
 Execute a read-only follow-up action:
 
 ```bash
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
 ```
 
 This command recomputes the dry-run plan and executes only a selected
@@ -535,7 +535,7 @@ audit, promote, revise a skill, collect evidence, or rerun background review.
 Run one self-evolution review tick:
 
 ```bash
-pnpm run runtime -- review tick --query "skill promotion" --state-root .runtime-state
+pnpm run runtime -- review tick --query "skill promotion" --state-root .runtime/state
 ```
 
 This command runs background review, plans follow-up actions for each proposal,
@@ -573,26 +573,26 @@ Inspect completion verification history without reading raw completion
 artifacts:
 
 ```bash
-pnpm run runtime -- review completions --state-root .runtime-state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime-state
-pnpm run runtime -- review traces --state-root .runtime-state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime-state
-pnpm run runtime -- review replay-audit --trace completion_verification_... --state-root .runtime-state
-pnpm run runtime -- review replays --state-root .runtime-state
-pnpm run runtime -- review replays --replay harness_replay_... --state-root .runtime-state
+pnpm run runtime -- review completions --state-root .runtime/state
+pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
+pnpm run runtime -- review traces --state-root .runtime/state
+pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
+pnpm run runtime -- review replay-audit --trace completion_verification_... --state-root .runtime/state
+pnpm run runtime -- review replays --state-root .runtime/state
+pnpm run runtime -- review replays --replay harness_replay_... --state-root .runtime/state
 ```
 
 Inspect selected-skill outcome history without reading raw skill or run
 artifacts:
 
 ```bash
-pnpm run runtime -- skills outcomes --state-root .runtime-state
-pnpm run runtime -- skills outcomes --outcome skill_usage_... --state-root .runtime-state
-pnpm run runtime -- skills health --state-root .runtime-state
-pnpm run runtime -- skills health --skill-name skill-name --state-root .runtime-state
-pnpm run runtime -- skills drifts --state-root .runtime-state
-pnpm run runtime -- skills drifts --skill-name skill-name --state-root .runtime-state
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime-state
+pnpm run runtime -- skills outcomes --state-root .runtime/state
+pnpm run runtime -- skills outcomes --outcome skill_usage_... --state-root .runtime/state
+pnpm run runtime -- skills health --state-root .runtime/state
+pnpm run runtime -- skills health --skill-name skill-name --state-root .runtime/state
+pnpm run runtime -- skills drifts --state-root .runtime/state
+pnpm run runtime -- skills drifts --skill-name skill-name --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/skills` and
@@ -605,8 +605,8 @@ registry, write the active vault, run review, or render raw artifacts.
 Inspect recent review tick history without rerunning autonomous review:
 
 ```bash
-pnpm run runtime -- review ticks --state-root .runtime-state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime-state
+pnpm run runtime -- review ticks --state-root .runtime/state
+pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/review ticks` and
@@ -630,10 +630,10 @@ or execute the focused follow-up.
 Inspect or gate an inbox item:
 
 ```bash
-pnpm run runtime -- review inbox --state-root .runtime-state
-pnpm run runtime -- review inbox --item review_inbox_... --state-root .runtime-state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root .runtime-state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime-state
+pnpm run runtime -- review inbox --state-root .runtime/state
+pnpm run runtime -- review inbox --item review_inbox_... --state-root .runtime/state
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root .runtime/state
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
 ```
 
 The inbox request path reads the current inbox item, recomputes the referenced
@@ -668,7 +668,7 @@ command.
 Request confirmation for a mutation follow-up action:
 
 ```bash
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
 ```
 
 This command recomputes the dry-run plan, selects a mutation action by stable
@@ -680,9 +680,9 @@ active vault, or execute the selected action.
 Inspect follow-up confirmations:
 
 ```bash
-pnpm run runtime -- review confirmations --state-root .runtime-state
-pnpm run runtime -- review confirmations --gate stale --state-root .runtime-state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime-state
+pnpm run runtime -- review confirmations --state-root .runtime/state
+pnpm run runtime -- review confirmations --gate stale --state-root .runtime/state
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
 ```
 
 Feishu private chat also supports read-only `/review confirmations` and
@@ -696,7 +696,7 @@ artifacts.
 Execute a confirmed mutation follow-up:
 
 ```bash
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime-state
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
 ```
 
 This command reads a pending confirmation request, recomputes the follow-up
@@ -717,7 +717,7 @@ telemetry, but both paths stay validation-only.
 Create a state-only SOP draft from an eligible proposal:
 
 ```bash
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime-state
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
 ```
 
 This command writes `sop/drafts/*.json` and `sop/drafts/*.md` under the selected
@@ -738,7 +738,7 @@ run the command.
 Request a confirmation for the current SOP chain next command:
 
 ```bash
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
 ```
 
 The request writes a pending confirmation under `autonomy/followups/` and
@@ -789,7 +789,7 @@ the decision.
 Audit a state-only SOP draft:
 
 ```bash
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
 ```
 
 This command reads `sop/drafts/*.json`, writes `governance/audits/*.json`, and
@@ -799,7 +799,7 @@ repository, write the active vault, or create a skill package.
 Promote an audited state-only SOP draft into the local active vault:
 
 ```bash
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime-state
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
 ```
 
 This command requires a matching `promote` audit verdict and checks recalled
@@ -811,7 +811,7 @@ evidence. It does not write repository seed vaults or publish externally.
 Rehearse the full SOP promotion/reuse path in a sandbox:
 
 ```bash
-pnpm run runtime -- review rehearse-sop-loop --state-root .runtime-state
+pnpm run runtime -- review rehearse-sop-loop --state-root .runtime/state
 ```
 
 This command is an explicit local acceptance gate. It creates a sandbox repo,
@@ -827,8 +827,8 @@ commands, or execute from Feishu.
 Inspect active-vault skill registry events directly:
 
 ```bash
-pnpm run runtime -- skills events --state-root .runtime-state
-pnpm run runtime -- skills events --event skill_event_... --state-root .runtime-state
+pnpm run runtime -- skills events --state-root .runtime/state
+pnpm run runtime -- skills events --event skill_event_... --state-root .runtime/state
 ```
 
 This command reads the configured active-vault
@@ -839,7 +839,7 @@ do not correspond to a skill package rewrite.
 Close a historical orphan skill registry event explicitly:
 
 ```bash
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime-state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
 ```
 
 This command appends a bounded `retired` event to
@@ -851,7 +851,7 @@ event, invoke the model, or run shell commands.
 Inspect a SOP self-evolution chain:
 
 ```bash
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime-state
+pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
 ```
 
 This command reads the state SOP draft and append-only episode event log, then

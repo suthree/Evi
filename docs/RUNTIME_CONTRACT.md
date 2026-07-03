@@ -2375,56 +2375,64 @@ Target first-version commands:
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime-state
-pnpm run runtime -- live --query-todo --task "..." --state-root .runtime-state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime-stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime-state
-pnpm run runtime -- pipeline runs --state-root .runtime-state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime-state
-pnpm run runtime -- im serve --scenario im-default --state-root .runtime-state
+pnpm run runtime -- config --state-root .runtime/state
+pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
+pnpm run runtime -- pipeline runs --state-root .runtime/state
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
+pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime-state
-pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|working|candidates|confirmations|accepted --state-root .runtime-state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime-state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime-state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime-state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime-state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime-state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime-state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime-state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime-state
-pnpm run runtime -- review background --state-root .runtime-state
-pnpm run runtime -- review reports --state-root .runtime-state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime-state
-pnpm run runtime -- review completions --state-root .runtime-state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime-state
-pnpm run runtime -- review traces --state-root .runtime-state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime-state
-pnpm run runtime -- review tick --state-root .runtime-state
-pnpm run runtime -- review ticks --state-root .runtime-state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime-state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime-state
-pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root .runtime-state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime-state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime-state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime-state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime-state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime-state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime-state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime-state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime-state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime-state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime-state
-pnpm run runtime -- show-events --state-root .runtime-state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
+pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|working|candidates|confirmations|accepted --state-root .runtime/state
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
+pnpm run runtime -- review background --state-root .runtime/state
+pnpm run runtime -- review reports --state-root .runtime/state
+pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
+pnpm run runtime -- review completions --state-root .runtime/state
+pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
+pnpm run runtime -- review traces --state-root .runtime/state
+pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
+pnpm run runtime -- review tick --state-root .runtime/state
+pnpm run runtime -- review ticks --state-root .runtime/state
+pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
+pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root .runtime/state
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
+pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
+pnpm run runtime -- show-events --state-root .runtime/state
 ```
 
 Implementation note: the core-tool surface and IM command surface match this
 first-version command contract.
+
+Repo-local runtime artifacts should stay under `.runtime/`: `.runtime/state`
+for default interactive state, `.runtime/stage` for pipeline experiments, and
+`.runtime/smoke/<name>` for one-off smoke runs. Historical top-level
+`.runtime-*` directories are legacy ignored local artifacts, not the preferred
+shape for new commands or docs. Resident service state keeps its existing
+checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime` unless
+an operator explicitly passes `--state-root`.
 
 ## Explicit Non-Goals
 
