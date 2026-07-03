@@ -3167,6 +3167,99 @@ test("live runner injects bounded episode recall into model context", async () =
   }
 });
 
+test("live runner narrows episode recall after recall pressure", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    await fixture.store.writeJson("memory/episodes/session_pressure-context.json", {
+      version: 1,
+      created_at: "2026-07-01T00:00:00Z",
+      session_id: "session_pressure",
+      turn_id: "turn_pressure",
+      total_chars: 52000,
+      section_count: 1,
+      sections: [{
+        title: "Episode Recall",
+        chars: 26000,
+        refs: ["memory/episodes/older-final-response.md"],
+        item_count: 4
+      }],
+      recall: {
+        memory_hit_count: 4,
+        memory_refs: ["memory/episodes/older-final-response.md"],
+        skill_ref_count: 0,
+        skill_refs: [],
+        archive_ref_count: 0,
+        archive_refs: [],
+        opportunity_ref_count: 0,
+        opportunity_refs: [],
+        discipline_active: false
+      }
+    });
+    await fixture.store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_older_feishu_heartbeat",
+      session_id: "session_older",
+      turn_id: "turn_older",
+      kind: "report",
+      summary: "Older Feishu heartbeat restart evidence should be skipped under pressure.",
+      artifact_refs: ["memory/episodes/older-final-response.md"],
+      created_at: "2026-06-28T00:00:00Z"
+    });
+    await fixture.store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_latest_feishu_heartbeat",
+      session_id: "session_latest",
+      turn_id: "turn_latest",
+      kind: "report",
+      summary: "Prior Feishu heartbeat restart fixed duplicate status drift.",
+      artifact_refs: ["memory/episodes/latest-final-response.md"],
+      created_at: "2026-06-29T00:00:00Z"
+    });
+    await fixture.store.writeText(
+      "memory/episodes/older-final-response.md",
+      "RAW_OLDER_FINAL_RESPONSE_SHOULD_NOT_BE_DUMPED"
+    );
+    await fixture.store.writeText(
+      "memory/episodes/latest-final-response.md",
+      "RAW_LATEST_FINAL_RESPONSE_SHOULD_NOT_BE_DUMPED"
+    );
+
+    const model = new EpisodeRecallAwareModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Use Feishu heartbeat restart duplicate status drift evidence before answering.");
+    const context = await readFile(join(fixture.stateRoot, result.context_ref), "utf8");
+    const manifest = JSON.parse(await readFile(join(fixture.stateRoot, result.context_manifest_ref ?? ""), "utf8")) as {
+      recall: { memory_hit_count: number; memory_refs: string[] };
+      sections: Array<{ title: string; refs: string[]; item_count: number }>;
+    };
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const limitEvent = events.find((event) => String(event.summary).includes("Limited episode recall to 1"));
+
+    assert.equal(model.sawEpisodeRecall, true);
+    assert.match(context, /Prior Feishu heartbeat restart fixed duplicate status drift/);
+    assert.doesNotMatch(context, /Older Feishu heartbeat restart evidence should be skipped under pressure/);
+    assert.doesNotMatch(context, /RAW_OLDER_FINAL_RESPONSE_SHOULD_NOT_BE_DUMPED/);
+    assert.doesNotMatch(context, /RAW_LATEST_FINAL_RESPONSE_SHOULD_NOT_BE_DUMPED/);
+    assert.equal(manifest.recall.memory_hit_count, 1);
+    assert.deepEqual(manifest.recall.memory_refs, ["evidence_latest_feishu_heartbeat"]);
+    assert.deepEqual(
+      manifest.sections.find((section) => section.title === "Episode Recall")?.refs,
+      ["memory/episodes/latest-final-response.md"]
+    );
+    assert.ok(limitEvent);
+    assert.equal((limitEvent?.artifact_refs as string[]).includes("memory/episodes/session_pressure-context.json"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner injects bounded task references into model context", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");

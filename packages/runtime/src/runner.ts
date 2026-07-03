@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { auditSop } from "../../core/src/audit.js";
 import { buildTurnSnapshot, renderContextBundleWithManifest, type MemoryRecallHit } from "../../core/src/context.js";
+import { listContextPressure } from "../../core/src/context_pressure.js";
 import { formatSopMarkdown } from "../../core/src/formatters.js";
 import { newId, slugify, utcNow } from "../../core/src/ids.js";
 import { MemoryStore, type EpisodeSearchHit } from "../../core/src/memory_store.js";
@@ -112,6 +113,9 @@ interface DisciplineRefs {
 
 type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
 
+const DEFAULT_EPISODE_RECALL_LIMIT = 4;
+const PRESSURE_EPISODE_RECALL_LIMIT = 1;
+
 interface TodoStep {
   id: string;
   text: string;
@@ -126,6 +130,12 @@ interface DisciplineProgress {
   steps: TodoStep[];
   iteration_log: string[];
   supervisor_notes: string[];
+}
+
+interface EpisodeRecallPlan {
+  limit: number;
+  reason: "default" | "prior_context_pressure";
+  pressure_ref?: string;
 }
 
 export class LiveAgentRunner {
@@ -174,7 +184,8 @@ export class LiveAgentRunner {
     await this.store.appendJsonl("autonomy/opportunities.jsonl", opportunity);
 
     const recalledSkills = await recallSkills(this.store, task, 2, this.config.vault);
-    const recalledEpisodes = await recallEpisodeMemory(this.store, task, 4);
+    const episodeRecallPlan = await resolveEpisodeRecallPlan(this.store);
+    const recalledEpisodes = await recallEpisodeMemory(this.store, task, episodeRecallPlan.limit);
     const snapshot = await buildTurnSnapshot(this.store, trigger, task, opportunity, {
       memory_hits: recalledEpisodes,
       skill_refs: recalledSkills.map((skill) => skill.instructions_ref),
@@ -241,6 +252,21 @@ export class LiveAgentRunner {
       });
       evidenceRefs.push(recallEvent.id);
       await this.store.appendJsonl("memory/episodes/events.jsonl", recallEvent);
+    }
+    if (episodeRecallPlan.reason === "prior_context_pressure") {
+      const recallLimitEvent = evidenceEventSchema.parse({
+        session_id: snapshot.session_id,
+        turn_id: snapshot.id,
+        kind: "report",
+        summary: `Limited episode recall to ${episodeRecallPlan.limit} hit(s) due to prior context pressure.`,
+        artifact_refs: compactRefs([
+          contextRef,
+          contextManifestRef,
+          episodeRecallPlan.pressure_ref
+        ])
+      });
+      evidenceRefs.push(recallLimitEvent.id);
+      await this.store.appendJsonl("memory/episodes/events.jsonl", recallLimitEvent);
     }
 
     let modelResponseRef = "";
@@ -1528,6 +1554,21 @@ async function recallEpisodeMemory(store: AgentStore, task: string, limit: numbe
   } finally {
     memory.close();
   }
+}
+
+async function resolveEpisodeRecallPlan(store: AgentStore): Promise<EpisodeRecallPlan> {
+  const pressure = (await listContextPressure(store, { limit: 1 })).pressures[0] ?? null;
+  if (pressure?.operator_guidance.mitigation_kind === "reduce_episode_recall") {
+    return {
+      limit: PRESSURE_EPISODE_RECALL_LIMIT,
+      reason: "prior_context_pressure",
+      pressure_ref: pressure.ref
+    };
+  }
+  return {
+    limit: DEFAULT_EPISODE_RECALL_LIMIT,
+    reason: "default"
+  };
 }
 
 function memoryHitForContext(hit: EpisodeSearchHit): MemoryRecallHit {

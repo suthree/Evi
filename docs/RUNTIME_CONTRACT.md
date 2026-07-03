@@ -2037,8 +2037,11 @@ Required policy:
   mitigation, and retire-historical decision commands
 - operator guidance may identify a suggested mitigation kind such as reducing
   episode recall, narrowing selected skills, or rebalancing context sections,
-  but it must not execute that mitigation
-- future mitigation commands must be introduced as explicit CLI commands with
+  but the read-only pressure command must not execute that mitigation
+- the live runner may consume the latest non-ok `reduce_episode_recall`
+  guidance as a fixed attention guard by lowering the next episode recall cap
+  from 4 hits to 1 hit and recording bounded evidence
+- other mitigation commands must be introduced as explicit CLI commands with
   focused tests before they can change context assembly
 - context, governance status, Opportunity Backlog, Feishu `/context pressure`,
   and Feishu `/opportunities` may render bounded pressure metadata
@@ -2046,8 +2049,8 @@ Required policy:
   `context_pressure` backlog items
 - no raw context Markdown rendering
 - no prompt/model/tool artifact reads
-- no context compaction, transcript rewriting, context assembly rewrite, state
-  repair, or automatic rerun
+- no context compaction, transcript rewriting, broad context assembly rewrite,
+  state repair, or automatic rerun
 - no state writes beyond explicit opportunity decisions; completed or retired
   context pressure means the operator has verified an external mitigation or
   historical status, not that this read model changed context artifacts

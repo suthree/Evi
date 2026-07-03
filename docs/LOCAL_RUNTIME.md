@@ -474,6 +474,13 @@ metadata, and checkpoint metadata. It does not render on quiet first turns, read
 raw context Markdown or raw artifacts, compact context, invoke tools, or
 authorize mutation.
 
+When the latest context pressure guidance identifies `reduce_episode_recall`,
+the live runner narrows the next episode recall injection cap from 4 hits to 1
+hit and records a bounded evidence event. This is a fixed attention guard, not
+automatic compaction: it does not rewrite prior context artifacts, delete
+memory, rebuild the index, read raw context Markdown, or change selected-skill
+recall.
+
 Context manifest sidecar health is exposed through `context health` and Feishu
 `/context health`. It reads `memory/episodes` manifest JSON refs and file
 names only, reports invalid manifests, missing `*-context.md` sidecars, and

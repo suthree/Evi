@@ -2481,3 +2481,16 @@ request `sent` or `failed`.
 This does not introduce provider-first `feishu` CLI commands, group chat sends,
 interactive cards, remote Feishu queueing, direct CLI sends, or a general
 external notification API.
+
+## 2026-07-03 Pressure-Aware Episode Recall Limit
+
+GA-style attention control should feed back into the next model step, not only
+appear as diagnostics. When the latest context pressure metadata says the
+largest pressure is episode recall, the live runner may reduce the next episode
+recall injection cap from four hits to one hit.
+
+This is a narrow attention guard. It reads only context manifest metadata via
+the existing context-pressure read model, records a bounded evidence event, and
+does not compact context, rewrite previous artifacts, delete memory, rebuild the
+episode index, change selected-skill recall, or introduce a general context
+rewriter.
