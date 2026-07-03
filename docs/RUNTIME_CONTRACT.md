@@ -2415,6 +2415,8 @@ pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
 pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
+pnpm run runtime -- workspace status --state-root .runtime/state
+pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
 pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
