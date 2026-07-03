@@ -135,6 +135,14 @@ test("workspace status command parses read-only git diagnostic options", () => {
   const defaultAction = parseArgs(["workspace", "--state-root", ".runtime-state"]);
   assert.equal(defaultAction.command, "workspace");
   assert.equal(defaultAction.workspaceAction, undefined);
+
+  const runtime = parseArgs(["workspace", "runtime", "--repo-root", "/repo/local-runtime"]);
+  assert.equal(runtime.command, "workspace");
+  assert.equal(runtime.workspaceAction, "runtime");
+  assert.equal(runtime.repoRoot, "/repo/local-runtime");
+
+  const runtimeAlias = parseArgs(["workspace", "runtime-status"]);
+  assert.equal(runtimeAlias.workspaceAction, "runtime");
 });
 
 test("notify command parses operator notification queue and list options", () => {

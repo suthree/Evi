@@ -182,6 +182,12 @@ for default interactive state, `.runtime/stage` for pipeline experiments, and
 directories are legacy ignored local artifacts and should not be used for new
 examples.
 
+Inspect current repo-local runtime workspace hygiene:
+
+```bash
+pnpm run runtime -- workspace runtime --state-root .runtime/state
+```
+
 Live task text may include bounded repo references such as
 `@file:docs/RUNTIME_CONTRACT.md:120-160` or `@folder:docs`. These become a
 `Task References` context section and stay repo-local/read-only.

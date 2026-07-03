@@ -192,6 +192,14 @@ bounded path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 
+The CLI also exposes `workspace runtime` as a read-only repo-local runtime
+workspace diagnostic. It may scan only top-level directory names under the
+configured repo root, report legacy `.runtime-*` and `.runtime_*` directories,
+and recommend targets under `.runtime/state`, `.runtime/stage`,
+`.runtime/smoke/<name>`, or `.runtime/legacy/<name>`. It must not read file
+bodies, move, delete, migrate, mutate state, accept shell text, invoke the
+model, write the repo, or write the active vault.
+
 ### Capability Catalog Read Model
 
 The capability catalog is a local truth source for answering what this runtime

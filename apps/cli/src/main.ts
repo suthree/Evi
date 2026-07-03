@@ -54,6 +54,7 @@ import {
   listWorkingCheckpoints
 } from "../../../packages/core/src/working_checkpoints.js";
 import { getSessionRecap } from "../../../packages/core/src/session_recap.js";
+import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_workspace.js";
 import { getWorkspaceStatus } from "../../../packages/core/src/workspace_status.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
 import { getServiceHealth } from "../../../packages/core/src/service_health.js";
@@ -147,7 +148,7 @@ interface CliOptions {
   imAction?: "serve";
   serviceAction?: ServiceAction | "health";
   capabilitiesAction?: "catalog" | "acceptance";
-  workspaceAction?: "status";
+  workspaceAction?: "status" | "runtime";
   notifyAction?: "queue" | "list";
   notifyOpenId?: string;
   notifyText?: string;
@@ -315,6 +316,11 @@ export async function main(): Promise<number> {
       skipAuth: true
     });
     const store = new AgentStore(resolve(options.repoRoot), config.state.root);
+    if (options.workspaceAction === "runtime") {
+      const result = await getRuntimeWorkspaceStatus(store);
+      console.log(JSON.stringify({ action: "runtime", ...result }, null, 2));
+      return result.status === "error" ? 1 : 0;
+    }
     const result = await getWorkspaceStatus(store, { limit: options.limit });
     console.log(JSON.stringify({ action: options.workspaceAction ?? "status", ...result }, null, 2));
     return result.status === "error" ? 1 : 0;
@@ -1394,6 +1400,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
+    else if (options.command === "workspace" && (arg === "runtime" || arg === "runtime-status")) options.workspaceAction = "runtime";
     else if (options.command === "notify" && (arg === "queue" || arg === "list")) options.notifyAction = arg;
     else if (options.command === "memory" && isMemoryAction(arg)) options.memoryAction = arg;
     else if (options.command === "pipeline" && (arg === "runs" || arg === "resume")) options.pipelineAction = arg;
@@ -1871,6 +1878,7 @@ function printUsage(): void {
   pnpm run runtime -- im serve [--scenario im-default] [--channel feishu-main] [--config-dir config] [--state-root .runtime-state] [--runtime-build <path>] [--query-todo]
   pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target im] [--scenario im-default] [--channel feishu-main] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime-state]
+  pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime-state]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- notify list [--status queued|sent|failed] [--limit 20] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md] [--action list|validate|sync|health|retire-event]

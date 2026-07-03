@@ -75,6 +75,7 @@ pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runt
 pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
 pnpm run runtime -- workspace status --state-root .runtime/state
+pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
 pnpm run runtime -- skills health [--skill-name skill-name] --state-root .runtime/state
@@ -1038,6 +1039,12 @@ diagnostic for the configured repo root. They summarize branch, upstream,
 ahead/behind, dirty-file counts, and bounded path/status entries. They do not
 read file bodies, stage, commit, reset, checkout, mutate state, invoke the
 model, write the repo, or write the active vault.
+`workspace runtime` is the companion repo-local runtime workspace diagnostic.
+It scans top-level directory names only, reports legacy `.runtime-*` and
+`.runtime_*` directories, and recommends `.runtime/state`, `.runtime/stage`,
+`.runtime/smoke/<name>`, or `.runtime/legacy/<name>` targets. It does not read
+file bodies, move, delete, mutate state, invoke the model, write the repo, or
+write the active vault.
 Live context includes the same bounded `Workspace Status` section so the agent
 can see checkout cleanliness before proposing repo edits. The section is
 orientation only: a clean workspace does not prove resident service deployment,

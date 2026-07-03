@@ -695,11 +695,11 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "workspace.status",
         title: "Workspace status",
-        summary: "Read the current repo branch, ahead/behind state, and bounded dirty-file summary through a fixed git status diagnostic.",
+        summary: "Read the current repo branch, ahead/behind state, bounded dirty-file summary, and repo-local runtime workspace hygiene.",
         status: "implemented",
-        commands: ["pnpm run runtime -- workspace status", "/workspace"],
-        refs: ["packages/core/src/workspace_status.ts"],
-        boundaries: ["runs fixed `git status --porcelain=v1 -b` only; does not accept shell text, read file bodies, stage, commit, reset, checkout, or mutate state"]
+        commands: ["pnpm run runtime -- workspace status", "pnpm run runtime -- workspace runtime", "/workspace"],
+        refs: ["packages/core/src/workspace_status.ts", "packages/core/src/runtime_workspace.ts"],
+        boundaries: ["runs fixed `git status --porcelain=v1 -b` for git status and scans top-level directory names for runtime workspace hygiene; does not accept shell text, read file bodies, stage, commit, reset, checkout, move, delete, or mutate state"]
       },
       {
         id: "feishu.private_chat",

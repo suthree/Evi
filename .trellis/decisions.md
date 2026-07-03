@@ -2512,3 +2512,16 @@ This ranking feedback must not read raw prior context Markdown, final
 responses, completion Markdown, model prompts, tool results, or unselected
 skill bodies. It must not revise, retire, or rewrite skills, mutate registry
 metadata, execute governance actions, or create confirmations.
+
+## 2026-07-03 Runtime Workspace Hygiene Diagnostic
+
+Repo-local runtime state should be discoverable without deleting historical
+ignored artifacts. `workspace runtime` may report top-level legacy `.runtime-*`
+and `.runtime_*` directories and recommend targets under the unified
+`.runtime/` workspace.
+
+This diagnostic is intentionally read-only. It scans directory names only and
+does not read file bodies, move or delete local state, mutate state, invoke the
+model, write the repo, or write the active vault. Actual migration remains an
+operator action because legacy runtime directories can contain local evidence
+or smoke artifacts that should not be discarded automatically.

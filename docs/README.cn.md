@@ -63,6 +63,8 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 `.runtime/state` 是默认交互状态根，`.runtime/stage` 可用于 pipeline
 实验，`.runtime/smoke/<name>` 用于一次性 smoke。旧的顶层
 `.runtime-*` 目录只是历史本地产物或临时 smoke，不应继续新增。
+可以用 `pnpm run runtime -- workspace runtime --state-root .runtime/state`
+只读检查当前 checkout 里还有哪些 legacy runtime 目录以及推荐归档目标。
 
 管理本地 resident IM 服务：
 
