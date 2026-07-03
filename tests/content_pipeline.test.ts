@@ -389,7 +389,7 @@ test("content live-source draft strips HTML navigation and localizes market line
                   lastSalePrice: "$198.15",
                   netChange: "-1.94",
                   percentageChange: "-0.97%",
-                  lastTradeTimestamp: "Jul 1, 2026 4:35 AM ET",
+                  lastTradeTimestamp: recentIso(1),
                   volume: "371,773.957610"
                 },
                 marketStatus: "Pre-Market"
