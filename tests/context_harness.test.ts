@@ -232,7 +232,9 @@ test("compact GA plan audit rejects keep one failure condition per completion se
         evidence_needed: [],
         reject_if: [
           "a narrow command is used to prove a broader capability claim",
-          "expert advice replaces executed verification"
+          "expert advice replaces executed verification",
+          "verification commands are listed without claim coverage",
+          "a required verification entrypoint is omitted from outcome claim coverage"
         ]
       },
       {
@@ -246,7 +248,7 @@ test("compact GA plan audit rejects keep one failure condition per completion se
         ]
       }
     ]
-  }), "goal_scope=success criteria only describe the completed source artifact; current_state=older memory is the only evidence; verification_scope=a narrow command is used to prove a broader capability claim; learning_persistence=dream, SOP, skill, or memory artifacts are treated as completion proof");
+  }), "goal_scope=success criteria only describe the completed source artifact; current_state=older memory is the only evidence; verification_scope=a required verification entrypoint is omitted from outcome claim coverage; learning_persistence=dream, SOP, skill, or memory artifacts are treated as completion proof");
 });
 
 test("compact GA plan stage exits keep every core and basic stage", () => {
@@ -1219,7 +1221,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,outcome_verification_command_coverage/);
     assert.match(rendered.markdown, /audit: goal_scope,current_state,verification_scope,learning_persistence/);
     assert.match(rendered.markdown, /audit_require: goal_scope=Preserve the latest operator objective and do not redefine success around completed work.; current_state=Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.; verification_scope=Match verification evidence to the scope of the completion claim.; learning_persistence=Record the verified outcome before reusing the slice as future GA design evidence./);
-    assert.match(rendered.markdown, /audit_reject: goal_scope=success criteria only describe the completed source artifact; current_state=older memory is the only evidence; verification_scope=a narrow command is used to prove a broader capability claim; learning_persistence=dream, SOP, skill, or memory artifacts are treated as completion proof/);
+    assert.match(rendered.markdown, /audit_reject: goal_scope=success criteria only describe the completed source artifact; current_state=older memory is the only evidence; verification_scope=a required verification entrypoint is omitted from outcome claim coverage; learning_persistence=dream, SOP, skill, or memory artifacts are treated as completion proof/);
     assert.match(rendered.markdown, /acceptance: goal_scope: operator goal is restated with owner surface, source of truth, and success evidence \| current_state: capability layer stays core_runtime or basic_entrypoint before implementation \| verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims \| learning_persistence: outcome is recorded before reuse \| goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact \| current_state: external adapters remain application slices unless a reusable runtime contract is named/);
     assert.match(rendered.markdown, /next_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --state-root <state-root>/);
     assert.doesNotMatch(rendered.markdown, /bounded outcome record/);

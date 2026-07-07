@@ -1573,8 +1573,19 @@ export function compactGaPlanAuditRejects(
   plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
   return plan.completion_audit_seeds
-    .map((seed) => `${seed.id}=${seed.reject_if[0] ?? "unknown"}`)
+    .map((seed) => `${seed.id}=${compactGaPlanAuditReject(seed)}`)
     .join("; ");
+}
+
+function compactGaPlanAuditReject(
+  seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
+): string {
+  if (seed.id === "verification_scope") {
+    return seed.reject_if.find((reject) => reject.includes("required verification entrypoint"))
+      ?? seed.reject_if[0]
+      ?? "unknown";
+  }
+  return seed.reject_if[0] ?? "unknown";
 }
 
 export function compactGaPlanStageExitCriteria(

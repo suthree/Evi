@@ -613,6 +613,9 @@ It may also render `audit_reject` with one reject condition per seed, so copied
 success criteria, stale memory, narrow verification, and premature SOP/skill/
 memory/dream promotion remain visible as false-completion cases without
 replacing the authoritative iteration audit.
+For `verification_scope`, that compact reject prefers the required
+verification-entrypoint claim-coverage failure when present, so handoff does
+not hide an omitted entrypoint.
 Use `governance project-design --audit-seed <seed-id>` to inspect one seed as a
 small read-only packet. It is a basic entrypoint for completion review, not an
 audit runner or outcome writer.

@@ -573,6 +573,9 @@ Required policy:
 - Compact `audit_reject` must preserve one reject condition for every
   completion audit seed, so false-completion failure modes stay visible during
   handoff without replacing the authoritative iteration audit
+- For `verification_scope`, compact `audit_reject` should prefer the required
+  verification-entrypoint claim-coverage reject when present, so handoff keeps
+  the strongest missing-entrypoint failure visible
 - Compact `acceptance` must keep one criterion for every audit-seed label plus
   the fresh-successor and external-adapter boundary criteria, so core GA design
   handoff cannot hide copied slices or application-slice drift
