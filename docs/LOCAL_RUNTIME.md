@@ -107,7 +107,7 @@ pnpm run runtime -- governance record-iteration --from-project-design-plan --sta
 pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
 pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed all --state-root .runtime/state
 pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed verification_scope --state-root .runtime/state
-pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --state-root .runtime/state
+pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --implementation-scope "..." --deferred-scope "..." --delivery-standard "..." --reuse-open --state-root .runtime/state
 pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified --summary "..." --state-root .runtime/state
 pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_... --state-root .runtime/state
 pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] --state-root .runtime/state
@@ -213,6 +213,12 @@ The state root stores evidence, prompts, model responses, tool results,
 completion verification reports, channel events, daily episode archive
 summaries, working checkpoints, service heartbeat files, and pipeline
 artifacts.
+
+Repo-scoped tools treat `.runtime/`, `.runtime-*`, `.runtime_*`, and
+`.local-runtime*` as runtime state, not source files: `file.read` with
+`scope=repo`, `file.write_repo`, and `repo.search` do not use those paths.
+Use `file.read` with `scope=state`, `file.write_state`, or explicit
+`--state-root` commands for runtime artifacts.
 
 The resident runtime service remains separate by default: service lifecycle commands
 without `--state-root` use `<LOCAL_RUNTIME_HOME>/state/runtime`, so the

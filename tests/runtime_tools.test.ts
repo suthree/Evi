@@ -14,6 +14,9 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
   const fixture = await createFixture();
   try {
     await writeFile(join(fixture.repoRoot, "notes.md"), "hello repo", "utf8");
+    await mkdir(join(fixture.repoRoot, ".runtime/state"), { recursive: true });
+    await writeFile(join(fixture.repoRoot, ".runtime/state/trace.txt"), "runtime trace", "utf8");
+    await writeFile(join(fixture.stateRoot, "trace.txt"), "state trace", "utf8");
 
     const result = await executeTool(useTool("file.read", {
       scope: "repo",
@@ -32,6 +35,22 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
 
     assert.equal(invalid.ok, false);
     assert.match(invalid.summary, /relative/);
+
+    const runtimeRepoPath = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: ".runtime/state/trace.txt"
+    }), { store: fixture.store });
+
+    assert.equal(runtimeRepoPath.ok, false);
+    assert.match(runtimeRepoPath.summary, /repo-local runtime state/);
+
+    const stateScope = await executeTool(useTool("file.read", {
+      scope: "state",
+      path: "trace.txt"
+    }), { store: fixture.store });
+
+    assert.equal(stateScope.ok, true);
+    assert.equal(stateScope.output.text, "state trace");
   } finally {
     await fixture.cleanup();
   }
@@ -80,6 +99,24 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
     assert.equal(secretLike.ok, false);
     assert.match(secretLike.summary, /secret-like/);
+
+    const runtimeStatePath = await executeTool(useTool("file.write_repo", {
+      path: ".runtime/state/generated.txt",
+      text: "bad"
+    }), { store: fixture.store });
+
+    assert.equal(runtimeStatePath.ok, false);
+    assert.match(runtimeStatePath.summary, /repo-local runtime state/);
+
+    for (const path of [".runtime-smoke/generated.txt", ".runtime_stage/generated.txt"]) {
+      const runtimeSiblingPath = await executeTool(useTool("file.write_repo", {
+        path,
+        text: "bad"
+      }), { store: fixture.store });
+
+      assert.equal(runtimeSiblingPath.ok, false);
+      assert.match(runtimeSiblingPath.summary, /repo-local runtime state/);
+    }
   } finally {
     await fixture.cleanup();
   }
@@ -147,6 +184,29 @@ test("repo.search finds repo text with bounded output", async () => {
     assert.equal(matches.length, 2);
     assert.equal(matches.some((match) => match.path === "alpha.md"), true);
     assert.equal(matches.some((match) => match.path === "nested/beta.ts"), true);
+
+    await mkdir(join(fixture.repoRoot, ".runtime/state"), { recursive: true });
+    await writeFile(join(fixture.repoRoot, ".runtime/state/trace.txt"), "needle runtime", "utf8");
+
+    const broadAfterRuntime = await executeTool(useTool("repo.search", {
+      query: "needle",
+      path: ".",
+      globs: [".runtime/**"],
+      max_results: 10,
+      max_output_chars: 4000
+    }), { store: fixture.store });
+
+    assert.equal(broadAfterRuntime.ok, true);
+    const broadMatches = broadAfterRuntime.output.matches as Array<Record<string, unknown>>;
+    assert.equal(broadMatches.some((match) => String(match.path).startsWith(".runtime/")), false);
+
+    const runtimePath = await executeTool(useTool("repo.search", {
+      query: "needle",
+      path: ".runtime/state"
+    }), { store: fixture.store });
+
+    assert.equal(runtimePath.ok, false);
+    assert.match(runtimePath.summary, /repo-local runtime state/);
 
     const invalid = await executeTool(useTool("repo.search", {
       query: "needle",

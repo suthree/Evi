@@ -1833,6 +1833,13 @@ test("governance status command parses scoped status options", () => {
     "pnpm run check",
     "--non-goal",
     "no scheduler",
+    "--implementation-scope",
+    "change one runtime tool boundary",
+    "--deferred-scope",
+    "no external adapter",
+    "--delivery-standard",
+    "iteration audit can inspect the intended scope",
+    "--reuse-open",
     "--state-root",
     ".runtime/state"
   ]);
@@ -1846,6 +1853,10 @@ test("governance status command parses scoped status options", () => {
   assert.deepEqual(iteration.iterationEvidenceRefs, ["packages/core/src/self_evolution_scorecard.ts"]);
   assert.deepEqual(iteration.iterationVerificationCommands, ["pnpm run check"]);
   assert.deepEqual(iteration.iterationNonGoals, ["no scheduler"]);
+  assert.deepEqual(iteration.iterationImplementationScopes, ["change one runtime tool boundary"]);
+  assert.deepEqual(iteration.iterationDeferredScopes, ["no external adapter"]);
+  assert.deepEqual(iteration.iterationDeliveryStandards, ["iteration audit can inspect the intended scope"]);
+  assert.equal(iteration.iterationReuseOpen, true);
   assert.equal(iteration.stateRoot, ".runtime/state");
 
   const iterationFromPlan = parseArgs([

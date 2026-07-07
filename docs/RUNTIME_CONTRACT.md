@@ -1410,6 +1410,9 @@ Required policy:
 
 - reject absolute paths
 - reject `..`
+- for `repo` scope, reject repo-local runtime state paths such as `.runtime/`,
+  `.runtime-*`, `.runtime_*`, and `.local-runtime*`; use `state` scope for the
+  selected state root instead
 - enforce max chars
 - side effect: `none`
 
@@ -1434,6 +1437,9 @@ Required policy:
 - reject `..`
 - block `.git/`, `node_modules/`, secrets, generated dependency folders, and
   configured protected paths
+- block repo-local runtime state paths such as `.runtime/`, `.runtime-*`,
+  `.runtime_*`, and `.local-runtime*`; runtime artifacts must go through
+  `file.write_state` or explicit state-root commands
 - capture bounded fixed `workspace status` snapshots before and after the write
 - include only status, branch, ahead/behind, dirty counts, and bounded changed
   path/status entries in the tool result
@@ -1452,6 +1458,9 @@ Searches repository text.
 Required policy:
 
 - use `rg` when available
+- reject searches rooted inside repo-local runtime state paths such as
+  `.runtime/`, `.runtime-*`, `.runtime_*`, and `.local-runtime*`
+- exclude repo-local runtime state paths from broad repo searches
 - cap result count and output chars
 - allow include/exclude globs
 - side effect: `none`
@@ -3226,7 +3235,7 @@ pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|pro
 pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state
 pnpm run runtime -- governance project-design --audit-seed verification_scope --state-root .runtime/state
 pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
-pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --state-root .runtime/state
+pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --implementation-scope "..." --deferred-scope "..." --delivery-standard "..." --reuse-open --state-root .runtime/state
 pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
 pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed all --state-root .runtime/state
 pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed verification_scope --state-root .runtime/state

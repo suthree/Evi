@@ -59,7 +59,8 @@ async function runFileRead(args: Record<string, unknown>, context: ToolExecution
   const scope = stringValue(args.scope) || "repo";
   const relPath = stringValue(args.path);
   const maxChars = intValue(args.max_chars, 12000);
-  const invalid = validateRelativePath(relPath);
+  const invalid = validateRelativePath(relPath)
+    ?? (scope === "repo" ? validateRepoRuntimePath("file.read", relPath) : null);
   if (invalid) {
     return toolResult("file.read", false, invalid, { path: relPath }, "none");
   }
@@ -131,6 +132,10 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
   const invalid = validateRelativePath(searchPath);
   if (invalid) {
     return toolResult("repo.search", false, invalid, { path: searchPath }, "none");
+  }
+  const invalidRuntimePath = validateRepoRuntimePath("repo.search", searchPath);
+  if (invalidRuntimePath) {
+    return toolResult("repo.search", false, invalidRuntimePath, { path: searchPath }, "none");
   }
 
   const rgResult = await runRipgrep({
@@ -278,12 +283,31 @@ function validateRelativePath(path: string): string | null {
   return null;
 }
 
+function normalizeRelativePath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function repoRuntimePathRoot(path: string): string | null {
+  const first = normalizeRelativePath(path).split("/").filter(Boolean)[0] ?? "";
+  if (first === ".runtime" || first.startsWith(".runtime-") || first.startsWith(".runtime_") || first.startsWith(".local-runtime")) {
+    return first;
+  }
+  return null;
+}
+
+function validateRepoRuntimePath(tool: string, path: string): string | null {
+  const first = repoRuntimePathRoot(path);
+  return first ? `${tool} cannot access repo-local runtime state path: ${first}` : null;
+}
+
 function validateRepoWritePath(path: string): string | null {
-  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  const runtimePath = validateRepoRuntimePath("file.write_repo", path);
+  if (runtimePath) return runtimePath;
+  const normalized = normalizeRelativePath(path);
   const parts = normalized.split("/").filter(Boolean);
   const first = parts[0] ?? "";
   const base = basename(normalized);
-  if (first === ".git" || first === "node_modules" || first === "dist" || first.startsWith(".local-runtime")) {
+  if (first === ".git" || first === "node_modules" || first === "dist") {
     return `file.write_repo cannot write protected repository path: ${first}`;
   }
   if (base === ".env" || base.startsWith(".env.") || base.endsWith(".pem") || base.endsWith(".key")) {
@@ -361,13 +385,21 @@ function runRipgrep(options: {
     "--glob",
     "!node_modules/**",
     "--glob",
-    "!dist/**",
-    "--glob",
-    "!.local-runtime*/**"
+    "!dist/**"
   ];
   for (const glob of options.globs) {
     args.push("--glob", glob);
   }
+  args.push(
+    "--glob",
+    "!.runtime/**",
+    "--glob",
+    "!.runtime-*/**",
+    "--glob",
+    "!.runtime_*/**",
+    "--glob",
+    "!.local-runtime*/**"
+  );
   args.push("--", options.query, options.path);
 
   return new Promise((resolve) => {
@@ -466,6 +498,10 @@ function isIgnoredSearchPath(path: string): boolean {
   return path.startsWith(".git/")
     || path.startsWith("node_modules/")
     || path.startsWith("dist/")
+    || path === ".runtime"
+    || path.startsWith(".runtime/")
+    || path.startsWith(".runtime-")
+    || path.startsWith(".runtime_")
     || path.startsWith(".local-runtime");
 }
 

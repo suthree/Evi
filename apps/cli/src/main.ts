@@ -42,6 +42,7 @@ import {
   getGaProjectDesignReadModel,
   type GaProjectDesignArtifactPacket,
   type GaProjectDesignCompletionAuditSeed,
+  type GaProjectDesignImplementationContract,
   type GaProjectDesignPlanPacket,
   type GaProjectDesignReadModel
 } from "../../../packages/core/src/ga_project_design.js";
@@ -313,6 +314,10 @@ interface CliOptions {
   iterationVerificationCommands: string[];
   iterationVerificationClaims: string[];
   iterationNonGoals: string[];
+  iterationImplementationScopes: string[];
+  iterationDeferredScopes: string[];
+  iterationDeliveryStandards: string[];
+  iterationReuseOpen: boolean;
   iterationOutcomeStatus?: SelfEvolutionIterationOutcomeStatus;
   iterationMergeExistingOutcome?: boolean;
   iterationNextMoves: string[];
@@ -856,6 +861,32 @@ export function buildIterationAuditCompletionGate(
     status: blockers.length ? "blocked" : "ready_for_manual_review",
     blockers,
     boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, implementation contract coverage, outcome verification command coverage, outcome verification claim coverage, runtime attention outcome coverage, and workspace outcome coverage before manual review; does not approve seeds or prove completion"
+  };
+}
+
+function buildManualIterationImplementationContract(options: CliOptions): GaProjectDesignImplementationContract | undefined {
+  const hasContract =
+    options.iterationImplementationScopes.length > 0
+    || options.iterationDeferredScopes.length > 0
+    || options.iterationDeliveryStandards.length > 0;
+  if (!hasContract) return undefined;
+  if (!options.iterationImplementationScopes.length || !options.iterationDeferredScopes.length || !options.iterationDeliveryStandards.length) {
+    throw new Error("governance record-iteration implementation contract requires --implementation-scope, --deferred-scope, and --delivery-standard");
+  }
+  const proposedSlice = required(options.iterationProposedSlice, "governance record-iteration requires --proposed-slice");
+  const layer = required(options.iterationLayer, "governance record-iteration requires --layer");
+  const ownerSurface = required(options.iterationOwnerSurface, "governance record-iteration requires --owner-surface");
+  return {
+    proposed_slice: proposedSlice,
+    source_artifact_id: options.iterationSourceRef ?? "manual_record_iteration",
+    source_proposed_slice: options.iterationSourceRef ?? "manual_record_iteration",
+    selected_layer: layer,
+    owner_surface: ownerSurface,
+    improvement_type: "reusable_ga_design_contract",
+    implementation_scope: [...options.iterationImplementationScopes],
+    deferred_scope: [...options.iterationDeferredScopes],
+    delivery_standard: [...options.iterationDeliveryStandards],
+    boundary: "manual self-evolution implementation contract; records intended scope for audit only and does not execute commands, mutate repo files, promote learning artifacts, schedule experts, or prove completion"
   };
 }
 
@@ -2129,9 +2160,11 @@ export async function main(): Promise<number> {
         ownerSurface: required(options.iterationOwnerSurface, "governance record-iteration requires --owner-surface"),
         proposedSlice: required(options.iterationProposedSlice, "governance record-iteration requires --proposed-slice"),
         sourceRef: options.iterationSourceRef,
+        implementationContract: buildManualIterationImplementationContract(options),
         evidenceRefs: options.iterationEvidenceRefs,
         verificationCommands: options.iterationVerificationCommands,
-        nonGoals: options.iterationNonGoals
+        nonGoals: options.iterationNonGoals,
+        reuseOpen: options.iterationReuseOpen
       });
       console.log(JSON.stringify(bindIterationRecordResultCommand(result, config.state.root), null, 2));
       return 0;
@@ -2581,6 +2614,10 @@ export function parseArgs(argv: string[]): CliOptions {
     iterationVerificationCommands: [],
     iterationVerificationClaims: [],
     iterationNonGoals: [],
+    iterationImplementationScopes: [],
+    iterationDeferredScopes: [],
+    iterationDeliveryStandards: [],
+    iterationReuseOpen: false,
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
     notifyRefs: [],
@@ -2700,6 +2737,10 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--verification-command") options.iterationVerificationCommands.push(required(rest[++index], "--verification-command requires a value"));
     else if (arg === "--verification-claim") options.iterationVerificationClaims.push(required(rest[++index], "--verification-claim requires a value"));
     else if (arg === "--non-goal") options.iterationNonGoals.push(required(rest[++index], "--non-goal requires a value"));
+    else if (arg === "--implementation-scope" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationImplementationScopes.push(required(rest[++index], "--implementation-scope requires a value"));
+    else if (arg === "--deferred-scope" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationDeferredScopes.push(required(rest[++index], "--deferred-scope requires a value"));
+    else if (arg === "--delivery-standard" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationDeliveryStandards.push(required(rest[++index], "--delivery-standard requires a value"));
+    else if (arg === "--reuse-open" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationReuseOpen = true;
     else if (arg === "--outcome-status") options.iterationOutcomeStatus = parseIterationOutcomeStatus(required(rest[++index], "--outcome-status requires a value"));
     else if (arg === "--merge-existing-outcome" && options.command === "governance" && options.governanceAction === "record-iteration-outcome") options.iterationMergeExistingOutcome = true;
     else if (arg === "--next-move") options.iterationNextMoves.push(required(rest[++index], "--next-move requires a value"));
@@ -3149,7 +3190,7 @@ function printUsage(): void {
   pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... [--state-root .runtime/state]
   pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... [--state-root .runtime/state]
   pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact ga_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
-  pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
+  pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--implementation-scope "..."] [--deferred-scope "..."] [--delivery-standard "..."] [--reuse-open] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
   pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root .runtime/state]
