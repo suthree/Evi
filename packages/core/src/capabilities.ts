@@ -544,7 +544,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
               "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",
-              "delegated observations are sanitized and exclude raw task, context, output preview, and artifact bodies",
+              "successful delegated summary/findings are sanitized, raw task/context echoes fail the delegated output contract, and observations exclude raw task, context, output preview, and artifact bodies",
               "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
             ]
           : [])

@@ -3589,6 +3589,7 @@ test("live runner feeds structured delegated results back as bounded observation
       summary: string;
       findings_text: string | null;
       output_text: string;
+      raw_output_preview: string;
       error: string | null;
       boundary: string;
       action_id: string;
@@ -3606,9 +3607,14 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
-    assert.equal(delegated.summary, "Structured delegate summary");
-    assert.equal(delegated.findings_text, "The delegated critique found one bounded risk and no mutation evidence.");
+    assert.equal(delegated.summary, "Structured delegate summary token [REDACTED]");
+    assert.equal(delegated.findings_text, "The delegated critique found one bounded risk. Bearer [REDACTED] and [REDACTED_API_KEY] should not leak.");
     assert.equal(delegated.output_text, delegated.findings_text);
+    assert.match(delegated.raw_output_preview, /\[REDACTED\]/);
+    assert.doesNotMatch(delegated.raw_output_preview, /SECRET_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(delegated.summary, /SECRET_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(delegated.findings_text ?? "", /SECRET_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(delegated.output_text, /SECRET_SHOULD_NOT_APPEAR/);
     assert.equal(delegated.error, null);
     assert.equal(delegated.dispatch_failure_kind, null);
     assert.equal(delegated.result_failure_kind, null);
@@ -3618,6 +3624,56 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(delegated.task_chars > 0, true);
     assert.equal(delegated.context_chars > 0, true);
     assert.match(delegated.boundary, /bounded self-report only/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner rejects delegated output that echoes raw context before observation", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new EchoingDelegationThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Delegate a bounded critique before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      contract_status: string;
+      output_text: string;
+      raw_output_preview: string;
+      error: string | null;
+      result_failure_kind: string | null;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.sawSanitizedEchoFailureObservation, true);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
+    assert.match(delegated.output_text, /echoed raw delegated context/);
+    assert.match(delegated.error ?? "", /echoed raw delegated context/);
+    assert.match(delegated.raw_output_preview, /raw output preview suppressed/);
+    assert.doesNotMatch(delegated.raw_output_preview, new RegExp(BOUNDED_DELEGATE_CONTEXT));
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
   } finally {
     await fixture.cleanup();
   }
@@ -5122,8 +5178,8 @@ class StructuredDelegationThenDoneModel implements ModelClient {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
     const outputText = isDelegation
       ? JSON.stringify({
-        summary: "Structured delegate summary",
-        findings_text: "The delegated critique found one bounded risk and no mutation evidence."
+        summary: "Structured delegate summary token SECRET_SHOULD_NOT_APPEAR",
+        findings_text: "The delegated critique found one bounded risk. Bearer SECRET_SHOULD_NOT_APPEAR and sk-testsecret1234567890 should not leak."
       })
       : JSON.stringify(this.nextMainEnvelope(request));
     return {
@@ -5144,11 +5200,52 @@ class StructuredDelegationThenDoneModel implements ModelClient {
         && request.input.includes('"contract_status": "passed"')
         && request.input.includes("The delegated critique found one bounded risk");
       this.sawSanitizedDelegationObservation = delegatedSection.includes('"observation_boundary": "sanitized delegated observation')
+        && delegatedSection.includes("[REDACTED]")
+        && delegatedSection.includes("[REDACTED_API_KEY]")
+        && !delegatedSection.includes("SECRET_SHOULD_NOT_APPEAR")
         && !delegatedSection.includes('"raw_output_preview"')
         && !delegatedSection.includes('"output_text"')
         && !delegatedSection.includes("Critique whether the answer needs more evidence.")
         && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
       return noSopDoneEnvelope();
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
+class EchoingDelegationThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  sawSanitizedEchoFailureObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "Echoed delegated context",
+        findings_text: `The delegated result repeats raw context: ${BOUNDED_DELEGATE_CONTEXT}`
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "echoing-delegation-then-done",
+      responseId: `response-echoing-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawSanitizedEchoFailureObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes('"result_failure_kind": "delegated_output_contract_failed"')
+        && delegatedSection.includes("echoed raw delegated context")
+        && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT)
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"');
+      return doneEnvelope();
     }
     return delegateCritiqueEnvelope();
   }

@@ -1269,8 +1269,9 @@ export class LiveAgentRunner {
         ].join("\n"),
         input: `Return json only.\n\nTask:\n${task}\n\nContext:\n${context}`
       });
-      const parsed = parseDelegatedOutput(response.outputText);
+      const parsed = parseDelegatedOutput(response.outputText, { task, context });
       if (!parsed.ok) {
+        const sanitizedError = sanitizeModelDiagnosticText(parsed.error, 1200);
         return {
           id: newId("delegated_result"),
           ok: false,
@@ -1285,9 +1286,9 @@ export class LiveAgentRunner {
           dispatch_failure_kind: null,
           result_failure_kind: "delegated_output_contract_failed",
           findings_text: null,
-          output_text: parsed.error,
-          raw_output_preview: limitText(response.outputText, 1200),
-          error: parsed.error,
+          output_text: sanitizedError,
+          raw_output_preview: parsed.safe_raw_output_preview ?? sanitizeModelDiagnosticText(response.outputText, 1200),
+          error: sanitizedError,
           boundary: delegatedResultBoundary(),
           created_at: utcNow()
         };
@@ -1307,7 +1308,7 @@ export class LiveAgentRunner {
         result_failure_kind: null,
         findings_text: parsed.findings_text,
         output_text: parsed.findings_text,
-        raw_output_preview: limitText(response.outputText, 1200),
+        raw_output_preview: sanitizeModelDiagnosticText(response.outputText, 1200),
         error: null,
         boundary: delegatedResultBoundary(),
         created_at: utcNow()
@@ -2038,14 +2039,18 @@ function termsAreNearby(text: string, first: string, second: string, window: num
   return false;
 }
 
-function parseDelegatedOutput(outputText: string): {
-  ok: true;
-  summary: string;
-  findings_text: string;
-} | {
-  ok: false;
-  error: string;
-} {
+function parseDelegatedOutput(
+  outputText: string,
+  source: { task: string; context: string }
+): {
+    ok: true;
+    summary: string;
+    findings_text: string;
+  } | {
+    ok: false;
+    error: string;
+    safe_raw_output_preview?: string;
+  } {
   const trimmed = outputText.trim();
   if (!trimmed) {
     return { ok: false, error: "Delegated model returned empty output." };
@@ -2079,11 +2084,45 @@ function parseDelegatedOutput(outputText: string): {
     return { ok: false, error: "Delegated model output failed schema validation." };
   }
   const { summary, findings_text: findingsText } = contract.data;
+  const rawEcho = delegatedOutputRawEcho(summary, findingsText, source);
+  if (rawEcho) {
+    return {
+      ok: false,
+      error: `Delegated model output echoed raw delegated ${rawEcho.source_field}; return summarized analysis without raw task/context.`,
+      safe_raw_output_preview: `Delegated model output echoed raw delegated ${rawEcho.source_field}; raw output preview suppressed.`
+    };
+  }
   return {
     ok: true,
-    summary: limitText(summary, DELEGATED_AGENT_SUMMARY_MAX_CHARS),
-    findings_text: limitText(findingsText, DELEGATED_AGENT_FINDINGS_MAX_CHARS)
+    summary: sanitizeModelDiagnosticText(summary, DELEGATED_AGENT_SUMMARY_MAX_CHARS),
+    findings_text: sanitizeModelDiagnosticText(findingsText, DELEGATED_AGENT_FINDINGS_MAX_CHARS)
   };
+}
+
+function delegatedOutputRawEcho(
+  summary: string,
+  findingsText: string,
+  source: { task: string; context: string }
+): { source_field: "task" | "context" } | null {
+  const output = normalizeRawEchoText(`${summary}\n${findingsText}`);
+  if (sourceEchoes(output, source.task)) return { source_field: "task" };
+  if (sourceEchoes(output, source.context)) return { source_field: "context" };
+  return null;
+}
+
+function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
+  const source = normalizeRawEchoText(sourceText);
+  if (source.length < 40) return false;
+  if (normalizedOutput.includes(source)) return true;
+  return source
+    .split(/[.;\n]/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length >= 40)
+    .some((chunk) => normalizedOutput.includes(chunk));
+}
+
+function normalizeRawEchoText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }
 
 function buildSopFromEnvelope(envelope: ModelActionEnvelope, evidenceRefs: string[]): SOPDraft | null {

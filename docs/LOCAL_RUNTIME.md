@@ -2046,8 +2046,11 @@ preview, or persisted artifact bodies. They do not prove final success, execute
 tools, write state, write the repo, write the active vault, or bypass completion
 verification. A passed delegated result is advisory context only; its result id,
 state ref, or event ref must not be used as `completion_claim.verification_refs`
-proof. Delegated model request failures are recorded as failed delegated results
-with sanitized error text before persistence and observation feedback.
+proof. Successful delegated `summary`, `findings_text`, and raw preview text are
+sanitized before persistence and observation feedback, and outputs that echo raw
+delegated task/context fail the delegated output contract with raw preview
+suppressed. Delegated model request failures are recorded as failed delegated
+results with sanitized error text before persistence and observation feedback.
 Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
