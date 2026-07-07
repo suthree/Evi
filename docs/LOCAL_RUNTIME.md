@@ -812,8 +812,8 @@ outcome record is not confused with evidence by itself or a terminal stop. A
 compact `evidence_basis` line may also show
 bounded candidate refs from the plan; these are citation guidance only, not
 completion proof. When present, `proof_boundary` keeps the required verified
-outcome, outcome evidence refs, and outcome verification command coverage
-explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
+outcome, outcome evidence refs, plan ref coverage, and outcome verification
+command coverage explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
 completed source slice. It may show a short selection
 readiness, check summary, and audit-seed summary, which are quality hints only.
 The `goal_scope` line restates the operator objective, owner surface, source of

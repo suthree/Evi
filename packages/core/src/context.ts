@@ -1697,7 +1697,7 @@ export function compactGaPlanProofBoundary(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
-  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,outcome_verification_command_coverage";
+  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage";
 }
 
 async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {

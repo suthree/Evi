@@ -493,8 +493,8 @@ Required policy:
   artifacts; these refs are candidates, not completion proof
 - When `evidence_basis` appears for a matching open iteration, compact context
   may also render `proof_boundary`; it must keep the requirement for a verified
-  outcome, outcome evidence refs, and outcome verification command coverage
-  explicit
+  outcome, outcome evidence refs, plan ref coverage, and outcome verification
+  command coverage explicit
 - Compact `acceptance` must preserve at least one criterion for each audit-seed
   label (`goal_scope`, `current_state`, `verification_scope`, and
   `learning_persistence`) using stable prefix priority rather than raw array

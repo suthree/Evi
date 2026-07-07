@@ -448,7 +448,7 @@ test("compact GA plan review gate names open iteration blockers", () => {
   ]);
   assert.equal(
     compactGaPlanProofBoundary({ iteration_record_status: openIterationStatus }),
-    "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,outcome_verification_command_coverage"
+    "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage"
   );
   assert.equal(compactGaPlanReviewGate({
     iteration_record_status: {
@@ -1267,7 +1267,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /audit_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --audit-seed all --state-root <state-root>/);
     assert.match(rendered.markdown, /after_verify: pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_context_open --outcome-status verified --summary "\.\.\." --evidence-ref <ref\.\.\.> --verification-command "<command\.\.\.>" --next-move "\.\.\." --state-root <state-root>/);
     assert.match(rendered.markdown, /evidence_basis: packages\/core\/src\/ga_project_design\.ts \| self-evolution\/iterations\/iteration_contract_context_open\.json \| self-evolution\/iterations\/iteration_contract_context_plan\.json \| tests\/context_harness\.test\.ts/);
-    assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,outcome_verification_command_coverage/);
+    assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage/);
     assert.match(rendered.markdown, /audit: goal_scope,current_state,verification_scope,learning_persistence/);
     assert.match(rendered.markdown, /audit_require: goal_scope=Preserve the latest operator objective and do not redefine success around completed work.; current_state=Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.; verification_scope=Match verification evidence to the scope of the completion claim.; learning_persistence=Record the verified outcome before reusing the slice as future GA design evidence./);
     assert.match(rendered.markdown, /audit_evidence: goal_scope=proposed_slice=core_ga_design_next_slice_after_context_plan; current_state=service health status and reasons when service health is a required verification command; verification_scope=outcome maps each required verification entrypoint to a completion claim; learning_persistence=record-iteration-outcome ref/);
