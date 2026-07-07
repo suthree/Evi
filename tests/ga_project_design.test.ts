@@ -320,6 +320,15 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.learning_authority.promotion_gate.includes("later local-learning gates"), true);
     assert.match(readModel.next_core_basic_plan?.learning_authority.boundary ?? "", /read-only learning authority boundary/);
     assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.action, "delegate_agent");
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.layer, "core_runtime");
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.max_chars, 1000);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.max_chars, 12000);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, 240);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, 2000);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.completion_authority.some((item) => item.includes("main harness verifies")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.deferred_scope.some((item) => item.includes("no expert personas")), true);
+    assert.match(readModel.next_core_basic_plan?.general_delegation_loop.boundary ?? "", /does not spawn agents/);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.owner_surface, "ga_project_design");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
@@ -444,6 +453,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.match(readModel.next_core_basic_plan?.boundary ?? "", /read-only GA project design planning packet/);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_unrelated_history.json"), false);
+    assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/schemas.ts"), true);
+    assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.match(readModel.boundary, /does not write state/);
     assert.match(readModel.boundary, /planning packet/);
     assert.equal(readModel.refs.includes("self-evolution/iterations/iteration_contract_verified.json"), true);
@@ -497,6 +508,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);

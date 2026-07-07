@@ -3,6 +3,12 @@ import {
   listSelfEvolutionIterations,
   type SelfEvolutionIterationContract
 } from "./self_evolution_iterations.js";
+import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS
+} from "./schemas.js";
 import type { AgentStore } from "./store.js";
 
 export type GaProjectDesignPhaseId =
@@ -166,6 +172,32 @@ export interface GaProjectDesignCapabilityStagePlan {
   next_iteration_plan: string[];
 }
 
+export interface GaProjectDesignGeneralDelegationLoop {
+  action: "delegate_agent";
+  layer: "core_runtime";
+  stage: "active";
+  task_contract: {
+    max_chars: number;
+    required: string[];
+    reject_if: string[];
+  };
+  context_contract: {
+    max_chars: number;
+    required: string[];
+    reject_if: string[];
+  };
+  result_contract: {
+    summary_max_chars: number;
+    findings_max_chars: number;
+    required: string[];
+    reject_if: string[];
+  };
+  completion_authority: string[];
+  deferred_scope: string[];
+  evidence_refs: string[];
+  boundary: string;
+}
+
 export interface GaProjectDesignIterationRecordStatus {
   status: "not_recorded" | "open_iteration_available";
   id?: string;
@@ -228,6 +260,7 @@ export interface GaProjectDesignPlanPacket {
   implementation_contract: GaProjectDesignImplementationContract;
   iteration_focus: GaProjectDesignIterationFocus;
   capability_stage_plan: GaProjectDesignCapabilityStagePlan;
+  general_delegation_loop: GaProjectDesignGeneralDelegationLoop;
   scorecard_basis: string[];
   selection_status: "ready" | "needs_attention";
   selection_reasons: string[];
@@ -585,6 +618,7 @@ function buildNextCoreBasicPlan(
     implementation_contract: buildImplementationContract(source, proposedSlice),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
+    general_delegation_loop: buildGeneralDelegationLoop(),
     scorecard_basis: [
       `next_core_basic_slice=${NEXT_CORE_GA_DESIGN_TARGET.target_slice_id}`,
       `target_dimension=${NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id}`,
@@ -628,6 +662,9 @@ function buildNextCoreBasicPlan(
     non_goals: buildSuccessorNonGoals(source, contract, ["does not execute the next slice"]),
     refs: compactRefs([
       "packages/core/src/ga_project_design.ts",
+      "packages/core/src/schemas.ts",
+      "packages/runtime/src/runner.ts",
+      "packages/core/src/harness_replay.ts",
       iterationRecordStatus.ref,
       ...nextIterationSeed.evidence_refs
     ]),
@@ -946,6 +983,72 @@ function buildCapabilityStagePlan(
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
       "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
     ]
+  };
+}
+
+function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
+  return {
+    action: "delegate_agent",
+    layer: "core_runtime",
+    stage: "active",
+    task_contract: {
+      max_chars: DELEGATE_AGENT_TASK_MAX_CHARS,
+      required: [
+        "bounded analysis or critique task",
+        "one concrete question for the delegated subagent",
+        "no tool, mutation, scheduling, or completion authority"
+      ],
+      reject_if: [
+        "task is empty or over the configured max chars",
+        "task asks the delegated subagent to execute tools, mutate state, or decide completion",
+        "task is expert scheduling or multi-agent orchestration instead of general delegation"
+      ]
+    },
+    context_contract: {
+      max_chars: DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+      required: [
+        "all relevant constraints and evidence refs needed for the bounded task",
+        "current core/basic boundary and deferred expert scope",
+        "expected output shape"
+      ],
+      reject_if: [
+        "context is empty or over the configured max chars",
+        "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
+        "context grants external adapter, SOP/skill promotion, or completion authority"
+      ]
+    },
+    result_contract: {
+      summary_max_chars: DELEGATED_AGENT_SUMMARY_MAX_CHARS,
+      findings_max_chars: DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+      required: [
+        "structured summary",
+        "bounded findings_text",
+        "main-thread verification before reuse"
+      ],
+      reject_if: [
+        "delegated output is not valid structured JSON",
+        "summary or findings_text is empty or over the configured max chars",
+        "result is treated as tool evidence, final success, or mutation authority"
+      ]
+    },
+    completion_authority: [
+      "main harness verifies delegated results before they influence a done claim",
+      "failed delegated results block verified completion",
+      "completion remains with iteration outcome plus completion_gate coverage"
+    ],
+    deferred_scope: [
+      "no expert personas",
+      "no autonomous multi-agent scheduling",
+      "no tool access or external write authority for delegated self-reports"
+    ],
+    evidence_refs: [
+      "packages/core/src/schemas.ts",
+      "packages/runtime/src/runner.ts",
+      "packages/core/src/harness_replay.ts",
+      "tests/context_harness.test.ts",
+      "tests/harness_replay.test.ts"
+    ],
+    boundary: "read-only general-agent delegation loop guard for project-design planning; describes delegate_agent task/context/result/completion standards only and does not spawn agents, execute tools, schedule experts, mutate state, or prove completion"
   };
 }
 

@@ -1697,6 +1697,13 @@ export function compactGaPlanGovernanceCleanup(
   return `superseded_open_iterations=${items.length}; ${items.map((item) => `${item.id}:${item.suggested_outcome_status}`).join(",")}`;
 }
 
+export function compactGaPlanGeneralDelegationLoop(
+  plan: Pick<GaProjectDesignPlanPacket, "general_delegation_loop">
+): string {
+  const loop = plan.general_delegation_loop;
+  return `action=${loop.action}; stage=${loop.stage}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
+}
+
 export function compactGaPlanPhaseForbids(
   plan: Pick<GaProjectDesignPlanPacket, "phase_gates">
 ): string {
@@ -1794,6 +1801,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactStageExitCriteria = compactGaPlanStageExitCriteria(plan);
   const runtimeObservabilityGuard = compactGaPlanRuntimeObservabilityGuard(plan);
   const governanceCleanup = compactGaPlanGovernanceCleanup(plan);
+  const generalDelegationLoop = compactGaPlanGeneralDelegationLoop(plan);
   const compactPhaseForbids = compactGaPlanPhaseForbids(plan);
   const reviewGate = compactGaPlanReviewGate(plan);
   const compactVerificationCommands = compactGaPlanVerificationCommands(plan);
@@ -1818,6 +1826,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       ...(runtimeObservabilityGuard ? [`runtime_guard: ${runtimeObservabilityGuard}`] : []),
       `stage_exit: ${compactStageExitCriteria}`,
       `stage_next: ${plan.capability_stage_plan.next_iteration_plan.slice(0, 2).join(" | ")}`,
+      `delegation_loop: ${generalDelegationLoop}`,
       ...(governanceCleanup ? [`governance_cleanup: ${governanceCleanup}`] : []),
       `phase_forbid: ${compactPhaseForbids}`,
       `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
