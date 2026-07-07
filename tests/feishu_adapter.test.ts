@@ -1139,15 +1139,15 @@ test("operator capability acceptance command replies with next-version gates wit
     const fullText = transport.sent.map((item) => item.text).join("\n");
     assert.match(fullText, /Capability acceptance/);
     assert.match(fullText, /Core execution \(ready, layer: core_runtime\)/);
-    assert.match(fullText, /SOP self-evolution/);
-    assert.match(fullText, /SOP self-evolution \(ready, layer: local_learning\)/);
+    assert.doesNotMatch(fullText, /SOP self-evolution \(ready, layer: local_learning\)/);
     assert.match(fullText, /Default next slice/);
     assert.match(fullText, /basic_entrypoints_operator_check \| layer: basic_entrypoint/);
     assert.match(fullText, /Follow-up slices/);
     assert.match(fullText, /active_exploration_publish_plan \| layer: application_slice/);
+    assert.match(fullText, /sop_skill_persistence_follow_up \| layer: local_learning/);
     assert.doesNotMatch(fullText, /active_exploration_publish_plan \| layer: core_runtime/);
     assert.match(fullText, /pnpm run check/);
-    assert.match(fullText, /review rehearse-sop-loop/);
+    assert.doesNotMatch(fullText, /review rehearse-sop-loop/);
     assert.match(fullText, /context pressure --limit 10/);
     assert.match(fullText, /review replay-audit/);
     assert.match(fullText, /review replays/);

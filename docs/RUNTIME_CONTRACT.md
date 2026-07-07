@@ -276,9 +276,9 @@ from the current model response or from transient runtime state.
 The CLI also exposes `capabilities acceptance` as a read-only next-version
 acceptance audit. Feishu mirrors it through `/capabilities acceptance` and
 `/capabilities audit`. The audit is a repo-owned checklist over current core
-execution, entrypoints, harness, context runtime, service posture, and SOP
-self-evolution evidence. It lists verification commands and next feature
-slices for operators, but it does not run those commands. Its
+execution, entrypoints, harness, context runtime, and service posture. It lists
+verification commands and next feature slices for operators, but it does not
+run those commands. Its
 `default_next_slice` must stay on the core/basic path. Application slices and
 local-learning items may remain visible as `follow_up_slices`, but default
 consumers must not treat external adapters, publishing work, or SOP growth as
@@ -915,8 +915,10 @@ repo-owned acceptance definition in `packages/core/src/capabilities.ts`.
 
 Required policy:
 
-- the audit groups acceptance evidence by core execution, basic entrypoints,
-  agent harness, context runtime, and SOP self-evolution
+- the audit gates acceptance evidence by core execution, basic entrypoints,
+  agent harness, and context runtime; SOP/local-learning evidence remains
+  follow-up guidance unless a later local-learning iteration explicitly selects
+  it
 - each gate lists source refs, verification commands, and boundaries
 - the audit lists one `default_next_slice` for the next core/basic handoff and
   keeps application or local-learning work in `follow_up_slices`

@@ -13,7 +13,9 @@ feature slices should come next.
 - Add `capabilities acceptance` and `capabilities audit` as CLI read models
 - Add Feishu `/capabilities acceptance` and `/capabilities audit`
 - Group acceptance gates for core execution, basic entrypoints, agent harness,
-  context runtime, and SOP self-evolution
+  and context runtime
+- Keep SOP, skill, application, and other local-learning work as follow-up
+  guidance unless a later local-learning iteration explicitly selects it
 - List evidence refs, verification commands, and next candidate slices
 - Keep existing `capabilities` catalog behavior unchanged
 

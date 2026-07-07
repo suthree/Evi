@@ -200,8 +200,9 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.summary.includes("auditable bounded result metadata"), true);
   assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.boundaries.some((boundary) => boundary.includes("bounded audit metadata")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "basic_entrypoints" && gate.status === "operator_check"), true);
-  assert.equal(audit.gates.some((gate) => gate.id === "sop_self_evolution"), true);
   assert.equal(audit.gates.every((gate) => typeof gate.layer === "string"), true);
+  assert.equal(audit.gates.every((gate) => gate.layer === "core_runtime" || gate.layer === "basic_entrypoint"), true);
+  assert.equal(audit.gates.some((gate) => gate.layer === "local_learning" || gate.layer === "application_slice"), false);
   assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.layer, "core_runtime");
   assert.equal(audit.gates.find((gate) => gate.id === "agent_harness")?.layer, "core_runtime");
   assert.equal(audit.gates.find((gate) => gate.id === "context_runtime")?.layer, "core_runtime");
@@ -210,14 +211,13 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.gates.find((gate) => gate.id === "basic_entrypoints")?.evidence_refs.includes("packages/runtime/src/web_console.ts"), true);
   assert.equal(audit.gates.find((gate) => gate.id === "basic_entrypoints")?.verification_commands.includes("pnpm run runtime -- web --host 127.0.0.1 --port 8765"), true);
   assert.equal(audit.gates.find((gate) => gate.id === "basic_entrypoints")?.boundaries.some((boundary) => boundary.includes("localhost-only")), true);
-  assert.equal(audit.gates.find((gate) => gate.id === "sop_self_evolution")?.layer, "local_learning");
   assert.equal(audit.verification_commands.includes("pnpm run check"), true);
   assert.equal(audit.verification_commands.includes("pnpm run runtime -- capabilities acceptance"), true);
-  assert.equal(audit.verification_commands.includes("pnpm run runtime -- review rehearse-sop-loop --state-root <state-root>"), true);
+  assert.equal(audit.verification_commands.includes("pnpm run runtime -- review rehearse-sop-loop --state-root <state-root>"), false);
   assert.equal(audit.verification_commands.includes("pnpm run runtime -- context pressure --limit 10 --state-root <state-root>"), true);
   assert.equal(audit.verification_commands.includes("pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>"), true);
   assert.equal(audit.verification_commands.includes("pnpm run runtime -- review replays --limit 10 --state-root <state-root>"), true);
-  assert.equal(audit.gates.some((gate) => gate.verification_commands.includes("pnpm run runtime -- review rehearse-sop-loop")), true);
+  assert.equal(audit.gates.some((gate) => gate.verification_commands.includes("pnpm run runtime -- review rehearse-sop-loop")), false);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.evidence_refs.includes("packages/core/src/harness_replay.ts")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.evidence_refs.includes("packages/core/src/pipeline_history.ts")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.verification_commands.includes("pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>")), true);
@@ -235,6 +235,7 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.follow_up_slices.every((slice) => slice.id !== audit.default_next_slice.id), true);
   assert.equal(audit.follow_up_slices.some((slice) => slice.id === "active_exploration_publish_plan"), true);
   assert.equal(audit.follow_up_slices.some((slice) => slice.id === "self_evolution_gap_intake"), true);
+  assert.equal(audit.follow_up_slices.some((slice) => slice.id === "sop_skill_persistence_follow_up"), true);
   assert.equal(audit.next_slices.some((slice) => slice.id === "real_sop_loop_rehearsal"), false);
   assert.equal(audit.next_slices.some((slice) => slice.id === "context_pressure_action_gate"), false);
   assert.equal(audit.next_slices.some((slice) => slice.id === "harness_replay_acceptance"), false);
@@ -246,6 +247,7 @@ test("capability acceptance audit records next-version gates without execution a
     .filter((slice) => slice.id.startsWith("active_exploration_"))
     .every((slice) => slice.layer === "application_slice"), true);
   assert.equal(audit.follow_up_slices.find((slice) => slice.id === "self_evolution_gap_intake")?.layer, "local_learning");
+  assert.equal(audit.follow_up_slices.find((slice) => slice.id === "sop_skill_persistence_follow_up")?.layer, "local_learning");
   assert.equal(audit.next_slices.some((slice) => slice.layer === "core_runtime" && slice.refs.includes("docs/ACTIVE_EXPLORATION.md")), false);
   assert.equal(audit.follow_up_slices.some((slice) =>
     slice.id === "self_evolution_gap_intake"

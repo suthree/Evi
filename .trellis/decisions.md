@@ -2387,9 +2387,11 @@ must not execute it.
 
 `capabilities acceptance` is the read-only acceptance baseline for deciding
 whether the current local runtime is ready for the next feature slice. It
-groups current evidence by core execution, basic entrypoints, agent harness,
-context runtime, and SOP self-evolution, then lists the verification commands
-and next candidate slices an operator should consider.
+gates current evidence by core execution, basic entrypoints, agent harness, and
+context runtime, then lists the verification commands and next candidate slices
+an operator should consider. SOP, skill, application, and other local-learning
+work remains visible only as follow-up guidance unless a later local-learning
+iteration explicitly selects it.
 
 This intentionally follows the useful part of GA/Hermes/OpenClaw maturity
 patterns: make readiness and next work explicit before adding another runtime

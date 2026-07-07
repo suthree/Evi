@@ -183,7 +183,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
     audit_id: "local_runtime_next_version_capability_acceptance",
     audit_version: "2026-07-06",
     status: "operator_check_required",
-    summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, service, and SOP self-evolution surfaces. It records what must be checked before another feature slice is considered stable.",
+    summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, and service posture. It records the core/basic checks required before another feature slice is considered stable; local-learning and application work stay as follow-up guidance.",
     gates: [
       {
         id: "core_execution",
@@ -307,36 +307,6 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "repair is explicit and selected by operator"
         ]
       },
-      {
-        id: "sop_self_evolution",
-        title: "SOP self-evolution",
-        summary: "Review-to-SOP draft, audit, promotion, chain inspection, confirmation gates, skill telemetry, registry health, and explicit event retirement gates are implemented.",
-        status: "ready",
-        layer: "local_learning",
-        evidence_refs: [
-          "packages/core/src/sop_evolution_ledger.ts",
-          "packages/core/src/skill_registry_health.ts",
-          "packages/core/src/skill_registry_events.ts",
-          "packages/runtime/src/background_review.ts",
-          "packages/runtime/src/sop_loop_rehearsal.ts",
-          "tests/sop_flow.test.ts",
-          "tests/sop_loop_rehearsal.test.ts",
-          "tests/sop_evolution_ledger.test.ts",
-          "tests/skill_registry_health.test.ts",
-          "tests/skill_registry_events.test.ts"
-        ],
-        verification_commands: [
-          "pnpm run runtime -- governance evolution --limit 10",
-          "pnpm run runtime -- review rehearse-sop-loop",
-          "pnpm run runtime -- skills health --limit 10",
-          "pnpm run runtime -- skills events --limit 10"
-        ],
-        boundaries: [
-          "promotion requires explicit audited state-only SOP gates",
-          "rehearsal writes only to a state-scoped sandbox and never to the real active vault",
-          "skill repair and registry retirement are explicit local write gates, never Feishu execution"
-        ]
-      }
     ],
     verification_commands: [
       "pnpm run check",
@@ -345,7 +315,6 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>",
       "pnpm run runtime -- capabilities acceptance",
       "pnpm run runtime -- context pressure --limit 10 --state-root <state-root>",
-      "pnpm run runtime -- review rehearse-sop-loop --state-root <state-root>",
       "pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>",
       "pnpm run runtime -- review replays --limit 10 --state-root <state-root>"
     ],
@@ -381,6 +350,23 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "docs/ACTIVE_EXPLORATION.md",
           "packages/core/src/self_evolution_gaps.ts",
           ".trellis/tasks/160-self-evolution-gap-intake.md"
+        ]
+      },
+      {
+        id: "sop_skill_persistence_follow_up",
+        title: "SOP and skill persistence follow-up",
+        layer: "local_learning",
+        reason: "SOP-to-skill persistence remains a local-learning follow-up after the core/basic handoff is stable.",
+        success_criteria: [
+          "repeated operator corrections can become SOP candidates only through explicit draft, audit, and promotion gates",
+          "skill telemetry and registry repair stay behind local operator commands",
+          "SOP or skill artifacts preserve repeatable procedure without becoming completion proof or core/runtime identity"
+        ],
+        refs: [
+          "packages/core/src/sop_evolution_ledger.ts",
+          "packages/core/src/skill_registry_health.ts",
+          "packages/core/src/skill_registry_events.ts",
+          "packages/runtime/src/sop_loop_rehearsal.ts"
         ]
       },
       {
