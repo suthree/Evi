@@ -472,7 +472,7 @@ function coreToolsCategory(): CapabilityCategory {
   return {
     id: "core_tools",
     title: "Core tools",
-    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution with auditable output budgets.",
+    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution with auditable output budgets and failure kinds.",
     status: "implemented",
     layer: "core_runtime",
     capabilities: coreToolContracts.map((contract) => ({
@@ -490,6 +490,7 @@ function coreToolsCategory(): CapabilityCategory {
       boundaries: [
         `side_effect_level: ${contract.side_effect_level}`,
         "arguments must match the tool contract before execution",
+        "failed tool results expose bounded failure_kind metadata for auditability",
         ...(outputBudgetToolIds.has(contract.tool)
           ? ["tool results expose output budget and truncation metadata for auditability"]
           : []),

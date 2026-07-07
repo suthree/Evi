@@ -19,6 +19,18 @@ export interface ToolResult {
   created_at: string;
 }
 
+type ToolFailureKind =
+  | "fetch_error"
+  | "http_status"
+  | "invalid_request"
+  | "nonzero_exit"
+  | "protected_path"
+  | "runtime_state_path"
+  | "search_error"
+  | "spawn_error"
+  | "timeout"
+  | "unsupported_tool";
+
 export interface ToolExecutionContext {
   store: AgentStore;
 }
@@ -52,7 +64,7 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
 
   return toolResult(tool || "unknown", false, `Unsupported tool: ${tool || "(missing)"}`, {
     received_payload: payload
-  }, "none");
+  }, "none", "unsupported_tool");
 }
 
 async function runFileRead(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -62,10 +74,10 @@ async function runFileRead(args: Record<string, unknown>, context: ToolExecution
   const invalid = validateRelativePath(relPath)
     ?? (scope === "repo" ? validateRepoRuntimePath("file.read", relPath) : null);
   if (invalid) {
-    return toolResult("file.read", false, invalid, { path: relPath }, "none");
+    return toolResult("file.read", false, invalid, { path: relPath }, "none", pathFailureKind(invalid));
   }
   if (scope !== "repo" && scope !== "state") {
-    return toolResult("file.read", false, `Unsupported file.read scope: ${scope}`, { scope }, "none");
+    return toolResult("file.read", false, `Unsupported file.read scope: ${scope}`, { scope }, "none", "invalid_request");
   }
 
   const text = scope === "state"
@@ -83,7 +95,7 @@ async function runFileWriteState(args: Record<string, unknown>, context: ToolExe
   const relPath = stringValue(args.path);
   const invalid = validateRelativePath(relPath);
   if (invalid) {
-    return toolResult("file.write_state", false, invalid, { path: relPath }, "local_write");
+    return toolResult("file.write_state", false, invalid, { path: relPath }, "local_write", "invalid_request");
   }
   const text = typeof args.text === "string" ? args.text : JSON.stringify(args.json ?? {}, null, 2);
   await context.store.writeText(relPath, text);
@@ -97,7 +109,7 @@ async function runFileWriteRepo(args: Record<string, unknown>, context: ToolExec
   const relPath = stringValue(args.path);
   const invalid = validateRelativePath(relPath) ?? validateRepoWritePath(relPath);
   if (invalid) {
-    return toolResult("file.write_repo", false, invalid, { path: relPath }, "local_write");
+    return toolResult("file.write_repo", false, invalid, { path: relPath }, "local_write", pathFailureKind(invalid));
   }
 
   const text = typeof args.text === "string" ? args.text : JSON.stringify(args.json ?? {}, null, 2);
@@ -127,15 +139,15 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
   const globs = stringArrayValue(args.globs).slice(0, 20);
 
   if (!query.trim()) {
-    return toolResult("repo.search", false, "repo.search requires a non-empty query.", {}, "none");
+    return toolResult("repo.search", false, "repo.search requires a non-empty query.", {}, "none", "invalid_request");
   }
   const invalid = validateRelativePath(searchPath);
   if (invalid) {
-    return toolResult("repo.search", false, invalid, { path: searchPath }, "none");
+    return toolResult("repo.search", false, invalid, { path: searchPath }, "none", "invalid_request");
   }
   const invalidRuntimePath = validateRepoRuntimePath("repo.search", searchPath);
   if (invalidRuntimePath) {
-    return toolResult("repo.search", false, invalidRuntimePath, { path: searchPath }, "none");
+    return toolResult("repo.search", false, invalidRuntimePath, { path: searchPath }, "none", "runtime_state_path");
   }
 
   const rgResult = await runRipgrep({
@@ -149,7 +161,10 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
   if (rgResult.available) {
     const lines = rgResult.stdout.split(/\r?\n/).filter(Boolean).slice(0, maxResults);
     const matches = lines.map(parseRipgrepLine);
-    return toolResult("repo.search", rgResult.exitCode === 0 || rgResult.exitCode === 1, `repo.search found ${matches.length} result(s) for "${query}".`, {
+    const ok = rgResult.exitCode === 0 || rgResult.exitCode === 1;
+    return toolResult("repo.search", ok, ok
+      ? `repo.search found ${matches.length} result(s) for "${query}".`
+      : `repo.search failed with exit code ${rgResult.exitCode ?? "unknown"}.`, {
       query,
       path: searchPath,
       engine: "rg",
@@ -159,7 +174,7 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
       matches,
       truncated: rgResult.truncated || rgResult.stdout.split(/\r?\n/).filter(Boolean).length > maxResults,
       stderr: rgResult.stderr
-    }, "none");
+    }, "none", ok ? undefined : "search_error");
   }
 
   const fallback = await fallbackSearch(context.store, {
@@ -185,7 +200,7 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
   const maxChars = intValue(args.max_chars, 12000);
   const timeoutMs = Math.min(Math.max(intValue(args.timeout_ms, 30000), 1000), 300000);
   if (!url.startsWith("https://") && !url.startsWith("http://")) {
-    return toolResult("http.fetch", false, "http.fetch requires an http(s) URL.", { url }, "none");
+    return toolResult("http.fetch", false, "http.fetch requires an http(s) URL.", { url }, "none", "invalid_request");
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -212,7 +227,7 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
       body_truncated: bodyTruncated,
       content_type: response.headers.get("content-type") ?? null,
       body: responseType === "json" ? parseMaybeJson(body) : body
-    }, "none");
+    }, "none", response.ok ? undefined : "http_status");
   } catch (error) {
     const timedOut = controller.signal.aborted;
     return toolResult("http.fetch", false, timedOut ? `http.fetch timed out after ${timeoutMs}ms.` : `http.fetch failed: ${errorMessage(error)}`, {
@@ -222,7 +237,7 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
       timeout_ms: timeoutMs,
       timed_out: timedOut,
       error: errorMessage(error)
-    }, "none");
+    }, "none", timedOut ? "timeout" : "fetch_error");
   } finally {
     clearTimeout(timer);
   }
@@ -241,19 +256,19 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   const envResult = buildCommandEnv(args);
 
   if (!command.trim()) {
-    return toolResult("command.run", false, "command.run requires a command.", {}, "none");
+    return toolResult("command.run", false, "command.run requires a command.", {}, "none", "invalid_request");
   }
   if (command.includes("/") || command.includes("\\") || command.includes("\0")) {
-    return toolResult("command.run", false, "command.run command must be a binary name, not a path or shell string.", { command }, "none");
+    return toolResult("command.run", false, "command.run command must be a binary name, not a path or shell string.", { command }, "none", "invalid_request");
   }
   if (cwdScope !== "repo" && cwdScope !== "state") {
-    return toolResult("command.run", false, `Unsupported command.run cwd: ${cwdScope}`, { cwd: cwdScope }, "none");
+    return toolResult("command.run", false, `Unsupported command.run cwd: ${cwdScope}`, { cwd: cwdScope }, "none", "invalid_request");
   }
   if (!sideEffectLevel) {
-    return toolResult("command.run", false, "command.run requires a valid side_effect_level.", { side_effect_level: args.side_effect_level }, "none");
+    return toolResult("command.run", false, "command.run requires a valid side_effect_level.", { side_effect_level: args.side_effect_level }, "none", "invalid_request");
   }
   if (!envResult.ok) {
-    return toolResult("command.run", false, envResult.summary, envResult.output, sideEffectLevel);
+    return toolResult("command.run", false, envResult.summary, envResult.output, sideEffectLevel, "invalid_request");
   }
 
   const result = await runLocalCommand(command, commandArgs, {
@@ -263,7 +278,8 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     env: envResult.env
   });
   const envAudit = envResult.audit;
-  return toolResult("command.run", result.exitCode === 0 && !result.timedOut, result.summary, {
+  const ok = result.exitCode === 0 && !result.timedOut;
+  return toolResult("command.run", ok, result.summary, {
     command,
     args: commandArgs,
     cwd: cwdScope,
@@ -271,6 +287,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     max_output_chars: maxOutputChars,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
+    timed_out: result.timedOut,
     stdout_truncated: result.stdoutTruncated,
     stderr_truncated: result.stderrTruncated,
     stdout_chars_observed: result.stdoutObservedChars,
@@ -305,7 +322,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     },
     stdout: result.stdout,
     stderr: result.stderr
-  }, sideEffectLevel);
+  }, sideEffectLevel, ok ? undefined : processFailureKind(result));
 }
 
 async function runCodeExecuteNode(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -313,7 +330,7 @@ async function runCodeExecuteNode(args: Record<string, unknown>, context: ToolEx
   const timeoutMs = Math.min(Math.max(intValue(args.timeout_ms, 10000), 1000), 30000);
   const maxOutputChars = Math.min(Math.max(intValue(args.max_output_chars, 12000), 1000), 30000);
   if (!code.trim()) {
-    return toolResult("code.execute_node", false, "No code provided.", {}, "local_reversible");
+    return toolResult("code.execute_node", false, "No code provided.", {}, "local_reversible", "invalid_request");
   }
 
   const result = await runNode(code, {
@@ -322,7 +339,11 @@ async function runCodeExecuteNode(args: Record<string, unknown>, context: ToolEx
     maxOutputChars,
     env: minimalEnv()
   });
-  return toolResult("code.execute_node", result.exitCode === 0 && !result.timedOut, result.summary, result, "local_reversible");
+  const ok = result.exitCode === 0 && !result.timedOut;
+  return toolResult("code.execute_node", ok, result.summary, {
+    ...result,
+    timed_out: result.timedOut
+  }, "local_reversible", ok ? undefined : processFailureKind(result));
 }
 
 function toolResult(
@@ -330,17 +351,30 @@ function toolResult(
   ok: boolean,
   summary: string,
   output: Record<string, unknown>,
-  sideEffectLevel: ToolResult["side_effect_level"]
+  sideEffectLevel: ToolResult["side_effect_level"],
+  failureKind?: ToolFailureKind
 ): ToolResult {
   return {
     id: newId("tool_result"),
     tool,
     ok,
     summary,
-    output,
+    output: ok || !failureKind ? output : { failure_kind: failureKind, ...output },
     side_effect_level: sideEffectLevel,
     created_at: utcNow()
   };
+}
+
+function pathFailureKind(message: string): ToolFailureKind {
+  if (message.includes("repo-local runtime state")) return "runtime_state_path";
+  if (message.includes("protected repository path") || message.includes("secret-like files")) return "protected_path";
+  return "invalid_request";
+}
+
+function processFailureKind(result: { exitCode: number | null; timedOut: boolean }): ToolFailureKind {
+  if (result.timedOut) return "timeout";
+  if (result.exitCode === null) return "spawn_error";
+  return "nonzero_exit";
 }
 
 function validateRelativePath(path: string): string | null {

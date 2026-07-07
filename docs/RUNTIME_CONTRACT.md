@@ -1441,6 +1441,10 @@ adjustment, and latest outcome ref before the selected `SKILL.md` body.
 Common result audit policy:
 
 - every core tool call returns a bounded `tool_result` object
+- failed core tool calls include a bounded `output.failure_kind` such as
+  `invalid_request`, `runtime_state_path`, `protected_path`, `http_status`,
+  `fetch_error`, `search_error`, `timeout`, `spawn_error`, `nonzero_exit`, or
+  `unsupported_tool`
 - result metadata must make output budgets and truncation visible where output
   can be large
 - command-like tools must expose effective timeout, output cap, cwd boundary,

@@ -35,6 +35,7 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
 
     assert.equal(invalid.ok, false);
     assert.match(invalid.summary, /relative/);
+    assertFailureKind(invalid, "invalid_request");
 
     const runtimeRepoPath = await executeTool(useTool("file.read", {
       scope: "repo",
@@ -43,6 +44,7 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
 
     assert.equal(runtimeRepoPath.ok, false);
     assert.match(runtimeRepoPath.summary, /repo-local runtime state/);
+    assertFailureKind(runtimeRepoPath, "runtime_state_path");
 
     const stateScope = await executeTool(useTool("file.read", {
       scope: "state",
@@ -76,6 +78,7 @@ test("file.write_state writes only under the state root", async () => {
 
       assert.equal(invalid.ok, false);
       assert.match(invalid.summary, /relative/);
+      assertFailureKind(invalid, "invalid_request");
     }
   } finally {
     await fixture.cleanup();
@@ -101,6 +104,7 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
     assert.equal(protectedPath.ok, false);
     assert.match(protectedPath.summary, /protected/);
+    assertFailureKind(protectedPath, "protected_path");
 
     const secretLike = await executeTool(useTool("file.write_repo", {
       path: ".env.local",
@@ -109,6 +113,7 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
     assert.equal(secretLike.ok, false);
     assert.match(secretLike.summary, /secret-like/);
+    assertFailureKind(secretLike, "protected_path");
 
     const runtimeStatePath = await executeTool(useTool("file.write_repo", {
       path: ".runtime/state/generated.txt",
@@ -117,6 +122,7 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
     assert.equal(runtimeStatePath.ok, false);
     assert.match(runtimeStatePath.summary, /repo-local runtime state/);
+    assertFailureKind(runtimeStatePath, "runtime_state_path");
 
     for (const path of [".runtime-smoke/generated.txt", ".runtime_stage/generated.txt"]) {
       const runtimeSiblingPath = await executeTool(useTool("file.write_repo", {
@@ -126,6 +132,7 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
       assert.equal(runtimeSiblingPath.ok, false);
       assert.match(runtimeSiblingPath.summary, /repo-local runtime state/);
+      assertFailureKind(runtimeSiblingPath, "runtime_state_path");
     }
 
     for (const path of ["../outside.txt", "/tmp/outside.txt"]) {
@@ -136,6 +143,7 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
       assert.equal(invalid.ok, false);
       assert.match(invalid.summary, /relative/);
+      assertFailureKind(invalid, "invalid_request");
     }
   } finally {
     await fixture.cleanup();
@@ -241,6 +249,7 @@ test("repo.search finds repo text with bounded output", async () => {
 
     assert.equal(runtimePath.ok, false);
     assert.match(runtimePath.summary, /repo-local runtime state/);
+    assertFailureKind(runtimePath, "runtime_state_path");
 
     const invalid = await executeTool(useTool("repo.search", {
       query: "needle",
@@ -249,6 +258,7 @@ test("repo.search finds repo text with bounded output", async () => {
 
     assert.equal(invalid.ok, false);
     assert.match(invalid.summary, /relative/);
+    assertFailureKind(invalid, "invalid_request");
 
     const emptyQuery = await executeTool(useTool("repo.search", {
       query: "  ",
@@ -257,6 +267,7 @@ test("repo.search finds repo text with bounded output", async () => {
 
     assert.equal(emptyQuery.ok, false);
     assert.match(emptyQuery.summary, /non-empty query/);
+    assertFailureKind(emptyQuery, "invalid_request");
   } finally {
     await fixture.cleanup();
   }
@@ -323,7 +334,12 @@ test("http.fetch records body truncation metadata", async () => {
 
 test("http.fetch records timeout and bad URL failures", async () => {
   const fixture = await createFixture();
-  const server = createServer((_request, response) => {
+  const server = createServer((request, response) => {
+    if (request.url === "/status") {
+      response.writeHead(503, { "content-type": "text/plain" });
+      response.end("unavailable");
+      return;
+    }
     setTimeout(() => {
       if (!response.destroyed) response.end("late");
     }, 2000);
@@ -337,8 +353,21 @@ test("http.fetch records timeout and bad URL failures", async () => {
     assert.equal(invalid.ok, false);
     assert.match(invalid.summary, /http\(s\) URL/);
     assert.equal(invalid.output.url, "file:///tmp/data.json");
+    assertFailureKind(invalid, "invalid_request");
 
-    const url = await listen(server, "/slow");
+    const statusUrl = await listen(server, "/status");
+    const httpStatus = await executeTool(useTool("http.fetch", {
+      url: statusUrl,
+      timeout_ms: 1000,
+      max_chars: 1000
+    }), { store: fixture.store });
+
+    assert.equal(httpStatus.ok, false);
+    assert.equal(httpStatus.output.status, 503);
+    assert.equal(httpStatus.output.timed_out, false);
+    assertFailureKind(httpStatus, "http_status");
+
+    const url = statusUrl.replace("/status", "/slow");
     const timedOut = await executeTool(useTool("http.fetch", {
       url,
       timeout_ms: 1000,
@@ -350,6 +379,7 @@ test("http.fetch records timeout and bad URL failures", async () => {
     assert.equal(timedOut.output.timeout_ms, 1000);
     assert.equal(timedOut.output.timed_out, true);
     assert.equal(timedOut.output.max_chars, 1000);
+    assertFailureKind(timedOut, "timeout");
   } finally {
     await close(server);
     await fixture.cleanup();
@@ -412,6 +442,7 @@ test("command.run executes bounded commands with declared side effects", async (
 
     assert.equal(rejectedEnv.ok, false);
     assert.match(rejectedEnv.summary, /env_allowlist/);
+    assertFailureKind(rejectedEnv, "invalid_request");
   } finally {
     await fixture.cleanup();
   }
@@ -470,6 +501,7 @@ test("command.run rejects invalid command requests", async () => {
 
     assert.equal(empty.ok, false);
     assert.match(empty.summary, /requires a command/);
+    assertFailureKind(empty, "invalid_request");
 
     const pathLike = await executeTool(useTool("command.run", {
       command: "./script.sh",
@@ -478,6 +510,7 @@ test("command.run rejects invalid command requests", async () => {
 
     assert.equal(pathLike.ok, false);
     assert.match(pathLike.summary, /binary name/);
+    assertFailureKind(pathLike, "invalid_request");
 
     const invalidCwd = await executeTool(useTool("command.run", {
       command: "node",
@@ -487,6 +520,7 @@ test("command.run rejects invalid command requests", async () => {
 
     assert.equal(invalidCwd.ok, false);
     assert.match(invalidCwd.summary, /Unsupported command.run cwd/);
+    assertFailureKind(invalidCwd, "invalid_request");
 
     const missingSideEffect = await executeTool(useTool("command.run", {
       command: "node"
@@ -494,6 +528,7 @@ test("command.run rejects invalid command requests", async () => {
 
     assert.equal(missingSideEffect.ok, false);
     assert.match(missingSideEffect.summary, /valid side_effect_level/);
+    assertFailureKind(missingSideEffect, "invalid_request");
   } finally {
     await fixture.cleanup();
   }
@@ -513,11 +548,40 @@ test("command.run records timeout failures", async () => {
 
     assert.equal(result.ok, false);
     assert.equal(result.output.timedOut, true);
+    assert.equal(result.output.timed_out, true);
     assert.match(result.summary, /timed out/);
     assert.equal(result.output.timeout_ms, 1000);
     assert.equal(result.output.max_output_chars, 1000);
     assert.equal(result.output.stdout_truncated, false);
     assert.equal(result.output.stderr_truncated, false);
+    assertFailureKind(result, "timeout");
+
+    const nonzero = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "process.exit(7)"],
+      cwd: "state",
+      timeout_ms: 1000,
+      max_output_chars: 1000,
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(nonzero.ok, false);
+    assert.equal(nonzero.output.exitCode, 7);
+    assert.equal(nonzero.output.timed_out, false);
+    assertFailureKind(nonzero, "nonzero_exit");
+
+    const missingCommand = await executeTool(useTool("command.run", {
+      command: "definitely-not-a-real-command-name",
+      cwd: "state",
+      timeout_ms: 1000,
+      max_output_chars: 1000,
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(missingCommand.ok, false);
+    assert.equal(missingCommand.output.exitCode, null);
+    assert.equal(missingCommand.output.timed_out, false);
+    assertFailureKind(missingCommand, "spawn_error");
   } finally {
     await fixture.cleanup();
   }
@@ -585,6 +649,18 @@ test("code.execute_node rejects empty code and records timeout failures", async 
 
     assert.equal(empty.ok, false);
     assert.match(empty.summary, /No code provided/);
+    assertFailureKind(empty, "invalid_request");
+
+    const nonzero = await executeTool(useTool("code.execute_node", {
+      code: "process.exit(3)",
+      timeout_ms: 1000,
+      max_output_chars: 1000
+    }), { store: fixture.store });
+
+    assert.equal(nonzero.ok, false);
+    assert.equal(nonzero.output.exitCode, 3);
+    assert.equal(nonzero.output.timed_out, false);
+    assertFailureKind(nonzero, "nonzero_exit");
 
     const timedOut = await executeTool(useTool("code.execute_node", {
       code: "setTimeout(() => {}, 2000)",
@@ -594,9 +670,11 @@ test("code.execute_node rejects empty code and records timeout failures", async 
 
     assert.equal(timedOut.ok, false);
     assert.equal(timedOut.output.timedOut, true);
+    assert.equal(timedOut.output.timed_out, true);
     assert.match(timedOut.summary, /timed out/);
     assert.equal(timedOut.output.timeout_ms, 1000);
     assert.equal(timedOut.output.max_output_chars, 1000);
+    assertFailureKind(timedOut, "timeout");
   } finally {
     await fixture.cleanup();
   }
@@ -673,6 +751,26 @@ test("tool contract renderer covers the core tool surface", () => {
   assert.doesNotMatch(rendered, /market\.chinext/);
 });
 
+test("unsupported tools return bounded failure metadata", async () => {
+  const fixture = await createFixture();
+  try {
+    const result = await executeTool(useTool("tool.unknown", {
+      value: "ignored"
+    }), { store: fixture.store });
+
+    assert.equal(result.ok, false);
+    assertFailureKind(result, "unsupported_tool");
+    assert.deepEqual(result.output.received_payload, {
+      tool: "tool.unknown",
+      arguments: {
+        value: "ignored"
+      }
+    });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 function useTool(tool: string, args: Record<string, unknown>): ActionProposal {
   return {
     id: "action_test",
@@ -744,6 +842,11 @@ function close(server: Server): Promise<void> {
     }
     server.close((error) => error ? reject(error) : resolve());
   });
+}
+
+function assertFailureKind(result: Awaited<ReturnType<typeof executeTool>>, kind: string): void {
+  assert.equal(result.ok, false);
+  assert.equal(result.output.failure_kind, kind);
 }
 
 function escapeRegExp(value: string): string {

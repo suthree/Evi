@@ -140,6 +140,7 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   const commandRun = coreTools?.capabilities.find((capability) => capability.id === "command.run");
   assert.equal(commandRun?.refs?.includes("packages/runtime/src/tools.ts"), true);
   assert.equal(commandRun?.boundaries?.some((boundary) => boundary.includes("output budget and truncation metadata")), true);
+  assert.equal(commandRun?.boundaries?.some((boundary) => boundary.includes("failure_kind metadata")), true);
   const repoSearch = coreTools?.capabilities.find((capability) => capability.id === "repo.search");
   assert.equal(repoSearch?.refs?.includes("packages/runtime/src/tools.ts"), true);
   assert.equal(repoSearch?.boundaries?.some((boundary) => boundary.includes("output budget and truncation metadata")), true);
