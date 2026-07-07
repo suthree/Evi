@@ -467,6 +467,12 @@ It may include plan identity and authority fields such as `schema_version`,
 `action`, `status`, `title`, target ids, `layer`, `owner_surface`, `refs`, and
 `boundary`, so the artifact-scoped plan keeps its versioned read-only advisory
 status visible.
+It also includes `learning_authority`, which keeps self-evolution SOPs and
+skills in the process-scaffold role. Core/basic layer judgment stays with
+project-design, scorecard, iteration contracts, and current runtime evidence;
+completion authority stays with verified iteration outcomes and completion
+gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert
+advice.
 It may include `source_artifact_id`, `source_iteration_ref`,
 `source_proposed_slice`, `planning_basis`, `next_iteration_seed`, and
 `non_goals`, so artifact review can distinguish the evidence source from the
@@ -561,6 +567,9 @@ reusable runtime contract is named.
 Compact context may render `layer_guard` with the decision stage and source to
 selected layer/owner continuity; it is handoff context, not approval or
 completion proof.
+Compact context may also render `learning_authority`, so handoff context keeps
+the SOP/skill-as-procedure boundary visible without reading raw skill bodies or
+promotion artifacts.
 `iteration_record_status` shows whether the matching next iteration is already
 open. When it is open, `next_command` points to the existing iteration
 inspection command instead of another record command; this is still read-only

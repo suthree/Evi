@@ -1579,6 +1579,13 @@ export function compactGaPlanLayerGuard(
   return `stage=${decision.stage}; source=${decision.source_layer}/${decision.source_owner_surface}; selected=${decision.selected_layer}/${decision.selected_owner_surface}`;
 }
 
+export function compactGaPlanLearningAuthority(
+  plan: Pick<GaProjectDesignPlanPacket, "learning_authority">
+): string {
+  const authority = plan.learning_authority;
+  return `process=${authority.process_scaffold}; judgment=${authority.judgment_authority}; completion=${authority.completion_authority}; promotion=${authority.promotion_gate}`;
+}
+
 export function compactGaPlanAuditRequirements(
   plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
@@ -1734,6 +1741,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
   const compactGoalScope = compactGaPlanGoalScope(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
+  const compactLearningAuthority = compactGaPlanLearningAuthority(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
   const compactAuditEvidence = compactGaPlanAuditEvidence(plan);
   const compactAuditRejects = compactGaPlanAuditRejects(plan);
@@ -1766,6 +1774,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
       `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries.slice(0, 2).join("; ")}`,
       `layer_guard: ${compactLayerGuard}`,
+      `learning_authority: ${compactLearningAuthority}`,
       `selection: ${plan.selection_status}; ${compactSelectionReasons.join(" | ")}`,
       `checks: ${compactSelectionChecks.join(" | ")}`,
       ...(freshSuccessorCheck ? [`successor: ${freshSuccessorCheck}`] : []),

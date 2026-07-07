@@ -89,6 +89,14 @@ export interface GaProjectDesignLayerDecision {
   required_before_outcome: string[];
 }
 
+export interface GaProjectDesignLearningAuthority {
+  process_scaffold: string;
+  judgment_authority: string;
+  completion_authority: string;
+  promotion_gate: string;
+  boundary: string;
+}
+
 export interface GaProjectDesignIterationFocus {
   direction_id: "core_basic_plan_clarity";
   direction: string;
@@ -168,6 +176,7 @@ export interface GaProjectDesignPlanPacket {
   selection_reasons: string[];
   selection_checks: string[];
   layer_decision: GaProjectDesignLayerDecision;
+  learning_authority: GaProjectDesignLearningAuthority;
   iteration_record_status: GaProjectDesignIterationRecordStatus;
   next_iteration_seed: GaProjectDesignIterationSeed;
   phase_gates: GaProjectDesignPlanPhaseGate[];
@@ -339,7 +348,8 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
         ],
         forbidden_shortcuts: [
           "do not promote one-off application behavior to skill or semantic memory",
-          "do not treat dream snapshots as execution plans"
+          "do not treat dream snapshots as execution plans",
+          "do not let a self-evolution SOP or selected skill override project-design judgment or completion gates"
         ]
       }
     ],
@@ -348,6 +358,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "application slices are valid only when they validate, pressure-test, or consume the reusable runtime contract",
       "basic entrypoint health must stay observable before adding mutation or publishing authority",
       "major self-evolution work should start with an iteration contract and end with an outcome record",
+      "self-evolution SOPs and skills may preserve repeatable procedure, but core layer judgment and completion authority stay with project-design, iteration outcomes, and current evidence",
       "multi-expert orchestration follows core/basic stability and learning-persistence gates; advisory output never replaces main-thread verification",
       "expert roles are advisory lenses; main-thread verification keeps completion authority"
     ],
@@ -523,6 +534,7 @@ function buildNextCoreBasicPlan(
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     layer_decision: buildLayerDecision(source, proposedSlice, selectionStatus),
+    learning_authority: buildLearningAuthority(),
     iteration_record_status: iterationRecordStatus,
     next_iteration_seed: nextIterationSeed,
     phase_gates: contract.phases.map((phase) => ({
@@ -541,7 +553,8 @@ function buildNextCoreBasicPlan(
       "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
       "current_state: external adapters remain application slices unless a reusable runtime contract is named",
       "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
-      "learning_persistence: outcome is recorded before reuse"
+      "learning_persistence: outcome is recorded before reuse",
+      "learning_persistence: SOP or skill artifacts preserve procedure only; project-design and verified outcomes retain judgment and completion authority"
     ],
     verification_commands: nextIterationSeed.verification_commands,
     next_command: iterationRecordStatus.inspect_command ?? nextIterationSeed.record_command,
@@ -738,6 +751,16 @@ function buildLayerDecision(
   };
 }
 
+function buildLearningAuthority(): GaProjectDesignLearningAuthority {
+  return {
+    process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
+    judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+    completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
+    promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
+    boundary: "read-only learning authority boundary; does not draft SOPs, promote skills, accept memory, refresh dreams, select skills, invoke models, execute tools, or prove completion"
+  };
+}
+
 function buildIterationRecordStatus(
   iterations: SelfEvolutionIterationContract[],
   seed: GaProjectDesignIterationSeed
@@ -865,11 +888,13 @@ function buildCompletionAuditSeeds(
       requirement: "Record the verified outcome before reusing the slice as future GA design evidence.",
       evidence_needed: [
         "record-iteration-outcome ref",
-        "next moves preserve non-goals and boundaries"
+        "next moves preserve non-goals and boundaries",
+        "learning_authority states that SOPs and skills preserve procedure while project-design and verified outcomes retain judgment and completion authority"
       ],
       reject_if: [
         "dream, SOP, skill, or memory artifacts are treated as completion proof",
-        "one-off application behavior is promoted as core runtime identity"
+        "one-off application behavior is promoted as core runtime identity",
+        "a self-evolution SOP or selected skill overrides project-design layer judgment or the iteration completion gate"
       ]
     }
   ];

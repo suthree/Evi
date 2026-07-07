@@ -37,6 +37,7 @@ test("GA project design contract keeps core project design separate from applica
   assert.equal(contract.phases.some((phase) => phase.layer === "basic_entrypoint"), true);
   assert.equal(contract.phases.some((phase) => phase.layer === "local_learning"), true);
   assert.equal(contract.decision_rules.some((rule) => rule.includes("application slices")), true);
+  assert.equal(contract.decision_rules.some((rule) => rule.includes("SOPs and skills may preserve repeatable procedure")), true);
   assert.equal(contract.verification_policy.some((policy) => policy.includes("current worktree and runtime state")), true);
   assert.equal(contract.non_goals.includes("no external-tool execution"), true);
   assert.equal(contract.refs.includes("packages/core/src/ga_project_design.ts"), true);
@@ -230,6 +231,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("multi-expert orchestration follows those gates and remains advisory")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.judgment_authority.includes("core/basic layer selection stays with ga_project_design"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.completion_authority.includes("verified iteration outcome plus completion_gate coverage"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.promotion_gate.includes("later local-learning gates"), true);
+    assert.match(readModel.next_core_basic_plan?.learning_authority.boundary ?? "", /read-only learning authority boundary/);
     assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("multi_expert[orchestration]: defer expert scheduling")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.owner_surface, "ga_project_design");
@@ -254,6 +260,10 @@ test("GA project design read model derives reusable artifacts from verified iter
     );
     assert.equal(
       readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "learning_persistence")?.forbidden_shortcuts.includes("do not treat dream snapshots as execution plans"),
+      true
+    );
+    assert.equal(
+      readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "learning_persistence")?.forbidden_shortcuts.includes("do not let a self-evolution SOP or selected skill override project-design judgment or completion gates"),
       true
     );
     assert.deepEqual(
@@ -306,6 +316,14 @@ test("GA project design read model derives reusable artifacts from verified iter
       ),
       true
     );
+    assert.equal(
+      readModel.next_core_basic_plan?.completion_audit_seeds.some((seed) =>
+        seed.id === "learning_persistence"
+        && seed.evidence_needed.includes("learning_authority states that SOPs and skills preserve procedure while project-design and verified outcomes retain judgment and completion authority")
+        && seed.reject_if.includes("a self-evolution SOP or selected skill overrides project-design layer judgment or the iteration completion gate")
+      ),
+      true
+    );
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("instead of copied from the source artifact")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("external adapters remain application slices")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:")), true);
@@ -313,6 +331,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("required entrypoints are covered by completion claims")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("SOP or skill artifacts preserve procedure only")), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /governance record-iteration/);

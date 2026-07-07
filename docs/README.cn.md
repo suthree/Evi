@@ -128,6 +128,7 @@ iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。
 多 agent / 多专家调度属于 core/basic 稳定和 learning-persistence gate 之后的调度层；当前阶段只保留 advisory contract，不把它当作与 core/basic 并列的当前目标。
 `layer_guard` 会保留 decision stage 和 source -> selected layer/owner 连续性，避免只靠 slice id 判断 core/basic 继承关系；
+`learning_authority` 会明确自迭代 SOP/skill 只承载可重复流程，核心/基础能力的层级判断和完成证明仍由 project-design、scorecard、iteration outcome、completion gate 和当前证据负责；
 `anti_drift` 会保留有界的反漂移检查，让外部 adapter 压力、过早提升 SOP/skill/memory/dream、以及未验证就声明完成这三类风险在 handoff 中保持可见；
 `non_goals` 会保留关键边界：不自动提升 SOP/skill/memory/dream，不执行外部工具，不把 application slice 当核心身份，也不把未执行验证当完成证明；
 如果匹配的下一条 iteration 已经打开，`iteration_record_status` 会显示它，`next_command` 也会指向

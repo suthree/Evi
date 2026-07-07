@@ -153,6 +153,12 @@ context only and cannot close work or grant execution authority.
 The scorecard may show an active multi-expert orchestration contract, but its
 next-slice reason must keep execution deferred until core/basic and
 learning-persistence gates are stable.
+GA project-design planning may expose `learning_authority` to distinguish
+self-evolution SOPs or skills as repeatable procedure scaffolds from runtime
+judgment authority. Core/basic layer selection remains with project-design,
+scorecard, iteration contracts, and current evidence; completion authority
+remains with verified iteration outcomes and completion-gate coverage, not SOP
+text, selected-skill recall, dream snapshots, or expert advice.
 `governance experts` exposes the corresponding read-only expert orchestration
 contract. It defines advisory expert roles, scheduling boundaries, and
 main-thread verification authority; it does not invoke models, spawn agents,
