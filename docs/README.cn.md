@@ -115,6 +115,7 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 其中 `runtime_observability:attention_guard` 表示它要守住 service health attention 的可见性，不代表 resident service 已健康；
 `runtime_guard` 会把 runtime_observability 的 attention 状态、下一步和 outcome 命名标准放进 handoff，避免把 runtime 注意事项藏到应用进展里；真正健康证据仍以 `service health` 为准；
 `current_state` audit seed 会要求在 resident runtime 相关变更时记录 service health 的 status/reasons；如果 service health 不是 healthy，verified outcome 不能省略 runtime attention reasons；
+如果 verification command 里要求了 service health，`current_state` audit seed 也会要求 outcome 引用 service-health status/reasons，即使本轮只是只读 GA design 切片；
 当 service health 不是 healthy 时，`current_state` audit seed 还会要求把 runtime attention 分类为 `acceptable`、`repair_needed` 或 `verification_blocker`；只写原因、不分类，不足以作为 outcome 证据；
 完成分类后还必须写 handling policy：`acceptable` 为什么对当前 claim 安全，`repair_needed` 后续修什么，或 `verification_blocker` 为什么阻止 verified outcome；
 如果分类是 `repair_needed`，handling policy 必须写 follow-up action，或说明为什么不需要 follow-up；只分类、不追踪，不够；

@@ -544,6 +544,9 @@ Required policy:
   and reasons when resident runtime behavior changed, and must reject verified
   outcomes that omit runtime attention reasons while service health is not
   healthy
+- When service health is in the required verification command list, the
+  `current_state` completion audit seed must require the outcome to cite
+  service-health status and reasons even for read-only GA design slices
 - When service health is not healthy, the `current_state` completion audit seed
   must require runtime attention to be classified as `acceptable`,
   `repair_needed`, or `verification_blocker`; naming the reason without a

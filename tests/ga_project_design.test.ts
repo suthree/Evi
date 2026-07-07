@@ -275,7 +275,9 @@ test("GA project design read model derives reusable artifacts from verified iter
         && seed.requirement.includes("classify runtime attention")
         && seed.requirement.includes("name the handling policy")
         && seed.evidence_needed.includes("service health status and reasons when resident runtime behavior changed")
+        && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")
         && seed.reject_if.includes("runtime attention reasons are omitted from the outcome when service health is not healthy")
+        && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")
         && seed.evidence_needed.includes("runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy")
         && seed.reject_if.includes("runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker")
         && seed.evidence_needed.includes("runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome")
@@ -363,6 +365,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("dream snapshots as execution plans"))), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome")), true);

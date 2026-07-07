@@ -591,6 +591,9 @@ command remains the runtime evidence.
 The `current_state` audit seed requires service-health status and reasons when
 resident runtime behavior changed, and rejects verified outcomes that omit
 runtime attention reasons while service health is not healthy.
+When service health is in the required verification command list, the same seed
+requires the outcome to cite service-health status and reasons even for
+read-only GA design slices.
 When service health is not healthy, the same seed requires runtime attention to
 be classified as `acceptable`, `repair_needed`, or `verification_blocker`.
 Naming the reason without classification is not enough outcome evidence.
