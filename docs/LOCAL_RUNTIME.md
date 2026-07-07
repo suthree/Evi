@@ -707,12 +707,21 @@ it still does not execute or prove them.
 `outcome_verification_claim_coverage` checks required verification entrypoints
 against outcome verification claims, so every entrypoint must map to a
 completion claim before review.
+`runtime_attention_outcome_coverage` checks the same outcome claims against
+bounded `service health` when `service-health` is required and current health
+has non-healthy reasons. The `service-health:` claim must carry structured
+tokens: `status=<status>`, the current reason codes,
+`classification=acceptable|repair_needed|verification_blocker`, `handling=...`,
+and, for `repair_needed`, a `follow_up=...`/`follow-up=...`/`followup=...` or
+`no_follow_up=...` token. This only checks recorded evidence; it does not repair
+or prove the service.
 `completion_gate` summarizes structural blockers before the audited iteration is
 ready for manual completion review: missing verified outcome record, missing
 outcome evidence refs, missing plan ref coverage, or missing outcome
-verification command coverage, or missing outcome verification claim coverage.
-A partial or failed outcome stays blocked by `verified_outcome`. It remains
-read-only and does not approve seeds or prove the commands passed.
+verification command coverage, missing outcome verification claim coverage, or
+missing runtime attention outcome coverage. A partial or failed outcome stays
+blocked by `verified_outcome`. It remains read-only and does not approve seeds
+or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited

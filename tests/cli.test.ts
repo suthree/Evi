@@ -9,6 +9,7 @@ import {
   buildIterationAuditEvidenceAvailable,
   buildIterationAuditGuidance,
   buildIterationAuditNextCommand,
+  buildIterationAuditRuntimeAttentionOutcomeCoverage,
   buildIterationAuditOutcomeVerificationClaimCoverage,
   buildIterationAuditOutcomeVerificationCommandCoverage,
   buildIterationAuditPlanRefCoverage,
@@ -216,6 +217,29 @@ test("iteration audit seed evidence status stays conservative before outcome evi
   assert.equal(readyForReview.missing.length, 0);
   assert.equal(readyForReview.evidence_counts.runtime_iteration_verification_commands, 0);
   assert.match(readyForReview.review_note, /does not prove/);
+
+  const currentStateSeed = {
+    id: "current_state",
+    phase_id: "capability_layering",
+    requirement: "Check current runtime state.",
+    evidence_needed: ["service health status and reasons"],
+    reject_if: ["runtime attention is not handled"]
+  } as const;
+  const missingRuntimeAttention = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "missing_classification" }
+  );
+  assert.equal(missingRuntimeAttention.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingRuntimeAttention.missing.includes("runtime_attention_outcome_coverage"), true);
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
@@ -427,6 +451,105 @@ test("iteration audit outcome verification claim coverage maps required entrypoi
   assert.match(covered.boundary, /does not execute commands or prove completion/);
 });
 
+test("iteration audit runtime attention coverage requires structured service-health handling", () => {
+  const serviceHealth = {
+    status: "attention",
+    status_reasons: ["heartbeat_stale", "deployment_stale"]
+  } as const;
+
+  const notRequired = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["check"],
+    { outcome_verification_claims: [] },
+    serviceHealth
+  );
+  assert.equal(notRequired.status, "not_required");
+  assert.equal(notRequired.service_health_required, false);
+
+  const missingClaim = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    { outcome_verification_claims: ["check: full repo check passed"] },
+    serviceHealth
+  );
+  assert.equal(missingClaim.status, "missing_service_health_claim");
+
+  const missingStatus = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart follow_up=service restart"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingStatus.status, "missing_service_health_status");
+
+  const missingReasons = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale classification=repair_needed handling=restart follow_up=service restart"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingReasons.status, "missing_service_health_reasons");
+  assert.deepEqual(missingReasons.missing_reasons, ["deployment_stale"]);
+
+  const missingClassification = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingClassification.status, "missing_classification");
+
+  const missingHandling = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingHandling.status, "missing_handling_policy");
+
+  const missingRepairFollowUp = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart resident runtime"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingRepairFollowUp.status, "missing_repair_follow_up");
+
+  const covered = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart resident runtime follow_up=service restart after commit"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.selected_classification, "repair_needed");
+  assert.deepEqual(covered.missing_reasons, []);
+  assert.match(covered.boundary, /does not execute commands/);
+
+  const healthy = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    { outcome_verification_claims: [] },
+    { status: "healthy", status_reasons: [] }
+  );
+  assert.equal(healthy.status, "not_required");
+});
+
 test("iteration audit completion gate blocks before outcome evidence and coverage are present", () => {
   const blocked = buildIterationAuditCompletionGate(
     { outcome_status: "not_recorded" },
@@ -450,6 +573,17 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   );
   assert.equal(missingClaims.status, "blocked");
   assert.deepEqual(missingClaims.blockers, ["outcome_verification_claim_coverage"]);
+
+  const missingRuntimeAttention = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "missing_classification" }
+  );
+  assert.equal(missingRuntimeAttention.status, "blocked");
+  assert.deepEqual(missingRuntimeAttention.blockers, ["runtime_attention_outcome_coverage"]);
 
   const partial = buildIterationAuditCompletionGate(
     { outcome_status: "partial" },

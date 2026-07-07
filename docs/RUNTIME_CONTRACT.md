@@ -222,12 +222,20 @@ passed.
 `outcome_verification_claim_coverage` compares required verification entrypoints
 with outcome verification claims, so the audit can show whether each entrypoint
 maps to a completion claim.
+`runtime_attention_outcome_coverage` reads bounded service health during the
+iteration audit. When `service-health` is a required entrypoint and current
+service health has non-healthy reasons, the `service-health:` outcome
+verification claim must include `status=<status>`, the current reason codes,
+`classification=acceptable|repair_needed|verification_blocker`, and
+`handling=<policy>`; `repair_needed` claims must also include `follow_up=...`,
+`follow-up=...`, `followup=...`, or `no_follow_up=...`. This is read-only claim
+coverage, not a service repair or proof of health.
 `completion_gate` summarizes the structural blockers before an iteration can be
 treated as ready for manual completion review: verified outcome record, outcome
 evidence refs, plan ref coverage, outcome verification command coverage, and
-outcome verification claim coverage. A partial or failed outcome remains
-blocked by `verified_outcome`. It is a read-only gate and does not approve
-seeds, execute checks, or prove completion.
+outcome verification claim coverage, and runtime attention outcome coverage. A
+partial or failed outcome remains blocked by `verified_outcome`. It is a
+read-only gate and does not approve seeds, execute checks, or prove completion.
 `governance iterations --iteration <id> --audit-seed all` aggregates every
 project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
