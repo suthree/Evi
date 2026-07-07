@@ -1423,7 +1423,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one bounded analysis or critique task per model round; delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. Invalid delegated results block verified completion.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1664,7 +1664,17 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
   const task = typeof record.task === "string" ? record.task.trim() : "";
   const context = typeof record.context === "string" ? record.context.trim() : "";
   const parsed = delegateAgentPayloadSchema.safeParse(record);
-  if (parsed.success) return { ok: true, ...parsed.data };
+  if (parsed.success) {
+    const boundaryError = validateDelegationContextBoundary(parsed.data.context);
+    if (!boundaryError) return { ok: true, ...parsed.data };
+    return {
+      ok: false,
+      task: parsed.data.task,
+      task_chars: parsed.data.task.length,
+      context_chars: parsed.data.context.length,
+      error: boundaryError
+    };
+  }
   if (!task) {
     return {
       ok: false,
@@ -1718,6 +1728,132 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
     context_chars: context.length,
     error: "delegate_agent.payload failed schema validation."
   };
+}
+
+function validateDelegationContextBoundary(context: string): string | null {
+  const text = normalizeBoundaryText(context);
+  const deniesToolAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, TOOL_AUTHORITY_TERMS);
+  const deniesWriteOrMutationAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, WRITE_MUTATION_TERMS);
+  const keepsCompletionWithMainHarness =
+    hasNearbyBoundary(text, COMPLETION_TERMS, MAIN_HARNESS_TERMS)
+    || hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, COMPLETION_AUTHORITY_TERMS);
+  if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
+    return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
+  }
+  return null;
+}
+
+const AUTHORITY_DENIAL_TERMS = [
+  "no",
+  "not",
+  "without",
+  "cannot",
+  "can't",
+  "can not",
+  "must not",
+  "unavailable",
+  "read only",
+  "没有",
+  "无",
+  "不能",
+  "不可",
+  "不得",
+  "不会",
+  "不具备",
+  "只读"
+];
+
+const TOOL_AUTHORITY_TERMS = [
+  "tool",
+  "tools",
+  "use tool",
+  "tool access",
+  "tool call",
+  "工具",
+  "调用工具",
+  "工具权限"
+];
+
+const WRITE_MUTATION_TERMS = [
+  "write",
+  "writes",
+  "write repo",
+  "file write repo",
+  "state write",
+  "mutation",
+  "mutate",
+  "mutates",
+  "side effect",
+  "side effects",
+  "external write",
+  "写入",
+  "状态写入",
+  "仓库写入",
+  "外部写入",
+  "修改",
+  "突变",
+  "副作用"
+];
+
+const COMPLETION_TERMS = [
+  "completion",
+  "done claim",
+  "final success",
+  "success verified",
+  "prove completion",
+  "完成",
+  "完成判断",
+  "最终成功",
+  "成功判断",
+  "验收"
+];
+
+const COMPLETION_AUTHORITY_TERMS = [
+  "completion authority",
+  "decide completion",
+  "prove completion",
+  "final success",
+  "完成权",
+  "完成判断",
+  "证明完成"
+];
+
+const MAIN_HARNESS_TERMS = [
+  "main harness",
+  "main thread",
+  "main model",
+  "operator",
+  "verified outcome",
+  "主 harness",
+  "主流程",
+  "主线程",
+  "主模型",
+  "操作员",
+  "用户",
+  "验证 outcome"
+];
+
+function normalizeBoundaryText(value: string): string {
+  return value.toLowerCase().replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function hasNearbyBoundary(text: string, firstTerms: string[], secondTerms: string[], window = 160): boolean {
+  for (const first of firstTerms) {
+    for (const second of secondTerms) {
+      if (termsAreNearby(text, first, second, window) || termsAreNearby(text, second, first, window)) return true;
+    }
+  }
+  return false;
+}
+
+function termsAreNearby(text: string, first: string, second: string, window: number): boolean {
+  let index = text.indexOf(first);
+  while (index !== -1) {
+    const nextIndex = text.indexOf(second, index);
+    if (nextIndex !== -1 && nextIndex - index <= window) return true;
+    index = text.indexOf(first, index + first.length);
+  }
+  return false;
 }
 
 function parseDelegatedOutput(outputText: string): {

@@ -327,6 +327,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.max_chars, 1000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.max_chars, 12000);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("no tool/write/mutation authority")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.reject_if.some((item) => item.includes("omits delegated authority limits")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, 240);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, 2000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.field, "dispatch_failure_kind");
@@ -535,6 +537,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("main-harness completion boundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("more than one delegate_agent action")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("dispatch_limit_exceeded")), true);

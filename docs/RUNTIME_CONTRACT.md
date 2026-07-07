@@ -1173,7 +1173,10 @@ The model proposes. The harness decides what runs and what counts as complete.
 has no tools or memory in the current runtime. The action payload must provide
 non-empty `task` and `context` strings before the delegated model is called, and
 `task` is capped at 1000 chars while `context` is capped at 12000 chars. The
-delegated model must return a JSON object with non-empty `summary` and
+context must also explicitly state that the delegated subagent has no tool,
+write, or mutation authority and that completion remains with the main harness.
+Contexts that omit those authority boundaries are rejected before any delegated
+model call. The delegated model must return a JSON object with non-empty `summary` and
 `findings_text`; `summary` is capped at 240 chars and `findings_text` is capped
 at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority

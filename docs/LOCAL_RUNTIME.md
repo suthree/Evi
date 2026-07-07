@@ -2013,7 +2013,10 @@ non-empty `summary` and `findings_text`; `summary` is capped at 240 chars and
 result when that contract is missing, malformed, or over-limit. Delegation
 payloads share the core schema contract: `task` must be non-empty and at most
 1000 chars, `context` must be non-empty and at most 12000 chars, and the payload
-may contain only `task` and `context` before the submodel is called. The live
+may contain only `task` and `context` before the submodel is called. The context
+must explicitly state that the delegated subagent has no tool/write/mutation
+authority and that completion remains with the main harness; otherwise the
+runner records `input_contract_failed` without calling the submodel. The live
 runner allows at most one `delegate_agent` action per model round; extra
 delegate actions are recorded as failed delegated results without calling the
 delegated model. Delegated observations may inform the next model round, but

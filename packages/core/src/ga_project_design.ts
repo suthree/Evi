@@ -1111,11 +1111,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       required: [
         "all relevant constraints and evidence refs needed for the bounded task",
         "current core/basic boundary and deferred expert scope",
+        "explicit no tool/write/mutation authority and main-harness completion boundary",
         "expected output shape"
       ],
       reject_if: [
         "context is empty or over the configured max chars",
         "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
+        "context omits delegated authority limits or main-harness completion ownership",
         "context grants external adapter, SOP/skill promotion, or completion authority"
       ]
     },
