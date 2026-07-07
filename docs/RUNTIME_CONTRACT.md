@@ -654,6 +654,11 @@ slice, and source ref already have an open iteration, it must return that
 existing record instead of writing a duplicate. It must not execute the planned
 slice, run verification commands, mutate repo files, promote learning
 artifacts, or prove completion.
+Manual `governance record-iteration` for `core_runtime` or `basic_entrypoint`
+must include `--implementation-scope`, `--deferred-scope`, and
+`--delivery-standard`. These fields create the auditable implementation
+contract; omitting them for core/basic work is rejected instead of producing an
+open iteration that later cannot explain its boundary.
 
 Required policy:
 
@@ -663,6 +668,10 @@ Required policy:
   and orchestration readiness
 - scorecard output must include structure sufficient to choose a next bounded
   slice without treating application-tool pressure as core identity
+- scorecard output must surface the latest `basic_entrypoint` iteration ref and
+  outcome status inside the basic runtime substrate dimension, and open
+  core/basic iterations must prompt outcome closure before verified progress is
+  claimed
 - application adapters and external tools may appear only as evidence pressure,
   not as core capability identity
 - major self-evolution work should have a self-evolution iteration contract

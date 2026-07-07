@@ -529,6 +529,20 @@ export function buildIterationAuditPlanRefCoverage(
   };
 }
 
+export function selectIterationAuditPlanRefs(
+  guidanceScope: IterationAuditGuidanceScope,
+  planRefs: string[],
+  iteration: SelfEvolutionIterationContract
+): string[] {
+  if (guidanceScope !== "current_plan_context" || !iteration.implementation_contract) return planRefs;
+  return [...new Set([
+    iteration.ref,
+    iteration.source_ref,
+    ...iteration.evidence_refs,
+    ...(iteration.outcome?.evidence_refs ?? [])
+  ].map((ref) => ref?.trim()).filter((ref): ref is string => Boolean(ref)))];
+}
+
 export function buildIterationAuditRefs(
   planRefs: string[],
   iteration: SelfEvolutionIterationContract
@@ -851,7 +865,7 @@ export function buildIterationAuditCompletionGate(
     ...(hasOutcome && !hasVerifiedOutcome ? ["verified_outcome"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
-    ...(implementationContractCoverage && implementationContractCoverage.status !== "covered" ? ["implementation_contract_coverage"] : []),
+    ...(!implementationContractCoverage || implementationContractCoverage.status !== "covered" ? ["implementation_contract_coverage"] : []),
     ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
     ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
     ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
@@ -864,17 +878,22 @@ export function buildIterationAuditCompletionGate(
   };
 }
 
-function buildManualIterationImplementationContract(options: CliOptions): GaProjectDesignImplementationContract | undefined {
+export function buildManualIterationImplementationContract(options: CliOptions): GaProjectDesignImplementationContract | undefined {
   const hasContract =
     options.iterationImplementationScopes.length > 0
     || options.iterationDeferredScopes.length > 0
     || options.iterationDeliveryStandards.length > 0;
-  if (!hasContract) return undefined;
+  const layer = required(options.iterationLayer, "governance record-iteration requires --layer");
+  if (!hasContract) {
+    if (layer === "core_runtime" || layer === "basic_entrypoint") {
+      throw new Error("governance record-iteration for core_runtime/basic_entrypoint requires --implementation-scope, --deferred-scope, and --delivery-standard");
+    }
+    return undefined;
+  }
   if (!options.iterationImplementationScopes.length || !options.iterationDeferredScopes.length || !options.iterationDeliveryStandards.length) {
     throw new Error("governance record-iteration implementation contract requires --implementation-scope, --deferred-scope, and --delivery-standard");
   }
   const proposedSlice = required(options.iterationProposedSlice, "governance record-iteration requires --proposed-slice");
-  const layer = required(options.iterationLayer, "governance record-iteration requires --layer");
   const ownerSurface = required(options.iterationOwnerSurface, "governance record-iteration requires --owner-surface");
   return {
     proposed_slice: proposedSlice,
@@ -2047,7 +2066,8 @@ export async function main(): Promise<number> {
         const evidenceAvailable = buildIterationAuditEvidenceAvailable(detail.iteration, config.state.root);
         const auditGuidance = buildIterationAuditGuidance(plan, iteration, config.state.root);
         const nextCommand = buildIterationAuditNextCommand(iteration, config.state.root);
-        const planRefCoverage = buildIterationAuditPlanRefCoverage(plan.refs, detail.iteration);
+        const selectedPlanRefs = selectIterationAuditPlanRefs(auditGuidance.guidance_scope, plan.refs, detail.iteration);
+        const planRefCoverage = buildIterationAuditPlanRefCoverage(selectedPlanRefs, detail.iteration);
         const implementationContractCoverage = buildIterationAuditImplementationContractCoverage(plan.implementation_contract, detail.iteration);
         const verificationCoverageRequiredCommands = selectIterationAuditVerificationCoverageCommands(auditGuidance.guidance_scope, auditGuidance.required_before_outcome, evidenceAvailable);
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
@@ -2065,7 +2085,7 @@ export async function main(): Promise<number> {
           buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage)
         );
         const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage);
-        const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
+        const refs = buildIterationAuditRefs(selectedPlanRefs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
           console.log(JSON.stringify({
             action: "iteration-completion-audit",

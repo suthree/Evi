@@ -197,6 +197,68 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
   }
 });
 
+test("self-evolution scorecard surfaces open basic iterations", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-open-basic-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga_for_basic.json", {
+      schema_version: 1,
+      id: "iteration_contract_verified_ga_for_basic",
+      ref: "self-evolution/iterations/iteration_contract_verified_ga_for_basic.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified GA baseline before basic work.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "verified_ga_before_basic",
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no completion proof"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Verification passed.",
+        evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
+        verification_commands: ["pnpm run check"],
+        next_moves: ["Harden basic runtime substrate next."],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    });
+    await store.writeJson("self-evolution/iterations/iteration_contract_open_basic.json", {
+      schema_version: 1,
+      id: "iteration_contract_open_basic",
+      ref: "self-evolution/iterations/iteration_contract_open_basic.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Open basic runtime substrate slice.",
+      layer: "basic_entrypoint",
+      owner_surface: "ga_project_design",
+      proposed_slice: "manual_basic_iteration_contract_guard",
+      evidence_refs: ["packages/core/src/self_evolution_iterations.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no completion proof"],
+      advisory_expert_roles: ["runtime_operator", "verification_reviewer"],
+      created_at: "2026-07-06T00:00:04Z",
+      boundary: "bounded iteration contract"
+    });
+
+    const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const basic = scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate");
+
+    assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_basic/);
+    assert.equal(basic?.evidence_refs.includes("self-evolution/iterations/iteration_contract_open_basic.json"), true);
+    assert.match(basic?.summary ?? "", /iteration_contract_open_basic/);
+    assert.match(basic?.summary ?? "", /not_recorded/);
+    assert.match(basic?.next_moves[0] ?? "", /Close the basic iteration outcome for iteration_contract_open_basic/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("self-evolution scorecard separates superseded open iterations from the current core plan", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-stale-open-ga-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

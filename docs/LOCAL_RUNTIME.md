@@ -444,6 +444,10 @@ The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
 prioritization context only, not completion proof.
+The `basic_runtime_substrate` dimension also carries the latest
+`basic_entrypoint` iteration ref and outcome status when one exists. An open
+core/basic iteration is a closure prompt, not verified progress, until its
+outcome is recorded and the completion audit is ready for review.
 The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
 read-only `next_slices`. `default_next_slice` is the bounded core/basic outlet
 for the next planning handoff. `next_slices` stays ordered by dimension stage,

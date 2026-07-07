@@ -21,8 +21,10 @@ import {
   buildIterationAuditRefs,
   buildIterationAuditSeedEvidenceStatus,
   buildIterationAuditVerificationCommandCoverage,
+  buildManualIterationImplementationContract,
   getIterationAuditServiceHealthSnapshot,
   parseArgs,
+  selectIterationAuditPlanRefs,
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
 
@@ -410,6 +412,105 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(missingHistoricalFields.status, "missing_required_fields");
   assert.deepEqual(missingHistoricalFields.missing_fields, ["implementation_scope"]);
+});
+
+test("manual core and basic iterations require implementation contract flags", () => {
+  assert.throws(() => buildManualIterationImplementationContract(parseArgs([
+    "governance",
+    "record-iteration",
+    "--summary",
+    "Record basic work.",
+    "--layer",
+    "basic_entrypoint",
+    "--owner-surface",
+    "runtime_tools",
+    "--proposed-slice",
+    "runtime_tool_boundary"
+  ])), /core_runtime\/basic_entrypoint requires --implementation-scope/);
+
+  assert.throws(() => buildManualIterationImplementationContract(parseArgs([
+    "governance",
+    "record-iteration",
+    "--summary",
+    "Record core work.",
+    "--layer",
+    "core_runtime",
+    "--owner-surface",
+    "ga_project_design",
+    "--proposed-slice",
+    "ga_contract_boundary",
+    "--implementation-scope",
+    "change one reusable boundary"
+  ])), /requires --implementation-scope, --deferred-scope, and --delivery-standard/);
+
+  const contract = buildManualIterationImplementationContract(parseArgs([
+    "governance",
+    "record-iteration",
+    "--summary",
+    "Record basic work.",
+    "--layer",
+    "basic_entrypoint",
+    "--owner-surface",
+    "runtime_tools",
+    "--proposed-slice",
+    "runtime_tool_boundary",
+    "--implementation-scope",
+    "change one reusable runtime tool boundary",
+    "--deferred-scope",
+    "no external adapter",
+    "--delivery-standard",
+    "iteration audit can inspect the intended scope"
+  ]));
+
+  assert.equal(contract?.selected_layer, "basic_entrypoint");
+  assert.equal(contract?.owner_surface, "runtime_tools");
+  assert.equal(contract?.proposed_slice, "runtime_tool_boundary");
+  assert.deepEqual(contract?.implementation_scope, ["change one reusable runtime tool boundary"]);
+});
+
+test("iteration audit uses local refs for unrelated manual iterations with contracts", () => {
+  const iteration = {
+    schema_version: 1,
+    id: "iteration_contract_manual_basic",
+    ref: "self-evolution/iterations/iteration_contract_manual_basic.json",
+    kind: "self_evolution_iteration_contract",
+    status: "recorded",
+    summary: "Manual basic runtime work.",
+    layer: "basic_entrypoint",
+    owner_surface: "runtime_tools",
+    proposed_slice: "runtime_tool_boundary",
+    implementation_contract: {
+      proposed_slice: "runtime_tool_boundary",
+      source_artifact_id: "manual_record_iteration",
+      source_proposed_slice: "manual_record_iteration",
+      selected_layer: "basic_entrypoint",
+      owner_surface: "runtime_tools",
+      improvement_type: "reusable_ga_design_contract",
+      implementation_scope: ["change one reusable runtime tool boundary"],
+      deferred_scope: ["no external adapter"],
+      delivery_standard: ["iteration audit can inspect the intended scope"],
+      boundary: "manual contract"
+    },
+    evidence_refs: ["packages/runtime/src/tools.ts"],
+    verification_commands: ["pnpm run check"],
+    non_goals: ["no completion proof"],
+    advisory_expert_roles: ["runtime_operator", "verification_reviewer"],
+    created_at: "2026-07-06T00:00:01Z",
+    boundary: "bounded iteration contract"
+  } as Parameters<typeof selectIterationAuditPlanRefs>[2];
+
+  const selected = selectIterationAuditPlanRefs(
+    "current_plan_context",
+    ["packages/core/src/ga_project_design.ts", "self-evolution/iterations/current_plan.json"],
+    iteration
+  );
+
+  assert.deepEqual(selected, [
+    "self-evolution/iterations/iteration_contract_manual_basic.json",
+    "packages/runtime/src/tools.ts"
+  ]);
+  const coverage = buildIterationAuditPlanRefCoverage(selected, iteration);
+  assert.equal(coverage.status, "covered");
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
@@ -831,7 +932,11 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_status: "not_recorded" },
     { outcome_evidence_refs: [] },
     { status: "covered" },
-    { status: "missing_outcome_commands" }
+    { status: "missing_outcome_commands" },
+    undefined,
+    undefined,
+    undefined,
+    { status: "covered" }
   );
   assert.equal(blocked.status, "blocked");
   assert.deepEqual(blocked.blockers, [
@@ -845,7 +950,10 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
     { status: "covered" },
-    { status: "missing_claims" }
+    { status: "missing_claims" },
+    undefined,
+    undefined,
+    { status: "covered" }
   );
   assert.equal(missingClaims.status, "blocked");
   assert.deepEqual(missingClaims.blockers, ["outcome_verification_claim_coverage"]);
@@ -856,7 +964,9 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { status: "covered" },
     { status: "covered" },
     { status: "covered" },
-    { status: "missing_classification" }
+    { status: "missing_classification" },
+    undefined,
+    { status: "covered" }
   );
   assert.equal(missingRuntimeAttention.status, "blocked");
   assert.deepEqual(missingRuntimeAttention.blockers, ["runtime_attention_outcome_coverage"]);
@@ -868,7 +978,8 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { status: "covered" },
     { status: "covered" },
     { status: "not_required" },
-    { status: "missing_workspace_claim" }
+    { status: "missing_workspace_claim" },
+    { status: "covered" }
   );
   assert.equal(missingWorkspaceCoverage.status, "blocked");
   assert.deepEqual(missingWorkspaceCoverage.blockers, ["workspace_outcome_coverage"]);
@@ -890,6 +1001,10 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_status: "partial" },
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
+    { status: "covered" },
+    undefined,
+    undefined,
+    undefined,
     { status: "covered" }
   );
   assert.equal(partial.status, "blocked");
@@ -899,11 +1014,24 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_status: "verified" },
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
+    { status: "covered" },
+    undefined,
+    undefined,
+    undefined,
     { status: "covered" }
   );
   assert.equal(ready.status, "ready_for_manual_review");
   assert.deepEqual(ready.blockers, []);
   assert.match(ready.boundary, /implementation contract coverage/);
+
+  const missingImplementationContractCoverageArgument = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" }
+  );
+  assert.equal(missingImplementationContractCoverageArgument.status, "blocked");
+  assert.deepEqual(missingImplementationContractCoverageArgument.blockers, ["implementation_contract_coverage"]);
 });
 
 test("iteration audit verification coverage uses stable iteration commands for historical audits", () => {

@@ -97,13 +97,15 @@ export async function getSelfEvolutionScorecard(
   const projectDesignContract = getGaProjectDesignContract();
   const projectDesignArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
   const latestCoreBasicProjectDesignArtifactIteration = latestCoreBasicProjectDesignArtifactSource(iterations.iterations, projectDesignArtifacts);
-  const latestOpenIteration = iterations.iterations.find((iteration) => isOpenCoreGaDesignIteration(iteration));
+  const latestOpenIteration = iterations.iterations.find((iteration) => isOpenCoreBasicIteration(iteration));
   const latestBlockingOpenIteration = latestOpenIteration && !isSupersededOpenIteration(latestOpenIteration, latestCoreBasicProjectDesignArtifactIteration)
     ? latestOpenIteration
     : undefined;
   const latestSupersededOpenIteration = latestOpenIteration && isSupersededOpenIteration(latestOpenIteration, latestCoreBasicProjectDesignArtifactIteration)
     ? latestOpenIteration
     : undefined;
+  const latestBasicIteration = iterations.iterations.find((iteration) => iteration.layer === "basic_entrypoint");
+  const latestBasicStatus = describeIterationOutcomeStatus(latestBasicIteration);
   const latestOutcomeIteration = iterations.iterations.find((iteration) => iteration.outcome);
   const latestOutcome = latestOutcomeIteration?.outcome;
 
@@ -143,10 +145,18 @@ export async function getSelfEvolutionScorecard(
       stage: attentionLayers.length > 0 ? "attention" : "active",
       layer: "basic_entrypoint",
       score: clampScore(1 + Math.min(2, layerCounts.basic_entrypoint) + (attentionLayers.length === 0 ? 2 : 1)),
-      summary: "CLI, resident service, context, health, and operator surfaces are the substrate that lets core evolution stay observable.",
-      evidence_refs: ["docs/RUNTIME_CONTRACT.md", "packages/core/src/memory_layers.ts"],
+      summary: latestBasicIteration
+        ? `CLI, resident service, context, health, and operator surfaces are the substrate that lets core evolution stay observable; latest basic iteration is ${latestBasicIteration.id} with outcome ${latestBasicStatus}.`
+        : "CLI, resident service, context, health, and operator surfaces are the substrate that lets core evolution stay observable.",
+      evidence_refs: compactRefs([
+        "docs/RUNTIME_CONTRACT.md",
+        "packages/core/src/memory_layers.ts",
+        latestBasicIteration?.ref
+      ]),
       next_moves: [
-        "Keep resident health and workspace status visible after runtime-contract changes.",
+        latestBasicIteration && !latestBasicIteration.outcome
+          ? `Close the basic iteration outcome for ${latestBasicIteration.id} before treating basic substrate progress as verified.`
+          : "Keep resident health and workspace status visible after runtime-contract changes.",
         "Reduce attention layers before adding new mutation surfaces."
       ]
     },
@@ -270,10 +280,15 @@ function latestCoreBasicProjectDesignArtifactSource(
   return iterations.find((iteration) => iteration.ref === latestArtifact.source_iteration_ref);
 }
 
-function isOpenCoreGaDesignIteration(iteration: SelfEvolutionIterationContract): boolean {
+function isOpenCoreBasicIteration(iteration: SelfEvolutionIterationContract): boolean {
   return !iteration.outcome
-    && iteration.layer === "core_runtime"
+    && (iteration.layer === "core_runtime" || iteration.layer === "basic_entrypoint")
     && iteration.owner_surface === "ga_project_design";
+}
+
+function describeIterationOutcomeStatus(iteration: SelfEvolutionIterationContract | undefined): string {
+  if (!iteration) return "none";
+  return iteration.outcome?.status ?? "not_recorded";
 }
 
 function isSupersededOpenIteration(

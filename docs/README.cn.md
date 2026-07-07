@@ -260,6 +260,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 把当前 `next_iteration_seed` 复制成一条 self-evolution iteration contract；它只写本地状态，
 不会执行计划、运行验证或证明完成。如果同一个 layer、owner surface、proposed slice 和 source ref
 已经有未关闭的 iteration，它会返回现有记录，不会重复写一条。
+手工 `record-iteration` 如果声明 `core_runtime` 或 `basic_entrypoint`，必须同时给出 `--implementation-scope`、`--deferred-scope` 和 `--delivery-standard`，否则会拒绝写入，避免留下不可审计的核心/基础 iteration。
 可以用 `pnpm run runtime -- governance project-design --audit-seed verification_scope --state-root .runtime/state`
 只读查看某一个完成审计种子；它只帮助收窄完成前要看什么证据，不会运行审计或写 outcome。
 可以用 `pnpm run runtime -- governance experts --state-root .runtime/state`
