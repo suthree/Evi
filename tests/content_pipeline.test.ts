@@ -585,7 +585,7 @@ test("content daily dry-run writes one daily job without model or external publi
       tracks: [{ topic: "daily AI news and AI stock hotspots" }]
     });
     assert.equal(mismatch.resident_state_root, join(root.root, "resident-state"));
-    assert.match(mismatch.warnings[0], /differs from resident IM service state_root/);
+    assert.match(mismatch.warnings[0], /differs from resident runtime service state_root/);
 
     await assert.rejects(
       runDailyContentJob(store, {

@@ -227,7 +227,7 @@ test("GA project design read model derives reusable artifacts from verified iter
       true
     );
     assert.equal(
-      readModel.next_core_basic_plan?.capability_stage_plan.basic_capabilities.find((capability) => capability.id === "runtime_observability")?.exit_criteria.includes("service health is inspected for the resident IM target"),
+      readModel.next_core_basic_plan?.capability_stage_plan.basic_capabilities.find((capability) => capability.id === "runtime_observability")?.exit_criteria.includes("service health is inspected for the resident runtime target"),
       true
     );
     assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.includes("not an external adapter task")), true);
@@ -281,7 +281,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("project-design --artifact ga_design_artifact_iteration_contract_verified")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("--audit-seed all")), true);
-    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
+    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.includes("pnpm run runtime -- service health --target runtime"), true);
     assert.deepEqual(readModel.next_core_basic_plan?.verification_commands, readModel.next_core_basic_plan?.next_iteration_seed.verification_commands);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
@@ -381,7 +381,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.criterion.includes("implementation contract bounds allowed scope")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "learning_persistence" && trace.phase_id === "learning_persistence"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
-    assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
+    assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target runtime"), true);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /governance record-iteration/);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /--from-project-design-plan/);
     assert.equal(readModel.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
@@ -430,7 +430,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.core_capabilities.some((capability) => capability.id === "contract_design" && capability.stage === "hardening"), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.basic_capabilities.some((capability) => capability.id === "runtime_observability" && capability.stage === "attention_guard"), true);
-    assert.equal(packet.next_core_basic_plan?.capability_stage_plan.basic_capabilities.some((capability) => capability.exit_criteria.includes("service health is inspected for the resident IM target")), true);
+    assert.equal(packet.next_core_basic_plan?.capability_stage_plan.basic_capabilities.some((capability) => capability.exit_criteria.includes("service health is inspected for the resident runtime target")), true);
     assert.equal(packet.next_core_basic_plan?.scorecard_basis.includes("target_dimension=core_ga_design"), true);
     assert.equal(packet.next_core_basic_plan?.selection_reasons.includes("target_layer=core_runtime"), true);
     assert.equal(packet.next_core_basic_plan?.selection_checks.includes("verification_entrypoints=project-design,scorecard,iterations,service-health,check"), true);
@@ -466,7 +466,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.outcome_claim_prefixes.includes("check:")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("service-health")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace") && trace.criterion.includes("deferred scope")), true);
-    assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
+    assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target runtime"), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run check"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);

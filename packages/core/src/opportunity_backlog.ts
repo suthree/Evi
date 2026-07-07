@@ -223,8 +223,8 @@ export interface ReusedSkillCoverageBacklogSummary {
 
 export interface ServiceHealthBacklogSummary {
   status: ServiceHealthResult["status"];
-  im_state: string;
-  heartbeat_freshness: ServiceHealthResult["im"]["heartbeat_freshness"];
+  runtime_state: string;
+  heartbeat_freshness: ServiceHealthResult["service"]["heartbeat_freshness"];
   heartbeat_age_ms: number | null;
   heartbeat_updated_at: string | null;
   runtime_commit: string | null;
@@ -232,7 +232,7 @@ export interface ServiceHealthBacklogSummary {
   runtime_dirty: boolean | null;
   repo_commit: string | null;
   repo_branch: string | null;
-  deployment_status: ServiceHealthResult["im"]["deployment"]["status"];
+  deployment_status: ServiceHealthResult["service"]["deployment"]["status"];
   deployment_reason: string;
   restart_command: string;
   review_tick_state: string;
@@ -636,20 +636,20 @@ async function readAutonomyPause(store: AgentStore): Promise<OpportunityBacklogI
 async function readServiceHealthItems(store: AgentStore): Promise<OpportunityBacklogItem[]> {
   const health = await getServiceHealth(store);
   if (!needsServiceHealthAttention(health)) return [];
-  const runtime = health.im.runtime_build;
-  const deployment = health.im.deployment;
-  const ref = health.refs[0] ?? health.im.heartbeat_ref;
-  const inspectCommand = "pnpm run runtime -- service health --target im";
+  const runtime = health.service.runtime_build;
+  const deployment = health.service.deployment;
+  const ref = health.refs[0] ?? health.service.heartbeat_ref;
+  const inspectCommand = "pnpm run runtime -- service health --target runtime";
   return [buildItem({
     kind: "service_health",
     ref,
-    id: "service_health_im",
+    id: "service_health_runtime",
     status: health.status,
-    title: "Inspect resident IM service health",
+    title: "Inspect resident runtime service health",
     summary: [
       `health=${health.status}`,
-      `im_state=${health.im.state}`,
-      `heartbeat=${health.im.heartbeat_freshness}`,
+      `runtime_state=${health.service.state}`,
+      `heartbeat=${health.service.heartbeat_freshness}`,
       `deployment=${deployment.status}`,
       `runtime_dirty=${runtime?.source_is_dirty === true}`,
       `review_tick=${health.review_tick.state}`,
@@ -662,13 +662,13 @@ async function readServiceHealthItems(store: AgentStore): Promise<OpportunityBac
       `pause_active=${health.autonomy_pause.active}`
     ].join("; "),
     action_kind: "inspect_service_health",
-    source_ref: health.refs[0] ?? health.im.heartbeat_ref,
+    source_ref: health.refs[0] ?? health.service.heartbeat_ref,
     service_health: {
       status: health.status,
-      im_state: health.im.state,
-      heartbeat_freshness: health.im.heartbeat_freshness,
-      heartbeat_age_ms: health.im.heartbeat_age_ms ?? null,
-      heartbeat_updated_at: health.im.heartbeat_updated_at ?? null,
+      runtime_state: health.service.state,
+      heartbeat_freshness: health.service.heartbeat_freshness,
+      heartbeat_age_ms: health.service.heartbeat_age_ms ?? null,
+      heartbeat_updated_at: health.service.heartbeat_updated_at ?? null,
       runtime_commit: runtime?.source_commit_short ?? runtime?.source_commit?.slice(0, 12) ?? null,
       runtime_branch: runtime?.source_branch ?? null,
       runtime_dirty: runtime?.source_is_dirty ?? null,
@@ -722,8 +722,8 @@ async function readServiceHealthItems(store: AgentStore): Promise<OpportunityBac
     next_step: `Inspect bounded service health first: ${inspectCommand}. Read logs separately with service logs if needed; restart only through an explicit operator service command outside read-only views.`,
     score_reasons: [
       `service_health=${health.status}`,
-      `im_state=${health.im.state}`,
-      `heartbeat_freshness=${health.im.heartbeat_freshness}`,
+      `runtime_state=${health.service.state}`,
+      `heartbeat_freshness=${health.service.heartbeat_freshness}`,
       `deployment=${deployment.status}`,
       `runtime_dirty=${runtime?.source_is_dirty === true}`,
       `review_tick=${health.review_tick.state}`,
@@ -736,13 +736,13 @@ async function readServiceHealthItems(store: AgentStore): Promise<OpportunityBac
       `creator_metrics=${health.content_creator_metrics.state}`,
       `pause_active=${health.autonomy_pause.active}`
     ],
-    created_at: health.im.heartbeat_updated_at ?? health.review_tick.updated_at ?? undefined,
-    updated_at: health.im.heartbeat_updated_at ?? health.review_tick.updated_at ?? undefined
+    created_at: health.service.heartbeat_updated_at ?? health.review_tick.updated_at ?? undefined,
+    updated_at: health.service.heartbeat_updated_at ?? health.review_tick.updated_at ?? undefined
   })];
 }
 
 function needsServiceHealthAttention(health: ServiceHealthResult): boolean {
-  const hasHeartbeat = health.refs.includes(health.im.heartbeat_ref);
+  const hasHeartbeat = health.refs.includes(health.service.heartbeat_ref);
   const reviewTickNeedsAttention = /^(error|failed|stale)$/i.test(health.review_tick.state);
   const contentDailyNeedsAttention = residentLoopNeedsAttention(health.content_daily, health.autonomy_pause.active);
   const contentDailyProgressNeedsAttention = health.content_daily.current_step_freshness === "stale";
@@ -756,10 +756,10 @@ function needsServiceHealthAttention(health: ServiceHealthResult): boolean {
       || feedbackRefreshNeedsAttention
       || creatorMetricsNeedsAttention;
   }
-  if (health.im.state !== "unknown" && health.im.state !== "running") return true;
-  if (health.im.heartbeat_freshness === "stale" || health.im.heartbeat_freshness === "invalid") return true;
-  if (health.im.deployment.status === "stale") return true;
-  if (health.im.runtime_build?.source_is_dirty === true) return true;
+  if (health.service.state !== "unknown" && health.service.state !== "running") return true;
+  if (health.service.heartbeat_freshness === "stale" || health.service.heartbeat_freshness === "invalid") return true;
+  if (health.service.deployment.status === "stale") return true;
+  if (health.service.runtime_build?.source_is_dirty === true) return true;
   if (reviewTickNeedsAttention) return true;
   if (contentDailyNeedsAttention) return true;
   if (contentDailyProgressNeedsAttention) return true;
@@ -2919,16 +2919,16 @@ function growthForServiceHealth(health: ServiceHealthResult): GrowthValue {
     risk: 1,
     cost: 1
   };
-  if (health.im.state !== "unknown" && health.im.state !== "running") {
+  if (health.service.state !== "unknown" && health.service.state !== "running") {
     return { ...base, evidence_available: 4, urgency_or_unblock: 4 };
   }
-  if (health.im.heartbeat_freshness === "invalid") {
+  if (health.service.heartbeat_freshness === "invalid") {
     return { ...base, evidence_available: 2, urgency_or_unblock: 4 };
   }
-  if (health.im.deployment.status === "stale") {
+  if (health.service.deployment.status === "stale") {
     return { ...base, evidence_available: 4, urgency_or_unblock: 4 };
   }
-  if (health.im.runtime_build?.source_is_dirty === true) {
+  if (health.service.runtime_build?.source_is_dirty === true) {
     return { ...base, evidence_available: 4, urgency_or_unblock: 2 };
   }
   if (health.content_daily.current_step_freshness === "stale") {

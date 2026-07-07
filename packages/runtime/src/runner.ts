@@ -1174,7 +1174,7 @@ export class LiveAgentRunner {
       turn_id: turnId,
       artifact_refs: artifactRefs,
       created_at: createdAt,
-      boundary: "state-only stop exploration signal; current explicit task and resident IM service continue"
+      boundary: "state-only stop exploration signal; current explicit task and resident runtime service continue"
     };
     const signalRef = await this.store.writeJson("autonomy/runs/pause_signal.json", signal);
     const requestJsonRef = await this.store.writeJson(

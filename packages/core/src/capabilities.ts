@@ -230,7 +230,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765",
           "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
           "pnpm run runtime -- service status --target runtime",
-          "pnpm run runtime -- service health --target im",
+          "pnpm run runtime -- service health --target runtime",
           "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
         ],
         boundaries: [
@@ -335,7 +335,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
     verification_commands: [
       "pnpm run check",
       "pnpm run runtime -- doctor --no-auth --no-im",
-      "pnpm run runtime -- service health --target im",
+      "pnpm run runtime -- service health --target runtime",
       "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>",
       "pnpm run runtime -- capabilities acceptance",
       "pnpm run runtime -- context pressure --limit 10 --state-root <state-root>",
@@ -401,7 +401,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         reason: "The manual daily job needs a local resident trigger so active exploration can run once per date without becoming an external publish daemon.",
         success_criteria: [
           "resident service can run content daily once per date when explicitly enabled in runtime config",
-          "the loop writes services/im/content_daily.json status and skips duplicate same-date jobs",
+          "the loop writes services/runtime/content_daily.json status and skips duplicate same-date jobs",
           "autonomy pause signals stop daily active exploration without creating content jobs",
           "the loop may publish through xiaohongshu-mcp only when daily publish and external-write gates are enabled"
         ],
@@ -802,28 +802,28 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "service.lifecycle",
         title: "Service lifecycle",
-        summary: "Install, start, stop, restart, status, logs, and uninstall the resident runtime daemon or the Feishu-compatible IM target.",
+        summary: "Install, start, stop, restart, status, logs, and uninstall the resident runtime daemon.",
         status: "implemented",
-        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime", "pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im"],
+        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime"],
         refs: ["packages/runtime/src/service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "docs/LOCAL_RUNTIME.md"],
-        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon; `im` target is kept for Feishu-compatible service operation", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
+        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon and owns resident channel adapters", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
       },
       {
         id: "service.health",
         title: "Service health",
         summary: "Read service-scoped heartbeat freshness, MessageGateway channel health, runtime build metadata, repo HEAD deployment status, review tick state, application-slice loop state, pause signals, and layered runtime-substrate/application status reasons from bounded local inputs.",
         status: "implemented",
-        commands: ["pnpm run runtime -- service health --target runtime", "pnpm run runtime -- service health --target im", "/health", "/status"],
+        commands: ["pnpm run runtime -- service health --target runtime", "/health", "/status"],
         refs: ["packages/core/src/service_health.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "tests/service_health.test.ts", "tests/runtime_daemon.test.ts"],
         boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "layered status reasons are read-model explanation only and do not change service lifecycle behavior", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
       },
       {
         id: "service.content_daily_loop",
         title: "Daily content loop",
-        summary: "Optionally run the local content daily job from the resident IM service, writing one date-keyed job and service status when explicitly enabled.",
+        summary: "Optionally run the local content daily job from the resident runtime service, writing one date-keyed job and service status when explicitly enabled.",
         status: "implemented",
         layer: "application_slice",
-        commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target runtime", "pnpm run runtime -- service status --target im"],
+        commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target runtime"],
         refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
         boundaries: [
           "disabled by default",
@@ -835,13 +835,12 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "service.content_feedback_refresh_loop",
         title: "Content feedback refresh loop",
-        summary: "Optionally refresh Xiaohongshu post-publish feedback from the resident IM service, appending typed local feedback evidence after a stable follow-up window.",
+        summary: "Optionally refresh Xiaohongshu post-publish feedback from the resident runtime service, appending typed local feedback evidence after a stable follow-up window.",
         status: "implemented",
         layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled",
-          "pnpm run runtime -- service status --target runtime",
-          "pnpm run runtime -- service status --target im"
+          "pnpm run runtime -- service status --target runtime"
         ],
         refs: [
           "packages/runtime/src/content_feedback_refresh_service.ts",
@@ -859,13 +858,12 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "service.content_creator_metrics_loop",
         title: "Content creator metrics loop",
-        summary: "Optionally capture Xiaohongshu creator-backend view_count from the resident IM service for posts whose typed feedback lacks creator metrics.",
+        summary: "Optionally capture Xiaohongshu creator-backend view_count from the resident runtime service for posts whose typed feedback lacks creator metrics.",
         status: "implemented",
         layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-creator-metrics-enabled",
-          "pnpm run runtime -- service status --target runtime",
-          "pnpm run runtime -- service status --target im"
+          "pnpm run runtime -- service status --target runtime"
         ],
         refs: [
           "packages/runtime/src/content_creator_metrics_service.ts",
@@ -938,7 +936,7 @@ function runtimeServiceCategory(): CapabilityCategory {
         title: "Feishu IM sessions",
         summary: "Receive allowed private messages, map Feishu groups to runtime sessions, preserve local channel evidence, queue private-chat follow-ups in process, and run explicit tasks through the agent.",
         status: "implemented",
-        commands: ["pnpm run runtime -- im serve --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
+        commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",

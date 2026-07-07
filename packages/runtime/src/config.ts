@@ -756,7 +756,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       source_ref: vaultRecord?.ref ?? "default:vault"
     },
     refs,
-    restart_guidance: "Changes to active model, channel, scenario, vault, runtime review_tick settings, runtime content_daily settings, runtime content_feedback_refresh settings, or runtime content_creator_metrics settings take effect in the resident IM service after service restart.",
+    restart_guidance: "Changes to active model, channel, scenario, vault, runtime review_tick settings, runtime content_daily settings, runtime content_feedback_refresh settings, or runtime content_creator_metrics settings take effect in the resident runtime service after service restart.",
     boundary: "read-only runtime config summary; reads config.jsonl, models.jsonl, settings.jsonl, and ignored local overlays only; never reads auth.jsonl, API keys, app secrets, non-config runtime state artifacts, launchd, logs, or raw memory/SOP/skill bodies; does not mutate config or service state"
   };
 }

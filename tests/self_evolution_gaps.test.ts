@@ -267,7 +267,7 @@ test("self-evolution gaps derive feedback refresh route reviews from service sta
   const root = await createFixture();
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
-    await store.writeJson("services/im/content_feedback_refresh.json", {
+    await store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -295,10 +295,10 @@ test("self-evolution gaps derive feedback refresh route reviews from service sta
     const gap = result.gaps.find((item) => item.proposed_slice === "feedback_refresh_route_review");
     assert.ok(gap);
     assert.equal(gap.source, "service_status");
-    assert.equal(gap.source_ref, "services/im/content_feedback_refresh.json");
+    assert.equal(gap.source_ref, "services/runtime/content_feedback_refresh.json");
     assert.equal(gap.follow_up_kind, "act_next");
     assert.equal(gap.observed_problem.includes("non_mcp_capture_route"), true);
-    assert.equal(gap.evidence_refs.includes("services/im/content_feedback_refresh.json"), true);
+    assert.equal(gap.evidence_refs.includes("services/runtime/content_feedback_refresh.json"), true);
     assert.equal(gap.evidence_refs.includes("content/runs/content_run_skipped/run.json"), true);
     assert.equal(gap.acceptance.some((item) => item.includes("route review suppresses")), true);
     assert.equal(gap.non_goals.some((item) => item.includes("no Xiaohongshu MCP feedback capture")), true);
@@ -318,7 +318,7 @@ test("self-evolution gaps derive feedback refresh route reviews from service sta
     await store.writeJson("content/feedback-refresh-route-reviews/route_review_ready.json", {
       schema_version: 1,
       kind: "content_feedback_refresh_route_review",
-      service_ref: "services/im/content_feedback_refresh.json",
+      service_ref: "services/runtime/content_feedback_refresh.json",
       status_updated_at: "2026-07-02T08:00:00.000Z",
       top_skip_reason: "non_mcp_capture_route",
       created_at: "2026-07-02T08:05:00.000Z"

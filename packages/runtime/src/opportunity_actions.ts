@@ -965,7 +965,7 @@ async function executeFeedbackRefreshRouteReviewAction(
     const skippedItemRefs = feedbackRefresh.last_skipped_item_refs ?? [];
     const deferredItemRefs = feedbackRefresh.last_deferred_item_refs ?? [];
     const nextCommands = [
-      "pnpm run runtime -- service health --target im",
+      "pnpm run runtime -- service health --target runtime",
       ...(feedbackRefresh.last_strategy_top_run_ref
         ? [`pnpm run runtime -- content feedback-strategy --run ${feedbackRefresh.last_strategy_top_run_ref} --state-root <state-root>`]
         : []),

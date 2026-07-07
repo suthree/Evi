@@ -266,7 +266,7 @@ const NEXT_CORE_GA_DESIGN_TARGET = {
   layer: "core_runtime",
   owner_surface: "ga_project_design"
 } as const;
-const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target im";
+const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target runtime";
 const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
 
 export function getGaProjectDesignContract(): GaProjectDesignContract {
@@ -908,7 +908,7 @@ function buildCapabilityStagePlan(
         current_state: "Resident service health is the basic guard that keeps runtime attention visible before a core/basic outcome is reused.",
         next_iteration: "Name runtime attention reasons explicitly instead of hiding them behind application progress.",
         exit_criteria: [
-          "service health is inspected for the resident IM target",
+          "service health is inspected for the resident runtime target",
           "runtime attention reasons are named in the outcome instead of being treated as application progress"
         ],
         evidence_refs: [

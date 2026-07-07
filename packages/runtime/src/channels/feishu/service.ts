@@ -20,7 +20,7 @@ export async function serveFeishuPrivateChat(args: {
     config: args.config,
     configDir: args.configDir,
     discipline: args.discipline,
-    target: "im",
+    target: "runtime",
     service: args.service,
     runtimeBuildPath: args.runtimeBuildPath,
     im: {

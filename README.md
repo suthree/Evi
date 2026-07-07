@@ -79,14 +79,14 @@ features. They must stay small and local.
 The first version has these basic entrypoints:
 
 - CLI for local foreground operation.
-- IM for local foreground or single-user local service chat intake.
+- Provider-neutral channel intake through the local daemon.
 - Local web console for localhost session/task inspection and operator actions.
 - Unified local runtime daemon for resident channel adapters.
 
-IM is a local runtime basic capability, not a separate optional product. The
-first-version command surface is `doctor` for baseline checks, `im serve` for
-Feishu-compatible foreground intake, `daemon serve` for the unified foreground
-runtime daemon, and `service --target runtime` for the local resident daemon.
+IM is a local runtime channel capability, not a separate optional product. The
+first-version command surface is `doctor` for baseline checks, `daemon serve`
+for the unified foreground runtime daemon, and `service --target runtime` for
+the local resident daemon.
 Feishu, Telegram, and Discord channel sources can map to local runtime sessions
 and start as pending/unassigned until an authorized operator binds a profile.
 
@@ -217,14 +217,14 @@ pnpm run runtime -- service health --target runtime
 pnpm run runtime -- service logs --target runtime --limit 40
 ```
 
-The Feishu-compatible `im` target is still available when model and IM
-credentials are configured:
+When model and channel credentials are configured, the runtime target can start
+Feishu intake alongside the web console:
 
 ```bash
-pnpm run runtime -- service status --target im
-pnpm run runtime -- service health --target im
-pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main
-pnpm run runtime -- service logs --target im --limit 40
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service health --target runtime
+pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
+pnpm run runtime -- service logs --target runtime --limit 40
 ```
 
 Start the localhost web console:
@@ -503,9 +503,9 @@ writes stable inbox items under `autonomy/inbox/`. It writes a tick report under
 `autonomy/ticks/` and appends evidence, but it does not request confirmation,
 execute actions, or write the active vault.
 
-The resident IM service can also run this tick on a timer when
+The resident runtime service can also run this tick on a timer when
 `runtime.review_tick_enabled=true`. It is disabled by default. When configured,
-the service writes tick-loop status to `<state_root>/services/im/review_tick.json`
+the service writes tick-loop status to `<state_root>/services/runtime/review_tick.json`
 and includes it in `service status`; Feishu `/governance` also shows the latest
 tick ref and focus summary as read-only observability. A tick without explicit
 `--query` or `--session` records a bounded focus from the ranked Opportunity Backlog; open
@@ -624,7 +624,7 @@ Current first-version scope:
   explicit local task runs
 - unified runtime daemon with MessageGateway channel adapter lifecycle for Web,
   Feishu, Telegram, and Discord
-- Feishu-compatible IM foreground entrypoint plus provider-neutral daemon intake
+- provider-neutral daemon intake for Feishu, Telegram, Discord, and Web
 - Feishu group to runtime-session binding with pending/unassigned bootstrap
 - Feishu read-only local operator commands for status, service health, service
   logs, governance, Opportunity Backlog, SOP Evolution Ledger, memory, context,
@@ -635,7 +635,7 @@ Current first-version scope:
 - Feishu operator notification outbox drained by the resident runtime when
   Feishu is enabled
 - single-user local service runtime for channel adapters
-- state-only `service health` CLI read model for resident IM diagnostics,
+- state-only `service health` CLI read model for resident runtime diagnostics,
   including runtime-substrate versus application-slice reason codes
 - core tool capability tests
 - minimal context and harness control plane

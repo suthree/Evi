@@ -724,7 +724,7 @@ test("iteration audit runtime attention coverage requires structured service-hea
   assert.equal(healthy.status, "not_required");
 });
 
-test("iteration audit service-health snapshot reads resident IM state root", async () => {
+test("iteration audit service-health snapshot reads resident runtime state root", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-cli-health-"));
   const repoRoot = join(root, "repo");
   const configDir = join(root, "config");
@@ -747,7 +747,7 @@ test("iteration audit service-health snapshot reads resident IM state root", asy
     assert.equal(snapshot.inspected_state_root, inspectedStateRoot);
     assert.equal(snapshot.service_health_state_root, join(homeRoot, "state/runtime"));
     assert.equal(snapshot.warnings.length, 1);
-    assert.match(snapshot.warnings[0] ?? "", /differs from resident IM service state_root/);
+    assert.match(snapshot.warnings[0] ?? "", /differs from resident runtime service state_root/);
     assert.match(snapshot.boundary, /does not mutate state/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1103,7 +1103,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "pnpm run runtime -- governance project-design --state-root <state-root>",
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --state-root <state-root>",
-      "pnpm run runtime -- service health --target im",
+      "pnpm run runtime -- service health --target runtime",
       "pnpm run check"
     ],
     learning_authority: {
@@ -1132,7 +1132,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ],
       required_before_outcome: [
         "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-        "pnpm run runtime -- service health --target im",
+        "pnpm run runtime -- service health --target runtime",
         "pnpm run check"
       ]
     },
@@ -1449,7 +1449,7 @@ test("notify command parses operator notification queue and list options", () =>
   assert.equal(list.limit, 5);
 });
 
-test("im serve routes through the project-level IM command", () => {
+test("retired im serve command still parses before main rejects it", () => {
   const options = parseArgs([
     "im",
     "serve",
@@ -1478,7 +1478,7 @@ test("service command parses launchd lifecycle options", () => {
     "service",
     "start",
     "--target",
-    "im",
+    "runtime",
     "--scenario",
     "im-default",
     "--channel",
@@ -1491,7 +1491,7 @@ test("service command parses launchd lifecycle options", () => {
 
   assert.equal(options.command, "service");
   assert.equal(options.serviceAction, "start");
-  assert.equal(options.serviceTarget, "im");
+  assert.equal(options.serviceTarget, "runtime");
   assert.equal(options.scenarioId, "im-default");
   assert.equal(options.channelId, "feishu-main");
   assert.equal(options.stateRoot, ".runtime/state");
@@ -1501,13 +1501,13 @@ test("service command parses launchd lifecycle options", () => {
     "service",
     "health",
     "--target",
-    "im",
+    "runtime",
     "--state-root",
     ".runtime/state"
   ]);
   assert.equal(health.command, "service");
   assert.equal(health.serviceAction, "health");
-  assert.equal(health.serviceTarget, "im");
+  assert.equal(health.serviceTarget, "runtime");
   assert.equal(health.stateRoot, ".runtime/state");
 });
 

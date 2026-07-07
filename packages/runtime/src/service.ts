@@ -20,7 +20,7 @@ import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_run
 const execFile = promisify(execFileCallback);
 
 export type ServiceAction = "install" | "start" | "stop" | "restart" | "status" | "logs" | "uninstall";
-export type ServiceTarget = "im" | "runtime";
+export type ServiceTarget = "runtime";
 
 export interface ServiceCommandOptions {
   action: ServiceAction;
@@ -319,8 +319,8 @@ export async function resolveServiceDefinition(
   let scenarioId = options.scenarioId ?? serviceSelectors.activeScenarioId ?? undefined;
   let provider = options.provider;
   let discipline: "query_todo" | undefined = options.discipline === "query_todo" ? "query_todo" : undefined;
-  const enableIm = options.target === "im" ? true : options.enableIm !== false;
-  const enableWeb = options.target === "runtime" ? options.enableWeb !== false : false;
+  const enableIm = options.enableIm !== false;
+  const enableWeb = options.enableWeb !== false;
 
   if (validateRuntime && enableIm) {
     const scenario = await loadImScenarioConfig({
@@ -367,9 +367,7 @@ export async function resolveServiceDefinition(
     webHost: options.webHost,
     webPort: options.webPort
   };
-  return options.target === "runtime"
-    ? buildRuntimeServiceDefinition(input)
-    : buildImServiceDefinition(input);
+  return buildRuntimeServiceDefinition(input);
 }
 
 export async function resolveServiceConfigSelectors(
@@ -388,10 +386,6 @@ export async function resolveServiceConfigSelectors(
     stateRoot: serviceStateRoot
   });
   return serviceSelectors;
-}
-
-export function buildImServiceDefinition(input: ServiceDefinitionInput): ServiceDefinition {
-  return buildLocalRuntimeServiceDefinition("im", input);
 }
 
 export function buildRuntimeServiceDefinition(input: ServiceDefinitionInput): ServiceDefinition {
@@ -416,7 +410,7 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   const runtimeCliEntry = resolve(runtimeCurrentRoot, "dist/apps/cli/src/main.js");
   const runtimeNodeModules = resolve(runtimeCurrentRoot, "node_modules");
   const serviceArgs = [
-    target === "runtime" ? "daemon" : "im",
+    "daemon",
     "serve",
     "--config-dir",
     runtimeConfigDir,
@@ -429,12 +423,10 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   if (input.provider) serviceArgs.push("--provider", input.provider);
   if (input.channelId) serviceArgs.push("--channel", input.channelId);
   if (input.discipline && input.discipline !== "none") serviceArgs.push("--discipline", input.discipline);
-  if (target === "runtime") {
-    if (input.enableIm === false) serviceArgs.push("--no-im");
-    if (input.enableWeb === false) serviceArgs.push("--no-web");
-    if (input.webHost) serviceArgs.push("--host", input.webHost);
-    if (input.webPort) serviceArgs.push("--port", String(input.webPort));
-  }
+  if (input.enableIm === false) serviceArgs.push("--no-im");
+  if (input.enableWeb === false) serviceArgs.push("--no-web");
+  if (input.webHost) serviceArgs.push("--host", input.webHost);
+  if (input.webPort) serviceArgs.push("--port", String(input.webPort));
   serviceArgs.push("--runtime-build", runtimeBuildPath);
 
   return {
@@ -847,6 +839,6 @@ function currentUserName(): string {
 }
 
 function assertSupportedServiceTarget(target: ServiceTarget): void {
-  if (target === "im" || target === "runtime") return;
+  if (target === "runtime") return;
   throw new Error(`Unsupported service target: ${target}`);
 }

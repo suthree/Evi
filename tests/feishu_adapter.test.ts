@@ -656,7 +656,7 @@ test("Feishu outbox drain can replay p2p replies by chat id", async () => {
 test("operator status command replies from local state without running the agent", async () => {
   const fixture = await createFixture();
   try {
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 1234,
@@ -664,7 +664,7 @@ test("operator status command replies from local state without running the agent
       scenario_id: "im-default",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: fixture.repoRoot,
         built_at: "2026-06-29T00:00:10.000Z",
@@ -676,7 +676,7 @@ test("operator status command replies from local state without running the agent
       },
       updated_at: "2026-06-29T00:00:00.000Z"
     });
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: false,
       state: "disabled",
@@ -702,7 +702,7 @@ test("operator status command replies from local state without running the agent
         }
       }
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "skipped",
@@ -721,7 +721,7 @@ test("operator status command replies from local state without running the agent
       last_publish_latest_post_url: "https://www.xiaohongshu.com/explore/note_publish_status",
       updated_at: "2026-07-01T22:00:00.000Z"
     });
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "ok",
@@ -736,7 +736,7 @@ test("operator status command replies from local state without running the agent
       next_wake_delay_ms: 60000,
       next_wake_reason: "next_due_at"
     });
-    await fixture.store.writeJson("services/im/content_creator_metrics.json", {
+    await fixture.store.writeJson("services/runtime/content_creator_metrics.json", {
       service: "content_creator_metrics",
       enabled: true,
       state: "skipped",
@@ -778,7 +778,7 @@ test("operator status command replies from local state without running the agent
     assert.equal(runner.tasks.length, 0);
     assert.equal(transport.sent.length, 1);
     assert.match(transport.sent[0].text, /Local Runtime status/);
-    assert.match(transport.sent[0].text, /IM: running \(pid 1234\)/);
+    assert.match(transport.sent[0].text, /Runtime: running \(pid 1234\)/);
     assert.match(transport.sent[0].text, /Runtime: 0123456789ab \(develop\)/);
     assert.match(transport.sent[0].text, /Runtime built: 2026-06-29T00:00:10\.000Z/);
     assert.match(transport.sent[0].text, /Review tick: disabled/);
@@ -910,7 +910,7 @@ test("operator content command replies with latest daily job and linked run with
       shareCount: 0,
       sourceRef: "xiaohongshu-mcp:/api/v1/user/me#xhs-feishu-content-post"
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "skipped",
@@ -1361,7 +1361,7 @@ test("operator health command replies with bounded service health without runnin
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 4321,
@@ -1370,7 +1370,7 @@ test("operator health command replies with bounded service health without runnin
       updated_at: "2026-06-29T00:00:00.000Z",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: fixture.repoRoot,
         built_at: "2026-06-29T00:00:10.000Z",
@@ -1381,7 +1381,7 @@ test("operator health command replies with bounded service health without runnin
         source_is_dirty: true
       }
     });
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: true,
       state: "paused",
@@ -1432,7 +1432,7 @@ test("operator health command replies with bounded service health without runnin
       reason: "Operator should inspect the service before more ticks.",
       resume_hint: "Resume after service inspection."
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "running",
@@ -1470,7 +1470,7 @@ test("operator health command replies with bounded service health without runnin
       status: "published",
       evidence: { publish_status: "published" }
     });
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -1505,7 +1505,7 @@ test("operator health command replies with bounded service health without runnin
       next_wake_delay_ms: 600000,
       next_wake_reason: "next_due_at"
     });
-    await fixture.store.writeJson("services/im/content_creator_metrics.json", {
+    await fixture.store.writeJson("services/runtime/content_creator_metrics.json", {
       service: "content_creator_metrics",
       enabled: true,
       state: "skipped",
@@ -1542,13 +1542,13 @@ test("operator health command replies with bounded service health without runnin
     const healthText = transport.sent.map((message) => message.text).join("\n");
     assert.match(healthText, /Service health/);
     assert.match(healthText, /overall: paused/);
-    assert.match(healthText, /im_state: running/);
+    assert.match(healthText, /runtime_state: running/);
     assert.match(healthText, /heartbeat_freshness: stale/);
     assert.match(healthText, /Runtime: fedcba987654 \(develop, dirty\)/);
     assert.match(healthText, /Deployment: stale/);
     assert.match(healthText, /Deployment reason: resident runtime build commit differs from current repo HEAD/);
     assert.match(healthText, /Repo HEAD: abcdef012345 \(develop\)/);
-    assert.match(healthText, /Restart: pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main/);
+    assert.match(healthText, /Restart: pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main/);
     assert.doesNotMatch(healthText, /Restart: .*--state-root <state-root>/);
     assert.match(healthText, /review_tick_state: paused/);
     assert.match(healthText, /review_tick_last_inbox_count: 3/);
@@ -1610,7 +1610,7 @@ test("operator governance command replies with aggregate state without running t
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 5678,
@@ -1618,7 +1618,7 @@ test("operator governance command replies with aggregate state without running t
       scenario_id: "im-default",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: fixture.repoRoot,
         built_at: "2026-06-30T00:00:10.000Z",
@@ -1630,7 +1630,7 @@ test("operator governance command replies with aggregate state without running t
       },
       updated_at: "2026-06-30T00:00:00.000Z"
     });
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: true,
       state: "ok",
@@ -1670,7 +1670,7 @@ test("operator governance command replies with aggregate state without running t
         }
       }
     });
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -1773,7 +1773,7 @@ test("operator governance command replies with aggregate state without running t
     assert.match(transport.sent[0].text, /Next resident check: review_tick at 2026-06-30T00:30:00.000Z \(interval, delay_ms=1800000\)/);
     assert.match(transport.sent[0].text, /Top opportunity: review_confirmation:follow_up_confirmation_a/);
     assert.match(transport.sent[0].text, /Top next: Inspect then run explicitly/);
-    assert.match(transport.sent[0].text, /IM: running \(pid 5678\)/);
+    assert.match(transport.sent[0].text, /Runtime: running \(pid 5678\)/);
     assert.match(transport.sent[0].text, /Runtime: fedcba987654 \(develop, dirty\)/);
     assert.match(transport.sent[0].text, /Runtime built: 2026-06-30T00:00:10\.000Z/);
     assert.match(transport.sent[0].text, /Deployment: stale/);
@@ -1967,7 +1967,7 @@ test("operator opportunities command renders stale daily step service recovery",
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -1981,7 +1981,7 @@ test("operator opportunities command renders stale daily step service recovery",
         source_is_dirty: false
       }
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "running",
@@ -2017,13 +2017,13 @@ test("operator opportunities command renders stale daily step service recovery",
     assert.equal(transport.sent.length, 1);
     const text = transport.sent[0].text;
     assert.match(text, /Opportunity backlog/);
-    assert.match(text, /service_health: service_health_im/);
+    assert.match(text, /service_health: service_health_runtime/);
     assert.match(text, /service_health_content_daily_step: publish_execute/);
     assert.match(text, /service_health_content_daily_step_freshness: stale/);
     assert.match(text, /service_health_content_daily_track: ai_applications/);
     assert.match(text, /service_health_content_daily_job_ref: content\/daily\/ai_applications\/2026-07-02\.json/);
     assert.match(text, /service_health_content_daily_run_ref: content\/runs\/content_run_stale_daily\/run\.json/);
-    assert.match(text, /service_health_restart: pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main/);
+    assert.match(text, /service_health_restart: pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main/);
     assert.match(text, /action_chain: inspect\[read_only\] -> restart_service\[service_control\] -> record_decision\[state_decision\]/);
   } finally {
     await fixture.cleanup();

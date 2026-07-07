@@ -105,7 +105,7 @@ export function createContentFeedbackRefreshLoop(
   options: ContentFeedbackRefreshLoopOptions
 ): ContentFeedbackRefreshLoopHandle {
   const store = new AgentStore(options.repoRoot, options.stateRoot);
-  const statusRef = options.statusRef ?? "services/im/content_feedback_refresh.json";
+  const statusRef = options.statusRef ?? "services/runtime/content_feedback_refresh.json";
   const startedAt = new Date().toISOString();
   let timer: unknown | null = null;
   let started = false;

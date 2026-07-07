@@ -368,7 +368,7 @@ test("compact GA plan runtime guard keeps observability attention state", () => 
           current_state: "Resident service health keeps runtime attention visible.",
           next_iteration: "Name runtime attention reasons explicitly.",
           exit_criteria: [
-            "service health is inspected for the resident IM target",
+            "service health is inspected for the resident runtime target",
             "runtime attention reasons are named in the outcome"
           ],
           evidence_refs: []
@@ -427,14 +427,14 @@ test("compact GA plan review gate names open iteration blockers", () => {
       "pnpm run runtime -- governance project-design --artifact ga_design_artifact_source --state-root <state-root>",
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-      "pnpm run runtime -- service health --target im",
+      "pnpm run runtime -- service health --target runtime",
       "pnpm run check"
     ]
   }), [
     "project-design=ga_design_artifact_source",
     "scorecard",
     "iterations=iteration_contract_open;audit=all",
-    "service-health=im",
+    "service-health=runtime",
     "check"
   ]);
   assert.deepEqual(compactGaPlanEvidenceRefs([
@@ -576,7 +576,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       created_at: "2026-06-30T00:00:01.700Z",
       boundary: "bounded iteration contract only"
     });
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -587,7 +587,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       updated_at: "2026-06-30T00:00:02.000Z",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: fixture.repoRoot,
         built_at: "2026-06-30T00:00:01.000Z",
@@ -598,7 +598,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
         source_is_dirty: false
       }
     });
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: true,
       state: "ok",
@@ -625,7 +625,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       next_wake_delay_ms: 1_800_000,
       next_wake_reason: "interval"
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "ok",
@@ -651,7 +651,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       status: "published",
       evidence: { publish_status: "published" }
     });
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -1025,7 +1025,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /Authoritative query/);
     assert.match(bundle, /Service Runtime/);
     assert.match(bundle, /service_health: attention reasons=heartbeat_stale,deployment_stale followups=status,restart/);
-    assert.match(bundle, /im_state: running/);
+    assert.match(bundle, /runtime_state: running/);
     assert.match(bundle, /heartbeat_freshness: stale/);
     assert.match(bundle, /review_tick: ok next=2026-06-30T00:30:02\.500Z inbox=2\/2 why=completed=1,executed=1/);
     assert.match(bundle, /review_tick_focus: covered_by_auto_action/);
@@ -1039,11 +1039,11 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /runtime_dirty: false/);
     assert.match(bundle, /deployment_status: stale/);
     assert.match(bundle, /repo_commit: fedcba987654/);
-    assert.match(bundle, /restart_command: pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main/);
+    assert.match(bundle, /restart_command: pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main/);
     assert.doesNotMatch(bundle, /restart_command: .*--state-root <state-root>/);
     assert.match(bundle, /action_chain: inspect -> restart_service -> record_decision/);
-    assert.match(bundle, /action_inspect: pnpm run runtime -- service health --target im \[read_only\]/);
-    assert.match(bundle, /action_restart_service: pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main \[service_control\]/);
+    assert.match(bundle, /action_inspect: pnpm run runtime -- service health --target runtime \[read_only\]/);
+    assert.match(bundle, /action_restart_service: pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main \[service_control\]/);
     assert.match(bundle, /Operator prefers explicit confirmation gates/);
     assert.match(bundle, /Use explicit candidate confirmation before accepting durable memory/);
     assert.match(bundle, /dream_context/);
@@ -1115,7 +1115,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /command\.run must declare side_effect_level/);
     assert.match(bundle, /respond\.payload\.markdown defaults to Simplified Chinese/);
     assert.doesNotMatch(bundle, /LOCAL_LEARNING/);
-    assert.equal(bundle.length < 25000, true, `bundle length ${bundle.length}`);
+    assert.equal(bundle.length < 25200, true, `bundle length ${bundle.length}`);
     assert.equal(rendered.manifest.total_chars, bundle.length);
     assert.equal(rendered.manifest.recall.memory_hit_count, 1);
     assert.equal(rendered.manifest.recall.archive_ref_count, 1);
@@ -1150,10 +1150,10 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     ]);
     assert.equal(serviceRuntimeSection?.item_count, 4);
     assert.deepEqual(serviceRuntimeSection?.refs, [
-      "services/im/heartbeat.json",
-      "services/im/review_tick.json",
-      "services/im/content_daily.json",
-      "services/im/content_feedback_refresh.json"
+      "services/runtime/heartbeat.json",
+      "services/runtime/review_tick.json",
+      "services/runtime/content_daily.json",
+      "services/runtime/content_feedback_refresh.json"
     ]);
     assert.equal(opportunitySection?.item_count, 5);
     assert.deepEqual([...(opportunitySection?.refs ?? [])].sort(), [
@@ -1161,7 +1161,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       "autonomy/inbox/review_inbox_context.json",
       "memory/semantic/confirmations/memory_confirmation_context.json",
       "memory/semantic/candidates/session-memory-proposal-r1-0.json",
-      "services/im/heartbeat.json"
+      "services/runtime/heartbeat.json"
     ].sort());
     assert.equal(governanceSection?.item_count, 4);
     assert.deepEqual(governanceSection?.refs, [
@@ -1253,7 +1253,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /non_goals: does not promote one-off external adapter behavior into core identity \| no external-tool execution \| no automatic SOP, skill, memory, or dream promotion \| no completion proof without executed verification/);
     assert.match(rendered.markdown, /capability_stage: core=goal_intake:active,capability_layering:active,contract_design:hardening,verification_review:active; basic=execution_plan:active,runtime_observability:attention_guard/);
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
-    assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident IM target/);
+    assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
@@ -1266,7 +1266,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /successor: fresh_successor_slice=true; source_slice=context_ga_project_design_plan; target_slice=core_ga_design_next_slice_after_context_plan/);
     assert.match(rendered.markdown, /target: target_layer=core_runtime; owner_surface=ga_project_design/);
     assert.match(rendered.markdown, /verify: verification_entrypoints=project-design,scorecard,iterations,service-health,check/);
-    assert.match(rendered.markdown, /verify_commands: project-design=ga_design_artifact_iteration_contract_context_plan \| scorecard \| iterations=iteration_contract_context_open;audit=all \| service-health=im \| check/);
+    assert.match(rendered.markdown, /verify_commands: project-design=ga_design_artifact_iteration_contract_context_plan \| scorecard \| iterations=iteration_contract_context_open;audit=all \| service-health=runtime \| check/);
     assert.match(rendered.markdown, /iteration_record_status: open_iteration_available; iteration_contract_context_open/);
     assert.match(rendered.markdown, /review_gate: blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage; required=project-design,scorecard,iterations,service-health,check; required_coverage=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage; outcome_status=not_recorded/);
     assert.match(rendered.markdown, /audit_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --audit-seed all --state-root <state-root>/);

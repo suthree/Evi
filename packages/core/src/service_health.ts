@@ -2,7 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { AgentStore } from "./store.js";
 
-const DEFAULT_SERVICE_HEALTH_TARGET = "im";
+const DEFAULT_SERVICE_HEALTH_TARGET = "runtime";
 const PAUSE_REF = "autonomy/runs/pause_signal.json";
 const DEFAULT_HEARTBEAT_STALE_AFTER_MS = 90_000;
 const DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS = 10 * 60_000;
@@ -10,7 +10,7 @@ const SERVICE_LIFECYCLE_REASON_CODES = new Set([
   "heartbeat_missing",
   "heartbeat_invalid",
   "heartbeat_stale",
-  "im_not_running"
+  "runtime_not_running"
 ]);
 const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
 const SUPPRESSING_MANUAL_ACTION_SLICES = new Set([
@@ -29,7 +29,7 @@ export type ServiceRepoHeadReadStatus = "ok" | "missing" | "unreadable";
 export type ServiceDeploymentStatus = "current" | "stale" | "unknown";
 export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_generated" | "preflight_ok" | "published" | "blocked";
 export type ServiceGatewayState = "running" | "stopped" | "error";
-export type ServiceHealthTarget = "im" | "runtime";
+export type ServiceHealthTarget = "runtime";
 
 export interface ServiceGatewayChannelSummary {
   kind: string;
@@ -131,7 +131,6 @@ export interface ServiceHealthResult {
   boundary: string;
   refs: string[];
   service: ServiceHealthServiceSummary;
-  im: ServiceHealthServiceSummary;
   review_tick: {
     state: string;
     enabled: boolean;
@@ -387,7 +386,6 @@ export async function getServiceHealth(
       ...(pauseSignal.exists ? [PAUSE_REF] : [])
     ],
     service,
-    im: service,
     review_tick: {
       state: stringField(reviewTick.record, "state") ?? "unknown",
       enabled: booleanField(reviewTick.record, "enabled") ?? false,
@@ -703,8 +701,8 @@ function serviceHealthAttentionFollowup(
   if (reason === "deployment_stale") {
     return {
       reason_code: reason,
-      summary: "resident runtime build is behind the current repo HEAD; restart the IM service after verifying local changes",
-      command: result.im.deployment.restart_command
+      summary: "resident runtime build is behind the current repo HEAD; restart the runtime service after verifying local changes",
+      command: result.service.deployment.restart_command
     };
   }
   if (reason === "runtime_build_dirty") {
@@ -724,21 +722,21 @@ function serviceHealthAttentionFollowup(
   if (SERVICE_LIFECYCLE_REASON_CODES.has(reason)) {
     return {
       reason_code: reason,
-      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
-      command: "pnpm run runtime -- service status --target im"
+      summary: "resident runtime heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: `pnpm run runtime -- service status --target ${result.target}`
     };
   }
   if (reason.endsWith("_loop_attention") || reason === "content_daily_current_step_stale") {
     return {
       reason_code: reason,
       summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
-      command: "pnpm run runtime -- service health --target im"
+      command: `pnpm run runtime -- service health --target ${result.target}`
     };
   }
   return {
     reason_code: reason,
     summary: "inspect bounded service health before treating this attention reason as resolved",
-    command: "pnpm run runtime -- service health --target im"
+    command: `pnpm run runtime -- service health --target ${result.target}`
   };
 }
 

@@ -363,7 +363,7 @@ test("content daily loop can execute configured publish path when explicit gates
     let publishProgressSeen = false;
     const fakeImageClient: ImageGenerationClient = {
       async generate(request) {
-        const progress = JSON.parse(await readFile(join(fixture.stateRoot, "services/im/content_daily.json"), "utf8"));
+        const progress = JSON.parse(await readFile(join(fixture.stateRoot, "services/runtime/content_daily.json"), "utf8"));
         assert.equal(progress.state, "running");
         assert.equal(progress.current_step, "image_generation");
         assert.equal(progress.current_step_status, "started");
@@ -386,7 +386,7 @@ test("content daily loop can execute configured publish path when explicit gates
     let publishCalls = 0;
     const fakePublisher: ExternalPublishClient = {
       async publish(request) {
-        const progress = JSON.parse(await readFile(join(fixture.stateRoot, "services/im/content_daily.json"), "utf8"));
+        const progress = JSON.parse(await readFile(join(fixture.stateRoot, "services/runtime/content_daily.json"), "utf8"));
         assert.equal(progress.state, "running");
         assert.equal(progress.current_step, "publish_execute");
         assert.equal(progress.current_step_status, "started");

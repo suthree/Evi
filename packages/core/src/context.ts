@@ -410,14 +410,14 @@ async function buildContextSections(
 
 async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection> {
   const health = await getServiceHealth(store);
-  const runtimeBuild = health.im.runtime_build ?? null;
-  const deployment = health.im.deployment;
+  const runtimeBuild = health.service.runtime_build ?? null;
+  const deployment = health.service.deployment;
   const sourceCommit = runtimeBuild?.source_commit;
   const sourceCommitShort = runtimeBuild?.source_commit_short ?? sourceCommit?.slice(0, 12);
   if (health.refs.length === 0) {
     return {
       title: "Service Runtime",
-      body: "No resident IM service runtime state selected for this turn.",
+      body: "No resident runtime state selected for this turn.",
       refs: [],
       item_count: 0
     };
@@ -472,13 +472,13 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
   const lines = [
     "Read-only service runtime health.",
     `- service_health: ${serviceHealthSummary}`,
-    `- im_state: ${health.im.state}`,
-    `- pid: ${health.im.pid ?? "unknown"}`,
-    `- channel: ${health.im.channel_id ?? "unknown"}`,
-    `- scenario: ${health.im.scenario_id ?? "unknown"}`,
-    `- heartbeat_freshness: ${health.im.heartbeat_freshness}`,
-    `- heartbeat_age_ms: ${health.im.heartbeat_age_ms ?? "unknown"}`,
-    `- heartbeat_updated_at: ${health.im.heartbeat_updated_at ?? "unknown"}`,
+    `- runtime_state: ${health.service.state}`,
+    `- pid: ${health.service.pid ?? "unknown"}`,
+    `- channel: ${health.service.channel_id ?? "unknown"}`,
+    `- scenario: ${health.service.scenario_id ?? "unknown"}`,
+    `- heartbeat_freshness: ${health.service.heartbeat_freshness}`,
+    `- heartbeat_age_ms: ${health.service.heartbeat_age_ms ?? "unknown"}`,
+    `- heartbeat_updated_at: ${health.service.heartbeat_updated_at ?? "unknown"}`,
     `- deployment_status: ${deployment.status}`,
     `- repo_commit: ${deployment.repo_commit_short ?? "unknown"}`,
     `- repo_branch: ${deployment.repo_branch ?? "unknown"}`,
@@ -1238,7 +1238,7 @@ function appendServiceHealthLines(
 ): void {
   if (!health) return;
   lines.push(`- service_health: ${health.status}`);
-  lines.push(`- service_health_im_state: ${health.im_state}`);
+  lines.push(`- service_health_runtime_state: ${health.runtime_state}`);
   lines.push(`- service_health_heartbeat: ${health.heartbeat_freshness}`);
   lines.push(`- service_health_heartbeat_age_ms: ${health.heartbeat_age_ms ?? "unknown"}`);
   lines.push(`- service_health_runtime_commit: ${health.runtime_commit ?? "unknown"}`);

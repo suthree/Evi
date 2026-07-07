@@ -246,11 +246,11 @@ function buildAxes(
       id: "basic_runtime_substrate",
       title: "Basic runtime substrate",
       status: "active",
-      summary: "CLI, resident IM, service health, working checkpoints, context read models, and explicit gates remain the substrate for core evolution.",
+      summary: "CLI, resident runtime, service health, working checkpoints, context read models, and explicit gates remain the substrate for core evolution.",
       evidence_refs: ["docs/RUNTIME_CONTRACT.md"],
       next_moves: [
         "Keep resident/read-only surfaces observable before adding more mutation paths.",
-        "Restart and health-check resident IM after runtime-contract changes."
+        "Restart and health-check resident runtime after runtime-contract changes."
       ]
     },
     {

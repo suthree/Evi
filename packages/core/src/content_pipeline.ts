@@ -2209,7 +2209,7 @@ function contentDailyReadinessNextCommands(
   return compactRefs([
     ...gates.filter((gate) => gate.status === "blocked").map((gate) => gate.next_command),
     ...tracks.flatMap((track) => track.next_commands),
-    `pnpm run runtime -- service restart --target im --state-root ${shellArg(stateRoot)}`
+    `pnpm run runtime -- service restart --target runtime --state-root ${shellArg(stateRoot)}`
   ]);
 }
 
@@ -2230,7 +2230,7 @@ function contentDailyReadinessSummary(
 function contentDailyReadinessWarnings(stateRoot: string, residentStateRoot: string | undefined): string[] {
   if (!residentStateRoot || residentStateRoot === stateRoot) return [];
   return [
-    `inspected state_root ${stateRoot} differs from resident IM service state_root ${residentStateRoot}`
+    `inspected state_root ${stateRoot} differs from resident runtime service state_root ${residentStateRoot}`
   ];
 }
 

@@ -120,7 +120,7 @@ test("governance status aggregates memory, review, service, and pause read model
       created_at: "2026-06-30T00:01:00.000Z",
       executed_at: "2026-06-30T00:02:00.000Z"
     }));
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -128,7 +128,7 @@ test("governance status aggregates memory, review, service, and pause read model
       scenario_id: "im-default",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: repoRoot,
         built_at: "2026-06-30T00:02:30.000Z",
@@ -140,7 +140,7 @@ test("governance status aggregates memory, review, service, and pause read model
       },
       updated_at: "2026-06-30T00:03:00.000Z"
     });
-    await store.writeJson("services/im/review_tick.json", {
+    await store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: false,
       state: "disabled",
@@ -248,20 +248,20 @@ test("governance status aggregates memory, review, service, and pause read model
     ]);
     assert.equal(status.autonomy_pause.active, true);
     assert.equal(status.autonomy_pause.reason, "Review the self-evolution queue first.");
-    assert.equal(status.service.im.state, "running");
-    assert.equal(status.service.im.pid, 2468);
-    assert.equal(status.service.im.health, "paused");
-    assert.equal(status.service.im.heartbeat_freshness, "stale");
-    assert.equal(typeof status.service.im.heartbeat_age_ms, "number");
-    assert.equal(status.service.im.runtime_build?.source_commit_short, "abcdef012345");
-    assert.equal(status.service.im.runtime_build?.source_branch, "develop");
-    assert.equal(status.service.im.runtime_build?.source_is_dirty, false);
-    assert.equal(status.service.im.runtime_build?.built_at, "2026-06-30T00:02:30.000Z");
-    assert.equal(status.service.im.repo_head.read_status, "ok");
-    assert.equal(status.service.im.repo_head.head_commit_short, "abcdef012345");
-    assert.equal(status.service.im.deployment.status, "current");
-    assert.equal(status.service.im.deployment.runtime_commit_short, "abcdef012345");
-    assert.equal(status.service.im.deployment.repo_commit_short, "abcdef012345");
+    assert.equal(status.service.runtime.state, "running");
+    assert.equal(status.service.runtime.pid, 2468);
+    assert.equal(status.service.runtime.health, "paused");
+    assert.equal(status.service.runtime.heartbeat_freshness, "stale");
+    assert.equal(typeof status.service.runtime.heartbeat_age_ms, "number");
+    assert.equal(status.service.runtime.runtime_build?.source_commit_short, "abcdef012345");
+    assert.equal(status.service.runtime.runtime_build?.source_branch, "develop");
+    assert.equal(status.service.runtime.runtime_build?.source_is_dirty, false);
+    assert.equal(status.service.runtime.runtime_build?.built_at, "2026-06-30T00:02:30.000Z");
+    assert.equal(status.service.runtime.repo_head.read_status, "ok");
+    assert.equal(status.service.runtime.repo_head.head_commit_short, "abcdef012345");
+    assert.equal(status.service.runtime.deployment.status, "current");
+    assert.equal(status.service.runtime.deployment.runtime_commit_short, "abcdef012345");
+    assert.equal(status.service.runtime.deployment.repo_commit_short, "abcdef012345");
     assert.equal(status.service.review_tick.state, "disabled");
     assert.equal(status.service.review_tick.enabled, false);
     assert.equal(status.service.review_tick.last_inbox_count, 4);
@@ -303,7 +303,7 @@ test("governance status explains idle opportunity backlog with next resident che
   try {
     await store.ensureLayout();
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -311,7 +311,7 @@ test("governance status explains idle opportunity backlog with next resident che
       scenario_id: "im-default",
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: "/home/user/.local-runtime/service/runtime/current",
         repo_root: repoRoot,
         built_at: new Date().toISOString(),
@@ -323,7 +323,7 @@ test("governance status explains idle opportunity backlog with next resident che
       },
       updated_at: new Date().toISOString()
     });
-    await store.writeJson("services/im/review_tick.json", {
+    await store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       enabled: true,
       state: "ok",
@@ -332,7 +332,7 @@ test("governance status explains idle opportunity backlog with next resident che
       next_wake_delay_ms: 1_800_000,
       next_wake_reason: "interval"
     });
-    await store.writeJson("services/im/content_feedback_refresh.json", {
+    await store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -343,7 +343,7 @@ test("governance status explains idle opportunity backlog with next resident che
       next_due_at: "2026-07-02T06:30:00.000Z",
       next_due_run_ref: "content/runs/content_run_idle/run.json"
     });
-    await store.writeJson("services/im/content_creator_metrics.json", {
+    await store.writeJson("services/runtime/content_creator_metrics.json", {
       service: "content_creator_metrics",
       enabled: true,
       state: "skipped",

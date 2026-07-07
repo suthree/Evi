@@ -745,20 +745,20 @@ export async function getIterationAuditServiceHealthSnapshot(args: {
   inspectedStateRoot: string;
 }): Promise<IterationAuditServiceHealthSnapshot> {
   const selectors = await resolveServiceConfigSelectors({
-    target: "im",
+    target: "runtime",
     configDir: args.configDir
   });
   const serviceStore = new AgentStore(resolve(args.repoRoot), selectors.stateRoot);
-  const serviceHealth = await getServiceHealth(serviceStore, { target: "im" });
+  const serviceHealth = await getServiceHealth(serviceStore, { target: "runtime" });
   const warnings = selectors.stateRoot === args.inspectedStateRoot
     ? []
-    : [`inspected state_root ${args.inspectedStateRoot} differs from resident IM service state_root ${selectors.stateRoot}`];
+    : [`inspected state_root ${args.inspectedStateRoot} differs from resident runtime service state_root ${selectors.stateRoot}`];
   return {
     service_health: serviceHealth,
     inspected_state_root: args.inspectedStateRoot,
     service_health_state_root: selectors.stateRoot,
     warnings,
-    boundary: "read-only iteration audit service-health snapshot; reads resident IM service health through service config selectors and does not mutate state, control services, record outcomes, or prove completion"
+    boundary: "read-only iteration audit service-health snapshot; reads resident runtime service health through service config selectors and does not mutate state, control services, record outcomes, or prove completion"
   };
 }
 
@@ -1292,39 +1292,7 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "im") {
-    if (options.imAction !== "serve") throw new Error("im requires an action: serve");
-    const scenario = await loadImScenarioConfig({
-      configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      provider: options.imProvider,
-      channelId: options.channelId,
-      scenarioId: options.scenarioId
-    });
-    assertRuntimeImAdapterSupported(scenario);
-    const config = await loadConfig({
-      configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      modelId: scenario.modelId
-    });
-    await serveRuntimeDaemon({
-      repoRoot: options.repoRoot,
-      config,
-      configDir: options.configDir,
-      target: "im",
-      discipline: options.discipline === "none" ? scenario.discipline : options.discipline,
-      service: {
-        channelId: scenario.channelId,
-        scenarioId: scenario.id
-      },
-      runtimeBuildPath: options.runtimeBuildPath,
-      im: {
-        scenario
-      },
-      web: {
-        enabled: false
-      }
-    });
-    return 0;
+    throw new Error("im serve is retired; use daemon serve or service start --target runtime.");
   }
 
   if (options.command === "web") {
@@ -1484,7 +1452,7 @@ export async function main(): Promise<number> {
         stateRoot: options.stateRoot
       });
       const serviceSelectors = await resolveServiceConfigSelectors({
-        target: "im",
+        target: "runtime",
         configDir: options.configDir
       });
       const result = await getContentDailyReadiness(store, {
@@ -2588,7 +2556,7 @@ export function parseArgs(argv: string[]): CliOptions {
     discipline: "none",
     requireAuth: true,
     requireIm: true,
-    serviceTarget: "im",
+    serviceTarget: "runtime",
     webEnabled: true,
     webHost: "127.0.0.1",
     webPort: 8765,
@@ -3111,7 +3079,7 @@ function isCliServiceAction(value: string): value is ServiceAction | "health" {
 }
 
 function parseServiceTarget(value: string): ServiceTarget {
-  if (value === "im" || value === "runtime") return value;
+  if (value === "runtime") return value;
   throw new Error(`Unsupported service target: ${value}`);
 }
 
@@ -3154,8 +3122,7 @@ function printUsage(): void {
   pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published|failed [--adapter xiaohongshu-mcp] [--tool publish_content] [--external-write] [--confirmed] [--login-status logged_in] [--post-id ...] [--post-url ...] [--screenshot ...] [--state-root .runtime/state]
   pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root .runtime/state]
   pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- im serve [--provider feishu] [--scenario im-default] [--channel feishu-main] [--config-dir config] [--state-root .runtime/state] [--runtime-build <path>] [--query-todo]
-  pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target im|runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]
   pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime/state]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]

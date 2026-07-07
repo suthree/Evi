@@ -12,7 +12,7 @@ test("service health derives fresh resident runtime status from local state and 
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 1234,
@@ -35,7 +35,7 @@ test("service health derives fresh resident runtime status from local state and 
       },
       runtime_build: {
         schema_version: 1,
-        target: "im",
+        target: "runtime",
         runtime_current_root: join(root, "home/service/runtime/current"),
         repo_root: join(root, "repo"),
         built_at: "2026-06-30T00:00:20.000Z",
@@ -46,7 +46,7 @@ test("service health derives fresh resident runtime status from local state and 
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/review_tick.json", {
+    await store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       state: "disabled",
       enabled: false,
@@ -111,19 +111,19 @@ test("service health derives fresh resident runtime status from local state and 
     assert.deepEqual(health.layers.runtime_substrate.reason_codes, []);
     assert.equal(health.layers.application_slices.status, "healthy");
     assert.deepEqual(health.layers.application_slices.reason_codes, []);
-    assert.equal(health.im.state, "running");
-    assert.equal(health.im.heartbeat_freshness, "fresh");
-    assert.equal(health.im.heartbeat_age_ms, 30_000);
-    assert.equal(health.im.gateway?.state, "running");
-    assert.deepEqual(health.im.gateway?.channels.map((channel) => `${channel.kind}:${channel.state}`), [
+    assert.equal(health.service.state, "running");
+    assert.equal(health.service.heartbeat_freshness, "fresh");
+    assert.equal(health.service.heartbeat_age_ms, 30_000);
+    assert.equal(health.service.gateway?.state, "running");
+    assert.deepEqual(health.service.gateway?.channels.map((channel) => `${channel.kind}:${channel.state}`), [
       "feishu:running",
       "web:running"
     ]);
-    assert.equal(health.im.runtime_build?.source_commit_short, "abcdef012345");
-    assert.equal(health.im.repo_head.read_status, "ok");
-    assert.equal(health.im.repo_head.head_commit_short, "abcdef012345");
-    assert.equal(health.im.deployment.status, "current");
-    assert.match(health.im.deployment.reason, /matches current repo HEAD/);
+    assert.equal(health.service.runtime_build?.source_commit_short, "abcdef012345");
+    assert.equal(health.service.repo_head.read_status, "ok");
+    assert.equal(health.service.repo_head.head_commit_short, "abcdef012345");
+    assert.equal(health.service.deployment.status, "current");
+    assert.match(health.service.deployment.reason, /matches current repo HEAD/);
     assert.equal(health.review_tick.last_inbox_count, 3);
     assert.equal(health.review_tick.last_active_tick_inbox_count, 1);
     assert.equal(health.review_tick.last_active_inbox_count, 2);
@@ -157,8 +157,8 @@ test("service health derives fresh resident runtime status from local state and 
     ]);
     assert.equal(health.autonomy_pause.active, false);
     assert.deepEqual(health.refs, [
-      "services/im/heartbeat.json",
-      "services/im/review_tick.json"
+      "services/runtime/heartbeat.json",
+      "services/runtime/review_tick.json"
     ]);
     assert.match(health.boundary, /bounded repo git identity/);
     assert.match(health.boundary, /does not inspect launchd/);
@@ -174,7 +174,7 @@ test("service health marks stale review tick focus as covered by a later manual 
   const gapRef = `self-evolution/gaps/${gapId}.json`;
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 1234,
@@ -188,7 +188,7 @@ test("service health marks stale review tick focus as covered by a later manual 
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/review_tick.json", {
+    await store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       state: "ok",
       enabled: true,
@@ -208,7 +208,7 @@ test("service health marks stale review tick focus as covered by a later manual 
           status: "active",
           score: 100,
           action_kind: "act_next",
-          source_ref: "services/im/content_feedback_refresh.json"
+          source_ref: "services/runtime/content_feedback_refresh.json"
         }
       }
     });
@@ -264,7 +264,7 @@ test("service health flags blocked review tick auto-actions", async () => {
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 1234,
@@ -278,7 +278,7 @@ test("service health flags blocked review tick auto-actions", async () => {
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/review_tick.json", {
+    await store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       state: "ok",
       enabled: true,
@@ -304,7 +304,7 @@ test("service health flags blocked review tick auto-actions", async () => {
     assert.deepEqual(health.attention_followups, [{
       reason_code: "review_tick_auto_action_blocked",
       summary: "inspect bounded service health before treating this attention reason as resolved",
-      command: "pnpm run runtime -- service health --target im"
+      command: "pnpm run runtime -- service health --target runtime"
     }]);
     assert.equal(health.review_tick.last_focus_current_status, "resolved");
     assert.match(health.review_tick.last_focus_current_reason ?? "", /no longer present/);
@@ -320,7 +320,7 @@ test("service health flags resident runtime build that is stale against repo HEA
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "fedcba9876543210fedcba9876543210fedcba98");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 5678,
@@ -343,24 +343,24 @@ test("service health flags resident runtime build that is stale against repo HEA
     assert.equal(health.layers.runtime_substrate.status, "attention");
     assert.equal(health.layers.runtime_substrate.reason_codes.includes("deployment_stale"), true);
     assert.equal(health.layers.application_slices.status, "healthy");
-    assert.equal(health.im.heartbeat_freshness, "fresh");
-    assert.equal(health.im.runtime_build?.source_is_dirty, false);
-    assert.equal(health.im.repo_head.read_status, "ok");
-    assert.equal(health.im.repo_head.head_commit_short, "fedcba987654");
-    assert.equal(health.im.deployment.status, "stale");
-    assert.equal(health.im.deployment.runtime_commit_short, "abcdef012345");
-    assert.equal(health.im.deployment.repo_commit_short, "fedcba987654");
-    assert.match(health.im.deployment.reason, /differs from current repo HEAD/);
+    assert.equal(health.service.heartbeat_freshness, "fresh");
+    assert.equal(health.service.runtime_build?.source_is_dirty, false);
+    assert.equal(health.service.repo_head.read_status, "ok");
+    assert.equal(health.service.repo_head.head_commit_short, "fedcba987654");
+    assert.equal(health.service.deployment.status, "stale");
+    assert.equal(health.service.deployment.runtime_commit_short, "abcdef012345");
+    assert.equal(health.service.deployment.repo_commit_short, "fedcba987654");
+    assert.match(health.service.deployment.reason, /differs from current repo HEAD/);
     assert.equal(
-      health.im.deployment.restart_command,
-      "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+      health.service.deployment.restart_command,
+      "pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main"
     );
     assert.deepEqual(health.attention_followups, [{
       reason_code: "deployment_stale",
-      summary: "resident runtime build is behind the current repo HEAD; restart the IM service after verifying local changes",
-      command: "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+      summary: "resident runtime build is behind the current repo HEAD; restart the runtime service after verifying local changes",
+      command: "pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main"
     }]);
-    assert.doesNotMatch(health.im.deployment.restart_command, /--state-root/);
+    assert.doesNotMatch(health.service.deployment.restart_command, /--state-root/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -371,7 +371,7 @@ test("service health includes resident content loop status and flags loop errors
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -385,7 +385,7 @@ test("service health includes resident content loop status and flags loop errors
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/content_daily.json", {
+    await store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "error",
@@ -424,7 +424,7 @@ test("service health includes resident content loop status and flags loop errors
       last_publish_latest_post_url: "https://www.xiaohongshu.com/explore/note_service_health_123",
       error: "image generation failed"
     });
-    await store.writeJson("services/im/content_feedback_refresh.json", {
+    await store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -464,7 +464,7 @@ test("service health includes resident content loop status and flags loop errors
       next_wake_delay_ms: 21_540_000,
       next_wake_reason: "next_due_at"
     });
-    await store.writeJson("services/im/content_creator_metrics.json", {
+    await store.writeJson("services/runtime/content_creator_metrics.json", {
       service: "content_creator_metrics",
       enabled: true,
       state: "ok",
@@ -498,7 +498,7 @@ test("service health includes resident content loop status and flags loop errors
     assert.deepEqual(health.attention_followups, [{
       reason_code: "content_daily_loop_attention",
       summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
-      command: "pnpm run runtime -- service health --target im"
+      command: "pnpm run runtime -- service health --target runtime"
     }]);
     assert.equal(health.content_daily.state, "error");
     assert.equal(health.content_daily.enabled, true);
@@ -572,10 +572,10 @@ test("service health includes resident content loop status and flags loop errors
     assert.equal(health.content_creator_metrics.next_wake_delay_ms, 3_600_000);
     assert.equal(health.content_creator_metrics.next_wake_reason, "interval");
     assert.deepEqual(health.refs, [
-      "services/im/heartbeat.json",
-      "services/im/content_daily.json",
-      "services/im/content_feedback_refresh.json",
-      "services/im/content_creator_metrics.json"
+      "services/runtime/heartbeat.json",
+      "services/runtime/content_daily.json",
+      "services/runtime/content_feedback_refresh.json",
+      "services/runtime/content_creator_metrics.json"
     ]);
     assert.match(health.boundary, /resident loop status/);
     assert.match(health.boundary, /fetch platform state/);
@@ -589,7 +589,7 @@ test("service health derives effective daily status from linked published runs",
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -603,7 +603,7 @@ test("service health derives effective daily status from linked published runs",
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/content_daily.json", {
+    await store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "skipped",
@@ -656,7 +656,7 @@ test("service health flags stale content daily progress while preserving step co
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -670,7 +670,7 @@ test("service health flags stale content daily progress while preserving step co
         source_is_dirty: false
       }
     });
-    await store.writeJson("services/im/content_daily.json", {
+    await store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "running",
@@ -708,7 +708,7 @@ test("service health flags stale content daily progress while preserving step co
     assert.deepEqual(health.attention_followups, [{
       reason_code: "content_daily_current_step_stale",
       summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
-      command: "pnpm run runtime -- service health --target im"
+      command: "pnpm run runtime -- service health --target runtime"
     }]);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -719,7 +719,7 @@ test("service health flags stale heartbeat and active pause without mutating sta
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 4321,
@@ -743,9 +743,9 @@ test("service health flags stale heartbeat and active pause without mutating sta
     });
 
     assert.equal(health.status, "paused");
-    assert.equal(health.im.heartbeat_freshness, "stale");
-    assert.equal(health.im.heartbeat_age_ms, 300_000);
-    assert.equal(health.im.runtime_build?.source_is_dirty, true);
+    assert.equal(health.service.heartbeat_freshness, "stale");
+    assert.equal(health.service.heartbeat_age_ms, 300_000);
+    assert.equal(health.service.runtime_build?.source_is_dirty, true);
     assert.equal(health.review_tick.state, "unknown");
     assert.equal(health.autonomy_pause.active, true);
     assert.equal(health.autonomy_pause.reason, "Operator is reviewing the self-evolution direction.");
@@ -756,7 +756,7 @@ test("service health flags stale heartbeat and active pause without mutating sta
       command: "pnpm run runtime -- governance resume-autonomy --reason \"...\""
     }]);
     assert.deepEqual(health.refs, [
-      "services/im/heartbeat.json",
+      "services/runtime/heartbeat.json",
       "autonomy/runs/pause_signal.json"
     ]);
   } finally {
@@ -778,17 +778,17 @@ test("service health reports missing heartbeat as unknown", async () => {
     });
 
     assert.equal(health.status, "unknown");
-    assert.equal(health.im.heartbeat_freshness, "missing");
-    assert.equal(health.im.state, "unknown");
-    assert.deepEqual(health.status_reasons, ["heartbeat_missing", "im_not_running"]);
+    assert.equal(health.service.heartbeat_freshness, "missing");
+    assert.equal(health.service.state, "unknown");
+    assert.deepEqual(health.status_reasons, ["heartbeat_missing", "runtime_not_running"]);
     assert.deepEqual(health.attention_followups, [{
       reason_code: "heartbeat_missing",
-      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
-      command: "pnpm run runtime -- service status --target im"
+      summary: "resident runtime heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: "pnpm run runtime -- service status --target runtime"
     }, {
-      reason_code: "im_not_running",
-      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
-      command: "pnpm run runtime -- service status --target im"
+      reason_code: "runtime_not_running",
+      summary: "resident runtime heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: "pnpm run runtime -- service status --target runtime"
     }]);
     assert.deepEqual(health.refs, []);
   } finally {
@@ -805,7 +805,7 @@ test("service health CLI reads bounded health without service control fields", a
   const originalLog = console.log;
   const logs: string[] = [];
   try {
-    await store.writeJson("services/im/heartbeat.json", {
+    await store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 9876,
@@ -837,9 +837,9 @@ test("service health CLI reads bounded health without service control fields", a
     assert.equal(code, 0);
     const output = JSON.parse(logs.join("\n")) as Record<string, unknown>;
     assert.equal(output.action, "health");
-    assert.equal(output.target, "im");
+    assert.equal(output.target, "runtime");
     assert.equal(output.status, "healthy");
-    assert.deepEqual(output.refs, ["services/im/heartbeat.json"]);
+    assert.deepEqual(output.refs, ["services/runtime/heartbeat.json"]);
     assert.deepEqual(output.attention_followups, []);
     assert.equal("launchd" in output, false);
     assert.equal("logs" in output, false);
@@ -932,7 +932,7 @@ test("service health CLI defaults to the home-scoped service state root", async 
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: repoStateRoot })
     ].join("\n") + "\n", "utf8");
-    await serviceStore.writeJson("services/im/heartbeat.json", {
+    await serviceStore.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -965,7 +965,7 @@ test("service health CLI defaults to the home-scoped service state root", async 
     const output = JSON.parse(logs.join("\n")) as {
       status?: string;
       refs?: string[];
-      im?: {
+      service?: {
         state?: string;
         pid?: number;
         heartbeat_freshness?: string;
@@ -975,11 +975,11 @@ test("service health CLI defaults to the home-scoped service state root", async 
       };
     };
     assert.equal(output.status, "healthy");
-    assert.deepEqual(output.refs, ["services/im/heartbeat.json"]);
-    assert.equal(output.im?.state, "running");
-    assert.equal(output.im?.pid, 2468);
-    assert.equal(output.im?.heartbeat_freshness, "fresh");
-    assert.equal(output.im?.runtime_build?.source_commit_short, "defaultstate");
+    assert.deepEqual(output.refs, ["services/runtime/heartbeat.json"]);
+    assert.equal(output.service?.state, "running");
+    assert.equal(output.service?.pid, 2468);
+    assert.equal(output.service?.heartbeat_freshness, "fresh");
+    assert.equal(output.service?.runtime_build?.source_commit_short, "defaultstate");
   } finally {
     process.argv = originalArgv;
     console.log = originalLog;

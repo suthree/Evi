@@ -30,7 +30,7 @@
 当前自迭代按这个顺序判断能力边界：
 
 1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。
-2. 基础入口：CLI、resident IM、Feishu/private chat、service health、workspace/capability 只读视图；交付标准是 operator 能稳定进入、观察和恢复 runtime。
+2. 基础入口：CLI、resident runtime、Feishu/private chat、service health、workspace/capability 只读视图；交付标准是 operator 能稳定进入、观察和恢复 runtime。
 3. 核心执行：读、写、搜索、抓取、执行，以及 `delegate_agent` 的有界子任务；交付标准是路径、side effect、timeout、输出上限、payload、结果和证据都有边界。
 4. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
 5. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
@@ -114,8 +114,8 @@ Telegram、Discord 已经通过 MessageGateway 作为通讯 Adapter 管理。Dis
 resume/sharding 或 rich interaction。
 
 IM channel 配置已经走 provider-neutral loader：channel record 可声明
-`kind: "feishu" | "telegram" | "discord"`，`doctor`、`daemon serve`、
-`im serve` 和 `service` 可用 `--provider` 做选择/校验。当前 Feishu、
+`kind: "feishu" | "telegram" | "discord"`，`doctor`、`daemon serve`
+和 `service` 可用 `--provider` 做选择/校验。当前 Feishu、
 Telegram 和 Discord 都能启动。config loader
 只解析 provider-neutral scenario；是否可启动和具体 Adapter 创建由
 `im_adapters.ts` 负责。
@@ -292,21 +292,21 @@ pnpm run runtime -- service logs --target runtime --limit 40
 兼容的 Feishu-only `im` target 仍可用：
 
 ```bash
-pnpm run runtime -- service status --target im
-pnpm run runtime -- service health --target im
-pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main
-pnpm run runtime -- service logs --target im --limit 40
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service health --target runtime
+pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
+pnpm run runtime -- service logs --target runtime --limit 40
 ```
 
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
-`application_slices` 的分层状态和原因码，避免把 resident IM/runtime 的基础健康
+`application_slices` 的分层状态和原因码，避免把 resident runtime 的基础健康
 和内容发布、反馈刷新这类应用切片压力混为一谈。
 当 `status_reasons` 非空时，它还会返回 `attention_followups`，把每个原因码映射
 成只读的下一步指引，例如 inspect、workspace status、resume 或 restart 命令；
 这些是操作提示，不代表 `service health` 会执行修复。
 
 主动给 Feishu 操作者发进度时，CLI 只写本地通知 outbox，不直接调用
-Feishu。resident IM 服务会从同一个状态根 drain 并发送：
+Feishu。resident runtime 服务会从同一个状态根 drain 并发送：
 
 ```bash
 pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "进度更新..." --source codex --state-root ~/.local-runtime/state/runtime

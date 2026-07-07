@@ -318,7 +318,7 @@ function nextSliceSuccessCriteria(dimensionId: string): string[] {
   if (dimensionId === "basic_runtime_substrate") return [
     "service/workspace health exposes the relevant state without raw artifact reads",
     "runtime_substrate attention reasons are named and verified",
-    "resident IM is restarted or health-checked after service-facing changes"
+    "resident runtime is restarted or health-checked after service-facing changes"
   ];
   if (dimensionId === "sop_skill_memory_loop") return [
     "a repeated correction can become a SOP candidate with explicit audit gates",

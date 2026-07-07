@@ -82,7 +82,7 @@ export function createReviewTickLoop(options: ReviewTickLoopOptions): ReviewTick
     stateRoot: options.stateRoot,
     vaultRoot: options.vaultRoot
   });
-  const statusRef = options.statusRef ?? "services/im/review_tick.json";
+  const statusRef = options.statusRef ?? "services/runtime/review_tick.json";
   const startedAt = new Date().toISOString();
   let timer: unknown | null = null;
   let started = false;

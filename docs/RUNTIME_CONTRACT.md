@@ -6,7 +6,7 @@ The contract is local-first and single-machine. It intentionally rejects
 compatibility design for open-source distribution, multi-user hosting,
 multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
-runtime for resident IM intake and a localhost operator web console.
+runtime for resident channel intake and a localhost operator web console.
 
 ## Scope
 
@@ -16,7 +16,7 @@ The first-version local agent is one local TypeScript/Node runtime that can:
 - run as a foreground command or local single-user service process
 - expose a localhost web console for runtime sessions, inbox review, profile
   binding, and explicit task runs
-- expose bounded resident IM health through `service health`
+- expose bounded resident runtime health through `service health`
 - expose a read-only local capability catalog through CLI and IM
 - expose a read-only next-version capability acceptance audit through CLI and
   IM
@@ -179,11 +179,10 @@ agent framework before core execution is reliable.
 
 The local CLI is the primary foreground entrypoint.
 
-IM is also a first-version basic capability. The project command surface is
-provider-neutral where possible: `doctor` checks IM by default, `im serve`
-keeps the Feishu-compatible foreground entrypoint, `daemon serve` starts the
-unified local runtime daemon, and `service --target runtime` manages the
-resident daemon through launchd.
+IM is also a first-version channel capability. The project command surface is
+provider-neutral where possible: `doctor` checks IM by default, `daemon serve`
+starts the unified local runtime daemon, and `service --target runtime` manages
+the resident daemon through launchd.
 
 The resident daemon owns a `MessageGateway` seam. Web, Feishu, Telegram, and
 Discord are channel adapters behind the same lifecycle interface. Discord is
@@ -202,7 +201,7 @@ Provider startability and concrete adapter construction live in
 provider-neutral scenario.
 The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` and
-`service health --target im` render the selected target's heartbeat-carried
+`service health --target runtime` render the selected target's heartbeat-carried
 gateway summary, but they must not read provider logs, provider secrets, or
 provider SDK state. If an adapter fails during daemon startup, the daemon must
 write an `error` heartbeat with the failed MessageGateway channel before the
@@ -731,7 +730,7 @@ Required policy:
 - `next_core_basic_plan.verification_commands` and
   `next_iteration_seed.verification_commands` must stay aligned as the same
   slice-scoped command list, including bounded service health for the resident
-  IM target before `pnpm run check`
+  runtime target before `pnpm run check`
 - Compact `verify_commands` may render a short identity summary of that command
   list, including the project-design artifact id, matching iteration id, service
   health target, and broad check; it is handoff guidance only and does not
@@ -1518,7 +1517,7 @@ The first-version context layer selects only what the run needs:
 - bounded recent live run trace summaries from completion reports, model action
   envelope metadata, and episode event metadata
 - bounded harness replay audit summaries from `governance/replays/`
-- read-only resident service runtime status from `services/im/heartbeat.json`
+- read-only resident service runtime status from `services/runtime/heartbeat.json`
 - accepted local semantic memory from `memory/semantic/accepted/`
 - pending governance queue summaries from memory candidates, memory
   confirmations, review inbox, review follow-up confirmations, and active
@@ -1578,7 +1577,7 @@ memory, rebuild the MemoryStore index, fetch remote memory, or write state while
 assembling context.
 
 The Service Runtime context section is bounded read-only orientation from
-`services/im/heartbeat.json` plus the current repo git identity from
+`services/runtime/heartbeat.json` plus the current repo git identity from
 `.git/HEAD` and refs. It may include IM state, pid, channel, scenario,
 heartbeat update time, copied-runtime build metadata carried by the heartbeat
 (runtime commit, branch, dirty flag, and build time), repo HEAD commit/branch,
@@ -1699,7 +1698,7 @@ command, append a decision, request confirmations, mutate state, restart
 services, write the repo, write the active vault, invoke the model, or run
 shell commands.
 Abnormal service health may appear as `service_health` items. These items may
-show only bounded health status, resident IM state, heartbeat freshness and
+show only bounded health status, resident runtime state, heartbeat freshness and
 age, runtime commit/branch/dirty state, repo HEAD commit/branch, resident
 deployment status, review tick state, active pause state, a read-only inspect
 command, and explicit restart guidance for the operator. They must not inspect
@@ -2076,7 +2075,7 @@ Required policy:
 - runs the same state-only `review tick` path as the CLI command
 - skips the tick and writes `state=paused` when
   `autonomy/runs/pause_signal.json` is active
-- writes status under `services/im/review_tick.json`
+- writes status under `services/runtime/review_tick.json`
 - includes the latest tick-loop status, latest review focus, and active
   autonomy pause signal in `service status`
 - aggregate governance status and Feishu `/governance` may render the latest
@@ -2112,7 +2111,7 @@ Required policy:
 - after scheduling, status records `next_wake_at`, `next_wake_delay_ms`, and
   `next_wake_reason` (`next_due_at` or `interval`) so operator health views can
   distinguish an actively waiting timer from a skipped run
-- writes status under `services/im/content_feedback_refresh.json`
+- writes status under `services/runtime/content_feedback_refresh.json`
 - writes a bounded feedback strategy summary to the same status file after each
   refresh attempt, including posture counts, the top run ref/title, and a next
   command shape for health views; context may render a compact posture summary
@@ -2162,7 +2161,7 @@ Required policy:
   produce separate AI application and AI compute/stock drafts for the same date
 - skips the job and writes `state=paused` when
   `autonomy/runs/pause_signal.json` is active
-- writes status under `services/im/content_daily.json`, including recent
+- writes status under `services/runtime/content_daily.json`, including recent
   track/job refs when multiple tracks run
 - includes the latest daily content-loop status in `service status`
 - with `content_daily_dry_run=true`, does not call the model or Image API
@@ -3129,7 +3128,7 @@ Required policy:
 - Feishu `/governance` and `/governance status` render the same state as a
   concise local operator view
 - counts are derived from existing state artifacts under `memory/semantic/`,
-  `autonomy/inbox/`, `autonomy/followups/`, `services/im/`,
+  `autonomy/inbox/`, `autonomy/followups/`, `services/runtime/`,
   `autonomy/opportunities.jsonl`, SOP evolution state, and
   `autonomy/runs/pause_signal.json`
 - no confirmation request creation
@@ -3190,8 +3189,8 @@ pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage too
 pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
-pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
+pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime
 pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]

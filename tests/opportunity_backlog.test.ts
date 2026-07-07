@@ -1826,7 +1826,7 @@ test("opportunity backlog surfaces service health attention and decision state",
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "fedcba9876543210fedcba9876543210fedcba98");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 2468,
@@ -1840,7 +1840,7 @@ test("opportunity backlog surfaces service health attention and decision state",
         source_is_dirty: true
       }
     });
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       state: "disabled",
       enabled: false,
@@ -1850,7 +1850,7 @@ test("opportunity backlog surfaces service health attention and decision state",
     const backlog = await getOpportunityBacklog(fixture.store, { limit: 10 });
     const item = backlog.items.find((entry) => entry.kind === "service_health");
     assert.ok(item);
-    assert.equal(item.id, "service_health_im");
+    assert.equal(item.id, "service_health_runtime");
     assert.equal(item.action_kind, "inspect_service_health");
     assert.equal(item.status, "attention");
     assert.equal(item.service_health?.heartbeat_freshness, "stale");
@@ -1861,13 +1861,13 @@ test("opportunity backlog surfaces service health attention and decision state",
     assert.match(item.service_health?.deployment_reason ?? "", /differs from current repo HEAD/);
     assert.equal(
       item.service_health?.restart_command,
-      "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+      "pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main"
     );
-    assert.equal(item.service_health?.inspect_command, "pnpm run runtime -- service health --target im");
+    assert.equal(item.service_health?.inspect_command, "pnpm run runtime -- service health --target runtime");
     assert.doesNotMatch(item.service_health?.restart_command ?? "", /--state-root/);
     assert.doesNotMatch(item.service_health?.inspect_command ?? "", /--state-root/);
-    assert.match(item.next_step, /service health --target im/);
-    assert.doesNotMatch(item.next_step, /service health --target im --state-root/);
+    assert.match(item.next_step, /service health --target runtime/);
+    assert.doesNotMatch(item.next_step, /service health --target runtime --state-root/);
     assert.match(item.decision_command ?? "", /governance decide-opportunity/);
     assert.deepEqual(item.action_chain?.map((step) => step.label), [
       "inspect",
@@ -1875,17 +1875,17 @@ test("opportunity backlog surfaces service health attention and decision state",
       "record_decision"
     ]);
     assert.equal(item.action_chain?.[0]?.effect, "read_only");
-    assert.equal(item.action_chain?.[0]?.command, "pnpm run runtime -- service health --target im");
+    assert.equal(item.action_chain?.[0]?.command, "pnpm run runtime -- service health --target runtime");
     assert.equal(item.action_chain?.[1]?.effect, "service_control");
     assert.equal(
       item.action_chain?.[1]?.command,
-      "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+      "pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main"
     );
     assert.equal(item.action_chain?.[2]?.effect, "state_decision");
     assert.doesNotMatch(JSON.stringify(item), /launchctl|im\.out\.log|im\.err\.log/);
 
     const deferred = await decideOpportunity(fixture.store, {
-      opportunity: "service_health_im",
+      opportunity: "service_health_runtime",
       status: "deferred",
       reason: "Operator will inspect the resident service after finishing this code slice."
     });
@@ -1902,8 +1902,8 @@ test("opportunity backlog surfaces service health attention and decision state",
     );
     const rawDecisions = await fixture.store.readStateText("autonomy/opportunity-decisions.jsonl");
     assert.match(rawDecisions, /"action_chain_snapshot"/);
-    assert.doesNotMatch(rawDecisions, /service restart --target im/);
-    assert.doesNotMatch(rawDecisions, /service health --target im/);
+    assert.doesNotMatch(rawDecisions, /service restart --target runtime/);
+    assert.doesNotMatch(rawDecisions, /service health --target runtime/);
     const afterDeferred = await getOpportunityBacklog(fixture.store, { limit: 10 });
     const deferredItem = afterDeferred.items.find((entry) => entry.kind === "service_health");
     assert.equal(deferredItem?.status, "deferred");
@@ -1922,7 +1922,7 @@ test("opportunity backlog surfaces resident content loop health attention", asyn
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 3579,
@@ -1936,7 +1936,7 @@ test("opportunity backlog surfaces resident content loop health attention", asyn
         source_is_dirty: false
       }
     });
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "error",
@@ -1967,7 +1967,7 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
   const fixture = await createFixture();
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
-    await fixture.store.writeJson("services/im/heartbeat.json", {
+    await fixture.store.writeJson("services/runtime/heartbeat.json", {
       service: "im",
       state: "running",
       pid: 4680,
@@ -1981,7 +1981,7 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
         source_is_dirty: false
       }
     });
-    await fixture.store.writeJson("services/im/content_daily.json", {
+    await fixture.store.writeJson("services/runtime/content_daily.json", {
       service: "content_daily",
       enabled: true,
       state: "running",
@@ -2001,7 +2001,7 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
     const backlog = await getOpportunityBacklog(fixture.store, { limit: 10 });
     const item = backlog.items.find((entry) => entry.kind === "service_health");
     assert.ok(item);
-    assert.equal(item.id, "service_health_im");
+    assert.equal(item.id, "service_health_runtime");
     assert.equal(item.status, "attention");
     assert.equal(item.service_health?.deployment_status, "current");
     assert.equal(item.service_health?.content_daily_state, "running");
@@ -2022,7 +2022,7 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
     assert.equal(item.action_chain?.[1]?.effect, "service_control");
     assert.equal(
       item.action_chain?.[1]?.command,
-      "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+      "pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main"
     );
     assert.match(item.action_chain?.[1]?.reason ?? "", /daily content step is still stale/);
   } finally {
@@ -2030,10 +2030,10 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
   }
 });
 
-test("opportunity backlog does not treat ordinary review tick status as IM service health", async () => {
+test("opportunity backlog does not treat ordinary review tick status as runtime service health", async () => {
   const fixture = await createFixture();
   try {
-    await fixture.store.writeJson("services/im/review_tick.json", {
+    await fixture.store.writeJson("services/runtime/review_tick.json", {
       service: "review_tick",
       state: "running",
       enabled: true,

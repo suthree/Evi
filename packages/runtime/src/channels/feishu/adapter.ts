@@ -1041,11 +1041,11 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   }
 
   private async renderStatusCommand(): Promise<string> {
-    const heartbeat = await readOptionalStateRecord(this.store, "services/im/heartbeat.json");
-    const reviewTick = await readOptionalStateRecord(this.store, "services/im/review_tick.json");
-    const contentDaily = await readOptionalStateRecord(this.store, "services/im/content_daily.json");
-    const feedbackRefresh = await readOptionalStateRecord(this.store, "services/im/content_feedback_refresh.json");
-    const creatorMetrics = await readOptionalStateRecord(this.store, "services/im/content_creator_metrics.json");
+    const heartbeat = await readOptionalStateRecord(this.store, "services/runtime/heartbeat.json");
+    const reviewTick = await readOptionalStateRecord(this.store, "services/runtime/review_tick.json");
+    const contentDaily = await readOptionalStateRecord(this.store, "services/runtime/content_daily.json");
+    const feedbackRefresh = await readOptionalStateRecord(this.store, "services/runtime/content_feedback_refresh.json");
+    const creatorMetrics = await readOptionalStateRecord(this.store, "services/runtime/content_creator_metrics.json");
     const pauseSignal = await readOptionalStateRecord(this.store, "autonomy/runs/pause_signal.json");
     const inbox = await this.reviewRunner.listReviewInbox({ limit: 5 });
     const contentDailyEffective = await summarizeContentDailyEffectiveStatus(this.store, contentDaily);
@@ -1053,7 +1053,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     return [
       "Local Runtime status",
       "",
-      `IM: ${stringField(heartbeat, "state") ?? "unknown"}${numberField(heartbeat, "pid") ? ` (pid ${numberField(heartbeat, "pid")})` : ""}`,
+      `Runtime: ${stringField(heartbeat, "state") ?? "unknown"}${numberField(heartbeat, "pid") ? ` (pid ${numberField(heartbeat, "pid")})` : ""}`,
       `Channel: ${stringField(heartbeat, "channel_id") ?? "unknown"}`,
       `Scenario: ${stringField(heartbeat, "scenario_id") ?? "unknown"}`,
       `Heartbeat: ${stringField(heartbeat, "updated_at") ?? "unknown"}`,
@@ -1094,15 +1094,15 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       `overall: ${health.status}`,
       `runtime_substrate: ${health.layers.runtime_substrate.status} reasons=${health.layers.runtime_substrate.reason_codes.join(",") || "none"}`,
       `application_slices: ${health.layers.application_slices.status} reasons=${health.layers.application_slices.reason_codes.join(",") || "none"}`,
-      `im_state: ${health.im.state}`,
-      `pid: ${health.im.pid ?? "unknown"}`,
-      `channel: ${health.im.channel_id ?? "unknown"}`,
-      `scenario: ${health.im.scenario_id ?? "unknown"}`,
-      `heartbeat_freshness: ${health.im.heartbeat_freshness}`,
-      `heartbeat_age_ms: ${health.im.heartbeat_age_ms ?? "unknown"}`,
-      `heartbeat_updated_at: ${health.im.heartbeat_updated_at ?? "unknown"}`,
-      ...renderRuntimeBuildLines(health.im.runtime_build ?? null),
-      ...renderServiceDeploymentLines(health.im.deployment),
+      `runtime_state: ${health.service.state}`,
+      `pid: ${health.service.pid ?? "unknown"}`,
+      `channel: ${health.service.channel_id ?? "unknown"}`,
+      `scenario: ${health.service.scenario_id ?? "unknown"}`,
+      `heartbeat_freshness: ${health.service.heartbeat_freshness}`,
+      `heartbeat_age_ms: ${health.service.heartbeat_age_ms ?? "unknown"}`,
+      `heartbeat_updated_at: ${health.service.heartbeat_updated_at ?? "unknown"}`,
+      ...renderRuntimeBuildLines(health.service.runtime_build ?? null),
+      ...renderServiceDeploymentLines(health.service.deployment),
       `review_tick_state: ${health.review_tick.state}`,
       `review_tick_enabled: ${health.review_tick.enabled}`,
       `review_tick_updated_at: ${health.review_tick.updated_at ?? "unknown"}`,
@@ -1260,7 +1260,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   }
 
   private async renderContentDailyCommand(selection?: string): Promise<string> {
-    const service = await readOptionalStateRecord(this.store, "services/im/content_daily.json");
+    const service = await readOptionalStateRecord(this.store, "services/runtime/content_daily.json");
     const serviceEffective = await summarizeContentDailyEffectiveStatus(this.store, service);
     const publishEvents = await listContentDailyPublishEvents(this.store, service, 5);
     const resolved = await this.resolveContentSelection(selection, service);
@@ -3642,9 +3642,9 @@ function renderGovernanceStatus(status: GovernanceStatusResult): string {
       : ["Current working checkpoint: none"]),
     ...renderGovernanceTopOpportunity(status),
     ...renderGovernanceActionableOpportunity(status),
-    `IM: ${status.service.im.state}${status.service.im.pid ? ` (pid ${status.service.im.pid})` : ""}`,
-    `IM health: ${status.service.im.health}`,
-    `Heartbeat freshness: ${status.service.im.heartbeat_freshness}${typeof status.service.im.heartbeat_age_ms === "number" ? ` (${status.service.im.heartbeat_age_ms}ms)` : ""}`,
+    `Runtime: ${status.service.runtime.state}${status.service.runtime.pid ? ` (pid ${status.service.runtime.pid})` : ""}`,
+    `Runtime health: ${status.service.runtime.health}`,
+    `Heartbeat freshness: ${status.service.runtime.heartbeat_freshness}${typeof status.service.runtime.heartbeat_age_ms === "number" ? ` (${status.service.runtime.heartbeat_age_ms}ms)` : ""}`,
     ...renderGovernanceRuntimeBuild(status),
     ...renderGovernanceReviewTick(status),
     "",
@@ -3758,7 +3758,7 @@ function renderGovernanceTopOpportunity(status: GovernanceStatusResult): string[
     ...(top.service_health
       ? [
         `Top service_health: ${top.service_health.status}`,
-        `Top service_im_state: ${top.service_health.im_state}`,
+        `Top service_runtime_state: ${top.service_health.runtime_state}`,
         `Top service_heartbeat: ${top.service_health.heartbeat_freshness}`,
         `Top service_deployment: ${top.service_health.deployment_status}`,
         `Top service_runtime_dirty: ${stringifyOptionalBoolean(top.service_health.runtime_dirty)}`,
@@ -4131,7 +4131,7 @@ function renderOpportunityBacklogItem(item: OpportunityBacklogItem, index: numbe
   }
   if (item.service_health) {
     lines.push(`   service_health: ${item.service_health.status}`);
-    lines.push(`   service_health_im_state: ${item.service_health.im_state}`);
+    lines.push(`   service_health_runtime_state: ${item.service_health.runtime_state}`);
     lines.push(`   service_health_heartbeat: ${item.service_health.heartbeat_freshness}`);
     lines.push(`   service_health_deployment: ${item.service_health.deployment_status}`);
     lines.push(`   service_health_deployment_reason: ${item.service_health.deployment_reason}`);
@@ -4668,8 +4668,8 @@ function renderRuntimeBuildStatus(heartbeat: Record<string, unknown> | null): st
 
 function renderGovernanceRuntimeBuild(status: GovernanceStatusResult): string[] {
   return [
-    ...renderRuntimeBuildLines(status.service.im.runtime_build ?? null),
-    ...renderServiceDeploymentLines(status.service.im.deployment)
+    ...renderRuntimeBuildLines(status.service.runtime.runtime_build ?? null),
+    ...renderServiceDeploymentLines(status.service.runtime.deployment)
   ];
 }
 

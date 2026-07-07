@@ -365,7 +365,7 @@ preflight-ready, or publish-enabled. It also emits the next config and service
 restart commands needed to advance the loop.
 
 For resident local scheduling, enable the service loop through the append-only
-runtime config command and restart the IM service:
+runtime config command and restart the runtime service:
 
 ```bash
 pnpm run runtime -- config set-runtime \
@@ -377,7 +377,7 @@ pnpm run runtime -- config set-runtime \
   --content-daily-clear-sources \
   --content-daily-clear-tickers
 
-pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main
+pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
 ```
 
 The command appends a local home config runtime record equivalent to:
@@ -386,7 +386,7 @@ The command appends a local home config runtime record equivalent to:
 {"type":"runtime","content_daily_enabled":true,"content_daily_interval_ms":3600000,"content_daily_dry_run":true,"content_daily_preflight":false,"content_daily_topic":"daily AI news and AI stock hotspots","content_daily_source_urls":[],"content_daily_tickers":[],"content_daily_publish_enabled":false,"content_daily_external_write_confirmed":false,"content_daily_publish_adapter":"xiaohongshu-mcp","content_daily_publish_server_url":"http://localhost:18060/mcp","content_daily_publish_tool":"publish_content"}
 ```
 
-The resident loop writes `services/im/content_daily.json`. When the runtime
+The resident loop writes `services/runtime/content_daily.json`. When the runtime
 uses the default topic with no custom source URLs or tickers, it creates two
 daily tracks:
 
@@ -588,9 +588,9 @@ the read model routes the next action to `content creator-metrics-capture` or th
 page-text recovery path instead of asking `feedback-refresh` to repeat the same
 feed request.
 
-The resident IM service can run the same refresh path on an interval when
+The resident runtime service can run the same refresh path on an interval when
 `content_feedback_refresh_enabled=true`. The resident loop is disabled by
-default, writes only `services/im/content_feedback_refresh.json` plus typed
+default, writes only `services/runtime/content_feedback_refresh.json` plus typed
 feedback evidence, and waits for
 `content_feedback_refresh_min_follow_up_age_ms` before collecting follow-up
 snapshots so early feedback does not continually reset the stable review
@@ -601,7 +601,7 @@ top run ref/title, and a next command shape for health views. Context renders a
 compact posture summary. It does not publish, revise a published post, open a
 browser, call a model, or store draft/body/image/cookie payloads.
 This refresh status is the strategy recommendation surface; applied strategy
-provenance for a later daily post lives in `services/im/content_daily.json`.
+provenance for a later daily post lives in `services/runtime/content_daily.json`.
 When the latest typed feedback for a post already came from
 `agent-browser-cli`, follow-up queue and strategy commands keep using the
 controlled `content creator-metrics-capture` path instead of falling back to a
@@ -774,7 +774,7 @@ the next title, opening hook, CTA, and image prompt. `collect_more_feedback`,
 `verify_metrics`, and `repair_feedback_capture` are preserved as not-applied
 guardrails so incomplete telemetry does not rewrite the content pattern.
 Resident daily runs also record `last_applied_strategy_*` fields in
-`services/im/content_daily.json`, including applied counts, source run refs,
+`services/runtime/content_daily.json`, including applied counts, source run refs,
 postures, and source titles. Service health and Feishu `/health` expose those
 fields so an operator can audit whether the feedback strategy merely existed as
 guidance or actually shaped the latest daily post.

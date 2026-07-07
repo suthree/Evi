@@ -405,9 +405,9 @@ stage-allowed tools, writes new attempt refs instead of overwriting failed
 attempts, and updates the checkpoint for later context.
 
 Live context also includes a bounded read-only `Service Runtime` section when
-the resident IM heartbeat exists. It summarizes only the heartbeat state and the
+the resident runtime heartbeat exists. It summarizes only the heartbeat state and the
 copied-runtime build metadata already carried by
-`services/im/heartbeat.json`, plus service-health reason codes and read-only
+`services/runtime/heartbeat.json`, plus service-health reason codes and read-only
 follow-up guidance when runtime attention exists. This is runtime orientation
 for the model; it does not restart services, read copied-runtime files, run
 shell commands, or prove that current repo edits have been deployed.
@@ -704,10 +704,10 @@ not run review tick, run background review, request confirmations, execute
 follow-ups, read raw tick/review Markdown, write state, write the active vault,
 or call the model.
 
-The resident IM service can run this same tick path on a timer when
+The resident runtime service can run this same tick path on a timer when
 `runtime.review_tick_enabled=true`. The service loop is disabled by default,
 uses `runtime.review_tick_interval_ms` and `runtime.review_tick_limit`, writes
-status plus the latest focus to `services/im/review_tick.json`, and keeps the
+status plus the latest focus to `services/runtime/review_tick.json`, and keeps the
 same state-only boundaries as the CLI tick. If
 `autonomy/runs/pause_signal.json` is active, the resident loop writes
 `state=paused` and skips the automatic tick.

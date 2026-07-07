@@ -90,7 +90,7 @@ export interface GovernanceStatusResult {
     boundary: string;
   };
   service: {
-    im: {
+    runtime: {
       state: string;
       pid?: number;
       channel_id?: string;
@@ -290,18 +290,18 @@ export async function getGovernanceStatus(
       boundary: workingCheckpoints.boundary
     },
     service: {
-      im: {
-        state: serviceHealth.im.state,
-        pid: serviceHealth.im.pid,
-        channel_id: serviceHealth.im.channel_id,
-        scenario_id: serviceHealth.im.scenario_id,
-        updated_at: serviceHealth.im.heartbeat_updated_at,
-        heartbeat_freshness: serviceHealth.im.heartbeat_freshness,
-        heartbeat_age_ms: serviceHealth.im.heartbeat_age_ms,
+      runtime: {
+        state: serviceHealth.service.state,
+        pid: serviceHealth.service.pid,
+        channel_id: serviceHealth.service.channel_id,
+        scenario_id: serviceHealth.service.scenario_id,
+        updated_at: serviceHealth.service.heartbeat_updated_at,
+        heartbeat_freshness: serviceHealth.service.heartbeat_freshness,
+        heartbeat_age_ms: serviceHealth.service.heartbeat_age_ms,
         health: serviceHealth.status,
-        runtime_build: serviceHealth.im.runtime_build,
-        repo_head: serviceHealth.im.repo_head,
-        deployment: serviceHealth.im.deployment
+        runtime_build: serviceHealth.service.runtime_build,
+        repo_head: serviceHealth.service.repo_head,
+        deployment: serviceHealth.service.deployment
       },
       review_tick: {
         state: serviceHealth.review_tick.state,

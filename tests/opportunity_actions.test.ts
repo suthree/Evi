@@ -521,7 +521,7 @@ test("governance act-next records local feedback refresh route reviews without e
   const fixture = await createFixture();
   try {
     await fixture.store.ensureLayout();
-    await fixture.store.writeJson("services/im/content_feedback_refresh.json", {
+    await fixture.store.writeJson("services/runtime/content_feedback_refresh.json", {
       service: "content_feedback_refresh",
       enabled: true,
       state: "skipped",
@@ -570,7 +570,7 @@ test("governance act-next records local feedback refresh route reviews without e
     assert.equal(result.status, "executed");
     assert.equal(result.selected_opportunity?.kind, "self_evolution_gap");
     assert.equal(result.selected_opportunity?.proposed_slice, "feedback_refresh_route_review");
-    assert.equal(result.feedback_refresh_route_review?.service_ref, "services/im/content_feedback_refresh.json");
+    assert.equal(result.feedback_refresh_route_review?.service_ref, "services/runtime/content_feedback_refresh.json");
     assert.equal(result.feedback_refresh_route_review?.top_skip_reason, "non_mcp_capture_route");
     assert.equal(result.feedback_refresh_route_review?.due_count, 4);
     assert.equal(result.feedback_refresh_route_review?.skipped_count, 4);
@@ -583,7 +583,7 @@ test("governance act-next records local feedback refresh route reviews without e
       "utf8"
     )) as Record<string, unknown>;
     assert.equal(review.kind, "content_feedback_refresh_route_review");
-    assert.equal(review.service_ref, "services/im/content_feedback_refresh.json");
+    assert.equal(review.service_ref, "services/runtime/content_feedback_refresh.json");
     assert.equal(review.status_updated_at, "2026-07-02T08:00:00.000Z");
     assert.equal(review.top_skip_reason, "non_mcp_capture_route");
     assert.match(review.boundary as string, /never calls Xiaohongshu MCP/);

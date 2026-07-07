@@ -76,9 +76,8 @@ pnpm run runtime -- content publish-preflight --run content_run_... --adapter xi
 pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --state-root .runtime/state
 pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime/state
 pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state --dry-run --state-root ~/.local-runtime/state/runtime
-pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime
-pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
 pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
@@ -203,9 +202,9 @@ runs when the operator no longer needs the evidence:
 ├── content/daily/
 ├── content/runs/
 ├── sop/drafts/
-├── services/im/heartbeat.json
-├── services/im/review_tick.json
-├── services/im/content_daily.json
+├── services/runtime/heartbeat.json
+├── services/runtime/review_tick.json
+├── services/runtime/content_daily.json
 ├── channels/
 └── pipelines/
 ```
@@ -215,11 +214,11 @@ completion verification reports, channel events, daily episode archive
 summaries, working checkpoints, service heartbeat files, and pipeline
 artifacts.
 
-The resident IM service remains separate by default: service lifecycle commands
+The resident runtime service remains separate by default: service lifecycle commands
 without `--state-root` use `<LOCAL_RUNTIME_HOME>/state/runtime`, so the
 long-lived service state does not depend on the repo checkout. Passing
 `--state-root .runtime/state` is still available for intentional local
-foreground IM experiments.
+foreground daemon experiments.
 
 Content dry-runs write local publish-plan artifacts under `content/runs/`.
 They are planning artifacts for active exploration. Default dry-runs do not
@@ -321,7 +320,7 @@ such as `collect_more_feedback`, `verify_metrics`, or `repair_feedback_capture`
 are recorded as not applied. These feedback commands avoid cookies, platform
 reads, browser automation, model calls, repo writes, and active-vault writes.
 When the resident daily loop auto-applies an eligible strategy, its
-`services/im/content_daily.json` status records bounded applied-strategy counts,
+`services/runtime/content_daily.json` status records bounded applied-strategy counts,
 new run refs, source run refs, postures, and source titles. Service health and
 Feishu `/health` use those fields to distinguish "feedback strategy suggested"
 from "feedback strategy actually shaped the latest daily post"; context keeps
@@ -877,7 +876,7 @@ Session recap is exposed through `memory recap`, `memory recap --session
 <session-id>`, Feishu `/recap`, and Feishu `/recap <session-id>`. It summarizes
 one local session from episode event metadata, completion report metadata,
 context manifest metadata, and bounded working checkpoint metadata. It is a
-recovery-orientation view for local development and resident IM iteration. It
+recovery-orientation view for local development and resident runtime iteration. It
 does not read raw context Markdown, model responses, tool outputs, or final
 responses; it does not rebuild the MemoryStore index, invoke the model, run
 shell commands, mutate state, or write the active vault.
@@ -1080,14 +1079,14 @@ The local service runtime is a single-user resident mode for this machine. On
 macOS it is managed through `launchd` and writes:
 
 ```text
-~/Library/LaunchAgents/local.runtime.im.plist
+~/Library/LaunchAgents/local.runtime.runtime.plist
 <LOCAL_RUNTIME_HOME>/service/im.json
 <LOCAL_RUNTIME_HOME>/service/runtime/current/
 <LOCAL_RUNTIME_HOME>/service/runtime/current/build.json
 <LOCAL_RUNTIME_HOME>/logs/im.out.log
 <LOCAL_RUNTIME_HOME>/logs/im.err.log
-<state_root>/services/im/heartbeat.json
-<state_root>/services/im/review_tick.json
+<state_root>/services/runtime/heartbeat.json
+<state_root>/services/runtime/review_tick.json
 <state_root>/autonomy/runs/pause_signal.json
 ```
 
@@ -1195,7 +1194,7 @@ configured through JSONL runtime records:
 
 The loop is disabled by default. When enabled, it periodically runs the same
 state-only `review tick` path, writes status and latest focus under
-`<state_root>/services/im/review_tick.json`, and is reported by
+`<state_root>/services/runtime/review_tick.json`, and is reported by
 `service status`. Aggregate governance status and Feishu `/governance` may also
 render the last tick ref and latest focus summary so operators can understand
 why the resident review loop last looked at a backlog item without rerunning
@@ -1252,7 +1251,7 @@ That appends a home config runtime record equivalent to:
 
 When enabled, the service checks on `content_daily_interval_ms`, runs or
 continues the local `content daily` job once per local date key, and writes
-status under `<state_root>/services/im/content_daily.json`. The loop skips
+status under `<state_root>/services/runtime/content_daily.json`. The loop skips
 duplicate same-day jobs only after they already satisfy the current runtime
 gates, honors active `autonomy/runs/pause_signal.json`, and is reported by
 `service status`. With the default `content_daily_dry_run=true`, it never calls
@@ -1284,7 +1283,7 @@ latest feedback evidence from any capture source, captures missing or failed
 snapshots through the Xiaohongshu MCP current-user feed, waits for
 `content_feedback_refresh_min_follow_up_age_ms` before follow-up snapshots, and
 writes status under
-`<state_root>/services/im/content_feedback_refresh.json`. It appends typed
+`<state_root>/services/runtime/content_feedback_refresh.json`. It appends typed
 feedback evidence only. It does not publish, open browsers, read cookies, call
 models, write repo files, or write the active vault. The current-user feed read
 uses a bounded timeout; timeout failures are persisted as failed feedback
@@ -1304,7 +1303,7 @@ with proposed slice `feedback_refresh_route_review`. Running
 `content/feedback-refresh-route-reviews/*.json` artifact containing the current
 service status, skip counts, strategy posture, and local next commands. That
 review suppresses the same service-status gap until
-`services/im/content_feedback_refresh.json` updates again. This review action is
+`services/runtime/content_feedback_refresh.json` updates again. This review action is
 local state only: it does not call Xiaohongshu MCP, open browsers, publish,
 fetch platform state, read draft bodies, write repo files, or write the active
 vault.
@@ -1322,7 +1321,7 @@ verify metrics, revise the next post, or reuse the current pattern. The summary
 contains its `captured_by` view, counts, the top run ref/title, and the next
 command shape for health views; context renders a compact posture summary.
 This is the planned strategy view. The resident daily loop separately records
-`last_applied_strategy_*` fields in `services/im/content_daily.json` when a
+`last_applied_strategy_*` fields in `services/runtime/content_daily.json` when a
 future daily run actually applies `reuse_baseline` or `revise_next_post`
 guidance.
 When a newer creator-backend snapshot has already supplied `view_count`, the
@@ -1390,13 +1389,12 @@ interactions.
 
 IM channel records are selected through a provider-neutral loader. A channel can
 declare `kind: "feishu"`, `kind: "telegram"`, or `kind: "discord"`, and
-`doctor`, `daemon serve`, `im serve`, and `service` accept `--provider` as a
+`doctor`, `daemon serve`, and `service` accept `--provider` as a
 selector guard. Feishu, Telegram, and Discord can start today.
 The config loader stops at scenario resolution; `im_adapters.ts` owns the
 runtime seam that decides whether a provider has a concrete adapter.
 The daemon heartbeat includes the provider-neutral MessageGateway state and
-per-channel health, so `service health --target runtime` and
-`service health --target im` can show which channel adapters are running
+per-channel health, so `service health --target runtime` can show which channel adapters are running
 without reading provider logs or secrets. If a channel adapter fails during
 daemon startup, the daemon writes an `error` heartbeat with the failed
 MessageGateway channel before exiting.
@@ -1452,7 +1450,7 @@ valid writes because the workspace is dirty, mutate git state, or roll back.
 Live runs may record `pause_autonomy` as a state-only stop signal under
 `<state_root>/autonomy/runs/pause_signal.json`. This signal is loaded into later
 context snapshots for autonomous exploration. It does not unload launchd, stop
-the resident IM process, disable the channel, or edit runtime config.
+the resident runtime process, disable the channel, or edit runtime config.
 `service status`, Feishu `/status`, and Feishu `/governance` expose this signal
 as read-only operator status when it is active; those status views do not clear
 or resume autonomy.
@@ -1469,9 +1467,9 @@ After local code changes, use:
 ```bash
 pnpm run check
 pnpm run runtime -- workspace status --state-root .runtime/state
-pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main
-pnpm run runtime -- service status --target im
-pnpm run runtime -- service health --target im
+pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service health --target runtime
 ```
 
 The service runtime is not a production daemon. It must stay local-only,
@@ -1513,8 +1511,8 @@ two read models.
 
 Service-health guidance rendered in live context, governance, Opportunity
 Backlog, and Feishu should use the same default service commands:
-`pnpm run runtime -- service health --target im` and
-`pnpm run runtime -- service restart --target im ...`. It should not require a
+`pnpm run runtime -- service health --target runtime` and
+`pnpm run runtime -- service restart --target runtime ...`. It should not require a
 `--state-root <state-root>` placeholder unless the operator is intentionally
 working against an alternate explicit service state root.
 
@@ -1999,7 +1997,7 @@ Feishu. The resident Feishu service polls queued requests, reuses the configured
 allowlist and text chunking, records `channels/feishu/events.jsonl`, and marks
 each request `sent` or `failed`. Use the resident service state root, normally
 `~/.local-runtime/state/runtime`, when the notification should be sent by the
-running IM service.
+running runtime service.
 
 The first version does not need group chat, attachments, cards, multi-user
 session management, hosted service deployment, or production daemon behavior.

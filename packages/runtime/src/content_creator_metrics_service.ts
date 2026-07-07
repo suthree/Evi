@@ -87,7 +87,7 @@ export function createContentCreatorMetricsLoop(
   options: ContentCreatorMetricsLoopOptions
 ): ContentCreatorMetricsLoopHandle {
   const store = new AgentStore(options.repoRoot, options.stateRoot);
-  const statusRef = options.statusRef ?? "services/im/content_creator_metrics.json";
+  const statusRef = options.statusRef ?? "services/runtime/content_creator_metrics.json";
   const startedAt = new Date().toISOString();
   let timer: unknown | null = null;
   let started = false;

@@ -138,7 +138,7 @@ export interface ContentDailyLoopHandle {
 
 export function createContentDailyLoop(options: ContentDailyLoopOptions): ContentDailyLoopHandle {
   const store = new AgentStore(options.repoRoot, options.stateRoot);
-  const statusRef = options.statusRef ?? "services/im/content_daily.json";
+  const statusRef = options.statusRef ?? "services/runtime/content_daily.json";
   const startedAt = new Date().toISOString();
   const dateKeyTimeZone = options.dateKeyTimeZone ?? defaultContentDailyTimeZone();
   let timer: NodeJS.Timeout | null = null;

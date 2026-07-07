@@ -19,7 +19,7 @@ import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_run
 import { startRuntimeWebConsole, type RuntimeWebConsoleHandle } from "./web_console.js";
 import { XiaohongshuMcpClient } from "./xiaohongshu_mcp.js";
 
-export type RuntimeDaemonTarget = "im" | "runtime";
+export type RuntimeDaemonTarget = "runtime";
 
 export interface RuntimeDaemonOptions {
   repoRoot: string;

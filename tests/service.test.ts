@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  buildImServiceDefinition,
   buildRuntimeServiceDefinition,
   parseLaunchdPid,
   renderLaunchdPlist,
@@ -13,8 +12,8 @@ import {
   runServiceCommand
 } from "../packages/runtime/src/service.js";
 
-test("launchd plist uses explicit local runner and does not contain secrets", () => {
-  const definition = buildImServiceDefinition({
+test("launchd plist uses explicit runtime daemon runner and does not contain secrets", () => {
+  const definition = buildRuntimeServiceDefinition({
     repoRoot: "/work/runtime",
     configDir: "/work/runtime/config",
     stateRoot: "/work/runtime/.runtime/state",
@@ -32,7 +31,7 @@ test("launchd plist uses explicit local runner and does not contain secrets", ()
   assert.match(plist, /<key>KeepAlive<\/key>\n  <true\/>/);
   assert.match(plist, /<string>\/usr\/local\/bin\/node<\/string>/);
   assert.match(plist, /<string>\/home\/user\/.local-runtime\/service\/runtime\/current\/dist\/apps\/cli\/src\/main\.js<\/string>/);
-  assert.match(plist, /<string>im<\/string>/);
+  assert.match(plist, /<string>daemon<\/string>/);
   assert.match(plist, /<string>serve<\/string>/);
   assert.match(plist, /<string>--runtime-build<\/string>/);
   assert.match(plist, /<string>--provider<\/string>/);
@@ -259,13 +258,13 @@ test("service config selectors use home-scoped state by default and preserve exp
     ].join("\n") + "\n", "utf8");
 
     const defaultSelectors = await resolveServiceConfigSelectors({
-      target: "im",
+      target: "runtime",
       configDir
     });
     assert.equal(defaultSelectors.stateRoot, join(homeRoot, "state/runtime"));
 
     const explicitSelectors = await resolveServiceConfigSelectors({
-      target: "im",
+      target: "runtime",
       configDir,
       stateRoot: explicitStateRoot
     });
@@ -283,14 +282,14 @@ test("service status combines launchd status and heartbeat", async () => {
   const homeRoot = join(root, "home");
   try {
     await mkdir(configDir, { recursive: true });
-    await mkdir(join(stateRoot, "services/im"), { recursive: true });
+    await mkdir(join(stateRoot, "services/runtime"), { recursive: true });
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
       JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
       JSON.stringify({ type: "active_scenario", scenario_id: "im-default" })
     ].join("\n") + "\n", "utf8");
-    await writeFile(join(stateRoot, "services/im/heartbeat.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/heartbeat.json"), `${JSON.stringify({
       service: "im",
       state: "running",
       pid: 777,
@@ -304,7 +303,7 @@ test("service status combines launchd status and heartbeat", async () => {
     await mkdir(join(homeRoot, "service/runtime/current"), { recursive: true });
     await writeFile(join(homeRoot, "service/runtime/current/build.json"), `${JSON.stringify({
       schema_version: 1,
-      target: "im",
+      target: "runtime",
       runtime_current_root: join(homeRoot, "service/runtime/current"),
       repo_root: repoRoot,
       built_at: "2026-06-29T00:00:10.000Z",
@@ -314,7 +313,7 @@ test("service status combines launchd status and heartbeat", async () => {
       source_branch: "develop",
       source_is_dirty: false
     })}\n`, "utf8");
-    await writeFile(join(stateRoot, "services/im/review_tick.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/review_tick.json"), `${JSON.stringify({
       service: "review_tick",
       state: "ok",
       enabled: true,
@@ -328,7 +327,7 @@ test("service status combines launchd status and heartbeat", async () => {
       last_tick_ref: "autonomy/ticks/review_tick_1.json",
       last_inbox_count: 2
     })}\n`, "utf8");
-    await writeFile(join(stateRoot, "services/im/task_queue.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/task_queue.json"), `${JSON.stringify({
       service: "runtime_task_queue",
       state: "ok",
       enabled: true,
@@ -346,7 +345,7 @@ test("service status combines launchd status and heartbeat", async () => {
       last_failed_count: 0,
       last_task_ids: ["runtime_task_1"]
     })}\n`, "utf8");
-    await writeFile(join(stateRoot, "services/im/content_daily.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/content_daily.json"), `${JSON.stringify({
       service: "content_daily",
       state: "ok",
       enabled: true,
@@ -374,7 +373,7 @@ test("service status combines launchd status and heartbeat", async () => {
       status: "published",
       evidence: { publish_status: "published" }
     })}\n`, "utf8");
-    await writeFile(join(stateRoot, "services/im/content_feedback_refresh.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/content_feedback_refresh.json"), `${JSON.stringify({
       service: "content_feedback_refresh",
       state: "ok",
       enabled: true,
@@ -392,7 +391,7 @@ test("service status combines launchd status and heartbeat", async () => {
       last_refreshed_count: 1,
       last_captured_count: 1
     })}\n`, "utf8");
-    await writeFile(join(stateRoot, "services/im/content_creator_metrics.json"), `${JSON.stringify({
+    await writeFile(join(stateRoot, "services/runtime/content_creator_metrics.json"), `${JSON.stringify({
       service: "content_creator_metrics",
       state: "ok",
       enabled: true,
@@ -425,7 +424,7 @@ test("service status combines launchd status and heartbeat", async () => {
 
     const result = await runServiceCommand({
       action: "status",
-      target: "im",
+      target: "runtime",
       configDir,
       repoRoot,
       stateRoot
@@ -441,7 +440,7 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.ok, true);
     assert.match(result.boundary, /local service lifecycle status/);
     assert.match(result.boundary, /use health_command for bounded runtime\/channel health/);
-    assert.equal(result.health_command, "pnpm run runtime -- service health --target im");
+    assert.equal(result.health_command, "pnpm run runtime -- service health --target runtime");
     assert.equal(result.launchd?.loaded, true);
     assert.equal(result.launchd?.pid, 12345);
     assert.equal(result.heartbeat?.pid, 777);
