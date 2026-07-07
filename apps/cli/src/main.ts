@@ -361,6 +361,7 @@ interface IterationAuditGuidanceSubject {
   id: string;
   ref: string;
   source_ref?: string;
+  implementation_contract?: GaProjectDesignPlanPacket["implementation_contract"];
   proposed_slice: string;
   outcome_status: string;
 }
@@ -1810,6 +1811,7 @@ export async function main(): Promise<number> {
           id: detail.iteration.id,
           ref: detail.iteration.ref,
           source_ref: detail.iteration.source_ref,
+          implementation_contract: detail.iteration.implementation_contract,
           layer: detail.iteration.layer,
           owner_surface: detail.iteration.owner_surface,
           proposed_slice: detail.iteration.proposed_slice,
@@ -1901,6 +1903,7 @@ export async function main(): Promise<number> {
           ownerSurface: options.iterationOwnerSurface ?? seed.owner_surface,
           proposedSlice: options.iterationProposedSlice ?? seed.proposed_slice,
           sourceRef: options.iterationSourceRef ?? seed.source_ref,
+          implementationContract: plan.implementation_contract,
           evidenceRefs: [...seed.evidence_refs, ...options.iterationEvidenceRefs],
           verificationCommands: [...seed.verification_commands, ...options.iterationVerificationCommands],
           nonGoals: [...seed.non_goals, ...options.iterationNonGoals],

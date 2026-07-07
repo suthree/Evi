@@ -522,6 +522,9 @@ Completion-audit seeds may require the outcome to show that the delivered
 change stayed inside `implementation_scope`, did not enter `deferred_scope`, and
 kept the selected layer, owner surface, and delivery standard aligned with that
 contract.
+Plan-derived self-evolution iteration records persist the same implementation
+contract so later audits can inspect the boundary from the iteration state
+record itself, not only from the advisory project-design packet.
 The basic `runtime_observability` stage may be `attention_guard`; this is a
 guard role that keeps service-health attention visible and must not be treated
 as a healthy service claim.

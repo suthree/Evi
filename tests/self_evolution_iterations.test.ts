@@ -22,6 +22,18 @@ test("self-evolution iteration contracts record layer declarations without execu
       ownerSurface: "runtime_contract",
       proposedSlice: "self_evolution_iteration_contract",
       sourceRef: "memory/dreams/dream_core.json",
+      implementationContract: {
+        proposed_slice: "self_evolution_iteration_contract",
+        source_artifact_id: "ga_design_artifact_iteration_contract_seed",
+        source_proposed_slice: "previous_core_slice",
+        selected_layer: "core_runtime",
+        owner_surface: "runtime_contract",
+        improvement_type: "reusable_ga_design_contract",
+        implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+        deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
+        delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
+        boundary: "read-only GA implementation contract"
+      },
       evidenceRefs: ["packages/core/src/self_evolution_scorecard.ts", "packages/core/src/expert_orchestration.ts"],
       verificationCommands: ["pnpm run check"],
       nonGoals: ["no scheduler"]
@@ -31,6 +43,9 @@ test("self-evolution iteration contracts record layer declarations without execu
     assert.equal(recorded.iteration.layer, "core_runtime");
     assert.equal(recorded.iteration.owner_surface, "runtime_contract");
     assert.equal(recorded.iteration.proposed_slice, "self_evolution_iteration_contract");
+    assert.equal(recorded.iteration.implementation_contract?.proposed_slice, "self_evolution_iteration_contract");
+    assert.equal(recorded.iteration.implementation_contract?.selected_layer, "core_runtime");
+    assert.equal(recorded.iteration.implementation_contract?.deferred_scope.some((item) => item.includes("external adapter")), true);
     assert.deepEqual(recorded.iteration.advisory_expert_roles, ["architect", "verification_reviewer", "orchestration_planner"]);
     assert.equal(recorded.iteration.verification_commands.includes("pnpm run check"), true);
     assert.equal(recorded.iteration.non_goals.includes("no scheduler"), true);
@@ -40,6 +55,7 @@ test("self-evolution iteration contracts record layer declarations without execu
 
     const detail = await getSelfEvolutionIteration(store, { iterationRef: recorded.iteration.id });
     assert.equal(detail.iteration.ref, recorded.iteration.ref);
+    assert.equal(detail.iteration.implementation_contract?.delivery_standard.some((item) => item.includes("opaque slice id")), true);
 
     const outcome = await recordSelfEvolutionIterationOutcome(store, {
       iterationRef: recorded.iteration.id,
@@ -155,12 +171,25 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
   const root = await mkdtemp(join(tmpdir(), "local-runtime-iteration-reuse-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
+    const implementationContract = {
+      proposed_slice: "core_ga_design_next_slice_after_seed",
+      source_artifact_id: "ga_design_artifact_iteration_contract_seed",
+      source_proposed_slice: "previous_core_slice",
+      selected_layer: "core_runtime" as const,
+      owner_surface: "ga_project_design",
+      improvement_type: "reusable_ga_design_contract" as const,
+      implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+      deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
+      delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
+      boundary: "read-only GA implementation contract"
+    };
     const args = {
       summary: "Open next GA design slice from the current plan seed.",
       layer: "core_runtime" as const,
       ownerSurface: "ga_project_design",
       proposedSlice: "core_ga_design_next_slice_after_seed",
       sourceRef: "self-evolution/iterations/iteration_contract_seed.json",
+      implementationContract,
       evidenceRefs: ["packages/core/src/ga_project_design.ts"],
       verificationCommands: ["pnpm run check"],
       nonGoals: ["does not execute the planned slice"],
@@ -174,6 +203,7 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(second.created, false);
     assert.equal(second.reused_existing, true);
     assert.equal(second.iteration.id, first.iteration.id);
+    assert.equal(second.iteration.implementation_contract?.source_artifact_id, "ga_design_artifact_iteration_contract_seed");
     assert.match(second.boundary, /reused existing open iteration/);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
 

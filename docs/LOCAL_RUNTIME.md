@@ -501,6 +501,9 @@ schedule experts, promote learning artifacts, or prove completion.
 The plan's completion-audit seeds may require the later outcome to explain how
 the delivered change stayed inside `implementation_scope` and did not enter
 `deferred_scope`.
+When the plan opens an iteration, the resulting iteration record can carry the
+same contract as state evidence rather than leaving later agents to infer it
+from the advisory packet.
 When a verified artifact belongs to `core_runtime` or `basic_entrypoint`, the
 same output includes a read-only `next_core_basic_plan` with phase gates,
 acceptance criteria, verification commands, non-goals, and a record-iteration
@@ -675,6 +678,10 @@ contract under `self-evolution/iterations/`. It is the local state record that
 declares the capability layer, owner surface, proposed slice, evidence refs,
 verification commands, non-goals, and advisory expert roles before major work
 is treated as core/basic/local-learning/application progress. `governance
+record-iteration --from-project-design-plan` also persists the plan's
+`implementation_contract` into that iteration record, so future inspection can
+read the selected layer, implementation scope, deferred scope, and delivery
+standard from the state record itself. `governance
 iterations` lists or inspects those records. `governance record-iteration-outcome`
 updates an existing record with verification status, cited evidence, commands
 run, verification claims, and next moves. Use repeated

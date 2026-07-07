@@ -960,6 +960,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
   assert.equal(guidance.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
   assert.equal(guidance.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
+  assert.equal(guidance.implementation_contract.boundary.includes("read-only"), true);
   assert.equal(guidance.iteration_focus.direction_id, "core_basic_plan_clarity");
   assert.equal(guidance.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
   assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);
@@ -1013,6 +1014,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       id: "iteration_contract_source",
       ref: "self-evolution/iterations/iteration_contract_source.json",
       source_ref: "self-evolution/iterations/iteration_contract_parent.json",
+      implementation_contract: plan.implementation_contract,
       proposed_slice: "completed_source_slice",
       outcome_status: "verified"
     },
@@ -1021,6 +1023,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.guidance_scope, "source_iteration_for_current_plan");
   assert.equal(sourceGuidance.audited_iteration?.id, "iteration_contract_source");
   assert.equal(sourceGuidance.audited_iteration?.source_ref, "self-evolution/iterations/iteration_contract_parent.json");
+  assert.equal(sourceGuidance.audited_iteration?.implementation_contract?.proposed_slice, "core_ga_design_next_slice_after_source");
   assert.equal(sourceGuidance.iteration_record_status.id, "iteration_contract_source");
   assert.equal(sourceGuidance.iteration_record_status.status, "outcome_recorded");
   assert.equal(sourceGuidance.iteration_record_status.outcome_status, "verified");

@@ -353,6 +353,8 @@ pre-execution boundary guidance, not an execution plan or completion proof.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, or expert-orchestration scope.
+Plan-derived iteration records persist that implementation contract, so later
+inspection does not have to infer the boundary from the source artifact alone.
 Phase gates carry their `forbidden_shortcuts`, so anti-drift constraints stay
 visible with the phase contract.
 It also includes `capability_stage_plan`, a read-only split of current core

@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import type { CapabilityLayer } from "./capabilities.js";
 import { newId, utcNow } from "./ids.js";
 import type { ExpertOrchestrationRoleId } from "./expert_orchestration.js";
+import type { GaProjectDesignImplementationContract } from "./ga_project_design.js";
 import type { AgentStore } from "./store.js";
 
 export interface SelfEvolutionIterationContract {
@@ -15,6 +16,7 @@ export interface SelfEvolutionIterationContract {
   owner_surface: string;
   proposed_slice: string;
   source_ref?: string;
+  implementation_contract?: GaProjectDesignImplementationContract;
   evidence_refs: string[];
   verification_commands: string[];
   non_goals: string[];
@@ -80,6 +82,7 @@ export async function recordSelfEvolutionIteration(
     ownerSurface: string;
     proposedSlice: string;
     sourceRef?: string;
+    implementationContract?: GaProjectDesignImplementationContract;
     evidenceRefs?: string[];
     verificationCommands?: string[];
     nonGoals?: string[];
@@ -102,13 +105,19 @@ export async function recordSelfEvolutionIteration(
       && (iteration.source_ref ?? "") === (sourceRef ?? "")
     );
     if (existing) {
+      const iteration = existing.implementation_contract || !args.implementationContract
+        ? existing
+        : { ...existing, implementation_contract: args.implementationContract };
+      if (iteration !== existing) await store.writeJson(iteration.ref, iteration);
       return {
         action: "record-iteration",
         created: false,
         reused_existing: true,
-        iteration: existing,
-        inspect_command: `pnpm run runtime -- governance iterations --iteration ${existing.id} --state-root <state-root>`,
-        boundary: `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; no new state record was written`
+        iteration,
+        inspect_command: `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`,
+        boundary: iteration === existing
+          ? `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; no new state record was written`
+          : `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; persisted supplied implementation contract on the existing state record`
       };
     }
   }
@@ -125,6 +134,7 @@ export async function recordSelfEvolutionIteration(
     owner_surface: ownerSurface,
     proposed_slice: proposedSlice,
     ...(sourceRef ? { source_ref: sourceRef } : {}),
+    ...(args.implementationContract ? { implementation_contract: args.implementationContract } : {}),
     evidence_refs: compact(args.evidenceRefs ?? []),
     verification_commands: compact(args.verificationCommands ?? [
       "pnpm run check",
