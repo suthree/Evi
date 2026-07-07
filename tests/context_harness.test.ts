@@ -519,6 +519,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       action: "delegate_agent",
       layer: "core_runtime",
       stage: "active",
+      max_actions_per_round: 1,
       task_contract: {
         max_chars: 1000,
         required: ["bounded task"],
@@ -540,7 +541,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), "action=delegate_agent; stage=active; task_max=1000; context_max=12000; result=240/2000; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
+  }), "action=delegate_agent; stage=active; max_per_round=1; task_max=1000; context_max=12000; result=240/2000; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1374,7 +1375,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; task_max=1000; context_max=12000; result=240\/2000; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
+    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; max_per_round=1; task_max=1000; context_max=12000; result=240\/2000; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
@@ -3565,6 +3566,130 @@ test("live runner feeds structured delegated results back as bounded observation
   }
 });
 
+test("live runner rejects extra delegate actions without calling the delegated model", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new MultiDelegationThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject multiple delegated subtasks in one round.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvents = events.filter((event) => event.kind === "delegated_result");
+    const firstRef = (delegatedEvents[0]?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const secondRef = (delegatedEvents[1]?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const first = JSON.parse(await readFile(join(fixture.stateRoot, firstRef), "utf8")) as {
+      ok: boolean;
+      sequence: number;
+      contract_status: string;
+    };
+    const second = JSON.parse(await readFile(join(fixture.stateRoot, secondRef), "utf8")) as {
+      ok: boolean;
+      sequence: number;
+      contract_status: string;
+      error: string | null;
+      raw_output_preview: string;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 1);
+    assert.equal(model.sawDelegateLimitObservation, true);
+    assert.equal(delegatedEvents.length, 2);
+    assert.match(String(delegatedEvents[1]?.summary ?? ""), /sequence=2; .*contract_status=failed; ok=false\.$/);
+    assert.equal(first.ok, true);
+    assert.equal(first.sequence, 1);
+    assert.equal(first.contract_status, "passed");
+    assert.equal(second.ok, false);
+    assert.equal(second.sequence, 2);
+    assert.equal(second.contract_status, "failed");
+    assert.match(second.error ?? "", /delegate_agent supports at most 1 action per model round/);
+    assert.equal(second.raw_output_preview, "");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+    assert.equal(trace.delegated_result_count, 2);
+    assert.equal(trace.delegated_result_failed_count, 1);
+    assert.equal(trace.delegated_dispatches[1]?.sequence, 2);
+    assert.equal(trace.delegated_dispatches[1]?.contract_status, "failed");
+    assert.equal(replay.metrics.delegated_dispatches, 2);
+    assert.equal(replay.metrics.delegated_dispatches_failed, 1);
+    assert.equal(replay.delegated_dispatches[1]?.sequence, 2);
+    assert.equal(replay.delegated_dispatches[1]?.contract_status, "failed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner allows one delegate action in separate model rounds", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new TwoRoundDelegationThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Delegate once per round before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvents = events.filter((event) => event.kind === "delegated_result");
+    const delegated = await Promise.all(delegatedEvents.map(async (event) => {
+      const ref = (event.artifact_refs as string[] | undefined)?.[0] ?? "";
+      return JSON.parse(await readFile(join(fixture.stateRoot, ref), "utf8")) as {
+        ok: boolean;
+        round: number;
+        sequence: number;
+        contract_status: string;
+      };
+    }));
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "no_sop");
+    assert.equal(model.delegationCalls, 2);
+    assert.equal(model.sawFirstDelegationObservation, true);
+    assert.equal(model.sawSecondDelegationObservation, true);
+    assert.equal(delegatedEvents.length, 2);
+    assert.deepEqual(delegated.map((item) => ({
+      ok: item.ok,
+      round: item.round,
+      sequence: item.sequence,
+      contract_status: item.contract_status
+    })), [
+      { ok: true, round: 1, sequence: 1, contract_status: "passed" },
+      { ok: true, round: 2, sequence: 1, contract_status: "passed" }
+    ]);
+    assert.equal(report.verification_status, "passed");
+    assert.equal(report.verified, true);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "pass");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner fails done verification when delegated result violates its contract", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -4584,6 +4709,84 @@ class StructuredDelegationThenDoneModel implements ModelClient {
   }
 }
 
+class MultiDelegationThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawDelegateLimitObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "First delegated summary",
+        findings_text: "The first delegated critique completed within the one-per-round boundary."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "multi-delegation-then-done",
+      responseId: `response-multi-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawDelegateLimitObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes("delegate_agent supports at most 1 action per model round")
+        && delegatedSection.includes("The first delegated critique completed within the one-per-round boundary.")
+        && !delegatedSection.includes("Run a second critique in the same model round.");
+    }
+    return this.mainCalls > 1 ? doneEnvelope() : multiDelegateCritiqueEnvelope();
+  }
+}
+
+class TwoRoundDelegationThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawFirstDelegationObservation = false;
+  sawSecondDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: `Round ${this.delegationCalls} delegated summary`,
+        findings_text: `The round ${this.delegationCalls} delegated critique stayed within the per-round boundary.`
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "two-round-delegation-then-done",
+      responseId: `response-two-round-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    const delegatedSection = delegatedObservationsSection(request.input);
+    if (this.mainCalls === 2) {
+      this.sawFirstDelegationObservation = delegatedSection.includes("round 1 delegated critique stayed within the per-round boundary");
+      return secondRoundDelegateCritiqueEnvelope();
+    }
+    if (this.mainCalls > 2) {
+      this.sawSecondDelegationObservation = delegatedSection.includes("round 2 delegated critique stayed within the per-round boundary")
+        && !delegatedSection.includes("delegate_agent supports at most 1 action per model round");
+      return noSopDoneEnvelope();
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
 class InvalidDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   sawSanitizedFailedObservation = false;
@@ -5032,6 +5235,49 @@ function delegateCritiqueEnvelope(): Record<string, unknown> {
       rationale: "Use a bounded subagent self-report for critique before final answer.",
       payload: {
         task: "Critique whether the answer needs more evidence.",
+        context: "No tool or mutation authority is available to the delegated subagent."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function multiDelegateCritiqueEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate two bounded critiques before answering.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use the first bounded subagent self-report for critique.",
+      payload: {
+        task: "Run the first bounded critique.",
+        context: "No tool or mutation authority is available to the delegated subagent."
+      }
+    }, {
+      type: "delegate_agent",
+      rationale: "Use a second bounded subagent self-report in the same round.",
+      payload: {
+        task: "Run a second critique in the same model round.",
+        context: "No tool or mutation authority is available to the delegated subagent."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function secondRoundDelegateCritiqueEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate one bounded critique in the next round.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a second-round bounded subagent self-report for critique.",
+      payload: {
+        task: "Run a second-round bounded critique.",
         context: "No tool or mutation authority is available to the delegated subagent."
       }
     }],

@@ -320,10 +320,9 @@ function extractRepoWriteGuardSummary(event: EpisodeEvent): LiveRunRepoWriteGuar
 function delegatedFailureCount(report: CompletionVerificationReport): number {
   const check = report.checks.find((item) => item.id === "delegated_results");
   if (!check || check.status !== "fail") return 0;
-  if (check.refs.length > 0) return check.refs.length;
   const match = check.summary.match(/Failed delegated result\(s\):\s*(\d+)/);
-  if (!match) return 1;
-  return Number(match[1]);
+  if (match) return Number(match[1]);
+  return check.refs.length > 0 ? check.refs.length : 1;
 }
 
 function matchesTraceRef(trace: LiveRunTraceSummary, requested: string): boolean {

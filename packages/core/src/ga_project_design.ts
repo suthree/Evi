@@ -192,6 +192,7 @@ export interface GaProjectDesignGeneralDelegationLoop {
   action: "delegate_agent";
   layer: "core_runtime";
   stage: "active";
+  max_actions_per_round: number;
   task_contract: {
     max_chars: number;
     required: string[];
@@ -1035,15 +1036,18 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     action: "delegate_agent",
     layer: "core_runtime",
     stage: "active",
+    max_actions_per_round: 1,
     task_contract: {
       max_chars: DELEGATE_AGENT_TASK_MAX_CHARS,
       required: [
         "bounded analysis or critique task",
         "one concrete question for the delegated subagent",
+        "at most one delegate_agent action per model round",
         "no tool, mutation, scheduling, or completion authority"
       ],
       reject_if: [
         "task is empty or over the configured max chars",
+        "more than one delegate_agent action is proposed in the same model round",
         "task asks the delegated subagent to execute tools, mutate state, or decide completion",
         "task is expert scheduling or multi-agent orchestration instead of general delegation"
       ]

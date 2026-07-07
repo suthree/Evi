@@ -92,6 +92,8 @@ type ModelFailureKind =
   | "empty_response"
   | "unknown";
 
+const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
+
 interface ModelFailureDiagnostic {
   schema_version: 1;
   id: string;
@@ -494,10 +496,14 @@ export class LiveAgentRunner {
       for (const [index, action] of delegateActions.entries()) {
         if (discipline) {
           markTodo(discipline, "tools_delegates", "in_progress");
-          discipline.iteration_log.push(`Round ${round}: delegating bounded subtask.`);
+          discipline.iteration_log.push(index < DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+            ? `Round ${round}: delegating bounded subtask.`
+            : `Round ${round}: rejecting extra delegated subtask.`);
           await this.writeDisciplineTodo(discipline);
         }
-        const delegated = await this.executeDelegation(action, round, index + 1);
+        const delegated = index < DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+          ? await this.executeDelegation(action, round, index + 1)
+          : this.rejectDelegation(action, round, index + 1, `delegate_agent supports at most ${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND} action per model round.`);
         delegatedResults.push(delegated);
         const delegatedRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${delegated.id}.json`, delegated);
         delegatedArtifactRefs.push(delegatedRef);
@@ -1234,24 +1240,7 @@ export class LiveAgentRunner {
     const request = parseDelegationRequest(action);
     const actionId = action.id;
     if (!request.ok) {
-      return {
-        id: newId("delegated_result"),
-        ok: false,
-        summary: `Delegated task failed input contract: ${request.error}`,
-        task: request.task,
-        action_id: actionId,
-        round,
-        sequence,
-        task_chars: request.task_chars,
-        context_chars: request.context_chars,
-        contract_status: "failed",
-        findings_text: null,
-        output_text: request.error,
-        raw_output_preview: "",
-        error: request.error,
-        boundary: delegatedResultBoundary(),
-        created_at: utcNow()
-      };
+      return this.rejectedDelegationResult(action, request, round, sequence, request.error);
     }
     const { task, context } = request;
     try {
@@ -1326,6 +1315,38 @@ export class LiveAgentRunner {
     }
   }
 
+  private rejectDelegation(action: ModelActionEnvelope["actions"][number], round: number, sequence: number, error: string): DelegatedResult {
+    const request = parseDelegationRequest(action);
+    return this.rejectedDelegationResult(action, request, round, sequence, error);
+  }
+
+  private rejectedDelegationResult(
+    action: ModelActionEnvelope["actions"][number],
+    request: ReturnType<typeof parseDelegationRequest>,
+    round: number,
+    sequence: number,
+    error: string
+  ): DelegatedResult {
+    return {
+      id: newId("delegated_result"),
+      ok: false,
+      summary: `Delegated task failed input contract: ${error}`,
+      task: request.task,
+      action_id: action.id,
+      round,
+      sequence,
+      task_chars: request.ok ? request.task.length : request.task_chars,
+      context_chars: request.ok ? request.context.length : request.context_chars,
+      contract_status: "failed",
+      findings_text: null,
+      output_text: error,
+      raw_output_preview: "",
+      error,
+      boundary: delegatedResultBoundary(),
+      created_at: utcNow()
+    };
+  }
+
   private async initializeQueryTodoDiscipline(task: string): Promise<DisciplineProgress> {
     const now = utcNow();
     const progress: DisciplineProgress = {
@@ -1379,7 +1400,7 @@ ${disciplineText}
 If the task requires fresh local or external data and no relevant Tool Observations are present, call use_tool first.
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
-Use delegate_agent only for bounded analysis or critique tasks; delegated results are self-reports and must be verified by the main harness before being treated as success.
+Use delegate_agent only for one bounded analysis or critique task per model round; delegated results are self-reports and must be verified by the main harness before being treated as success.
 delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. Invalid delegated results block verified completion.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.

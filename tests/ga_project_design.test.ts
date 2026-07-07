@@ -322,6 +322,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.action, "delegate_agent");
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.layer, "core_runtime");
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.max_chars, 1000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.max_chars, 12000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, 240);
@@ -508,7 +509,9 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("more than one delegate_agent action")), true);
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);

@@ -1997,15 +1997,17 @@ non-empty `summary` and `findings_text`; `summary` is capped at 240 chars and
 result when that contract is missing, malformed, or over-limit. Delegation
 payloads share the core schema contract: `task` must be non-empty and at most
 1000 chars, `context` must be non-empty and at most 12000 chars, and the payload
-may contain only `task` and `context` before the submodel is called. Delegated
-observations may inform the next model round, but they are sanitized and do not
-include raw delegated task/context, raw output preview, or persisted artifact
-bodies. They do not prove final success, execute tools, write state, write the
-repo, write the active vault, or bypass completion verification. Each delegated
-result also records action id, round, sequence, and task/context character
-counts so later traces can verify bounded dispatch from the harness-owned
-delegated event summary without reading raw delegated context or delegated
-result bodies.
+may contain only `task` and `context` before the submodel is called. The live
+runner allows at most one `delegate_agent` action per model round; extra
+delegate actions are recorded as failed delegated results without calling the
+delegated model. Delegated observations may inform the next model round, but
+they are sanitized and do not include raw delegated task/context, raw output
+preview, or persisted artifact bodies. They do not prove final success, execute
+tools, write state, write the repo, write the active vault, or bypass completion
+verification. Each delegated result also records action id, round, sequence,
+and task/context character counts so later traces can verify bounded dispatch
+from the harness-owned delegated event summary without reading raw delegated
+context or delegated result bodies.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the

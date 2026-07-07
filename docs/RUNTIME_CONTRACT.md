@@ -1171,15 +1171,18 @@ at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those
 contracts before returning the result as a sanitized `Delegated Observations`
-item. Invalid payloads, malformed delegated output, or over-limit delegated
-output are recorded as `ok=false`, and a later `done` claim fails completion
-verification when any delegated result failed. Delegated results are recorded
-with action id, round, sequence, and task/context character counts so later
-traces can verify bounded dispatch from harness-owned delegated event summaries
-without reading raw delegated context or delegated result bodies. The main-model
-observation also excludes raw delegated task/context, raw output preview, and
-persisted artifact bodies. They are not tool evidence, final success proof,
-mutation authority, or a second autonomous agent runtime.
+item. The live runner allows at most one `delegate_agent` action per model
+round; extra delegate actions are recorded as failed delegated results without
+calling the delegated model. Invalid payloads, malformed delegated output,
+over-limit delegated output, or over-limit delegate action counts are recorded
+as `ok=false`, and a later `done` claim fails completion verification when any
+delegated result failed. Delegated results are recorded with action id, round,
+sequence, and task/context character counts so later traces can verify bounded
+dispatch from harness-owned delegated event summaries without reading raw
+delegated context or delegated result bodies. The main-model observation also
+excludes raw delegated task/context, raw output preview, and persisted artifact
+bodies. They are not tool evidence, final success proof, mutation authority, or
+a second autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the
 episode context and model artifacts:
