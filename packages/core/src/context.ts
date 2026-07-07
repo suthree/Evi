@@ -1604,6 +1604,11 @@ export function compactGaPlanAuditRejects(
 function compactGaPlanAuditReject(
   seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
 ): string {
+  if (seed.id === "current_state") {
+    return seed.reject_if.find((reject) => reject.includes("service health is a required verification command"))
+      ?? seed.reject_if[0]
+      ?? "unknown";
+  }
   if (seed.id === "verification_scope") {
     return seed.reject_if.find((reject) => reject.includes("required verification entrypoint"))
       ?? seed.reject_if[0]

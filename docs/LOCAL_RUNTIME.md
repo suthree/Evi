@@ -619,6 +619,9 @@ It may also render `audit_reject` with one reject condition per seed, so copied
 success criteria, stale memory, narrow verification, and premature SOP/skill/
 memory/dream promotion remain visible as false-completion cases without
 replacing the authoritative iteration audit.
+For `current_state`, that compact reject prefers the service-health missing
+status/reasons condition when service health is a required verification
+command.
 For `verification_scope`, that compact reject prefers the required
 verification-entrypoint claim-coverage failure when present, so handoff does
 not hide an omitted entrypoint.

@@ -580,6 +580,9 @@ Required policy:
 - Compact `audit_reject` must preserve one reject condition for every
   completion audit seed, so false-completion failure modes stay visible during
   handoff without replacing the authoritative iteration audit
+- For `current_state`, compact `audit_reject` should prefer the service-health
+  missing-status/reasons reject when service health is a required verification
+  command
 - For `verification_scope`, compact `audit_reject` should prefer the required
   verification-entrypoint claim-coverage reject when present, so handoff keeps
   the strongest missing-entrypoint failure visible
