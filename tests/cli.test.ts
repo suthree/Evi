@@ -811,6 +811,11 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         ]
       }
     ],
+    acceptance_criteria: [
+      "goal_scope: objective and owner surface stay visible",
+      "verification_scope: required entrypoints are covered by completion claims",
+      "learning_persistence: SOPs and skills preserve procedure only"
+    ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
@@ -862,6 +867,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[goal_scope]:")), true);
   assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter"))), true);
   assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("completion gates"))), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:") && criterion.includes("owner surface")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:") && criterion.includes("completion claims")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:") && criterion.includes("procedure only")), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",

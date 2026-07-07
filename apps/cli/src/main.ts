@@ -334,6 +334,7 @@ interface IterationAuditGuidanceInput {
   goal_scope: GaProjectDesignPlanPacket["goal_scope"];
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
   selection_checks: string[];
   verification_commands: string[];
   learning_authority: GaProjectDesignPlanPacket["learning_authority"];
@@ -782,6 +783,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   goal_scope: GaProjectDesignPlanPacket["goal_scope"];
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   verification_entrypoints: string[];
@@ -823,6 +825,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     goal_scope: plan.goal_scope,
     capability_stage_plan: plan.capability_stage_plan,
     phase_gates: plan.phase_gates,
+    acceptance_criteria: plan.acceptance_criteria,
     guidance_scope: matchesOpenIteration
       ? "matching_open_iteration"
       : isSourceIteration
