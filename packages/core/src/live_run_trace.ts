@@ -61,6 +61,7 @@ export interface LiveRunDelegatedDispatchSummary {
   task_chars: number;
   context_chars: number;
   contract_status: string;
+  dispatch_failure_kind: string | null;
   ok: boolean;
 }
 
@@ -255,7 +256,7 @@ function readDelegatedDispatchSummaries(
 }
 
 function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
-  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+); ok=(true|false)\.$/);
+  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
   return {
     action_id: match[1].trim(),
@@ -264,7 +265,8 @@ function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDi
     task_chars: Number.parseInt(match[4], 10),
     context_chars: Number.parseInt(match[5], 10),
     contract_status: match[6],
-    ok: match[7] === "true"
+    dispatch_failure_kind: match[7] && match[7] !== "none" ? match[7] : null,
+    ok: match[8] === "true"
   };
 }
 

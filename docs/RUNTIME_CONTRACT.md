@@ -1175,14 +1175,17 @@ item. The live runner allows at most one `delegate_agent` action per model
 round; extra delegate actions are recorded as failed delegated results without
 calling the delegated model. Invalid payloads, malformed delegated output,
 over-limit delegated output, or over-limit delegate action counts are recorded
-as `ok=false`, and a later `done` claim fails completion verification when any
-delegated result failed. Delegated results are recorded with action id, round,
-sequence, and task/context character counts so later traces can verify bounded
-dispatch from harness-owned delegated event summaries without reading raw
-delegated context or delegated result bodies. The main-model observation also
-excludes raw delegated task/context, raw output preview, and persisted artifact
-bodies. They are not tool evidence, final success proof, mutation authority, or
-a second autonomous agent runtime.
+as `ok=false`, and dispatch-layer rejects also carry a safe
+`dispatch_failure_kind` such as `dispatch_limit_exceeded` or
+`input_contract_failed`. A later `done` claim fails completion verification
+when any delegated result failed. Delegated results are recorded with action
+id, round, sequence, task/context character counts, and dispatch failure kind
+so later traces can verify bounded dispatch from harness-owned delegated event
+summaries without reading raw delegated context or delegated result bodies. The
+main-model observation also excludes raw delegated task/context, raw output
+preview, and persisted artifact bodies. They are not tool evidence, final
+success proof, mutation authority, retry/failover authority, or a second
+autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the
 episode context and model artifacts:
@@ -1227,7 +1230,8 @@ Operators may also inspect the bounded live run trace read model through
 `/review traces` and `/review trace <ref-or-id>`. This uses the same trace
 summaries as context: completion report refs, completion ids, session/turn ids,
 context refs, event kind counts, observation counts, per-round action counts,
-harness state-action counts, safe delegated dispatch metadata, model diagnostic
+harness state-action counts, safe delegated dispatch metadata including
+`dispatch_failure_kind`, model diagnostic
 failure kind/stage/refs, repo-write workspace guard summaries from bounded
 tool-result event summaries, and envelope refs. It must not read raw model
 responses, action payloads, tool result bodies, delegated task, context,

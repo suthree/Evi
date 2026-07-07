@@ -50,7 +50,7 @@
 - `http.fetch`：抓取 HTTP(S) 内容。
 - `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记和环境变量 allowlist。
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段。
-- `delegate_agent`：每个 model round 最多分发一个有界子任务，payload 只能包含 `task/context`，结果必须是受 schema 约束的 `summary/findings_text` 且遵守输出上限；超出的 delegate action 会记录为失败且不会调用子模型。回灌给主模型的是脱敏观察，不包含 raw delegated task/context/output preview 或 artifact body。Live Run Trace 可查看 action id、round、sequence、字符计数和合同状态等安全分发元数据，但不会读取或展示 raw delegated task/context/findings/output。
+- `delegate_agent`：每个 model round 最多分发一个有界子任务，payload 只能包含 `task/context`，结果必须是受 schema 约束的 `summary/findings_text` 且遵守输出上限；超出的 delegate action 会记录为失败且不会调用子模型，并带有安全的 `dispatch_failure_kind`。回灌给主模型的是脱敏观察，不包含 raw delegated task/context/output preview 或 artifact body。Live Run Trace 可查看 action id、round、sequence、字符计数、合同状态和失败类型等安全分发元数据，但不会读取或展示 raw delegated task/context/findings/output。
 
 ## 常用命令
 

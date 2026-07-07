@@ -2005,9 +2005,10 @@ they are sanitized and do not include raw delegated task/context, raw output
 preview, or persisted artifact bodies. They do not prove final success, execute
 tools, write state, write the repo, write the active vault, or bypass completion
 verification. Each delegated result also records action id, round, sequence,
-and task/context character counts so later traces can verify bounded dispatch
-from the harness-owned delegated event summary without reading raw delegated
-context or delegated result bodies.
+task/context character counts, and safe `dispatch_failure_kind` values such as
+`dispatch_limit_exceeded` or `input_contract_failed` so later traces can verify
+bounded dispatch from the harness-owned delegated event summary without reading
+raw delegated context or delegated result bodies.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the

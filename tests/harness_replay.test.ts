@@ -47,6 +47,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       task_chars: dispatch.task_chars,
       context_chars: dispatch.context_chars,
       contract_status: dispatch.contract_status,
+      dispatch_failure_kind: dispatch.dispatch_failure_kind,
       ok: dispatch.ok
     })), [{
       event_id: "evidence_replay_delegated",
@@ -57,6 +58,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       task_chars: 33,
       context_chars: 77,
       contract_status: "failed",
+      dispatch_failure_kind: "dispatch_limit_exceeded",
       ok: false
     }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
@@ -216,7 +218,7 @@ async function writeReplayTraceFixture(store: AgentStore): Promise<void> {
     session_id: sessionId,
     turn_id: turnId,
     kind: "delegated_result",
-    summary: "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=failed; ok=false.",
+    summary: "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false.",
     artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
     created_at: "2026-06-30T01:00:03.500Z"
   });

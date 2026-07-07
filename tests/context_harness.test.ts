@@ -536,12 +536,18 @@ test("compact GA plan general delegation loop keeps task context result bounds",
         required: ["summary", "findings_text"],
         reject_if: ["invalid JSON"]
       },
+      dispatch_failure_kind_contract: {
+        field: "dispatch_failure_kind",
+        values: ["dispatch_limit_exceeded", "input_contract_failed", "none"],
+        required: ["record bounded dispatch failure kind"],
+        reject_if: ["free-form error text only"]
+      },
       completion_authority: ["main harness verifies delegated results"],
       deferred_scope: ["no expert personas", "no autonomous multi-agent scheduling"],
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), "action=delegate_agent; stage=active; max_per_round=1; task_max=1000; context_max=12000; result=240/2000; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
+  }), "action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; task_max=1000; context_max=12000; result=240/2000; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1375,7 +1381,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; max_per_round=1; task_max=1000; context_max=12000; result=240\/2000; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
+    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; task_max=1000; context_max=12000; result=240\/2000; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
@@ -1906,9 +1912,10 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       task_chars: 44,
       context_chars: 88,
       contract_status: "failed",
+      dispatch_failure_kind: null,
       ok: false
     });
-    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false task_chars=44 context_chars=88 action_id=action_delegate_trace_context ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
+    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false dispatch_failure_kind=none task_chars=44 context_chars=88 action_id=action_delegate_trace_context ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
     assert.match(rendered.markdown, /harness_state_actions: 1/);
     assert.match(rendered.markdown, /repo_write_guards: 1/);
     assert.match(rendered.markdown, /repo_write_guard: docs\/generated\.md before=dirty after=dirty changed_files=1->2 delta=1 preexisting_dirty=true target_changed=true/);
@@ -3548,7 +3555,7 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.sawStructuredDelegation, true);
     assert.equal(model.sawSanitizedDelegationObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; ok=true\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; dispatch_failure_kind=none; ok=true\.$/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
     assert.equal(delegated.summary, "Structured delegate summary");
@@ -3590,11 +3597,13 @@ test("live runner rejects extra delegate actions without calling the delegated m
       ok: boolean;
       sequence: number;
       contract_status: string;
+      dispatch_failure_kind: string | null;
     };
     const second = JSON.parse(await readFile(join(fixture.stateRoot, secondRef), "utf8")) as {
       ok: boolean;
       sequence: number;
       contract_status: string;
+      dispatch_failure_kind: string | null;
       error: string | null;
       raw_output_preview: string;
     };
@@ -3610,13 +3619,15 @@ test("live runner rejects extra delegate actions without calling the delegated m
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawDelegateLimitObservation, true);
     assert.equal(delegatedEvents.length, 2);
-    assert.match(String(delegatedEvents[1]?.summary ?? ""), /sequence=2; .*contract_status=failed; ok=false\.$/);
+    assert.match(String(delegatedEvents[1]?.summary ?? ""), /sequence=2; .*contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false\.$/);
     assert.equal(first.ok, true);
     assert.equal(first.sequence, 1);
     assert.equal(first.contract_status, "passed");
+    assert.equal(first.dispatch_failure_kind, null);
     assert.equal(second.ok, false);
     assert.equal(second.sequence, 2);
     assert.equal(second.contract_status, "failed");
+    assert.equal(second.dispatch_failure_kind, "dispatch_limit_exceeded");
     assert.match(second.error ?? "", /delegate_agent supports at most 1 action per model round/);
     assert.equal(second.raw_output_preview, "");
     assert.equal(report.verification_status, "failed");
@@ -3626,10 +3637,12 @@ test("live runner rejects extra delegate actions without calling the delegated m
     assert.equal(trace.delegated_result_failed_count, 1);
     assert.equal(trace.delegated_dispatches[1]?.sequence, 2);
     assert.equal(trace.delegated_dispatches[1]?.contract_status, "failed");
+    assert.equal(trace.delegated_dispatches[1]?.dispatch_failure_kind, "dispatch_limit_exceeded");
     assert.equal(replay.metrics.delegated_dispatches, 2);
     assert.equal(replay.metrics.delegated_dispatches_failed, 1);
     assert.equal(replay.delegated_dispatches[1]?.sequence, 2);
     assert.equal(replay.delegated_dispatches[1]?.contract_status, "failed");
+    assert.equal(replay.delegated_dispatches[1]?.dispatch_failure_kind, "dispatch_limit_exceeded");
   } finally {
     await fixture.cleanup();
   }
@@ -3725,7 +3738,7 @@ test("live runner fails done verification when delegated result violates its con
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.sawSanitizedFailedObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.match(delegated.output_text, /not valid JSON/);
@@ -3817,7 +3830,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=0; contract_status=failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=0; contract_status=failed; dispatch_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);
@@ -3913,7 +3926,7 @@ test("live runner rejects oversized delegate context without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);
@@ -4738,6 +4751,7 @@ class MultiDelegationThenDoneModel implements ModelClient {
     if (this.mainCalls > 1) {
       const delegatedSection = delegatedObservationsSection(request.input);
       this.sawDelegateLimitObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes('"dispatch_failure_kind": "dispatch_limit_exceeded"')
         && delegatedSection.includes("delegate_agent supports at most 1 action per model round")
         && delegatedSection.includes("The first delegated critique completed within the one-per-round boundary.")
         && !delegatedSection.includes("Run a second critique in the same model round.");

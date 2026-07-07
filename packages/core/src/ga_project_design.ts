@@ -209,6 +209,12 @@ export interface GaProjectDesignGeneralDelegationLoop {
     required: string[];
     reject_if: string[];
   };
+  dispatch_failure_kind_contract: {
+    field: "dispatch_failure_kind";
+    values: string[];
+    required: string[];
+    reject_if: string[];
+  };
   completion_authority: string[];
   deferred_scope: string[];
   evidence_refs: string[];
@@ -1077,6 +1083,23 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated output is not valid structured JSON",
         "summary or findings_text is empty or over the configured max chars",
         "result is treated as tool evidence, final success, or mutation authority"
+      ]
+    },
+    dispatch_failure_kind_contract: {
+      field: "dispatch_failure_kind",
+      values: [
+        "dispatch_limit_exceeded",
+        "input_contract_failed",
+        "none"
+      ],
+      required: [
+        "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
+        "record input_contract_failed when payload validation fails before delegated model dispatch",
+        "record none when the delegated model was called or the delegated result passed"
+      ],
+      reject_if: [
+        "operators must infer dispatch failure type from free-form error text",
+        "dispatch failure kind is treated as expert scheduling, retry authority, or completion proof"
       ]
     },
     completion_authority: [

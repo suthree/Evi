@@ -35,6 +35,8 @@ import { loadRuntimeConfigSummary, type RuntimeConfig } from "./config.js";
 import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
 
+type DelegatedDispatchFailureKind = "dispatch_limit_exceeded" | "input_contract_failed";
+
 interface DelegatedResult {
   id: string;
   ok: boolean;
@@ -46,6 +48,7 @@ interface DelegatedResult {
   task_chars: number;
   context_chars: number;
   contract_status: "passed" | "failed";
+  dispatch_failure_kind: DelegatedDispatchFailureKind | null;
   findings_text: string | null;
   output_text: string;
   raw_output_preview: string;
@@ -61,6 +64,7 @@ interface DelegatedObservation {
   sequence: number;
   ok: boolean;
   contract_status: "passed" | "failed";
+  dispatch_failure_kind: DelegatedDispatchFailureKind | null;
   task_chars: number;
   context_chars: number;
   summary: string;
@@ -503,7 +507,13 @@ export class LiveAgentRunner {
         }
         const delegated = index < DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
           ? await this.executeDelegation(action, round, index + 1)
-          : this.rejectDelegation(action, round, index + 1, `delegate_agent supports at most ${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND} action per model round.`);
+          : this.rejectDelegation(
+            action,
+            round,
+            index + 1,
+            `delegate_agent supports at most ${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND} action per model round.`,
+            "dispatch_limit_exceeded"
+          );
         delegatedResults.push(delegated);
         const delegatedRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${delegated.id}.json`, delegated);
         delegatedArtifactRefs.push(delegatedRef);
@@ -1267,6 +1277,7 @@ export class LiveAgentRunner {
           task_chars: task.length,
           context_chars: context.length,
           contract_status: "failed",
+          dispatch_failure_kind: null,
           findings_text: null,
           output_text: parsed.error,
           raw_output_preview: limitText(response.outputText, 1200),
@@ -1286,6 +1297,7 @@ export class LiveAgentRunner {
         task_chars: task.length,
         context_chars: context.length,
         contract_status: "passed",
+        dispatch_failure_kind: null,
         findings_text: parsed.findings_text,
         output_text: parsed.findings_text,
         raw_output_preview: limitText(response.outputText, 1200),
@@ -1305,6 +1317,7 @@ export class LiveAgentRunner {
         task_chars: task.length,
         context_chars: context.length,
         contract_status: "failed",
+        dispatch_failure_kind: null,
         findings_text: null,
         output_text: errorMessage(error),
         raw_output_preview: "",
@@ -1315,9 +1328,15 @@ export class LiveAgentRunner {
     }
   }
 
-  private rejectDelegation(action: ModelActionEnvelope["actions"][number], round: number, sequence: number, error: string): DelegatedResult {
+  private rejectDelegation(
+    action: ModelActionEnvelope["actions"][number],
+    round: number,
+    sequence: number,
+    error: string,
+    dispatchFailureKind: DelegatedDispatchFailureKind = "input_contract_failed"
+  ): DelegatedResult {
     const request = parseDelegationRequest(action);
-    return this.rejectedDelegationResult(action, request, round, sequence, error);
+    return this.rejectedDelegationResult(action, request, round, sequence, error, dispatchFailureKind);
   }
 
   private rejectedDelegationResult(
@@ -1325,7 +1344,8 @@ export class LiveAgentRunner {
     request: ReturnType<typeof parseDelegationRequest>,
     round: number,
     sequence: number,
-    error: string
+    error: string,
+    dispatchFailureKind: DelegatedDispatchFailureKind = "input_contract_failed"
   ): DelegatedResult {
     return {
       id: newId("delegated_result"),
@@ -1338,6 +1358,7 @@ export class LiveAgentRunner {
       task_chars: request.ok ? request.task.length : request.task_chars,
       context_chars: request.ok ? request.context.length : request.context_chars,
       contract_status: "failed",
+      dispatch_failure_kind: dispatchFailureKind,
       findings_text: null,
       output_text: error,
       raw_output_preview: "",
@@ -1440,6 +1461,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     sequence: result.sequence,
     ok: result.ok,
     contract_status: result.contract_status,
+    dispatch_failure_kind: result.dispatch_failure_kind,
     task_chars: result.task_chars,
     context_chars: result.context_chars,
     summary: delegatedObservationSummaryForModelInput(result),
@@ -1934,6 +1956,7 @@ function delegatedResultEventSummary(result: DelegatedResult): string {
     `task_chars=${result.task_chars};`,
     `context_chars=${result.context_chars};`,
     `contract_status=${result.contract_status};`,
+    `dispatch_failure_kind=${result.dispatch_failure_kind ?? "none"};`,
     `ok=${result.ok}.`
   ].join(" ");
 }

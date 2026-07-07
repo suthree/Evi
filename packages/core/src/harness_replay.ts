@@ -214,7 +214,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     "",
     ...(report.delegated_dispatches.length > 0
       ? report.delegated_dispatches.map((dispatch) =>
-        `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+        `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
       )
       : ["- none"]),
     "",
@@ -357,6 +357,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   const resultRef = stringField(value, "result_ref");
   const actionId = stringField(value, "action_id");
   const contractStatus = stringField(value, "contract_status");
+  const dispatchFailureKind = stringField(value, "dispatch_failure_kind");
   const round = numberField(value, "round");
   const sequence = numberField(value, "sequence");
   const taskChars = numberField(value, "task_chars");
@@ -374,6 +375,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     task_chars: taskChars,
     context_chars: contextChars,
     contract_status: contractStatus,
+    dispatch_failure_kind: dispatchFailureKind,
     ok: value.ok
   };
 }
