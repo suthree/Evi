@@ -1095,6 +1095,8 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /Core tools \(implemented, layer: core_runtime\)/);
     assert.match(fullText, /file\.read/);
     assert.match(fullText, /SOP self-evolution/);
+    assert.match(fullText, /Self-evolution scorecard \[core_runtime\]/);
+    assert.doesNotMatch(fullText, /Self-evolution scorecard \[local_learning\]/);
     assert.match(fullText, /Content planning and evidence \[application_slice\]/);
     assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
     assert.match(fullText, /delegate_agent/);

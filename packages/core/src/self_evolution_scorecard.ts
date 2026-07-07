@@ -1,5 +1,6 @@
 import {
   getCapabilityCatalog,
+  resolveCapabilityLayer,
   type CapabilityLayer
 } from "./capabilities.js";
 import { listLatestDreamSnapshots } from "./dreams.js";
@@ -484,7 +485,7 @@ function countCapabilitiesByLayer(catalog: ReturnType<typeof getCapabilityCatalo
   };
   for (const category of catalog.categories) {
     for (const capability of category.capabilities) {
-      counts[capability.layer ?? category.layer] += 1;
+      counts[resolveCapabilityLayer(category, capability)] += 1;
     }
   }
   return counts;

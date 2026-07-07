@@ -26,6 +26,8 @@ export interface CapabilitySummary {
   summary: string;
   status: CapabilityStatus;
   layer?: CapabilityLayer;
+  category_layer: CapabilityLayer;
+  effective_layer: CapabilityLayer;
   commands?: string[];
   refs?: string[];
   boundaries?: string[];
@@ -43,12 +45,18 @@ export interface CapabilityCategory {
 export interface CapabilityCatalog {
   schema_version: 1;
   catalog_id: "local_runtime_capabilities";
-  catalog_version: "2026-07-06";
+  catalog_version: "2026-07-07";
   count: number;
   categories: CapabilityCategory[];
   refs: string[];
   boundary: string;
 }
+
+type CapabilitySummaryDraft = Omit<CapabilitySummary, "category_layer" | "effective_layer">;
+
+type CapabilityCategoryDraft = Omit<CapabilityCategory, "capabilities"> & {
+  capabilities: CapabilitySummaryDraft[];
+};
 
 export type CapabilityAcceptanceGateStatus = "ready" | "operator_check";
 
@@ -102,7 +110,7 @@ const harnessActionSummaries: Record<AllowedAction, string> = {
 const outputBudgetToolIds = new Set(["repo.search", "http.fetch", "command.run", "code.execute_node"]);
 
 export function getCapabilityCatalog(): CapabilityCatalog {
-  const categories: CapabilityCategory[] = [
+  const categories = [
     coreToolsCategory(),
     harnessActionsCategory(),
     contextReadModelsCategory(),
@@ -110,11 +118,11 @@ export function getCapabilityCatalog(): CapabilityCatalog {
     runtimeServiceCategory(),
     entrypointsCategory(),
     boundariesCategory()
-  ];
+  ].map(normalizeCapabilityCategory);
   return {
     schema_version: 1,
     catalog_id: "local_runtime_capabilities",
-    catalog_version: "2026-07-06",
+    catalog_version: "2026-07-07",
     count: categories.reduce((total, category) => total + category.capabilities.length, 0),
     categories,
     refs: [
@@ -151,6 +159,24 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/runtime/src/channels/feishu/adapter.ts"
     ],
     boundary: "local-only read model; does not read secrets, invoke the model, execute tools, mutate runtime state, write the active vault, or manage services"
+  };
+}
+
+export function resolveCapabilityLayer(
+  category: Pick<CapabilityCategory, "layer">,
+  capability: Pick<CapabilitySummary, "layer"> & Partial<Pick<CapabilitySummary, "effective_layer">>
+): CapabilityLayer {
+  return capability.effective_layer ?? capability.layer ?? category.layer;
+}
+
+function normalizeCapabilityCategory(category: CapabilityCategoryDraft): CapabilityCategory {
+  return {
+    ...category,
+    capabilities: category.capabilities.map((capability) => ({
+      ...capability,
+      category_layer: category.layer,
+      effective_layer: capability.layer ?? category.layer
+    }))
   };
 }
 
@@ -457,7 +483,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
   };
 }
 
-function coreToolsCategory(): CapabilityCategory {
+function coreToolsCategory(): CapabilityCategoryDraft {
   return {
     id: "core_tools",
     title: "Core tools",
@@ -494,7 +520,7 @@ function coreToolsCategory(): CapabilityCategory {
   };
 }
 
-function harnessActionsCategory(): CapabilityCategory {
+function harnessActionsCategory(): CapabilityCategoryDraft {
   return {
     id: "harness_actions",
     title: "Harness actions",
@@ -524,7 +550,7 @@ function harnessActionsCategory(): CapabilityCategory {
   };
 }
 
-function contextReadModelsCategory(): CapabilityCategory {
+function contextReadModelsCategory(): CapabilityCategoryDraft {
   const projectDesignContract = getGaProjectDesignContract();
   const expertContract = getExpertOrchestrationContract();
   return {
@@ -644,7 +670,7 @@ function contextReadModelsCategory(): CapabilityCategory {
   };
 }
 
-function memoryAndLearningCategory(): CapabilityCategory {
+function memoryAndLearningCategory(): CapabilityCategoryDraft {
   return {
     id: "memory_and_learning",
     title: "Memory and local learning",
@@ -803,7 +829,7 @@ function memoryAndLearningCategory(): CapabilityCategory {
   };
 }
 
-function runtimeServiceCategory(): CapabilityCategory {
+function runtimeServiceCategory(): CapabilityCategoryDraft {
   return {
     id: "runtime_service",
     title: "Resident local service",
@@ -960,7 +986,7 @@ function runtimeServiceCategory(): CapabilityCategory {
   };
 }
 
-function entrypointsCategory(): CapabilityCategory {
+function entrypointsCategory(): CapabilityCategoryDraft {
   return {
     id: "entrypoints",
     title: "Entrypoints",
@@ -1070,7 +1096,7 @@ function entrypointsCategory(): CapabilityCategory {
   };
 }
 
-function boundariesCategory(): CapabilityCategory {
+function boundariesCategory(): CapabilityCategoryDraft {
   return {
     id: "boundaries",
     title: "Explicit boundaries",

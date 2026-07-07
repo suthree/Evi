@@ -39,6 +39,8 @@
 8. 专家 agent：在通用基线上安装特定 skill、prompt、工具和 SOP；交付标准是专家化是能力打包，不是跳过基础能力。
 9. 多 agent 调度：多个专家 agent 的协作编排；交付标准是必须在单 agent、专家打包、 advisory 边界和主线程验证权稳定之后再推进。
 
+能力目录的层级判断必须同时保留类别默认层和能力实际层：`category_layer` 表示所属类别的默认边界，`effective_layer` 表示该能力最终生效的边界；`layer` 只表示能力对类别默认层的显式覆盖。消费者不应再自行猜测 fallback。
+
 参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
 
 ## 核心能力

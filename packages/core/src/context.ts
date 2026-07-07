@@ -4,6 +4,7 @@ export { allowedActions } from "./action_contracts.js";
 import { deriveContextBudget, type ContextBudgetSummary } from "./context_budget.js";
 import {
   getCapabilityCatalog,
+  resolveCapabilityLayer,
   type CapabilityCategory,
   type CapabilitySummary
 } from "./capabilities.js";
@@ -791,14 +792,15 @@ function renderCapabilityCatalogCategory(category: CapabilityCategory): string {
   return `- ${category.title}: ${capabilityCatalogSample(category).join(",")}`;
 }
 
-function renderCapabilityId(capability: CapabilitySummary, inheritedLayer: CapabilityCategory["layer"]): string {
-  return capability.layer && capability.layer !== inheritedLayer
-    ? `${capability.id}[${capability.layer}]`
+function renderCapabilityId(category: CapabilityCategory, capability: CapabilitySummary): string {
+  const layer = resolveCapabilityLayer(category, capability);
+  return layer !== category.layer
+    ? `${capability.id}[${layer}]`
     : capability.id;
 }
 
 function capabilityCatalogSample(category: CapabilityCategory): string[] {
-  const render = (capability: CapabilitySummary) => renderCapabilityId(capability, category.layer);
+  const render = (capability: CapabilitySummary) => renderCapabilityId(category, capability);
   if (category.id === "core_tools") return category.capabilities.slice(0, 4).map(render);
   if (category.id === "memory_and_learning") {
     return category.capabilities

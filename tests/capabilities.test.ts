@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { allowedActions } from "../packages/core/src/action_contracts.js";
-import { getCapabilityAcceptanceAudit, getCapabilityCatalog } from "../packages/core/src/capabilities.js";
+import { getCapabilityAcceptanceAudit, getCapabilityCatalog, resolveCapabilityLayer } from "../packages/core/src/capabilities.js";
 import { coreToolContracts } from "../packages/core/src/tool_contracts.js";
 
 test("capability catalog mirrors core tool and harness action contracts", () => {
@@ -14,8 +14,20 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   const entrypoints = catalog.categories.find((category) => category.id === "entrypoints");
 
   assert.equal(catalog.catalog_id, "local_runtime_capabilities");
+  assert.equal(catalog.catalog_version, "2026-07-07");
   assert.equal(catalog.boundary.includes("local-only read model"), true);
   assert.equal(catalog.categories.every((category) => typeof category.layer === "string"), true);
+  assert.equal(
+    catalog.categories.every((category) => category.capabilities.every((capability) => capability.category_layer === category.layer)),
+    true
+  );
+  assert.equal(
+    catalog.categories.every((category) => category.capabilities.every((capability) =>
+      capability.effective_layer === (capability.layer ?? category.layer)
+      && resolveCapabilityLayer(category, capability) === capability.effective_layer
+    )),
+    true
+  );
   assert.equal(coreTools?.layer, "core_runtime");
   assert.equal(harnessActions?.layer, "core_runtime");
   assert.equal(readModels?.layer, "core_runtime");
@@ -64,6 +76,8 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("not a hosted")), true);
   const contentDryRun = entrypoints?.capabilities.find((capability) => capability.id === "cli.content_dry_run");
   assert.equal(contentDryRun?.layer, "application_slice");
+  assert.equal(contentDryRun?.category_layer, "basic_entrypoint");
+  assert.equal(contentDryRun?.effective_layer, "application_slice");
   assert.equal(contentDryRun?.commands?.includes("pnpm run runtime -- content run --dry-run"), true);
   assert.equal(contentDryRun?.commands?.includes("pnpm run runtime -- content run --dry-run --live-sources"), true);
   assert.equal(contentDryRun?.commands?.includes("pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check"), true);
@@ -95,7 +109,7 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(runtimeService?.capabilities.find((capability) => capability.id === "service.content_feedback_refresh_loop")?.layer, "application_slice");
   assert.equal(runtimeService?.capabilities.find((capability) => capability.id === "service.content_creator_metrics_loop")?.layer, "application_slice");
   const selfEvolutionGaps = memoryAndLearning?.capabilities.find((capability) => capability.id === "self_evolution.gaps");
-  assert.equal(selfEvolutionGaps?.layer ?? memoryAndLearning?.layer, "local_learning");
+  assert.equal(selfEvolutionGaps?.effective_layer, "local_learning");
   assert.equal(selfEvolutionGaps?.commands?.includes("pnpm run runtime -- governance gaps"), true);
   assert.equal(selfEvolutionGaps?.commands?.includes("pnpm run runtime -- governance record-correction --summary <summary>"), true);
   assert.equal(selfEvolutionGaps?.refs?.includes("packages/core/src/self_evolution_gaps.ts"), true);
@@ -103,12 +117,14 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(selfEvolutionGaps?.boundaries?.some((boundary) => boundary.includes("operator-correction records")), true);
   assert.equal(selfEvolutionGaps?.boundaries?.some((boundary) => boundary.includes("scorecard maturity metadata")), true);
   const dreamSnapshots = memoryAndLearning?.capabilities.find((capability) => capability.id === "dream.snapshots");
-  assert.equal(dreamSnapshots?.layer ?? memoryAndLearning?.layer, "local_learning");
+  assert.equal(dreamSnapshots?.effective_layer, "local_learning");
   assert.equal(dreamSnapshots?.commands?.includes("pnpm run runtime -- memory dream"), true);
   assert.equal(dreamSnapshots?.refs?.includes("packages/core/src/dreams.ts"), true);
   assert.equal(dreamSnapshots?.boundaries?.some((boundary) => boundary.includes("context only")), true);
   const scorecard = memoryAndLearning?.capabilities.find((capability) => capability.id === "self_evolution.scorecard");
   assert.equal(scorecard?.layer, "core_runtime");
+  assert.equal(scorecard?.category_layer, "local_learning");
+  assert.equal(scorecard?.effective_layer, "core_runtime");
   assert.equal(scorecard?.commands?.includes("pnpm run runtime -- governance scorecard"), true);
   assert.equal(scorecard?.refs?.includes("packages/core/src/self_evolution_scorecard.ts"), true);
   assert.equal(scorecard?.summary.includes("core/basic selection view"), true);
@@ -129,6 +145,8 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(iterations?.boundaries?.some((boundary) => boundary.includes("do not execute work")), true);
   const projectDesignContract = readModels?.capabilities.find((capability) => capability.id === "ga.project_design_contract");
   assert.equal(projectDesignContract?.layer, "core_runtime");
+  assert.equal(projectDesignContract?.category_layer, "core_runtime");
+  assert.equal(projectDesignContract?.effective_layer, "core_runtime");
   assert.equal(projectDesignContract?.commands?.includes("pnpm run runtime -- governance project-design"), true);
   assert.equal(projectDesignContract?.commands?.some((command) => command.includes("--artifact <artifact-or-iteration-ref>")), true);
   assert.equal(projectDesignContract?.commands?.some((command) => command.includes("--audit-seed <seed-id>")), true);
@@ -143,6 +161,8 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("application slices")), true);
   const expertContract = readModels?.capabilities.find((capability) => capability.id === "expert.orchestration_contract");
   assert.equal(expertContract?.layer, "boundary");
+  assert.equal(expertContract?.category_layer, "core_runtime");
+  assert.equal(expertContract?.effective_layer, "boundary");
   assert.equal(expertContract?.commands?.includes("pnpm run runtime -- governance experts"), true);
   assert.equal(expertContract?.refs?.includes("packages/core/src/expert_orchestration.ts"), true);
   assert.equal(expertContract?.refs?.includes("CONTEXT.md"), true);

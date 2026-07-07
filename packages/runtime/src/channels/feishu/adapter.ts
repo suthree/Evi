@@ -83,6 +83,7 @@ import {
 import {
   getCapabilityAcceptanceAudit,
   getCapabilityCatalog,
+  resolveCapabilityLayer,
   type CapabilityAcceptanceAudit,
   type CapabilityAcceptanceGate,
   type CapabilityNextSlice,
@@ -3488,12 +3489,12 @@ function renderCapabilityCategory(category: CapabilityCategory, index: number): 
   return [
     `${index + 1}. ${category.title} (${category.status}, layer: ${category.layer})`,
     `   ${truncateText(category.summary, 220)}`,
-    ...category.capabilities.flatMap((capability) => renderCapabilitySummary(capability, category.layer))
+    ...category.capabilities.flatMap((capability) => renderCapabilitySummary(category, capability))
   ];
 }
 
-function renderCapabilitySummary(capability: CapabilitySummary, inheritedLayer: CapabilityCategory["layer"]): string[] {
-  const layer = capability.layer ?? inheritedLayer;
+function renderCapabilitySummary(category: CapabilityCategory, capability: CapabilitySummary): string[] {
+  const layer = resolveCapabilityLayer(category, capability);
   return [
     `   - ${capability.title} [${layer}]: ${truncateText(capability.summary, 220)}`,
     ...(capability.commands && capability.commands.length > 0

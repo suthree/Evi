@@ -504,6 +504,10 @@ When a category groups mixed surfaces, the capability-level `layer` is the
 authority; category layer is only navigation. For example,
 `self_evolution.scorecard` is a `core_runtime` read-only selection surface even
 though it is grouped near local-learning evidence.
+Catalog entries must expose both `category_layer` and `effective_layer`.
+`category_layer` is the owning category's default layer, `layer` is only a
+capability-level override, and `effective_layer` is the resolved layer that
+consumers should use for scoring, rendering, and core/basic selection.
 
 `capabilities` and Feishu `/capabilities` must not read auth records, API keys,
 app secrets, launchd state, service logs, raw context Markdown, review/SOP/skill

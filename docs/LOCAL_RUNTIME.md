@@ -1480,12 +1480,14 @@ and local-learning gates, resident service surfaces, entrypoints, and explicit
 non-goals. The capability-level `layer` is authoritative when it differs from a
 mixed category; `self_evolution.scorecard` is a `core_runtime` read-only
 selection surface that may inspect local-learning maturity metadata only as
-gated context. Feishu mirrors the same read model through `/capabilities`,
-`/abilities`, and `/ability`. The catalog does not read auth secrets, service
-logs, launchd state, raw context/review/SOP/skill bodies, or arbitrary state
-artifacts, and it does not invoke the model, execute tools, request
-confirmations, mutate state, write the repo, write the active vault, or manage
-services.
+gated context. Each capability row also exposes `category_layer` for the
+category default and `effective_layer` for the resolved layer that consumers
+must render, count, and use for core/basic selection. Feishu mirrors the same
+read model through `/capabilities`, `/abilities`, and `/ability`. The catalog
+does not read auth secrets, service logs, launchd state, raw
+context/review/SOP/skill bodies, or arbitrary state artifacts, and it does not
+invoke the model, execute tools, request confirmations, mutate state, write the
+repo, write the active vault, or manage services.
 When the live harness executes `file.write_repo`, the tool result includes
 bounded fixed `workspace status` snapshots before and after the write. This is
 append-only evidence for later inspection; it does not read file bodies, block
