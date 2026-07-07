@@ -8,6 +8,7 @@ import {
   buildIterationAuditCompletionGate,
   buildIterationAuditEvidenceAvailable,
   buildIterationAuditGuidance,
+  buildIterationAuditImplementationContractCoverage,
   buildIterationAuditNextCommand,
   buildIterationAuditRuntimeAttentionOutcomeCoverage,
   buildIterationAuditWorkspaceOutcomeCoverage,
@@ -258,6 +259,96 @@ test("iteration audit seed evidence status stays conservative before outcome evi
   );
   assert.equal(missingWorkspaceCoverage.evidence_status, "missing_outcome_evidence");
   assert.equal(missingWorkspaceCoverage.missing.includes("workspace_outcome_coverage"), true);
+
+  const missingImplementationContractCoverage = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
+    { status: "missing_contract" }
+  );
+  assert.equal(missingImplementationContractCoverage.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingImplementationContractCoverage.missing.includes("implementation_contract_coverage"), true);
+});
+
+test("iteration audit implementation contract coverage compares plan and iteration contracts", () => {
+  const planContract = {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    source_artifact_id: "ga_design_artifact_iteration_contract_source",
+    source_proposed_slice: "completed_source",
+    selected_layer: "core_runtime" as const,
+    owner_surface: "ga_project_design",
+    improvement_type: "reusable_ga_design_contract" as const,
+    implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+    deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
+    delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
+    boundary: "read-only GA implementation contract"
+  };
+
+  const missing = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design"
+  });
+  assert.equal(missing.status, "missing_contract");
+  assert.deepEqual(missing.missing_fields, ["implementation_contract"]);
+
+  const mismatched = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      deferred_scope: ["no SOP or skill promotion"]
+    }
+  });
+  assert.equal(mismatched.status, "mismatched_contract");
+  assert.deepEqual(mismatched.mismatched_fields, ["deferred_scope"]);
+
+  const covered = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
+  assert.match(covered.boundary, /does not mutate state or prove completion/);
+
+  const coveredHistorical = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(coveredHistorical.status, "covered");
+  assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
+
+  const missingHistoricalFields = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      implementation_scope: []
+    }
+  });
+  assert.equal(missingHistoricalFields.status, "missing_required_fields");
+  assert.deepEqual(missingHistoricalFields.missing_fields, ["implementation_scope"]);
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
@@ -691,6 +782,19 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   assert.equal(missingWorkspaceCoverage.status, "blocked");
   assert.deepEqual(missingWorkspaceCoverage.blockers, ["workspace_outcome_coverage"]);
 
+  const missingImplementationContractCoverage = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
+    { status: "missing_contract" }
+  );
+  assert.equal(missingImplementationContractCoverage.status, "blocked");
+  assert.deepEqual(missingImplementationContractCoverage.blockers, ["implementation_contract_coverage"]);
+
   const partial = buildIterationAuditCompletionGate(
     { outcome_status: "partial" },
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
@@ -708,6 +812,7 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   );
   assert.equal(ready.status, "ready_for_manual_review");
   assert.deepEqual(ready.blockers, []);
+  assert.match(ready.boundary, /implementation contract coverage/);
 });
 
 test("iteration audit verification coverage uses stable iteration commands for historical audits", () => {

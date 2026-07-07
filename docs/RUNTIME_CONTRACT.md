@@ -274,6 +274,12 @@ use `--merge-existing-outcome` or manually preserve existing outcome fields
 while adding those refs.
 Its top-level `refs` list should cite the same audited surfaces: iteration ref,
 source ref, iteration evidence refs, outcome evidence refs, and plan refs.
+`implementation_contract_coverage` compares the GA project-design plan
+`implementation_contract` with the audited iteration state record when the plan
+still targets that iteration; after the plan advances, it checks the audited
+iteration's persisted contract for self-consistency. Missing, incomplete, or
+mismatched contract fields keep the completion gate blocked; the diagnostic is
+read-only and does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
 declaration coverage only and must not imply execution success. For the matching
@@ -305,9 +311,10 @@ change list is not truncated. This is read-only current-state coverage; it does
 not read file bodies, stage, commit, reset, or prove completion.
 `completion_gate` summarizes the structural blockers before an iteration can be
 treated as ready for manual completion review: verified outcome record, outcome
-evidence refs, plan ref coverage, outcome verification command coverage, and
-outcome verification claim coverage, runtime attention outcome coverage, and
-workspace outcome coverage. A partial or failed outcome remains blocked by
+evidence refs, plan ref coverage, implementation contract coverage, outcome
+verification command coverage, outcome verification claim coverage, runtime
+attention outcome coverage, and workspace outcome coverage. A partial or failed
+outcome remains blocked by
 `verified_outcome`. It is a read-only gate and does not approve seeds, execute
 checks, or prove completion.
 `governance iterations --iteration <id> --audit-seed all` aggregates every

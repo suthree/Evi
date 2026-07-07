@@ -392,6 +392,12 @@ type IterationAuditWorkspaceCoverageStatus =
   | "missing_changed_paths"
   | "truncated_workspace_changes";
 
+type IterationAuditImplementationContractCoverageStatus =
+  | "covered"
+  | "missing_contract"
+  | "missing_required_fields"
+  | "mismatched_contract";
+
 const RUNTIME_ATTENTION_CLASSIFICATIONS = ["acceptable", "repair_needed", "verification_blocker"] as const;
 
 export function buildIterationAuditSeedEvidenceStatus(
@@ -400,7 +406,8 @@ export function buildIterationAuditSeedEvidenceStatus(
   evidence: IterationAuditEvidenceAvailable,
   outcomeVerificationClaimCoverage?: { status: string },
   runtimeAttentionOutcomeCoverage?: { status: string },
-  workspaceOutcomeCoverage?: { status: string }
+  workspaceOutcomeCoverage?: { status: string },
+  implementationContractCoverage?: { status: string }
 ): {
   seed_id: GaProjectDesignCompletionAuditSeed["id"];
   phase_id: GaProjectDesignCompletionAuditSeed["phase_id"];
@@ -434,6 +441,9 @@ export function buildIterationAuditSeedEvidenceStatus(
   const hasWorkspaceOutcomeCoverage = !needsCurrentStateCoverage
     || !workspaceOutcomeCoverage
     || workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status);
+  const hasImplementationContractCoverage = !needsCurrentStateCoverage
+    || !implementationContractCoverage
+    || implementationContractCoverage.status === "covered";
   const missing = [
     ...(!evidence.iteration_evidence_refs.length ? ["iteration_evidence_refs"] : []),
     ...(!evidence.iteration_verification_commands.length ? ["iteration_verification_commands"] : []),
@@ -443,7 +453,8 @@ export function buildIterationAuditSeedEvidenceStatus(
     ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : []),
     ...(hasOutcome && needsVerificationClaims && !hasEntrypointClaimCoverage ? ["outcome_verification_claim_coverage"] : []),
     ...(hasOutcome && needsCurrentStateCoverage && !hasRuntimeAttentionCoverage ? ["runtime_attention_outcome_coverage"] : []),
-    ...(hasOutcome && needsCurrentStateCoverage && !hasWorkspaceOutcomeCoverage ? ["workspace_outcome_coverage"] : [])
+    ...(hasOutcome && needsCurrentStateCoverage && !hasWorkspaceOutcomeCoverage ? ["workspace_outcome_coverage"] : []),
+    ...(hasOutcome && needsCurrentStateCoverage && !hasImplementationContractCoverage ? ["implementation_contract_coverage"] : [])
   ];
   return {
     seed_id: seed.id,
@@ -452,7 +463,7 @@ export function buildIterationAuditSeedEvidenceStatus(
       ? "missing_declared_evidence"
       : !hasOutcome
         ? "missing_outcome"
-        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage || !hasRuntimeAttentionCoverage || !hasWorkspaceOutcomeCoverage
+        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage || !hasRuntimeAttentionCoverage || !hasWorkspaceOutcomeCoverage || !hasImplementationContractCoverage
           ? "missing_outcome_evidence"
           : "ready_for_manual_review",
     missing,
@@ -709,6 +720,69 @@ export function buildIterationAuditWorkspaceOutcomeCoverage(
   };
 }
 
+export function buildIterationAuditImplementationContractCoverage(
+  planContract: GaProjectDesignPlanPacket["implementation_contract"],
+  iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice" | "layer" | "owner_surface">
+): {
+  status: IterationAuditImplementationContractCoverageStatus;
+  missing_fields: string[];
+  mismatched_fields: string[];
+  required_tokens: string[];
+  boundary: string;
+} {
+  const contract = iteration.implementation_contract;
+  if (!contract) {
+    return {
+      status: "missing_contract",
+      missing_fields: ["implementation_contract"],
+      mismatched_fields: [],
+      required_tokens: implementationContractRequiredTokens(planContract),
+      boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record; does not mutate state or prove completion"
+    };
+  }
+  const expectedContract = planContract.proposed_slice === iteration.proposed_slice ? planContract : contract;
+  const missingFields = [
+    ...(!contract.proposed_slice ? ["proposed_slice"] : []),
+    ...(!contract.selected_layer ? ["selected_layer"] : []),
+    ...(!contract.owner_surface ? ["owner_surface"] : []),
+    ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
+    ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
+    ...(!contract.delivery_standard?.length ? ["delivery_standard"] : [])
+  ];
+  const mismatchedFields = [
+    ...(contract.proposed_slice !== expectedContract.proposed_slice || contract.proposed_slice !== iteration.proposed_slice ? ["proposed_slice"] : []),
+    ...(contract.selected_layer !== expectedContract.selected_layer || contract.selected_layer !== iteration.layer ? ["selected_layer"] : []),
+    ...(contract.owner_surface !== expectedContract.owner_surface || contract.owner_surface !== iteration.owner_surface ? ["owner_surface"] : []),
+    ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
+    ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
+    ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : [])
+  ];
+  return {
+    status: missingFields.length
+      ? "missing_required_fields"
+      : mismatchedFields.length
+        ? "mismatched_contract"
+        : "covered",
+    missing_fields: missingFields,
+    mismatched_fields: mismatchedFields,
+    required_tokens: implementationContractRequiredTokens(expectedContract),
+    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, otherwise checks the audited iteration's persisted contract self-consistency; does not mutate state or prove completion"
+  };
+}
+
+function implementationContractRequiredTokens(
+  contract: Partial<GaProjectDesignPlanPacket["implementation_contract"]>
+): string[] {
+  return [
+    `implementation_contract.proposed_slice=${contract.proposed_slice}`,
+    `implementation_contract.selected_layer=${contract.selected_layer}`,
+    `implementation_contract.owner_surface=${contract.owner_surface}`,
+    "implementation_contract.implementation_scope",
+    "implementation_contract.deferred_scope",
+    "implementation_contract.delivery_standard"
+  ];
+}
+
 export function buildIterationAuditCompletionGate(
   iteration: { outcome_status: string },
   evidence: Pick<IterationAuditEvidenceAvailable, "outcome_evidence_refs">,
@@ -716,7 +790,8 @@ export function buildIterationAuditCompletionGate(
   outcomeVerificationCommandCoverage: { status: string },
   outcomeVerificationClaimCoverage?: { status: string },
   runtimeAttentionOutcomeCoverage?: { status: string },
-  workspaceOutcomeCoverage?: { status: string }
+  workspaceOutcomeCoverage?: { status: string },
+  implementationContractCoverage?: { status: string }
 ): {
   status: "blocked" | "ready_for_manual_review";
   blockers: string[];
@@ -729,6 +804,7 @@ export function buildIterationAuditCompletionGate(
     ...(hasOutcome && !hasVerifiedOutcome ? ["verified_outcome"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
+    ...(implementationContractCoverage && implementationContractCoverage.status !== "covered" ? ["implementation_contract_coverage"] : []),
     ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
     ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
     ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
@@ -737,7 +813,7 @@ export function buildIterationAuditCompletionGate(
   return {
     status: blockers.length ? "blocked" : "ready_for_manual_review",
     blockers,
-    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, outcome verification command coverage, outcome verification claim coverage, runtime attention outcome coverage, and workspace outcome coverage before manual review; does not approve seeds or prove completion"
+    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, implementation contract coverage, outcome verification command coverage, outcome verification claim coverage, runtime attention outcome coverage, and workspace outcome coverage before manual review; does not approve seeds or prove completion"
   };
 }
 
@@ -1821,6 +1897,7 @@ export async function main(): Promise<number> {
         const auditGuidance = buildIterationAuditGuidance(plan, iteration, config.state.root);
         const nextCommand = buildIterationAuditNextCommand(iteration, config.state.root);
         const planRefCoverage = buildIterationAuditPlanRefCoverage(plan.refs, detail.iteration);
+        const implementationContractCoverage = buildIterationAuditImplementationContractCoverage(plan.implementation_contract, detail.iteration);
         const verificationCoverageRequiredCommands = selectIterationAuditVerificationCoverageCommands(auditGuidance.guidance_scope, auditGuidance.required_before_outcome, evidenceAvailable);
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationCommandCoverage = buildIterationAuditOutcomeVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
@@ -1830,9 +1907,9 @@ export async function main(): Promise<number> {
         const workspaceStatus = await getWorkspaceStatus(store, { limit: 200 });
         const workspaceOutcomeCoverage = buildIterationAuditWorkspaceOutcomeCoverage(evidenceAvailable, workspaceStatus);
         const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
-          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage)
+          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage)
         );
-        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage);
+        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage);
         const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
           console.log(JSON.stringify({
@@ -1844,6 +1921,7 @@ export async function main(): Promise<number> {
             seed_evidence_statuses: seedEvidenceStatuses,
             evidence_available: evidenceAvailable,
             plan_ref_coverage: planRefCoverage,
+            implementation_contract_coverage: implementationContractCoverage,
             verification_command_coverage: verificationCommandCoverage,
             outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
             outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
@@ -1866,9 +1944,10 @@ export async function main(): Promise<number> {
           status: "advisory",
           iteration,
           seed,
-          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage),
+          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage),
           evidence_available: evidenceAvailable,
           plan_ref_coverage: planRefCoverage,
+          implementation_contract_coverage: implementationContractCoverage,
           verification_command_coverage: verificationCommandCoverage,
           outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
           outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,

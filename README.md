@@ -355,6 +355,9 @@ that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, or expert-orchestration scope.
 Plan-derived iteration records persist that implementation contract, so later
 inspection does not have to infer the boundary from the source artifact alone.
+Iteration completion audit also checks contract coverage: it compares the
+current plan when it still targets the audited iteration, and otherwise checks
+the audited iteration's persisted contract for self-consistency.
 Phase gates carry their `forbidden_shortcuts`, so anti-drift constraints stay
 visible with the phase contract.
 It also includes `capability_stage_plan`, a read-only split of current core

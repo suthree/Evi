@@ -727,6 +727,12 @@ and next moves when adding those refs.
 The packet's top-level `refs` list uses the same audited surfaces, including
 source and outcome evidence refs, so the cited evidence list is not narrower
 than the coverage diagnostic.
+`implementation_contract_coverage` compares the current project-design plan's
+`implementation_contract` with the audited iteration record when the plan still
+targets that iteration; after the plan advances, it checks the audited
+iteration's persisted contract for self-consistency. Missing, incomplete, or
+mismatched contract fields keep completion review blocked. This is read-only
+coverage; it does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs. It only
 shows declaration coverage; it does not mean the commands were executed or
@@ -756,10 +762,11 @@ blocked. This only records current-state evidence and never reads file bodies,
 stages files, commits, resets, or proves completion.
 `completion_gate` summarizes structural blockers before the audited iteration is
 ready for manual completion review: missing verified outcome record, missing
-outcome evidence refs, missing plan ref coverage, or missing outcome
-verification command coverage, missing outcome verification claim coverage, or
-missing runtime attention outcome coverage, or missing workspace outcome
-coverage. A partial or failed outcome stays blocked by `verified_outcome`. It
+outcome evidence refs, missing plan ref coverage, missing implementation
+contract coverage, missing outcome verification command coverage, missing
+outcome verification claim coverage, missing runtime attention outcome coverage,
+or missing workspace outcome coverage. A partial or failed outcome stays blocked
+by `verified_outcome`. It
 remains read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
