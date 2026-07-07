@@ -2080,7 +2080,12 @@ visible. Those failures are recovery input only for a later main-harness
 model round. A later `done` claim still fails when a delegated failure has no
 later main-harness write/run recovery evidence; with later recovery evidence,
 the delegated failure stays a warning and still requires independent completion
-verification evidence. They do not
+verification evidence. State-only harness/governance actions, including
+`record_evidence`, `update_working_state`, `not_done` `propose_sop`,
+`propose_memory`, `request_audit`, and `pause_autonomy`, do not count as
+failed-delegation recovery evidence. Bound read-only tool refs can be
+independent context for a done claim, but they do not recover the failed
+delegation; only later successful write/run tool results do. They do not
 authorize automatic retry, model fan-out, expert scheduling, delegated
 completion, or raw delegated artifact reads.
 

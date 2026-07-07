@@ -1231,10 +1231,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       required: [
         "failed delegated results may only guide a later main-harness model round as sanitized observation",
-        "recovery requires a subsequent main-harness action plus independent verification evidence",
+        "recovery requires subsequent main-harness write/run evidence plus independent verification evidence",
+        "state-only harness actions and read-only tool refs can preserve context but cannot recover a failed delegated result",
         "a recovered claim must not cite the delegated result id or ref as completion proof"
       ],
       reject_if: [
+        "state-only harness or governance actions are used as failed-delegation recovery evidence",
+        "read-only tool refs are used as failed-delegation recovery evidence",
         "automatic retry, model fan-out, expert scheduling, or delegated completion is added",
         "raw delegated task, context, output preview, or artifact body is read to decide recovery"
       ]

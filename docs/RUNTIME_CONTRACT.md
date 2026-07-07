@@ -1246,10 +1246,15 @@ result bodies. Trace and replay audit JSON preserve the complete delegated
 dispatch metadata set for counting and coverage; operator Markdown/context
 views may cap the rendered list and show an omitted count. Failed delegated
 results can only guide a later main-harness model round as sanitized
-observation; recovery still requires subsequent main-harness action and
-independent verification evidence, and must not add automatic retry, model
-fan-out, expert scheduling, delegated completion, or raw delegated artifact
-reads.
+observation; recovery still requires later main-harness write/run evidence and
+independent verification evidence. State-only harness/governance actions,
+including `record_evidence`, `update_working_state`, `not_done` `propose_sop`,
+`propose_memory`, `request_audit`, and `pause_autonomy`, do not count as
+failed-delegation recovery evidence. Bound read-only tool refs can be
+independent context for a done claim, but they do not recover the failed
+delegation; only later successful write/run tool results do. Recovery must not
+add automatic retry, model fan-out, expert scheduling, delegated completion, or
+raw delegated artifact reads.
 The GA project-design read model mirrors this same runner/replay boundary in
 `next_core_basic_plan.general_delegation_loop`: `runner_enforcement_contract`
 names the live runner instruction, input, result, and completion-gate rules,

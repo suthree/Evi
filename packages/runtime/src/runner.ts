@@ -2285,7 +2285,7 @@ function verifyCompletionClaim(args: {
   const independentEvidenceRefs = [...boundClaimedRefs, ...successfulWriteOrRunRefs];
   const delegatedRecoveryEvidenceRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
     delegatedResults: args.delegatedResults,
-    independentEvidenceRefs,
+    independentEvidenceRefs: successfulWriteOrRunRefs,
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
   checks.push(delegatedResultsCheck(args.delegatedResults, true, delegatedRecoveryEvidenceRefs));

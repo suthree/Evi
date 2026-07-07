@@ -543,6 +543,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, or completion authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",
               "done claims after delegation require harness-known non-delegated verification refs or successful write/run evidence",
+              "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",
               "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
               "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none; persisted delegated results and model observations use explicit none instead of null",
