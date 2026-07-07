@@ -1329,8 +1329,32 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.application_boundaries[0]?.includes("application slices"), true);
   assert.equal(guidance.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
   assert.match(guidance.learning_authority.completion_authority, /not SOP text/);
+  assert.equal(guidance.completion_seed_scope.applies_to, "current_successor_plan");
+  assert.equal(guidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
+  assert.equal(guidance.completion_seed_scope.audited_iteration_id, undefined);
+  assert.match(guidance.completion_seed_scope.note, /current next_core_basic_plan/);
   assert.equal(guidance.iteration_record_status.id, "iteration_contract_open");
   assert.match(guidance.boundary, /does not execute checks/);
+
+  const matchingGuidance = buildIterationAuditGuidance(
+    plan,
+    {
+      id: "iteration_contract_open",
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      source_ref: "self-evolution/iterations/iteration_contract_source.json",
+      implementation_contract: plan.implementation_contract,
+      proposed_slice: "core_ga_design_next_slice_after_source",
+      outcome_status: "not_recorded"
+    },
+    ".runtime/state"
+  );
+  assert.equal(matchingGuidance.guidance_scope, "matching_open_iteration");
+  assert.equal(matchingGuidance.completion_seed_scope.applies_to, "audited_iteration");
+  assert.equal(matchingGuidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(matchingGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
+  assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_open");
+  assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_proposed_slice, "core_ga_design_next_slice_after_source");
 
   const sourceGuidance = buildIterationAuditGuidance(
     plan,
@@ -1348,7 +1372,17 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.audited_iteration?.id, "iteration_contract_source");
   assert.equal(sourceGuidance.audited_iteration?.source_ref, "self-evolution/iterations/iteration_contract_parent.json");
   assert.equal(sourceGuidance.audited_iteration?.implementation_contract?.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(sourceGuidance.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(sourceGuidance.audited_iteration?.proposed_slice, "completed_source_slice");
+  assert.notEqual(sourceGuidance.audited_iteration?.proposed_slice, sourceGuidance.proposed_slice);
+  assert.equal(sourceGuidance.completion_seed_scope.applies_to, "successor_plan_from_audited_source");
+  assert.equal(sourceGuidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(sourceGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
+  assert.equal(sourceGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_source");
+  assert.equal(sourceGuidance.completion_seed_scope.audited_iteration_proposed_slice, "completed_source_slice");
+  assert.match(sourceGuidance.completion_seed_scope.note, /audited iteration remains source evidence/);
   assert.equal(sourceGuidance.iteration_record_status.id, "iteration_contract_source");
+  assert.equal(sourceGuidance.iteration_record_status.ref, "self-evolution/iterations/iteration_contract_source.json");
   assert.equal(sourceGuidance.iteration_record_status.status, "outcome_recorded");
   assert.equal(sourceGuidance.iteration_record_status.outcome_status, "verified");
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("--iteration iteration_contract_source --audit-seed all")), true);
@@ -1360,6 +1394,8 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("<state-root>")), false);
   assert.equal(sourceGuidance.iteration_record_status.audit_command?.includes("--state-root .runtime/state"), true);
   assert.notEqual(sourceGuidance.iteration_record_status.id, "iteration_contract_open");
+  assert.notEqual(sourceGuidance.iteration_record_status.ref, plan.iteration_record_status.ref);
+  assert.equal(sourceGuidance.audited_iteration?.id, sourceGuidance.iteration_record_status.id);
 });
 
 test("iteration audit next command binds current state root", () => {

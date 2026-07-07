@@ -384,6 +384,16 @@ interface IterationAuditGuidanceSubject {
 
 type IterationAuditGuidanceScope = "matching_open_iteration" | "source_iteration_for_current_plan" | "current_plan_context";
 
+interface IterationAuditCompletionSeedScope {
+  applies_to: "audited_iteration" | "successor_plan_from_audited_source" | "current_successor_plan";
+  seed_proposed_slice: string;
+  seed_source_proposed_slice: string;
+  audited_iteration_id?: string;
+  audited_iteration_proposed_slice?: string;
+  note: string;
+  boundary: string;
+}
+
 export type IterationAuditSeedEvidenceStatus =
   | "missing_declared_evidence"
   | "missing_outcome"
@@ -965,6 +975,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   layer_decision: GaProjectDesignPlanPacket["layer_decision"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
+  completion_seed_scope: IterationAuditCompletionSeedScope;
   verification_entrypoints: string[];
   required_before_outcome: string[];
   verification_commands: string[];
@@ -982,6 +993,11 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   const matchesOpenIteration = Boolean(subject)
     && (plan.iteration_record_status.id === subject?.id || plan.iteration_record_status.ref === subject?.ref);
   const isSourceIteration = Boolean(subject) && plan.source_iteration_ref === subject?.ref;
+  const guidanceScope: IterationAuditGuidanceScope = matchesOpenIteration
+    ? "matching_open_iteration"
+    : isSourceIteration
+      ? "source_iteration_for_current_plan"
+      : "current_plan_context";
   const iterationRecordStatus = !subject || matchesOpenIteration
     ? plan.iteration_record_status
     : {
@@ -1018,12 +1034,9 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
       ...plan.layer_decision,
       required_before_outcome: boundRequiredBeforeOutcome
     },
-    guidance_scope: matchesOpenIteration
-      ? "matching_open_iteration"
-      : isSourceIteration
-        ? "source_iteration_for_current_plan"
-        : "current_plan_context",
+    guidance_scope: guidanceScope,
     ...(subject ? { audited_iteration: subject } : {}),
+    completion_seed_scope: buildIterationAuditCompletionSeedScope(plan, guidanceScope, subject),
     verification_entrypoints: entrypoints,
     required_before_outcome: boundRequiredBeforeOutcome,
     verification_commands: bindCommandPlaceholders(plan.verification_commands, subject, stateRoot),
@@ -1031,6 +1044,38 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     learning_authority: plan.learning_authority,
     iteration_record_status: boundIterationRecordStatus,
     boundary: "read-only iteration audit guidance; restates core/basic verification entrypoints and commands from the GA project-design plan only; does not execute checks, write outcomes, or prove completion"
+  };
+}
+
+function buildIterationAuditCompletionSeedScope(
+  plan: IterationAuditGuidanceInput,
+  guidanceScope: IterationAuditGuidanceScope,
+  subject?: IterationAuditGuidanceSubject
+): IterationAuditCompletionSeedScope {
+  const base = {
+    seed_proposed_slice: plan.proposed_slice,
+    seed_source_proposed_slice: plan.layer_decision.source_proposed_slice,
+    ...(subject ? { audited_iteration_id: subject.id, audited_iteration_proposed_slice: subject.proposed_slice } : {}),
+    boundary: "read-only completion seed scope; clarifies whether project-design completion seeds apply to the audited iteration or the successor plan, without changing audit gates or proving completion"
+  };
+  if (guidanceScope === "matching_open_iteration") {
+    return {
+      ...base,
+      applies_to: "audited_iteration",
+      note: "completion seeds apply to the matching open audited iteration"
+    };
+  }
+  if (guidanceScope === "source_iteration_for_current_plan") {
+    return {
+      ...base,
+      applies_to: "successor_plan_from_audited_source",
+      note: "completion seeds describe the successor plan derived from the audited source iteration; the audited iteration remains source evidence, not the seed target"
+    };
+  }
+  return {
+    ...base,
+    applies_to: "current_successor_plan",
+    note: "completion seeds describe the current next_core_basic_plan because no concrete matching iteration is being audited"
   };
 }
 
@@ -2092,6 +2137,7 @@ export async function main(): Promise<number> {
             status: "advisory",
             iteration,
             seed_count: plan.completion_audit_seeds.length,
+            completion_seed_scope: auditGuidance.completion_seed_scope,
             seeds: plan.completion_audit_seeds,
             seed_evidence_statuses: seedEvidenceStatuses,
             evidence_available: evidenceAvailable,
@@ -2119,6 +2165,7 @@ export async function main(): Promise<number> {
           action: "iteration-audit-seed",
           status: "advisory",
           iteration,
+          completion_seed_scope: auditGuidance.completion_seed_scope,
           seed,
           seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage),
           evidence_available: evidenceAvailable,
