@@ -117,6 +117,7 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 `current_state` audit seed 会要求在 resident runtime 相关变更时记录 service health 的 status/reasons；如果 service health 不是 healthy，verified outcome 不能省略 runtime attention reasons；
 当 service health 不是 healthy 时，`current_state` audit seed 还会要求把 runtime attention 分类为 `acceptable`、`repair_needed` 或 `verification_blocker`；只写原因、不分类，不足以作为 outcome 证据；
 完成分类后还必须写 handling policy：`acceptable` 为什么对当前 claim 安全，`repair_needed` 后续修什么，或 `verification_blocker` 为什么阻止 verified outcome；
+如果分类是 `repair_needed`，handling policy 必须写 follow-up action，或说明为什么不需要 follow-up；只分类、不追踪，不够；
 `verification_scope` audit seed 会要求 outcome 说明每条 verification command 支撑哪个 completion claim；只有命令列表、没有 claim coverage，不足以作为 verified outcome 证据；
 `layer_decision` 会明确把 GA 项目设计识别为核心能力，并把外部工具
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。

@@ -270,6 +270,8 @@ test("GA project design read model derives reusable artifacts from verified iter
         && seed.reject_if.includes("runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker")
         && seed.evidence_needed.includes("runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome")
         && seed.reject_if.includes("runtime attention is classified without a handling policy")
+        && seed.evidence_needed.includes("repair_needed handling names a follow-up action or explains why no follow-up is required")
+        && seed.reject_if.includes("repair_needed is classified without a follow-up action or no-follow-up rationale")
       ),
       true
     );
@@ -351,6 +353,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("runtime attention is classified without a handling policy")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("repair_needed handling names a follow-up action or explains why no follow-up is required")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("repair_needed is classified without a follow-up action or no-follow-up rationale")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "verification_scope" && seed.evidence_needed.includes("outcome explains which completion claim each verification command supports")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "verification_scope" && seed.evidence_needed.some((evidence) => evidence.includes("broad check runs"))), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:")), true);

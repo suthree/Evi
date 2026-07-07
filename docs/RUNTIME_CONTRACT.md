@@ -544,6 +544,9 @@ Required policy:
 - Classified runtime attention must also name a handling policy: why
   `acceptable` is safe for the claim, what `repair_needed` follows up, or why
   `verification_blocker` stops the verified outcome
+- A `repair_needed` handling policy must name a follow-up action or explain why
+  no follow-up is required; classification alone does not make the attention
+  item traceable
 - The `verification_scope` completion audit seed must require the outcome to
   explain which completion claim each verification command supports; a command
   list without claim coverage is not sufficient verification evidence

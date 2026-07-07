@@ -597,6 +597,8 @@ Naming the reason without classification is not enough outcome evidence.
 Classified attention must also include a handling policy: why `acceptable` is
 safe for the claim, what `repair_needed` follows up, or why
 `verification_blocker` stops the verified outcome.
+For `repair_needed`, the handling policy must name a follow-up action or explain
+why no follow-up is required; classification alone is not traceable enough.
 The `verification_scope` audit seed requires the outcome to explain which
 completion claim each verification command supports. A command list without
 claim coverage is not enough evidence for a verified outcome.

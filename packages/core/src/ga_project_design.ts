@@ -790,14 +790,16 @@ function buildCompletionAuditSeeds(
         "workspace or git status when files changed",
         "service health status and reasons when resident runtime behavior changed",
         "runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy",
-        "runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome"
+        "runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome",
+        "repair_needed handling names a follow-up action or explains why no follow-up is required"
       ],
       reject_if: [
         "older memory is the only evidence",
         "external adapter pressure is treated as core identity without a reusable contract",
         "runtime attention reasons are omitted from the outcome when service health is not healthy",
         "runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker",
-        "runtime attention is classified without a handling policy"
+        "runtime attention is classified without a handling policy",
+        "repair_needed is classified without a follow-up action or no-follow-up rationale"
       ]
     },
     {
