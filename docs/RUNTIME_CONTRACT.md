@@ -1665,6 +1665,11 @@ model already proves the duplicate skill still covers the SOP.
 used by the Governance Queue. The readiness summary is derived from background
 review JSON metadata, chain summaries, and proposal refs only; it must not read
 raw review Markdown or episode artifacts.
+`governance act-next` defaults to the auto-executable lane when no opportunity
+is selected. Manual local actions, external adapter probes, application slices,
+and local-learning follow-ups require an explicit `--opportunity` selection.
+This keeps the default next-action path aligned with core/basic automation
+instead of treating follow-up backlog items as the default capability outlet.
 Completion verification items may include a bounded
 `completion_verification` summary with report/session/turn ids, failed and
 warning check ids, model diagnostic count, model diagnostic kind/stage/refs,

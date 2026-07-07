@@ -223,6 +223,42 @@ test("governance act-next auto mode skips manual local context repairs", async (
   }
 });
 
+test("governance act-next default skips manual local actions without explicit opportunity", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.store.ensureLayout();
+    const context = [
+      "## Stable Core",
+      "",
+      "Default act-next should not repair this local sidecar.",
+      "",
+      "## Harness",
+      "",
+      "Manual act-next can still repair it when selected explicitly."
+    ].join("\n");
+    await fixture.store.writeText("memory/episodes/session_default_skip-context.md", context);
+
+    const before = await getOpportunityBacklog(fixture.store, { limit: 10 });
+    const item = before.items.find((candidate) =>
+      candidate.ref === "memory/episodes/session_default_skip-context.md"
+    );
+    assert.ok(item);
+    const policy = getOpportunityActionExecutionPolicy(item);
+    assert.equal(policy.supported, true);
+    assert.equal(policy.risk, "manual_local");
+    assert.equal(policy.auto_executable, false);
+
+    const result = await executeNextOpportunityAction(fixture.store);
+
+    assert.equal(result.status, "skipped");
+    assert.equal(result.selected_opportunity, undefined);
+    assert.match(result.record.skipped_reason ?? "", /no auto-executable opportunity/);
+    assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/session_default_skip-context.json")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("governance act-next does not auto-repair missing context markdown issues", async () => {
   const fixture = await createFixture();
   try {

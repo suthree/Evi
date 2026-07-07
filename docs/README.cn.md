@@ -166,6 +166,8 @@ scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_
 `pnpm run runtime -- capabilities acceptance` 和飞书 `/capabilities acceptance`
 同样会把默认下一步固定在 core/basic 或基础入口检查上；应用层、外部适配器和 local-learning
 只作为 follow-up slices 展示。
+`pnpm run runtime -- governance act-next` 不带 `--opportunity` 时只走自动安全项；
+manual local、external adapter 或 local-learning follow-up 必须显式选择 opportunity。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`
 只读查看核心 GA 项目设计契约：它把目标 intake、能力分层、契约设计、执行计划、
 验证复核和学习沉淀固定成同一个循环，不会创建项目、执行工具或证明完成。

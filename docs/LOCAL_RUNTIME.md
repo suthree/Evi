@@ -839,7 +839,9 @@ readiness and recording `publish-preflight.json`, and active
 creator metrics capture path. It also supports `sop_evolution_chain` items that
 already expose a bounded `next_command` by requesting a pending
 `source=sop_evolution_chain` follow-up confirmation. It writes an audit record
-under `autonomy/opportunity-actions/`. It never executes free-form
+under `autonomy/opportunity-actions/`. Without `--opportunity`, it only selects
+auto-executable backlog items; manual local or external follow-up actions
+require an explicit selected opportunity. It never executes free-form
 `action_chain` commands, executes confirmations, calls models, publishes
 externally, mutates repo files, or writes the active vault.
 

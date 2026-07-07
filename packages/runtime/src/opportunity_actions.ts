@@ -345,14 +345,15 @@ export async function executeNextOpportunityAction(
   args: ExecuteNextOpportunityActionArgs = {}
 ): Promise<ExecuteNextOpportunityActionResult> {
   const createdAt = utcNow();
-  const selected = await selectOpportunity(store, args);
+  const executionMode = args.opportunity ? (args.executionMode ?? "manual") : "auto";
+  const selected = await selectOpportunity(store, { ...args, executionMode });
   if (!selected) {
     return writeActionResult(store, {
       createdAt,
       status: "skipped",
       skipped_reason: args.opportunity
         ? `requested opportunity not found: ${args.opportunity}`
-        : "no active supported self-evolution opportunity is ready for typed execution"
+        : "no auto-executable opportunity is ready for typed execution; pass --opportunity to run a manual act-next action"
     });
   }
 
@@ -370,7 +371,7 @@ export async function executeNextOpportunityAction(
       skipped_reason: `unsupported opportunity action: kind=${selected.kind} status=${selected.status} proposed_slice=${proposedSlice ?? "unknown"}`
     });
   }
-  if (args.executionMode === "auto" && !executionPolicy.auto_executable) {
+  if (executionMode === "auto" && !executionPolicy.auto_executable) {
     return writeActionResult(store, {
       createdAt,
       status: "skipped",

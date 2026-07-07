@@ -3348,15 +3348,22 @@ test("governance act-next records xiaohongshu-mcp publish preflight for supporte
     const store = new AgentStore(root.repoRoot, root.stateRoot);
     const ready = await createImageGeneratedRun(store, root);
     const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
-    assert.equal(
-      gapsBefore.gaps.some((gap) =>
-        gap.source_ref === ready.run.refs.run_ref
-        && gap.proposed_slice === "external_publish_preflight_contract"
-      ),
-      true
+    const preflightGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "external_publish_preflight_contract"
     );
+    assert.ok(preflightGap);
+
+    const defaultResult = await executeNextOpportunityAction(store);
+    assert.equal(defaultResult.status, "skipped");
+    assert.equal(defaultResult.selected_opportunity, undefined);
+    assert.match(defaultResult.record.skipped_reason ?? "", /no auto-executable opportunity/);
+
+    const detailBefore = await getContentRun(store, { runRef: ready.run.id });
+    assert.equal(detailBefore.run.refs.publish_preflight_ref, undefined);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: preflightGap.id,
       serverUrl: "http://localhost:18060/mcp",
       probeClient: {
         async probe(args) {
@@ -3432,15 +3439,14 @@ test("governance act-next captures creator metrics for supported self-evolution 
     });
 
     const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
-    assert.equal(
-      gapsBefore.gaps.some((gap) =>
-        gap.source_ref === ready.run.refs.run_ref
-        && gap.proposed_slice === "creator_metrics_capture_readiness_loop"
-      ),
-      true
+    const metricsGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "creator_metrics_capture_readiness_loop"
     );
+    assert.ok(metricsGap);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: metricsGap.id,
       creatorMetricsClient: {
         async captureCreatorMetrics() {
           return {
@@ -3508,15 +3514,14 @@ test("governance act-next captures missing post-publish feedback for supported s
       postUrl: "https://www.xiaohongshu.com/explore/feedback-act-next-post"
     });
     const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
-    assert.equal(
-      gapsBefore.gaps.some((gap) =>
-        gap.source_ref === ready.run.refs.run_ref
-        && gap.proposed_slice === "post_publish_feedback_capture_contract"
-      ),
-      true
+    const feedbackGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "post_publish_feedback_capture_contract"
     );
+    assert.ok(feedbackGap);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: feedbackGap.id,
       feedbackClient: {
         async captureFeedback() {
           return {
@@ -3583,8 +3588,15 @@ test("governance act-next records failed post-publish feedback evidence as execu
       postId: "feedback-act-next-failed",
       postUrl: "https://www.xiaohongshu.com/explore/feedback-act-next-failed"
     });
+    const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
+    const feedbackGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "post_publish_feedback_capture_contract"
+    );
+    assert.ok(feedbackGap);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: feedbackGap.id,
       feedbackClient: {
         async captureFeedback() {
           return {
@@ -3640,8 +3652,15 @@ test("governance act-next routes Xiaohongshu MCP feedback timeout to creator met
       sourceRef: "xiaohongshu-mcp:/api/v1/user/me#feedback-timeout-fallback",
       error: "xiaohongshu-mcp /api/v1/user/me timed out after 15000ms"
     });
+    const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
+    const metricsGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "creator_metrics_capture_readiness_loop"
+    );
+    assert.ok(metricsGap);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: metricsGap.id,
       creatorMetricsClient: {
         async captureCreatorMetrics() {
           return {
@@ -3703,8 +3722,15 @@ test("governance act-next surfaces page-text recovery when creator metrics brows
       sourceRef: "xiaohongshu-mcp:/api/v1/user/me#creator-metrics-blocked",
       notes: "mcp feedback snapshot lacks creator-backend view_count"
     });
+    const gapsBefore = await listSelfEvolutionGaps(store, { limit: 10 });
+    const metricsGap = gapsBefore.gaps.find((gap) =>
+      gap.source_ref === ready.run.refs.run_ref
+      && gap.proposed_slice === "creator_metrics_capture_readiness_loop"
+    );
+    assert.ok(metricsGap);
 
     const result = await executeNextOpportunityAction(store, {
+      opportunity: metricsGap.id,
       creatorMetricsClient: {
         async captureCreatorMetrics() {
           return {
@@ -3759,6 +3785,11 @@ test("content CLI args parse dry-run inputs", () => {
   assert.equal(options.imageModel, "gpt-image-2");
   assert.deepEqual(options.sourceUrls, ["https://example.com/source"]);
   assert.deepEqual(options.tickers, ["NVDA"]);
+
+  const defaultActNext = parseArgs(["governance", "act-next"]);
+  assert.equal(defaultActNext.command, "governance");
+  assert.equal(defaultActNext.governanceAction, "act-next");
+  assert.equal(defaultActNext.opportunityRef, undefined);
 
   const actNext = parseArgs([
     "governance",
