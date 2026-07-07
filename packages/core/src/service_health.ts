@@ -10,6 +10,12 @@ const CONTENT_CREATOR_METRICS_REF = "services/im/content_creator_metrics.json";
 const PAUSE_REF = "autonomy/runs/pause_signal.json";
 const DEFAULT_HEARTBEAT_STALE_AFTER_MS = 90_000;
 const DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS = 10 * 60_000;
+const SERVICE_LIFECYCLE_REASON_CODES = new Set([
+  "heartbeat_missing",
+  "heartbeat_invalid",
+  "heartbeat_stale",
+  "im_not_running"
+]);
 const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
 const SUPPRESSING_MANUAL_ACTION_SLICES = new Set([
   "external_publish_preflight_contract",
@@ -30,6 +36,12 @@ export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_gene
 export interface ServiceHealthLayerSummary {
   status: ServiceHealthStatus;
   reason_codes: string[];
+}
+
+export interface ServiceHealthAttentionFollowup {
+  reason_code: string;
+  summary: string;
+  command?: string;
 }
 
 export interface ServiceRuntimeBuildSummary {
@@ -100,6 +112,7 @@ export interface ServiceHealthResult {
   created_at: string;
   status: ServiceHealthStatus;
   status_reasons: string[];
+  attention_followups: ServiceHealthAttentionFollowup[];
   layers: {
     runtime_substrate: ServiceHealthLayerSummary;
     application_slices: ServiceHealthLayerSummary;
@@ -311,6 +324,7 @@ export async function getServiceHealth(
     created_at: now.toISOString(),
     status: "unknown",
     status_reasons: [],
+    attention_followups: [],
     layers: {
       runtime_substrate: { status: "unknown", reason_codes: [] },
       application_slices: { status: "unknown", reason_codes: [] }
@@ -491,6 +505,7 @@ export async function getServiceHealth(
     ...result.layers.runtime_substrate.reason_codes,
     ...result.layers.application_slices.reason_codes
   ]);
+  result.attention_followups = serviceHealthAttentionFollowups(result);
   result.status = overallServiceHealth(result);
   return result;
 }
@@ -606,6 +621,56 @@ function applicationSliceReasonCodes(result: ServiceHealthResult): string[] {
     residentLoopNeedsAttention(result.content_feedback_refresh, result.autonomy_pause.active) ? "content_feedback_refresh_loop_attention" : undefined,
     residentLoopNeedsAttention(result.content_creator_metrics, result.autonomy_pause.active) ? "content_creator_metrics_loop_attention" : undefined
   ]);
+}
+
+function serviceHealthAttentionFollowups(result: ServiceHealthResult): ServiceHealthAttentionFollowup[] {
+  return result.status_reasons.map((reason) => serviceHealthAttentionFollowup(result, reason));
+}
+
+function serviceHealthAttentionFollowup(
+  result: ServiceHealthResult,
+  reason: string
+): ServiceHealthAttentionFollowup {
+  if (reason === "deployment_stale") {
+    return {
+      reason_code: reason,
+      summary: "resident runtime build is behind the current repo HEAD; restart the IM service after verifying local changes",
+      command: result.im.deployment.restart_command
+    };
+  }
+  if (reason === "runtime_build_dirty") {
+    return {
+      reason_code: reason,
+      summary: "resident runtime was built from a dirty checkout; inspect workspace status before treating the service as clean",
+      command: "pnpm run runtime -- workspace status"
+    };
+  }
+  if (reason === "autonomy_pause_active") {
+    return {
+      reason_code: reason,
+      summary: "autonomy is paused; resume only after the operator confirms the pause reason is resolved",
+      command: "pnpm run runtime -- governance resume-autonomy --reason \"...\""
+    };
+  }
+  if (SERVICE_LIFECYCLE_REASON_CODES.has(reason)) {
+    return {
+      reason_code: reason,
+      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: "pnpm run runtime -- service status --target im"
+    };
+  }
+  if (reason.endsWith("_loop_attention") || reason === "content_daily_current_step_stale") {
+    return {
+      reason_code: reason,
+      summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
+      command: "pnpm run runtime -- service health --target im"
+    };
+  }
+  return {
+    reason_code: reason,
+    summary: "inspect bounded service health before treating this attention reason as resolved",
+    command: "pnpm run runtime -- service health --target im"
+  };
 }
 
 function serviceProgressFreshness(

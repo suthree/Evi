@@ -189,6 +189,9 @@ pnpm run runtime -- service logs --target im --limit 40
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
 `application_slices` 的分层状态和原因码，避免把 resident IM/runtime 的基础健康
 和内容发布、反馈刷新这类应用切片压力混为一谈。
+当 `status_reasons` 非空时，它还会返回 `attention_followups`，把每个原因码映射
+成只读的下一步指引，例如 inspect、workspace status、resume 或 restart 命令；
+这些是操作提示，不代表 `service health` 会执行修复。
 
 主动给 Feishu 操作者发进度时，CLI 只写本地通知 outbox，不直接调用
 Feishu。resident IM 服务会从同一个状态根 drain 并发送：

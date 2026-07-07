@@ -1297,6 +1297,10 @@ It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice
 pressure such as content publishing or feedback refresh loops.
+When `status_reasons` is non-empty, it also returns `attention_followups` that
+map each reason code to read-only next-step guidance. These follow-ups may point
+to bounded inspect, workspace status, resume, or restart commands, but `service
+health` does not run those commands or repair the service.
 If review tick still records an `active` focus but a later executed manual
 `governance act-next` action covers the same focus, service health may render
 that focus as `covered_by_manual_action` and point at the action artifact

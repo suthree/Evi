@@ -2763,6 +2763,11 @@ status, pause status, and layered `runtime_substrate` versus
 `application_slices` reason codes, but they must not inspect launchd, read logs,
 run shell commands, invoke the model, restart services, read source file bodies,
 fetch platform state, publish externally, or mutate state.
+When service health reports `status_reasons`, it may also return
+`attention_followups`: structured, read-only operator guidance derived from
+those reason codes. These follow-ups may name bounded inspect, workspace-status,
+resume, or restart commands, but service health must not execute them or treat
+the guidance as proof that the issue was repaired.
 The CLI `service health` command returns this same read model with
 `action=health` and `target=im`; it is intentionally separate from
 `service status`, which may inspect launchd and service log locations.
