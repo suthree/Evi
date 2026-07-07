@@ -799,6 +799,9 @@ outcome, outcome evidence refs, and outcome verification command coverage
 explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
 completed source slice. It may show a short selection
 readiness, check summary, and audit-seed summary, which are quality hints only.
+The `goal_scope` line restates the operator objective, owner surface, source of
+truth, and success evidence before a next slice is reused; it is orientation,
+not execution authority or completion proof.
 The audit-seed summary should include goal scope, current state, verification
 scope, and learning persistence, so completion review keeps both verification
 evidence and outcome reuse in view. The compact `acceptance` line keeps one

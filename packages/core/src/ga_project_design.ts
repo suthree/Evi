@@ -97,6 +97,13 @@ export interface GaProjectDesignIterationFocus {
   anti_drift_checks: string[];
 }
 
+export interface GaProjectDesignGoalScope {
+  objective: string;
+  owner_surface: string;
+  source_of_truth: string[];
+  success_evidence: string[];
+}
+
 export interface GaProjectDesignCapabilityStage {
   id: string;
   title: string;
@@ -153,6 +160,7 @@ export interface GaProjectDesignPlanPacket {
   source_iteration_ref: string;
   source_proposed_slice: string;
   planning_basis: string;
+  goal_scope: GaProjectDesignGoalScope;
   iteration_focus: GaProjectDesignIterationFocus;
   capability_stage_plan: GaProjectDesignCapabilityStagePlan;
   scorecard_basis: string[];
@@ -206,6 +214,7 @@ const NEXT_CORE_GA_DESIGN_TARGET = {
   owner_surface: "ga_project_design"
 } as const;
 const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target im --state-root <state-root>";
+const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
 
 export function getGaProjectDesignContract(): GaProjectDesignContract {
   return {
@@ -491,6 +500,7 @@ function buildNextCoreBasicPlan(
     source_iteration_ref: source.source_iteration_ref,
     source_proposed_slice: source.proposed_slice,
     planning_basis: `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`,
+    goal_scope: buildGoalScope(source, proposedSlice),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
     scorecard_basis: [
@@ -541,6 +551,27 @@ function buildNextCoreBasicPlan(
       ...nextIterationSeed.evidence_refs
     ]),
     boundary: PLAN_BOUNDARY
+  };
+}
+
+function buildGoalScope(
+  source: GaProjectDesignArtifact,
+  proposedSlice: string
+): GaProjectDesignGoalScope {
+  return {
+    objective: CORE_BASIC_SELF_EVOLUTION_OBJECTIVE,
+    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    source_of_truth: [
+      "operator_objective=core_basic_self_evolution_first",
+      `source_artifact=${source.id}`,
+      `source_iteration_ref=${source.source_iteration_ref}`,
+      `scorecard_target=${NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id}/${NEXT_CORE_GA_DESIGN_TARGET.target_slice_id}`
+    ],
+    success_evidence: [
+      `fresh_successor_slice=true; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
+      `selected_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}; owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
+      "verified outcome records evidence refs and verification command coverage before reuse"
+    ]
   };
 }
 

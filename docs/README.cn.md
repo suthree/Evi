@@ -133,6 +133,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；
 `audit_reject` 会按每个 completion audit seed 保留一条 reject condition，让复制旧成功标准、只凭旧 memory、窄验证证明大能力、或过早提升 SOP/skill/memory/dream 这类失败条件保持可见；
 `acceptance` 会按 `goal_scope`、`current_state`、`verification_scope`、`learning_persistence` 各保留一条，并额外保留 fresh successor 与 external adapter 边界验收，避免只看到重复的 goal scope 或 current_state；
+`goal_scope` 会直接保留 operator objective、owner surface、source of truth 和 success evidence；它只用于目标定向，不执行、不证明完成；
 `stage_exit` 会按每个 core/basic capability stage 各保留一条退出标准；
 `phase_forbid` 会按每个 phase gate 各保留一条 forbidden shortcut；
 权威完成审计仍以 `governance iterations --audit-seed all` 为准。

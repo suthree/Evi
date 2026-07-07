@@ -450,6 +450,10 @@ Required policy:
 - `next_core_basic_plan` must not copy the source artifact's completed
   `proposed_slice` as the next work target; it must use the artifact as
   evidence for selecting a fresh core/basic slice
+- `next_core_basic_plan.goal_scope` must restate the operator objective,
+  owner surface, source of truth, and success evidence before the next slice is
+  reused; it is read-only orientation, not execution authority or completion
+  proof
 - `next_core_basic_plan.scorecard_basis` must keep the scorecard
   `next_core_basic_slice`, target dimension, target layer, and scorecard command
   visible as read-only planning evidence

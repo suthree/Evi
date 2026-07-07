@@ -1545,6 +1545,15 @@ export function compactGaPlanAntiDriftChecks(
   return plan.iteration_focus.anti_drift_checks.slice(0, 3).join(" | ");
 }
 
+export function compactGaPlanGoalScope(
+  plan: Pick<GaProjectDesignPlanPacket, "goal_scope">
+): string {
+  const scope = plan.goal_scope;
+  const source = scope.source_of_truth.slice(0, 2).join("|");
+  const success = scope.success_evidence[0] ?? "unknown";
+  return `objective=${scope.objective}; owner=${scope.owner_surface}; source=${source}; success=${success}`;
+}
+
 export function compactGaPlanLayerGuard(
   plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
 ): string {
@@ -1665,6 +1674,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactAcceptanceCriteria = compactGaPlanAcceptanceCriteria(plan.acceptance_criteria);
   const compactNonGoals = compactGaPlanNonGoals(plan.non_goals);
   const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
+  const compactGoalScope = compactGaPlanGoalScope(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
   const compactAuditRejects = compactGaPlanAuditRejects(plan);
@@ -1683,6 +1693,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `layer: ${plan.layer}; owner: ${plan.owner_surface}; slice: ${plan.proposed_slice}`,
       `source_artifact: ${plan.source_artifact_id}`,
       `source_truth: ${sourceTruth}`,
+      `goal_scope: ${compactGoalScope}`,
       `planning_basis: ${plan.planning_basis}`,
       `focus: ${plan.iteration_focus.direction}`,
       `focus_next: ${plan.iteration_focus.next_steps.slice(0, 2).join(" | ")}`,

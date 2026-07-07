@@ -542,6 +542,7 @@ function contextReadModelsCategory(): CapabilityCategory {
           projectDesignContract.boundary,
           "project-design may derive and inspect read-only artifacts from verified iteration outcomes; artifacts are reuse guidance, not state writes or completion proof",
           "project-design may expose a read-only next_core_basic_plan from verified core/basic artifacts; the plan is advisory context and does not record iterations or execute work",
+          "next_core_basic_plan includes read-only goal_scope with the operator objective, owner surface, source of truth, and success evidence before selecting the next slice",
           "next_core_basic_plan includes a read-only layer_decision that keeps recurring GA project design as core identity and external adapters as application slices by default",
           "next_core_basic_plan includes read-only iteration_record_status so matching open iterations are inspected instead of blindly recording duplicates",
           "next_core_basic_plan may include a read-only next_iteration_seed for record-iteration --from-project-design-plan; the seed itself does not write state",
