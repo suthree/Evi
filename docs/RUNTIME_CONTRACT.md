@@ -469,6 +469,9 @@ source-artifact review sees the required completion evidence and basic runtime
 checks before outcome claims.
 It may include audit-seed-labeled `acceptance_criteria` for the same read-only
 review target exposed by the full project-design view.
+It may include `implementation_contract`, so artifact-scoped review can inspect
+the allowed reusable GA contract/read-model change, deferred scopes, and
+delivery standard before implementation.
 When a derived artifact belongs to `core_runtime` or `basic_entrypoint`, the
 read model may expose `next_core_basic_plan`: a read-only planning packet with
 phase gates, acceptance criteria, verification commands, non-goals, and a
@@ -510,6 +513,11 @@ The plan may also expose `acceptance_trace`: one row per acceptance criterion
 with its audit seed, phase, required verification entrypoints, and expected
 outcome claim prefixes. This is traceability guidance for outcome writeback and
 review; it does not execute commands, satisfy claims, or prove completion.
+The plan may also expose `implementation_contract`, which constrains the next
+slice to one reusable GA project-design contract/read-model improvement and
+names deferred external-tool, local-learning, and expert-orchestration scopes.
+It is pre-execution boundary guidance, not an executor, scheduler, learning
+promotion, or completion proof.
 The basic `runtime_observability` stage may be `attention_guard`; this is a
 guard role that keeps service-health attention visible and must not be treated
 as a healthy service claim.
@@ -954,7 +962,10 @@ listed core and basic capability stage, so capability-stage labels are not
 mistaken for progress without their evidence standard. The compact
 `phase_forbid` line should keep one forbidden shortcut for each phase gate, so
 goal intake, contract design, execution planning, verification review, and
-learning persistence do not disappear behind the adapter-boundary warning. The selection checks are
+learning persistence do not disappear behind the adapter-boundary warning. A
+compact `implementation_contract` line may show the allowed contract/read-model
+change, the first deferred scope, and the first delivery standard, so model
+handoff does not infer execution scope from the opaque slice id. The selection checks are
 quality hints only. It must not dump full
 project-design artifacts, record iterations, execute commands, schedule
 experts, write state, or prove completion.

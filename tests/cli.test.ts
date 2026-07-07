@@ -750,6 +750,24 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         "verified outcome records evidence refs and completion claims"
       ]
     },
+    implementation_contract: {
+      proposed_slice: "core_ga_design_next_slice_after_source",
+      source_artifact_id: "ga_design_artifact_iteration_contract_source",
+      source_proposed_slice: "completed_source",
+      selected_layer: "core_runtime" as const,
+      owner_surface: "ga_project_design",
+      improvement_type: "reusable_ga_design_contract" as const,
+      implementation_scope: [
+        "change one reusable GA project-design contract or read-model surface"
+      ],
+      deferred_scope: [
+        "no external adapter or tool integration unless it names a reusable runtime contract"
+      ],
+      delivery_standard: [
+        "future iterations can inspect the contract without inferring intent from the opaque slice id"
+      ],
+      boundary: "read-only GA implementation contract"
+    },
     iteration_focus: {
       direction_id: "core_basic_plan_clarity" as const,
       direction: "Clarify the next core/basic GA design improvement before implementation.",
@@ -929,6 +947,11 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
   assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
   assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
+  assert.equal(guidance.implementation_contract.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.implementation_contract.selected_layer, "core_runtime");
+  assert.equal(guidance.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+  assert.equal(guidance.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
+  assert.equal(guidance.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
   assert.equal(guidance.iteration_focus.direction_id, "core_basic_plan_clarity");
   assert.equal(guidance.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
   assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);

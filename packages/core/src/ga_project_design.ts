@@ -120,6 +120,19 @@ export interface GaProjectDesignGoalScope {
   success_evidence: string[];
 }
 
+export interface GaProjectDesignImplementationContract {
+  proposed_slice: string;
+  source_artifact_id: string;
+  source_proposed_slice: string;
+  selected_layer: CapabilityLayer;
+  owner_surface: string;
+  improvement_type: "reusable_ga_design_contract";
+  implementation_scope: string[];
+  deferred_scope: string[];
+  delivery_standard: string[];
+  boundary: string;
+}
+
 export interface GaProjectDesignCapabilityStage {
   id: string;
   title: string;
@@ -177,6 +190,7 @@ export interface GaProjectDesignPlanPacket {
   source_proposed_slice: string;
   planning_basis: string;
   goal_scope: GaProjectDesignGoalScope;
+  implementation_contract: GaProjectDesignImplementationContract;
   iteration_focus: GaProjectDesignIterationFocus;
   capability_stage_plan: GaProjectDesignCapabilityStagePlan;
   scorecard_basis: string[];
@@ -523,6 +537,7 @@ function buildNextCoreBasicPlan(
     source_proposed_slice: source.proposed_slice,
     planning_basis: `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`,
     goal_scope: buildGoalScope(source, proposedSlice),
+    implementation_contract: buildImplementationContract(source, proposedSlice),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
     scorecard_basis: [
@@ -568,6 +583,36 @@ function buildNextCoreBasicPlan(
       ...nextIterationSeed.evidence_refs
     ]),
     boundary: PLAN_BOUNDARY
+  };
+}
+
+function buildImplementationContract(
+  source: GaProjectDesignArtifact,
+  proposedSlice: string
+): GaProjectDesignImplementationContract {
+  return {
+    proposed_slice: proposedSlice,
+    source_artifact_id: source.id,
+    source_proposed_slice: source.proposed_slice,
+    selected_layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
+    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    improvement_type: "reusable_ga_design_contract",
+    implementation_scope: [
+      "change one reusable GA project-design contract or read-model surface",
+      "carry the change through audit guidance or context only when it improves output standardization",
+      "cover the change with targeted tests, docs, outcome evidence, and runtime health"
+    ],
+    deferred_scope: [
+      "no external adapter or tool integration unless it names a reusable runtime contract",
+      "no SOP, skill, memory, or dream promotion before verified reuse evidence exists",
+      "no expert-agent scheduling or delegation automation"
+    ],
+    delivery_standard: [
+      "future iterations can inspect the contract without inferring intent from the opaque slice id",
+      "verification maps to project-design, scorecard, iterations, service-health, and check entrypoints",
+      "a verified outcome is recorded before the contract is reused as future GA design evidence"
+    ],
+    boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
   };
 }
 

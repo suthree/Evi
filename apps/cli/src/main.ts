@@ -332,6 +332,7 @@ interface IterationAuditGuidanceInput {
   source_artifact_id: string;
   source_iteration_ref: string;
   goal_scope: GaProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
   iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
@@ -781,6 +782,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   source_artifact_id: string;
   source_iteration_ref: string;
   goal_scope: GaProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
   iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
@@ -832,6 +834,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     source_artifact_id: plan.source_artifact_id,
     source_iteration_ref: plan.source_iteration_ref,
     goal_scope: plan.goal_scope,
+    implementation_contract: plan.implementation_contract,
     iteration_focus: plan.iteration_focus,
     capability_stage_plan: plan.capability_stage_plan,
     phase_gates: plan.phase_gates,

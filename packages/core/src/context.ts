@@ -1572,6 +1572,18 @@ export function compactGaPlanGoalScope(
   return `objective=${scope.objective}; owner=${scope.owner_surface}; source=${source}; success=${success}`;
 }
 
+export function compactGaPlanImplementationContract(
+  plan: Pick<GaProjectDesignPlanPacket, "implementation_contract">
+): string {
+  const contract = plan.implementation_contract;
+  return [
+    `type=${contract.improvement_type}`,
+    `scope=${contract.implementation_scope[0] ?? "unknown"}`,
+    `defer=${contract.deferred_scope[0] ?? "unknown"}`,
+    `deliver=${contract.delivery_standard[0] ?? "unknown"}`
+  ].join("; ");
+}
+
 export function compactGaPlanLayerGuard(
   plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
 ): string {
@@ -1740,6 +1752,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactNonGoals = compactGaPlanNonGoals(plan.non_goals);
   const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
   const compactGoalScope = compactGaPlanGoalScope(plan);
+  const compactImplementationContract = compactGaPlanImplementationContract(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
   const compactLearningAuthority = compactGaPlanLearningAuthority(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
@@ -1761,6 +1774,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `source_artifact: ${plan.source_artifact_id}`,
       `source_truth: ${sourceTruth}`,
       `goal_scope: ${compactGoalScope}`,
+      `implementation_contract: ${compactImplementationContract}`,
       `planning_basis: ${plan.planning_basis}`,
       `focus: ${plan.iteration_focus.direction}`,
       `focus_next: ${plan.iteration_focus.next_steps.slice(0, 2).join(" | ")}`,

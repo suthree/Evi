@@ -164,6 +164,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `acceptance` 会按 `goal_scope`、`current_state`、`verification_scope`、`learning_persistence` 各保留一条，并额外保留 fresh successor 与 external adapter 边界验收，避免只看到重复的 goal scope 或 current_state；
 `goal_scope` 会直接保留 operator objective、owner surface、source of truth 和 success evidence；它只用于目标定向，不执行、不证明完成；
 `goal_scope` audit seed 还会要求 outcome 核对这些结构化证据，并拒绝无法区分 completed source slice 与 successor slice 的 success evidence；
+`implementation_contract` 会在执行前说明本轮只允许一个可复用 GA design contract/read-model 改进、哪些外部工具/local-learning/专家调度范围要递延、以及交付标准是什么；它是边界提示，不执行、不调度、不提升学习资产、不证明完成；
 `stage_exit` 会按每个 core/basic capability stage 各保留一条退出标准；
 `phase_forbid` 会按每个 phase gate 各保留一条 forbidden shortcut；
 权威完成审计仍以 `governance iterations --audit-seed all` 为准。

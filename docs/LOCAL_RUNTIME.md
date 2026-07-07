@@ -494,6 +494,10 @@ project-design view.
 It may include `acceptance_trace`, which maps each acceptance criterion to the
 verification entrypoints and outcome claim prefixes that should support it
 during outcome writeback.
+It may include `implementation_contract`, which names the allowed reusable
+contract/read-model change, deferred scopes, and delivery standard before
+implementation. This is boundary guidance only; it does not execute the slice,
+schedule experts, promote learning artifacts, or prove completion.
 When a verified artifact belongs to `core_runtime` or `basic_entrypoint`, the
 same output includes a read-only `next_core_basic_plan` with phase gates,
 acceptance criteria, verification commands, non-goals, and a record-iteration
@@ -776,6 +780,10 @@ the slice remains core/basic. It also carries `layer_decision`, so
 source/selected layer, core-identity reasons, application boundaries, and
 required-before-outcome commands stay visible as review evidence while external
 adapters remain application slices unless a reusable runtime contract is named.
+It also carries `implementation_contract`, so the next slice states the one
+allowed reusable GA design contract/read-model improvement, the deferred
+external-tool/local-learning/expert scopes, and the delivery standard before
+implementation begins.
 It also carries `learning_authority`, so self-evolution SOPs and skills
 preserve procedure while project-design, scorecard, iteration contracts,
 current evidence, verified outcomes, and completion-gate coverage retain

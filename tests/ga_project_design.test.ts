@@ -172,6 +172,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("operator_objective=core_basic_self_evolution_first"), true);
     assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("source_artifact=ga_design_artifact_iteration_contract_verified"), true);
     assert.equal(readModel.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("target_slice=core_ga_design_next_slice_after_verified")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.proposed_slice, "core_ga_design_next_slice_after_verified");
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.selected_layer, "core_runtime");
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /Clarify the next core\/basic GA design improvement/);
     assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified GA design evidence/);
@@ -379,6 +384,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.match(packet.next_core_basic_plan?.planning_basis ?? "", /instead of repeating completed slice verified_iteration_to_design_artifact/);
     assert.equal(packet.next_core_basic_plan?.goal_scope.owner_surface, "ga_project_design");
     assert.equal(packet.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("verified outcome records evidence refs")), true);
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_proposed_slice, "verified_iteration_to_design_artifact");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.improvement_type, "reusable_ga_design_contract");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no expert-agent scheduling")), true);
+    assert.match(packet.next_core_basic_plan?.implementation_contract.boundary ?? "", /does not execute commands/);
     assert.equal(packet.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.core_capabilities.some((capability) => capability.id === "contract_design" && capability.stage === "hardening"), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.basic_capabilities.some((capability) => capability.id === "runtime_observability" && capability.stage === "attention_guard"), true);

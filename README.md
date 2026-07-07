@@ -347,6 +347,9 @@ or executing the recommendation.
 The plan includes a read-only `iteration_focus` so the next model turn sees the
 core/basic direction, next steps, and anti-drift checks instead of inferring
 purpose from the opaque slice id alone.
+Its `implementation_contract` states the allowed reusable contract/read-model
+change, deferred scopes, and delivery standard before implementation. It is
+pre-execution boundary guidance, not an execution plan or completion proof.
 Phase gates carry their `forbidden_shortcuts`, so anti-drift constraints stay
 visible with the phase contract.
 It also includes `capability_stage_plan`, a read-only split of current core
