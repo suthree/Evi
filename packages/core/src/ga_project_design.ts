@@ -647,6 +647,13 @@ function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
       outcome_claim_prefixes: ["project-design:", "scorecard:", "service-health:", "workspace:"]
     },
     {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: implementation contract bounds allowed scope, deferred scope, and delivery standard before outcome",
+      required_entrypoints: ["project-design", "iterations", "workspace"],
+      outcome_claim_prefixes: ["project-design:", "iterations:", "workspace:"]
+    },
+    {
       seed_id: "verification_scope",
       phase_id: "verification_review",
       criterion: "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
@@ -950,6 +957,9 @@ function buildCompletionAuditSeeds(
       requirement: "Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.",
       evidence_needed: [
         "workspace or git status when files changed",
+        `implementation_contract.proposed_slice=${proposedSlice}`,
+        "implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation",
+        "outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope",
         "service health status and reasons when resident runtime behavior changed",
         "service health status and reasons when service health is a required verification command",
         "runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy",
@@ -958,6 +968,9 @@ function buildCompletionAuditSeeds(
       ],
       reject_if: [
         "older memory is the only evidence",
+        "implementation_contract.proposed_slice does not match the iteration proposed slice",
+        "implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard",
+        "outcome claims changes outside implementation_contract without a later-layer iteration contract",
         "external adapter pressure is treated as core identity without a reusable contract",
         "worktree changes are present but the outcome omits workspace status or changed paths",
         "runtime attention reasons are omitted from the outcome when service health is not healthy",

@@ -846,6 +846,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     ],
     acceptance_criteria: [
       "goal_scope: objective and owner surface stay visible",
+      "current_state: implementation contract bounds allowed scope before outcome",
       "verification_scope: required entrypoints are covered by completion claims",
       "learning_persistence: SOPs and skills preserve procedure only"
     ],
@@ -856,6 +857,13 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         criterion: "goal_scope: objective and owner surface stay visible",
         required_entrypoints: ["project-design", "iterations"],
         outcome_claim_prefixes: ["project-design:", "iterations:"]
+      },
+      {
+        seed_id: "current_state" as const,
+        phase_id: "capability_layering" as const,
+        criterion: "current_state: implementation contract bounds allowed scope before outcome",
+        required_entrypoints: ["project-design", "iterations", "workspace"],
+        outcome_claim_prefixes: ["project-design:", "iterations:", "workspace:"]
       },
       {
         seed_id: "verification_scope" as const,
@@ -962,10 +970,12 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter"))), true);
   assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("completion gates"))), true);
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:") && criterion.includes("owner surface")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("current_state:") && criterion.includes("implementation contract")), true);
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:") && criterion.includes("completion claims")), true);
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:") && criterion.includes("procedure only")), true);
   assert.equal(guidance.acceptance_trace.length, guidance.acceptance_criteria.length);
   assert.equal(guidance.acceptance_trace.every((trace) => guidance.acceptance_criteria.includes(trace.criterion)), true);
+  assert.equal(guidance.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace")), true);
   assert.equal(guidance.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.required_entrypoints.includes("check")), true);
   assert.equal(guidance.acceptance_trace.some((trace) => trace.outcome_claim_prefixes.includes("service-health:")), true);
   assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("does not promote SOPs")), true);

@@ -291,6 +291,12 @@ test("GA project design read model derives reusable artifacts from verified iter
         seed.id === "current_state"
         && seed.requirement.includes("classify runtime attention")
         && seed.requirement.includes("name the handling policy")
+        && seed.evidence_needed.includes("implementation_contract.proposed_slice=core_ga_design_next_slice_after_verified")
+        && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")
+        && seed.evidence_needed.includes("outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope")
+        && seed.reject_if.includes("implementation_contract.proposed_slice does not match the iteration proposed slice")
+        && seed.reject_if.includes("implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard")
+        && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")
         && seed.evidence_needed.includes("service health status and reasons when resident runtime behavior changed")
         && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")
         && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")
@@ -341,6 +347,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.every((trace) => readModel.next_core_basic_plan?.acceptance_criteria.includes(trace.criterion)), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.required_entrypoints.includes("check")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.outcome_claim_prefixes.includes("workspace:")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.criterion.includes("implementation contract bounds allowed scope")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "learning_persistence" && trace.phase_id === "learning_persistence"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
@@ -408,6 +415,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy")), true);
@@ -425,6 +434,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.length, packet.next_core_basic_plan?.acceptance_criteria.length);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.outcome_claim_prefixes.includes("check:")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("service-health")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace") && trace.criterion.includes("deferred scope")), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run check"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);

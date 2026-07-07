@@ -498,6 +498,9 @@ It may include `implementation_contract`, which names the allowed reusable
 contract/read-model change, deferred scopes, and delivery standard before
 implementation. This is boundary guidance only; it does not execute the slice,
 schedule experts, promote learning artifacts, or prove completion.
+The plan's completion-audit seeds may require the later outcome to explain how
+the delivered change stayed inside `implementation_scope` and did not enter
+`deferred_scope`.
 When a verified artifact belongs to `core_runtime` or `basic_entrypoint`, the
 same output includes a read-only `next_core_basic_plan` with phase gates,
 acceptance criteria, verification commands, non-goals, and a record-iteration
@@ -784,6 +787,10 @@ It also carries `implementation_contract`, so the next slice states the one
 allowed reusable GA design contract/read-model improvement, the deferred
 external-tool/local-learning/expert scopes, and the delivery standard before
 implementation begins.
+The same guidance can audit that contract through `current_state`: outcome
+claims must preserve the implementation contract's selected layer, allowed
+scope, deferred scope, and delivery standard instead of treating the contract as
+decorative text.
 It also carries `learning_authority`, so self-evolution SOPs and skills
 preserve procedure while project-design, scorecard, iteration contracts,
 current evidence, verified outcomes, and completion-gate coverage retain

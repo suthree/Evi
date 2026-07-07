@@ -518,6 +518,10 @@ slice to one reusable GA project-design contract/read-model improvement and
 names deferred external-tool, local-learning, and expert-orchestration scopes.
 It is pre-execution boundary guidance, not an executor, scheduler, learning
 promotion, or completion proof.
+Completion-audit seeds may require the outcome to show that the delivered
+change stayed inside `implementation_scope`, did not enter `deferred_scope`, and
+kept the selected layer, owner surface, and delivery standard aligned with that
+contract.
 The basic `runtime_observability` stage may be `attention_guard`; this is a
 guard role that keeps service-health attention visible and must not be treated
 as a healthy service claim.
