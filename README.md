@@ -673,8 +673,8 @@ Current first-version scope:
 - read-only SOP self-evolution chain inspection
 - open SOP Evolution Ledger chains in the ranked Opportunity Backlog
 - read-only self-evolution scorecard for core/basic learning maturity,
-  general-agent delegation, and advisory review lenses
-- read-only expert orchestration contract for future advisory roles,
+  current general-agent delegation, and advisory review lenses
+- read-only expert orchestration contract for future-only advisory roles,
   scheduling boundaries, and main-thread verification authority
 - bounded self-evolution iteration contracts for layer, owner, evidence,
   verification, non-goal, and advisory-role declarations

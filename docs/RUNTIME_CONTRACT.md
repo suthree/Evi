@@ -1149,7 +1149,9 @@ the delegated model must return a JSON object with non-empty `summary` and
 result as a `Delegated Observations` item. Invalid payloads or malformed
 delegated output are recorded as `ok=false`, and a later `done` claim fails
 completion verification when any delegated result failed. Delegated results are
-not tool evidence, final success proof, mutation authority, or a second
+recorded with action id, round, sequence, and task/context character counts so
+later traces can verify bounded dispatch without reading raw delegated context.
+They are not tool evidence, final success proof, mutation authority, or a second
 autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the

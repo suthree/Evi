@@ -34,6 +34,11 @@ interface DelegatedResult {
   ok: boolean;
   summary: string;
   task: string;
+  action_id: string;
+  round: number;
+  sequence: number;
+  task_chars: number;
+  context_chars: number;
   contract_status: "passed" | "failed";
   findings_text: string | null;
   output_text: string;
@@ -464,13 +469,13 @@ export class LiveAgentRunner {
         }
       }
 
-      for (const action of delegateActions) {
+      for (const [index, action] of delegateActions.entries()) {
         if (discipline) {
           markTodo(discipline, "tools_delegates", "in_progress");
           discipline.iteration_log.push(`Round ${round}: delegating bounded subtask.`);
           await this.writeDisciplineTodo(discipline);
         }
-        const delegated = await this.executeDelegation(action);
+        const delegated = await this.executeDelegation(action, round, index + 1);
         delegatedResults.push(delegated);
         const delegatedRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${delegated.id}.json`, delegated);
         delegatedArtifactRefs.push(delegatedRef);
@@ -1203,14 +1208,20 @@ export class LiveAgentRunner {
     };
   }
 
-  private async executeDelegation(action: ModelActionEnvelope["actions"][number]): Promise<DelegatedResult> {
+  private async executeDelegation(action: ModelActionEnvelope["actions"][number], round: number, sequence: number): Promise<DelegatedResult> {
     const request = parseDelegationRequest(action);
+    const actionId = action.id;
     if (!request.ok) {
       return {
         id: newId("delegated_result"),
         ok: false,
         summary: `Delegated task failed input contract: ${request.error}`,
         task: request.task,
+        action_id: actionId,
+        round,
+        sequence,
+        task_chars: request.task.length,
+        context_chars: 0,
         contract_status: "failed",
         findings_text: null,
         output_text: request.error,
@@ -1238,6 +1249,11 @@ export class LiveAgentRunner {
           ok: false,
           summary: `Delegated task failed contract: ${task.slice(0, 120)}`,
           task,
+          action_id: actionId,
+          round,
+          sequence,
+          task_chars: task.length,
+          context_chars: context.length,
           contract_status: "failed",
           findings_text: null,
           output_text: parsed.error,
@@ -1252,6 +1268,11 @@ export class LiveAgentRunner {
         ok: true,
         summary: parsed.summary,
         task,
+        action_id: actionId,
+        round,
+        sequence,
+        task_chars: task.length,
+        context_chars: context.length,
         contract_status: "passed",
         findings_text: parsed.findings_text,
         output_text: parsed.findings_text,
@@ -1266,6 +1287,11 @@ export class LiveAgentRunner {
         ok: false,
         summary: `Delegated task failed: ${task.slice(0, 120)}`,
         task,
+        action_id: actionId,
+        round,
+        sequence,
+        task_chars: task.length,
+        context_chars: context.length,
         contract_status: "failed",
         findings_text: null,
         output_text: errorMessage(error),

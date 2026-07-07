@@ -3376,6 +3376,11 @@ test("live runner feeds structured delegated results back as bounded observation
       output_text: string;
       error: string | null;
       boundary: string;
+      action_id: string;
+      round: number;
+      sequence: number;
+      task_chars: number;
+      context_chars: number;
     };
 
     assert.equal(result.verdict, "no_sop");
@@ -3386,6 +3391,11 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(delegated.findings_text, "The delegated critique found one bounded risk and no mutation evidence.");
     assert.equal(delegated.output_text, delegated.findings_text);
     assert.equal(delegated.error, null);
+    assert.match(delegated.action_id, /^action_/);
+    assert.equal(delegated.round, 1);
+    assert.equal(delegated.sequence, 1);
+    assert.equal(delegated.task_chars > 0, true);
+    assert.equal(delegated.context_chars > 0, true);
     assert.match(delegated.boundary, /bounded self-report only/);
   } finally {
     await fixture.cleanup();
@@ -3464,6 +3474,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
       task: string;
       error: string | null;
       raw_output_preview: string;
+      context_chars: number;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -3477,6 +3488,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.task, "Critique whether the answer needs more evidence.");
+    assert.equal(delegated.context_chars, 0);
     assert.match(delegated.error ?? "", /payload\.context must be a non-empty string/);
     assert.equal(delegated.raw_output_preview, "");
     assert.equal(report.verification_status, "failed");

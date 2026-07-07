@@ -1981,7 +1981,9 @@ non-empty `summary` and `findings_text`; the harness records a failed delegated
 result when that contract is missing or malformed. Delegated observations may
 inform the next model round, but they do not prove final success, execute tools,
 write state, write the repo, write the active vault, or bypass completion
-verification.
+verification. Each delegated result also records action id, round, sequence, and
+task/context character counts so later traces can verify bounded dispatch
+without reading raw delegated context.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the
