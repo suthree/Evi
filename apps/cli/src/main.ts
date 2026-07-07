@@ -469,6 +469,8 @@ export function buildIterationAuditPlanRefCoverage(
   plan_ref_count: number;
   covered_ref_count: number;
   missing_refs: string[];
+  required_outcome_evidence_refs: string[];
+  repair_note: string;
   boundary: string;
 } {
   const availableRefs = new Set([
@@ -484,6 +486,10 @@ export function buildIterationAuditPlanRefCoverage(
     plan_ref_count: requiredRefs.length,
     covered_ref_count: requiredRefs.length - missingRefs.length,
     missing_refs: missingRefs,
+    required_outcome_evidence_refs: missingRefs,
+    repair_note: missingRefs.length
+      ? "record-iteration-outcome replaces the outcome; preserve existing outcome fields and add these refs as outcome evidence before rerunning the audit"
+      : "no plan ref repair required",
     boundary: "read-only plan ref coverage diagnostic; compares GA project-design plan refs with the audited iteration refs and outcome refs; does not read file bodies or prove completion"
   };
 }

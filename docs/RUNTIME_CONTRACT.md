@@ -204,7 +204,11 @@ project-design completion review can trace the planned slice back to its source
 iteration without reading the full record.
 The packet also includes `plan_ref_coverage`, a read-only comparison between
 the GA project-design plan `refs` and the audited iteration/source/outcome refs;
-missing refs are diagnostics, not completion proof.
+missing refs are diagnostics, not completion proof. When refs are missing,
+`required_outcome_evidence_refs` repeats the refs that must be added as outcome
+evidence before the completion gate can clear. Because
+`record-iteration-outcome` replaces the outcome, the operator must preserve the
+existing outcome fields while adding those refs.
 Its top-level `refs` list should cite the same audited surfaces: iteration ref,
 source ref, iteration evidence refs, outcome evidence refs, and plan refs.
 `verification_command_coverage` compares selected required commands with

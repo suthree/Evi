@@ -281,6 +281,8 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.equal(covered.plan_ref_count, 4);
   assert.equal(covered.covered_ref_count, 4);
   assert.deepEqual(covered.missing_refs, []);
+  assert.deepEqual(covered.required_outcome_evidence_refs, []);
+  assert.equal(covered.repair_note, "no plan ref repair required");
   assert.match(covered.boundary, /does not read file bodies or prove completion/);
 
   const missing = buildIterationAuditPlanRefCoverage(
@@ -297,6 +299,8 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.equal(missing.status, "missing_refs");
   assert.equal(missing.covered_ref_count, 1);
   assert.deepEqual(missing.missing_refs, ["docs/RUNTIME_CONTRACT.md"]);
+  assert.deepEqual(missing.required_outcome_evidence_refs, ["docs/RUNTIME_CONTRACT.md"]);
+  assert.match(missing.repair_note, /preserve existing outcome fields/);
 });
 
 test("iteration audit refs include source and outcome evidence refs", () => {

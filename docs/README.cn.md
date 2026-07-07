@@ -138,6 +138,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 也可以显示 `after_verify`，给出验证通过后写回 `record-iteration-outcome` 的模板，并保留可重复的 evidence ref、verification command、verification claim 和 next move 占位；
 `evidence_basis` 会给出有界候选 refs，方便 outcome 写回时引用，但它本身不是完成证明；
 `proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage、outcome verification command coverage、outcome verification claim coverage、runtime attention outcome coverage 和 workspace outcome coverage；
+`plan_ref_coverage` 如果缺 refs，会用 `required_outcome_evidence_refs` 列出必须补进 outcome evidence 的 refs；因为 `record-iteration-outcome` 是覆盖式写入，补 refs 时必须保留已有 outcome evidence、commands、claims 和 next moves；
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；
 `audit_evidence` 会按每个 completion audit seed 保留一条 evidence-needed，让 handoff 看得到后续 outcome 必须引用什么；对 `current_state`，如果 service health 是 required verification command，它会优先保留 service health status/reasons；对 `verification_scope`，它会优先保留 required verification entrypoint 到 completion claim 的映射证据；
 `audit_reject` 会按每个 completion audit seed 保留一条 reject condition，让复制旧成功标准、只凭旧 memory、窄验证证明大能力、或过早提升 SOP/skill/memory/dream 这类失败条件保持可见；对 `current_state`，如果 service health 是 required verification command，它会优先保留缺少 service health status/reasons 的失败条件；

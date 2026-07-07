@@ -689,7 +689,10 @@ operator can trace the planned core/basic slice back to the source iteration
 without opening the full record.
 It also includes `plan_ref_coverage`, which compares GA project-design plan refs
 against the audited iteration, source, and outcome refs; it is a diagnostic and
-does not read file bodies or prove completion.
+does not read file bodies or prove completion. If refs are missing,
+`required_outcome_evidence_refs` lists the refs to add to outcome evidence.
+`record-iteration-outcome` replaces the outcome, so keep existing outcome
+evidence, commands, claims, and next moves when adding those refs.
 The packet's top-level `refs` list uses the same audited surfaces, including
 source and outcome evidence refs, so the cited evidence list is not narrower
 than the coverage diagnostic.
