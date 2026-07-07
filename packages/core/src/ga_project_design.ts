@@ -75,6 +75,14 @@ export interface GaProjectDesignCompletionAuditSeed {
   reject_if: string[];
 }
 
+export interface GaProjectDesignAcceptanceTrace {
+  seed_id: GaProjectDesignCompletionAuditSeed["id"];
+  phase_id: GaProjectDesignPhaseId;
+  criterion: string;
+  required_entrypoints: string[];
+  outcome_claim_prefixes: string[];
+}
+
 export interface GaProjectDesignLayerDecision {
   selected_layer: CapabilityLayer;
   selected_owner_surface: string;
@@ -182,6 +190,7 @@ export interface GaProjectDesignPlanPacket {
   phase_gates: GaProjectDesignPlanPhaseGate[];
   completion_audit_seeds: GaProjectDesignCompletionAuditSeed[];
   acceptance_criteria: string[];
+  acceptance_trace: GaProjectDesignAcceptanceTrace[];
   verification_commands: string[];
   next_command: string;
   non_goals: string[];
@@ -497,6 +506,7 @@ function buildNextCoreBasicPlan(
     `owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
     `iteration_record_status=${iterationRecordStatus.status}`
   ];
+  const acceptanceTrace = buildAcceptanceTrace();
   return {
     schema_version: 1,
     action: "project-design-plan",
@@ -547,15 +557,8 @@ function buildNextCoreBasicPlan(
       forbidden_shortcuts: phase.forbidden_shortcuts
     })),
     completion_audit_seeds: buildCompletionAuditSeeds(source, proposedSlice),
-    acceptance_criteria: [
-      "goal_scope: operator goal is restated with owner surface, source of truth, and success evidence",
-      "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
-      "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
-      "current_state: external adapters remain application slices unless a reusable runtime contract is named",
-      "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
-      "learning_persistence: outcome is recorded before reuse",
-      "learning_persistence: SOP or skill artifacts preserve procedure only; project-design and verified outcomes retain judgment and completion authority"
-    ],
+    acceptance_criteria: acceptanceTrace.map((trace) => trace.criterion),
+    acceptance_trace: acceptanceTrace,
     verification_commands: nextIterationSeed.verification_commands,
     next_command: iterationRecordStatus.inspect_command ?? nextIterationSeed.record_command,
     non_goals: buildSuccessorNonGoals(source, contract, ["does not execute the next slice"]),
@@ -566,6 +569,60 @@ function buildNextCoreBasicPlan(
     ]),
     boundary: PLAN_BOUNDARY
   };
+}
+
+function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
+  return [
+    {
+      seed_id: "goal_scope",
+      phase_id: "goal_intake",
+      criterion: "goal_scope: operator goal is restated with owner surface, source of truth, and success evidence",
+      required_entrypoints: ["project-design", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "iterations:"]
+    },
+    {
+      seed_id: "goal_scope",
+      phase_id: "goal_intake",
+      criterion: "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
+      required_entrypoints: ["project-design", "scorecard", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:"]
+    },
+    {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
+      required_entrypoints: ["project-design", "scorecard", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:"]
+    },
+    {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: external adapters remain application slices unless a reusable runtime contract is named",
+      required_entrypoints: ["project-design", "scorecard", "service-health"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "service-health:", "workspace:"]
+    },
+    {
+      seed_id: "verification_scope",
+      phase_id: "verification_review",
+      criterion: "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
+      required_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:", "service-health:", "check:"]
+    },
+    {
+      seed_id: "learning_persistence",
+      phase_id: "learning_persistence",
+      criterion: "learning_persistence: outcome is recorded before reuse",
+      required_entrypoints: ["iterations"],
+      outcome_claim_prefixes: ["iterations:"]
+    },
+    {
+      seed_id: "learning_persistence",
+      phase_id: "learning_persistence",
+      criterion: "learning_persistence: SOP or skill artifacts preserve procedure only; project-design and verified outcomes retain judgment and completion authority",
+      required_entrypoints: ["project-design", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "iterations:"]
+    }
+  ];
 }
 
 function buildGoalScope(

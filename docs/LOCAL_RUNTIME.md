@@ -491,6 +491,9 @@ checks from the same packet.
 It may also include the plan's audit-seed-labeled `acceptance_criteria`, so the
 artifact-scoped entrypoint can inspect the same review target as the full
 project-design view.
+It may include `acceptance_trace`, which maps each acceptance criterion to the
+verification entrypoints and outcome claim prefixes that should support it
+during outcome writeback.
 When a verified artifact belongs to `core_runtime` or `basic_entrypoint`, the
 same output includes a read-only `next_core_basic_plan` with phase gates,
 acceptance criteria, verification commands, non-goals, and a record-iteration
@@ -761,7 +764,9 @@ anti-drift constraints such as keeping one-off adapters out of core identity
 and keeping SOPs/skills behind completion gates stay visible during review. It
 also carries audit-seed-labeled `acceptance_criteria`, so completion review can
 compare claims to the project-design criteria without treating those criteria
-as completion proof. It also carries `non_goals`, so boundaries such as no
+as completion proof. It also carries `acceptance_trace`, so each criterion stays
+connected to required verification entrypoints and outcome claim prefixes
+without becoming completion proof. It also carries `non_goals`, so boundaries such as no
 automatic SOP/skill/memory/dream promotion, no scheduler, and no execution of
 the next slice stay visible while reviewing the outcome. It also carries
 `scorecard_basis`, `selection_status`, `selection_reasons`, and

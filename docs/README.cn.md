@@ -23,6 +23,23 @@
 
 本地 SOP、技能和记忆学习是可用能力，但不是每次运行的主要成功标准。主要标准是 runtime 是否能通过具体核心能力完成并验证工作。
 
+## 能力边界
+
+模型能力是底层智能来源，但模型本身是黑盒，不能只靠“相信模型”保证输出质量。本仓库要交付的是模型外层的工程化能力：用 prompt、context、harness、loop、证据、验证和标准化输出，把模型产出约束成可检查、可复用、可迭代的结果。
+
+当前自迭代按这个顺序判断能力边界：
+
+1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。
+2. 基础操作：读、写、搜索、抓取、执行；交付标准是路径、side effect、timeout、输出上限和证据都有边界。
+3. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
+4. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
+5. 工具扩展层：GitHub CLI、飞书/Lark、browser、内容 adapter 等；交付标准是默认作为应用/adapter slice，只有抽象成可复用 runtime contract 后才进入核心。
+6. 通用 agent 基线：单个 agent 能稳定 plan、act、verify、learn；交付标准是先把这个基座打牢。
+7. 专家 agent：在通用基线上安装特定 skill、prompt、工具和 SOP；交付标准是专家化是能力打包，不是跳过基础能力。
+8. 多 agent 调度：多个专家 agent 的协作编排；交付标准是必须在单 agent、专家打包、 advisory 边界和主线程验证权稳定之后再推进。
+
+参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
+
 ## 核心能力
 
 - `file.read`：读取仓库或状态文件。

@@ -358,6 +358,9 @@ hardening, basic entrypoint verification, deferred local-learning reuse, and
 completion review stay tied together.
 Acceptance criteria use the same audit-seed labels, keeping goal scope, current
 state, verification scope, and learning persistence review aligned.
+The matching `acceptance_trace` maps each criterion to required verification
+entrypoints and outcome claim prefixes, so outcome writeback can stay tied to
+direct evidence without making the trace itself completion proof.
 The basic runtime observability stage may be `attention_guard`; that means it
 must keep service-health attention visible, not that the resident service is
 healthy.

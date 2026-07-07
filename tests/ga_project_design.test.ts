@@ -332,6 +332,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("required entrypoints are covered by completion claims")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("SOP or skill artifacts preserve procedure only")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.length, readModel.next_core_basic_plan?.acceptance_criteria.length);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.every((trace) => readModel.next_core_basic_plan?.acceptance_criteria.includes(trace.criterion)), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.required_entrypoints.includes("check")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.outcome_claim_prefixes.includes("workspace:")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "learning_persistence" && trace.phase_id === "learning_persistence"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /governance record-iteration/);
@@ -407,6 +412,9 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "verification_scope" && seed.reject_if.includes("a required verification entrypoint is omitted from outcome claim coverage")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.length, packet.next_core_basic_plan?.acceptance_criteria.length);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.outcome_claim_prefixes.includes("check:")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("service-health")), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run check"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);

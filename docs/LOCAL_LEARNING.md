@@ -220,7 +220,9 @@ If the latest reusable artifact is core/basic, `project-design` also emits
 `next_core_basic_plan`, an advisory planning packet with phase gates,
 acceptance criteria, verification commands, non-goals, selection readiness, and
 completion-audit seeds. It is not an execution plan, backlog write, SOP draft,
-or completion claim.
+or completion claim. Its `acceptance_trace` can map each criterion to required
+verification entrypoints and outcome claim prefixes, but that trace is review
+guidance only and does not promote SOPs, skills, memory, or dreams.
 Operators can record the layer discipline for a major iteration through
 `governance record-iteration`. The record declares whether the work is
 `core_runtime`, `basic_entrypoint`, `local_learning`, `application_slice`, or

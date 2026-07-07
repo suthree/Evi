@@ -81,7 +81,58 @@ projects. They are not standards or compatibility targets.
 The agent may borrow a pattern only when it strengthens this local contract. A
 reference project never overrides the local first-version boundary.
 
+Current local reference takeaways:
+
+- Hermes demonstrates an end-to-end engineering shell around the model:
+  model-agnostic provider selection, gateway entrypoints, toolsets, skills,
+  memory, cron/webhook triggers, and delivery channels. XingZhe should borrow
+  the closed-loop shape only when the same loop is bounded by local evidence and
+  verification gates.
+- pi demonstrates harness engineering: turn snapshots, explicit phases,
+  queued safe-point mutations, durable session logs, recovery boundaries, and
+  structured observability events. XingZhe should borrow these as standards for
+  output stabilization and runtime control before adding broad tool authority.
+- GenericAgent demonstrates a small general-agent baseline: a minimal loop,
+  atomic tools, and task-derived skills. XingZhe should borrow the progression
+  from minimal general capability to specialized skills, while keeping skill
+  crystallization behind explicit audit and promotion gates.
+
 ## Capability Layers
+
+The model is the base intelligence provider, but it is a black box. This
+runtime cannot guarantee model quality by assertion; it must engineer the
+surrounding loop so model output becomes bounded, inspectable, standardized,
+and efficient enough to trust.
+
+The capability boundary stack is:
+
+1. Model substrate: model reasoning and generation. Delivery standard: every
+   important output is constrained by prompts, context, schemas, checks, or
+   review evidence instead of relying on model confidence alone.
+2. Basic operations: read, write, search, fetch, and execute. Delivery
+   standard: operations are bounded by path policy, side-effect labels,
+   timeouts, output limits, and evidence records.
+3. Agent engineering core: prompt, context, harness, loop, evidence,
+   completion verification, and output-standardization contracts. Delivery
+   standard: the agent can turn an operator goal into standardized actions,
+   claims, verification commands, and reviewable outcomes.
+4. Procedure and protocol layer: SOPs, skills, MCP-style adapters, and other
+   reusable tool protocols. Delivery standard: they improve repeatability and
+   efficiency, but do not override core judgment or completion gates.
+5. Tool extension layer: GitHub CLI, Lark/Feishu, browser tools, content
+   adapters, and similar integrations. Delivery standard: each tool remains an
+   application or adapter slice unless it proves a reusable runtime contract.
+6. General-agent baseline: one local agent can plan, act, verify, and learn
+   through the layers above. Delivery standard: the baseline is stable before
+   expert specialization is treated as durable progress.
+7. Expert-agent specialization: domain agents receive specific skills,
+   prompts, tools, and SOPs after the general baseline is reliable. Delivery
+   standard: specialization is evidence-backed packaging of capabilities, not
+   a substitute for the basic/core substrate.
+8. Multi-agent orchestration: coordination across multiple expert agents.
+   Delivery standard: orchestration is introduced only after single-agent
+   capability, expert packaging, advisory boundaries, and main-thread
+   verification authority are stable.
 
 ### Core Execution
 
@@ -264,11 +315,14 @@ project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
 `audit_guidance` copied from the GA project-design plan: core identity,
 goal scope, iteration focus, capability stage plan, phase gates, acceptance
-criteria, non-goals, scorecard basis, selection status/reasons/checks, layer
-decision, application boundary, learning authority, verification entrypoints,
-and required commands before an outcome is recorded. Iteration focus keeps the
+criteria, acceptance trace, non-goals, scorecard basis, selection
+status/reasons/checks, layer decision, application boundary, learning
+authority, verification entrypoints, and required commands before an outcome is
+recorded. Iteration focus keeps the
 direction, next steps, and anti-drift checks visible; phase gates keep their
 `forbidden_shortcuts`; acceptance criteria keep their audit-seed labels;
+acceptance trace maps those criteria to required verification entrypoints and
+outcome claim prefixes;
 selection evidence keeps source verification, fresh successor, target-layer,
 owner-surface, and scorecard-basis checks visible; and layer decision keeps
 source/selected layer, core-identity reasons, application boundaries, and
@@ -452,6 +506,10 @@ reuse, and completion review stay separate.
 Acceptance criteria must use the same audit-seed labels so review can map each
 criterion to goal scope, current state, verification scope, or learning
 persistence without inference.
+The plan may also expose `acceptance_trace`: one row per acceptance criterion
+with its audit seed, phase, required verification entrypoints, and expected
+outcome claim prefixes. This is traceability guidance for outcome writeback and
+review; it does not execute commands, satisfy claims, or prove completion.
 The basic `runtime_observability` stage may be `attention_guard`; this is a
 guard role that keeps service-health attention visible and must not be treated
 as a healthy service claim.

@@ -336,6 +336,7 @@ interface IterationAuditGuidanceInput {
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
   acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
   non_goals: GaProjectDesignPlanPacket["non_goals"];
   scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
   selection_status: GaProjectDesignPlanPacket["selection_status"];
@@ -784,6 +785,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
   acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
   non_goals: GaProjectDesignPlanPacket["non_goals"];
   scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
   selection_status: GaProjectDesignPlanPacket["selection_status"];
@@ -834,6 +836,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     capability_stage_plan: plan.capability_stage_plan,
     phase_gates: plan.phase_gates,
     acceptance_criteria: plan.acceptance_criteria,
+    acceptance_trace: plan.acceptance_trace,
     non_goals: plan.non_goals,
     scorecard_basis: plan.scorecard_basis,
     selection_status: plan.selection_status,
