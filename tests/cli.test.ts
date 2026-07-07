@@ -750,6 +750,42 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         "verified outcome records evidence refs and completion claims"
       ]
     },
+    capability_stage_plan: {
+      core_capabilities: [
+        {
+          id: "goal_intake",
+          title: "Goal intake",
+          layer: "core_runtime",
+          stage: "active",
+          current_state: "goal scope is explicit",
+          next_iteration: "keep successor goal scope visible in audit",
+          exit_criteria: [
+            "objective and owner surface are visible",
+            "success evidence distinguishes source from successor"
+          ],
+          evidence_refs: ["packages/core/src/ga_project_design.ts"]
+        }
+      ],
+      basic_capabilities: [
+        {
+          id: "runtime_observability",
+          title: "Runtime observability",
+          layer: "basic_entrypoint",
+          stage: "attention_guard",
+          current_state: "service health remains visible",
+          next_iteration: "keep workspace and service health in completion claims",
+          exit_criteria: [
+            "resident health is checked after service-facing changes",
+            "workspace status is covered when dirty"
+          ],
+          evidence_refs: ["packages/core/src/service_health.ts"]
+        }
+      ],
+      next_iteration_plan: [
+        "core_runtime[goal_scope]: preserve goal scope in audit guidance",
+        "basic_entrypoint[runtime_observability]: preserve service health evidence"
+      ]
+    },
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
@@ -796,6 +832,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
   assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
   assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
+  assert.equal(guidance.capability_stage_plan.core_capabilities.some((stage) => stage.id === "goal_intake" && stage.exit_criteria.length === 2), true);
+  assert.equal(guidance.capability_stage_plan.basic_capabilities.some((stage) => stage.id === "runtime_observability" && stage.stage === "attention_guard"), true);
+  assert.equal(guidance.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[goal_scope]:")), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",
