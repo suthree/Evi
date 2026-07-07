@@ -750,6 +750,21 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         "verified outcome records evidence refs and completion claims"
       ]
     },
+    iteration_focus: {
+      direction_id: "core_basic_plan_clarity" as const,
+      direction: "Clarify the next core/basic GA design improvement before implementation.",
+      rationale: "The successor should be chosen from verified GA design evidence.",
+      next_steps: [
+        "inspect the current project-design plan and matching open iteration",
+        "pick one small reusable GA design contract improvement",
+        "verify the slice with project-design, scorecard, iteration audit, service health, and broad checks before recording an outcome"
+      ],
+      anti_drift_checks: [
+        "do not infer core identity from external adapter or MCP pressure",
+        "do not promote SOP, skill, memory, or dream artifacts before verified core/basic reuse evidence exists",
+        "do not claim completion until outcome verification commands cover the required project-design checks"
+      ]
+    },
     capability_stage_plan: {
       core_capabilities: [
         {
@@ -891,6 +906,10 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
   assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
   assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
+  assert.equal(guidance.iteration_focus.direction_id, "core_basic_plan_clarity");
+  assert.equal(guidance.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
+  assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);
+  assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("SOP, skill, memory, or dream artifacts")), true);
   assert.equal(guidance.capability_stage_plan.core_capabilities.some((stage) => stage.id === "goal_intake" && stage.exit_criteria.length === 2), true);
   assert.equal(guidance.capability_stage_plan.basic_capabilities.some((stage) => stage.id === "runtime_observability" && stage.stage === "attention_guard"), true);
   assert.equal(guidance.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[goal_scope]:")), true);

@@ -750,10 +750,13 @@ read-only; it aggregates seed requirements, per-seed evidence status, cited
 evidence, and bounded `audit_guidance` from the GA project-design plan without
 running checks, writing outcomes, or approving completion. The guidance carries
 `goal_scope`, so completion review can see the objective, owner surface, source
-of truth, and success evidence without leaving the audit packet. It carries
-`capability_stage_plan` too, so the same packet shows core/basic capability
-stages, next-iteration direction, and exit criteria as review evidence, not
-completion proof. It also carries `phase_gates` with `forbidden_shortcuts`, so
+of truth, and success evidence without leaving the audit packet. It also
+carries `iteration_focus`, so direction, next steps, and anti-drift checks such
+as resisting external-adapter pressure and premature SOP/skill/memory/dream
+promotion stay visible as review evidence. It carries `capability_stage_plan`
+too, so the same packet shows core/basic capability stages, next-iteration
+direction, and exit criteria as review evidence, not completion proof. It also
+carries `phase_gates` with `forbidden_shortcuts`, so
 anti-drift constraints such as keeping one-off adapters out of core identity
 and keeping SOPs/skills behind completion gates stay visible during review. It
 also carries audit-seed-labeled `acceptance_criteria`, so completion review can
