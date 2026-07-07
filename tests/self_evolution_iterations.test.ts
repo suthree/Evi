@@ -10,6 +10,7 @@ import {
   recordSelfEvolutionIterationOutcome,
   recordSelfEvolutionIteration
 } from "../packages/core/src/self_evolution_iterations.js";
+import { getGaProjectDesignReadModel } from "../packages/core/src/ga_project_design.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("self-evolution iteration contracts record layer declarations without executing work", async () => {
@@ -221,6 +222,47 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(third.reused_existing, false);
     assert.notEqual(third.iteration.id, first.iteration.id);
     assert.equal((await listSelfEvolutionIterations(store)).count, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fresh GA project design bootstrap plan can open the first core iteration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-iteration-bootstrap-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const plan = (await getGaProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
+    assert.ok(plan);
+    assert.equal(plan.source_kind, "fresh_bootstrap");
+
+    const args = {
+      summary: plan.next_iteration_seed.summary,
+      layer: plan.next_iteration_seed.layer,
+      ownerSurface: plan.next_iteration_seed.owner_surface,
+      proposedSlice: plan.next_iteration_seed.proposed_slice,
+      sourceRef: plan.next_iteration_seed.source_ref,
+      implementationContract: plan.implementation_contract,
+      evidenceRefs: plan.next_iteration_seed.evidence_refs,
+      verificationCommands: plan.next_iteration_seed.verification_commands,
+      nonGoals: plan.next_iteration_seed.non_goals,
+      reuseOpen: true
+    };
+    const first = await recordSelfEvolutionIteration(store, args);
+    const second = await recordSelfEvolutionIteration(store, args);
+
+    assert.equal(first.created, true);
+    assert.equal(first.iteration.layer, "core_runtime");
+    assert.equal(first.iteration.owner_surface, "ga_project_design");
+    assert.equal(first.iteration.proposed_slice, "core_ga_design_fresh_bootstrap");
+    assert.equal(first.iteration.source_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(first.iteration.implementation_contract?.source_artifact_id, "ga_design_bootstrap_contract_source");
+    assert.equal(first.iteration.implementation_contract?.source_proposed_slice, "fresh_state_no_verified_iteration");
+    assert.equal(first.iteration.verification_commands.includes("pnpm run runtime -- governance project-design --state-root <state-root>"), true);
+    assert.equal(first.iteration.verification_commands.some((command) => command.includes("--artifact ga_design_bootstrap_contract_source")), false);
+    assert.equal(second.created, false);
+    assert.equal(second.reused_existing, true);
+    assert.equal(second.iteration.id, first.iteration.id);
+    assert.equal((await listSelfEvolutionIterations(store)).count, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

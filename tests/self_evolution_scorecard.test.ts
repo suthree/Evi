@@ -110,6 +110,9 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(scorecard.next_slices[0]?.priority, 1);
     assert.equal(scorecard.next_slices[0]?.dimension_id, "sop_skill_memory_loop");
     assert.notEqual(scorecard.next_slices[0]?.dimension_id, "general_agent_delegation");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.default_next_slice?.id, scorecard.next_core_basic_slice?.id);
+    assert.notEqual(scorecard.default_next_slice?.dimension_id, scorecard.next_slices[0]?.dimension_id);
     assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
     assert.equal(scorecard.next_core_basic_slice?.layer, "core_runtime");
     assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("derived project-design artifact")), true);

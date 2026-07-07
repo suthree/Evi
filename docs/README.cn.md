@@ -160,8 +160,9 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
-scorecard 还会输出 `next_slices`，按阶段、分数和层级给出下一轮有界迭代优先级；
-这只是只读排序，不会写 backlog 或执行推荐。
+scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_slices`：
+默认下一步走 core/basic 出口，`next_slices` 只是按阶段、分数和层级给出的全维度只读排序，
+不会写 backlog 或执行推荐，也不能把 SOP/local-learning 跟进误当成核心能力方向。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`
 只读查看核心 GA 项目设计契约：它把目标 intake、能力分层、契约设计、执行计划、
 验证复核和学习沉淀固定成同一个循环，不会创建项目、执行工具或证明完成。
@@ -191,10 +192,12 @@ plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_comman
 compact GA Project Design Plan context 会按稳定 check 前缀优先级保留这条阈值 check，而不是依赖数组位置；
 也会独立显示 `fresh_successor_slice`，让重复已完成 slice 的风险在 handoff 时可见；
 同时会独立显示 `target_layer` 和 `owner_surface`，避免 application slice 被误认为核心 GA 设计工作；
-`selection_reasons` 会用 `source_artifact_quality=ok|attention` 摘要这些 warning，
-compact context 也会按稳定 reason 前缀优先级保留 `source_status` 和 `source_artifact_quality`；
+`selection_reasons` 会用 `source_kind=verified_artifact|fresh_bootstrap` 和
+`source_artifact_quality=ok|attention` 摘要 source 类型与 warning，
+compact context 也会按稳定 reason 前缀优先级保留 `source_kind`、`source_status`
+和 `source_artifact_quality`；
 但不会把 advisory warning 直接升级成 completion gate；
-`source_truth` 会把 source artifact、source iteration ref、已完成 source slice、目标 successor slice、source status/quality 和 fresh successor 标记合成一行，方便下一轮 handoff 不靠记忆拼证据；它本身不是完成证明；
+`source_truth` 会把 source kind、source artifact、source iteration ref、已完成 source slice、目标 successor slice、source status/quality 和 fresh successor 标记合成一行，方便下一轮 handoff 不靠记忆拼证据；它本身不是完成证明；
 compact context 还可以显示 `verify_commands`，用短摘要保留 project-design artifact、open iteration、service health target 和 broad check 身份，方便 handoff 对齐验证范围；权威覆盖证据仍以 outcome 里的 verification command refs、verification claim coverage 和 iteration audit 为准；
 下一步迭代方案会带 layer 和 audit seed 前缀，避免把 core runtime 强化、basic entrypoint 验证、完成审计和延后的 local learning 复用混在一起；
 验收条件也会带同一套 audit seed 前缀，让 goal scope、current state、verification scope 和 learning persistence 可以直接对应；

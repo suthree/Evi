@@ -541,10 +541,11 @@ It may include plan identity and authority fields such as `schema_version`,
 `action`, `status`, `title`, target ids, `layer`, `owner_surface`, `refs`, and
 `boundary`, so the artifact-scoped plan keeps its versioned read-only advisory
 status visible.
-It may include `source_artifact_id`, `source_iteration_ref`,
+It may include `source_kind`, `source_artifact_id`, `source_iteration_ref`,
 `source_proposed_slice`, `planning_basis`, `next_iteration_seed`, and
-`non_goals`, so source-artifact review can distinguish evidence source from
-fresh successor target.
+`non_goals`, so review can distinguish a verified artifact source from a
+fresh-state bootstrap source and keep that source separate from the successor
+target.
 It may also include `capability_stage_plan`; this does not add execution or
 completion authority.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
@@ -736,9 +737,9 @@ Required policy:
 - `next_core_basic_plan.selection_reasons` must include
   `source_artifact_quality=ok|attention` derived from source artifact warnings,
   without turning advisory warnings into completion gates
-- The compact GA Project Design Plan context must preserve `source_status` and
-  `source_artifact_quality` using stable reason-prefix priority rather than raw
-  array position
+- The compact GA Project Design Plan context must preserve `source_kind`,
+  `source_status`, and `source_artifact_quality` using stable reason-prefix
+  priority rather than raw array position
 - Compact `source_truth` must preserve the source artifact id, source iteration
   ref, completed source slice, target successor slice, source status, source
   quality, and fresh-successor flag in one bounded handoff line; it is source
@@ -845,8 +846,10 @@ Required policy:
 - selected expert delegation plans may format one gate into a review packet,
   but they must remain read-only advisory context
 - scorecard output may guide the next iteration but does not prove completion
-- scorecard `next_slices` are read-only prioritization hints derived from
-  dimension stage, score, and layer; they must not execute or mutate backlog
+- scorecard `default_next_slice` is the default core/basic planning outlet when
+  present; `next_slices` are read-only all-dimension prioritization hints
+  derived from dimension stage, score, and layer, and they must not execute,
+  mutate backlog, or override core/basic direction
 - active dream-backed low-maturity dimensions may enter `governance gaps` as
   proposal-only self-evolution gaps using existing Opportunity Backlog and SOP
   gates; resolved contract gaps must be suppressed by capability presence

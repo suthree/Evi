@@ -46,6 +46,37 @@ test("GA project design contract keeps core project design separate from applica
   assert.match(contract.boundary, /prove completion/);
 });
 
+test("GA project design read model bootstraps the first core/basic plan from empty state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-bootstrap-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const plan = readModel.next_core_basic_plan;
+
+    assert.equal(readModel.artifact_count, 0);
+    assert.equal(readModel.listed_artifact_count, 0);
+    assert.equal(readModel.artifacts.length, 0);
+    assert.ok(plan);
+    assert.equal(plan.source_kind, "fresh_bootstrap");
+    assert.equal(plan.source_artifact_id, "ga_design_bootstrap_contract_source");
+    assert.equal(plan.source_iteration_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(plan.source_proposed_slice, "fresh_state_no_verified_iteration");
+    assert.equal(plan.proposed_slice, "core_ga_design_fresh_bootstrap");
+    assert.equal(plan.next_iteration_seed.proposed_slice, "core_ga_design_fresh_bootstrap");
+    assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(plan.next_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>");
+    assert.equal(plan.selection_reasons.includes("source_kind=fresh_bootstrap"), true);
+    assert.equal(plan.selection_reasons.includes("source_status=bootstrap"), true);
+    assert.equal(plan.selection_checks.some((check) => check.startsWith("source_bootstrap_contract=true")), true);
+    assert.equal(plan.selection_checks.some((check) => check.includes("source_artifact_verified=verified")), false);
+    assert.match(plan.planning_basis, /GA project design contract as bootstrap source/);
+    assert.equal(plan.next_iteration_seed.non_goals.some((nonGoal) => nonGoal.includes("bootstrap source as a verified completed slice")), true);
+    assert.match(plan.boundary, /fresh-state bootstrap source/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GA project design read model derives reusable artifacts from verified iteration outcomes with evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

@@ -56,6 +56,7 @@ export interface SelfEvolutionScorecard {
   summary: string;
   dimensions: SelfEvolutionDimension[];
   expert_lenses: SelfEvolutionExpertLens[];
+  default_next_slice: SelfEvolutionNextSlice | null;
   next_iterations: string[];
   next_slices: SelfEvolutionNextSlice[];
   next_core_basic_slice: SelfEvolutionNextSlice | null;
@@ -204,6 +205,7 @@ export async function getSelfEvolutionScorecard(
   ];
   const nextSlices = buildNextSlices(dimensions);
   const nextCoreBasicSlice = selectNextCoreBasicSlice(nextSlices);
+  const defaultNextSlice = nextCoreBasicSlice ?? nextSlices[0] ?? null;
 
   return {
     schema_version: 1,
@@ -218,6 +220,7 @@ export async function getSelfEvolutionScorecard(
       dreams.map((dream) => dream.ref),
       delegated
     ),
+    default_next_slice: defaultNextSlice,
     next_iterations: [
       firstNextMove(dimensions, "core_ga_design"),
       firstNextMove(dimensions, "sop_skill_memory_loop"),

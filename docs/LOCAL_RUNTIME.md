@@ -439,11 +439,12 @@ The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
 prioritization context only, not completion proof.
-The scorecard also emits read-only `next_slices` ordered by dimension stage,
-score, and layer. They are prioritization hints for the next bounded iteration,
-not backlog writes or execution authority. For core/basic planning, read
-`next_core_basic_slice`; `next_slices` may still surface local-learning follow-up
-work first when SOP, skill, or memory evidence is the lowest-scoring dimension.
+The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
+read-only `next_slices`. `default_next_slice` is the bounded core/basic outlet
+for the next planning handoff. `next_slices` stays ordered by dimension stage,
+score, and layer as all-dimension prioritization context, not backlog writes or
+execution authority; it may still surface local-learning follow-up work first
+when SOP, skill, or memory evidence is the lowest-scoring dimension.
 `governance project-design` is the core GA project design contract. It defines
 the reusable loop for goal intake, capability layering, contract design,
 execution planning, verification review, and learning persistence. It is
@@ -478,10 +479,11 @@ project-design, scorecard, iteration contracts, and current runtime evidence;
 completion authority stays with verified iteration outcomes and completion
 gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert
 advice.
-It may include `source_artifact_id`, `source_iteration_ref`,
+It may include `source_kind`, `source_artifact_id`, `source_iteration_ref`,
 `source_proposed_slice`, `planning_basis`, `next_iteration_seed`, and
-`non_goals`, so artifact review can distinguish the evidence source from the
-fresh successor target.
+`non_goals`, so review can distinguish a verified artifact source from a
+fresh-state bootstrap source and keep that source separate from the successor
+target.
 The same artifact-scoped summary may include `capability_stage_plan`, but it
 remains inspection context only.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
@@ -544,10 +546,10 @@ It surfaces the `target_layer` and `owner_surface` check separately as well, so
 application slices are not mistaken for core GA design work during handoff.
 `selection_reasons` also include
 `source_artifact_quality=ok|attention` as a short advisory summary derived from
-those warnings. The compact context preserves `source_status` and
-`source_artifact_quality` using stable reason-prefix priority rather than raw
-array position. `selection_status` and `selection_reasons` summarize the same
-planning readiness for context handoff. These fields help inspect plan quality;
+those warnings. The compact context preserves `source_kind`, `source_status`,
+and `source_artifact_quality` using stable reason-prefix priority rather than
+raw array position. `selection_status` and `selection_reasons` summarize the
+same planning readiness for context handoff. These fields help inspect plan quality;
 they do not execute verification, block the plan by themselves, or prove
 completion.
 The same packet includes read-only `iteration_focus` with the human-readable

@@ -1478,6 +1478,7 @@ const COMPACT_GA_PLAN_CHECK_PREFIXES = [
 ];
 
 const COMPACT_GA_PLAN_REASON_PREFIXES = [
+  "source_kind=",
   "source_status=",
   "source_artifact_quality="
 ];
@@ -1535,7 +1536,12 @@ export function compactGaPlanSelectionReasons(selectionReasons: string[]): strin
 export function compactGaPlanSourceTruth(
   plan: Pick<GaProjectDesignPlanPacket,
     "source_artifact_id" | "source_iteration_ref" | "source_proposed_slice" | "proposed_slice" | "selection_checks" | "selection_reasons">
+    & { source_kind?: GaProjectDesignPlanPacket["source_kind"] }
 ): string {
+  const sourceKind = plan.source_kind
+    ?? plan.selection_reasons
+      .find((reason) => reason.startsWith("source_kind="))
+      ?.replace("source_kind=", "");
   const sourceStatus = plan.selection_reasons
     .find((reason) => reason.startsWith("source_status="))
     ?.replace("source_status=", "");
@@ -1545,7 +1551,7 @@ export function compactGaPlanSourceTruth(
   const freshSuccessor = plan.selection_checks
     .find((check) => check.startsWith("fresh_successor_slice="))
     ?.match(/^fresh_successor_slice=([^;]+)/)?.[1];
-  return `artifact=${plan.source_artifact_id}; ref=${plan.source_iteration_ref}; source_slice=${plan.source_proposed_slice}; target_slice=${plan.proposed_slice}; status=${sourceStatus ?? "unknown"}; quality=${sourceQuality ?? "unknown"}; fresh_successor=${freshSuccessor ?? "unknown"}`;
+  return `source_kind=${sourceKind ?? "unknown"}; artifact=${plan.source_artifact_id}; ref=${plan.source_iteration_ref}; source_slice=${plan.source_proposed_slice}; target_slice=${plan.proposed_slice}; status=${sourceStatus ?? "unknown"}; quality=${sourceQuality ?? "unknown"}; fresh_successor=${freshSuccessor ?? "unknown"}`;
 }
 
 export function compactGaPlanAcceptanceCriteria(acceptanceCriteria: string[]): string[] {

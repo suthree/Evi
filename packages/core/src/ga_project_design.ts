@@ -57,6 +57,22 @@ export interface GaProjectDesignArtifact {
   boundary: string;
 }
 
+export type GaProjectDesignPlanSourceKind = "verified_artifact" | "fresh_bootstrap";
+
+interface GaProjectDesignPlanSource {
+  kind: GaProjectDesignPlanSourceKind;
+  id: string;
+  source_iteration_ref: string;
+  source_status: "verified" | "bootstrap";
+  layer: CapabilityLayer;
+  owner_surface: string;
+  proposed_slice: string;
+  next_use: string;
+  evidence_refs: string[];
+  verification_commands: string[];
+  non_goals: string[];
+}
+
 export interface GaProjectDesignPlanPhaseGate {
   phase_id: GaProjectDesignPhaseId;
   title: string;
@@ -185,6 +201,7 @@ export interface GaProjectDesignPlanPacket {
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
+  source_kind: GaProjectDesignPlanSourceKind;
   source_artifact_id: string;
   source_iteration_ref: string;
   source_proposed_slice: string;
@@ -235,10 +252,14 @@ const BOUNDARY = "read-only GA project design contract; does not invoke models, 
 const ARTIFACT_BOUNDARY = "read-only derived GA project design artifact; derived from verified self-evolution iteration metadata only; does not write state, promote memory, draft SOPs, promote skills, execute tools, or prove future project completion";
 const ARTIFACT_PACKET_BOUNDARY = "read-only GA project design artifact inspection packet; does not derive new artifacts, record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
 const ITERATION_SEED_BOUNDARY = "read-only GA project design iteration seed; does not record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
-const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from the contract and verified core/basic artifacts only; does not record iterations, execute commands, invoke models, create projects, schedule experts, mutate state, write repo files, or prove completion";
+const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from the contract plus either verified core/basic artifacts or a fresh-state bootstrap source only; does not record iterations, execute commands, invoke models, create projects, schedule experts, mutate state, write repo files, or prove completion";
 const COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX = "does not repeat completed source slice ";
 const MIN_SOURCE_ARTIFACT_EVIDENCE_REFS = 2;
 const MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS = 2;
+const BOOTSTRAP_SOURCE_ID = "ga_design_bootstrap_contract_source";
+const BOOTSTRAP_SOURCE_REF = "docs/RUNTIME_CONTRACT.md";
+const BOOTSTRAP_SOURCE_SLICE = "fresh_state_no_verified_iteration";
+const BOOTSTRAP_PROPOSED_SLICE = "core_ga_design_fresh_bootstrap";
 const NEXT_CORE_GA_DESIGN_TARGET = {
   target_dimension_id: "core_ga_design",
   target_slice_id: "next_slice_core_ga_design",
@@ -495,9 +516,11 @@ function buildNextCoreBasicPlan(
   artifacts: GaProjectDesignArtifact[],
   iterations: SelfEvolutionIterationContract[]
 ): GaProjectDesignPlanPacket | null {
-  const source = artifacts.find((artifact) => isCoreBasicLayer(artifact.layer));
+  const source = selectNextCoreBasicPlanSource(artifacts, iterations);
   if (!source) return null;
-  const proposedSlice = nextCoreGaDesignProposedSlice(source);
+  const proposedSlice = source.kind === "fresh_bootstrap"
+    ? BOOTSTRAP_PROPOSED_SLICE
+    : nextCoreGaDesignProposedSlice(source);
   const nextIterationSeed = buildNextIterationSeed(contract, source, proposedSlice);
   const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed);
   const isFreshSuccessor = proposedSlice !== source.proposed_slice;
@@ -513,7 +536,8 @@ function buildNextCoreBasicPlan(
   ];
   const sourceArtifactQuality = sourceArtifactWarnings.length ? "attention" : "ok";
   const selectionReasons = [
-    `source_status=${source.source_outcome_status}`,
+    `source_kind=${source.kind}`,
+    `source_status=${source.source_status}`,
     `source_artifact_quality=${sourceArtifactQuality}`,
     `fresh_successor_slice=${isFreshSuccessor}`,
     `target_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}`,
@@ -532,10 +556,11 @@ function buildNextCoreBasicPlan(
     layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
     owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
     proposed_slice: proposedSlice,
+    source_kind: source.kind,
     source_artifact_id: source.id,
     source_iteration_ref: source.source_iteration_ref,
     source_proposed_slice: source.proposed_slice,
-    planning_basis: `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`,
+    planning_basis: buildPlanningBasis(source, proposedSlice),
     goal_scope: buildGoalScope(source, proposedSlice),
     implementation_contract: buildImplementationContract(source, proposedSlice),
     iteration_focus: buildIterationFocus(source, proposedSlice),
@@ -549,7 +574,9 @@ function buildNextCoreBasicPlan(
     selection_status: selectionStatus,
     selection_reasons: selectionReasons,
     selection_checks: [
-      `source_artifact_verified=${source.source_outcome_status}; ref=${source.source_iteration_ref}`,
+      source.kind === "verified_artifact"
+        ? `source_artifact_verified=${source.source_status}; ref=${source.source_iteration_ref}`
+        : `source_bootstrap_contract=true; ref=${source.source_iteration_ref}; proposed_slice=${proposedSlice}`,
       `source_artifact_evidence=evidence_refs:${source.evidence_refs.length}; verification_commands:${source.verification_commands.length}`,
       `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}`,
       ...sourceArtifactWarnings,
@@ -586,8 +613,78 @@ function buildNextCoreBasicPlan(
   };
 }
 
+function selectNextCoreBasicPlanSource(
+  artifacts: GaProjectDesignArtifact[],
+  iterations: SelfEvolutionIterationContract[]
+): GaProjectDesignPlanSource | null {
+  const sourceArtifact = artifacts.find((artifact) => isCoreBasicLayer(artifact.layer));
+  if (sourceArtifact) return planSourceFromArtifact(sourceArtifact);
+  if (iterations.length === 0) return buildFreshBootstrapSource();
+  return null;
+}
+
+function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDesignPlanSource {
+  return {
+    kind: "verified_artifact",
+    id: artifact.id,
+    source_iteration_ref: artifact.source_iteration_ref,
+    source_status: artifact.source_outcome_status,
+    layer: artifact.layer,
+    owner_surface: artifact.owner_surface,
+    proposed_slice: artifact.proposed_slice,
+    next_use: artifact.next_use,
+    evidence_refs: artifact.evidence_refs,
+    verification_commands: artifact.verification_commands,
+    non_goals: artifact.non_goals
+  };
+}
+
+function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
+  return {
+    kind: "fresh_bootstrap",
+    id: BOOTSTRAP_SOURCE_ID,
+    source_iteration_ref: BOOTSTRAP_SOURCE_REF,
+    source_status: "bootstrap",
+    layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
+    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    proposed_slice: BOOTSTRAP_SOURCE_SLICE,
+    next_use: "Use the GA project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source.",
+    evidence_refs: [
+      "packages/core/src/ga_project_design.ts",
+      "docs/RUNTIME_CONTRACT.md",
+      "docs/README.cn.md"
+    ],
+    verification_commands: [
+      "pnpm run runtime -- governance project-design --state-root <state-root>",
+      "pnpm run runtime -- governance scorecard --state-root <state-root>",
+      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+      BASIC_RUNTIME_HEALTH_COMMAND,
+      "pnpm run check"
+    ],
+    non_goals: [
+      "does not claim a verified source artifact exists",
+      "does not promote SOPs, skills, memory, dreams, experts, or application adapters",
+      "does not prove bootstrap slice completion without a later verified outcome record"
+    ]
+  };
+}
+
+function buildProjectDesignInspectionCommand(source: GaProjectDesignPlanSource): string {
+  if (source.kind === "verified_artifact") {
+    return `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`;
+  }
+  return "pnpm run runtime -- governance project-design --state-root <state-root>";
+}
+
+function buildPlanningBasis(source: GaProjectDesignPlanSource, proposedSlice: string): string {
+  if (source.kind === "fresh_bootstrap") {
+    return `Use the GA project design contract as bootstrap source, then open ${proposedSlice} as the first core/basic slice. ${source.next_use}`;
+  }
+  return `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`;
+}
+
 function buildImplementationContract(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignImplementationContract {
   return {
@@ -678,7 +775,7 @@ function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
 }
 
 function buildGoalScope(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignGoalScope {
   return {
@@ -687,6 +784,7 @@ function buildGoalScope(
     source_of_truth: [
       "operator_objective=core_basic_self_evolution_first",
       `source_artifact=${source.id}`,
+      `source_kind=${source.kind}`,
       `source_iteration_ref=${source.source_iteration_ref}`,
       `scorecard_target=${NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id}/${NEXT_CORE_GA_DESIGN_TARGET.target_slice_id}`
     ],
@@ -699,13 +797,15 @@ function buildGoalScope(
 }
 
 function buildIterationFocus(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignIterationFocus {
   return {
     direction_id: "core_basic_plan_clarity",
     direction: "Clarify the next core/basic GA design improvement before implementation.",
-    rationale: `The successor ${proposedSlice} should be chosen from verified GA design evidence, while ${source.proposed_slice} remains completed source context only.`,
+    rationale: source.kind === "fresh_bootstrap"
+      ? `The bootstrap successor ${proposedSlice} should be opened from the GA project design contract because no verified source iteration exists yet.`
+      : `The successor ${proposedSlice} should be chosen from verified GA design evidence, while ${source.proposed_slice} remains completed source context only.`,
     next_steps: [
       "inspect the current project-design plan and matching open iteration",
       "pick one small reusable GA design contract improvement",
@@ -720,7 +820,7 @@ function buildIterationFocus(
 }
 
 function buildCapabilityStagePlan(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignCapabilityStagePlan {
   const sharedEvidence = [
@@ -737,7 +837,7 @@ function buildCapabilityStagePlan(
         current_state: "Operator goals are preserved through project-design plans, audit seeds, and iteration outcomes.",
         next_iteration: "Keep the next slice tied to the original objective instead of completed-source convenience.",
         exit_criteria: [
-          "the next slice cites the latest operator objective or a verified source artifact",
+          "the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source",
           "audit seeds reject success criteria that only describe completed source work"
         ],
         evidence_refs: sharedEvidence
@@ -828,7 +928,7 @@ function buildCapabilityStagePlan(
 }
 
 function buildLayerDecision(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string,
   selectionStatus: GaProjectDesignPlanPacket["selection_status"]
 ): GaProjectDesignLayerDecision {
@@ -851,7 +951,7 @@ function buildLayerDecision(
       "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse; expert and multi-agent scheduling follow after the general delegation loop is stable"
     ],
     required_before_outcome: [
-      `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`,
+      buildProjectDesignInspectionCommand(source),
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
       BASIC_RUNTIME_HEALTH_COMMAND,
@@ -902,18 +1002,20 @@ function buildIterationRecordStatus(
 
 function buildNextIterationSeed(
   contract: GaProjectDesignContract,
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignIterationSeed {
   return {
-    summary: `Open next core/basic GA design slice ${proposedSlice} from verified project-design artifact ${source.id}.`,
+    summary: source.kind === "fresh_bootstrap"
+      ? `Open first core/basic GA design bootstrap slice ${proposedSlice} from the GA project design contract.`
+      : `Open next core/basic GA design slice ${proposedSlice} from verified project-design artifact ${source.id}.`,
     layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
     owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
     proposed_slice: proposedSlice,
     source_ref: source.source_iteration_ref,
     evidence_refs: buildSuccessorEvidenceRefs(source),
     verification_commands: [
-      `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`,
+      buildProjectDesignInspectionCommand(source),
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
       BASIC_RUNTIME_HEALTH_COMMAND,
@@ -929,7 +1031,7 @@ function buildNextIterationSeed(
 }
 
 function buildCompletionAuditSeeds(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   proposedSlice: string
 ): GaProjectDesignCompletionAuditSeed[] {
   return [
@@ -1054,19 +1156,21 @@ function hasReusableGaProjectDesignOutcome(iteration: SelfEvolutionIterationCont
 }
 
 function buildSuccessorNonGoals(
-  source: GaProjectDesignArtifact,
+  source: GaProjectDesignPlanSource,
   contract: GaProjectDesignContract,
   tail: string[]
 ): string[] {
   return compactRefs([
     ...dropHistoricalSourceSliceNonGoals(source.non_goals),
     ...contract.non_goals,
-    `${COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX}${source.proposed_slice}`,
+    source.kind === "verified_artifact"
+      ? `${COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX}${source.proposed_slice}`
+      : "does not treat the bootstrap source as a verified completed slice",
     ...tail
   ]);
 }
 
-function buildSuccessorEvidenceRefs(source: GaProjectDesignArtifact): string[] {
+function buildSuccessorEvidenceRefs(source: GaProjectDesignPlanSource): string[] {
   return compactRefs([
     source.source_iteration_ref,
     ...dropHistoricalIterationEvidenceRefs(source.evidence_refs, [source.source_iteration_ref])
@@ -1107,11 +1211,11 @@ function describeReusablePattern(iteration: SelfEvolutionIterationContract): str
   ].join(" ");
 }
 
-function nextCoreGaDesignProposedSlice(source: GaProjectDesignArtifact): string {
+function nextCoreGaDesignProposedSlice(source: GaProjectDesignPlanSource): string {
   return `core_ga_design_next_slice_after_${sourceIterationSuffix(source)}`;
 }
 
-function sourceIterationSuffix(source: GaProjectDesignArtifact): string {
+function sourceIterationSuffix(source: GaProjectDesignPlanSource): string {
   const iterationId = sourceIterationId(source)
     ?? safeIdPart(source.id);
   const parts = iterationId.split("_");
@@ -1119,11 +1223,11 @@ function sourceIterationSuffix(source: GaProjectDesignArtifact): string {
   return iterationId.replace(/^iteration_contract_/, "") || "source";
 }
 
-function sourceIterationFilename(source: GaProjectDesignArtifact): string | null {
+function sourceIterationFilename(source: GaProjectDesignArtifact | GaProjectDesignPlanSource): string | null {
   return source.source_iteration_ref.split("/").at(-1) ?? null;
 }
 
-function sourceIterationId(source: GaProjectDesignArtifact): string | null {
+function sourceIterationId(source: GaProjectDesignArtifact | GaProjectDesignPlanSource): string | null {
   return source.source_iteration_ref.match(/(iteration_contract_[^/.]+)/)?.[1] ?? null;
 }
 

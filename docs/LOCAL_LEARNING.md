@@ -202,11 +202,12 @@ design, basic runtime substrate, general-agent delegation, SOP/skill/memory
 loop, and memory/dream direction. Its review lenses are advisory context, not
 delegated agents, and the command never promotes SOPs, writes skills, invokes
 models, or proves completion.
-The scorecard also emits `next_slices`: read-only, sorted prioritization hints
-derived from dimension stage, score, and layer. They make the next bounded
-iteration explicit without mutating backlog state or executing the slice. For
-core/basic iteration planning, use `next_core_basic_slice` so local-learning SOP
-follow-ups do not accidentally redefine the agent's core capability direction.
+The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
+`next_slices`. `default_next_slice` is the bounded core/basic planning outlet by
+default. `next_slices` stays read-only, all-dimension prioritization context
+derived from dimension stage, score, and layer; it may surface local-learning
+SOP follow-ups first, but those hints must not redefine the agent's core
+capability direction or execute the slice.
 `governance project-design` exposes the core GA project design contract. It
 keeps goal intake, capability layering, contract design, execution planning,
 verification review, and learning persistence as the reusable loop before a
