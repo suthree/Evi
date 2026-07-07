@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { getPipelineRun } from "../packages/core/src/pipeline_history.js";
-import type { PipelineStageRun } from "../packages/core/src/schemas.js";
+import type { EvidenceEvent, PipelineStageRun } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import type { ModelClient, ModelRequest, ModelResponse } from "../packages/runtime/src/model.js";
@@ -17,6 +17,7 @@ test("stage runner reports blocked tool failure kinds to the next model round", 
   const activeVault = join(root, "vault");
   await mkdir(repoRoot, { recursive: true });
   const model = new DisallowedToolThenDoneModel();
+  const store = new AgentStore(repoRoot, stateRoot);
   const runner = new StageRunner({
     repoRoot,
     stateRoot,
@@ -38,6 +39,28 @@ test("stage runner reports blocked tool failure kinds to the next model round", 
     assert.match(secondRequest.input, /"failure_kind": "tool_not_allowed"/);
     assert.match(secondRequest.input, /"tool": "unknown.external"/);
     assert.match(secondRequest.input, /Tool unknown\.external is not allowed in stage tool_check/);
+
+    const pipelineRoot = dirname(result.pipeline_ref);
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${pipelineRoot}/stages/tool_check.json`);
+    assert.ok(stageRun);
+    const events = parseJsonl<EvidenceEvent>(await store.readStateText("memory/episodes/events.jsonl"));
+    const blockedEvent = events.find((event) =>
+      event.kind === "tool_result" && event.summary.includes("Tool unknown.external is not allowed")
+    );
+    assert.ok(blockedEvent);
+    assert.equal(result.evidence_refs.includes(blockedEvent.id), true);
+    assert.equal(stageRun.evidence_refs.includes(blockedEvent.id), true);
+    assert.equal(blockedEvent.artifact_refs.length, 1);
+    const blockedResult = await store.readStateJson<{
+      ok: boolean;
+      tool: string;
+      side_effect_level: string;
+      output: { failure_kind?: string };
+    }>(blockedEvent.artifact_refs[0] ?? "");
+    assert.equal(blockedResult?.ok, false);
+    assert.equal(blockedResult?.tool, "unknown.external");
+    assert.equal(blockedResult?.side_effect_level, "none");
+    assert.equal(blockedResult?.output.failure_kind, "tool_not_allowed");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -157,6 +180,10 @@ class DisallowedToolThenDoneModel implements ModelClient {
       raw: { outputText }
     };
   }
+}
+
+function parseJsonl<T>(text: string): T[] {
+  return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as T);
 }
 
 class BlockingThenResumablePipelineModel implements ModelClient {

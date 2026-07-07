@@ -350,19 +350,21 @@ export class StageRunner {
         toolCallCount += 1;
         const toolName = toolNameFromAction(action);
         if (toolCallCount > args.stage.max_tool_calls) {
-          toolResults.push(blockedToolResult(toolName, `Stage ${args.stage.id} exceeded max_tool_calls=${args.stage.max_tool_calls}.`, "tool_call_limit_exceeded"));
+          const result = blockedToolResult(toolName, `Stage ${args.stage.id} exceeded max_tool_calls=${args.stage.max_tool_calls}.`, "tool_call_limit_exceeded");
+          toolResults.push(result);
+          stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
           continue;
         }
         if (args.stage.allowed_tools.length > 0 && !args.stage.allowed_tools.includes(toolName)) {
-          toolResults.push(blockedToolResult(toolName, `Tool ${toolName} is not allowed in stage ${args.stage.id}.`, "tool_not_allowed"));
+          const result = blockedToolResult(toolName, `Tool ${toolName} is not allowed in stage ${args.stage.id}.`, "tool_not_allowed");
+          toolResults.push(result);
+          stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
           continue;
         }
 
         const result = await executeTool(action, { store: this.store });
         toolResults.push(result);
-        const toolRef = await this.store.writeJson(`${args.root}/tools/${args.artifactKey}-${result.id}.json`, result);
-        const toolEvent = await this.appendStageEvent(args.runId, "tool_result", result.summary, [toolRef]);
-        stageEvidenceRefs.push(toolEvent.id);
+        stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
       }
     }
 
@@ -440,6 +442,12 @@ export class StageRunner {
     });
     await this.store.appendJsonl("memory/episodes/events.jsonl", event);
     return event;
+  }
+
+  private async persistToolResult(args: { runId: string; root: string; artifactKey: string; result: ToolResult }): Promise<string> {
+    const toolRef = await this.store.writeJson(`${args.root}/tools/${args.artifactKey}-${args.result.id}.json`, args.result);
+    const toolEvent = await this.appendStageEvent(args.runId, "tool_result", args.result.summary, [toolRef]);
+    return toolEvent.id;
   }
 
   private async writeTodo(root: string, todo: StageRunnerTodo): Promise<string> {

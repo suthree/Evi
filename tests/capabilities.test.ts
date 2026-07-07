@@ -37,6 +37,7 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(catalog.refs.includes("packages/core/src/ga_project_design.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/expert_orchestration.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/harness_replay.ts"), true);
+  assert.equal(catalog.refs.includes("packages/core/src/pipeline_history.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/self_evolution_gaps.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/workspace_status.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/runtime_sessions.ts"), true);
@@ -71,6 +72,10 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(contentDryRun?.boundaries?.some((boundary) => boundary.includes("feedback-refresh reads the feedback-needed queue")), true);
   assert.equal(contentDryRun?.boundaries?.some((boundary) => boundary.includes("creator-metrics-needed lists posts") && boundary.includes("channel-readiness")), true);
   assert.notEqual(contentDryRun?.layer, "core_runtime");
+  const livePipeline = entrypoints?.capabilities.find((capability) => capability.id === "cli.live.pipeline");
+  assert.equal(livePipeline?.commands?.includes("pnpm run runtime -- pipeline runs --pipeline <ref>"), true);
+  assert.equal(livePipeline?.refs?.includes("packages/core/src/pipeline_history.ts"), true);
+  assert.equal(livePipeline?.boundaries?.some((boundary) => boundary.includes("bounded metadata") && boundary.includes("tool artifacts")), true);
   for (const term of ["Image API", "agent-browser", "xiaohongshu-mcp", "market"]) {
     assert.equal(
       contentDryRun?.summary.includes(term) || contentDryRun?.boundaries?.some((boundary) => boundary.includes(term)),
@@ -182,9 +187,10 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.verification_commands.includes("pnpm run runtime -- review replays --limit 10 --state-root <state-root>"), true);
   assert.equal(audit.gates.some((gate) => gate.verification_commands.includes("pnpm run runtime -- review rehearse-sop-loop")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.evidence_refs.includes("packages/core/src/harness_replay.ts")), true);
+  assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.evidence_refs.includes("packages/core/src/pipeline_history.ts")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.verification_commands.includes("pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.boundaries.some((boundary) => boundary.includes("bounded trace metadata only"))), true);
-  assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.boundaries.some((boundary) => boundary.includes("blocked tool observations expose bounded failure_kind"))), true);
+  assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.boundaries.some((boundary) => boundary.includes("persist bounded tool_result evidence"))), true);
   assert.equal(audit.gates.some((gate) => gate.id === "context_runtime" && gate.boundaries.some((boundary) => boundary.includes("pressure guidance"))), true);
   assert.equal(audit.default_next_slice.id, "basic_entrypoints_operator_check");
   assert.equal(audit.default_next_slice.layer, "basic_entrypoint");

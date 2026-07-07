@@ -857,10 +857,10 @@ externally, mutates repo files, or writes the active vault.
 Pipeline history is exposed through bounded read-only metadata. `pipeline runs`
 and Feishu `/pipeline runs` summarize `pipelines/*/checkpoint.json`, pipeline
 spec refs, stage run refs, failed/blocked stage ids, status counts, query/todo
-refs, stage attempts, evidence counts, and final response refs. They do not
-rerun a pipeline, invoke the model, execute tools, read raw stage output
-Markdown, read query/todo bodies, read prompt/model/tool artifacts, or mutate
-state.
+refs, stage attempts, evidence counts, bounded blocked-tool diagnostic metadata,
+and final response refs. They do not rerun a pipeline, invoke the model, execute
+tools, read raw stage output Markdown, read query/todo bodies, read
+prompt/model/tool artifacts, or mutate state.
 Blocked or failed pipeline runs also appear as `pipeline_run` Opportunity
 Backlog items so the local self-evolution loop can focus staged harness
 failures without opening raw stage artifacts. Those items render both a

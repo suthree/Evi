@@ -1447,7 +1447,8 @@ Common result audit policy:
   `unsupported_tool`
 - StageRunner synthetic blocked tool observations also include
   `output.failure_kind`, such as `tool_not_allowed` or
-  `tool_call_limit_exceeded`, without executing the blocked tool
+  `tool_call_limit_exceeded`, and are persisted as bounded `tool_result`
+  evidence without executing the blocked tool
 - result metadata must make output budgets and truncation visible where output
   can be large
 - command-like tools must expose effective timeout, output cap, cwd boundary,
@@ -1988,7 +1989,7 @@ Required policy:
 - summaries may include run id, pipeline id, task summary, status, verdict,
   pipeline ref, checkpoint ref, stage run refs, stage status counts, failed or
   blocked stage ids, stage attempts, evidence ref counts, final response ref,
-  query/todo refs, and update time
+  query/todo refs, bounded blocked-tool diagnostic metadata, and update time
 - blocked or failed runs may appear as read-only `pipeline_run` items in the
   Opportunity Backlog, with checkpoint/pipeline refs and stage status metadata
   only

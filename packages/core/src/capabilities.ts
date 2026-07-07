@@ -129,6 +129,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/expert_orchestration.ts",
       "packages/core/src/harness_replay.ts",
+      "packages/core/src/pipeline_history.ts",
       "packages/core/src/content_pipeline.ts",
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
@@ -259,6 +260,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "packages/core/src/completion_verification_history.ts",
           "packages/core/src/live_run_trace.ts",
           "packages/core/src/harness_replay.ts",
+          "packages/core/src/pipeline_history.ts",
           "tests/stage_runner.test.ts",
           "tests/completion_verification_history.test.ts",
           "tests/harness_replay.test.ts"
@@ -272,7 +274,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         boundaries: [
           "model proposals do not prove completion",
           "pipeline resume is an explicit CLI gate",
-          "StageRunner blocked tool observations expose bounded failure_kind metadata without executing the blocked tool",
+          "StageRunner blocked tool observations persist bounded tool_result evidence with failure_kind metadata without executing the blocked tool",
           "harness replay audit reads bounded trace metadata only; it does not invoke the model, execute tools, write the repo, or write the active vault"
         ]
       },
@@ -985,9 +987,12 @@ function entrypointsCategory(): CapabilityCategory {
         title: "Live and pipeline runs",
         summary: "Run direct tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
         status: "implemented",
-        commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
-        refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts"],
-        boundaries: ["pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"]
+        commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline runs --pipeline <ref>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
+        refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
+        boundaries: [
+          "pipeline history exposes bounded metadata and evidence counts without reading raw stage output, prompt, model, or tool artifacts",
+          "pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"
+        ]
       },
       {
         id: "web.console",
