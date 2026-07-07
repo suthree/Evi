@@ -573,6 +573,8 @@ Required policy:
 - Compact `audit_evidence` must preserve one evidence-needed item for every
   completion audit seed, so handoff shows what a later outcome must cite
   without replacing the authoritative audit
+- For `current_state`, compact `audit_evidence` should prefer the service-health
+  status/reasons item when service health is a required verification command
 - For `verification_scope`, compact `audit_evidence` should prefer the
   required verification-entrypoint claim-coverage evidence when present
 - Compact `audit_reject` must preserve one reject condition for every

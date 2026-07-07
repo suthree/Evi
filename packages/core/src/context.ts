@@ -1580,6 +1580,11 @@ export function compactGaPlanAuditEvidence(
 function compactGaPlanAuditEvidenceItem(
   seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
 ): string {
+  if (seed.id === "current_state") {
+    return seed.evidence_needed.find((evidence) => evidence.includes("service health is a required verification command"))
+      ?? seed.evidence_needed[0]
+      ?? "unknown";
+  }
   if (seed.id === "verification_scope") {
     return seed.evidence_needed.find((evidence) => evidence.includes("required verification entrypoint"))
       ?? seed.evidence_needed[0]

@@ -611,8 +611,10 @@ Compact context may render `audit_require` with one requirement per seed, so
 handoff keeps the review target visible without executing or approving it.
 It may also render `audit_evidence` with one evidence-needed item per seed, so
 handoff shows what the later outcome must cite without replacing the
-authoritative audit. For `verification_scope`, compact evidence prefers the
-required verification-entrypoint claim-coverage item when present.
+authoritative audit. For `current_state`, compact evidence prefers service
+health status and reasons when service health is a required verification
+command. For `verification_scope`, compact evidence prefers the required
+verification-entrypoint claim-coverage item when present.
 It may also render `audit_reject` with one reject condition per seed, so copied
 success criteria, stale memory, narrow verification, and premature SOP/skill/
 memory/dream promotion remain visible as false-completion cases without
