@@ -1233,8 +1233,8 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   private async renderServiceLogsCommand(limit?: number): Promise<string> {
     const lineLimit = clampLogLimit(limit);
     const homeRoot = this.homeRoot;
-    const stdoutPath = resolve(homeRoot, "logs/im.out.log");
-    const stderrPath = resolve(homeRoot, "logs/im.err.log");
+    const stdoutPath = resolve(homeRoot, "logs/runtime.out.log");
+    const stderrPath = resolve(homeRoot, "logs/runtime.err.log");
     const [stdoutTail, stderrTail] = await Promise.all([
       tailLogFile(stdoutPath, lineLimit),
       tailLogFile(stderrPath, lineLimit)

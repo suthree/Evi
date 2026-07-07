@@ -194,18 +194,17 @@ session-source mappings.
 
 IM channel configuration is provider-neutral at the selector layer. Channel
 records use `kind: "feishu" | "telegram" | "discord"`, and the CLI accepts
-`--provider` for daemon, IM, doctor, and service checks. The runtime currently
+`--provider` for daemon, doctor, and runtime service checks. The runtime currently
 starts Feishu, Telegram, and Discord adapters.
 Provider startability and concrete adapter construction live in
 `packages/runtime/src/im_adapters.ts`; the config loader only resolves the
 provider-neutral scenario.
 The resident heartbeat carries the MessageGateway state and per-channel health
-for operator diagnostics. `service health --target runtime` and
-`service health --target runtime` render the selected target's heartbeat-carried
-gateway summary, but they must not read provider logs, provider secrets, or
-provider SDK state. If an adapter fails during daemon startup, the daemon must
-write an `error` heartbeat with the failed MessageGateway channel before the
-foreground process or resident service exits.
+for operator diagnostics. `service health --target runtime` renders the
+heartbeat-carried gateway summary, but it must not read provider logs, provider
+secrets, or provider SDK state. If an adapter fails during daemon startup, the
+daemon must write an `error` heartbeat with the failed MessageGateway channel
+before the foreground process or resident service exits.
 
 Runtime channel messages use a provider-neutral source envelope before they are
 bound to sessions. The stable source shape is channel kind, configured channel
@@ -2999,7 +2998,7 @@ those reason codes. These follow-ups may name bounded inspect, workspace-status,
 resume, or restart commands, but service health must not execute them or treat
 the guidance as proof that the issue was repaired.
 The CLI `service health` command returns this same read model with
-`action=health` and `target=im|runtime`; it is intentionally separate from
+`action=health` and `target=runtime`; it is intentionally separate from
 `service status`, which may inspect launchd and service log locations.
 Lifecycle command results must include a `health_command` for the same target so
 operator surfaces can guide follow-up bounded health inspection without merging
@@ -3010,8 +3009,8 @@ against repo HEAD, but it inherits the same read-only boundary and
 service-control prohibition. Its inspect and restart guidance should use the
 default service commands without a `--state-root <state-root>` placeholder
 unless an explicit alternate service state root is in scope.
-Service log commands may read only `<LOCAL_RUNTIME_HOME>/logs/im.out.log` and
-`<LOCAL_RUNTIME_HOME>/logs/im.err.log`, tail bounded lines, and accept no
+Service log commands may read only `<LOCAL_RUNTIME_HOME>/logs/runtime.out.log` and
+`<LOCAL_RUNTIME_HOME>/logs/runtime.err.log`, tail bounded lines, and accept no
 operator-provided filesystem path.
 
 Runtime config summary commands may read only `config.jsonl`, `models.jsonl`,

@@ -13,7 +13,7 @@ test("service health derives fresh resident runtime status from local state and 
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 1234,
       channel_id: "feishu-main",
@@ -175,7 +175,7 @@ test("service health marks stale review tick focus as covered by a later manual 
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 1234,
       channel_id: "feishu-main",
@@ -265,7 +265,7 @@ test("service health flags blocked review tick auto-actions", async () => {
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 1234,
       channel_id: "feishu-main",
@@ -321,7 +321,7 @@ test("service health flags resident runtime build that is stale against repo HEA
   try {
     await writeRepoHead(store, "fedcba9876543210fedcba9876543210fedcba98");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 5678,
       channel_id: "feishu-main",
@@ -372,7 +372,7 @@ test("service health includes resident content loop status and flags loop errors
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
@@ -590,7 +590,7 @@ test("service health derives effective daily status from linked published runs",
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
@@ -657,7 +657,7 @@ test("service health flags stale content daily progress while preserving step co
   try {
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
@@ -720,7 +720,7 @@ test("service health flags stale heartbeat and active pause without mutating sta
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 4321,
       updated_at: "2026-06-30T00:00:00.000Z",
@@ -806,7 +806,7 @@ test("service health CLI reads bounded health without service control fields", a
   const logs: string[] = [];
   try {
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 9876,
       channel_id: "feishu-main",
@@ -933,7 +933,7 @@ test("service health CLI defaults to the home-scoped service state root", async 
       JSON.stringify({ type: "state", root: repoStateRoot })
     ].join("\n") + "\n", "utf8");
     await serviceStore.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",

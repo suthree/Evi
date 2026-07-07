@@ -1080,11 +1080,11 @@ macOS it is managed through `launchd` and writes:
 
 ```text
 ~/Library/LaunchAgents/local.runtime.runtime.plist
-<LOCAL_RUNTIME_HOME>/service/im.json
+<LOCAL_RUNTIME_HOME>/service/runtime.json
 <LOCAL_RUNTIME_HOME>/service/runtime/current/
 <LOCAL_RUNTIME_HOME>/service/runtime/current/build.json
-<LOCAL_RUNTIME_HOME>/logs/im.out.log
-<LOCAL_RUNTIME_HOME>/logs/im.err.log
+<LOCAL_RUNTIME_HOME>/logs/runtime.out.log
+<LOCAL_RUNTIME_HOME>/logs/runtime.err.log
 <state_root>/services/runtime/heartbeat.json
 <state_root>/services/runtime/review_tick.json
 <state_root>/autonomy/runs/pause_signal.json
@@ -1613,9 +1613,9 @@ Opportunity Backlog can expose an inspect -> restart_service -> record_decision
 recovery chain. That chain is operator guidance only; the backlog and Feishu
 governance views do not restart the service.
 The `/logs [lines]` and `/service logs [lines]` commands are bounded
-diagnostics over `<LOCAL_RUNTIME_HOME>/logs/im.out.log` and
-`<LOCAL_RUNTIME_HOME>/logs/im.err.log`; they accept no operator-provided filesystem
-path.
+diagnostics over `<LOCAL_RUNTIME_HOME>/logs/runtime.out.log` and
+`<LOCAL_RUNTIME_HOME>/logs/runtime.err.log`; they accept no operator-provided
+filesystem path.
 
 Normal private-chat messages from the same `open_id` are serialized by the
 local adapter. If a second normal task arrives while that sender already has an

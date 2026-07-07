@@ -121,7 +121,7 @@ test("governance status aggregates memory, review, service, and pause read model
       executed_at: "2026-06-30T00:02:00.000Z"
     }));
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
@@ -304,7 +304,7 @@ test("governance status explains idle opportunity backlog with next resident che
     await store.ensureLayout();
     await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
     await store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",

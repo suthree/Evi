@@ -289,7 +289,8 @@ pnpm run runtime -- service health --target runtime
 pnpm run runtime -- service logs --target runtime --limit 40
 ```
 
-兼容的 Feishu-only `im` target 仍可用：
+Feishu 仍作为 runtime 内的 channel adapter 运行，服务 target 只保留
+`runtime`：
 
 ```bash
 pnpm run runtime -- service status --target runtime

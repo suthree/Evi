@@ -577,7 +577,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       boundary: "bounded iteration contract only"
     });
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       repo_root: fixture.repoRoot,

@@ -290,7 +290,7 @@ test("service status combines launchd status and heartbeat", async () => {
       JSON.stringify({ type: "active_scenario", scenario_id: "im-default" })
     ].join("\n") + "\n", "utf8");
     await writeFile(join(stateRoot, "services/runtime/heartbeat.json"), `${JSON.stringify({
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 777,
       repo_root: repoRoot,

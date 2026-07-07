@@ -1827,7 +1827,7 @@ test("opportunity backlog surfaces service health attention and decision state",
   try {
     await writeRepoHead(fixture.store, "fedcba9876543210fedcba9876543210fedcba98");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
@@ -1923,7 +1923,7 @@ test("opportunity backlog surfaces resident content loop health attention", asyn
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 3579,
       channel_id: "feishu-main",
@@ -1968,7 +1968,7 @@ test("opportunity backlog surfaces stale resident daily step recovery", async ()
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 4680,
       channel_id: "feishu-main",

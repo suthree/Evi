@@ -657,7 +657,7 @@ test("operator status command replies from local state without running the agent
   const fixture = await createFixture();
   try {
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 1234,
       channel_id: "feishu-main",
@@ -1267,12 +1267,12 @@ test("operator service logs command reads bounded local log tails without runnin
   const homeRoot = join(fixture.stateRoot, "..", "home");
   try {
     await mkdir(join(homeRoot, "logs"), { recursive: true });
-    await writeFile(join(homeRoot, "logs/im.out.log"), [
+    await writeFile(join(homeRoot, "logs/runtime.out.log"), [
       "old stdout line should not appear",
       "recent stdout one",
       "recent stdout two"
     ].join("\n"));
-    await writeFile(join(homeRoot, "logs/im.err.log"), [
+    await writeFile(join(homeRoot, "logs/runtime.err.log"), [
       "old stderr line should not appear",
       "recent stderr one",
       "recent stderr two"
@@ -1362,7 +1362,7 @@ test("operator health command replies with bounded service health without runnin
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 4321,
       channel_id: "feishu-main",
@@ -1611,7 +1611,7 @@ test("operator governance command replies with aggregate state without running t
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 5678,
       channel_id: "feishu-main",
@@ -1968,7 +1968,7 @@ test("operator opportunities command renders stale daily step service recovery",
   try {
     await writeRepoHead(fixture.store, "abcdef0123456789abcdef0123456789abcdef01");
     await fixture.store.writeJson("services/runtime/heartbeat.json", {
-      service: "im",
+      service: "runtime",
       state: "running",
       pid: 2468,
       channel_id: "feishu-main",
