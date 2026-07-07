@@ -332,6 +332,13 @@ const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from
 const COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX = "does not repeat completed source slice ";
 const MIN_SOURCE_ARTIFACT_EVIDENCE_REFS = 2;
 const MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS = 2;
+const SOURCE_COMPLETION_NEXT_MOVE_PATTERNS = [
+  /\bcommit\b.*\b(after this slice|slice|implementation|outcome|health|runtime|repo|file)\b/i,
+  /\brestart(?: resident)? runtime\b.*\b(onto commit|after this slice|post-commit)\b/i,
+  /\brerun service health\b.*\b(after|post-commit|restart|outcome|commit)\b/i,
+  /\bpost-commit\b.*\b(health|outcome refs?|service health|restart|merge)\b/i,
+  /\bmerge .*?\b(health refs?|outcome refs?|post-commit health|service health)\b/i
+];
 const BOOTSTRAP_SOURCE_ID = "ga_design_bootstrap_contract_source";
 const BOOTSTRAP_SOURCE_REF = "docs/RUNTIME_CONTRACT.md";
 const BOOTSTRAP_SOURCE_SLICE = "fresh_state_no_verified_iteration";
@@ -1384,6 +1391,7 @@ export function deriveGaProjectDesignArtifacts(
     .filter(hasReusableGaProjectDesignOutcome)
     .map((iteration) => {
       const outcome = iteration.outcome!;
+      const sourceNextMoves = sourcePlanningNextMoves(outcome.next_moves);
       return {
         id: `ga_design_artifact_${safeIdPart(iteration.id)}`,
         title: `Reusable GA project design: ${iteration.proposed_slice}`,
@@ -1399,8 +1407,8 @@ export function deriveGaProjectDesignArtifacts(
           ...iteration.verification_commands,
           ...outcome.verification_commands
         ]),
-        next_use: outcome.next_moves[0] ?? "Use this artifact when planning a similar bounded GA project slice.",
-        source_next_moves: compactRefs(outcome.next_moves),
+        next_use: sourceNextMoves[0] ?? defaultSourcePlanningNextMove(),
+        source_next_moves: sourceNextMoves,
         non_goals: compactRefs([
           ...dropHistoricalSourceSliceNonGoals(iteration.non_goals),
           "does not prove future GA project completion",
@@ -1409,6 +1417,17 @@ export function deriveGaProjectDesignArtifacts(
         boundary: ARTIFACT_BOUNDARY
       };
     });
+}
+
+function sourcePlanningNextMoves(nextMoves: string[]): string[] {
+  const filtered = nextMoves.filter((move) =>
+    !SOURCE_COMPLETION_NEXT_MOVE_PATTERNS.some((pattern) => pattern.test(move))
+  );
+  return compactRefs(filtered.length > 0 ? filtered : [defaultSourcePlanningNextMove()]);
+}
+
+function defaultSourcePlanningNextMove(): string {
+  return "Use this verified artifact as evidence for a fresh bounded core/basic successor slice without repeating the completed source slice.";
 }
 
 function hasReusableGaProjectDesignOutcome(iteration: SelfEvolutionIterationContract): boolean {

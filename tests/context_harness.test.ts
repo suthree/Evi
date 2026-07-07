@@ -1287,6 +1287,7 @@ test("context bundle includes bounded GA project design plan", async () => {
         evidence_refs: ["tests/context_harness.test.ts"],
         verification_commands: ["pnpm run check"],
         next_moves: [
+          "Commit and restart runtime after this slice.",
           "Use the artifact as a bounded core/basic planning packet; treat iteration_contract_context_stale as separate governance cleanup.",
           "Continue context source candidate without treating stale cleanup as completion proof.",
           "Keep source next move candidates visible in context."
@@ -1370,6 +1371,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /layer: core_runtime; owner: ga_project_design; slice: core_ga_design_next_slice_after_context_plan/);
     assert.match(rendered.markdown, /source_truth: source_kind=verified_artifact; artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; source_slice=context_ga_project_design_plan; target_slice=core_ga_design_next_slice_after_context_plan; status=verified; quality=attention; fresh_successor=true/);
     assert.match(rendered.markdown, /source_continuation: source=core_runtime\/ga_project_design; completed=context_ga_project_design_plan; contract=core_runtime\/ga_project_design\/context_ga_project_design_plan; candidates=3; candidate=Continue context source candidate/);
+    assert.doesNotMatch(rendered.markdown, /Commit and restart runtime/);
     assert.match(rendered.markdown, /goal_scope: objective=Continue self-evolution through core\/basic GA project-design capability gains before SOP, skill, memory, or dream promotion\.; owner=ga_project_design; source=operator_objective=core_basic_self_evolution_first\|source_artifact=ga_design_artifact_iteration_contract_context_plan; success=fresh_successor_slice=true; source_slice=context_ga_project_design_plan; target_slice=core_ga_design_next_slice_after_context_plan/);
     assert.match(rendered.markdown, /implementation_contract: type=reusable_ga_design_contract; scope=change one reusable GA project-design contract or read-model surface; defer=no external adapter or tool integration unless it names a reusable runtime contract; deliver=future iterations can inspect the contract without inferring intent from the opaque slice id/);
     assert.match(rendered.markdown, /planning_basis: Use ga_design_artifact_iteration_contract_context_plan as evidence, then choose a new core\/basic slice instead of repeating completed slice context_ga_project_design_plan\./);

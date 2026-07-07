@@ -700,7 +700,8 @@ test("GA project design plan carries source continuation from basic iterations",
         next_moves: [
           "Commit and restart runtime after this slice.",
           "Tighten basic runtime substrate before expanding SOP/skill/memory/dream layers.",
-          "Keep manual iteration audit coverage explicit."
+          "Keep manual iteration audit coverage explicit.",
+          "Design restart runtime observability as a basic runtime contract."
         ],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
@@ -715,24 +716,93 @@ test("GA project design plan carries source continuation from basic iterations",
 
     assert.equal(readModel.artifacts[0]?.source_implementation_contract?.proposed_slice, "runtime_state_boundary_for_basic_tools");
     assert.deepEqual(readModel.artifacts[0]?.source_next_moves, [
-      "Commit and restart runtime after this slice.",
       "Tighten basic runtime substrate before expanding SOP/skill/memory/dream layers.",
-      "Keep manual iteration audit coverage explicit."
+      "Keep manual iteration audit coverage explicit.",
+      "Design restart runtime observability as a basic runtime contract."
     ]);
+    assert.doesNotMatch(readModel.artifacts[0]?.next_use ?? "", /Commit and restart runtime/);
     assert.equal(plan?.source_continuation.source_layer, "basic_entrypoint");
     assert.equal(plan?.source_continuation.source_owner_surface, "runtime_tools");
     assert.equal(plan?.source_continuation.source_proposed_slice, "runtime_state_boundary_for_basic_tools");
     assert.equal(plan?.source_continuation.source_contract?.selected_layer, "basic_entrypoint");
     assert.equal(plan?.source_continuation.source_contract?.owner_surface, "runtime_tools");
     assert.equal(plan?.source_continuation.source_next_moves.length, 3);
-    assert.match(plan?.source_continuation.source_next_moves[1] ?? "", /basic runtime substrate/);
+    assert.match(plan?.source_continuation.source_next_moves[0] ?? "", /basic runtime substrate/);
+    assert.match(plan?.source_continuation.source_next_moves[2] ?? "", /restart runtime observability/);
     assert.equal(plan?.source_continuation.carry_forward.includes("source=basic_entrypoint/runtime_tools"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_contract=runtime_state_boundary_for_basic_tools"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_next_move_candidates=3"), true);
-    assert.match(plan?.source_continuation.next_use ?? "", /restart runtime/);
+    assert.match(plan?.source_continuation.next_use ?? "", /basic runtime substrate/);
+    assert.doesNotMatch(plan?.planning_basis ?? "", /Commit and restart runtime/);
     assert.match(plan?.source_continuation.boundary ?? "", /read-only source-continuation/);
     assert.equal(plan?.layer_decision.source_layer, "basic_entrypoint");
     assert.equal(plan?.layer_decision.selected_layer, "core_runtime");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("GA project design source next moves fall back when source outcome only has completion actions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-completion-source-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const iteration: SelfEvolutionIterationContract = {
+      schema_version: 1,
+      id: "iteration_contract_completion_only_source",
+      ref: "self-evolution/iterations/iteration_contract_completion_only_source.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified GA design slice with only completion housekeeping next moves.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "completion_only_source_next_moves",
+      implementation_contract: {
+        proposed_slice: "completion_only_source_next_moves",
+        source_artifact_id: "manual_record_iteration",
+        source_proposed_slice: "manual_record_iteration",
+        selected_layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        improvement_type: "reusable_ga_design_contract",
+        implementation_scope: ["change one reusable GA project-design read-model rule"],
+        deferred_scope: ["no external adapters"],
+        delivery_standard: ["successor planning cannot repeat completed source housekeeping"],
+        boundary: "manual implementation contract"
+      },
+      evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
+      verification_commands: ["node --import tsx --test tests/ga_project_design.test.ts"],
+      non_goals: ["does not rewrite original outcome next_moves"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "GA design source next move fallback passed.",
+        evidence_refs: ["tests/ga_project_design.test.ts"],
+        verification_commands: ["node --import tsx --test tests/ga_project_design.test.ts"],
+        next_moves: [
+          "Commit this slice implementation.",
+          "Restart resident runtime onto commit abc123.",
+          "Rerun service health after restart.",
+          "Merge post-commit health refs into outcome refs."
+        ],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    };
+    await store.writeJson(iteration.ref, iteration);
+
+    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const plan = readModel.next_core_basic_plan;
+    const fallback = "Use this verified artifact as evidence for a fresh bounded core/basic successor slice without repeating the completed source slice.";
+
+    assert.deepEqual(readModel.artifacts[0]?.source_next_moves, [fallback]);
+    assert.equal(readModel.artifacts[0]?.next_use, fallback);
+    assert.deepEqual(plan?.source_continuation.source_next_moves, [fallback]);
+    assert.equal(plan?.source_continuation.next_use, fallback);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source_next_move_candidates=1"), true);
+    assert.match(plan?.planning_basis ?? "", /fresh bounded core\/basic successor slice/);
+    assert.doesNotMatch(plan?.planning_basis ?? "", /Commit this slice implementation/);
+    assert.doesNotMatch(plan?.planning_basis ?? "", /Restart resident runtime/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
