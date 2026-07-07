@@ -1021,7 +1021,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /Local runtime contract/);
     assert.match(bundle, /Authoritative query/);
     assert.match(bundle, /Service Runtime/);
-    assert.match(bundle, /service_health: attention/);
+    assert.match(bundle, /service_health: attention reasons=heartbeat_stale,deployment_stale followups=status,restart/);
     assert.match(bundle, /im_state: running/);
     assert.match(bundle, /heartbeat_freshness: stale/);
     assert.match(bundle, /review_tick: ok next=2026-06-30T00:30:02\.500Z inbox=2\/2 why=completed=1,executed=1/);

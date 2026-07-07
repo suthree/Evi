@@ -1360,7 +1360,9 @@ The Service Runtime context section is bounded read-only orientation from
 `.git/HEAD` and refs. It may include IM state, pid, channel, scenario,
 heartbeat update time, copied-runtime build metadata carried by the heartbeat
 (runtime commit, branch, dirty flag, and build time), repo HEAD commit/branch,
-and whether the resident build is current, stale, or unknown against repo HEAD.
+whether the resident build is current, stale, or unknown against repo HEAD,
+service-health reason codes, and bounded read-only follow-up guidance derived
+from those reasons.
 It must not read `LOCAL_RUNTIME_HOME/service/runtime/current/build.json`, run `git`,
 run shell commands, call `launchctl`, restart services, invoke the model
 recursively, mutate state, read source file bodies, or treat the comparison as

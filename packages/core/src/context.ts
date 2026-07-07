@@ -460,9 +460,18 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
   const feedbackRefreshSkip = health.content_feedback_refresh.last_top_skip_reason
     ? ` skip=${health.content_feedback_refresh.last_top_skip_reason}:${health.content_feedback_refresh.last_skipped_count ?? "unknown"}`
     : "";
+  const healthStatus = health.status_reasons.length > 0
+    ? `${health.status} reasons=${health.status_reasons.join(",")}`
+    : health.status;
+  const followups = health.attention_followups
+    .slice(0, 4)
+    .map((followup) => compactServiceHealthFollowupCommand(followup.command));
+  const serviceHealthSummary = followups.length > 0
+    ? `${healthStatus} followups=${followups.join(",")}`
+    : healthStatus;
   const lines = [
     "Read-only service runtime health.",
-    `- service_health: ${health.status}`,
+    `- service_health: ${serviceHealthSummary}`,
     `- im_state: ${health.im.state}`,
     `- pid: ${health.im.pid ?? "unknown"}`,
     `- channel: ${health.im.channel_id ?? "unknown"}`,
@@ -471,7 +480,6 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
     `- heartbeat_age_ms: ${health.im.heartbeat_age_ms ?? "unknown"}`,
     `- heartbeat_updated_at: ${health.im.heartbeat_updated_at ?? "unknown"}`,
     `- deployment_status: ${deployment.status}`,
-    `- deployment_reason: ${deployment.reason}`,
     `- repo_commit: ${deployment.repo_commit_short ?? "unknown"}`,
     `- repo_branch: ${deployment.repo_branch ?? "unknown"}`,
     `- review_tick: ${health.review_tick.state}${reviewTickNext}${reviewTickInbox}`,
@@ -509,6 +517,16 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
     refs: health.refs,
     item_count: health.refs.length
   };
+}
+
+function compactServiceHealthFollowupCommand(command: string | undefined): string {
+  if (!command) return "inspect";
+  if (command.includes("service status")) return "status";
+  if (command.includes("service restart")) return "restart";
+  if (command.includes("workspace status")) return "workspace";
+  if (command.includes("resume-autonomy")) return "resume";
+  if (command.includes("service health")) return "health";
+  return truncate(command, 80);
 }
 
 async function workspaceStatusSection(store: AgentStore): Promise<ContextSection> {

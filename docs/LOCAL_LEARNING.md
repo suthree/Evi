@@ -403,9 +403,10 @@ attempts, and updates the checkpoint for later context.
 Live context also includes a bounded read-only `Service Runtime` section when
 the resident IM heartbeat exists. It summarizes only the heartbeat state and the
 copied-runtime build metadata already carried by
-`services/im/heartbeat.json`. This is runtime orientation for the model; it does
-not restart services, read copied-runtime files, run shell commands, or prove
-that current repo edits have been deployed.
+`services/im/heartbeat.json`, plus service-health reason codes and read-only
+follow-up guidance when runtime attention exists. This is runtime orientation
+for the model; it does not restart services, read copied-runtime files, run
+shell commands, or prove that current repo edits have been deployed.
 
 Live context also includes a bounded read-only `Runtime Config` section when
 the runner has an effective config summary. It mirrors the non-secret CLI
