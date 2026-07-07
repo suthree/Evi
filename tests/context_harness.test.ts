@@ -14,6 +14,7 @@ import {
   compactGaPlanAuditRejects,
   compactGaPlanEvidenceRefs,
   compactGaPlanGoalScope,
+  compactGaPlanGovernanceCleanup,
   compactGaPlanLayerGuard,
   compactGaPlanNonGoals,
   compactGaPlanPhaseForbids,
@@ -480,6 +481,33 @@ test("compact GA plan review gate names open iteration blockers", () => {
       boundary: "read-only test status"
     }
   }), null);
+});
+
+test("compact GA plan governance cleanup names stale open iterations", () => {
+  assert.equal(compactGaPlanGovernanceCleanup({
+    governance_cleanup: {
+      superseded_open_iterations: [],
+      boundary: "read-only test cleanup"
+    }
+  }), null);
+  assert.equal(compactGaPlanGovernanceCleanup({
+    governance_cleanup: {
+      superseded_open_iterations: [
+        {
+          id: "iteration_contract_stale",
+          ref: "self-evolution/iterations/iteration_contract_stale.json",
+          proposed_slice: "stale_previous_slice",
+          created_at: "2026-06-30T00:00:00Z",
+          superseded_by_ref: "self-evolution/iterations/iteration_contract_source.json",
+          suggested_outcome_status: "partial",
+          reason: "Open GA iteration predates the verified source.",
+          inspect_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_stale --state-root <state-root>",
+          boundary: "read-only test cleanup item"
+        }
+      ],
+      boundary: "read-only test cleanup"
+    }
+  }), "superseded_open_iterations=1; iteration_contract_stale:partial");
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1206,11 +1234,47 @@ test("context bundle includes bounded GA project design plan", async () => {
         summary: "Context can use this verified core iteration as a GA design planning artifact.",
         evidence_refs: ["tests/context_harness.test.ts"],
         verification_commands: ["pnpm run check"],
-        next_moves: ["Use the artifact as a bounded core/basic planning packet."],
+        next_moves: ["Use the artifact as a bounded core/basic planning packet; treat iteration_contract_context_stale as separate governance cleanup."],
         recorded_at: "2026-06-30T00:00:01.800Z",
         boundary: "bounded outcome record"
       },
       created_at: "2026-06-30T00:00:01.700Z",
+      boundary: "bounded iteration contract only"
+    });
+    await fixture.store.writeJson("self-evolution/iterations/iteration_contract_context_stale.json", {
+      schema_version: 1,
+      id: "iteration_contract_context_stale",
+      ref: "self-evolution/iterations/iteration_contract_context_stale.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Older open GA iteration should stay context cleanup only.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "core_ga_design_next_slice_after_context_stale",
+      source_ref: "self-evolution/iterations/iteration_contract_previous.json",
+      evidence_refs: ["self-evolution/iterations/iteration_contract_previous.json"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["Do not prove completion."],
+      advisory_expert_roles: ["architect", "verification_reviewer", "orchestration_planner"],
+      created_at: "2026-06-30T00:00:01.600Z",
+      boundary: "bounded iteration contract only"
+    });
+    await fixture.store.writeJson("self-evolution/iterations/iteration_contract_context_unrelated.json", {
+      schema_version: 1,
+      id: "iteration_contract_context_unrelated",
+      ref: "self-evolution/iterations/iteration_contract_context_unrelated.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Older unrelated GA iteration should not become cleanup.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "core_ga_design_next_slice_after_context_unrelated",
+      source_ref: "self-evolution/iterations/iteration_contract_unrelated.json",
+      evidence_refs: ["self-evolution/iterations/iteration_contract_unrelated.json"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["Do not prove completion."],
+      advisory_expert_roles: ["architect", "verification_reviewer", "orchestration_planner"],
+      created_at: "2026-06-30T00:00:01.500Z",
       boundary: "bounded iteration contract only"
     });
     await fixture.store.writeJson("self-evolution/iterations/iteration_contract_context_open.json", {
@@ -1260,6 +1324,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
+    assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
     assert.match(rendered.markdown, /layer_decision: recurring_ga_project_design; external tools and adapters stay application slices unless a reusable runtime contract is named; SOP, skill, memory, and dream promotion follows only after core\/basic evidence supports reuse; expert and multi-agent scheduling follow after the general delegation loop is stable/);
@@ -1289,6 +1354,8 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.equal(section?.refs.includes("packages/core/src/ga_project_design.ts"), true);
     assert.equal(section?.refs.includes("self-evolution/iterations/iteration_contract_context_plan.json"), true);
     assert.equal(section?.refs.includes("self-evolution/iterations/iteration_contract_context_open.json"), true);
+    assert.equal(section?.refs.includes("self-evolution/iterations/iteration_contract_context_stale.json"), false);
+    assert.equal(section?.refs.includes("self-evolution/iterations/iteration_contract_context_unrelated.json"), false);
   } finally {
     await fixture.cleanup();
   }

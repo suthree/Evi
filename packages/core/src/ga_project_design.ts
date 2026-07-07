@@ -177,6 +177,24 @@ export interface GaProjectDesignIterationRecordStatus {
   boundary: string;
 }
 
+export interface GaProjectDesignGovernanceCleanupItem {
+  id: string;
+  ref: string;
+  proposed_slice: string;
+  source_ref?: string;
+  created_at: string;
+  superseded_by_ref: string;
+  suggested_outcome_status: "partial";
+  reason: string;
+  inspect_command: string;
+  boundary: string;
+}
+
+export interface GaProjectDesignGovernanceCleanup {
+  superseded_open_iterations: GaProjectDesignGovernanceCleanupItem[];
+  boundary: string;
+}
+
 export interface GaProjectDesignIterationSeed {
   summary: string;
   layer: CapabilityLayer;
@@ -217,6 +235,7 @@ export interface GaProjectDesignPlanPacket {
   layer_decision: GaProjectDesignLayerDecision;
   learning_authority: GaProjectDesignLearningAuthority;
   iteration_record_status: GaProjectDesignIterationRecordStatus;
+  governance_cleanup: GaProjectDesignGovernanceCleanup;
   next_iteration_seed: GaProjectDesignIterationSeed;
   phase_gates: GaProjectDesignPlanPhaseGate[];
   completion_audit_seeds: GaProjectDesignCompletionAuditSeed[];
@@ -523,6 +542,7 @@ function buildNextCoreBasicPlan(
     : nextCoreGaDesignProposedSlice(source);
   const nextIterationSeed = buildNextIterationSeed(contract, source, proposedSlice);
   const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed);
+  const governanceCleanup = buildGovernanceCleanup(iterations, source);
   const isFreshSuccessor = proposedSlice !== source.proposed_slice;
   const isTargetLayerReady = isCoreBasicLayer(NEXT_CORE_GA_DESIGN_TARGET.layer);
   const selectionStatus = isFreshSuccessor && isTargetLayerReady ? "ready" : "needs_attention";
@@ -583,11 +603,13 @@ function buildNextCoreBasicPlan(
       `fresh_successor_slice=${isFreshSuccessor}; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
       `target_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}; owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
       `iteration_record_status=${iterationRecordStatus.status}${iterationRecordStatus.ref ? `; ref=${iterationRecordStatus.ref}` : ""}`,
+      `governance_cleanup_superseded_open_iterations=${governanceCleanup.superseded_open_iterations.length}`,
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     layer_decision: buildLayerDecision(source, proposedSlice, selectionStatus),
     learning_authority: buildLearningAuthority(),
     iteration_record_status: iterationRecordStatus,
+    governance_cleanup: governanceCleanup,
     next_iteration_seed: nextIterationSeed,
     phase_gates: contract.phases.map((phase) => ({
       phase_id: phase.id,
@@ -997,6 +1019,68 @@ function buildIterationRecordStatus(
     status: "not_recorded",
     record_command: seed.record_command,
     boundary: "read-only GA project design iteration record status; no matching open iteration was found; does not write state or prove completion"
+  };
+}
+
+function buildGovernanceCleanup(
+  iterations: SelfEvolutionIterationContract[],
+  source: GaProjectDesignPlanSource
+): GaProjectDesignGovernanceCleanup {
+  const sourceIteration = iterations.find((iteration) => iteration.ref === source.source_iteration_ref);
+  const superseded = sourceIteration
+    ? iterations
+      .filter((iteration) => isSupersededOpenGaIteration(iteration, sourceIteration, source))
+      .map((iteration) => buildGovernanceCleanupItem(iteration, sourceIteration))
+    : [];
+  return {
+    superseded_open_iterations: superseded.slice(0, 5),
+    boundary: "read-only GA project-design governance cleanup summary; lists open GA iterations already superseded by a newer verified core/basic source artifact; does not record outcomes, mutate state, or prove cleanup completion"
+  };
+}
+
+function isSupersededOpenGaIteration(
+  candidate: SelfEvolutionIterationContract,
+  sourceIteration: SelfEvolutionIterationContract,
+  source: GaProjectDesignPlanSource
+): boolean {
+  return !candidate.outcome
+    && candidate.layer === "core_runtime"
+    && candidate.owner_surface === "ga_project_design"
+    && isCoreGaSuccessorSlice(candidate.proposed_slice)
+    && candidate.created_at < sourceIteration.created_at
+    && sourceMentionsCleanupCandidate(source, candidate);
+}
+
+function isCoreGaSuccessorSlice(proposedSlice: string): boolean {
+  return proposedSlice.startsWith("core_ga_design_next_slice_after_");
+}
+
+function sourceMentionsCleanupCandidate(
+  source: GaProjectDesignPlanSource,
+  candidate: SelfEvolutionIterationContract
+): boolean {
+  const sourceText = [
+    source.next_use,
+    ...source.evidence_refs
+  ].join("\n");
+  return sourceText.includes(candidate.id) || sourceText.includes(candidate.ref);
+}
+
+function buildGovernanceCleanupItem(
+  iteration: SelfEvolutionIterationContract,
+  sourceIteration: SelfEvolutionIterationContract
+): GaProjectDesignGovernanceCleanupItem {
+  return {
+    id: iteration.id,
+    ref: iteration.ref,
+    proposed_slice: iteration.proposed_slice,
+    ...(iteration.source_ref ? { source_ref: iteration.source_ref } : {}),
+    created_at: iteration.created_at,
+    superseded_by_ref: sourceIteration.ref,
+    suggested_outcome_status: "partial",
+    reason: `Open GA iteration ${iteration.id} predates verified source ${sourceIteration.id}; keep it as governance cleanup instead of treating it as the active successor blocker.`,
+    inspect_command: `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`,
+    boundary: "read-only superseded open iteration cleanup item; suggests partial outcome review but does not write state or verify the stale slice"
   };
 }
 

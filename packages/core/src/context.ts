@@ -1689,6 +1689,14 @@ export function compactGaPlanRuntimeObservabilityGuard(
   return `stage=${capability.stage}; current=${capability.current_state}; next=${capability.next_iteration}; exit=${capability.exit_criteria[1] ?? capability.exit_criteria[0] ?? "unknown"}`;
 }
 
+export function compactGaPlanGovernanceCleanup(
+  plan: Pick<GaProjectDesignPlanPacket, "governance_cleanup">
+): string | null {
+  const items = plan.governance_cleanup.superseded_open_iterations;
+  if (items.length === 0) return null;
+  return `superseded_open_iterations=${items.length}; ${items.map((item) => `${item.id}:${item.suggested_outcome_status}`).join(",")}`;
+}
+
 export function compactGaPlanPhaseForbids(
   plan: Pick<GaProjectDesignPlanPacket, "phase_gates">
 ): string {
@@ -1785,6 +1793,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactAuditRejects = compactGaPlanAuditRejects(plan);
   const compactStageExitCriteria = compactGaPlanStageExitCriteria(plan);
   const runtimeObservabilityGuard = compactGaPlanRuntimeObservabilityGuard(plan);
+  const governanceCleanup = compactGaPlanGovernanceCleanup(plan);
   const compactPhaseForbids = compactGaPlanPhaseForbids(plan);
   const reviewGate = compactGaPlanReviewGate(plan);
   const compactVerificationCommands = compactGaPlanVerificationCommands(plan);
@@ -1809,6 +1818,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       ...(runtimeObservabilityGuard ? [`runtime_guard: ${runtimeObservabilityGuard}`] : []),
       `stage_exit: ${compactStageExitCriteria}`,
       `stage_next: ${plan.capability_stage_plan.next_iteration_plan.slice(0, 2).join(" | ")}`,
+      ...(governanceCleanup ? [`governance_cleanup: ${governanceCleanup}`] : []),
       `phase_forbid: ${compactPhaseForbids}`,
       `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
       `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries.slice(0, 2).join("; ")}`,

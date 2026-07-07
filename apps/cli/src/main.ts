@@ -1082,6 +1082,15 @@ function bindGaProjectDesignPlanCommands<T extends Partial<GaProjectDesignPlanPa
     iteration_record_status: plan.iteration_record_status
       ? bindIterationRecordStatus(plan.iteration_record_status, stateRoot)
       : plan.iteration_record_status,
+    governance_cleanup: plan.governance_cleanup
+      ? {
+        ...plan.governance_cleanup,
+        superseded_open_iterations: plan.governance_cleanup.superseded_open_iterations.map((item) => ({
+          ...item,
+          inspect_command: bindStateRoot(item.inspect_command, stateRoot)
+        }))
+      }
+      : plan.governance_cleanup,
     next_iteration_seed: plan.next_iteration_seed
       ? {
         ...plan.next_iteration_seed,
