@@ -163,6 +163,9 @@ scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基�
 scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_slices`：
 默认下一步走 core/basic 出口，`next_slices` 只是按阶段、分数和层级给出的全维度只读排序，
 不会写 backlog 或执行推荐，也不能把 SOP/local-learning 跟进误当成核心能力方向。
+`pnpm run runtime -- capabilities acceptance` 和飞书 `/capabilities acceptance`
+同样会把默认下一步固定在 core/basic 或基础入口检查上；应用层、外部适配器和 local-learning
+只作为 follow-up slices 展示。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`
 只读查看核心 GA 项目设计契约：它把目标 intake、能力分层、契约设计、执行计划、
 验证复核和学习沉淀固定成同一个循环，不会创建项目、执行工具或证明完成。

@@ -1135,6 +1135,9 @@ test("operator capability acceptance command replies with next-version gates wit
     assert.match(fullText, /Core execution \(ready, layer: core_runtime\)/);
     assert.match(fullText, /SOP self-evolution/);
     assert.match(fullText, /SOP self-evolution \(ready, layer: local_learning\)/);
+    assert.match(fullText, /Default next slice/);
+    assert.match(fullText, /basic_entrypoints_operator_check \| layer: basic_entrypoint/);
+    assert.match(fullText, /Follow-up slices/);
     assert.match(fullText, /active_exploration_publish_plan \| layer: application_slice/);
     assert.doesNotMatch(fullText, /active_exploration_publish_plan \| layer: core_runtime/);
     assert.match(fullText, /pnpm run check/);

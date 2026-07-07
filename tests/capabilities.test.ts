@@ -172,26 +172,38 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.verification_commands.includes("pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "agent_harness" && gate.boundaries.some((boundary) => boundary.includes("bounded trace metadata only"))), true);
   assert.equal(audit.gates.some((gate) => gate.id === "context_runtime" && gate.boundaries.some((boundary) => boundary.includes("pressure guidance"))), true);
+  assert.equal(audit.default_next_slice.id, "basic_entrypoints_operator_check");
+  assert.equal(audit.default_next_slice.layer, "basic_entrypoint");
+  assert.equal(audit.default_next_slice.refs.includes("docs/ACTIVE_EXPLORATION.md"), false);
+  assert.equal(audit.next_slices[0]?.id, audit.default_next_slice.id);
+  assert.equal(audit.next_slices[0]?.layer, "basic_entrypoint");
+  assert.equal(audit.next_slices.length, 1);
+  assert.equal(audit.next_slices.every((slice) => slice.layer === "core_runtime" || slice.layer === "basic_entrypoint"), true);
+  assert.equal(audit.next_slices.some((slice) => slice.layer === "application_slice" || slice.layer === "local_learning"), false);
+  assert.equal(audit.follow_up_slices.every((slice) => slice.id !== audit.default_next_slice.id), true);
+  assert.equal(audit.follow_up_slices.some((slice) => slice.id === "active_exploration_publish_plan"), true);
+  assert.equal(audit.follow_up_slices.some((slice) => slice.id === "self_evolution_gap_intake"), true);
   assert.equal(audit.next_slices.some((slice) => slice.id === "real_sop_loop_rehearsal"), false);
   assert.equal(audit.next_slices.some((slice) => slice.id === "context_pressure_action_gate"), false);
   assert.equal(audit.next_slices.some((slice) => slice.id === "harness_replay_acceptance"), false);
-  assert.equal(audit.next_slices.some((slice) => slice.id === "active_exploration_publish_plan"), true);
-  assert.equal(audit.next_slices.some((slice) => slice.id === "self_evolution_gap_intake"), true);
+  assert.equal(audit.next_slices.some((slice) => slice.id === "active_exploration_publish_plan"), false);
+  assert.equal(audit.next_slices.some((slice) => slice.id === "self_evolution_gap_intake"), false);
   assert.equal(audit.next_slices.every((slice) => typeof slice.layer === "string"), true);
-  assert.equal(audit.next_slices
+  assert.equal(audit.follow_up_slices.every((slice) => typeof slice.layer === "string"), true);
+  assert.equal(audit.follow_up_slices
     .filter((slice) => slice.id.startsWith("active_exploration_"))
     .every((slice) => slice.layer === "application_slice"), true);
-  assert.equal(audit.next_slices.find((slice) => slice.id === "self_evolution_gap_intake")?.layer, "local_learning");
+  assert.equal(audit.follow_up_slices.find((slice) => slice.id === "self_evolution_gap_intake")?.layer, "local_learning");
   assert.equal(audit.next_slices.some((slice) => slice.layer === "core_runtime" && slice.refs.includes("docs/ACTIVE_EXPLORATION.md")), false);
-  assert.equal(audit.next_slices.some((slice) =>
+  assert.equal(audit.follow_up_slices.some((slice) =>
     slice.id === "self_evolution_gap_intake"
     && slice.refs.includes("packages/core/src/self_evolution_gaps.ts")
     && slice.success_criteria.some((criterion) => criterion.includes("Opportunity Backlog"))
   ), true);
-  assert.equal(audit.next_slices.some((slice) =>
+  assert.equal(audit.follow_up_slices.some((slice) =>
     slice.refs.includes("docs/ACTIVE_EXPLORATION.md")
   ), true);
-  assert.equal(audit.next_slices.every((slice) =>
+  assert.equal([...audit.next_slices, ...audit.follow_up_slices].every((slice) =>
     slice.success_criteria.length > 0 && slice.refs.length > 0
   ), true);
   assert.equal(audit.boundary.includes("read-only acceptance read model"), true);

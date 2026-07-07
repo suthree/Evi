@@ -277,7 +277,11 @@ acceptance audit. Feishu mirrors it through `/capabilities acceptance` and
 `/capabilities audit`. The audit is a repo-owned checklist over current core
 execution, entrypoints, harness, context runtime, service posture, and SOP
 self-evolution evidence. It lists verification commands and next feature
-slices for operators, but it does not run those commands.
+slices for operators, but it does not run those commands. Its
+`default_next_slice` must stay on the core/basic path. Application slices and
+local-learning items may remain visible as `follow_up_slices`, but default
+consumers must not treat external adapters, publishing work, or SOP growth as
+the core capability direction.
 
 The CLI also exposes `governance scorecard` as a read-only self-evolution
 maturity view. It tracks current core GA design, basic runtime substrate,
@@ -883,8 +887,9 @@ Required policy:
 - the audit groups acceptance evidence by core execution, basic entrypoints,
   agent harness, context runtime, and SOP self-evolution
 - each gate lists source refs, verification commands, and boundaries
-- the audit may list next candidate slices, but those slices are planning
-  guidance only
+- the audit lists one `default_next_slice` for the next core/basic handoff and
+  keeps application or local-learning work in `follow_up_slices`
+- next and follow-up slices are planning guidance only
 - CLI `capabilities acceptance` and Feishu `/capabilities acceptance` render
   the same acceptance baseline
 

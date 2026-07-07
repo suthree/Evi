@@ -1134,9 +1134,11 @@ write the repo, write the active vault, or manage services. Use CLI
 Operators can inspect the next-version acceptance baseline with CLI
 `capabilities acceptance` or Feishu `/capabilities acceptance`. The acceptance
 read model lists current gates, evidence refs, verification commands, and the
-next candidate slices. It is guidance only: it does not run tests, invoke the
-model, inspect secrets, execute shell commands, restart services, mutate state,
-write the repo, or write the active vault.
+default next core/basic slice before follow-up candidate slices. Application
+and local-learning items may appear as follow-up guidance, but they are not the
+default next capability direction. It is guidance only: it does not run tests,
+invoke the model, inspect secrets, execute shell commands, restart services,
+mutate state, write the repo, or write the active vault.
 
 Live context may also render a bounded `Live Run Trace` section for recent
 live harness runs. It summarizes completion report refs, context refs, event

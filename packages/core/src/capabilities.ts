@@ -80,7 +80,9 @@ export interface CapabilityAcceptanceAudit {
   summary: string;
   gates: CapabilityAcceptanceGate[];
   verification_commands: string[];
+  default_next_slice: CapabilityNextSlice;
   next_slices: CapabilityNextSlice[];
+  follow_up_slices: CapabilityNextSlice[];
   refs: string[];
   boundary: string;
 }
@@ -150,7 +152,30 @@ export function getCapabilityCatalog(): CapabilityCatalog {
 }
 
 export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
-  return {
+  const defaultNextSlice: CapabilityNextSlice = {
+    id: "basic_entrypoints_operator_check",
+    title: "Basic entrypoints operator check",
+    layer: "basic_entrypoint",
+    reason: "Basic entrypoints are the acceptance gate still requiring operator check, so CLI, Feishu, web, and service health should be hardened before application or local-learning follow-ups are treated as the default next step.",
+    success_criteria: [
+      "CLI capabilities acceptance exposes the basic-entrypoint default before follow-up slices",
+      "Feishu /capabilities acceptance renders the same default and separates follow-up slices",
+      "service health, web console, CLI, and Feishu refs stay visible as basic entrypoint evidence",
+      "application and local-learning items remain visible only as follow-up slices"
+    ],
+    refs: [
+      "apps/cli/src/main.ts",
+      "packages/core/src/capabilities.ts",
+      "packages/runtime/src/channels/feishu/adapter.ts",
+      "packages/runtime/src/web_console.ts",
+      "docs/RUNTIME_CONTRACT.md",
+      "docs/LOCAL_RUNTIME.md",
+      "tests/capabilities.test.ts",
+      "tests/feishu_adapter.test.ts"
+    ]
+  };
+
+  const audit: Omit<CapabilityAcceptanceAudit, "next_slices"> = {
     schema_version: 1,
     audit_id: "local_runtime_next_version_capability_acceptance",
     audit_version: "2026-07-06",
@@ -318,7 +343,8 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>",
       "pnpm run runtime -- review replays --limit 10 --state-root <state-root>"
     ],
-    next_slices: [
+    default_next_slice: defaultNextSlice,
+    follow_up_slices: [
       {
         id: "active_exploration_publish_plan",
         title: "Active exploration to publish plan",
@@ -432,6 +458,10 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "packages/core/src/capabilities.ts"
     ],
     boundary: "read-only acceptance read model; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
+  };
+  return {
+    ...audit,
+    next_slices: [audit.default_next_slice]
   };
 }
 
