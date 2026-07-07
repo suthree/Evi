@@ -198,10 +198,10 @@ export async function getSelfEvolutionScorecard(
       score: delegated && expertContract?.delegation_gates.length && expertPlanSurface ? 5 : delegated && expertContract?.delegation_gates.length ? 4 : delegated && expertContract ? 3 : delegated ? 2 : 1,
       summary: expertContract
         ? expertContract.delegation_gates.length && expertPlanSurface
-          ? "Delegation vocabulary, expert orchestration contract, explicit delegation gates, and a selectable advisory plan surface exist; scheduling remains advisory and completion stays with main-thread verification."
+          ? "Delegation vocabulary, expert orchestration contract, explicit delegation gates, and a selectable advisory plan surface exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
           : expertContract.delegation_gates.length
-            ? "Delegation vocabulary, expert orchestration contract, and explicit delegation gates exist; scheduling remains advisory and completion stays with main-thread verification."
-          : "Delegation vocabulary and an expert orchestration contract exist; scheduling remains advisory and completion stays with main-thread verification."
+            ? "Delegation vocabulary, expert orchestration contract, and explicit delegation gates exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
+          : "Delegation vocabulary and an expert orchestration contract exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
         : "The runtime has delegation vocabulary, but expert scheduling should remain advisory until contracts and main-thread verification are stronger.",
       evidence_refs: compactRefs([
         "packages/core/src/action_contracts.ts",
@@ -210,7 +210,7 @@ export async function getSelfEvolutionScorecard(
       ]),
       next_moves: expertContract
         ? [
-          "Use the expert contract to decide when delegated critique is worth the prompt budget.",
+          "Defer expert scheduling until core/basic and learning-persistence gates are stable.",
           "Keep main-thread verification as the only completion authority."
         ]
         : [
@@ -227,7 +227,7 @@ export async function getSelfEvolutionScorecard(
     action: "scorecard",
     created_at: utcNow(),
     status: "evolving",
-    summary: "Self-evolution is judged by durable core/basic capability growth, SOP-to-skill persistence, memory/dream continuity, and bounded progress toward multi-expert orchestration.",
+    summary: "Self-evolution is judged by durable core/basic capability growth, SOP-to-skill persistence, memory/dream continuity, and bounded readiness for future multi-expert orchestration.",
     dimensions,
     expert_lenses: buildExpertLenses(
       dimensions,
@@ -311,6 +311,9 @@ function layerPriority(layer: CapabilityLayer | "cross_layer"): number {
 }
 
 function nextSliceReason(dimension: SelfEvolutionDimension): string {
+  if (dimension.id === "multi_expert_orchestration") {
+    return "Multi-expert orchestration is an advisory future scheduling layer; defer execution until core/basic and learning-persistence gates are stable.";
+  }
   if (dimension.stage === "attention") {
     return `${dimension.title} is attention-stage; resolve observable runtime or learning pressure before expanding authority.`;
   }

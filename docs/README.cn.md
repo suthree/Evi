@@ -74,6 +74,7 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 用于保持核心 GA 设计、基础 runtime、SOP/skill/memory、dream 和未来多专家编排的方向一致。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、SOP/skill/memory、dream 和多专家调度方向的当前成熟度。
+scorecard 可以显示 multi-expert orchestration contract 已 active，但它的 next-slice reason 仍必须把执行调度延后到 core/basic 和 learning-persistence gate 稳定之后；
 scorecard 还会输出 `next_slices`，按阶段、分数和层级给出下一轮有界迭代优先级；
 这只是只读排序，不会写 backlog 或执行推荐。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`

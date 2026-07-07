@@ -150,6 +150,9 @@ maturity view. It tracks current core GA design, basic runtime substrate,
 SOP/skill/memory loop, memory/dream direction, and multi-expert
 orchestration readiness from local metadata. Its expert lenses are advisory
 context only and cannot close work or grant execution authority.
+The scorecard may show an active multi-expert orchestration contract, but its
+next-slice reason must keep execution deferred until core/basic and
+learning-persistence gates are stable.
 `governance experts` exposes the corresponding read-only expert orchestration
 contract. It defines advisory expert roles, scheduling boundaries, and
 main-thread verification authority; it does not invoke models, spawn agents,

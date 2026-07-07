@@ -427,6 +427,9 @@ contracts, SOP evolution ledger, and Opportunity Backlog. The expert lenses are
 advisory only; the command does not invoke models, execute tools, mutate state,
 promote SOPs, promote skills, restart services, write the repository, or write
 the active vault.
+The scorecard can report an active multi-expert orchestration contract, but its
+next-slice reason keeps execution deferred until core/basic and
+learning-persistence gates are stable.
 The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
