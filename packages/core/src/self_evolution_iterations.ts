@@ -196,20 +196,24 @@ export async function recordSelfEvolutionIterationOutcome(
     verificationCommands?: string[];
     verificationClaims?: string[];
     nextMoves?: string[];
+    mergeExisting?: boolean;
   }
 ): Promise<SelfEvolutionIterationOutcomeRecordResult> {
   const summary = args.summary.trim();
   if (!summary) throw new Error("self-evolution iteration outcome summary is required");
   const detail = await getSelfEvolutionIteration(store, { iterationRef: args.iterationRef });
+  const existing = args.mergeExisting ? detail.iteration.outcome : undefined;
   const outcome: SelfEvolutionIterationOutcome = {
     status: args.status,
     summary,
-    evidence_refs: compact(args.evidenceRefs ?? []),
-    verification_commands: compact(args.verificationCommands ?? []),
-    verification_claims: compact(args.verificationClaims ?? []),
-    next_moves: compact(args.nextMoves ?? []),
+    evidence_refs: compact([...(existing?.evidence_refs ?? []), ...(args.evidenceRefs ?? [])]),
+    verification_commands: compact([...(existing?.verification_commands ?? []), ...(args.verificationCommands ?? [])]),
+    verification_claims: compact([...(existing?.verification_claims ?? []), ...(args.verificationClaims ?? [])]),
+    next_moves: compact([...(existing?.next_moves ?? []), ...(args.nextMoves ?? [])]),
     recorded_at: utcNow(),
-    boundary: OUTCOME_BOUNDARY
+    boundary: args.mergeExisting
+      ? `${OUTCOME_BOUNDARY}; merged existing outcome evidence refs, verification commands, verification claims, and next moves before adding supplied values`
+      : OUTCOME_BOUNDARY
   };
   const iteration = { ...detail.iteration, outcome };
   await store.writeJson(iteration.ref, iteration);

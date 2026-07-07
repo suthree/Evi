@@ -178,6 +178,11 @@ current state root,
 record-iteration and record-iteration-outcome response packets bind their
 `inspect_command` to that root so the returned inspection command is directly
 executable.
+By default, `record-iteration-outcome` replaces the existing outcome. Use
+`--merge-existing-outcome` only for explicit evidence repair, where the new
+status and summary replace the old status and summary but existing outcome
+evidence refs, verification commands, verification claims, and next moves are
+preserved and de-duplicated before new values are added.
 When `governance iterations --iteration <id>` inspects one concrete iteration,
 the CLI may add `runtime_verification_commands` by binding the current state
 root and iteration id into the stored verification command templates. This is
@@ -207,8 +212,9 @@ the GA project-design plan `refs` and the audited iteration/source/outcome refs;
 missing refs are diagnostics, not completion proof. When refs are missing,
 `required_outcome_evidence_refs` repeats the refs that must be added as outcome
 evidence before the completion gate can clear. Because
-`record-iteration-outcome` replaces the outcome, the operator must preserve the
-existing outcome fields while adding those refs.
+`record-iteration-outcome` replaces the outcome by default, the operator should
+use `--merge-existing-outcome` or manually preserve existing outcome fields
+while adding those refs.
 Its top-level `refs` list should cite the same audited surfaces: iteration ref,
 source ref, iteration evidence refs, outcome evidence refs, and plan refs.
 `verification_command_coverage` compares selected required commands with

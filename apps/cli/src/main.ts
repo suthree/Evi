@@ -303,6 +303,7 @@ interface CliOptions {
   iterationVerificationClaims: string[];
   iterationNonGoals: string[];
   iterationOutcomeStatus?: SelfEvolutionIterationOutcomeStatus;
+  iterationMergeExistingOutcome?: boolean;
   iterationNextMoves: string[];
   inboxItemRef?: string;
   inboxStatus?: "active" | "all" | "open" | "confirmation_requested" | "executed";
@@ -488,7 +489,7 @@ export function buildIterationAuditPlanRefCoverage(
     missing_refs: missingRefs,
     required_outcome_evidence_refs: missingRefs,
     repair_note: missingRefs.length
-      ? "record-iteration-outcome replaces the outcome; preserve existing outcome fields and add these refs as outcome evidence before rerunning the audit"
+      ? "record-iteration-outcome replaces the outcome by default; use --merge-existing-outcome or preserve existing outcome fields while adding these refs as outcome evidence before rerunning the audit"
       : "no plan ref repair required",
     boundary: "read-only plan ref coverage diagnostic; compares GA project-design plan refs with the audited iteration refs and outcome refs; does not read file bodies or prove completion"
   };
@@ -1897,7 +1898,8 @@ export async function main(): Promise<number> {
         evidenceRefs: options.iterationEvidenceRefs,
         verificationCommands: options.iterationVerificationCommands,
         verificationClaims: options.iterationVerificationClaims,
-        nextMoves: options.iterationNextMoves
+        nextMoves: options.iterationNextMoves,
+        mergeExisting: options.iterationMergeExistingOutcome
       });
       console.log(JSON.stringify(bindIterationRecordResultCommand(result, config.state.root), null, 2));
       return 0;
@@ -2447,6 +2449,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--verification-claim") options.iterationVerificationClaims.push(required(rest[++index], "--verification-claim requires a value"));
     else if (arg === "--non-goal") options.iterationNonGoals.push(required(rest[++index], "--non-goal requires a value"));
     else if (arg === "--outcome-status") options.iterationOutcomeStatus = parseIterationOutcomeStatus(required(rest[++index], "--outcome-status requires a value"));
+    else if (arg === "--merge-existing-outcome" && options.command === "governance" && options.governanceAction === "record-iteration-outcome") options.iterationMergeExistingOutcome = true;
     else if (arg === "--next-move") options.iterationNextMoves.push(required(rest[++index], "--next-move requires a value"));
     else if (arg === "--correction-source-ref") options.correctionSourceRef = required(rest[++index], "--correction-source-ref requires a value");
     else if (arg === "--evidence-ref" && options.command === "governance" && (options.governanceAction === "record-iteration" || options.governanceAction === "record-iteration-outcome")) options.iterationEvidenceRefs.push(required(rest[++index], "--evidence-ref requires a value"));
@@ -2893,7 +2896,7 @@ function printUsage(): void {
   pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact ga_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
-  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
+  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root .runtime/state]
   pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--state-root .runtime/state]
   pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." [--state-root .runtime/state]

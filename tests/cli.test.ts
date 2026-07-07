@@ -300,7 +300,7 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.equal(missing.covered_ref_count, 1);
   assert.deepEqual(missing.missing_refs, ["docs/RUNTIME_CONTRACT.md"]);
   assert.deepEqual(missing.required_outcome_evidence_refs, ["docs/RUNTIME_CONTRACT.md"]);
-  assert.match(missing.repair_note, /preserve existing outcome fields/);
+  assert.match(missing.repair_note, /--merge-existing-outcome/);
 });
 
 test("iteration audit refs include source and outcome evidence refs", () => {
@@ -1447,6 +1447,7 @@ test("governance status command parses scoped status options", () => {
     "verified",
     "--summary",
     "Verified the bounded core iteration.",
+    "--merge-existing-outcome",
     "--evidence-ref",
     "tests/self_evolution_iterations.test.ts",
     "--verification-command",
@@ -1463,6 +1464,7 @@ test("governance status command parses scoped status options", () => {
   assert.equal(iterationOutcome.iterationRef, "iteration_contract_1");
   assert.equal(iterationOutcome.iterationOutcomeStatus, "verified");
   assert.equal(iterationOutcome.iterationSummary, "Verified the bounded core iteration.");
+  assert.equal(iterationOutcome.iterationMergeExistingOutcome, true);
   assert.deepEqual(iterationOutcome.iterationEvidenceRefs, ["tests/self_evolution_iterations.test.ts"]);
   assert.deepEqual(iterationOutcome.iterationVerificationCommands, ["pnpm run check"]);
   assert.deepEqual(iterationOutcome.iterationVerificationClaims, ["check: full repo checks pass before outcome recording"]);

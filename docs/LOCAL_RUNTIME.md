@@ -666,6 +666,10 @@ invoke models, mutate repo files, write the active vault, manage services,
 promote SOPs, promote skills, or prove completion beyond cited evidence. With the current
 state root, both record commands return an `inspect_command` that already binds
 that root and can be run directly.
+By default, `record-iteration-outcome` replaces the existing outcome. Use
+`--merge-existing-outcome` for explicit repair writes that should keep existing
+evidence refs, verification commands, verification claims, and next moves while
+adding new list values; status and summary still come from the current command.
 When you inspect one concrete iteration with `governance iterations --iteration
 <id>`, the CLI also adds `runtime_verification_commands`. Those commands bind
 the current state root and iteration id for the local run, while the stored
@@ -691,8 +695,9 @@ It also includes `plan_ref_coverage`, which compares GA project-design plan refs
 against the audited iteration, source, and outcome refs; it is a diagnostic and
 does not read file bodies or prove completion. If refs are missing,
 `required_outcome_evidence_refs` lists the refs to add to outcome evidence.
-`record-iteration-outcome` replaces the outcome, so keep existing outcome
-evidence, commands, claims, and next moves when adding those refs.
+`record-iteration-outcome` replaces the outcome by default, so use
+`--merge-existing-outcome` or keep existing outcome evidence, commands, claims,
+and next moves when adding those refs.
 The packet's top-level `refs` list uses the same audited surfaces, including
 source and outcome evidence refs, so the cited evidence list is not narrower
 than the coverage diagnostic.

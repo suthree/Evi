@@ -95,6 +95,62 @@ test("self-evolution iteration contracts select advisory roles by layer", async 
   }
 });
 
+test("self-evolution iteration outcome can merge existing evidence lists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-iteration-merge-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const recorded = await recordSelfEvolutionIteration(store, {
+      summary: "Record a core iteration that will need outcome repair.",
+      layer: "core_runtime",
+      ownerSurface: "ga_project_design",
+      proposedSlice: "outcome_merge_repair",
+      evidenceRefs: ["packages/core/src/self_evolution_iterations.ts"],
+      verificationCommands: ["pnpm run check"]
+    });
+
+    await recordSelfEvolutionIterationOutcome(store, {
+      iterationRef: recorded.iteration.id,
+      status: "verified",
+      summary: "Initial verified outcome.",
+      evidenceRefs: ["apps/cli/src/main.ts"],
+      verificationCommands: ["pnpm run check"],
+      verificationClaims: ["check: full repo check passed"],
+      nextMoves: ["Open the successor slice."]
+    });
+
+    const merged = await recordSelfEvolutionIterationOutcome(store, {
+      iterationRef: recorded.iteration.id,
+      status: "verified",
+      summary: "Merged successor evidence into the verified outcome.",
+      evidenceRefs: ["self-evolution/iterations/iteration_contract_next.json", "apps/cli/src/main.ts"],
+      verificationCommands: ["pnpm run runtime -- governance iterations --audit-seed all"],
+      verificationClaims: ["iterations: successor ref is now outcome evidence"],
+      nextMoves: ["Continue with the successor slice."],
+      mergeExisting: true
+    });
+
+    assert.deepEqual(merged.iteration.outcome?.evidence_refs, [
+      "apps/cli/src/main.ts",
+      "self-evolution/iterations/iteration_contract_next.json"
+    ]);
+    assert.deepEqual(merged.iteration.outcome?.verification_commands, [
+      "pnpm run check",
+      "pnpm run runtime -- governance iterations --audit-seed all"
+    ]);
+    assert.deepEqual(merged.iteration.outcome?.verification_claims, [
+      "check: full repo check passed",
+      "iterations: successor ref is now outcome evidence"
+    ]);
+    assert.deepEqual(merged.iteration.outcome?.next_moves, [
+      "Open the successor slice.",
+      "Continue with the successor slice."
+    ]);
+    assert.match(merged.iteration.outcome?.boundary ?? "", /merged existing outcome evidence refs/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("self-evolution iteration contracts can reuse matching open plan-derived iterations", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-iteration-reuse-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
