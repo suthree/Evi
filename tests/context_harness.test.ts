@@ -1931,6 +1931,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_dispatches=1/);
     assert.match(rendered.markdown, /delegated_dispatches_failed=1/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
+    assert.match(rendered.markdown, /replay_check: delegated_dispatch_failure_kind=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_result_contract=warning/);
     assert.doesNotMatch(rendered.markdown, /RAW_PRIOR_CONTEXT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_MODEL_RESPONSE_SHOULD_NOT_BE_IN_CONTEXT/);

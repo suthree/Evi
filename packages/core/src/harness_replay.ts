@@ -10,6 +10,8 @@ import { newId, utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const REPLAY_ROOT = "governance/replays";
+const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
+const DISPATCH_FAILURE_KINDS = new Set(["dispatch_limit_exceeded", "input_contract_failed"]);
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
 export type HarnessReplayAuditCheckStatus = "pass" | "warning";
@@ -266,6 +268,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `delegated_results=${trace.delegated_result_count}; dispatches=${trace.delegated_dispatches.length}; failed_dispatches=${trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length}`,
       refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
     },
+    delegatedDispatchFailureKindCheck(trace),
     {
       id: "repo_write_guard",
       status: trace.repo_write_guards.some((guard) => guard.preexisting_dirty || guard.target_changed_after_write) ? "warning" : "pass",
@@ -279,6 +282,39 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
+  const invalidKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.dispatch_failure_kind !== null && !DISPATCH_FAILURE_KINDS.has(dispatch.dispatch_failure_kind)
+  );
+  const missingLimitKindDispatches = failedDispatches.filter((dispatch) =>
+    dispatch.sequence > DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+      && dispatch.dispatch_failure_kind !== "dispatch_limit_exceeded"
+  );
+  const unexpectedLimitKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.dispatch_failure_kind === "dispatch_limit_exceeded"
+      && dispatch.sequence <= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+  );
+  const problemRefs = unique([
+    ...invalidKindDispatches,
+    ...missingLimitKindDispatches,
+    ...unexpectedLimitKindDispatches
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_dispatch_failure_kind",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `failed_dispatches=${failedDispatches.length}`,
+      `invalid_kind=${invalidKindDispatches.length}`,
+      `missing_limit_kind=${missingLimitKindDispatches.length}`,
+      `unexpected_limit_kind=${unexpectedLimitKindDispatches.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  };
 }
 
 function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditStatus): string {

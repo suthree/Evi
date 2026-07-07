@@ -1247,12 +1247,14 @@ the command chooses the latest bounded live run trace. The command writes
 `audit_result` evidence event that cites the replay report and source trace.
 The audit records only replay metadata: source trace refs, completion/session/
 turn ids, counts, safe delegated dispatch metadata, check statuses, report
-refs, and the fixed replay boundary. It may check whether delegated result
-events have matching dispatch metadata in the source trace. It must not invoke
-the model, execute tools, rerun actions, read raw model responses, read raw
-action payloads, read raw tool/delegation bodies, read raw final responses,
-read context Markdown, write the repo, write the active vault, manage services,
-or mutate SOP/skill/semantic-memory artifacts.
+refs, and the fixed replay boundary. It checks whether delegated result events
+have matching dispatch metadata and whether over-limit delegated dispatches
+carry bounded `dispatch_failure_kind` coverage such as
+`dispatch_limit_exceeded`. It must not invoke the model, execute tools, rerun
+actions, read raw model responses, read raw action payloads, read raw
+tool/delegation bodies, read raw final responses, read context Markdown, write
+the repo, write the active vault, manage services, or mutate
+SOP/skill/semantic-memory artifacts.
 
 Operators may inspect replay audit history with `review replays` and
 `review replays --replay <ref-or-id>`. Feishu mirrors this read-only surface

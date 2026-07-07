@@ -1187,10 +1187,11 @@ Operators can run a state-only replay audit over one bounded trace with
 `/review replay <ref-or-id>` inspect those reports. Later context bundles,
 aggregate governance status, and Feishu `/governance` may show bounded replay
 counts and refs. Replay reports may carry safe delegated dispatch metadata and
-a dispatch-coverage check from the source trace, but they do not read delegated
-result bodies. These surfaces do not invoke the model, execute tools, read raw
-model/tool/delegation/final/context artifacts, write the repo, write the active
-vault, or manage services.
+a dispatch-coverage check from the source trace. They also check bounded
+`dispatch_failure_kind` coverage for over-limit delegated dispatches without
+reading delegated result bodies. These surfaces do not invoke the model,
+execute tools, read raw model/tool/delegation/final/context artifacts, write
+the repo, write the active vault, or manage services.
 
 When model cognition fails before a valid action envelope exists, live runs
 write `memory/episodes/<session>-model-diagnostic-r<round>.json` and append a

@@ -1095,7 +1095,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       required: [
         "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
         "record input_contract_failed when payload validation fails before delegated model dispatch",
-        "record none when the delegated model was called or the delegated result passed"
+        "record none when the delegated model was called or the delegated result passed",
+        "harness replay checks dispatch_failure_kind coverage without reading delegated result bodies"
       ],
       reject_if: [
         "operators must infer dispatch failure type from free-form error text",

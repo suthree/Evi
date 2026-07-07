@@ -328,7 +328,12 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, 240);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, 2000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.field, "dispatch_failure_kind");
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.values.includes("dispatch_limit_exceeded"), true);
+    assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.values, [
+      "dispatch_limit_exceeded",
+      "input_contract_failed",
+      "none"
+    ]);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("harness replay checks")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.reject_if.some((item) => item.includes("free-form error text")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.completion_authority.some((item) => item.includes("main harness verifies")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.deferred_scope.some((item) => item.includes("no expert personas")), true);
@@ -516,6 +521,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("more than one delegate_agent action")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("dispatch_limit_exceeded")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("harness replay checks")), true);
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);

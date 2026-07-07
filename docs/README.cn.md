@@ -182,6 +182,8 @@ manual local、external adapter 或 local-learning follow-up 必须显式选择 
 该视图也会从已验证的 self-evolution iteration outcome 派生只读 project-design
 artifacts，用来复用 GA 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
 派生 successor plan 时会折叠历史 completed-source non-goals，避免下一轮 seed 递归膨胀。
+Replay audit 会检查 delegated dispatch metadata 和 `dispatch_failure_kind`
+覆盖，但只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。
 历史 iteration evidence refs 也会在 successor planning 中折叠，只保留当前 source artifact 和直接证据。
 其中 `artifact_count` 是可复用 artifact 总数，`listed_artifact_count` 是当前 limit 下实际列出的数量。
 可以用 `pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state`
