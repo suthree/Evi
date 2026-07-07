@@ -342,13 +342,7 @@ interface IterationAuditGuidanceInput {
   selection_checks: string[];
   verification_commands: string[];
   learning_authority: GaProjectDesignPlanPacket["learning_authority"];
-  layer_decision: {
-    selected_layer: string;
-    selected_owner_surface: string;
-    core_identity: string;
-    application_boundaries: string[];
-    required_before_outcome: string[];
-  };
+  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
   iteration_record_status: {
     status: string;
     id?: string;
@@ -793,6 +787,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   selection_status: GaProjectDesignPlanPacket["selection_status"];
   selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
   selection_checks: GaProjectDesignPlanPacket["selection_checks"];
+  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   verification_entrypoints: string[];
@@ -824,6 +819,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
       boundary: "read-only audited iteration status; prevents current successor plan status from being mistaken for the audited iteration"
     };
   const boundIterationRecordStatus = bindIterationRecordStatus(iterationRecordStatus, stateRoot);
+  const boundRequiredBeforeOutcome = bindCommandPlaceholders(plan.layer_decision.required_before_outcome, subject, stateRoot);
   return {
     core_identity: plan.layer_decision.core_identity,
     selected_layer: plan.layer_decision.selected_layer,
@@ -840,6 +836,10 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     selection_status: plan.selection_status,
     selection_reasons: plan.selection_reasons,
     selection_checks: plan.selection_checks,
+    layer_decision: {
+      ...plan.layer_decision,
+      required_before_outcome: boundRequiredBeforeOutcome
+    },
     guidance_scope: matchesOpenIteration
       ? "matching_open_iteration"
       : isSourceIteration
@@ -847,7 +847,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
         : "current_plan_context",
     ...(subject ? { audited_iteration: subject } : {}),
     verification_entrypoints: entrypoints,
-    required_before_outcome: bindCommandPlaceholders(plan.layer_decision.required_before_outcome, subject, stateRoot),
+    required_before_outcome: boundRequiredBeforeOutcome,
     verification_commands: bindCommandPlaceholders(plan.verification_commands, subject, stateRoot),
     application_boundaries: plan.layer_decision.application_boundaries,
     learning_authority: plan.learning_authority,

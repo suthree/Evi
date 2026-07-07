@@ -764,10 +764,14 @@ the next slice stay visible while reviewing the outcome. It also carries
 `scorecard_basis`, `selection_status`, `selection_reasons`, and
 `selection_checks`, so source verification, fresh successor, target layer,
 owner surface, and scorecard target evidence stay visible while reviewing why
-the slice remains core/basic. It also carries `learning_authority`, so
-self-evolution SOPs and skills preserve procedure while project-design,
-scorecard, iteration contracts, current evidence, verified outcomes, and
-completion-gate coverage retain judgment and completion authority. The guidance names
+the slice remains core/basic. It also carries `layer_decision`, so
+source/selected layer, core-identity reasons, application boundaries, and
+required-before-outcome commands stay visible as review evidence while external
+adapters remain application slices unless a reusable runtime contract is named.
+It also carries `learning_authority`, so self-evolution SOPs and skills
+preserve procedure while project-design, scorecard, iteration contracts,
+current evidence, verified outcomes, and completion-gate coverage retain
+judgment and completion authority. The guidance names
 whether it is reviewing the matching open iteration, the source iteration for
 the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited

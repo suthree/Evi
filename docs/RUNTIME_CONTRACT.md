@@ -264,14 +264,17 @@ project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
 `audit_guidance` copied from the GA project-design plan: core identity,
 goal scope, capability stage plan, phase gates, acceptance criteria,
-non-goals, scorecard basis, selection status/reasons/checks, application
-boundary, learning authority, verification entrypoints, and required commands
-before an outcome is recorded. Phase gates keep their `forbidden_shortcuts`,
-acceptance criteria keep their audit-seed labels, and selection evidence keeps
-source verification, fresh successor, target-layer, owner-surface, and
-scorecard-basis checks visible, so completion review can see anti-drift
-constraints, review criteria, explicit non-goal boundaries, and why the slice
-is still core/basic without switching back to the project-design packet. The
+non-goals, scorecard basis, selection status/reasons/checks, layer decision,
+application boundary, learning authority, verification entrypoints, and
+required commands before an outcome is recorded. Phase gates keep their
+`forbidden_shortcuts`, acceptance criteria keep their audit-seed labels,
+selection evidence keeps source verification, fresh successor, target-layer,
+owner-surface, and scorecard-basis checks visible, and layer decision keeps
+source/selected layer, core-identity reasons, application boundaries, and
+required-before-outcome commands visible, so completion review can see
+anti-drift constraints, review criteria, explicit non-goal boundaries, and why
+the slice is still core/basic without switching back to the project-design
+packet. The
 guidance must name whether
 it applies to the matching open iteration, the source iteration for the current
 plan, or only the current plan context, so successor status is not mistaken for

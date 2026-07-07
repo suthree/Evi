@@ -856,7 +856,17 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     layer_decision: {
       selected_layer: "core_runtime",
       selected_owner_surface: "ga_project_design",
+      source_layer: "core_runtime",
+      source_owner_surface: "ga_project_design",
+      source_proposed_slice: "completed_source",
+      proposed_slice: "core_ga_design_next_slice_after_source",
       core_identity: "recurring_ga_project_design",
+      stage: "core_basic_successor_ready",
+      reasons: [
+        "core identity is the reusable GA project-design loop, not a single external adapter",
+        "the next slice is a core/basic successor because it improves design classification, planning, or verification reuse",
+        "source_layer=core_runtime; selected_layer=core_runtime"
+      ],
       application_boundaries: [
         "external tools and adapters stay application slices unless a reusable runtime contract is named"
       ],
@@ -897,6 +907,12 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.selection_reasons.some((reason) => reason === "fresh_successor_slice=true"), true);
   assert.equal(guidance.selection_checks.some((check) => check.includes("target_layer=core_runtime")), true);
   assert.equal(guidance.scorecard_basis.some((basis) => basis === "next_core_basic_slice=next_slice_core_ga_design"), true);
+  assert.equal(guidance.layer_decision.source_layer, "core_runtime");
+  assert.equal(guidance.layer_decision.source_proposed_slice, "completed_source");
+  assert.equal(guidance.layer_decision.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.layer_decision.stage, "core_basic_successor_ready");
+  assert.equal(guidance.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
+  assert.equal(guidance.layer_decision.application_boundaries[0]?.includes("application slices"), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",
@@ -933,6 +949,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<iteration-ref>")), false);
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<state-root>")), false);
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("--state-root .runtime/state")), true);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("--iteration iteration_contract_source --audit-seed all")), true);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("<iteration-ref>")), false);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("<state-root>")), false);
   assert.equal(sourceGuidance.iteration_record_status.audit_command?.includes("--state-root .runtime/state"), true);
   assert.notEqual(sourceGuidance.iteration_record_status.id, "iteration_contract_open");
 });
