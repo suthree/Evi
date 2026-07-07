@@ -786,6 +786,31 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
         "basic_entrypoint[runtime_observability]: preserve service health evidence"
       ]
     },
+    phase_gates: [
+      {
+        phase_id: "capability_layering",
+        title: "Capability layering",
+        layer: "core_runtime",
+        objective: "classify the work before implementation",
+        required_inputs: ["scorecard"],
+        exit_evidence: ["selected layer is explicit"],
+        forbidden_shortcuts: [
+          "do not promote one adapter into core identity",
+          "do not hide basic runtime failures under application progress"
+        ]
+      },
+      {
+        phase_id: "learning_persistence",
+        title: "Learning persistence",
+        layer: "local_learning",
+        objective: "persist only reusable lessons",
+        required_inputs: ["verified outcome"],
+        exit_evidence: ["next moves preserve boundaries"],
+        forbidden_shortcuts: [
+          "do not let a self-evolution SOP override completion gates"
+        ]
+      }
+    ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
@@ -835,6 +860,8 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.capability_stage_plan.core_capabilities.some((stage) => stage.id === "goal_intake" && stage.exit_criteria.length === 2), true);
   assert.equal(guidance.capability_stage_plan.basic_capabilities.some((stage) => stage.id === "runtime_observability" && stage.stage === "attention_guard"), true);
   assert.equal(guidance.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[goal_scope]:")), true);
+  assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter"))), true);
+  assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("completion gates"))), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",
