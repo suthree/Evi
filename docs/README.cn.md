@@ -59,6 +59,21 @@ pnpm run runtime -- doctor --no-auth --no-im
 pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime/state
 ```
 
+启动本地 Web console：
+
+```bash
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+Web console 用于查看 runtime sessions、Feishu inbox 和 task runs，也可以把
+pending 的 Feishu 群 session 绑定到某个 profile，并显式提交一次本地 task run。
+它只是 localhost 操作者界面，不是托管、多用户、带登录体系或桌面版 GUI。
+
+Feishu 群会映射到本地 runtime session。未知群只有授权 operator 的消息能创建
+pending/unassigned session；绑定方式是在群里发送 `/session use <profile>`，
+或在 Web console 里选中 session 后绑定 profile。普通群消息只进入 inbox；
+只有 `/run <task>` 或显式 `@bot` 才会请求执行。
+
 本仓库推荐把 repo-local runtime 产物统一放在 `.runtime/` 下：
 `.runtime/state` 是默认交互状态根，`.runtime/stage` 可用于 pipeline
 实验，`.runtime/smoke/<name>` 用于一次性 smoke。顶层 `.runtime-*`

@@ -48,6 +48,7 @@ pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_chec
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
 pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root .runtime/state
 pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root .runtime/state
 pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime/state
@@ -1224,6 +1225,12 @@ files, or write the active vault.
 Feishu private chat supports the same read-only summary with `/config`,
 `/runtime config`, or `/service config`.
 
+`web` starts the local web console. It reads runtime sessions, session inbox
+entries, and task-run history from the configured state root. It can bind a
+pending Feishu-backed session to a profile and submit an explicit local task
+run through the existing live runner. It is localhost operator infrastructure,
+not a hosted, multi-user, authenticated, or desktop GUI.
+
 `capabilities` renders the repo-owned local capability catalog. It summarizes
 implemented core tools, harness actions, context/read-model surfaces, memory
 and local-learning gates, resident service surfaces, entrypoints, and explicit
@@ -1305,6 +1312,10 @@ The first version only needs:
 
 - local foreground serve process or local single-user service process
 - private text messages
+- Feishu group source binding to local runtime sessions
+- pending/unassigned bootstrap for unknown groups by authorized operators
+- ordinary bound group messages captured as session inbox entries
+- explicit group execution through `/run <task>` or an explicit bot mention
 - optional allowlist
 - operator notification outbox drained by the resident Feishu service
 - read-only local operator commands: `/status`, `/health`,
@@ -1339,6 +1350,7 @@ The first version only needs:
   `/working <ref-or-id>`
 - bounded local conversation history from the same private chat
 - bounded same-sender in-memory follow-up queue for normal private-chat tasks
+- local runtime-session inbox and task-run records
 - inbound evidence
 - ack response
 - final response
@@ -1785,7 +1797,7 @@ This file must not grow deployment tiers. These are not first-version concerns:
 - Kubernetes
 - production hosting
 - hosted or multi-user daemon operation
-- GUI
+- hosted, multi-user, or desktop GUI
 - multi-user service operation
 - multi-machine vault sharing
 - public package compatibility

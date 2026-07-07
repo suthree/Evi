@@ -9,6 +9,7 @@ import type { ContextBundleManifest } from "../packages/core/src/context.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
 import type { RunResult } from "../packages/core/src/schemas.js";
+import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { FeishuPrivateChatAdapter, normalizePrivateTextMessage, parseFeishuTextContent, splitText } from "../packages/runtime/src/channels/feishu/adapter.js";
 import { loadFeishuChannelConfig, loadFeishuScenarioConfig } from "../packages/runtime/src/channels/feishu/config.js";
@@ -413,6 +414,129 @@ test("allowlist blocks unauthorized private users without replying", async () =>
 
     assert.equal(runner.tasks.length, 0);
     assert.equal(transport.sent.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("authorized Feishu group bootstrap creates a pending runtime session", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "done");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport,
+      runner,
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_pending",
+      chatType: "group",
+      chatId: "oc_group_session",
+      openId: "ou_operator",
+      text: "先记录这个群"
+    }));
+
+    const sessions = await listRuntimeSessions(fixture.store);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]?.status, "pending");
+    assert.equal(sessions[0]?.profile, "unassigned");
+    const inbox = await listRuntimeInbox(fixture.store, sessions[0]!.id);
+    assert.equal(inbox.length, 1);
+    assert.equal(inbox[0]?.run_requested, false);
+    assert.equal(runner.tasks.length, 0);
+    assert.match(transport.chatSent[0]?.text ?? "", /pending runtime session/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("bound Feishu group member messages go to runtime session inbox without running", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "done");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport,
+      runner,
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_bind",
+      chatType: "group",
+      chatId: "oc_group_session",
+      openId: "ou_operator",
+      text: "/session use content-role"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_inbox",
+      chatType: "group",
+      chatId: "oc_group_session",
+      openId: "ou_member",
+      text: "这是普通群消息"
+    }));
+
+    const sessions = await listRuntimeSessions(fixture.store);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0]?.status, "active");
+    assert.equal(sessions[0]?.profile, "content-role");
+    const inbox = await listRuntimeInbox(fixture.store, sessions[0]!.id);
+    assert.deepEqual(inbox.map((entry) => entry.message_id), ["om_group_bind", "om_group_inbox"]);
+    assert.equal(inbox[1]?.trigger_kind, "inbox_only");
+    assert.equal(runner.tasks.length, 0);
+    assert.equal(transport.chatSent.length, 1);
+    assert.match(transport.chatSent[0]?.text ?? "", /已绑定 runtime session/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("bound Feishu group run command executes and records a runtime task run", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "Group final answer.");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport,
+      runner,
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_run_bind",
+      chatType: "group",
+      chatId: "oc_group_session",
+      openId: "ou_operator",
+      text: "/session use ops"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_run",
+      chatType: "group",
+      chatId: "oc_group_session",
+      openId: "ou_member",
+      text: "/run check service status"
+    }));
+
+    assert.equal(runner.tasks.length, 1);
+    assert.match(runner.tasks[0], /Feishu group runtime session message received/);
+    assert.match(runner.tasks[0], /Runtime session profile: ops/);
+    assert.match(runner.tasks[0], /check service status/);
+    assert.deepEqual(transport.chatSent.map((item) => item.text), [
+      "已绑定 runtime session: " + (await listRuntimeSessions(fixture.store))[0]!.id + "\nprofile: ops\n后续普通群消息会进入 inbox；使用 /run 或 @bot 才会执行任务。",
+      "收到，正在处理。",
+      "Group final answer."
+    ]);
+
+    const runs = await listRuntimeTaskRuns(fixture.store);
+    assert.equal(runs.length, 1);
+    assert.equal(runs[0]?.status, "done");
+    assert.equal(runs[0]?.task, "check service status");
+    assert.equal(runs[0]?.source_kind, "feishu");
   } finally {
     await fixture.cleanup();
   }
@@ -4634,6 +4758,7 @@ test("Feishu app_secret auth can be overridden from state auth jsonl", async () 
 
 class MockFeishuTransport implements FeishuTransport {
   readonly sent: Array<{ openId: string; text: string }> = [];
+  readonly chatSent: Array<{ chatId: string; text: string }> = [];
 
   async start(): Promise<void> {}
 
@@ -4644,6 +4769,15 @@ class MockFeishuTransport implements FeishuTransport {
     return {
       ok: true,
       messageId: `sent_${this.sent.length}`,
+      summary: "sent"
+    };
+  }
+
+  async sendTextToChat(chatId: string, text: string): Promise<FeishuSendResult> {
+    this.chatSent.push({ chatId, text });
+    return {
+      ok: true,
+      messageId: `chat_sent_${this.chatSent.length}`,
       summary: "sent"
     };
   }
@@ -4732,6 +4866,7 @@ class BlockingRunner implements TaskRunner {
 
 function testFeishuConfig(overrides: Partial<FeishuChannelConfig> = {}): FeishuChannelConfig {
   return {
+    channelId: "feishu-test",
     appId: "cli_test",
     appSecret: "secret",
     domain: "feishu",

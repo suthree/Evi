@@ -149,6 +149,7 @@ import {
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
+import { startRuntimeWebConsole } from "../../../packages/runtime/src/web_console.js";
 import type {
   ReviewFollowUpConfirmationGateFilter,
   ReviewFollowUpConfirmationRecoveryDecisionStatus,
@@ -182,6 +183,8 @@ interface CliOptions {
   notifyRefs: string[];
   notifyStatus?: OperatorNotificationStatus;
   serviceTarget: ServiceTarget;
+  webHost: string;
+  webPort: number;
   contentAction?: "run" | "daily" | "daily-readiness" | "channel-readiness" | "daily-advance" | "runs" | "show" | "publish-history" | "feedback-history" | "feedback-review" | "feedback-needed" | "creator-metrics-needed" | "creator-metrics-capture" | "feedback-trends" | "feedback-strategy" | "feedback-capture" | "feedback-refresh" | "generate-image" | "image-evidence" | "publish-preflight" | "publish-execute" | "publish-evidence" | "feedback-evidence" | "reconcile-publish-evidence";
   dryRun: boolean;
   liveSources: boolean;
@@ -885,6 +888,48 @@ export async function main(): Promise<number> {
       },
       runtimeBuildPath: options.runtimeBuildPath
     });
+    return 0;
+  }
+
+  if (options.command === "web") {
+    if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
+    const readConfig = await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      skipAuth: true
+    });
+    const store = new AgentStore(resolve(options.repoRoot), readConfig.state.root);
+    const handle = await startRuntimeWebConsole({
+      store,
+      host: options.webHost,
+      port: options.webPort,
+      runTask: async (task, args) => {
+        const runConfig = await loadConfig({
+          configDir: options.configDir,
+          stateRoot: options.stateRoot
+        });
+        const model = new OpenAICompatibleClient(runConfig.model);
+        const runner = new LiveAgentRunner({
+          repoRoot: resolve(options.repoRoot),
+          stateRoot: runConfig.state.root,
+          config: runConfig,
+          configDir: options.configDir,
+          model,
+          discipline: options.discipline
+        });
+        return runner.runTask(args.runtimeSessionId
+          ? [
+            "Runtime session task submitted from the local web console.",
+            `Runtime session ID: ${args.runtimeSessionId}`,
+            "",
+            "Task:",
+            task
+          ].join("\n")
+          : task);
+      }
+    });
+    console.log(`Runtime web console listening at ${handle.url}`);
+    await new Promise(() => undefined);
     return 0;
   }
 
@@ -2084,6 +2129,8 @@ export function parseArgs(argv: string[]): CliOptions {
     requireAuth: true,
     requireIm: true,
     serviceTarget: "im",
+    webHost: "127.0.0.1",
+    webPort: 8765,
     dryRun: false,
     liveSources: false,
     force: false,
@@ -2119,6 +2166,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "context" && isContextAction(arg)) options.contextAction = arg;
     else if (options.command === "review" && isReviewAction(arg)) options.reviewAction = arg;
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
+    else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
+    else if (arg === "--port") options.webPort = Number.parseInt(required(rest[++index], "--port requires a value"), 10);
     else if (arg === "--dry-run") options.dryRun = true;
     else if (arg === "--live-sources") options.liveSources = true;
     else if (arg === "--force") options.force = true;
@@ -2608,6 +2657,7 @@ function printUsage(): void {
   pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled [--content-feedback-refresh-interval-ms 3600000] [--content-feedback-refresh-limit 10] [--content-feedback-refresh-min-follow-up-age-ms 21600000] [--content-feedback-refresh-server-url http://localhost:18060/mcp]
   pnpm run runtime -- config set-runtime --content-creator-metrics-enabled [--content-creator-metrics-interval-ms 3600000] [--content-creator-metrics-limit 10] [--content-creator-metrics-creator-url https://creator.xiaohongshu.com/new/note-manager] [--content-creator-metrics-browser-session-name runtime-creator-metrics]
   pnpm run runtime -- capabilities [catalog|acceptance|audit]
+  pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]
   pnpm run runtime -- pipeline --task "..." [--stages intake,tool_check,final] [--query-todo]
   pnpm run runtime -- pipeline resume --pipeline pipeline_run_... [--from-stage tool_check] [--query-todo]

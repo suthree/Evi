@@ -3,6 +3,7 @@ import type { RunResult } from "../../../../core/src/schemas.js";
 export type FeishuDomain = "feishu" | "lark";
 
 export interface FeishuChannelConfig {
+  channelId?: string;
   appId: string;
   appSecret: string;
   domain: FeishuDomain;
@@ -30,6 +31,7 @@ export interface FeishuInboundMessage {
   message_type: string;
   content: string;
   create_time?: string;
+  thread_id?: string;
 }
 
 export interface FeishuInboundEvent {
@@ -41,14 +43,18 @@ export interface FeishuInboundEvent {
   message: FeishuInboundMessage;
 }
 
-export interface NormalizedFeishuPrivateMessage {
+export interface NormalizedFeishuTextMessage {
   eventId: string | null;
   messageId: string;
   chatId: string;
+  chatType: string;
+  threadId: string | null;
   openId: string;
   text: string;
   raw: FeishuInboundEvent;
 }
+
+export type NormalizedFeishuPrivateMessage = NormalizedFeishuTextMessage & { chatType: "p2p" };
 
 export interface FeishuSendResult {
   ok: boolean;
@@ -61,6 +67,7 @@ export interface FeishuTransport {
   start(onMessage: (event: FeishuInboundEvent) => void | Promise<void>): Promise<void>;
   stop(): Promise<void>;
   sendText(openId: string, text: string): Promise<FeishuSendResult>;
+  sendTextToChat?(chatId: string, text: string): Promise<FeishuSendResult>;
 }
 
 export interface TaskRunner {

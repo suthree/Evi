@@ -95,6 +95,15 @@ import {
   renderSopEvolutionLedgerMarkdown
 } from "../../../../core/src/sop_evolution_ledger.js";
 import {
+  appendRuntimeInboxEntry,
+  bindRuntimeSessionSource,
+  feishuSourceKey,
+  recordRuntimeTaskRun,
+  resolveRuntimeSession,
+  type FeishuSessionSource,
+  type RuntimeSessionRecord
+} from "../../../../core/src/runtime_sessions.js";
+import {
   getPipelineRun,
   listPipelineRuns,
   renderPipelineHistoryDetail,
@@ -165,6 +174,7 @@ import type {
   FeishuInboundEvent,
   FeishuSendResult,
   FeishuTransport,
+  NormalizedFeishuTextMessage,
   NormalizedFeishuPrivateMessage
 } from "./types.js";
 
@@ -208,6 +218,7 @@ export class FeishuPrivateChatAdapter {
   private readonly configDir: string;
   private readonly reviewRunner: BackgroundReviewRunner;
   private readonly activeOpenIds = new Set<string>();
+  private readonly activeRuntimeSessionIds = new Set<string>();
   private readonly followupQueues = new Map<string, FeishuQueuedFollowup[]>();
   private readonly seenMessageIds: string[] = [];
   private readonly seenSet = new Set<string>();
@@ -381,9 +392,9 @@ export class FeishuPrivateChatAdapter {
 
   async handleInboundEvent(event: FeishuInboundEvent): Promise<void> {
     await this.loadSeenState();
-    const normalized = normalizePrivateTextMessage(event);
+    const normalized = normalizeFeishuTextMessage(event);
     if (!normalized) {
-      await this.recordChannelEvent("ignored", "Ignored non-private or non-text Feishu event.", { event });
+      await this.recordChannelEvent("ignored", "Ignored non-text Feishu event.", { event });
       return;
     }
 
@@ -396,28 +407,34 @@ export class FeishuPrivateChatAdapter {
     }
     await this.markSeen(normalized.messageId);
 
-    if (!this.isAllowed(normalized.openId)) {
-      await this.recordChannelEvent("denied", `Denied Feishu message from unauthorized open_id ${normalized.openId}.`, {
-        message_id: normalized.messageId,
-        open_id: normalized.openId
+    if (normalized.chatType !== "p2p") {
+      await this.handleGroupTextMessage(normalized);
+      return;
+    }
+    const privateMessage = normalized as NormalizedFeishuPrivateMessage;
+
+    if (!this.isAllowed(privateMessage.openId)) {
+      await this.recordChannelEvent("denied", `Denied Feishu message from unauthorized open_id ${privateMessage.openId}.`, {
+        message_id: privateMessage.messageId,
+        open_id: privateMessage.openId
       });
       return;
     }
 
-    const command = parseOperatorCommand(normalized.text);
+    const command = parseOperatorCommand(privateMessage.text);
     if (command) {
-      await this.handleOperatorCommand(normalized, command);
+      await this.handleOperatorCommand(privateMessage, command);
       return;
     }
 
-    if (this.activeOpenIds.has(normalized.openId)) {
-      const queued = await this.enqueueFollowup(normalized);
-      const outbound = await this.sendChunks(normalized.openId, queued.ok ? this.config.queuedText : this.config.busyText);
+    if (this.activeOpenIds.has(privateMessage.openId)) {
+      const queued = await this.enqueueFollowup(privateMessage);
+      const outbound = await this.sendChunks(privateMessage.openId, queued.ok ? this.config.queuedText : this.config.busyText);
       await this.recordChannelEvent(queued.ok ? "queued_followup" : "busy", queued.ok
-        ? `Queued Feishu follow-up message ${normalized.messageId}.`
-        : `Rejected concurrent Feishu message ${normalized.messageId}; follow-up queue is full.`, {
-        message_id: normalized.messageId,
-        open_id: normalized.openId,
+        ? `Queued Feishu follow-up message ${privateMessage.messageId}.`
+        : `Rejected concurrent Feishu message ${privateMessage.messageId}; follow-up queue is full.`, {
+        message_id: privateMessage.messageId,
+        open_id: privateMessage.openId,
         queue_depth: queued.queueDepth,
         queue_ref: queued.queueRef ?? null,
         outbound
@@ -425,7 +442,193 @@ export class FeishuPrivateChatAdapter {
       return;
     }
 
-    await this.runMessageAndQueuedFollowups(normalized);
+    await this.runMessageAndQueuedFollowups(privateMessage);
+  }
+
+  private async handleGroupTextMessage(message: NormalizedFeishuTextMessage): Promise<void> {
+    const actorAuthorized = this.isAllowed(message.openId);
+    const sessionCommand = parseSessionUseCommand(message.text);
+    if (sessionCommand && !actorAuthorized) {
+      await this.recordChannelEvent("denied", `Denied Feishu session bind from unauthorized open_id ${message.openId}.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        command: "session_use"
+      });
+      return;
+    }
+
+    const baseSource = this.feishuSessionSource(message);
+    const resolution = await resolveRuntimeSession(this.store, {
+      source: baseSource,
+      actorAuthorized,
+      now: utcNow()
+    });
+    if (!resolution.ok || !resolution.session) {
+      await this.recordChannelEvent("denied", `Denied unknown Feishu group ${message.chatId}.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        reason: resolution.reason
+      });
+      return;
+    }
+
+    let session = resolution.session;
+    let source = this.feishuSessionSource(message, session.profile);
+    if (sessionCommand) {
+      const binding = await bindRuntimeSessionSource(this.store, {
+        source: this.feishuSessionSource(message, sessionCommand.profile),
+        runtimeSessionId: session.id,
+        profile: sessionCommand.profile,
+        createdByOpenId: message.openId
+      });
+      session = {
+        ...session,
+        profile: binding.profile,
+        status: "active",
+        source_route_key: binding.route_key,
+        source_key: binding.source_key,
+        updated_at: binding.updated_at
+      };
+      source = this.feishuSessionSource(message, binding.profile);
+      await appendRuntimeInboxEntry(this.store, {
+        sessionId: session.id,
+        source,
+        messageId: message.messageId,
+        text: message.text,
+        triggerKind: "session_command",
+        runRequested: false
+      });
+      const outbound = await this.sendChunksToMessage(message, [
+        `已绑定 runtime session: ${session.id}`,
+        `profile: ${binding.profile}`,
+        "后续普通群消息会进入 inbox；使用 /run 或 @bot 才会执行任务。"
+      ].join("\n"));
+      await this.recordChannelEvent("session_bound", `Bound Feishu group ${message.chatId} to runtime session ${session.id}.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        runtime_session_id: session.id,
+        profile: binding.profile,
+        outbound
+      });
+      return;
+    }
+
+    const trigger = classifyRuntimeSessionTrigger(message.text);
+    await appendRuntimeInboxEntry(this.store, {
+      sessionId: session.id,
+      source,
+      messageId: message.messageId,
+      text: message.text,
+      triggerKind: trigger.kind,
+      runRequested: trigger.runRequested
+    });
+
+    if (session.status !== "active" || session.profile === "unassigned") {
+      if (trigger.runRequested || resolution.reason === "created_pending") {
+        const outbound = await this.sendChunksToMessage(message, [
+          `已记录到 pending runtime session: ${session.id}`,
+          "请由授权 operator 在群里发送 /session use <profile> 绑定角色后再执行。"
+        ].join("\n"));
+        await this.recordChannelEvent("session_pending", `Created pending Feishu runtime session ${session.id}.`, {
+          message_id: message.messageId,
+          chat_id: message.chatId,
+          open_id: message.openId,
+          runtime_session_id: session.id,
+          outbound
+        });
+      }
+      return;
+    }
+
+    if (!trigger.runRequested) {
+      await this.recordChannelEvent("session_inbox", `Recorded Feishu group message ${message.messageId} in runtime session inbox.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        runtime_session_id: session.id,
+        profile: session.profile
+      });
+      return;
+    }
+
+    await this.runRuntimeSessionMessage(message, session, source, trigger.taskText);
+  }
+
+  private async runRuntimeSessionMessage(
+    message: NormalizedFeishuTextMessage,
+    session: RuntimeSessionRecord,
+    source: FeishuSessionSource,
+    taskText: string
+  ): Promise<void> {
+    if (this.activeRuntimeSessionIds.has(session.id)) {
+      const outbound = await this.sendChunksToMessage(message, this.config.busyText);
+      await this.recordChannelEvent("session_busy", `Rejected concurrent Feishu runtime session message ${message.messageId}.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        runtime_session_id: session.id,
+        outbound
+      });
+      return;
+    }
+
+    this.activeRuntimeSessionIds.add(session.id);
+    let inboundRef = "";
+    let outboundRef = "";
+    try {
+      inboundRef = await this.recordInbound(message);
+      await this.sendChunksToMessage(message, this.config.ackText);
+      const task = renderAgentTask(message, [], session, taskText);
+      const result = await this.runner.runTask(task);
+      await recordRuntimeTaskRun(this.store, {
+        runtimeSessionId: session.id,
+        sourceKind: "feishu",
+        sourceKey: feishuSourceKey(source, session.profile),
+        task: taskText,
+        runResult: result
+      });
+      const finalText = await this.finalTextForRun(result);
+      const outbound = await this.sendChunksToMessage(message, finalText);
+      outboundRef = await this.recordOutbound(message, result, finalText, outbound);
+      await this.recordRunEvidence(result, {
+        inboundRef,
+        outboundRef,
+        summary: `Handled Feishu runtime session message ${message.messageId} for ${session.id}.`
+      });
+    } catch (error) {
+      const messageText = errorMessage(error);
+      await recordRuntimeTaskRun(this.store, {
+        runtimeSessionId: session.id,
+        sourceKind: "feishu",
+        sourceKey: feishuSourceKey(source, session.profile),
+        task: taskText,
+        status: "failed"
+      });
+      const outbound = await this.sendChunksToMessage(message, this.config.errorText);
+      outboundRef = await this.store.writeJson(`channels/feishu/errors/${message.messageId}.json`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        runtime_session_id: session.id,
+        error: messageText,
+        outbound,
+        inbound_ref: inboundRef || null,
+        created_at: utcNow()
+      });
+      await this.recordChannelEvent("error", `Feishu runtime session message ${message.messageId} failed: ${messageText}`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        runtime_session_id: session.id,
+        inbound_ref: inboundRef || null,
+        outbound_ref: outboundRef
+      });
+    } finally {
+      this.activeRuntimeSessionIds.delete(session.id);
+    }
   }
 
   private async runMessageAndQueuedFollowups(initial: NormalizedFeishuPrivateMessage): Promise<void> {
@@ -523,6 +726,30 @@ export class FeishuPrivateChatAdapter {
       results.push(await this.transport.sendText(openId, chunk));
     }
     return results;
+  }
+
+  private async sendChunksToMessage(message: NormalizedFeishuTextMessage, text: string): Promise<FeishuSendResult[]> {
+    if (message.chatType !== "p2p" && this.transport.sendTextToChat) {
+      const chunks = splitText(text, this.config.textChunkLimit);
+      const results: FeishuSendResult[] = [];
+      for (const chunk of chunks) {
+        results.push(await this.transport.sendTextToChat(message.chatId, chunk));
+      }
+      return results;
+    }
+    return this.sendChunks(message.openId, text);
+  }
+
+  private feishuSessionSource(message: NormalizedFeishuTextMessage, profile?: string): FeishuSessionSource {
+    return {
+      kind: "feishu",
+      channelId: this.config.channelId ?? "default",
+      chatType: message.chatType,
+      chatId: message.chatId,
+      threadId: message.threadId,
+      openId: message.openId,
+      profile
+    };
   }
 
   private async finalTextForRun(result: RunResult): Promise<string> {
@@ -2116,7 +2343,7 @@ export class FeishuPrivateChatAdapter {
   }
 
   private async loadConversationHistory(
-    message: NormalizedFeishuPrivateMessage,
+    message: NormalizedFeishuTextMessage,
     limit = 6
   ): Promise<FeishuConversationHistoryItem[]> {
     const inboundRefs = await this.store.listStateFiles("channels/feishu/inbound");
@@ -2158,26 +2385,30 @@ export class FeishuPrivateChatAdapter {
       .slice(-limit);
   }
 
-  private async recordInbound(message: NormalizedFeishuPrivateMessage): Promise<string> {
+  private async recordInbound(message: NormalizedFeishuTextMessage): Promise<string> {
     const ref = await this.store.writeJson(`channels/feishu/inbound/${message.messageId}.json`, {
       event_id: message.eventId,
       message_id: message.messageId,
       chat_id: message.chatId,
+      chat_type: message.chatType,
+      thread_id: message.threadId,
       open_id: message.openId,
       text: message.text,
       raw: message.raw,
       created_at: utcNow()
     });
-    await this.recordChannelEvent("inbound", `Accepted Feishu private message ${message.messageId}.`, {
+    await this.recordChannelEvent("inbound", `Accepted Feishu ${message.chatType} message ${message.messageId}.`, {
       artifact_ref: ref,
       message_id: message.messageId,
+      chat_id: message.chatId,
+      chat_type: message.chatType,
       open_id: message.openId
     });
     return ref;
   }
 
   private async recordOutbound(
-    message: NormalizedFeishuPrivateMessage,
+    message: NormalizedFeishuTextMessage,
     result: RunResult,
     text: string,
     sends: FeishuSendResult[]
@@ -2185,6 +2416,8 @@ export class FeishuPrivateChatAdapter {
     const ref = await this.store.writeJson(`channels/feishu/outbound/${message.messageId}.json`, {
       source_message_id: message.messageId,
       chat_id: message.chatId,
+      chat_type: message.chatType,
+      thread_id: message.threadId,
       open_id: message.openId,
       session_id: result.session_id,
       turn_id: result.turn_id,
@@ -2196,6 +2429,7 @@ export class FeishuPrivateChatAdapter {
       artifact_ref: ref,
       message_id: message.messageId,
       chat_id: message.chatId,
+      chat_type: message.chatType,
       open_id: message.openId,
       send_count: sends.length
     });
@@ -2266,11 +2500,16 @@ export class FeishuPrivateChatAdapter {
 }
 
 export function normalizePrivateTextMessage(event: FeishuInboundEvent): NormalizedFeishuPrivateMessage | null {
+  const normalized = normalizeFeishuTextMessage(event);
+  if (!normalized || normalized.chatType !== "p2p") return null;
+  return normalized as NormalizedFeishuPrivateMessage;
+}
+
+export function normalizeFeishuTextMessage(event: FeishuInboundEvent): NormalizedFeishuTextMessage | null {
   const message = event.message;
   const senderId = event.sender.sender_id;
   const openId = senderId?.open_id?.trim();
   if (!openId) return null;
-  if (message.chat_type !== "p2p") return null;
   if (message.message_type !== "text") return null;
   const text = parseFeishuTextContent(message.content).trim();
   if (!text) return null;
@@ -2278,6 +2517,8 @@ export function normalizePrivateTextMessage(event: FeishuInboundEvent): Normaliz
     eventId: event.event_id ?? null,
     messageId: message.message_id,
     chatId: message.chat_id,
+    chatType: message.chat_type,
+    threadId: message.thread_id ?? null,
     openId,
     text,
     raw: event
@@ -2318,15 +2559,26 @@ export function splitText(text: string, limit: number): string[] {
 }
 
 function renderAgentTask(
-  message: NormalizedFeishuPrivateMessage,
-  history: FeishuConversationHistoryItem[] = []
+  message: NormalizedFeishuTextMessage,
+  history: FeishuConversationHistoryItem[] = [],
+  runtimeSession?: RuntimeSessionRecord,
+  taskText = message.text
 ): string {
+  const sessionLines = runtimeSession
+    ? [
+      `Runtime session ID: ${runtimeSession.id}`,
+      `Runtime session profile: ${runtimeSession.profile}`,
+      `Runtime session status: ${runtimeSession.status}`
+    ]
+    : [];
   return [
-    "Feishu private chat message received.",
+    message.chatType === "p2p" ? "Feishu private chat message received." : "Feishu group runtime session message received.",
     "",
     `Open ID: ${message.openId}`,
     `Chat ID: ${message.chatId}`,
+    `Chat type: ${message.chatType}`,
     `Message ID: ${message.messageId}`,
+    ...sessionLines,
     "",
     "Recent conversation context:",
     ...(history.length > 0
@@ -2337,8 +2589,56 @@ function renderAgentTask(
       : ["No prior local conversation messages selected."]),
     "",
     "User message:",
-    message.text
+    taskText
   ].join("\n");
+}
+
+function parseSessionUseCommand(text: string): { profile: string } | null {
+  const compact = text.trim().replace(/\s+/g, " ");
+  const normalized = compact.toLowerCase();
+  for (const prefix of ["/session use ", "session use ", "/session bind ", "session bind "]) {
+    if (!normalized.startsWith(prefix)) continue;
+    const profile = compact.slice(prefix.length).trim();
+    if (!profile) return null;
+    return { profile };
+  }
+  return null;
+}
+
+function classifyRuntimeSessionTrigger(text: string): {
+  kind: "inbox_only" | "run_command" | "mention";
+  runRequested: boolean;
+  taskText: string;
+} {
+  const compact = text.trim();
+  const normalized = compact.toLowerCase();
+  if (normalized === "/run" || normalized.startsWith("/run ")) {
+    const taskText = compact.slice("/run".length).trim();
+    return {
+      kind: "run_command",
+      runRequested: true,
+      taskText: taskText || compact
+    };
+  }
+  if (/@(?:bot|xingzhe|行者)/i.test(compact) || compact.includes("@_user_")) {
+    return {
+      kind: "mention",
+      runRequested: true,
+      taskText: stripFeishuMention(compact)
+    };
+  }
+  return {
+    kind: "inbox_only",
+    runRequested: false,
+    taskText: compact
+  };
+}
+
+function stripFeishuMention(text: string): string {
+  return text
+    .replace(/@(?:bot|xingzhe|行者)/gi, "")
+    .replace(/@_user_[a-zA-Z0-9_-]+/g, "")
+    .trim() || text;
 }
 
 type FeishuOperatorCommand =

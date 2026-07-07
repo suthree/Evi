@@ -20,6 +20,8 @@ export class AgentStore {
       "memory/working",
       "memory/dreams",
       "memory/retired",
+      "sessions/inbox",
+      "runs",
       "sop/drafts",
       "sop/trial",
       "sop/retired",

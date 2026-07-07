@@ -55,15 +55,27 @@ export class LarkSdkFeishuTransport implements FeishuTransport {
   }
 
   async sendText(openId: string, text: string): Promise<FeishuSendResult> {
+    return this.sendTextToReceiveId(openId, "open_id", text);
+  }
+
+  async sendTextToChat(chatId: string, text: string): Promise<FeishuSendResult> {
+    return this.sendTextToReceiveId(chatId, "chat_id", text);
+  }
+
+  private async sendTextToReceiveId(
+    receiveId: string,
+    receiveIdType: "open_id" | "chat_id",
+    text: string
+  ): Promise<FeishuSendResult> {
     const response = await this.client.im.message.create({
       data: {
-        receive_id: openId,
+        receive_id: receiveId,
         msg_type: "text",
         content: JSON.stringify({ text }),
         uuid: randomUUID()
       },
       params: {
-        receive_id_type: "open_id"
+        receive_id_type: receiveIdType
       }
     });
     const code = response?.code ?? 0;

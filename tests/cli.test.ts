@@ -130,6 +130,15 @@ test("capabilities command parses read-only catalog options", () => {
   assert.equal(auditAlias.capabilitiesAction, "acceptance");
 });
 
+test("web command parses local console host and port", () => {
+  const options = parseArgs(["web", "--host", "127.0.0.1", "--port", "9876", "--state-root", ".runtime/state"]);
+
+  assert.equal(options.command, "web");
+  assert.equal(options.webHost, "127.0.0.1");
+  assert.equal(options.webPort, 9876);
+  assert.equal(options.stateRoot, ".runtime/state");
+});
+
 test("governance project-design command parses core design read model", () => {
   const options = parseArgs(["governance", "project-design", "--state-root", ".runtime/state"]);
 

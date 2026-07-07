@@ -62,6 +62,7 @@ export async function loadFeishuChannelConfig(options: FeishuChannelLoadOptions 
 
   const auth = await loadAppSecretAuth(options, channel.auth_id);
   return {
+    channelId: channel.id,
     appId: auth.appId,
     appSecret: auth.appSecret,
     domain: channel.domain,
@@ -70,7 +71,7 @@ export async function loadFeishuChannelConfig(options: FeishuChannelLoadOptions 
     busyText: channel.busy_text?.trim() || "当前会话已有任务在运行，请等待完成后再发送下一条。",
     queuedText: channel.queued_text?.trim() || "当前会话已有任务在运行，这条消息已排队，会在当前任务完成后继续处理。",
     followupQueueSize: clampInt(channel.followup_queue_size, 1, 100),
-    unsupportedText: channel.unsupported_text?.trim() || "第一版只支持飞书私聊文本消息。",
+    unsupportedText: channel.unsupported_text?.trim() || "第一版只支持飞书文本消息。",
     errorText: channel.error_text?.trim() || "处理这条消息时失败，请查看本地运行日志。",
     dedupCacheSize: clampInt(channel.dedup_cache_size, 32, 20000),
     textChunkLimit: clampInt(channel.text_chunk_limit, 500, 12000)

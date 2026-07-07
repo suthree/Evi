@@ -4,9 +4,9 @@ This document defines the first-version local agent runtime contract.
 
 The contract is local-first and single-machine. It intentionally rejects
 compatibility design for open-source distribution, multi-user hosting,
-multi-machine skill sharing, public marketplaces, GUI surfaces, hosted
+multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
-runtime for resident IM intake.
+runtime for resident IM intake and a localhost operator web console.
 
 ## Scope
 
@@ -14,6 +14,8 @@ The first-version local agent is one local TypeScript/Node runtime that can:
 
 - accept a CLI task or local IM message
 - run as a foreground command or local single-user service process
+- expose a localhost web console for runtime sessions, inbox review, profile
+  binding, and explicit task runs
 - expose bounded resident IM health through `service health`
 - expose a read-only local capability catalog through CLI and IM
 - expose a read-only next-version capability acceptance audit through CLI and
@@ -130,6 +132,21 @@ IM is also a first-version basic capability. Feishu is the first provider, but
 the project command surface should be provider-neutral: `doctor` checks IM by
 default, `im serve` starts the local foreground IM process, and `service`
 manages the local resident IM process.
+
+The local web console is also a first-version basic entrypoint. `web` starts a
+localhost-only operator surface over runtime sessions, Feishu inbox entries,
+profile binding, and task-run history. It may submit an explicit local task run
+through the existing live runner. It is not a hosted, multi-user, authenticated,
+or desktop GUI.
+
+Runtime sessions are local state, not model memory and not a hosted session
+database. A Feishu source can map to one runtime session through a source route
+key. Unknown Feishu groups can be bootstrapped only by an authorized operator
+and start as pending/unassigned. A profile can be bound through
+`/session use <profile>` in the group or through the web console. Ordinary
+bound group messages append session inbox entries; model execution requires
+`/run <task>`, an explicit mention, an authorized private/direct task, or a web
+console Run action.
 
 The CLI also exposes `capabilities` as a read-only local capability catalog.
 Feishu mirrors it through `/capabilities`, `/abilities`, and `/ability`. The
@@ -2928,6 +2945,7 @@ pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_chec
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
 pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
 pnpm run runtime -- workspace status --state-root .runtime/state
@@ -3002,7 +3020,7 @@ an operator explicitly passes `--state-root`.
 - no multi-user service design
 - no multi-machine local learning sharing
 - no public skill marketplace
-- no GUI
+- no hosted, multi-user, authenticated, or desktop GUI
 - no hosted or multi-user daemon
 - no Docker or Kubernetes deployment
 - no broad external agent team runtime

@@ -2539,3 +2539,22 @@ does not read file bodies, move or delete local state, mutate state, invoke the
 model, write the repo, or write the active vault. Cleanup remains an operator
 action because unsupported runtime directories can contain local evidence or
 smoke artifacts that should be inspected before deletion.
+
+## 2026-07-07 Local Web Console And Runtime Sessions
+
+The first GUI surface should be a localhost web console, not a desktop app or
+hosted multi-user dashboard. This keeps the operator surface close to the local
+state root and existing CLI/runtime contracts while still making sessions,
+inbox entries, profile binding, and task-run history visible.
+
+Runtime sessions are local control-plane state. Feishu groups map to runtime
+sessions through source route keys; unknown groups can only be bootstrapped by
+authorized operators and start as pending/unassigned. A profile is bound by
+`/session use <profile>` or by the web console. Ordinary bound group messages
+append inbox entries; only explicit `/run`, explicit bot mention, authorized
+private/direct tasks, or web-console Run actions may invoke the live runner.
+
+This does not introduce hosted auth, multi-user tenancy, desktop packaging,
+remote session databases, durable cross-process queues, or automatic
+LLM-inferred role assignment. Project-scheduled or local tasks may record task
+runs without any Feishu source mapping.

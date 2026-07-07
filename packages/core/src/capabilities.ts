@@ -129,12 +129,14 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
       "packages/core/src/self_evolution_iterations.ts",
+      "packages/core/src/runtime_sessions.ts",
       "packages/core/src/workspace_status.ts",
       "packages/runtime/src/runner.ts",
       "packages/runtime/src/sop_loop_rehearsal.ts",
       "packages/runtime/src/content_pipeline.ts",
       "packages/runtime/src/content_daily_service.ts",
       "packages/runtime/src/xiaohongshu_mcp.ts",
+      "packages/runtime/src/web_console.ts",
       "apps/cli/src/main.ts",
       "packages/runtime/src/channels/feishu/adapter.ts"
     ],
@@ -174,24 +176,29 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "basic_entrypoints",
         title: "Basic entrypoints",
-        summary: "CLI, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
+        summary: "CLI, local web console, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
         status: "operator_check",
         layer: "basic_entrypoint",
         evidence_refs: [
           "apps/cli/src/main.ts",
+          "packages/core/src/runtime_sessions.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
+          "packages/runtime/src/web_console.ts",
           "packages/runtime/src/service.ts",
           "tests/cli.test.ts",
           "tests/feishu_adapter.test.ts",
+          "tests/web_console.test.ts",
           "tests/service.test.ts"
         ],
         verification_commands: [
           "pnpm run runtime -- doctor --no-auth --no-im",
+          "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
           "pnpm run runtime -- service health --target im",
           "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
         ],
         boundaries: [
-          "Feishu operator commands are read-only",
+          "Feishu operator commands are read-only except explicit runtime-session binding and explicit task triggers",
+          "local web console is localhost-only operator infrastructure, not a hosted multi-user GUI",
           "resident service is single-user local launchd, not hosted service governance"
         ]
       },
@@ -833,14 +840,34 @@ function runtimeServiceCategory(): CapabilityCategory {
         boundaries: ["runs fixed `git status --porcelain=v1 -b` for git status and scans top-level directory names for runtime workspace hygiene; does not accept shell text, read file bodies, stage, commit, reset, checkout, move, delete, or mutate state"]
       },
       {
-        id: "feishu.private_chat",
-        title: "Feishu private chat",
-        summary: "Receive allowed private messages, preserve local channel evidence, queue same-sender follow-ups in process, and run normal tasks through the agent.",
+        id: "runtime.sessions",
+        title: "Runtime sessions and task runs",
+        summary: "Map local entrypoint sources such as Feishu groups to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, and index local task runs.",
         status: "implemented",
-        commands: ["pnpm run runtime -- im serve --scenario im-default", "normal Feishu private-chat task"],
-        refs: ["packages/runtime/src/channels/feishu/adapter.ts"],
+        commands: ["pnpm run runtime -- web", "Feishu /session use <profile>", "Feishu /run <task>"],
+        refs: [
+          "packages/core/src/runtime_sessions.ts",
+          "packages/runtime/src/channels/feishu/adapter.ts",
+          "packages/runtime/src/web_console.ts",
+          "tests/runtime_sessions.test.ts",
+          "tests/web_console.test.ts"
+        ],
         boundaries: [
-          "group messages and unauthorized open_ids are rejected by local policy",
+          "local append-only state under the configured state root; not a hosted session database",
+          "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
+          "ordinary bound group messages append inbox entries only; model execution requires explicit /run, explicit mention, or a local web-console run"
+        ]
+      },
+      {
+        id: "feishu.private_chat",
+        title: "Feishu IM sessions",
+        summary: "Receive allowed private messages, map Feishu groups to runtime sessions, preserve local channel evidence, queue private-chat follow-ups in process, and run explicit tasks through the agent.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- im serve --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
+        refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/core/src/runtime_sessions.ts"],
+        boundaries: [
+          "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
+          "bound group messages are inbox context by default and do not execute unless explicitly triggered",
           "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
         ]
       }
@@ -873,6 +900,19 @@ function entrypointsCategory(): CapabilityCategory {
         commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
         refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts"],
         boundaries: ["pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"]
+      },
+      {
+        id: "web.console",
+        title: "Local web console",
+        summary: "Serve a localhost operator console for runtime sessions, Feishu inbox review, profile binding, local task submission, and task-run history.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- web --host 127.0.0.1 --port 8765"],
+        refs: ["packages/runtime/src/web_console.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts"],
+        boundaries: [
+          "localhost operator surface only; not a hosted, multi-user, authenticated, or desktop GUI",
+          "reads and writes only local runtime session/task state except when the operator submits an explicit Run action",
+          "task submission uses the existing LiveAgentRunner and records a local task-run index entry"
+        ]
       },
       {
         id: "cli.content_dry_run",

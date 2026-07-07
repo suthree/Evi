@@ -80,11 +80,14 @@ The first version has two basic entrypoints:
 
 - CLI for local foreground operation.
 - IM for local foreground or single-user local service chat intake.
+- Local web console for localhost session/task inspection and operator actions.
 
 Feishu is the first IM provider. It is a local runtime basic capability, not a
 separate optional product. The first-version command surface is `doctor` for
 baseline checks, `im serve` for the local foreground IM process, and `service`
-for the local resident IM process.
+for the local resident IM process. Feishu private chat remains a direct task
+entrypoint; Feishu groups map to local runtime sessions and start as
+pending/unassigned until an authorized operator binds a profile.
 
 ### Local Learning
 
@@ -214,6 +217,16 @@ pnpm run runtime -- service restart --target im --scenario im-default --channel 
 pnpm run runtime -- service logs --target im --limit 40
 ```
 
+Start the localhost web console:
+
+```bash
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+The web console lists runtime sessions, Feishu inbox entries, and task runs. It
+can bind a pending Feishu-backed session to a profile and submit an explicit
+local task run. It is a local operator surface, not a hosted multi-user GUI.
+
 In Feishu private chat, these read-only local operator commands are available
 without invoking the model: `/status`, `/health`, `/logs [lines]`, `/help`,
 `/governance`, `/evolution`, `/opportunities`, `/context`, `/memory search <query>`,
@@ -226,6 +239,13 @@ without invoking the model: `/status`, `/health`, `/logs [lines]`, `/help`,
 Normal Feishu private-chat tasks also include a bounded local history window
 from the same private chat, using only truncated inbound/outbound state that
 the local runtime has already recorded locally.
+
+In Feishu groups, an unknown group can only be bootstrapped by an authorized
+operator. The first accepted group message creates a pending/unassigned runtime
+session. Send `/session use <profile>` in that group, or bind the profile from
+the web console, to activate the mapping. Ordinary bound group messages append
+to that session inbox; `/run <task>` or an explicit `@bot` mention requests a
+task run.
 
 Operator progress notifications use a state-first outbox. `notify queue`
 writes `operator/notifications/outbox/*.json`; it does not call Feishu directly.
@@ -549,7 +569,10 @@ Current first-version scope:
 - local state root
 - local active vault under `LOCAL_RUNTIME_HOME`
 - CLI foreground runs
+- local web console for runtime sessions, Feishu inbox, profile binding, and
+  explicit local task runs
 - Feishu-backed IM foreground entrypoint
+- Feishu group to runtime-session binding with pending/unassigned bootstrap
 - Feishu read-only local operator commands for status, service health, service
   logs, governance, Opportunity Backlog, SOP Evolution Ledger, memory, context,
   background review history, review tick history, and review inbox
@@ -617,7 +640,7 @@ Explicitly out of scope:
 - multi-machine skill sharing
 - public skill marketplace
 - cross-node vault conflict handling
-- GUI dashboard
+- hosted, multi-user, or desktop GUI dashboard
 - hosted or multi-user daemon/service operation
 - production deployment
 - Docker or Kubernetes packaging

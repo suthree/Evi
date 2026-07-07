@@ -25,7 +25,7 @@ The first version does not design for:
 - multi-machine skill sharing
 - public skill marketplaces
 - hosted or multi-user daemon operation
-- GUI dashboards
+- hosted, multi-user, or desktop GUI dashboards
 - Docker or Kubernetes deployment
 - broad external agent team orchestration
 
@@ -119,6 +119,10 @@ Runtime control keeps core execution bounded:
 - pipeline resume command guidance in read-only backlog/context/operator views
 - local content dry-run publish plans for active exploration, writing only
   state artifacts under `content/runs/`
+- local web console for runtime sessions, Feishu inbox review, profile binding,
+  and explicit local task runs
+- Feishu group source binding to local runtime sessions with
+  pending/unassigned bootstrap
 - bounded same-sender in-memory follow-up queue for normal Feishu private-chat
   tasks
 - review tick materialization into a state-only self-evolution inbox
@@ -189,10 +193,15 @@ control plane.
 
 ### Basic Entrypoints
 
-CLI and IM are first-version basic entrypoints.
+CLI, local web console, and IM are first-version basic entrypoints.
 
 Feishu is the first IM provider. It should be exposed as an agent IM capability,
 not as a separate optional Feishu subsystem.
+
+The local web console is a localhost operator surface. It can inspect runtime
+sessions, Feishu inbox entries, and task-run history, bind a pending
+Feishu-backed session to a profile, and submit an explicit local task run. It
+is not a hosted, multi-user, authenticated, or desktop GUI.
 
 Feishu private chat may expose read-only local operator commands for service,
 context manifest, memory, background review history, review tick history,
@@ -231,6 +240,12 @@ a bounded in-memory follow-up queue while one run is active for that `open_id`.
 The queue writes local trace artifacts for observability, but it is not durable
 restart recovery, cross-process coordination, steering, cancel/resume, or a
 self-evolution execution lane.
+
+Feishu groups may map to local runtime sessions. Unknown groups are ignored
+unless the sender is an authorized operator; authorized bootstrap creates a
+pending/unassigned session. `/session use <profile>` or the local web console
+binds the profile. Ordinary bound group messages append inbox entries only;
+`/run <task>` or an explicit bot mention requests execution.
 
 ### Local Service Runtime
 
@@ -295,6 +310,9 @@ The MVP is healthy when:
   reading secrets, invoking the model recursively, executing tools, managing
   services, or mutating state
 - IM can be checked and served through project-level commands
+- local web console can list runtime sessions, bind pending profiles, inspect
+  session inbox entries, and record explicit local task runs without becoming a
+  hosted or multi-user GUI
 - Feishu private chat can answer read-only local `/capabilities` without
   invoking the model, reading secrets, executing tools, or mutating state
 - Feishu private chat can answer read-only local `/capabilities acceptance`
@@ -334,6 +352,9 @@ The MVP is healthy when:
 - Feishu private-chat tasks from the same sender can queue bounded follow-ups
   while one run is active, then drain them locally without remote queues,
   restart replay, or applying the queue to operator commands
+- Feishu groups can be mapped to runtime sessions, with unknown groups requiring
+  authorized bootstrap and bound group messages remaining inbox-only unless
+  explicitly triggered
 - local service status reports a running IM process and heartbeat when enabled
 - local `service health` returns bounded resident IM health and resident
   deployment status without inspecting launchd, reading logs, restarting
