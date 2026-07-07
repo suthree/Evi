@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   bindGaProjectDesignArtifactPacketCommands,
@@ -18,6 +21,7 @@ import {
   buildIterationAuditRefs,
   buildIterationAuditSeedEvidenceStatus,
   buildIterationAuditVerificationCommandCoverage,
+  getIterationAuditServiceHealthSnapshot,
   parseArgs,
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
@@ -720,6 +724,36 @@ test("iteration audit runtime attention coverage requires structured service-hea
   assert.equal(healthy.status, "not_required");
 });
 
+test("iteration audit service-health snapshot reads resident IM state root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-cli-health-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(root, "config");
+  const homeRoot = join(root, "home");
+  const inspectedStateRoot = join(root, "repo-state");
+  try {
+    await mkdir(configDir, { recursive: true });
+    const configLines = [
+      { type: "home", root: homeRoot },
+      { type: "state", root: inspectedStateRoot }
+    ].map((entry) => JSON.stringify(entry));
+    await writeFile(join(configDir, "config.jsonl"), `${configLines.join("\n")}\n`);
+
+    const snapshot = await getIterationAuditServiceHealthSnapshot({
+      repoRoot,
+      configDir,
+      inspectedStateRoot
+    });
+
+    assert.equal(snapshot.inspected_state_root, inspectedStateRoot);
+    assert.equal(snapshot.service_health_state_root, join(homeRoot, "state/runtime"));
+    assert.equal(snapshot.warnings.length, 1);
+    assert.match(snapshot.warnings[0] ?? "", /differs from resident IM service state_root/);
+    assert.match(snapshot.boundary, /does not mutate state/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("iteration audit workspace coverage requires dirty paths in outcome claims", () => {
   const dirtyWorkspace = {
     status: "dirty",
@@ -1069,7 +1103,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "pnpm run runtime -- governance project-design --state-root <state-root>",
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --state-root <state-root>",
-      "pnpm run runtime -- service health --target im --state-root <state-root>",
+      "pnpm run runtime -- service health --target im",
       "pnpm run check"
     ],
     learning_authority: {
@@ -1098,7 +1132,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ],
       required_before_outcome: [
         "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-        "pnpm run runtime -- service health --target im --state-root <state-root>",
+        "pnpm run runtime -- service health --target im",
         "pnpm run check"
       ]
     },

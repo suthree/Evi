@@ -731,6 +731,37 @@ export function buildIterationAuditWorkspaceOutcomeCoverage(
   };
 }
 
+export interface IterationAuditServiceHealthSnapshot {
+  service_health: ServiceHealthResult;
+  inspected_state_root: string;
+  service_health_state_root: string;
+  warnings: string[];
+  boundary: string;
+}
+
+export async function getIterationAuditServiceHealthSnapshot(args: {
+  repoRoot: string;
+  configDir: string;
+  inspectedStateRoot: string;
+}): Promise<IterationAuditServiceHealthSnapshot> {
+  const selectors = await resolveServiceConfigSelectors({
+    target: "im",
+    configDir: args.configDir
+  });
+  const serviceStore = new AgentStore(resolve(args.repoRoot), selectors.stateRoot);
+  const serviceHealth = await getServiceHealth(serviceStore, { target: "im" });
+  const warnings = selectors.stateRoot === args.inspectedStateRoot
+    ? []
+    : [`inspected state_root ${args.inspectedStateRoot} differs from resident IM service state_root ${selectors.stateRoot}`];
+  return {
+    service_health: serviceHealth,
+    inspected_state_root: args.inspectedStateRoot,
+    service_health_state_root: selectors.stateRoot,
+    warnings,
+    boundary: "read-only iteration audit service-health snapshot; reads resident IM service health through service config selectors and does not mutate state, control services, record outcomes, or prove completion"
+  };
+}
+
 export function buildIterationAuditImplementationContractCoverage(
   planContract: GaProjectDesignPlanPacket["implementation_contract"],
   iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice" | "layer" | "owner_surface">
@@ -2014,8 +2045,12 @@ export async function main(): Promise<number> {
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationCommandCoverage = buildIterationAuditOutcomeVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationClaimCoverage = buildIterationAuditOutcomeVerificationClaimCoverage(auditGuidance.verification_entrypoints, evidenceAvailable);
-        const serviceHealth = await getServiceHealth(store);
-        const runtimeAttentionOutcomeCoverage = buildIterationAuditRuntimeAttentionOutcomeCoverage(auditGuidance.verification_entrypoints, evidenceAvailable, serviceHealth);
+        const serviceHealthSnapshot = await getIterationAuditServiceHealthSnapshot({
+          repoRoot: options.repoRoot,
+          configDir: options.configDir,
+          inspectedStateRoot: config.state.root
+        });
+        const runtimeAttentionOutcomeCoverage = buildIterationAuditRuntimeAttentionOutcomeCoverage(auditGuidance.verification_entrypoints, evidenceAvailable, serviceHealthSnapshot.service_health);
         const workspaceStatus = await getWorkspaceStatus(store, { limit: 200 });
         const workspaceOutcomeCoverage = buildIterationAuditWorkspaceOutcomeCoverage(evidenceAvailable, workspaceStatus);
         const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
@@ -2037,6 +2072,7 @@ export async function main(): Promise<number> {
             verification_command_coverage: verificationCommandCoverage,
             outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
             outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
+            service_health_snapshot: serviceHealthSnapshot,
             runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
             workspace_outcome_coverage: workspaceOutcomeCoverage,
             completion_gate: completionGate,
@@ -2063,6 +2099,7 @@ export async function main(): Promise<number> {
           verification_command_coverage: verificationCommandCoverage,
           outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
           outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
+          service_health_snapshot: serviceHealthSnapshot,
           runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
           workspace_outcome_coverage: workspaceOutcomeCoverage,
           completion_gate: completionGate,

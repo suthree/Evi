@@ -245,7 +245,7 @@ const NEXT_CORE_GA_DESIGN_TARGET = {
   layer: "core_runtime",
   owner_surface: "ga_project_design"
 } as const;
-const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target im --state-root <state-root>";
+const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target im";
 const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
 
 export function getGaProjectDesignContract(): GaProjectDesignContract {

@@ -424,7 +424,7 @@ test("compact GA plan review gate names open iteration blockers", () => {
       "pnpm run runtime -- governance project-design --artifact ga_design_artifact_source --state-root <state-root>",
       "pnpm run runtime -- governance scorecard --state-root <state-root>",
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-      "pnpm run runtime -- service health --target im --state-root <state-root>",
+      "pnpm run runtime -- service health --target im",
       "pnpm run check"
     ]
   }), [

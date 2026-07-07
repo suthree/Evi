@@ -508,7 +508,7 @@ function deriveFeedbackRefreshRouteReviewGapFromServiceHealth(
     ],
     verification_commands: [
       "pnpm exec tsx --test tests/self_evolution_gaps.test.ts tests/opportunity_actions.test.ts tests/opportunity_backlog.test.ts",
-      "pnpm run runtime -- service health --target im --state-root <state-root>",
+      "pnpm run runtime -- service health --target im",
       `pnpm run runtime -- governance act-next --opportunity ${id} --state-root <state-root>`,
       "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
     ],

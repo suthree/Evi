@@ -250,7 +250,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("project-design --artifact ga_design_artifact_iteration_contract_verified")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("--audit-seed all")), true);
-    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
+    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
     assert.deepEqual(readModel.next_core_basic_plan?.verification_commands, readModel.next_core_basic_plan?.next_iteration_seed.verification_commands);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
@@ -350,7 +350,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.criterion.includes("implementation contract bounds allowed scope")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "learning_persistence" && trace.phase_id === "learning_persistence"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
-    assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
+    assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /governance record-iteration/);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /--from-project-design-plan/);
     assert.equal(readModel.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
@@ -435,7 +435,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.outcome_claim_prefixes.includes("check:")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("service-health")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace") && trace.criterion.includes("deferred scope")), true);
-    assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
+    assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im"), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run check"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
