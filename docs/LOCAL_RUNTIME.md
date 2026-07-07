@@ -748,7 +748,11 @@ Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited
 evidence, and bounded `audit_guidance` from the GA project-design plan without
-running checks, writing outcomes, or approving completion. The guidance names
+running checks, writing outcomes, or approving completion. The guidance carries
+`learning_authority` too, so completion review can see that self-evolution
+SOPs and skills preserve procedure while project-design, scorecard, iteration
+contracts, current evidence, verified outcomes, and completion-gate coverage
+retain judgment and completion authority. The guidance names
 whether it is reviewing the matching open iteration, the source iteration for
 the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited

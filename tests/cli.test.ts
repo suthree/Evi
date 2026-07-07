@@ -749,6 +749,13 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "pnpm run runtime -- service health --target im --state-root <state-root>",
       "pnpm run check"
     ],
+    learning_authority: {
+      process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
+      judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+      completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
+      promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
+      boundary: "read-only learning authority boundary"
+    },
     layer_decision: {
       selected_layer: "core_runtime",
       selected_owner_surface: "ga_project_design",
@@ -784,6 +791,8 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
   assert.equal(guidance.verification_commands.some((command) => command.includes("service health")), true);
   assert.equal(guidance.application_boundaries[0]?.includes("application slices"), true);
+  assert.equal(guidance.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
+  assert.match(guidance.learning_authority.completion_authority, /not SOP text/);
   assert.equal(guidance.iteration_record_status.id, "iteration_contract_open");
   assert.match(guidance.boundary, /does not execute checks/);
 

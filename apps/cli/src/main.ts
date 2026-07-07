@@ -333,6 +333,7 @@ interface IterationAuditGuidanceInput {
   source_iteration_ref: string;
   selection_checks: string[];
   verification_commands: string[];
+  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
   layer_decision: {
     selected_layer: string;
     selected_owner_surface: string;
@@ -781,6 +782,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   required_before_outcome: string[];
   verification_commands: string[];
   application_boundaries: string[];
+  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
   iteration_record_status: IterationAuditGuidanceInput["iteration_record_status"];
   boundary: string;
 } {
@@ -822,6 +824,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     required_before_outcome: bindCommandPlaceholders(plan.layer_decision.required_before_outcome, subject, stateRoot),
     verification_commands: bindCommandPlaceholders(plan.verification_commands, subject, stateRoot),
     application_boundaries: plan.layer_decision.application_boundaries,
+    learning_authority: plan.learning_authority,
     iteration_record_status: boundIterationRecordStatus,
     boundary: "read-only iteration audit guidance; restates core/basic verification entrypoints and commands from the GA project-design plan only; does not execute checks, write outcomes, or prove completion"
   };
