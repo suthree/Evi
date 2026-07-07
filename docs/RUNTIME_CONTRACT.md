@@ -560,6 +560,9 @@ Required policy:
 - The `verification_scope` completion audit seed must require the outcome to
   explain which completion claim each verification command supports; a command
   list without claim coverage is not sufficient verification evidence
+- The same seed must require every required verification entrypoint to map to a
+  completion claim, and reject outcomes that omit an entrypoint from claim
+  coverage
 - `capability_stage_plan.next_iteration_plan` must keep layer and audit-seed
   labeled steps so core/basic work is not confused with deferred local-learning
   reuse or completion review

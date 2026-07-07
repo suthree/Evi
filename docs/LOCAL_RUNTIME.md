@@ -605,6 +605,8 @@ why no follow-up is required; classification alone is not traceable enough.
 The `verification_scope` audit seed requires the outcome to explain which
 completion claim each verification command supports. A command list without
 claim coverage is not enough evidence for a verified outcome.
+It also requires every required verification entrypoint to map to a completion
+claim, and rejects outcomes that omit an entrypoint from claim coverage.
 Compact context may render `audit_require` with one requirement per seed, so
 handoff keeps the review target visible without executing or approving it.
 It may also render `audit_reject` with one reject condition per seed, so copied

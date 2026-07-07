@@ -120,6 +120,7 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 完成分类后还必须写 handling policy：`acceptable` 为什么对当前 claim 安全，`repair_needed` 后续修什么，或 `verification_blocker` 为什么阻止 verified outcome；
 如果分类是 `repair_needed`，handling policy 必须写 follow-up action，或说明为什么不需要 follow-up；只分类、不追踪，不够；
 `verification_scope` audit seed 会要求 outcome 说明每条 verification command 支撑哪个 completion claim；只有命令列表、没有 claim coverage，不足以作为 verified outcome 证据；
+它还要求每个 required verification entrypoint 都映射到 completion claim；遗漏任一入口的 claim coverage，不能作为 verified outcome；
 `layer_decision` 会明确把 GA 项目设计识别为核心能力，并把外部工具
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。
 `layer_guard` 会保留 decision stage 和 source -> selected layer/owner 连续性，避免只靠 slice id 判断 core/basic 继承关系；

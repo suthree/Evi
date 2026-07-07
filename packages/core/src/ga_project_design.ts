@@ -539,7 +539,7 @@ function buildNextCoreBasicPlan(
       "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
       "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
       "current_state: external adapters remain application slices unless a reusable runtime contract is named",
-      "verification_scope: verification commands are scoped to the slice",
+      "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
       "learning_persistence: outcome is recorded before reuse"
     ],
     verification_commands: nextIterationSeed.verification_commands,
@@ -846,12 +846,14 @@ function buildCompletionAuditSeeds(
       evidence_needed: [
         "targeted checks cover the changed behavior",
         "broad check runs before a verified outcome is recorded",
-        "outcome explains which completion claim each verification command supports"
+        "outcome explains which completion claim each verification command supports",
+        "outcome maps each required verification entrypoint to a completion claim"
       ],
       reject_if: [
         "a narrow command is used to prove a broader capability claim",
         "expert advice replaces executed verification",
-        "verification commands are listed without claim coverage"
+        "verification commands are listed without claim coverage",
+        "a required verification entrypoint is omitted from outcome claim coverage"
       ]
     },
     {
