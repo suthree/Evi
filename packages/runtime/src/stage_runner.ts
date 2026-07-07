@@ -350,11 +350,11 @@ export class StageRunner {
         toolCallCount += 1;
         const toolName = toolNameFromAction(action);
         if (toolCallCount > args.stage.max_tool_calls) {
-          toolResults.push(blockedToolResult(toolName, `Stage ${args.stage.id} exceeded max_tool_calls=${args.stage.max_tool_calls}.`));
+          toolResults.push(blockedToolResult(toolName, `Stage ${args.stage.id} exceeded max_tool_calls=${args.stage.max_tool_calls}.`, "tool_call_limit_exceeded"));
           continue;
         }
         if (args.stage.allowed_tools.length > 0 && !args.stage.allowed_tools.includes(toolName)) {
-          toolResults.push(blockedToolResult(toolName, `Tool ${toolName} is not allowed in stage ${args.stage.id}.`));
+          toolResults.push(blockedToolResult(toolName, `Tool ${toolName} is not allowed in stage ${args.stage.id}.`, "tool_not_allowed"));
           continue;
         }
 
@@ -724,13 +724,15 @@ function toolNameFromAction(action: ActionProposal): string {
   return typeof payload.tool === "string" ? payload.tool : "unknown";
 }
 
-function blockedToolResult(tool: string, summary: string): ToolResult {
+function blockedToolResult(tool: string, summary: string, failureKind: "tool_call_limit_exceeded" | "tool_not_allowed"): ToolResult {
   return {
     id: newId("tool_result"),
     tool,
     ok: false,
     summary,
-    output: {},
+    output: {
+      failure_kind: failureKind
+    },
     side_effect_level: "none",
     created_at: utcNow()
   };

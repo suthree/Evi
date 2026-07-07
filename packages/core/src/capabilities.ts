@@ -272,6 +272,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         boundaries: [
           "model proposals do not prove completion",
           "pipeline resume is an explicit CLI gate",
+          "StageRunner blocked tool observations expose bounded failure_kind metadata without executing the blocked tool",
           "harness replay audit reads bounded trace metadata only; it does not invoke the model, execute tools, write the repo, or write the active vault"
         ]
       },

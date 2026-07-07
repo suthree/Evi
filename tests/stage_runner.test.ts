@@ -10,6 +10,39 @@ import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import type { ModelClient, ModelRequest, ModelResponse } from "../packages/runtime/src/model.js";
 import { StageRunner } from "../packages/runtime/src/stage_runner.js";
 
+test("stage runner reports blocked tool failure kinds to the next model round", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const model = new DisallowedToolThenDoneModel();
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model
+  });
+
+  try {
+    const result = await runner.runTask({
+      task: "Check stage blocked tool diagnostics.",
+      stages: ["tool_check"],
+      queryTodo: true
+    });
+
+    assert.equal(result.status, "done");
+    assert.equal(model.requests.length, 2);
+    const secondRequest = model.requests[1];
+    assert.ok(secondRequest);
+    assert.match(secondRequest.input, /"failure_kind": "tool_not_allowed"/);
+    assert.match(secondRequest.input, /"tool": "unknown.external"/);
+    assert.match(secondRequest.input, /Tool unknown\.external is not allowed in stage tool_check/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("stage runner resumes a blocked pipeline without overwriting the failed attempt", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
   const repoRoot = join(root, "repo");
@@ -87,6 +120,44 @@ test("stage runner resumes a blocked pipeline without overwriting the failed att
     await rm(root, { recursive: true, force: true });
   }
 });
+
+class DisallowedToolThenDoneModel implements ModelClient {
+  readonly requests: ModelRequest[] = [];
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    this.requests.push(request);
+    const firstCall = this.requests.length === 1;
+    const outputText = JSON.stringify({
+      summary: firstCall ? "Try a disallowed tool." : "Tool diagnostics received.",
+      actions: firstCall ? [{
+        type: "use_tool",
+        rationale: "Exercise the stage blocked-tool guard.",
+        payload: {
+          tool: "unknown.external",
+          arguments: {}
+        }
+      }] : [{
+        type: "respond",
+        rationale: "The stage has the blocked tool diagnostic.",
+        payload: {
+          markdown: "blocked tool diagnostic captured"
+        }
+      }],
+      completion_claim: {
+        status: firstCall ? "not_done" : "done",
+        verification_refs: []
+      }
+    });
+    return {
+      provider: "test",
+      api: "responses",
+      model: "disallowed-tool-then-done",
+      responseId: `response-${this.requests.length}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
 
 class BlockingThenResumablePipelineModel implements ModelClient {
   allowToolCheck = false;

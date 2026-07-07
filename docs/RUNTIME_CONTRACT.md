@@ -1445,6 +1445,9 @@ Common result audit policy:
   `invalid_request`, `runtime_state_path`, `protected_path`, `http_status`,
   `fetch_error`, `search_error`, `timeout`, `spawn_error`, `nonzero_exit`, or
   `unsupported_tool`
+- StageRunner synthetic blocked tool observations also include
+  `output.failure_kind`, such as `tool_not_allowed` or
+  `tool_call_limit_exceeded`, without executing the blocked tool
 - result metadata must make output budgets and truncation visible where output
   can be large
 - command-like tools must expose effective timeout, output cap, cwd boundary,
