@@ -120,6 +120,39 @@ test("harness replay audit warns when over-limit delegated dispatch lacks failur
   }
 });
 
+test("harness replay audit keeps all delegated dispatch metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegates-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendExtraDelegatedDispatches(store, 5);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const metadataCheck = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+
+    assert.equal(report.metrics.delegated_results, 6);
+    assert.equal(report.metrics.delegated_dispatches, 6);
+    assert.equal(metadataCheck?.status, "pass");
+    assert.match(metadataCheck?.summary ?? "", /delegated_results=6; dispatches=6/);
+    assert.equal(metadataCheck?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_extra_7")), true);
+    assert.equal(report.delegated_dispatches.length, 6);
+    assert.equal(report.delegated_dispatches[5]?.event_id, "evidence_replay_delegated_extra_7");
+    assert.equal(report.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_extra_7")), true);
+
+    const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
+    assert.match(markdown, /omitted_delegated_dispatches=1/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false."): Promise<void> {
   const sessionId = "session_replay_test";
   const turnId = "turn_replay_test";
@@ -267,4 +300,23 @@ async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "De
     artifact_refs: [`memory/episodes/${sessionId}-model-action-r2.json`],
     created_at: "2026-06-30T01:00:04.000Z"
   });
+}
+
+async function appendExtraDelegatedDispatches(store: AgentStore, count: number): Promise<void> {
+  const sessionId = "session_replay_test";
+  const turnId = "turn_replay_test";
+  for (let offset = 0; offset < count; offset += 1) {
+    const sequence = offset + 3;
+    const resultRef = `memory/episodes/${sessionId}-delegated_result_extra_${sequence}.json`;
+    await store.writeText(resultRef, "RAW_REPLAY_EXTRA_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: `evidence_replay_delegated_extra_${sequence}`,
+      session_id: sessionId,
+      turn_id: turnId,
+      kind: "delegated_result",
+      summary: `Delegated result: action_id=action_delegate_replay_extra_${sequence}; round=1; sequence=${sequence}; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false.`,
+      artifact_refs: [resultRef],
+      created_at: `2026-06-30T01:00:0${sequence}.750Z`
+    });
+  }
 }

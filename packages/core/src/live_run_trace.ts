@@ -220,7 +220,7 @@ async function summarizeLiveRunTrace(
     delegated_result_count: delegatedResultCount,
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
-    delegated_dispatches: delegatedDispatches.slice(0, 5),
+    delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
     observation_ref_count: report.observation_refs.length,
     model_diagnostic_count: modelDiagnostics.length,

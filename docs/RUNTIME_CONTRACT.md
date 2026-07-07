@@ -1206,7 +1206,10 @@ changing skipped completion verification into a completed claim. Delegated
 results are recorded with action id, round, sequence, task/context character
 counts, and dispatch failure kind so later traces can verify bounded dispatch
 from harness-owned delegated event summaries without reading raw delegated
-context or delegated result bodies. The main-model observation also excludes raw
+context or delegated result bodies. Trace and replay audit JSON preserve the
+complete delegated dispatch metadata set for counting and coverage; operator
+Markdown/context views may cap the rendered list and show an omitted count.
+The main-model observation also excludes raw
 delegated task/context, raw output preview, and persisted artifact bodies. They
 are not tool evidence, final success proof, mutation authority,
 retry/failover authority, or a second autonomous agent runtime.

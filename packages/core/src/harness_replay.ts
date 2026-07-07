@@ -12,6 +12,7 @@ import { AgentStore } from "./store.js";
 const REPLAY_ROOT = "governance/replays";
 const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
 const DISPATCH_FAILURE_KINDS = new Set(["dispatch_limit_exceeded", "input_contract_failed"]);
+const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
 export type HarnessReplayAuditCheckStatus = "pass" | "warning";
@@ -113,7 +114,7 @@ export async function runHarnessReplayAudit(
       observation_refs: trace.observation_ref_count
     },
     checks,
-    delegated_dispatches: trace.delegated_dispatches.slice(0, 5),
+    delegated_dispatches: trace.delegated_dispatches,
     artifact_refs: {
       json_ref: jsonRef,
       markdown_ref: markdownRef
@@ -215,9 +216,14 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     "## Delegated Dispatches",
     "",
     ...(report.delegated_dispatches.length > 0
-      ? report.delegated_dispatches.map((dispatch) =>
-        `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
-      )
+      ? [
+        ...report.delegated_dispatches.slice(0, DELEGATED_DISPATCH_MARKDOWN_LIMIT).map((dispatch) =>
+          `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+        ),
+        ...(report.delegated_dispatches.length > DELEGATED_DISPATCH_MARKDOWN_LIMIT
+          ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
+          : [])
+      ]
       : ["- none"]),
     "",
     "## Boundary",

@@ -1208,7 +1208,9 @@ counts and refs. Replay reports may carry safe delegated dispatch metadata and
 a dispatch-coverage check from the source trace. They also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
-explicitly recorded as `none`. These surfaces do not invoke the model,
+explicitly recorded as `none`. The replay JSON keeps the full delegated
+dispatch set for audit coverage; Markdown and context renderers may show only
+the first entries plus an omitted count. These surfaces do not invoke the model,
 execute tools, read raw model/tool/delegation/final/context artifacts, write
 the repo, write the active vault, or manage services.
 
