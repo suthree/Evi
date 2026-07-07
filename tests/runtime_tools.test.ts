@@ -67,6 +67,16 @@ test("file.write_state writes only under the state root", async () => {
     assert.equal(result.ok, true);
     assert.equal(result.side_effect_level, "local_write");
     assert.equal(await readFile(join(fixture.stateRoot, "generated/output.txt"), "utf8"), "state artifact");
+
+    for (const path of ["../outside.txt", "/tmp/outside.txt"]) {
+      const invalid = await executeTool(useTool("file.write_state", {
+        path,
+        text: "bad"
+      }), { store: fixture.store });
+
+      assert.equal(invalid.ok, false);
+      assert.match(invalid.summary, /relative/);
+    }
   } finally {
     await fixture.cleanup();
   }
@@ -116,6 +126,16 @@ test("file.write_repo writes repo files and rejects protected paths", async () =
 
       assert.equal(runtimeSiblingPath.ok, false);
       assert.match(runtimeSiblingPath.summary, /repo-local runtime state/);
+    }
+
+    for (const path of ["../outside.txt", "/tmp/outside.txt"]) {
+      const invalid = await executeTool(useTool("file.write_repo", {
+        path,
+        text: "bad"
+      }), { store: fixture.store });
+
+      assert.equal(invalid.ok, false);
+      assert.match(invalid.summary, /relative/);
     }
   } finally {
     await fixture.cleanup();
@@ -185,6 +205,20 @@ test("repo.search finds repo text with bounded output", async () => {
     assert.equal(matches.some((match) => match.path === "alpha.md"), true);
     assert.equal(matches.some((match) => match.path === "nested/beta.ts"), true);
 
+    await writeFile(join(fixture.repoRoot, "gamma.md"), "needle three\n", "utf8");
+    const truncated = await executeTool(useTool("repo.search", {
+      query: "needle",
+      path: ".",
+      max_results: 2,
+      max_output_chars: 4000
+    }), { store: fixture.store });
+
+    assert.equal(truncated.ok, true);
+    assert.equal(truncated.output.max_results, 2);
+    assert.equal(truncated.output.max_output_chars, 4000);
+    assert.equal((truncated.output.matches as Array<Record<string, unknown>>).length, 2);
+    assert.equal(truncated.output.truncated, true);
+
     await mkdir(join(fixture.repoRoot, ".runtime/state"), { recursive: true });
     await writeFile(join(fixture.repoRoot, ".runtime/state/trace.txt"), "needle runtime", "utf8");
 
@@ -215,6 +249,14 @@ test("repo.search finds repo text with bounded output", async () => {
 
     assert.equal(invalid.ok, false);
     assert.match(invalid.summary, /relative/);
+
+    const emptyQuery = await executeTool(useTool("repo.search", {
+      query: "  ",
+      path: "."
+    }), { store: fixture.store });
+
+    assert.equal(emptyQuery.ok, false);
+    assert.match(emptyQuery.summary, /non-empty query/);
   } finally {
     await fixture.cleanup();
   }
@@ -232,12 +274,15 @@ test("http.fetch can fetch local JSON without external network", async () => {
     const result = await executeTool(useTool("http.fetch", {
       url,
       response_type: "json",
-      max_chars: 1000
+      max_chars: 1000,
+      timeout_ms: 1000
     }), { store: fixture.store });
 
     assert.equal(result.ok, true);
     assert.equal(result.side_effect_level, "none");
     assert.equal(result.output.max_chars, 1000);
+    assert.equal(result.output.timeout_ms, 1000);
+    assert.equal(result.output.timed_out, false);
     assert.equal(result.output.response_chars, 26);
     assert.equal(result.output.returned_body_chars, 26);
     assert.equal(result.output.body_truncated, false);
@@ -270,6 +315,41 @@ test("http.fetch records body truncation metadata", async () => {
     assert.equal(result.output.returned_body_chars, 14);
     assert.equal(result.output.body_truncated, true);
     assert.equal(result.output.body, `${"x".repeat(10)}\n...`);
+  } finally {
+    await close(server);
+    await fixture.cleanup();
+  }
+});
+
+test("http.fetch records timeout and bad URL failures", async () => {
+  const fixture = await createFixture();
+  const server = createServer((_request, response) => {
+    setTimeout(() => {
+      if (!response.destroyed) response.end("late");
+    }, 2000);
+  });
+
+  try {
+    const invalid = await executeTool(useTool("http.fetch", {
+      url: "file:///tmp/data.json"
+    }), { store: fixture.store });
+
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.summary, /http\(s\) URL/);
+    assert.equal(invalid.output.url, "file:///tmp/data.json");
+
+    const url = await listen(server, "/slow");
+    const timedOut = await executeTool(useTool("http.fetch", {
+      url,
+      timeout_ms: 1000,
+      max_chars: 1000
+    }), { store: fixture.store });
+
+    assert.equal(timedOut.ok, false);
+    assert.match(timedOut.summary, /timed out/);
+    assert.equal(timedOut.output.timeout_ms, 1000);
+    assert.equal(timedOut.output.timed_out, true);
+    assert.equal(timedOut.output.max_chars, 1000);
   } finally {
     await close(server);
     await fixture.cleanup();
@@ -380,6 +460,69 @@ test("command.run records output truncation metadata", async () => {
   }
 });
 
+test("command.run rejects invalid command requests", async () => {
+  const fixture = await createFixture();
+  try {
+    const empty = await executeTool(useTool("command.run", {
+      command: "",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(empty.ok, false);
+    assert.match(empty.summary, /requires a command/);
+
+    const pathLike = await executeTool(useTool("command.run", {
+      command: "./script.sh",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(pathLike.ok, false);
+    assert.match(pathLike.summary, /binary name/);
+
+    const invalidCwd = await executeTool(useTool("command.run", {
+      command: "node",
+      cwd: "outside",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(invalidCwd.ok, false);
+    assert.match(invalidCwd.summary, /Unsupported command.run cwd/);
+
+    const missingSideEffect = await executeTool(useTool("command.run", {
+      command: "node"
+    }), { store: fixture.store });
+
+    assert.equal(missingSideEffect.ok, false);
+    assert.match(missingSideEffect.summary, /valid side_effect_level/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("command.run records timeout failures", async () => {
+  const fixture = await createFixture();
+  try {
+    const result = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "setTimeout(() => {}, 2000)"],
+      cwd: "state",
+      timeout_ms: 1000,
+      max_output_chars: 1000,
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.output.timedOut, true);
+    assert.match(result.summary, /timed out/);
+    assert.equal(result.output.timeout_ms, 1000);
+    assert.equal(result.output.max_output_chars, 1000);
+    assert.equal(result.output.stdout_truncated, false);
+    assert.equal(result.output.stderr_truncated, false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("code.execute_node executes bounded JavaScript in the state root", async () => {
   const fixture = await createFixture();
   try {
@@ -433,6 +576,32 @@ test("code.execute_node does not inherit arbitrary parent environment values", a
   }
 });
 
+test("code.execute_node rejects empty code and records timeout failures", async () => {
+  const fixture = await createFixture();
+  try {
+    const empty = await executeTool(useTool("code.execute_node", {
+      code: " "
+    }), { store: fixture.store });
+
+    assert.equal(empty.ok, false);
+    assert.match(empty.summary, /No code provided/);
+
+    const timedOut = await executeTool(useTool("code.execute_node", {
+      code: "setTimeout(() => {}, 2000)",
+      timeout_ms: 1000,
+      max_output_chars: 1000
+    }), { store: fixture.store });
+
+    assert.equal(timedOut.ok, false);
+    assert.equal(timedOut.output.timedOut, true);
+    assert.match(timedOut.summary, /timed out/);
+    assert.equal(timedOut.output.timeout_ms, 1000);
+    assert.equal(timedOut.output.max_output_chars, 1000);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("code.execute_node records output truncation metadata", async () => {
   const fixture = await createFixture();
   try {
@@ -471,6 +640,36 @@ test("tool contract renderer covers the core tool surface", () => {
   for (const toolName of toolNames) {
     assert.match(rendered, new RegExp(`"tool": "${escapeRegExp(toolName)}"`));
   }
+  const contractsByTool = new Map(coreToolContracts.map((contract) => [contract.tool, contract]));
+  assert.deepEqual(Object.keys(contractsByTool.get("repo.search")?.arguments ?? {}).sort(), [
+    "globs",
+    "max_output_chars",
+    "max_results",
+    "path",
+    "query"
+  ]);
+  assert.deepEqual(Object.keys(contractsByTool.get("http.fetch")?.arguments ?? {}).sort(), [
+    "max_chars",
+    "response_type",
+    "timeout_ms",
+    "url"
+  ]);
+  assert.deepEqual(Object.keys(contractsByTool.get("command.run")?.arguments ?? {}).sort(), [
+    "args",
+    "command",
+    "cwd",
+    "env",
+    "env_allowlist",
+    "max_output_chars",
+    "side_effect_level",
+    "timeout_ms"
+  ]);
+  assert.deepEqual(Object.keys(contractsByTool.get("code.execute_node")?.arguments ?? {}).sort(), [
+    "code",
+    "env_policy",
+    "max_output_chars",
+    "timeout_ms"
+  ]);
   assert.doesNotMatch(rendered, /market\.chinext/);
 });
 

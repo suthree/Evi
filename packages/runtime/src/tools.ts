@@ -154,6 +154,8 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
       path: searchPath,
       engine: "rg",
       exitCode: rgResult.exitCode,
+      max_results: maxResults,
+      max_output_chars: maxOutputChars,
       matches,
       truncated: rgResult.truncated || rgResult.stdout.split(/\r?\n/).filter(Boolean).length > maxResults,
       stderr: rgResult.stderr
@@ -170,6 +172,8 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
     query,
     path: searchPath,
     engine: "node",
+    max_results: maxResults,
+    max_output_chars: maxOutputChars,
     matches: fallback.matches,
     truncated: fallback.truncated
   }, "none");
@@ -179,29 +183,49 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
   const url = stringValue(args.url);
   const responseType = stringValue(args.response_type) || "text";
   const maxChars = intValue(args.max_chars, 12000);
+  const timeoutMs = Math.min(Math.max(intValue(args.timeout_ms, 30000), 1000), 300000);
   if (!url.startsWith("https://") && !url.startsWith("http://")) {
     return toolResult("http.fetch", false, "http.fetch requires an http(s) URL.", { url }, "none");
   }
-  const response = await fetch(url, {
-    headers: {
-      "User-Agent": "LocalAgent/0.1"
-    }
-  });
-  const text = await response.text();
-  const bodyTruncated = text.length > maxChars;
-  const body = bodyTruncated ? truncateOutput(text, maxChars) : text;
-  return toolResult("http.fetch", response.ok, `Fetched ${url}: ${response.status} ${response.statusText}.`, {
-    url,
-    status: response.status,
-    status_text: response.statusText,
-    response_type: responseType,
-    max_chars: maxChars,
-    response_chars: text.length,
-    returned_body_chars: body.length,
-    body_truncated: bodyTruncated,
-    content_type: response.headers.get("content-type") ?? null,
-    body: responseType === "json" ? parseMaybeJson(body) : body
-  }, "none");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent": "LocalAgent/0.1"
+      },
+      signal: controller.signal
+    });
+    const text = await response.text();
+    const bodyTruncated = text.length > maxChars;
+    const body = bodyTruncated ? truncateOutput(text, maxChars) : text;
+    return toolResult("http.fetch", response.ok, `Fetched ${url}: ${response.status} ${response.statusText}.`, {
+      url,
+      status: response.status,
+      status_text: response.statusText,
+      response_type: responseType,
+      max_chars: maxChars,
+      timeout_ms: timeoutMs,
+      timed_out: false,
+      response_chars: text.length,
+      returned_body_chars: body.length,
+      body_truncated: bodyTruncated,
+      content_type: response.headers.get("content-type") ?? null,
+      body: responseType === "json" ? parseMaybeJson(body) : body
+    }, "none");
+  } catch (error) {
+    const timedOut = controller.signal.aborted;
+    return toolResult("http.fetch", false, timedOut ? `http.fetch timed out after ${timeoutMs}ms.` : `http.fetch failed: ${errorMessage(error)}`, {
+      url,
+      response_type: responseType,
+      max_chars: maxChars,
+      timeout_ms: timeoutMs,
+      timed_out: timedOut,
+      error: errorMessage(error)
+    }, "none");
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function runCommandRun(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -409,6 +433,10 @@ function parseMaybeJson(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function runRipgrep(options: {

@@ -1522,7 +1522,10 @@ Required policy:
 
 - require `http://` or `https://`
 - cap response size
+- timeout
 - record status and URL
+- return bounded timeout or fetch-failure metadata instead of throwing through
+  the harness
 - side effect: `none`
 
 ### `command.run`

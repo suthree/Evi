@@ -53,9 +53,10 @@ export const coreToolContracts: ToolContract[] = [
     side_effect_level: "none",
     rationale: "need to fetch an HTTP resource",
     arguments: {
-      url: "https://example.com/data.json",
-      response_type: "text | json",
-      max_chars: 12000
+      url: "https://example.com",
+      response_type: "text|json",
+      max_chars: 12000,
+      timeout_ms: 30000
     }
   },
   {
@@ -83,7 +84,7 @@ export const coreToolContracts: ToolContract[] = [
       code: "console.log('ok')",
       timeout_ms: 10000,
       max_output_chars: 12000,
-      env_policy: "minimal runtime env; no arbitrary parent env passthrough"
+      env_policy: "minimal runtime env; no parent env passthrough"
     }
   }
 ];
