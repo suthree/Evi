@@ -2943,9 +2943,9 @@ ${renderCoreToolExamples()}
 Harness policy:
 - file.write_repo is only for requested repo edits.
 - command.run must declare side_effect_level, timeout_ms, and max_output_chars.
-- Use repo.search or file.read before source-file claims.
+- Use repo.search/file.read before source claims.
 - A done completion claim is verified by the harness against final response and tool evidence.
-- Failed write/run tool or delegated results block verified completion.
+- Failed write/run blocks completion; delegated failures need recovery evidence.
 - respond.payload.markdown defaults to Simplified Chinese unless asked otherwise; keep commands, code, JSON fields, protocols, and quotes literal.
 
 Available delegated agent action:

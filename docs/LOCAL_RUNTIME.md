@@ -2072,7 +2072,10 @@ results remain visible as warnings in the completion report, Live Run Trace, and
 replay audit. Replay also compares per-round `delegate_agent` action counts
 with delegated result events so missing rejected-dispatch evidence becomes
 visible. Those failures are recovery input only for a later main-harness
-model round and still require independent verification evidence; they do not
+model round. A later `done` claim still fails when a delegated failure has no
+later main-harness write/run recovery evidence; with later recovery evidence,
+the delegated failure stays a warning and still requires independent completion
+verification evidence. They do not
 authorize automatic retry, model fan-out, expert scheduling, delegated
 completion, or raw delegated artifact reads.
 

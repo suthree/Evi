@@ -75,6 +75,7 @@ interface DelegatedObservation {
   summary: string;
   findings_text: string | null;
   error: string | null;
+  recovery_hint: string | null;
   boundary: string;
   observation_boundary: string;
 }
@@ -320,6 +321,7 @@ export class LiveAgentRunner {
     const delegatedArtifactRefs: string[] = [];
     const harnessArtifactRefs: string[] = [];
     const modelDiagnosticRefs: string[] = [];
+    const verificationEvidenceRounds = new Map<string, number>();
     let modelFailureOccurred = false;
 
     const maxRounds = discipline ? 5 : 3;
@@ -487,6 +489,8 @@ export class LiveAgentRunner {
         toolResults.push(toolResult);
         const toolRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${toolResult.id}.json`, toolResult);
         toolArtifactRefs.push(toolRef);
+        verificationEvidenceRounds.set(toolResult.id, round);
+        verificationEvidenceRounds.set(toolRef, round);
         const toolEvent = evidenceEventSchema.parse({
           session_id: snapshot.session_id,
           turn_id: snapshot.id,
@@ -585,7 +589,8 @@ export class LiveAgentRunner {
       availableVerificationRefs: compactRefs([
         ...toolResults.map((result) => result.id),
         ...toolArtifactRefs
-      ])
+      ]),
+      verificationEvidenceRounds
     });
     const completionReport = completionVerificationReportSchema.parse({
       session_id: snapshot.session_id,
@@ -1437,7 +1442,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one bounded analysis or critique task per model round; delegated tasks must not ask the subagent to execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion until later main-harness write/run evidence proves recovery.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1483,6 +1488,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     summary: delegatedObservationSummaryForModelInput(result),
     findings_text: result.findings_text,
     error: delegatedObservationErrorForModelInput(result.error),
+    recovery_hint: delegatedObservationRecoveryHint(result),
     boundary: result.boundary,
     observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
   };
@@ -1501,6 +1507,23 @@ function delegatedObservationErrorForModelInput(error: string | null): string | 
     return "Delegated model output was not a JSON object.";
   }
   return limitText(error, 300);
+}
+
+function delegatedObservationRecoveryHint(result: DelegatedResult): string | null {
+  if (result.ok) return null;
+  if (result.result_failure_kind === "dispatch_limit_exceeded") {
+    return "Use at most one bounded delegated subtask in a later model round; recover with main-harness evidence before claiming done.";
+  }
+  if (result.result_failure_kind === "input_contract_failed") {
+    return "Revise the delegated task/context boundary or proceed with main-harness evidence before claiming done.";
+  }
+  if (result.result_failure_kind === "delegated_output_contract_failed") {
+    return "Treat the delegated output as unusable; recover with main-harness evidence or a later valid bounded delegation before claiming done.";
+  }
+  if (result.result_failure_kind === "delegated_model_request_failed") {
+    return "Continue with main-harness verification or report blocked; do not treat the delegated request failure as proof.";
+  }
+  return "Recover through the main harness before claiming done; failed delegated results are not completion proof.";
 }
 
 function parseEnvelope(outputText: string): ModelActionEnvelope {
@@ -2200,6 +2223,7 @@ function verifyCompletionClaim(args: {
   delegatedResults: DelegatedResult[];
   modelDiagnosticRefs: string[];
   availableVerificationRefs: string[];
+  verificationEvidenceRounds: Map<string, number>;
 }): {
   ok: boolean;
   verified: boolean;
@@ -2269,7 +2293,6 @@ function verifyCompletionClaim(args: {
     refs: writeOrRunResults.map((result) => result.id)
   });
 
-  checks.push(delegatedResultsCheck(args.delegatedResults, true));
   const delegatedProofRefs = delegatedVerificationRefs(claimedRefs, args.delegatedResults);
   const nonDelegatedClaimedRefs = claimedRefs.filter((ref) => !delegatedProofRefs.includes(ref));
   const availableVerificationRefSet = new Set(args.availableVerificationRefs);
@@ -2301,6 +2324,12 @@ function verifyCompletionClaim(args: {
   });
   const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
   const independentEvidenceRefs = [...boundClaimedRefs, ...successfulWriteOrRunRefs];
+  const delegatedRecoveryEvidenceRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
+    delegatedResults: args.delegatedResults,
+    independentEvidenceRefs,
+    verificationEvidenceRounds: args.verificationEvidenceRounds
+  });
+  checks.push(delegatedResultsCheck(args.delegatedResults, true, delegatedRecoveryEvidenceRefs));
   checks.push({
     id: "delegated_independent_evidence",
     status: args.delegatedResults.length === 0
@@ -2338,11 +2367,15 @@ function verifyCompletionClaim(args: {
   };
 }
 
-function delegatedResultsCheck(delegatedResults: DelegatedResult[], isDoneClaim: boolean): CompletionVerificationReport["checks"][number] {
+function delegatedResultsCheck(
+  delegatedResults: DelegatedResult[],
+  isDoneClaim: boolean,
+  recoveryEvidenceRefs: string[] = []
+): CompletionVerificationReport["checks"][number] {
   const failedDelegations = delegatedResults.filter((result) => !result.ok);
   let status: CompletionVerificationReport["checks"][number]["status"] = "skipped";
   if (failedDelegations.length > 0) {
-    status = isDoneClaim ? "fail" : "warning";
+    status = isDoneClaim && recoveryEvidenceRefs.length === 0 ? "fail" : "warning";
   } else if (delegatedResults.length > 0) {
     status = "pass";
   }
@@ -2350,12 +2383,30 @@ function delegatedResultsCheck(delegatedResults: DelegatedResult[], isDoneClaim:
     id: "delegated_results",
     status,
     summary: failedDelegations.length > 0
-      ? `Failed delegated result(s): ${failedDelegations.length}.`
+      ? recoveryEvidenceRefs.length > 0
+        ? `Failed delegated result(s): ${failedDelegations.length}; later main-harness recovery evidence recorded.`
+        : `Failed delegated result(s): ${failedDelegations.length}.`
       : delegatedResults.length > 0
         ? `All ${delegatedResults.length} delegated result(s) passed contract validation; they are not completion proof.`
         : "No delegated result was required for this completion claim.",
-    refs: delegatedResults.map((result) => result.id)
+    refs: compactRefs([...delegatedResults.map((result) => result.id), ...recoveryEvidenceRefs])
   };
+}
+
+function mainHarnessRecoveryEvidenceAfterDelegationFailure(args: {
+  delegatedResults: DelegatedResult[];
+  independentEvidenceRefs: string[];
+  verificationEvidenceRounds: Map<string, number>;
+}): string[] {
+  const failedRounds = args.delegatedResults
+    .filter((result) => !result.ok)
+    .map((result) => result.round);
+  if (failedRounds.length === 0) return [];
+  const latestFailedRound = Math.max(...failedRounds);
+  return args.independentEvidenceRefs.filter((ref) => {
+    const evidenceRound = args.verificationEvidenceRounds.get(ref);
+    return typeof evidenceRound === "number" && evidenceRound > latestFailedRound;
+  });
 }
 
 function delegatedVerificationRefs(claimedRefs: string[], delegatedResults: DelegatedResult[]): string[] {

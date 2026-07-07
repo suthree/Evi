@@ -1221,17 +1221,21 @@ summary that omitted the field. Every failed delegated result also carries a
 safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
 delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.
-Passed delegated results record `result_failure_kind=none`. A later `done` claim fails completion verification
-when any delegated result failed. A passed delegated result remains an advisory
-self-report: it can inform the next model round, but its id, state ref, or event
-ref must not be used as `completion_claim.verification_refs` proof. If a
-`done` claim follows any delegated result, completion verification also requires
-independent evidence: at least one harness-known non-delegated verification ref
-or successful write/run tool result recorded by the harness. The final response
-artifact alone is not independent completion proof. Non-`done` runs still record
-a bounded `delegated_results` warning when any delegated result failed, so Live
-Run Trace and replay audit can show the failure without changing skipped
-completion verification into a completed claim. Delegated results are recorded with action id, round, sequence, task/context character
+Passed delegated results record `result_failure_kind=none`. A later `done` claim
+fails completion verification when any delegated result failed and no later
+main-harness write/run evidence proves recovery. When later main-harness
+recovery evidence exists, the failed delegated result remains a warning and the
+done claim still needs independent completion proof. A passed delegated result
+remains an advisory self-report: it can inform the next model round, but its id,
+state ref, or event ref must not be used as
+`completion_claim.verification_refs` proof. If a `done` claim follows any
+delegated result, completion verification also requires independent evidence: at
+least one harness-known non-delegated verification ref or successful write/run
+tool result recorded by the harness. The final response artifact alone is not
+independent completion proof. Non-`done` runs still record a bounded
+`delegated_results` warning when any delegated result failed, so Live Run Trace
+and replay audit can show the failure without changing skipped completion
+verification into a completed claim. Delegated results are recorded with action id, round, sequence, task/context character
 counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated

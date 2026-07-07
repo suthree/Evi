@@ -1100,7 +1100,7 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /Content planning and evidence \[application_slice\]/);
     assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
     assert.match(fullText, /delegate_agent/);
-    assert.match(fullText, /failed delegated results block verified completion/);
+    assert.match(fullText, /block verified completion until later main-harness write\/run evidence proves recovery/);
     assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none/);
     assert.match(fullText, /none means no dispatch-layer failure, not delegated success/);
     assert.match(fullText, /result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none/);

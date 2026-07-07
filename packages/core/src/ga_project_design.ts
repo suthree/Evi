@@ -1217,7 +1217,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],
       completion_gate: [
-        "delegatedResultsCheck fails a done claim when any delegated result failed",
+        "delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence",
         "delegatedVerificationRefs rejects delegated self-report refs as completion proof",
         "delegatedIndependentEvidenceCheck fails a done claim after delegation without harness-known non-delegated verification refs or successful write/run evidence"
       ]
@@ -1268,7 +1268,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     },
     completion_authority: [
       "main harness verifies delegated results before they influence a done claim",
-      "failed delegated results block verified completion",
+      "failed delegated results block verified completion until later main-harness recovery evidence exists",
       "passed delegated results can inform the next model round but do not prove completion",
       "completion remains with iteration outcome plus completion_gate coverage"
     ],
