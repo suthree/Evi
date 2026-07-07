@@ -458,9 +458,14 @@ When no blocking core/basic iteration is open, core GA design is already active
 with full local evidence, and the general delegation loop is active, the
 scorecard default core/basic outlet moves to `general_agent_delegation`
 hardening unless a basic runtime attention slice must be handled first. The
-project-design plan remains the record-iteration seed authority until its own
-selector is explicitly hardened; if these two views differ, treat the difference
-as the next selector-alignment slice rather than execution authority.
+project-design plan keeps fresh bootstrap on `core_ga_design`, then uses the
+current scorecard target to seed `basic_runtime_substrate`, `core_ga_design`, or
+`general_agent_delegation` from the verified source artifact. A matching open
+plan-derived iteration stays authoritative for that source so
+`record-iteration --from-project-design-plan` does not drift after the scorecard
+switches into an open-iteration closure guard. In that case
+`scorecard_basis` keeps the current `next_core_basic_slice` and adds
+`plan_target_slice` so the plan does not hide the guard/target difference.
 `governance project-design` is the core GA project design contract. It defines
 the reusable loop for goal intake, capability layering, contract design,
 execution planning, verification review, and learning persistence. It is

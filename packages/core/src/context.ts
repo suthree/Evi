@@ -1798,7 +1798,11 @@ export function compactGaPlanProofBoundary(
 }
 
 async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
-  const readModel = await getGaProjectDesignReadModel(store, { limit: 3 });
+  const scorecard = await getSelfEvolutionScorecard(store);
+  const readModel = await getGaProjectDesignReadModel(store, {
+    limit: 3,
+    scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
+  });
   const plan = readModel.next_core_basic_plan;
   if (!plan) return null;
   const auditCommand = plan.iteration_record_status.audit_command;

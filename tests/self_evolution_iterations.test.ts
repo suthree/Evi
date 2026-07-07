@@ -173,7 +173,7 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const implementationContract = {
-      proposed_slice: "core_ga_design_next_slice_after_seed",
+      proposed_slice: "general_agent_delegation_hardening_after_seed",
       source_artifact_id: "ga_design_artifact_iteration_contract_seed",
       source_proposed_slice: "previous_core_slice",
       selected_layer: "core_runtime" as const,
@@ -185,10 +185,10 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
       boundary: "read-only GA implementation contract"
     };
     const args = {
-      summary: "Open next GA design slice from the current plan seed.",
+      summary: "Open next general delegation hardening slice from the current plan seed.",
       layer: "core_runtime" as const,
       ownerSurface: "ga_project_design",
-      proposedSlice: "core_ga_design_next_slice_after_seed",
+      proposedSlice: "general_agent_delegation_hardening_after_seed",
       sourceRef: "self-evolution/iterations/iteration_contract_seed.json",
       implementationContract,
       evidenceRefs: ["packages/core/src/ga_project_design.ts"],

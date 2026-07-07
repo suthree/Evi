@@ -269,8 +269,8 @@ export interface GaProjectDesignPlanPacket {
   status: "advisory";
   id: string;
   title: string;
-  target_dimension_id: "core_ga_design";
-  target_slice_id: "next_slice_core_ga_design";
+  target_dimension_id: GaProjectDesignTargetDimensionId;
+  target_slice_id: GaProjectDesignTargetSliceId;
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
@@ -343,12 +343,35 @@ const BOOTSTRAP_SOURCE_ID = "ga_design_bootstrap_contract_source";
 const BOOTSTRAP_SOURCE_REF = "docs/RUNTIME_CONTRACT.md";
 const BOOTSTRAP_SOURCE_SLICE = "fresh_state_no_verified_iteration";
 const BOOTSTRAP_PROPOSED_SLICE = "core_ga_design_fresh_bootstrap";
+type GaProjectDesignTargetDimensionId = "core_ga_design" | "basic_runtime_substrate" | "general_agent_delegation";
+export type GaProjectDesignTargetSliceId =
+  | "next_slice_core_ga_design"
+  | "next_slice_basic_runtime_substrate"
+  | "next_slice_general_agent_delegation";
+interface GaProjectDesignPlanTarget {
+  target_dimension_id: GaProjectDesignTargetDimensionId;
+  target_slice_id: GaProjectDesignTargetSliceId;
+  layer: CapabilityLayer;
+  owner_surface: string;
+}
 const NEXT_CORE_GA_DESIGN_TARGET = {
   target_dimension_id: "core_ga_design",
   target_slice_id: "next_slice_core_ga_design",
   layer: "core_runtime",
   owner_surface: "ga_project_design"
-} as const;
+} as const satisfies GaProjectDesignPlanTarget;
+const NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET = {
+  target_dimension_id: "basic_runtime_substrate",
+  target_slice_id: "next_slice_basic_runtime_substrate",
+  layer: "basic_entrypoint",
+  owner_surface: "ga_project_design"
+} as const satisfies GaProjectDesignPlanTarget;
+const NEXT_GENERAL_DELEGATION_TARGET = {
+  target_dimension_id: "general_agent_delegation",
+  target_slice_id: "next_slice_general_agent_delegation",
+  layer: "core_runtime",
+  owner_surface: "ga_project_design"
+} as const satisfies GaProjectDesignPlanTarget;
 const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target runtime";
 const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
 
@@ -524,9 +547,12 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
 
 export async function getGaProjectDesignArtifactPacket(
   store: AgentStore,
-  args: { artifactRef: string; limit?: number }
+  args: { artifactRef: string; limit?: number; scorecardNextCoreBasicSliceId?: string | null }
 ): Promise<GaProjectDesignArtifactPacket> {
-  const readModel = await getGaProjectDesignReadModel(store, { limit: args.limit });
+  const readModel = await getGaProjectDesignReadModel(store, {
+    limit: args.limit,
+    scorecardNextCoreBasicSliceId: args.scorecardNextCoreBasicSliceId
+  });
   const artifact = selectGaProjectDesignArtifact(readModel.artifacts, args.artifactRef);
   if (!artifact) throw new Error(`GA project design artifact not found: ${args.artifactRef}`);
   const plan = readModel.next_core_basic_plan?.source_artifact_id === artifact.id
@@ -564,7 +590,7 @@ export function selectGaProjectDesignArtifact(
 
 export async function getGaProjectDesignReadModel(
   store: AgentStore,
-  args: { limit?: number } = {}
+  args: { limit?: number; scorecardNextCoreBasicSliceId?: string | null } = {}
 ): Promise<GaProjectDesignReadModel> {
   await store.ensureLayout();
   const limit = Math.max(0, args.limit ?? 10);
@@ -572,7 +598,7 @@ export async function getGaProjectDesignReadModel(
   const iterations = await listSelfEvolutionIterations(store);
   const allArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
   const artifacts = allArtifacts.slice(0, limit);
-  const nextCoreBasicPlan = buildNextCoreBasicPlan(contract, allArtifacts, iterations.iterations);
+  const nextCoreBasicPlan = buildNextCoreBasicPlan(contract, allArtifacts, iterations.iterations, args.scorecardNextCoreBasicSliceId);
   return {
     ...contract,
     artifact_count: allArtifacts.length,
@@ -597,18 +623,20 @@ export async function getGaProjectDesignReadModel(
 function buildNextCoreBasicPlan(
   contract: GaProjectDesignContract,
   artifacts: GaProjectDesignArtifact[],
-  iterations: SelfEvolutionIterationContract[]
+  iterations: SelfEvolutionIterationContract[],
+  scorecardNextCoreBasicSliceId?: string | null
 ): GaProjectDesignPlanPacket | null {
   const source = selectNextCoreBasicPlanSource(artifacts, iterations);
   if (!source) return null;
+  const target = selectNextCoreBasicPlanTarget(source, iterations, scorecardNextCoreBasicSliceId);
   const proposedSlice = source.kind === "fresh_bootstrap"
     ? BOOTSTRAP_PROPOSED_SLICE
-    : nextCoreGaDesignProposedSlice(source);
-  const nextIterationSeed = buildNextIterationSeed(contract, source, proposedSlice);
+    : nextProposedSlice(source, target);
+  const nextIterationSeed = buildNextIterationSeed(contract, source, target, proposedSlice);
   const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed);
   const governanceCleanup = buildGovernanceCleanup(iterations, source);
   const isFreshSuccessor = proposedSlice !== source.proposed_slice;
-  const isTargetLayerReady = isCoreBasicLayer(NEXT_CORE_GA_DESIGN_TARGET.layer);
+  const isTargetLayerReady = isCoreBasicLayer(target.layer);
   const selectionStatus = isFreshSuccessor && isTargetLayerReady ? "ready" : "needs_attention";
   const sourceArtifactWarnings = [
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
@@ -624,8 +652,8 @@ function buildNextCoreBasicPlan(
     `source_status=${source.source_status}`,
     `source_artifact_quality=${sourceArtifactQuality}`,
     `fresh_successor_slice=${isFreshSuccessor}`,
-    `target_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}`,
-    `owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
+    `target_layer=${target.layer}`,
+    `owner_surface=${target.owner_surface}`,
     `iteration_record_status=${iterationRecordStatus.status}`
   ];
   const acceptanceTrace = buildAcceptanceTrace();
@@ -635,28 +663,23 @@ function buildNextCoreBasicPlan(
     status: "advisory",
     id: `ga_design_plan_${safeIdPart(source.id)}`,
     title: `Next core/basic GA planning packet: ${proposedSlice}`,
-    target_dimension_id: NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id,
-    target_slice_id: NEXT_CORE_GA_DESIGN_TARGET.target_slice_id,
-    layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
-    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    target_dimension_id: target.target_dimension_id,
+    target_slice_id: target.target_slice_id,
+    layer: target.layer,
+    owner_surface: target.owner_surface,
     proposed_slice: proposedSlice,
     source_kind: source.kind,
     source_artifact_id: source.id,
     source_iteration_ref: source.source_iteration_ref,
     source_proposed_slice: source.proposed_slice,
     planning_basis: buildPlanningBasis(source, proposedSlice),
-    goal_scope: buildGoalScope(source, proposedSlice),
-    implementation_contract: buildImplementationContract(source, proposedSlice),
+    goal_scope: buildGoalScope(source, target, proposedSlice),
+    implementation_contract: buildImplementationContract(source, target, proposedSlice),
     source_continuation: buildSourceContinuation(source),
     iteration_focus: buildIterationFocus(source, proposedSlice),
-    capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
+    capability_stage_plan: buildCapabilityStagePlan(source, target, proposedSlice),
     general_delegation_loop: buildGeneralDelegationLoop(),
-    scorecard_basis: [
-      `next_core_basic_slice=${NEXT_CORE_GA_DESIGN_TARGET.target_slice_id}`,
-      `target_dimension=${NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id}`,
-      `target_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}`,
-      "scorecard_command=pnpm run runtime -- governance scorecard --state-root <state-root>"
-    ],
+    scorecard_basis: buildScorecardBasis(target, scorecardNextCoreBasicSliceId),
     selection_status: selectionStatus,
     selection_reasons: selectionReasons,
     selection_checks: [
@@ -667,12 +690,12 @@ function buildNextCoreBasicPlan(
       `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}`,
       ...sourceArtifactWarnings,
       `fresh_successor_slice=${isFreshSuccessor}; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
-      `target_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}; owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
+      `target_layer=${target.layer}; owner_surface=${target.owner_surface}`,
       `iteration_record_status=${iterationRecordStatus.status}${iterationRecordStatus.ref ? `; ref=${iterationRecordStatus.ref}` : ""}`,
       `governance_cleanup_superseded_open_iterations=${governanceCleanup.superseded_open_iterations.length}`,
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
-    layer_decision: buildLayerDecision(source, proposedSlice, selectionStatus),
+    layer_decision: buildLayerDecision(source, target, proposedSlice, selectionStatus),
     learning_authority: buildLearningAuthority(),
     iteration_record_status: iterationRecordStatus,
     governance_cleanup: governanceCleanup,
@@ -800,16 +823,32 @@ function buildPlanningBasis(source: GaProjectDesignPlanSource, proposedSlice: st
   return `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`;
 }
 
+function buildScorecardBasis(
+  target: GaProjectDesignPlanTarget,
+  scorecardNextCoreBasicSliceId?: string | null
+): string[] {
+  return [
+    `next_core_basic_slice=${scorecardNextCoreBasicSliceId ?? target.target_slice_id}`,
+    ...(scorecardNextCoreBasicSliceId && scorecardNextCoreBasicSliceId !== target.target_slice_id
+      ? [`plan_target_slice=${target.target_slice_id}`]
+      : []),
+    `target_dimension=${target.target_dimension_id}`,
+    `target_layer=${target.layer}`,
+    "scorecard_command=pnpm run runtime -- governance scorecard --state-root <state-root>"
+  ];
+}
+
 function buildImplementationContract(
   source: GaProjectDesignPlanSource,
+  target: GaProjectDesignPlanTarget,
   proposedSlice: string
 ): GaProjectDesignImplementationContract {
   return {
     proposed_slice: proposedSlice,
     source_artifact_id: source.id,
     source_proposed_slice: source.proposed_slice,
-    selected_layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
-    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    selected_layer: target.layer,
+    owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
     implementation_scope: [
       "change one reusable GA project-design contract or read-model surface",
@@ -893,21 +932,22 @@ function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
 
 function buildGoalScope(
   source: GaProjectDesignPlanSource,
+  target: GaProjectDesignPlanTarget,
   proposedSlice: string
 ): GaProjectDesignGoalScope {
   return {
     objective: CORE_BASIC_SELF_EVOLUTION_OBJECTIVE,
-    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    owner_surface: target.owner_surface,
     source_of_truth: [
       "operator_objective=core_basic_self_evolution_first",
       `source_artifact=${source.id}`,
       `source_kind=${source.kind}`,
       `source_iteration_ref=${source.source_iteration_ref}`,
-      `scorecard_target=${NEXT_CORE_GA_DESIGN_TARGET.target_dimension_id}/${NEXT_CORE_GA_DESIGN_TARGET.target_slice_id}`
+      `scorecard_target=${target.target_dimension_id}/${target.target_slice_id}`
     ],
     success_evidence: [
       `fresh_successor_slice=true; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
-      `selected_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}; owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
+      `selected_layer=${target.layer}; owner_surface=${target.owner_surface}`,
       "verified outcome records evidence refs and verification command coverage before reuse"
     ]
   };
@@ -938,6 +978,7 @@ function buildIterationFocus(
 
 function buildCapabilityStagePlan(
   source: GaProjectDesignPlanSource,
+  target: GaProjectDesignPlanTarget,
   proposedSlice: string
 ): GaProjectDesignCapabilityStagePlan {
   const sharedEvidence = [
@@ -1036,7 +1077,7 @@ function buildCapabilityStagePlan(
     ],
     next_iteration_plan: [
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
-      "core_runtime[current_state]: choose one reusable GA design contract improvement, not an external adapter task",
+      `core_runtime[current_state]: choose one reusable ${target.target_dimension_id} improvement, not an external adapter task`,
       "core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification before expert specialization",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
       "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
@@ -1133,12 +1174,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
 
 function buildLayerDecision(
   source: GaProjectDesignPlanSource,
+  target: GaProjectDesignPlanTarget,
   proposedSlice: string,
   selectionStatus: GaProjectDesignPlanPacket["selection_status"]
 ): GaProjectDesignLayerDecision {
   return {
-    selected_layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
-    selected_owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    selected_layer: target.layer,
+    selected_owner_surface: target.owner_surface,
     source_layer: source.layer,
     source_owner_surface: source.owner_surface,
     source_proposed_slice: source.proposed_slice,
@@ -1148,7 +1190,7 @@ function buildLayerDecision(
     reasons: [
       "core identity is the reusable GA project-design loop, not a single external adapter",
       "the next slice is a core/basic successor because it improves design classification, planning, or verification reuse",
-      `source_layer=${source.layer}; selected_layer=${NEXT_CORE_GA_DESIGN_TARGET.layer}`
+      `source_layer=${source.layer}; selected_layer=${target.layer}`
     ],
     application_boundaries: [
       "external tools and adapters stay application slices unless a reusable runtime contract is named",
@@ -1226,15 +1268,17 @@ function isSupersededOpenGaIteration(
   source: GaProjectDesignPlanSource
 ): boolean {
   return !candidate.outcome
-    && candidate.layer === "core_runtime"
+    && isCoreBasicLayer(candidate.layer)
     && candidate.owner_surface === "ga_project_design"
-    && isCoreGaSuccessorSlice(candidate.proposed_slice)
+    && isGaProjectDesignSuccessorSlice(candidate.proposed_slice)
     && candidate.created_at < sourceIteration.created_at
     && sourceMentionsCleanupCandidate(source, candidate);
 }
 
-function isCoreGaSuccessorSlice(proposedSlice: string): boolean {
-  return proposedSlice.startsWith("core_ga_design_next_slice_after_");
+function isGaProjectDesignSuccessorSlice(proposedSlice: string): boolean {
+  return proposedSlice.startsWith("core_ga_design_next_slice_after_")
+    || proposedSlice.startsWith("basic_runtime_substrate_hardening_after_")
+    || proposedSlice.startsWith("general_agent_delegation_hardening_after_");
 }
 
 function sourceMentionsCleanupCandidate(
@@ -1270,14 +1314,15 @@ function buildGovernanceCleanupItem(
 function buildNextIterationSeed(
   contract: GaProjectDesignContract,
   source: GaProjectDesignPlanSource,
+  target: GaProjectDesignPlanTarget,
   proposedSlice: string
 ): GaProjectDesignIterationSeed {
   return {
     summary: source.kind === "fresh_bootstrap"
       ? `Open first core/basic GA design bootstrap slice ${proposedSlice} from the GA project design contract.`
-      : `Open next core/basic GA design slice ${proposedSlice} from verified project-design artifact ${source.id}.`,
-    layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
-    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+      : `Open next core/basic ${target.target_dimension_id} slice ${proposedSlice} from verified project-design artifact ${source.id}.`,
+    layer: target.layer,
+    owner_surface: target.owner_surface,
     proposed_slice: proposedSlice,
     source_ref: source.source_iteration_ref,
     evidence_refs: buildSuccessorEvidenceRefs(source),
@@ -1490,6 +1535,52 @@ function describeReusablePattern(iteration: SelfEvolutionIterationContract): str
     `with proposed slice ${iteration.proposed_slice}`,
     "must preserve explicit non-goals, cite direct evidence, run scoped verification, and persist the outcome before it is reused."
   ].join(" ");
+}
+
+function selectNextCoreBasicPlanTarget(
+  source: GaProjectDesignPlanSource,
+  iterations: SelfEvolutionIterationContract[],
+  scorecardNextCoreBasicSliceId?: string | null
+): GaProjectDesignPlanTarget {
+  if (source.kind === "fresh_bootstrap") return NEXT_CORE_GA_DESIGN_TARGET;
+  const openIterationTarget = selectOpenIterationPlanTarget(source, iterations);
+  if (openIterationTarget) return openIterationTarget;
+  if (scorecardNextCoreBasicSliceId === NEXT_GENERAL_DELEGATION_TARGET.target_slice_id) {
+    return NEXT_GENERAL_DELEGATION_TARGET;
+  }
+  if (scorecardNextCoreBasicSliceId === NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET.target_slice_id) {
+    return NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET;
+  }
+  if (scorecardNextCoreBasicSliceId === NEXT_CORE_GA_DESIGN_TARGET.target_slice_id) {
+    return NEXT_CORE_GA_DESIGN_TARGET;
+  }
+  if (scorecardNextCoreBasicSliceId) return NEXT_CORE_GA_DESIGN_TARGET;
+  return NEXT_GENERAL_DELEGATION_TARGET;
+}
+
+function selectOpenIterationPlanTarget(
+  source: GaProjectDesignPlanSource,
+  iterations: SelfEvolutionIterationContract[]
+): GaProjectDesignPlanTarget | null {
+  return [NEXT_GENERAL_DELEGATION_TARGET, NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET, NEXT_CORE_GA_DESIGN_TARGET].find((target) =>
+    iterations.some((iteration) =>
+      !iteration.outcome
+      && iteration.layer === target.layer
+      && iteration.owner_surface === target.owner_surface
+      && iteration.source_ref === source.source_iteration_ref
+      && iteration.proposed_slice === nextProposedSlice(source, target)
+    )
+  ) ?? null;
+}
+
+function nextProposedSlice(source: GaProjectDesignPlanSource, target: GaProjectDesignPlanTarget): string {
+  if (target.target_dimension_id === "general_agent_delegation") {
+    return `general_agent_delegation_hardening_after_${sourceIterationSuffix(source)}`;
+  }
+  if (target.target_dimension_id === "basic_runtime_substrate") {
+    return `basic_runtime_substrate_hardening_after_${sourceIterationSuffix(source)}`;
+  }
+  return nextCoreGaDesignProposedSlice(source);
 }
 
 function nextCoreGaDesignProposedSlice(source: GaProjectDesignPlanSource): string {

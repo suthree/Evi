@@ -83,6 +83,7 @@ import {
 import { getSessionRecap } from "../../../packages/core/src/session_recap.js";
 import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_workspace.js";
 import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
+import type { SkillResolverLike } from "../../../packages/core/src/skill_resolver.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
 import { getServiceHealth, type ServiceHealthResult } from "../../../packages/core/src/service_health.js";
 import {
@@ -1159,6 +1160,33 @@ export function bindGaProjectDesignArtifactPacketCommands(
   };
 }
 
+async function getScorecardBoundGaProjectDesignReadModel(
+  store: AgentStore,
+  args: { limit?: number; vaultRoot?: SkillResolverLike } = {}
+): Promise<GaProjectDesignReadModel> {
+  const scorecard = await getSelfEvolutionScorecard(store, {
+    vaultRoot: args.vaultRoot
+  });
+  return getGaProjectDesignReadModel(store, {
+    limit: args.limit,
+    scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
+  });
+}
+
+async function getScorecardBoundGaProjectDesignArtifactPacket(
+  store: AgentStore,
+  args: { artifactRef: string; limit?: number; vaultRoot?: SkillResolverLike }
+): Promise<GaProjectDesignArtifactPacket> {
+  const scorecard = await getSelfEvolutionScorecard(store, {
+    vaultRoot: args.vaultRoot
+  });
+  return getGaProjectDesignArtifactPacket(store, {
+    artifactRef: args.artifactRef,
+    limit: args.limit,
+    scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
+  });
+}
+
 function bindGaProjectDesignPlanCommands<T extends Partial<GaProjectDesignPlanPacket>>(
   plan: T,
   stateRoot?: string
@@ -2046,15 +2074,19 @@ export async function main(): Promise<number> {
     }
     if (action === "project-design") {
       if (options.projectDesignArtifactRef) {
-        const result = await getGaProjectDesignArtifactPacket(store, {
+        const result = await getScorecardBoundGaProjectDesignArtifactPacket(store, {
           artifactRef: options.projectDesignArtifactRef,
-          limit: options.limit
+          limit: options.limit,
+          vaultRoot: config.vault
         });
         console.log(JSON.stringify(bindGaProjectDesignArtifactPacketCommands(result, config.state.root), null, 2));
         return 0;
       }
       const readModel = bindGaProjectDesignReadModelCommands(
-        await getGaProjectDesignReadModel(store, { limit: options.limit }),
+        await getScorecardBoundGaProjectDesignReadModel(store, {
+          limit: options.limit,
+          vaultRoot: config.vault
+        }),
         config.state.root
       );
       if (options.projectDesignAuditSeedId) {
@@ -2095,7 +2127,10 @@ export async function main(): Promise<number> {
         const detail = await getSelfEvolutionIteration(store, {
           iterationRef: required(options.iterationRef, "governance iterations --audit-seed requires --iteration")
         });
-        const readModel = await getGaProjectDesignReadModel(store, { limit: options.limit });
+        const readModel = await getScorecardBoundGaProjectDesignReadModel(store, {
+          limit: options.limit,
+          vaultRoot: config.vault
+        });
         const plan = readModel.next_core_basic_plan;
         if (!plan) throw new Error("No next_core_basic_plan is available for iteration audit seed selection");
         const iteration = {
@@ -2196,7 +2231,10 @@ export async function main(): Promise<number> {
     }
     if (action === "record-iteration") {
       if (options.iterationFromProjectDesignPlan) {
-        const readModel = await getGaProjectDesignReadModel(store, { limit: options.limit });
+        const readModel = await getScorecardBoundGaProjectDesignReadModel(store, {
+          limit: options.limit,
+          vaultRoot: config.vault
+        });
         const plan = readModel.next_core_basic_plan;
         if (!plan) throw new Error("No next_core_basic_plan is available for record-iteration --from-project-design-plan");
         const seed = plan.next_iteration_seed;

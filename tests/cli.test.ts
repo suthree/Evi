@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   bindGaProjectDesignArtifactPacketCommands,
   bindGaProjectDesignReadModelCommands,
@@ -27,6 +29,9 @@ import {
   selectIterationAuditPlanRefs,
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
+import { AgentStore } from "../packages/core/src/store.js";
+
+const execFileAsync = promisify(execFile);
 
 test("doctor checks IM by default and accepts explicit downgrades", () => {
   const defaultOptions = parseArgs(["doctor", "--no-auth"]);
@@ -223,6 +228,80 @@ test("governance project-design command parses core design read model", () => {
   assert.equal(artifact.command, "governance");
   assert.equal(artifact.governanceAction, "project-design");
   assert.equal(artifact.projectDesignArtifactRef, "ga_design_artifact_iteration_contract_1");
+});
+
+test("governance project-design CLI keeps display limit out of scorecard target selection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-cli-project-design-limit-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await store.writeJson("self-evolution/iterations/iteration_contract_cli_scorecard_target.json", {
+      schema_version: 1,
+      id: "iteration_contract_cli_scorecard_target",
+      ref: "self-evolution/iterations/iteration_contract_cli_scorecard_target.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified GA design source for CLI scorecard binding.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "cli_scorecard_target_source",
+      implementation_contract: {
+        proposed_slice: "cli_scorecard_target_source",
+        source_artifact_id: "manual_record_iteration",
+        source_proposed_slice: "manual_record_iteration",
+        selected_layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        improvement_type: "reusable_ga_design_contract",
+        implementation_scope: ["change one reusable GA project-design read-model rule"],
+        deferred_scope: ["no external adapters"],
+        delivery_standard: ["CLI project-design keeps scorecard selection independent from display limit"],
+        boundary: "manual implementation contract"
+      },
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["does not prove future project completion"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Verified CLI scorecard binding source.",
+        evidence_refs: ["tests/cli.test.ts"],
+        verification_commands: ["node --import tsx --test tests/cli.test.ts"],
+        next_moves: ["Use the scorecard target for the next core/basic handoff."],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    });
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      "--import",
+      "tsx",
+      "apps/cli/src/main.ts",
+      "governance",
+      "project-design",
+      "--limit",
+      "0",
+      "--repo-root",
+      repoRoot,
+      "--state-root",
+      stateRoot
+    ], {
+      cwd: process.cwd(),
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const result = JSON.parse(stdout);
+
+    assert.equal(result.listed_artifact_count, 0);
+    assert.equal(result.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
+    assert.equal(result.next_core_basic_plan?.proposed_slice, "general_agent_delegation_hardening_after_cli_scorecard_target");
+    assert.equal(result.next_core_basic_plan?.scorecard_basis[0], "next_core_basic_slice=next_slice_general_agent_delegation");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("iteration audit seed evidence status stays conservative before outcome evidence exists", () => {

@@ -701,7 +701,12 @@ Required policy:
   distinguish the completed source slice from the successor slice
 - `next_core_basic_plan.scorecard_basis` must keep the scorecard
   `next_core_basic_slice`, target dimension, target layer, and scorecard command
-  visible as read-only planning evidence
+  visible as read-only planning evidence; when a matching open plan-derived
+  iteration intentionally overrides the current scorecard guard, it must also
+  include `plan_target_slice`
+- `governance project-design` must bind the scorecard target before deriving the
+  plan seed, keep display limits separate from target selection, and preserve an
+  already-open matching plan-derived iteration for the same source artifact
 - `next_core_basic_plan.selection_checks` must remain bounded strings derived
   from the same read-only metadata, including source artifact evidence and
   verification-command counts, and must not execute verification
