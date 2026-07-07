@@ -594,6 +594,9 @@ runtime attention reasons while service health is not healthy.
 When service health is not healthy, the same seed requires runtime attention to
 be classified as `acceptable`, `repair_needed`, or `verification_blocker`.
 Naming the reason without classification is not enough outcome evidence.
+Classified attention must also include a handling policy: why `acceptable` is
+safe for the claim, what `repair_needed` follows up, or why
+`verification_blocker` stops the verified outcome.
 The `verification_scope` audit seed requires the outcome to explain which
 completion claim each verification command supports. A command list without
 claim coverage is not enough evidence for a verified outcome.
