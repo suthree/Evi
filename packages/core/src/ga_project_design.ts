@@ -215,6 +215,18 @@ export interface GaProjectDesignGeneralDelegationLoop {
     required: string[];
     reject_if: string[];
   };
+  runner_enforcement_contract: {
+    instruction_boundary: string[];
+    input_contract: string[];
+    result_handling: string[];
+    completion_gate: string[];
+  };
+  replay_audit_contract: {
+    metadata_source: string;
+    required_metadata: string[];
+    checks: string[];
+    proof_boundary: string[];
+  };
   completion_authority: string[];
   deferred_scope: string[];
   evidence_refs: string[];
@@ -1153,6 +1165,50 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       reject_if: [
         "operators must infer dispatch failure type from free-form error text",
         "dispatch failure kind is treated as expert scheduling, retry authority, or completion proof"
+      ]
+    },
+    runner_enforcement_contract: {
+      instruction_boundary: [
+        "liveInstructions states the model proposes while the harness executes, verifies, audits, and promotes",
+        "delegate_agent is separate from use_tool and does not grant tool/write/mutation/completion authority",
+        "delegated tasks cannot schedule expert or autonomous multi-agent work"
+      ],
+      input_contract: [
+        "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
+        "validateDelegationTaskBoundary rejects tool, write, mutation, completion, expert, or multi-agent scheduling requests",
+        "validateDelegationContextBoundary requires no tool/write/mutation authority and main-harness completion ownership"
+      ],
+      result_handling: [
+        "executeDelegation validates delegated JSON output before returning a sanitized observation",
+        "rejectedDelegationResult records failed input contracts without calling the delegated model",
+        "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
+      ],
+      completion_gate: [
+        "delegatedResultsCheck fails a done claim when any delegated result failed",
+        "delegatedVerificationRefs rejects delegated self-report refs as completion proof"
+      ]
+    },
+    replay_audit_contract: {
+      metadata_source: "harness-owned delegated_result event summaries only",
+      required_metadata: [
+        "action_id",
+        "round",
+        "sequence",
+        "task_chars",
+        "context_chars",
+        "contract_status",
+        "dispatch_failure_kind",
+        "ok"
+      ],
+      checks: [
+        "delegated_dispatch_metadata",
+        "delegated_dispatch_failure_kind",
+        "delegated_results"
+      ],
+      proof_boundary: [
+        "trace and replay audit JSON preserve the full delegated dispatch metadata set",
+        "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
+        "replay audit must not read delegated result artifact bodies or raw delegated task/context/output"
       ]
     },
     completion_authority: [

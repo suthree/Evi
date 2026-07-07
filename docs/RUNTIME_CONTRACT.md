@@ -1209,6 +1209,13 @@ from harness-owned delegated event summaries without reading raw delegated
 context or delegated result bodies. Trace and replay audit JSON preserve the
 complete delegated dispatch metadata set for counting and coverage; operator
 Markdown/context views may cap the rendered list and show an omitted count.
+The GA project-design read model mirrors this same runner/replay boundary in
+`next_core_basic_plan.general_delegation_loop`: `runner_enforcement_contract`
+names the live runner instruction, input, result, and completion-gate rules,
+while `replay_audit_contract` names the safe metadata source, required dispatch
+fields, audit checks, and proof boundary. Those fields are read-only planning
+context; they do not spawn subagents, grant tool access, schedule experts, or
+prove completion.
 The main-model observation also excludes raw
 delegated task/context, raw output preview, and persisted artifact bodies. They
 are not tool evidence, final success proof, mutation authority,

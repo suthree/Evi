@@ -1721,7 +1721,7 @@ export function compactGaPlanGeneralDelegationLoop(
   plan: Pick<GaProjectDesignPlanPacket, "general_delegation_loop">
 ): string {
   const loop = plan.general_delegation_loop;
-  return `action=${loop.action}; stage=${loop.stage}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
+  return `action=${loop.action}; stage=${loop.stage}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; runner=${loop.runner_enforcement_contract.input_contract[0] ?? "input contract"}; replay=${loop.replay_audit_contract.checks.join("+")}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
 }
 
 export function compactGaPlanPhaseForbids(
