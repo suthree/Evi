@@ -92,6 +92,21 @@ export const actionProposalSchema = z.object({
   payload: z.record(z.string(), z.unknown()).default({})
 });
 
+export const DELEGATE_AGENT_TASK_MAX_CHARS = 1000;
+export const DELEGATE_AGENT_CONTEXT_MAX_CHARS = 12000;
+export const DELEGATED_AGENT_SUMMARY_MAX_CHARS = 240;
+export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = 2000;
+
+export const delegateAgentPayloadSchema = z.object({
+  task: z.string().trim().min(1).max(DELEGATE_AGENT_TASK_MAX_CHARS),
+  context: z.string().trim().min(1).max(DELEGATE_AGENT_CONTEXT_MAX_CHARS)
+});
+
+export const delegatedAgentOutputSchema = z.object({
+  summary: z.string().trim().min(1),
+  findings_text: z.string().trim().min(1)
+});
+
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),
   verification_refs: z.array(z.string()).default([])
@@ -328,6 +343,8 @@ export type BudgetHint = z.infer<typeof budgetHintSchema>;
 export type Opportunity = z.infer<typeof opportunitySchema>;
 export type TurnSnapshot = z.infer<typeof turnSnapshotSchema>;
 export type ActionProposal = z.infer<typeof actionProposalSchema>;
+export type DelegateAgentPayload = z.infer<typeof delegateAgentPayloadSchema>;
+export type DelegatedAgentOutput = z.infer<typeof delegatedAgentOutputSchema>;
 export type ModelActionEnvelope = z.infer<typeof modelActionEnvelopeSchema>;
 export type EvidenceEvent = z.infer<typeof evidenceEventSchema>;
 export type CompletionVerificationReport = z.infer<typeof completionVerificationReportSchema>;

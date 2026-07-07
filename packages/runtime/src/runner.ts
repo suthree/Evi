@@ -7,7 +7,13 @@ import { newId, slugify, utcNow } from "../../core/src/ids.js";
 import { MemoryStore, type EpisodeSearchHit } from "../../core/src/memory_store.js";
 import { findDuplicateRecalledSkill, recallSkills, recordSkillUsage, type SkillRecallHit } from "../../core/src/recall.js";
 import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   completionVerificationReportSchema,
+  delegatedAgentOutputSchema,
+  delegateAgentPayloadSchema,
   evidenceEventSchema,
   modelActionEnvelopeSchema,
   opportunitySchema,
@@ -1220,8 +1226,8 @@ export class LiveAgentRunner {
         action_id: actionId,
         round,
         sequence,
-        task_chars: request.task.length,
-        context_chars: 0,
+        task_chars: request.task_chars,
+        context_chars: request.context_chars,
         contract_status: "failed",
         findings_text: null,
         output_text: request.error,
@@ -1357,7 +1363,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for bounded analysis or critique tasks; delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; invalid delegated results block verified completion.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. Invalid delegated results block verified completion.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1545,6 +1551,8 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
 } | {
   ok: false;
   task: string;
+  task_chars: number;
+  context_chars: number;
   error: string;
 } {
   const payload = action.payload;
@@ -1553,27 +1561,59 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
     return {
       ok: false,
       task: fallbackTask,
+      task_chars: fallbackTask.length,
+      context_chars: 0,
       error: "delegate_agent.payload must be an object with non-empty task and context strings."
     };
   }
   const record = payload as Record<string, unknown>;
   const task = typeof record.task === "string" ? record.task.trim() : "";
   const context = typeof record.context === "string" ? record.context.trim() : "";
+  const parsed = delegateAgentPayloadSchema.safeParse(record);
+  if (parsed.success) return { ok: true, ...parsed.data };
   if (!task) {
     return {
       ok: false,
       task: fallbackTask,
+      task_chars: fallbackTask.length,
+      context_chars: context.length,
       error: "delegate_agent.payload.task must be a non-empty string."
+    };
+  }
+  if (task.length > DELEGATE_AGENT_TASK_MAX_CHARS) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: `delegate_agent.payload.task must be at most ${DELEGATE_AGENT_TASK_MAX_CHARS} chars.`
     };
   }
   if (!context) {
     return {
       ok: false,
       task,
+      task_chars: task.length,
+      context_chars: 0,
       error: "delegate_agent.payload.context must be a non-empty string."
     };
   }
-  return { ok: true, task, context };
+  if (context.length > DELEGATE_AGENT_CONTEXT_MAX_CHARS) {
+    return {
+      ok: false,
+      task,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: `delegate_agent.payload.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars.`
+    };
+  }
+  return {
+    ok: false,
+    task,
+    task_chars: task.length,
+    context_chars: context.length,
+    error: "delegate_agent.payload failed schema validation."
+  };
 }
 
 function parseDelegatedOutput(outputText: string): {
@@ -1598,18 +1638,23 @@ function parseDelegatedOutput(outputText: string): {
     return { ok: false, error: "Delegated model output was not a JSON object." };
   }
   const record = parsed as Record<string, unknown>;
-  const summary = typeof record.summary === "string" ? record.summary.trim() : "";
-  const findingsText = typeof record.findings_text === "string" ? record.findings_text.trim() : "";
-  if (!summary) {
-    return { ok: false, error: "Delegated model output missing non-empty summary." };
+  const contract = delegatedAgentOutputSchema.safeParse(record);
+  if (!contract.success) {
+    const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+    const findingsText = typeof record.findings_text === "string" ? record.findings_text.trim() : "";
+    if (!summary) {
+      return { ok: false, error: "Delegated model output missing non-empty summary." };
+    }
+    if (!findingsText) {
+      return { ok: false, error: "Delegated model output missing non-empty findings_text." };
+    }
+    return { ok: false, error: "Delegated model output failed schema validation." };
   }
-  if (!findingsText) {
-    return { ok: false, error: "Delegated model output missing non-empty findings_text." };
-  }
+  const { summary, findings_text: findingsText } = contract.data;
   return {
     ok: true,
-    summary: limitText(summary, 240),
-    findings_text: limitText(findingsText, 2000)
+    summary: limitText(summary, DELEGATED_AGENT_SUMMARY_MAX_CHARS),
+    findings_text: limitText(findingsText, DELEGATED_AGENT_FINDINGS_MAX_CHARS)
   };
 }
 

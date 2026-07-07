@@ -61,7 +61,12 @@ import {
   listPipelineRuns,
   type PipelineHistorySummary
 } from "./pipeline_history.js";
-import { turnSnapshotSchema, workingCheckpointSchema } from "./schemas.js";
+import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  turnSnapshotSchema,
+  workingCheckpointSchema
+} from "./schemas.js";
 import type { SkillResolverLike } from "./skill_resolver.js";
 import {
   inspectSopEvolutionConfirmationGate,
@@ -2895,8 +2900,8 @@ Available delegated agent action:
   "type": "delegate_agent",
   "rationale": "need a bounded critique or analysis subtask",
   "payload": {
-    "task": "...",
-    "context": "all relevant constraints and evidence"
+    "task": "bounded subtask, max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars",
+    "context": "all relevant constraints and evidence, max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars"
   }
 }
 

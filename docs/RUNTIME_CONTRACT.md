@@ -1144,9 +1144,11 @@ The model proposes. The harness decides what runs and what counts as complete.
 `delegate_agent` is a bounded structured self-report path. The delegated model
 has no tools or memory in the current runtime. The action payload must provide
 non-empty `task` and `context` strings before the delegated model is called, and
-the delegated model must return a JSON object with non-empty `summary` and
-`findings_text`. The harness validates those contracts before returning the
-result as a `Delegated Observations` item. Invalid payloads or malformed
+`task` is capped at 1000 chars while `context` is capped at 12000 chars. The
+delegated model must return a JSON object with non-empty `summary` and
+`findings_text`; persisted summaries and findings are bounded by the core
+delegated-output limits. The harness validates those contracts before returning
+the result as a `Delegated Observations` item. Invalid payloads or malformed
 delegated output are recorded as `ok=false`, and a later `done` claim fails
 completion verification when any delegated result failed. Delegated results are
 recorded with action id, round, sequence, and task/context character counts so

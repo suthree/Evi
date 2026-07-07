@@ -31,7 +31,12 @@ import { getCapabilityCatalog } from "../packages/core/src/capabilities.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { getLiveRunTrace } from "../packages/core/src/live_run_trace.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
-import { opportunitySchema, triggerSchema } from "../packages/core/src/schemas.js";
+import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  opportunitySchema,
+  triggerSchema
+} from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import type { ModelClient, ModelRequest, ModelResponse } from "../packages/runtime/src/model.js";
@@ -3499,6 +3504,93 @@ test("live runner rejects malformed delegate payload without calling the delegat
   }
 });
 
+test("live runner rejects oversized delegate context without calling the delegated model", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new OversizedDelegationPayloadThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject oversized delegated context before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      contract_status: string;
+      error: string | null;
+      context_chars: number;
+      raw_output_preview: string;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawFailedDelegationObservation, true);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.equal(delegated.context_chars, DELEGATE_AGENT_CONTEXT_MAX_CHARS + 1);
+    assert.match(delegated.error ?? "", new RegExp(`payload\\.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars`));
+    assert.equal(delegated.raw_output_preview, "");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner records actual oversized delegate task length without persisting the task body", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new OversizedDelegationTaskThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject oversized delegated task before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      task: string;
+      task_chars: number;
+      error: string | null;
+      raw_output_preview: string;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.task, "Use a bounded subagent self-report for critique before final answer.");
+    assert.equal(delegated.task_chars, DELEGATE_AGENT_TASK_MAX_CHARS + 1);
+    assert.match(delegated.error ?? "", new RegExp(`payload\\.task must be at most ${DELEGATE_AGENT_TASK_MAX_CHARS} chars`));
+    assert.equal(delegated.raw_output_preview, "");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner accepts no_sop query/todo runs without blocking supervisor checklist", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -4293,6 +4385,71 @@ class MalformedDelegationPayloadThenDoneModel implements ModelClient {
   }
 }
 
+class OversizedDelegationPayloadThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawFailedDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "This delegated response should not be requested.",
+        findings_text: "The oversized payload guard failed to short-circuit."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "oversized-delegation-payload-then-done",
+      responseId: `response-oversized-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      this.sawFailedDelegationObservation = request.input.includes("## Delegated Observations")
+        && request.input.includes('"contract_status": "failed"')
+        && request.input.includes(`delegate_agent.payload.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars`);
+      return doneEnvelope();
+    }
+    return oversizedDelegatePayloadEnvelope();
+  }
+}
+
+class OversizedDelegationTaskThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "This delegated response should not be requested.",
+        findings_text: "The oversized task guard failed to short-circuit."
+      })
+      : JSON.stringify(this.nextMainEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "oversized-delegation-task-then-done",
+      responseId: `response-oversized-delegation-task-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(): Record<string, unknown> {
+    this.mainCalls += 1;
+    return this.mainCalls > 1 ? doneEnvelope() : oversizedDelegateTaskEnvelope();
+  }
+}
+
 class StateWriteThenNoSopModel implements ModelClient {
   private calls = 0;
 
@@ -4551,6 +4708,42 @@ function malformedDelegatePayloadEnvelope(): Record<string, unknown> {
       rationale: "Use a bounded subagent self-report for critique before final answer.",
       payload: {
         task: "Critique whether the answer needs more evidence."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function oversizedDelegatePayloadEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate bounded critique with an oversized payload.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a bounded subagent self-report for critique before final answer.",
+      payload: {
+        task: "Critique whether the answer needs more evidence.",
+        context: "x".repeat(DELEGATE_AGENT_CONTEXT_MAX_CHARS + 1)
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function oversizedDelegateTaskEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate bounded critique with an oversized task.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a bounded subagent self-report for critique before final answer.",
+      payload: {
+        task: "x".repeat(DELEGATE_AGENT_TASK_MAX_CHARS + 1),
+        context: "No tool or mutation authority is available to the delegated subagent."
       }
     }],
     completion_claim: {

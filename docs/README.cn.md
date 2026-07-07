@@ -31,7 +31,7 @@
 
 1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。
 2. 基础入口：CLI、resident runtime、Feishu/private chat、service health、workspace/capability 只读视图；交付标准是 operator 能稳定进入、观察和恢复 runtime。
-3. 核心执行：读、写、搜索、抓取、执行，以及 `delegate_agent` 的有界子任务；交付标准是路径、side effect、timeout、输出上限、payload、结果和证据都有边界。
+3. 核心执行：读、写、搜索、抓取、执行，以及 `delegate_agent` 的有界子任务；交付标准是路径、side effect、timeout、输出上限、`task/context` payload、结果和证据都有边界。
 4. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
 5. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
 6. 工具扩展层：GitHub CLI、飞书/Lark、browser、内容 adapter 等；交付标准是默认作为应用/adapter slice，只有抽象成可复用 runtime contract 后才进入核心。

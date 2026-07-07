@@ -1978,12 +1978,14 @@ memory acceptance remains the local CLI confirmation path.
 Live `delegate_agent` actions are bounded structured self-reports. The
 delegated model runs without tools or memory and must return JSON with
 non-empty `summary` and `findings_text`; the harness records a failed delegated
-result when that contract is missing or malformed. Delegated observations may
-inform the next model round, but they do not prove final success, execute tools,
-write state, write the repo, write the active vault, or bypass completion
-verification. Each delegated result also records action id, round, sequence, and
-task/context character counts so later traces can verify bounded dispatch
-without reading raw delegated context.
+result when that contract is missing or malformed. Delegation payloads share the
+core schema contract: `task` must be non-empty and at most 1000 chars, and
+`context` must be non-empty and at most 12000 chars before the submodel is
+called. Delegated observations may inform the next model round, but they do not
+prove final success, execute tools, write state, write the repo, write the
+active vault, or bypass completion verification. Each delegated result also
+records action id, round, sequence, and task/context character counts so later
+traces can verify bounded dispatch without reading raw delegated context.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the
