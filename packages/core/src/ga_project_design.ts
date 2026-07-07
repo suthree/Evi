@@ -1141,6 +1141,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "context is empty or over the configured max chars",
         "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
         "context omits delegated authority limits or main-harness completion ownership",
+        "context simultaneously denies and grants delegated tool, write, mutation, or completion authority",
         "context grants external adapter, SOP/skill promotion, or completion authority"
       ]
     },
@@ -1208,7 +1209,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
         "validateDelegationTaskBoundary rejects tool, write, mutation, completion, expert, or multi-agent scheduling requests",
-        "validateDelegationContextBoundary requires no tool/write/mutation authority and main-harness completion ownership"
+        "validateDelegationContextBoundary requires no tool/write/mutation authority, rejects contradictory authority grants, and keeps main-harness completion ownership"
       ],
       result_handling: [
         "executeDelegation validates delegated JSON output before returning a sanitized observation",
@@ -1251,6 +1252,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "ok"
       ],
       checks: [
+        "delegated_action_coverage",
         "delegated_dispatch_metadata",
         "delegated_dispatch_failure_kind",
         "delegated_dispatch_round_limit",

@@ -2035,7 +2035,8 @@ must stay a bounded analysis or critique request and must not ask the delegated
 subagent to execute tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. The context must explicitly state that the delegated
 subagent has no tool/write/mutation authority and that completion remains with
-the main harness; otherwise the runner records `input_contract_failed` without
+the main harness, and it must not simultaneously grant those delegated
+authorities; otherwise the runner records `input_contract_failed` without
 calling the submodel. The live
 runner allows at most one `delegate_agent` action per model round; extra
 delegate actions are recorded as failed delegated results without calling the
@@ -2059,7 +2060,9 @@ distinguish real none values from older or malformed summaries that omitted the
 fields, without reading raw delegated context or delegated result bodies. Even
 when the final completion status is `not_done` or `blocked`, failed delegated
 results remain visible as warnings in the completion report, Live Run Trace, and
-replay audit. Those failures are recovery input only for a later main-harness
+replay audit. Replay also compares per-round `delegate_agent` action counts
+with delegated result events so missing rejected-dispatch evidence becomes
+visible. Those failures are recovery input only for a later main-harness
 model round and still require independent verification evidence; they do not
 authorize automatic retry, model fan-out, expert scheduling, delegated
 completion, or raw delegated artifact reads.

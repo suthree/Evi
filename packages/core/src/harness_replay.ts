@@ -280,6 +280,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `delegated_results=${trace.delegated_result_count}; dispatches=${trace.delegated_dispatches.length}; failed_dispatches=${trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length}`,
       refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
     },
+    delegatedActionCoverageCheck(trace),
     delegatedDispatchFailureKindCheck(trace),
     delegatedDispatchRoundLimitCheck(trace),
     delegatedResultFailureKindCheck(trace),
@@ -296,6 +297,35 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const declaredDelegateActions = trace.rounds.reduce((sum, round) => sum + (round.action_counts.delegate_agent ?? 0), 0);
+  const dispatchesByRound = new Map<number, number>();
+  for (const dispatch of trace.delegated_dispatches) {
+    dispatchesByRound.set(dispatch.round, (dispatchesByRound.get(dispatch.round) ?? 0) + 1);
+  }
+  const missingRounds = trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > (dispatchesByRound.get(round.round) ?? 0));
+  const missingDelegateDispatches = missingRounds.reduce((sum, round) => {
+    const declared = round.action_counts.delegate_agent ?? 0;
+    const recorded = dispatchesByRound.get(round.round) ?? 0;
+    return sum + Math.max(0, declared - recorded);
+  }, 0);
+  return {
+    id: "delegated_action_coverage",
+    status: missingDelegateDispatches > 0 ? "warning" : "pass",
+    summary: [
+      `declared_delegate_actions=${declaredDelegateActions}`,
+      `delegated_dispatches=${trace.delegated_dispatches.length}`,
+      `missing_delegate_dispatches=${missingDelegateDispatches}`
+    ].join("; "),
+    refs: missingRounds.length > 0
+      ? missingRounds.map((round) => round.envelope_ref)
+      : unique([
+          ...trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > 0).map((round) => round.envelope_ref),
+          ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+        ])
+  };
 }
 
 function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {

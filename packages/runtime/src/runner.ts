@@ -1777,6 +1777,9 @@ function validateDelegationContextBoundary(context: string): string | null {
   if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
     return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
   }
+  if (grantsDelegatedAuthority(text)) {
+    return "delegate_agent.payload.context must not grant tool/write/mutation or completion authority to the delegated subagent.";
+  }
   return null;
 }
 
@@ -1970,6 +1973,14 @@ function normalizeBoundaryText(value: string): string {
   return value.toLowerCase().replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function grantsDelegatedAuthority(text: string): boolean {
+  return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES);
+}
+
+function hasAnyPhrase(text: string, phrases: string[]): boolean {
+  return phrases.some((phrase) => text.includes(phrase));
+}
+
 function hasNearbyBoundary(text: string, firstTerms: string[], secondTerms: string[], window = 160): boolean {
   for (const first of firstTerms) {
     for (const second of secondTerms) {
@@ -1978,6 +1989,44 @@ function hasNearbyBoundary(text: string, firstTerms: string[], secondTerms: stri
   }
   return false;
 }
+
+const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
+  "can use tool",
+  "can use tools",
+  "may use tool",
+  "may use tools",
+  "allowed to use tool",
+  "allowed to use tools",
+  "tool access allowed",
+  "grant tool access",
+  "grants tool access",
+  "can write",
+  "may write",
+  "allowed to write",
+  "write access allowed",
+  "grant write access",
+  "grants write access",
+  "can mutate",
+  "may mutate",
+  "allowed to mutate",
+  "mutation authority allowed",
+  "can decide completion",
+  "may decide completion",
+  "allowed to decide completion",
+  "completion authority allowed",
+  "delegated completion authority",
+  "可以调用工具",
+  "允许调用工具",
+  "授予工具权限",
+  "可以写入",
+  "允许写入",
+  "授予写入权限",
+  "可以修改",
+  "允许修改",
+  "可以决定完成",
+  "允许决定完成",
+  "授予完成权"
+];
 
 function termsAreNearby(text: string, first: string, second: string, window: number): boolean {
   let index = text.indexOf(first);

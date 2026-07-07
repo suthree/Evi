@@ -39,6 +39,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) =>
+      check.id === "delegated_action_coverage"
+        && check.status === "pass"
+        && check.summary.includes("missing_delegate_dispatches=0")
+    ), true);
+    assert.equal(report.checks.some((check) =>
       check.id === "delegated_dispatch_failure_kind"
         && check.status === "pass"
         && check.summary.includes("missing_kind_field=0")
@@ -101,6 +106,33 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     const detail = await getHarnessReplayAudit(store, { replayRef: report.id });
     assert.equal(detail.replay.id, report.id);
     assert.doesNotMatch(JSON.stringify({ list, detail }), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegate actions lack delegated result events", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-action-coverage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await writeReplayRoundOneDelegateActions(store, 2);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_action_coverage");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /declared_delegate_actions=2/);
+    assert.match(check?.summary ?? "", /delegated_dispatches=1/);
+    assert.match(check?.summary ?? "", /missing_delegate_dispatches=1/);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r1.json"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -393,6 +425,25 @@ async function appendExtraDelegatedDispatches(store: AgentStore, count: number):
       created_at: `2026-06-30T01:00:0${sequence}.750Z`
     });
   }
+}
+
+async function writeReplayRoundOneDelegateActions(store: AgentStore, count: number): Promise<void> {
+  const sessionId = "session_replay_test";
+  await store.writeJson(`memory/episodes/${sessionId}-model-action-r1.json`, {
+    summary: "First round declares delegated actions.",
+    actions: Array.from({ length: count }, (_, index) => ({
+      type: "delegate_agent",
+      rationale: `Request bounded delegated critique ${index + 1}.`,
+      payload: {
+        task: `Critique replay coverage ${index + 1}.`,
+        context: "No tool, write, or mutation authority is available; completion remains with the main harness."
+      }
+    })),
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  });
 }
 
 async function appendActiveLookingDelegatedDispatch(store: AgentStore): Promise<void> {

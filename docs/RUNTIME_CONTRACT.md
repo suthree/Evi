@@ -1190,8 +1190,9 @@ the delegated subagent to execute tools, write or mutate state, decide
 completion, or schedule expert/multi-agent work. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority and that completion remains with the main harness. Tasks or contexts
-that omit or violate those authority boundaries are rejected before any delegated
-model call. The delegated model must return a JSON object with non-empty `summary`
+that omit, violate, or contradict those authority boundaries are rejected before
+any delegated model call; a context that says no delegated authority and also
+grants tool/write/mutation or completion authority is invalid. The delegated model must return a JSON object with non-empty `summary`
 and `findings_text`; `summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority
@@ -1305,10 +1306,11 @@ the command chooses the latest bounded live run trace. The command writes
 `governance/replays/<id>.json`, `governance/replays/<id>.md`, and one
 `audit_result` evidence event that cites the replay report and source trace.
 The audit records only replay metadata: source trace refs, completion/session/
-turn ids, counts, safe delegated dispatch metadata, check statuses, report
-refs, and the fixed replay boundary. It checks whether delegated result events
-have matching dispatch metadata and whether over-limit delegated dispatches
-carry bounded `dispatch_failure_kind` coverage such as
+turn ids, per-round action counts, safe delegated dispatch metadata, check
+statuses, report refs, and the fixed replay boundary. It checks whether
+per-round `delegate_agent` action counts are covered by delegated result events,
+whether delegated result events have matching dispatch metadata, and whether
+over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
 omits the field instead of explicitly recording `none`. It also checks
 `result_failure_kind` coverage for failed delegated results and warns when a
