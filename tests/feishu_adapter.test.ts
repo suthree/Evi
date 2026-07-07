@@ -1097,6 +1097,12 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /SOP self-evolution/);
     assert.match(fullText, /Content planning and evidence \[application_slice\]/);
     assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
+    assert.match(fullText, /delegate_agent/);
+    assert.match(fullText, /failed delegated results block verified completion/);
+    assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none/);
+    assert.match(fullText, /none means no dispatch-layer failure, not delegated success/);
+    assert.match(fullText, /sanitized and exclude raw task, context, output preview, and artifact bodies/);
+    assert.match(fullText, /delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority/);
     assert.match(fullText, /Feishu/);
     assert.match(fullText, /local-only/);
     assert.match(fullText, /This command is read-only/);

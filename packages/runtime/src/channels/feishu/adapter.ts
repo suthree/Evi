@@ -3499,10 +3499,16 @@ function renderCapabilitySummary(capability: CapabilitySummary, inheritedLayer: 
     ...(capability.commands && capability.commands.length > 0
       ? [`     commands: ${capability.commands.slice(0, 3).join(" | ")}`]
       : []),
-    ...(capability.boundaries && capability.boundaries.length > 0
-      ? [`     boundary: ${truncateText(capability.boundaries.join("; "), 220)}`]
-      : [])
+    ...renderCapabilityBoundaries(capability)
   ];
+}
+
+function renderCapabilityBoundaries(capability: CapabilitySummary): string[] {
+  if (!capability.boundaries || capability.boundaries.length === 0) return [];
+  if (capability.id === "delegate_agent") {
+    return capability.boundaries.map((boundary) => `     boundary: ${truncateText(boundary, 220)}`);
+  }
+  return [`     boundary: ${truncateText(capability.boundaries.join("; "), 220)}`];
 }
 
 function renderWorkspaceStatus(result: WorkspaceStatusResult): string {
