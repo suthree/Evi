@@ -1176,9 +1176,11 @@ fields are rejected before any delegated model call. The harness validates those
 contracts before returning the result as a sanitized `Delegated Observations`
 item. The live runner allows at most one `delegate_agent` action per model
 round; extra delegate actions are recorded as failed delegated results without
-calling the delegated model. Invalid payloads, malformed delegated output,
-over-limit delegated output, or over-limit delegate action counts are recorded
-as `ok=false`, and dispatch-layer rejects also carry a safe
+calling the delegated model. Invalid payloads, delegated model request
+failures, malformed delegated output, over-limit delegated output, or
+over-limit delegate action counts are recorded as `ok=false`; delegated model
+request failure messages are sanitized before they are persisted or returned
+as observations. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly, so trace/replay

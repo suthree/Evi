@@ -1306,6 +1306,7 @@ export class LiveAgentRunner {
         created_at: utcNow()
       };
     } catch (error) {
+      const sanitizedError = sanitizeModelDiagnosticText(errorMessage(error), 1200);
       return {
         id: newId("delegated_result"),
         ok: false,
@@ -1319,9 +1320,9 @@ export class LiveAgentRunner {
         contract_status: "failed",
         dispatch_failure_kind: null,
         findings_text: null,
-        output_text: errorMessage(error),
+        output_text: sanitizedError,
         raw_output_preview: "",
-        error: errorMessage(error),
+        error: sanitizedError,
         boundary: delegatedResultBoundary(),
         created_at: utcNow()
       };

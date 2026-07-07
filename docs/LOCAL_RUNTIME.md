@@ -2008,7 +2008,9 @@ delegated model. Delegated observations may inform the next model round, but
 they are sanitized and do not include raw delegated task/context, raw output
 preview, or persisted artifact bodies. They do not prove final success, execute
 tools, write state, write the repo, write the active vault, or bypass completion
-verification. Each delegated result also records action id, round, sequence,
+verification. Delegated model request failures are recorded as failed delegated
+results with sanitized error text before persistence and observation feedback.
+Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
 delegated-model contract failures record `dispatch_failure_kind=none`
