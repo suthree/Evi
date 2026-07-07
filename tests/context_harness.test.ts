@@ -1857,7 +1857,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       session_id: priorSession,
       turn_id: priorTurn,
       kind: "delegated_result",
-      summary: "Delegated result: action_id=action_delegate_trace_context; round=1; sequence=1; task_chars=44; context_chars=88; contract_status=failed; ok=false.",
+      summary: "Delegated result: action_id=action_delegate_trace_context; round=1; sequence=1; task_chars=44; context_chars=88; contract_status=failed; dispatch_failure_kind=none; ok=false.",
       artifact_refs: [`memory/episodes/${priorSession}-delegated_result_invalid.json`],
       created_at: "2026-06-30T00:19:03.500Z"
     });
@@ -1913,6 +1913,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       context_chars: 88,
       contract_status: "failed",
       dispatch_failure_kind: null,
+      dispatch_failure_kind_present: true,
       ok: false
     });
     assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false dispatch_failure_kind=none task_chars=44 context_chars=88 action_id=action_delegate_trace_context ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);

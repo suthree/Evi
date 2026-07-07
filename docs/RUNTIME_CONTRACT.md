@@ -1180,7 +1180,10 @@ calling the delegated model. Invalid payloads, malformed delegated output,
 over-limit delegated output, or over-limit delegate action counts are recorded
 as `ok=false`, and dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
-`input_contract_failed`. A later `done` claim fails completion verification
+`input_contract_failed`; successful dispatches or delegated-model contract
+failures record `dispatch_failure_kind=none` explicitly, so trace/replay
+read models can distinguish a real none value from an older or malformed
+summary that omitted the field. A later `done` claim fails completion verification
 when any delegated result failed. Delegated results are recorded with action
 id, round, sequence, task/context character counts, and dispatch failure kind
 so later traces can verify bounded dispatch from harness-owned delegated event
@@ -1253,7 +1256,8 @@ turn ids, counts, safe delegated dispatch metadata, check statuses, report
 refs, and the fixed replay boundary. It checks whether delegated result events
 have matching dispatch metadata and whether over-limit delegated dispatches
 carry bounded `dispatch_failure_kind` coverage such as
-`dispatch_limit_exceeded`. It must not invoke the model, execute tools, rerun
+`dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
+omits the field instead of explicitly recording `none`. It must not invoke the model, execute tools, rerun
 actions, read raw model responses, read raw action payloads, read raw
 tool/delegation bodies, read raw final responses, read context Markdown, write
 the repo, write the active vault, manage services, or mutate

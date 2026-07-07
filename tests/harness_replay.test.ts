@@ -41,6 +41,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_dispatch_failure_kind"
         && check.status === "pass"
+        && check.summary.includes("missing_kind_field=0")
         && check.summary.includes("missing_limit_kind=0")
     ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
@@ -53,6 +54,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       context_chars: dispatch.context_chars,
       contract_status: dispatch.contract_status,
       dispatch_failure_kind: dispatch.dispatch_failure_kind,
+      dispatch_failure_kind_present: dispatch.dispatch_failure_kind_present,
       ok: dispatch.ok
     })), [{
       event_id: "evidence_replay_delegated",
@@ -64,6 +66,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       context_chars: 77,
       contract_status: "failed",
       dispatch_failure_kind: "dispatch_limit_exceeded",
+      dispatch_failure_kind_present: true,
       ok: false
     }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
@@ -108,6 +111,7 @@ test("harness replay audit warns when over-limit delegated dispatch lacks failur
     const check = report.checks.find((item) => item.id === "delegated_dispatch_failure_kind");
 
     assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /missing_kind_field=1/);
     assert.match(check?.summary ?? "", /missing_limit_kind=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);

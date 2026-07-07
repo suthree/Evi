@@ -2815,7 +2815,7 @@ test("operator live run trace commands read bounded run metadata without running
       session_id: sessionId,
       turn_id: turnId,
       kind: "delegated_result",
-      summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; ok=false.",
+      summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; dispatch_failure_kind=none; ok=false.",
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
       created_at: "2026-06-30T00:29:03.500Z"
     });
@@ -2885,6 +2885,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /round: 1/);
     assert.match(transport.sent[1].text, /sequence: 1/);
     assert.match(transport.sent[1].text, /contract_status: failed/);
+    assert.match(transport.sent[1].text, /dispatch_failure_kind: none/);
     assert.match(transport.sent[1].text, /task_chars: 55/);
     assert.match(transport.sent[1].text, /context_chars: 99/);
     assert.match(transport.sent[1].text, /repo_write_guards: 1/);
@@ -2908,6 +2909,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[3].text, /replay_result: metadata_replay/);
     assert.match(transport.sent[3].text, /delegated_dispatches=1/);
     assert.match(transport.sent[3].text, /delegated_dispatch_metadata: pass/);
+    assert.match(transport.sent[3].text, /delegated_dispatch_failure_kind: pass/);
     assert.match(transport.sent[3].text, /delegated_result_contract: warning/);
     assert.match(transport.sent[3].text, /This command is read-only/);
     assert.doesNotMatch(allSent, /RAW_TRACE_CONTEXT_SHOULD_NOT_BE_SENT/);

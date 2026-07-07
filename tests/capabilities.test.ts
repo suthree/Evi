@@ -32,6 +32,10 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
     harnessActions?.capabilities.map((capability) => capability.id),
     allowedActions
   );
+  const delegateAgent = harnessActions?.capabilities.find((capability) => capability.id === "delegate_agent");
+  assert.equal(delegateAgent?.summary.includes("bounded structured analysis"), true);
+  assert.equal(delegateAgent?.summary.includes("delegated-result contract"), true);
+  assert.equal(delegateAgent?.summary.includes("main harness"), true);
   assert.equal(catalog.refs.includes("docs/RUNTIME_CONTRACT.md"), true);
   assert.equal(catalog.refs.includes("packages/core/src/capabilities.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/ga_project_design.ts"), true);

@@ -1191,7 +1191,8 @@ aggregate governance status, and Feishu `/governance` may show bounded replay
 counts and refs. Replay reports may carry safe delegated dispatch metadata and
 a dispatch-coverage check from the source trace. They also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
-reading delegated result bodies. These surfaces do not invoke the model,
+reading delegated result bodies, and warn when the field is omitted instead of
+explicitly recorded as `none`. These surfaces do not invoke the model,
 execute tools, read raw model/tool/delegation/final/context artifacts, write
 the repo, write the active vault, or manage services.
 
@@ -2009,9 +2010,11 @@ preview, or persisted artifact bodies. They do not prove final success, execute
 tools, write state, write the repo, write the active vault, or bypass completion
 verification. Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
-`dispatch_limit_exceeded` or `input_contract_failed` so later traces can verify
-bounded dispatch from the harness-owned delegated event summary without reading
-raw delegated context or delegated result bodies.
+`dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
+delegated-model contract failures record `dispatch_failure_kind=none`
+explicitly. Later traces can therefore distinguish a real none value from an
+older or malformed summary that omitted the field, without reading raw
+delegated context or delegated result bodies.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the

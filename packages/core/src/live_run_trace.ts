@@ -62,6 +62,7 @@ export interface LiveRunDelegatedDispatchSummary {
   context_chars: number;
   contract_status: string;
   dispatch_failure_kind: string | null;
+  dispatch_failure_kind_present: boolean;
   ok: boolean;
 }
 
@@ -258,6 +259,7 @@ function readDelegatedDispatchSummaries(
 function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
   const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
+  const dispatchFailureKind = match[7];
   return {
     action_id: match[1].trim(),
     round: Number.parseInt(match[2], 10),
@@ -265,7 +267,8 @@ function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDi
     task_chars: Number.parseInt(match[4], 10),
     context_chars: Number.parseInt(match[5], 10),
     contract_status: match[6],
-    dispatch_failure_kind: match[7] && match[7] !== "none" ? match[7] : null,
+    dispatch_failure_kind: dispatchFailureKind && dispatchFailureKind !== "none" ? dispatchFailureKind : null,
+    dispatch_failure_kind_present: dispatchFailureKind !== undefined,
     ok: match[8] === "true"
   };
 }
