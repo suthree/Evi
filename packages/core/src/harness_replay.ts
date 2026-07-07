@@ -3,6 +3,7 @@ import { evidenceEventSchema } from "./schemas.js";
 import {
   getLiveRunTrace,
   listLiveRunTraces,
+  type LiveRunDelegatedDispatchSummary,
   type LiveRunTraceSummary
 } from "./live_run_trace.js";
 import { newId, utcNow } from "./ids.js";
@@ -39,12 +40,15 @@ export interface HarnessReplayAuditReport {
     tool_results: number;
     delegated_results: number;
     delegated_results_failed: number;
+    delegated_dispatches: number;
+    delegated_dispatches_failed: number;
     harness_state_actions: number;
     model_diagnostics: number;
     repo_write_guards: number;
     observation_refs: number;
   };
   checks: HarnessReplayAuditCheck[];
+  delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   artifact_refs: {
     json_ref: string;
     markdown_ref: string;
@@ -99,12 +103,15 @@ export async function runHarnessReplayAudit(
       tool_results: trace.tool_result_count,
       delegated_results: trace.delegated_result_count,
       delegated_results_failed: trace.delegated_result_failed_count,
+      delegated_dispatches: trace.delegated_dispatches.length,
+      delegated_dispatches_failed: trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length,
       harness_state_actions: trace.harness_action_count,
       model_diagnostics: trace.model_diagnostic_count,
       repo_write_guards: trace.repo_write_guard_count,
       observation_refs: trace.observation_ref_count
     },
     checks,
+    delegated_dispatches: trace.delegated_dispatches.slice(0, 5),
     artifact_refs: {
       json_ref: jsonRef,
       markdown_ref: markdownRef
@@ -114,7 +121,8 @@ export async function runHarnessReplayAudit(
       trace.context_manifest_ref,
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
-      ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`)
+      ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
+      ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
     ]),
     boundary: REPLAY_BOUNDARY
   };
@@ -187,6 +195,8 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `tool_results: ${report.metrics.tool_results}`,
     `delegated_results: ${report.metrics.delegated_results}`,
     `delegated_results_failed: ${report.metrics.delegated_results_failed}`,
+    `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
+    `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
     `harness_state_actions: ${report.metrics.harness_state_actions}`,
     `model_diagnostics: ${report.metrics.model_diagnostics}`,
     `repo_write_guards: ${report.metrics.repo_write_guards}`,
@@ -199,6 +209,14 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
       `  summary: ${check.summary}`,
       `  refs: ${check.refs.join(", ") || "none"}`
     ].join("\n")),
+    "",
+    "## Delegated Dispatches",
+    "",
+    ...(report.delegated_dispatches.length > 0
+      ? report.delegated_dispatches.map((dispatch) =>
+        `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+      )
+      : ["- none"]),
     "",
     "## Boundary",
     "",
@@ -243,6 +261,12 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: [trace.report_ref]
     },
     {
+      id: "delegated_dispatch_metadata",
+      status: trace.delegated_result_count === trace.delegated_dispatches.length ? "pass" : "warning",
+      summary: `delegated_results=${trace.delegated_result_count}; dispatches=${trace.delegated_dispatches.length}; failed_dispatches=${trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length}`,
+      refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+    },
+    {
       id: "repo_write_guard",
       status: trace.repo_write_guards.some((guard) => guard.preexisting_dirty || guard.target_changed_after_write) ? "warning" : "pass",
       summary: `repo_write_guards=${trace.repo_write_guard_count}; preexisting_dirty=${trace.repo_write_guards.filter((guard) => guard.preexisting_dirty).length}; target_changed=${trace.repo_write_guards.filter((guard) => guard.target_changed_after_write).length}`,
@@ -261,6 +285,7 @@ function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditSta
   const warnings = [
     trace.verification_status !== "passed" || !trace.verified ? "completion verification attention" : null,
     trace.delegated_result_failed_count > 0 ? "delegated result failure" : null,
+    trace.delegated_result_count !== trace.delegated_dispatches.length ? "delegated dispatch metadata gap" : null,
     trace.repo_write_guard_count > 0 ? "repo write guard evidence" : null,
     trace.model_diagnostic_count > 0 ? "model diagnostic evidence" : null
   ].filter((item): item is string => Boolean(item));
@@ -305,18 +330,51 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       tool_results: numberField(record.metrics, "tool_results") ?? 0,
       delegated_results: numberField(record.metrics, "delegated_results") ?? 0,
       delegated_results_failed: numberField(record.metrics, "delegated_results_failed") ?? 0,
+      delegated_dispatches: numberField(record.metrics, "delegated_dispatches") ?? 0,
+      delegated_dispatches_failed: numberField(record.metrics, "delegated_dispatches_failed") ?? 0,
       harness_state_actions: numberField(record.metrics, "harness_state_actions") ?? 0,
       model_diagnostics: numberField(record.metrics, "model_diagnostics") ?? 0,
       repo_write_guards: numberField(record.metrics, "repo_write_guards") ?? 0,
       observation_refs: numberField(record.metrics, "observation_refs") ?? 0
     },
     checks,
+    delegated_dispatches: Array.isArray(record.delegated_dispatches)
+      ? record.delegated_dispatches.map(asDelegatedDispatchSummary).filter((item): item is LiveRunDelegatedDispatchSummary => item !== null)
+      : [],
     artifact_refs: {
       json_ref: jsonRef,
       markdown_ref: markdownRef
     },
     refs: record.refs.filter((item): item is string => typeof item === "string"),
     boundary: record.boundary
+  };
+}
+
+function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSummary | null {
+  if (!isRecord(value)) return null;
+  const eventId = stringField(value, "event_id");
+  const createdAt = stringField(value, "created_at");
+  const resultRef = stringField(value, "result_ref");
+  const actionId = stringField(value, "action_id");
+  const contractStatus = stringField(value, "contract_status");
+  const round = numberField(value, "round");
+  const sequence = numberField(value, "sequence");
+  const taskChars = numberField(value, "task_chars");
+  const contextChars = numberField(value, "context_chars");
+  if (!eventId || !createdAt || !resultRef || !actionId || !contractStatus) return null;
+  if (round === null || sequence === null || taskChars === null || contextChars === null) return null;
+  if (typeof value.ok !== "boolean") return null;
+  return {
+    event_id: eventId,
+    created_at: createdAt,
+    result_ref: resultRef,
+    action_id: actionId,
+    round,
+    sequence,
+    task_chars: taskChars,
+    context_chars: contextChars,
+    contract_status: contractStatus,
+    ok: value.ok
   };
 }
 

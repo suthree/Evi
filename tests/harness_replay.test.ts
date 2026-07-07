@@ -32,12 +32,37 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.metrics.rounds, 2);
     assert.equal(report.metrics.events, 6);
     assert.equal(report.metrics.delegated_results_failed, 1);
+    assert.equal(report.metrics.delegated_dispatches, 1);
+    assert.equal(report.metrics.delegated_dispatches_failed, 1);
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
+    assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
+    assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
+      event_id: dispatch.event_id,
+      result_ref: dispatch.result_ref,
+      action_id: dispatch.action_id,
+      round: dispatch.round,
+      sequence: dispatch.sequence,
+      task_chars: dispatch.task_chars,
+      context_chars: dispatch.context_chars,
+      contract_status: dispatch.contract_status,
+      ok: dispatch.ok
+    })), [{
+      event_id: "evidence_replay_delegated",
+      result_ref: `memory/episodes/session_replay_test-delegated_result_invalid.json`,
+      action_id: "action_delegate_replay",
+      round: 1,
+      sequence: 1,
+      task_chars: 33,
+      context_chars: 77,
+      contract_status: "failed",
+      ok: false
+    }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.markdown_ref)), true);
     assert.equal(report.refs.some((ref) => ref.includes("model-response")), false);
+    assert.equal(report.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
 
     const events = await readFile(join(stateRoot, "memory/episodes/events.jsonl"), "utf8");
@@ -191,7 +216,7 @@ async function writeReplayTraceFixture(store: AgentStore): Promise<void> {
     session_id: sessionId,
     turn_id: turnId,
     kind: "delegated_result",
-    summary: "Delegated result failed contract: invalid JSON.",
+    summary: "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=failed; ok=false.",
     artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
     created_at: "2026-06-30T01:00:03.500Z"
   });

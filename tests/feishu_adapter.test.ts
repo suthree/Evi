@@ -2901,10 +2901,13 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[2].text, /metadata_replay/);
     assert.match(transport.sent[2].text, /completion_verification_trace_feishu_new/);
     assert.match(transport.sent[2].text, /delegated_failed: 1/);
+    assert.match(transport.sent[2].text, /delegated_dispatches: 1/);
     assert.match(transport.sent[3].text, /Harness replay audit/);
     assert.match(transport.sent[3].text, new RegExp(replay.id));
     assert.match(transport.sent[3].text, /trace_ref: memory\/episodes\/session_trace_feishu_new-completion-verification\.json/);
     assert.match(transport.sent[3].text, /replay_result: metadata_replay/);
+    assert.match(transport.sent[3].text, /delegated_dispatches=1/);
+    assert.match(transport.sent[3].text, /delegated_dispatch_metadata: pass/);
     assert.match(transport.sent[3].text, /delegated_result_contract: warning/);
     assert.match(transport.sent[3].text, /This command is read-only/);
     assert.doesNotMatch(allSent, /RAW_TRACE_CONTEXT_SHOULD_NOT_BE_SENT/);

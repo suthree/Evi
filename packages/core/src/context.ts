@@ -984,7 +984,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- session_id: ${replay.session_id}`,
     `- replay_result: ${replay.replay_result}`,
     `- summary: ${truncate(replay.summary, 300)}`,
-    `- metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
+    `- metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, delegated_dispatches=${replay.metrics.delegated_dispatches}, delegated_dispatches_failed=${replay.metrics.delegated_dispatches_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];

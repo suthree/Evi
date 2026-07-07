@@ -4940,6 +4940,7 @@ function renderHarnessReplaySummary(replay: HarnessReplayAuditReport, index: num
     `   checks: ${renderStatusCounts(countReplayChecks(replay))}`,
     `   repo_write_guards: ${replay.metrics.repo_write_guards}`,
     `   delegated_failed: ${replay.metrics.delegated_results_failed}`,
+    `   delegated_dispatches: ${replay.metrics.delegated_dispatches}`,
     `   summary: ${truncateText(replay.summary, 260)}`,
     `   ref: ${replay.artifact_refs.json_ref}`
   ];
@@ -4956,7 +4957,7 @@ function renderHarnessReplayDetail(replay: HarnessReplayAuditReport): string[] {
     `trace_ref: ${replay.trace_ref}`,
     `replay_result: ${replay.replay_result}`,
     `summary: ${truncateText(replay.summary, 500)}`,
-    `metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
+    `metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, delegated_dispatches=${replay.metrics.delegated_dispatches}, delegated_dispatches_failed=${replay.metrics.delegated_dispatches_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
     `json_ref: ${replay.artifact_refs.json_ref}`,
     `markdown_ref: ${replay.artifact_refs.markdown_ref}`,
     "",
