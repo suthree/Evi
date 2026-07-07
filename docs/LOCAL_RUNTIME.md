@@ -1144,15 +1144,18 @@ mutate state, write the repo, or write the active vault.
 Live context may also render a bounded `Live Run Trace` section for recent
 live harness runs. It summarizes completion report refs, context refs, event
 kind counts, observation counts, delegated result pass/fail counts, per-round
-action counts, model diagnostic failure kind/stage/refs, repo-write workspace
-guard summaries, and envelope refs.
+action counts, safe delegated dispatch metadata from harness-owned event
+summaries, model diagnostic failure kind/stage/refs, repo-write workspace guard
+summaries, and envelope refs.
 Delegated result failure counts are derived from completion verification checks
 and episode event metadata; repo-write guard summaries are parsed from bounded
-tool-result event summaries. The section does not read delegated result
-artifact bodies or raw ToolResult JSON. It does not render raw model responses,
-action payloads, tool result bodies, delegation result bodies, final response
-Markdown, context Markdown, or harness artifact bodies, and it does not rerun
-actions or mutate state.
+tool-result event summaries. Delegated dispatch summaries may include action
+id, round, sequence, task/context character counts, contract status, ok flag,
+event id, and artifact ref. The section does not read delegated result artifact
+bodies or raw ToolResult JSON. It does not render raw model responses, action
+payloads, tool result bodies, delegated task/context/findings/output/raw
+preview, final response Markdown, context Markdown, or harness artifact bodies,
+and it does not rerun actions or mutate state.
 
 Operators can inspect the same bounded read model through CLI
 `review traces` / `review traces --trace <ref-or-id>` and Feishu
@@ -1985,7 +1988,8 @@ called. Delegated observations may inform the next model round, but they do not
 prove final success, execute tools, write state, write the repo, write the
 active vault, or bypass completion verification. Each delegated result also
 records action id, round, sequence, and task/context character counts so later
-traces can verify bounded dispatch without reading raw delegated context.
+traces can verify bounded dispatch from the harness-owned delegated event
+summary without reading raw delegated context or delegated result bodies.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the

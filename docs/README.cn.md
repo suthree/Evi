@@ -50,6 +50,7 @@
 - `http.fetch`：抓取 HTTP(S) 内容。
 - `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记和环境变量 allowlist。
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段。
+- `delegate_agent`：分发一个有界子任务，只返回受 schema 约束的观察结果；Live Run Trace 可查看 action id、round、sequence、字符计数和合同状态等安全分发元数据，但不会读取或展示 raw delegated task/context/findings/output。
 
 ## 常用命令
 
@@ -75,6 +76,13 @@ pnpm run runtime -- doctor --no-auth --no-im
 
 ```bash
 pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime/state
+```
+
+查看最近 live run 的有界 trace：
+
+```bash
+pnpm run runtime -- review traces --state-root .runtime/state
+pnpm run runtime -- review traces --trace <ref-or-id> --state-root .runtime/state
 ```
 
 启动本地 Web console：

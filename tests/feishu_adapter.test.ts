@@ -2729,7 +2729,22 @@ test("operator live run trace commands read bounded run metadata without running
       }
     });
     await fixture.store.writeText(`memory/episodes/${sessionId}-tool_result_status.json`, "RAW_TRACE_TOOL_RESULT_SHOULD_NOT_BE_SENT");
-    await fixture.store.writeText(`memory/episodes/${sessionId}-delegated_result_invalid.json`, "RAW_TRACE_DELEGATED_RESULT_SHOULD_NOT_BE_SENT");
+    await fixture.store.writeJson(`memory/episodes/${sessionId}-delegated_result_invalid.json`, {
+      id: "delegated_result_invalid",
+      ok: false,
+      summary: "Delegated result failed contract: invalid JSON.",
+      action_id: "action_delegate_trace_feishu",
+      round: 1,
+      sequence: 1,
+      task_chars: 55,
+      context_chars: 99,
+      contract_status: "failed",
+      task: "RAW_TRACE_DELEGATED_TASK_SHOULD_NOT_BE_SENT",
+      findings_text: "RAW_TRACE_DELEGATED_FINDINGS_SHOULD_NOT_BE_SENT",
+      output_text: "RAW_TRACE_DELEGATED_OUTPUT_SHOULD_NOT_BE_SENT",
+      raw_output_preview: "RAW_TRACE_DELEGATED_RESULT_SHOULD_NOT_BE_SENT",
+      created_at: "2026-06-30T00:29:03.500Z"
+    });
     await fixture.store.writeText(`memory/episodes/${sessionId}-final-response.md`, "RAW_TRACE_FINAL_RESPONSE_SHOULD_NOT_BE_SENT");
     await fixture.store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, completionVerificationRecord({
       id: "completion_verification_trace_feishu_new",
@@ -2800,7 +2815,7 @@ test("operator live run trace commands read bounded run metadata without running
       session_id: sessionId,
       turn_id: turnId,
       kind: "delegated_result",
-      summary: "Delegated result failed contract: invalid JSON.",
+      summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; ok=false.",
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
       created_at: "2026-06-30T00:29:03.500Z"
     });
@@ -2865,6 +2880,13 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /context_ref: memory\/episodes\/session_trace_feishu_new-context\.md/);
     assert.match(transport.sent[1].text, /delegated_results: 1/);
     assert.match(transport.sent[1].text, /delegated_results_failed: 1/);
+    assert.match(transport.sent[1].text, /Delegated dispatches:/);
+    assert.match(transport.sent[1].text, /action_id: action_delegate_trace_feishu/);
+    assert.match(transport.sent[1].text, /round: 1/);
+    assert.match(transport.sent[1].text, /sequence: 1/);
+    assert.match(transport.sent[1].text, /contract_status: failed/);
+    assert.match(transport.sent[1].text, /task_chars: 55/);
+    assert.match(transport.sent[1].text, /context_chars: 99/);
     assert.match(transport.sent[1].text, /repo_write_guards: 1/);
     assert.match(transport.sent[1].text, /docs\/feishu-generated\.md/);
     assert.match(transport.sent[1].text, /before: clean \(0 changed\)/);
@@ -2891,6 +2913,9 @@ test("operator live run trace commands read bounded run metadata without running
     assert.doesNotMatch(allSent, /RAW_TRACE_TOOL_PAYLOAD_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_TOOL_RESULT_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_DELEGATED_RESULT_SHOULD_NOT_BE_SENT/);
+    assert.doesNotMatch(allSent, /RAW_TRACE_DELEGATED_TASK_SHOULD_NOT_BE_SENT/);
+    assert.doesNotMatch(allSent, /RAW_TRACE_DELEGATED_FINDINGS_SHOULD_NOT_BE_SENT/);
+    assert.doesNotMatch(allSent, /RAW_TRACE_DELEGATED_OUTPUT_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_FINAL_RESPONSE_SHOULD_NOT_BE_SENT/);
   } finally {
     await fixture.cleanup();

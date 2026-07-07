@@ -1152,7 +1152,8 @@ the result as a `Delegated Observations` item. Invalid payloads or malformed
 delegated output are recorded as `ok=false`, and a later `done` claim fails
 completion verification when any delegated result failed. Delegated results are
 recorded with action id, round, sequence, and task/context character counts so
-later traces can verify bounded dispatch without reading raw delegated context.
+later traces can verify bounded dispatch from harness-owned delegated event
+summaries without reading raw delegated context or delegated result bodies.
 They are not tool evidence, final success proof, mutation authority, or a second
 autonomous agent runtime.
 
@@ -1199,12 +1200,14 @@ Operators may also inspect the bounded live run trace read model through
 `/review traces` and `/review trace <ref-or-id>`. This uses the same trace
 summaries as context: completion report refs, completion ids, session/turn ids,
 context refs, event kind counts, observation counts, per-round action counts,
-harness state-action counts, model diagnostic failure kind/stage/refs,
-repo-write workspace guard summaries from bounded tool-result event summaries,
-and envelope refs. It must not read raw model responses, action payloads, tool
-result bodies, final response Markdown, context Markdown, or harness artifact
-bodies, and it must not rerun actions, invoke the model, request confirmations,
-execute follow-ups, mutate state, write the repo, or write the active vault.
+harness state-action counts, safe delegated dispatch metadata, model diagnostic
+failure kind/stage/refs, repo-write workspace guard summaries from bounded
+tool-result event summaries, and envelope refs. It must not read raw model
+responses, action payloads, tool result bodies, delegated task, context,
+findings, output, raw preview, final response Markdown, context Markdown, or
+harness artifact bodies, and it must not rerun actions, invoke the model,
+request confirmations, execute follow-ups, mutate state, write the repo, or
+write the active vault.
 
 Operators may turn one bounded live run trace into a state-only harness replay
 audit with `review replay-audit --trace <ref-or-id>`. If no trace is selected,
@@ -1617,15 +1620,17 @@ through CLI `capabilities` and Feishu `/capabilities`.
 The Live Run Trace context section is bounded read-only orientation over recent
 live harness runs. It may include completion report refs, context refs, final
 response refs, event kind counts, observation counts, per-round action counts,
-completion statuses, delegated result pass/fail counts, and model action
-envelope refs. Delegated result failure counts are derived from the completion
-verification `delegated_results` check plus episode event metadata; the read
-model does not inspect delegated artifact bodies. It reads completion
-verification reports, model action envelope metadata, and episode event
-metadata only. It must not render raw model responses, tool result bodies,
-delegation result bodies, action payloads, final response Markdown, context
-Markdown, harness artifact bodies, request confirmations, rerun actions, invoke
-the model, or mutate state.
+completion statuses, delegated result pass/fail counts, safe delegated dispatch
+metadata, and model action envelope refs. Delegated result failure counts are
+derived from the completion verification `delegated_results` check plus episode
+event metadata; delegated dispatch metadata is parsed only from harness-owned
+`delegated_result` event summaries. It reads completion verification reports,
+model action envelope metadata, model diagnostic summaries, and episode event
+metadata only. It must not inspect delegated artifact bodies or render raw
+model responses, tool result bodies, delegated task/context/findings/output/raw
+preview, action payloads, final response Markdown, context Markdown, harness
+artifact bodies, request confirmations, rerun actions, invoke the model, or
+mutate state.
 
 The Governance Queue context section is a bounded read-only prompt summary of
 pending local self-evolution work. It may include ids, statuses, summaries,
@@ -2257,15 +2262,19 @@ Required policy:
 - summaries may include report refs, completion ids, session/turn ids,
   completion status, verification status, verified flag, context refs,
   final-response refs, event kind counts, observation counts, harness
-  state-action counts, delegated result pass/fail counts, per-round action
-  counts, action types, model diagnostic failure kind/stage/refs, and envelope
-  refs
+  state-action counts, delegated result pass/fail counts, safe delegated
+  dispatch metadata, per-round action counts, action types, model diagnostic
+  failure kind/stage/refs, and envelope refs
 - repo-write guard summaries may include path, before/after workspace status,
   changed-file counts, dirty flag, target-changed flag, and event id parsed
   from bounded `tool_result` event summaries
 - delegated result failure counts are derived from the completion verification
-  `delegated_results` check and episode event metadata without reading
-  delegated result artifact bodies
+  `delegated_results` check and episode event metadata
+- delegated dispatch summaries may include action id, round, sequence,
+  task/context character counts, contract status, ok flag, event id, and result
+  artifact ref parsed from harness-owned `delegated_result` event summaries;
+  they must not read delegated result artifact bodies or render delegated task,
+  context, findings, output, or raw output preview
 - model diagnostic summaries are derived from `model_diagnostic` events and
   bounded diagnostic JSON; they may show sanitized error previews but not raw
   model response bodies

@@ -2055,6 +2055,11 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
         `repo_write_guards: ${trace.repo_write_guard_count}`,
         `observation_refs: ${trace.observation_ref_count}`,
         "",
+        "Delegated dispatches:",
+        ...(trace.delegated_dispatches.length > 0
+          ? trace.delegated_dispatches.flatMap(renderLiveRunDelegatedDispatch)
+          : ["- none"]),
+        "",
         "Model diagnostics:",
         ...(trace.model_diagnostics.length > 0
           ? trace.model_diagnostics.flatMap(renderLiveRunModelDiagnostic)
@@ -4895,6 +4900,20 @@ function renderLiveRunRepoWriteGuard(guard: LiveRunTraceSummary["repo_write_guar
     `  preexisting_dirty: ${guard.preexisting_dirty}`,
     `  target_changed: ${guard.target_changed_after_write}`,
     `  event: ${guard.event_id}`
+  ];
+}
+
+function renderLiveRunDelegatedDispatch(dispatch: LiveRunTraceSummary["delegated_dispatches"][number]): string[] {
+  return [
+    `- action_id: ${dispatch.action_id}`,
+    `  round: ${dispatch.round}`,
+    `  sequence: ${dispatch.sequence}`,
+    `  contract_status: ${dispatch.contract_status}`,
+    `  ok: ${dispatch.ok}`,
+    `  task_chars: ${dispatch.task_chars}`,
+    `  context_chars: ${dispatch.context_chars}`,
+    `  ref: ${dispatch.result_ref}`,
+    `  event: ${dispatch.event_id}`
   ];
 }
 

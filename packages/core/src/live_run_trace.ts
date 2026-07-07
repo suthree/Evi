@@ -51,6 +51,19 @@ export interface LiveRunModelDiagnosticSummary {
   error_preview: string;
 }
 
+export interface LiveRunDelegatedDispatchSummary {
+  event_id: string;
+  created_at: string;
+  result_ref: string;
+  action_id: string;
+  round: number;
+  sequence: number;
+  task_chars: number;
+  context_chars: number;
+  contract_status: string;
+  ok: boolean;
+}
+
 export interface LiveRunTraceSummary {
   report_ref: string;
   completion_id: string;
@@ -70,6 +83,7 @@ export interface LiveRunTraceSummary {
   delegated_result_count: number;
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
+  delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
   observation_ref_count: number;
   model_diagnostic_count: number;
@@ -171,6 +185,7 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedResultFailedCount = delegatedFailureCount(report);
+  const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
   const modelDiagnostics = await readModelDiagnostics(store, runEvents);
   const repoWriteGuards = runEvents.map(extractRepoWriteGuardSummary).filter((item): item is LiveRunRepoWriteGuardSummary => item !== null);
   const refs = unique([
@@ -203,6 +218,7 @@ async function summarizeLiveRunTrace(
     delegated_result_count: delegatedResultCount,
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
+    delegated_dispatches: delegatedDispatches.slice(0, 5),
     harness_action_count: harnessActionCount,
     observation_ref_count: report.observation_refs.length,
     model_diagnostic_count: modelDiagnostics.length,
@@ -213,10 +229,42 @@ async function summarizeLiveRunTrace(
     refs,
     boundary: [
       "read-only live run trace; reads completion reports, model action envelope metadata,",
-      "model diagnostic summaries, and episode event metadata only; repo write guard summaries are parsed from",
-      "bounded tool-result event summaries; does not render raw model responses, tool",
-      "bodies, final responses, or harness artifact bodies"
+      "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch",
+      "event summaries only; repo write guard summaries are parsed from bounded tool-result event",
+      "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
+      "raw delegated previews, final responses, or harness artifact bodies"
     ].join(" ")
+  };
+}
+
+function readDelegatedDispatchSummaries(
+  events: EpisodeEvent[]
+): LiveRunDelegatedDispatchSummary[] {
+  const summaries: LiveRunDelegatedDispatchSummary[] = [];
+  for (const event of events.filter((item) => item.kind === "delegated_result")) {
+    const parsed = parseDelegatedDispatchSummary(event.summary);
+    if (!parsed) continue;
+    summaries.push({
+      event_id: event.id,
+      created_at: event.created_at,
+      result_ref: event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "",
+      ...parsed
+    });
+  }
+  return summaries;
+}
+
+function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
+  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+); ok=(true|false)\.$/);
+  if (!match) return null;
+  return {
+    action_id: match[1].trim(),
+    round: Number.parseInt(match[2], 10),
+    sequence: Number.parseInt(match[3], 10),
+    task_chars: Number.parseInt(match[4], 10),
+    context_chars: Number.parseInt(match[5], 10),
+    contract_status: match[6],
+    ok: match[7] === "true"
   };
 }
 

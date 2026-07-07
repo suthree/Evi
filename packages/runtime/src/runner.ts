@@ -489,7 +489,7 @@ export class LiveAgentRunner {
           session_id: snapshot.session_id,
           turn_id: snapshot.id,
           kind: "delegated_result",
-          summary: delegated.summary,
+          summary: delegatedResultEventSummary(delegated),
           artifact_refs: [delegatedRef]
         });
         evidenceRefs.push(delegatedEvent.id);
@@ -1836,6 +1836,19 @@ function compactRefs(refs: Array<string | null | undefined>): string[] {
 
 function delegatedResultBoundary(): string {
   return "harness-validated delegated result; bounded self-report only, not tool evidence, final success, or mutation authority";
+}
+
+function delegatedResultEventSummary(result: DelegatedResult): string {
+  return [
+    "Delegated result:",
+    `action_id=${result.action_id};`,
+    `round=${result.round};`,
+    `sequence=${result.sequence};`,
+    `task_chars=${result.task_chars};`,
+    `context_chars=${result.context_chars};`,
+    `contract_status=${result.contract_status};`,
+    `ok=${result.ok}.`
+  ].join(" ");
 }
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {

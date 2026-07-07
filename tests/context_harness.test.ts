@@ -1633,10 +1633,22 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       `memory/episodes/${priorSession}-record-evidence-r1-1.md`,
       "RAW_HARNESS_ARTIFACT_SHOULD_NOT_BE_IN_CONTEXT"
     );
-    await fixture.store.writeText(
-      `memory/episodes/${priorSession}-delegated_result_invalid.json`,
-      "RAW_DELEGATED_RESULT_SHOULD_NOT_BE_IN_CONTEXT"
-    );
+    await fixture.store.writeJson(`memory/episodes/${priorSession}-delegated_result_invalid.json`, {
+      id: "delegated_result_invalid",
+      ok: false,
+      summary: "Delegated result failed contract: invalid JSON.",
+      action_id: "action_delegate_trace_context",
+      round: 1,
+      sequence: 1,
+      task_chars: 44,
+      context_chars: 88,
+      contract_status: "failed",
+      task: "RAW_DELEGATED_TASK_SHOULD_NOT_BE_IN_CONTEXT",
+      findings_text: "RAW_DELEGATED_FINDINGS_SHOULD_NOT_BE_IN_CONTEXT",
+      output_text: "RAW_DELEGATED_OUTPUT_SHOULD_NOT_BE_IN_CONTEXT",
+      raw_output_preview: "RAW_DELEGATED_RESULT_SHOULD_NOT_BE_IN_CONTEXT",
+      created_at: "2026-06-30T00:19:03.500Z"
+    });
     await fixture.store.writeText(
       `memory/episodes/${priorSession}-final-response.md`,
       "RAW_FINAL_RESPONSE_SHOULD_NOT_BE_IN_CONTEXT"
@@ -1717,7 +1729,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       session_id: priorSession,
       turn_id: priorTurn,
       kind: "delegated_result",
-      summary: "Delegated result failed contract: invalid JSON.",
+      summary: "Delegated result: action_id=action_delegate_trace_context; round=1; sequence=1; task_chars=44; context_chars=88; contract_status=failed; ok=false.",
       artifact_refs: [`memory/episodes/${priorSession}-delegated_result_invalid.json`],
       created_at: "2026-06-30T00:19:03.500Z"
     });
@@ -1743,6 +1755,9 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     const replay = await runHarnessReplayAudit(fixture.store, {
       traceRef: "completion_verification_trace_context"
     });
+    const trace = (await getLiveRunTrace(fixture.store, {
+      traceRef: "completion_verification_trace_context"
+    })).trace;
 
     const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
     const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
@@ -1758,6 +1773,20 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_results: 1/);
     assert.match(rendered.markdown, /delegated_results_passed: 0/);
     assert.match(rendered.markdown, /delegated_results_failed: 1/);
+    assert.equal(trace.delegated_dispatches.length, 1);
+    assert.deepEqual(trace.delegated_dispatches[0], {
+      event_id: "evidence_trace_delegated",
+      created_at: "2026-06-30T00:19:03.500Z",
+      result_ref: `memory/episodes/${priorSession}-delegated_result_invalid.json`,
+      action_id: "action_delegate_trace_context",
+      round: 1,
+      sequence: 1,
+      task_chars: 44,
+      context_chars: 88,
+      contract_status: "failed",
+      ok: false
+    });
+    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false task_chars=44 context_chars=88 action_id=action_delegate_trace_context ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
     assert.match(rendered.markdown, /harness_state_actions: 1/);
     assert.match(rendered.markdown, /repo_write_guards: 1/);
     assert.match(rendered.markdown, /repo_write_guard: docs\/generated\.md before=dirty after=dirty changed_files=1->2 delta=1 preexisting_dirty=true target_changed=true/);
@@ -1778,6 +1807,9 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.doesNotMatch(rendered.markdown, /RAW_TOOL_RESULT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_HARNESS_ARTIFACT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_RESULT_SHOULD_NOT_BE_IN_CONTEXT/);
+    assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_TASK_SHOULD_NOT_BE_IN_CONTEXT/);
+    assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_FINDINGS_SHOULD_NOT_BE_IN_CONTEXT/);
+    assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_OUTPUT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_RESPOND_PAYLOAD_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_FINAL_RESPONSE_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.equal(section?.item_count, 1);
@@ -3390,6 +3422,7 @@ test("live runner feeds structured delegated results back as bounded observation
 
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.sawStructuredDelegation, true);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; ok=true\.$/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
     assert.equal(delegated.summary, "Structured delegate summary");
@@ -3440,6 +3473,7 @@ test("live runner fails done verification when delegated result violates its con
     };
 
     assert.equal(result.verdict, "completion_unverified");
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.match(delegated.output_text, /not valid JSON/);
@@ -3488,6 +3522,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=0; contract_status=failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);
@@ -3537,6 +3572,7 @@ test("live runner rejects oversized delegate context without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);
