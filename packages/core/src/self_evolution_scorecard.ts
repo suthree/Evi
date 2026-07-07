@@ -9,7 +9,10 @@ import {
 } from "./ga_project_design.js";
 import { getMemoryLayerDiagnostics } from "./memory_layers.js";
 import { getOpportunityBacklog } from "./opportunity_backlog.js";
-import { listSelfEvolutionIterations } from "./self_evolution_iterations.js";
+import {
+  listSelfEvolutionIterations,
+  type SelfEvolutionIterationContract
+} from "./self_evolution_iterations.js";
 import type { SkillResolverLike } from "./skill_resolver.js";
 import { getSopEvolutionLedger } from "./sop_evolution_ledger.js";
 import type { AgentStore } from "./store.js";
@@ -93,7 +96,14 @@ export async function getSelfEvolutionScorecard(
     .some((capability) => capability.id === "delegate_agent");
   const projectDesignContract = getGaProjectDesignContract();
   const projectDesignArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
-  const latestOpenIteration = iterations.iterations.find((iteration) => !iteration.outcome);
+  const latestCoreBasicProjectDesignArtifactIteration = latestCoreBasicProjectDesignArtifactSource(iterations.iterations, projectDesignArtifacts);
+  const latestOpenIteration = iterations.iterations.find((iteration) => isOpenCoreGaDesignIteration(iteration));
+  const latestBlockingOpenIteration = latestOpenIteration && !isSupersededOpenIteration(latestOpenIteration, latestCoreBasicProjectDesignArtifactIteration)
+    ? latestOpenIteration
+    : undefined;
+  const latestSupersededOpenIteration = latestOpenIteration && isSupersededOpenIteration(latestOpenIteration, latestCoreBasicProjectDesignArtifactIteration)
+    ? latestOpenIteration
+    : undefined;
   const latestOutcomeIteration = iterations.iterations.find((iteration) => iteration.outcome);
   const latestOutcome = latestOutcomeIteration?.outcome;
 
@@ -123,11 +133,7 @@ export async function getSelfEvolutionScorecard(
         ...iterations.iteration_refs.slice(0, 2)
       ]),
       next_moves: [
-        latestOpenIteration
-          ? `Close the active iteration outcome for ${latestOpenIteration.id} before claiming that slice as verified.`
-          : latestOutcome
-          ? "Use the latest iteration outcome to choose the next bounded core/basic slice."
-          : "Record a verification outcome for the latest self-evolution iteration before opening another major slice.",
+        coreGaDesignNextMove(latestBlockingOpenIteration, latestSupersededOpenIteration, latestOutcome),
         "Use scorecard deltas to choose the next bounded core-runtime slice."
       ]
     },
@@ -250,6 +256,47 @@ function selectNextCoreBasicSlice(nextSlices: SelfEvolutionNextSlice[]): SelfEvo
     slice.layer === "core_runtime"
     || slice.layer === "basic_entrypoint"
   ) ?? null;
+}
+
+function latestCoreBasicProjectDesignArtifactSource(
+  iterations: SelfEvolutionIterationContract[],
+  artifacts: ReturnType<typeof deriveGaProjectDesignArtifacts>
+): SelfEvolutionIterationContract | undefined {
+  const latestArtifact = artifacts.find((artifact) =>
+    artifact.layer === "core_runtime"
+    || artifact.layer === "basic_entrypoint"
+  );
+  if (!latestArtifact) return undefined;
+  return iterations.find((iteration) => iteration.ref === latestArtifact.source_iteration_ref);
+}
+
+function isOpenCoreGaDesignIteration(iteration: SelfEvolutionIterationContract): boolean {
+  return !iteration.outcome
+    && iteration.layer === "core_runtime"
+    && iteration.owner_surface === "ga_project_design";
+}
+
+function isSupersededOpenIteration(
+  openIteration: SelfEvolutionIterationContract,
+  latestArtifactIteration: SelfEvolutionIterationContract | undefined
+): boolean {
+  return Boolean(latestArtifactIteration && latestArtifactIteration.created_at > openIteration.created_at);
+}
+
+function coreGaDesignNextMove(
+  blockingOpenIteration: SelfEvolutionIterationContract | undefined,
+  supersededOpenIteration: SelfEvolutionIterationContract | undefined,
+  latestOutcome: SelfEvolutionIterationContract["outcome"] | undefined
+): string {
+  if (blockingOpenIteration) {
+    return `Close the active iteration outcome for ${blockingOpenIteration.id} before claiming that slice as verified.`;
+  }
+  if (latestOutcome) {
+    return supersededOpenIteration
+      ? `Use the latest iteration outcome to choose the next bounded core/basic slice; resolve superseded open iteration ${supersededOpenIteration.id} separately as governance cleanup.`
+      : "Use the latest iteration outcome to choose the next bounded core/basic slice.";
+  }
+  return "Record a verification outcome for the latest self-evolution iteration before opening another major slice.";
 }
 
 function buildNextSlices(dimensions: SelfEvolutionDimension[]): SelfEvolutionNextSlice[] {
