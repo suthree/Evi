@@ -264,11 +264,12 @@ project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
 `audit_guidance` copied from the GA project-design plan: core identity,
 goal scope, capability stage plan, phase gates, acceptance criteria,
-application boundary, learning authority, verification entrypoints, and
+non-goals, application boundary, learning authority, verification entrypoints, and
 required commands before an outcome is recorded. Phase gates keep their
 `forbidden_shortcuts`, and acceptance criteria keep their audit-seed labels, so
-completion review can see anti-drift constraints and review criteria without
-switching back to the project-design packet. The guidance must name whether
+completion review can see anti-drift constraints, review criteria, and explicit
+non-goal boundaries without switching back to the project-design packet. The
+guidance must name whether
 it applies to the matching open iteration, the source iteration for the current
 plan, or only the current plan context, so successor status is not mistaken for
 the audited iteration's status. When an audited iteration is selected, guidance

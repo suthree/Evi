@@ -816,6 +816,11 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "verification_scope: required entrypoints are covered by completion claims",
       "learning_persistence: SOPs and skills preserve procedure only"
     ],
+    non_goals: [
+      "does not promote SOPs, skills, memory, dreams, or application adapters",
+      "does not create expert agents or scheduling",
+      "does not execute the next slice"
+    ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
@@ -870,6 +875,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:") && criterion.includes("owner surface")), true);
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:") && criterion.includes("completion claims")), true);
   assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:") && criterion.includes("procedure only")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("does not promote SOPs")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("expert agents or scheduling")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("next slice")), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",

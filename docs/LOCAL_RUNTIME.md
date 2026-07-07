@@ -758,10 +758,13 @@ anti-drift constraints such as keeping one-off adapters out of core identity
 and keeping SOPs/skills behind completion gates stay visible during review. It
 also carries audit-seed-labeled `acceptance_criteria`, so completion review can
 compare claims to the project-design criteria without treating those criteria
-as completion proof. It also carries `learning_authority`, so self-evolution
-SOPs and skills preserve procedure while project-design, scorecard, iteration
-contracts, current evidence, verified outcomes, and completion-gate coverage
-retain judgment and completion authority. The guidance names
+as completion proof. It also carries `non_goals`, so boundaries such as no
+automatic SOP/skill/memory/dream promotion, no scheduler, and no execution of
+the next slice stay visible while reviewing the outcome. It also carries
+`learning_authority`, so self-evolution SOPs and skills preserve procedure
+while project-design, scorecard, iteration contracts, current evidence,
+verified outcomes, and completion-gate coverage retain judgment and completion
+authority. The guidance names
 whether it is reviewing the matching open iteration, the source iteration for
 the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited
