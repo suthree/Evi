@@ -336,6 +336,9 @@ interface IterationAuditGuidanceInput {
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
   acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
   non_goals: GaProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: GaProjectDesignPlanPacket["selection_status"];
+  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
   selection_checks: string[];
   verification_commands: string[];
   learning_authority: GaProjectDesignPlanPacket["learning_authority"];
@@ -786,6 +789,10 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   phase_gates: GaProjectDesignPlanPacket["phase_gates"];
   acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
   non_goals: GaProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: GaProjectDesignPlanPacket["selection_status"];
+  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
+  selection_checks: GaProjectDesignPlanPacket["selection_checks"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   verification_entrypoints: string[];
@@ -829,6 +836,10 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     phase_gates: plan.phase_gates,
     acceptance_criteria: plan.acceptance_criteria,
     non_goals: plan.non_goals,
+    scorecard_basis: plan.scorecard_basis,
+    selection_status: plan.selection_status,
+    selection_reasons: plan.selection_reasons,
+    selection_checks: plan.selection_checks,
     guidance_scope: matchesOpenIteration
       ? "matching_open_iteration"
       : isSourceIteration

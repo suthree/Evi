@@ -761,10 +761,13 @@ compare claims to the project-design criteria without treating those criteria
 as completion proof. It also carries `non_goals`, so boundaries such as no
 automatic SOP/skill/memory/dream promotion, no scheduler, and no execution of
 the next slice stay visible while reviewing the outcome. It also carries
-`learning_authority`, so self-evolution SOPs and skills preserve procedure
-while project-design, scorecard, iteration contracts, current evidence,
-verified outcomes, and completion-gate coverage retain judgment and completion
-authority. The guidance names
+`scorecard_basis`, `selection_status`, `selection_reasons`, and
+`selection_checks`, so source verification, fresh successor, target layer,
+owner surface, and scorecard target evidence stay visible while reviewing why
+the slice remains core/basic. It also carries `learning_authority`, so
+self-evolution SOPs and skills preserve procedure while project-design,
+scorecard, iteration contracts, current evidence, verified outcomes, and
+completion-gate coverage retain judgment and completion authority. The guidance names
 whether it is reviewing the matching open iteration, the source iteration for
 the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited

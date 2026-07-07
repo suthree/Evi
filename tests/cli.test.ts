@@ -821,8 +821,22 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "does not create expert agents or scheduling",
       "does not execute the next slice"
     ],
+    scorecard_basis: [
+      "next_core_basic_slice=next_slice_core_ga_design",
+      "target_dimension=core_ga_design",
+      "target_layer=core_runtime"
+    ],
+    selection_status: "ready" as const,
+    selection_reasons: [
+      "source_status=verified",
+      "fresh_successor_slice=true",
+      "target_layer=core_runtime",
+      "owner_surface=ga_project_design"
+    ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
+      "fresh_successor_slice=true; source_slice=completed_source; target_slice=core_ga_design_next_slice_after_source",
+      "target_layer=core_runtime; owner_surface=ga_project_design",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     verification_commands: [
@@ -878,6 +892,11 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("does not promote SOPs")), true);
   assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("expert agents or scheduling")), true);
   assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("next slice")), true);
+  assert.equal(guidance.selection_status, "ready");
+  assert.equal(guidance.selection_reasons.some((reason) => reason === "source_status=verified"), true);
+  assert.equal(guidance.selection_reasons.some((reason) => reason === "fresh_successor_slice=true"), true);
+  assert.equal(guidance.selection_checks.some((check) => check.includes("target_layer=core_runtime")), true);
+  assert.equal(guidance.scorecard_basis.some((basis) => basis === "next_core_basic_slice=next_slice_core_ga_design"), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",
