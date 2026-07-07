@@ -167,6 +167,28 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(reviewHistory?.refs?.includes("packages/core/src/harness_replay.ts"), true);
 });
 
+test("capability catalog exposes delegate_agent failure boundaries", () => {
+  const catalog = getCapabilityCatalog();
+  const delegateAgent = catalog.categories
+    .find((category) => category.id === "harness_actions")
+    ?.capabilities.find((capability) => capability.id === "delegate_agent");
+
+  assert.ok(delegateAgent);
+  const text = [delegateAgent.summary, ...(delegateAgent.boundaries ?? [])].join("\n");
+
+  assert.match(text, /strict task\/context only/);
+  assert.match(text, /at most one delegate_agent action per model round/);
+  assert.match(text, /failed delegated results block verified completion/);
+  assert.match(text, /dispatch_failure_kind/);
+  assert.match(text, /dispatch_limit_exceeded/);
+  assert.match(text, /input_contract_failed/);
+  assert.match(text, /none means no dispatch-layer failure, not delegated success/);
+  assert.match(text, /sanitized/);
+  assert.match(text, /exclude raw task, context, output preview, and artifact bodies/);
+  assert.match(text, /no retry, fallback, tool, mutation/);
+  assert.match(text, /completion authority/);
+});
+
 test("capability acceptance audit records next-version gates without execution authority", () => {
   const audit = getCapabilityAcceptanceAudit();
 

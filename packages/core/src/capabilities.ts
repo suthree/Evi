@@ -523,7 +523,16 @@ function harnessActionsCategory(): CapabilityCategory {
       refs: ["packages/core/src/action_contracts.ts", "packages/core/src/context.ts", "packages/runtime/src/runner.ts"],
       boundaries: [
         "model proposes; harness decides execution and completion evidence",
-        "state-only governance actions cannot prove a done claim by themselves"
+        "state-only governance actions cannot prove a done claim by themselves",
+        ...(action === "delegate_agent"
+          ? [
+              "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
+              "delegated failures stay ok=false and failed delegated results block verified completion, including invalid payloads, submodel request failures, malformed output, over-limit output, and over-limit action counts",
+              "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
+              "delegated observations are sanitized and exclude raw task, context, output preview, and artifact bodies",
+              "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
+            ]
+          : [])
       ]
     }))
   };
