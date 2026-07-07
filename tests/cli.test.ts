@@ -10,6 +10,7 @@ import {
   buildIterationAuditGuidance,
   buildIterationAuditNextCommand,
   buildIterationAuditRuntimeAttentionOutcomeCoverage,
+  buildIterationAuditWorkspaceOutcomeCoverage,
   buildIterationAuditOutcomeVerificationClaimCoverage,
   buildIterationAuditOutcomeVerificationCommandCoverage,
   buildIterationAuditPlanRefCoverage,
@@ -240,6 +241,23 @@ test("iteration audit seed evidence status stays conservative before outcome evi
   );
   assert.equal(missingRuntimeAttention.evidence_status, "missing_outcome_evidence");
   assert.equal(missingRuntimeAttention.missing.includes("runtime_attention_outcome_coverage"), true);
+
+  const missingWorkspaceCoverage = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "missing_workspace_claim" }
+  );
+  assert.equal(missingWorkspaceCoverage.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingWorkspaceCoverage.missing.includes("workspace_outcome_coverage"), true);
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
@@ -550,6 +568,78 @@ test("iteration audit runtime attention coverage requires structured service-hea
   assert.equal(healthy.status, "not_required");
 });
 
+test("iteration audit workspace coverage requires dirty paths in outcome claims", () => {
+  const dirtyWorkspace = {
+    status: "dirty",
+    changed_file_count: 2,
+    changes: [
+      { status_code: " M", path: "apps/cli/src/main.ts", category: "unstaged" },
+      { status_code: " M", path: "tests/cli.test.ts", category: "unstaged" }
+    ],
+    truncated: false
+  } as const;
+
+  const missingClaim = buildIterationAuditWorkspaceOutcomeCoverage(
+    { outcome_verification_claims: ["check: tests passed"] },
+    dirtyWorkspace
+  );
+  assert.equal(missingClaim.status, "missing_workspace_claim");
+  assert.deepEqual(missingClaim.required_tokens, [
+    "workspace: status=dirty",
+    "path=apps/cli/src/main.ts",
+    "path=tests/cli.test.ts"
+  ]);
+
+  const missingStatus = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(missingStatus.status, "missing_workspace_status");
+
+  const missingPath = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(missingPath.status, "missing_changed_paths");
+  assert.deepEqual(missingPath.missing_paths, ["tests/cli.test.ts"]);
+
+  const covered = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(covered.status, "covered");
+  assert.deepEqual(covered.missing_paths, []);
+  assert.match(covered.boundary, /does not read file bodies/);
+
+  const clean = buildIterationAuditWorkspaceOutcomeCoverage(
+    { outcome_verification_claims: [] },
+    { status: "clean", changed_file_count: 0, changes: [], truncated: false }
+  );
+  assert.equal(clean.status, "not_required");
+
+  const truncated = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    { ...dirtyWorkspace, truncated: true }
+  );
+  assert.equal(truncated.status, "truncated_workspace_changes");
+});
+
 test("iteration audit completion gate blocks before outcome evidence and coverage are present", () => {
   const blocked = buildIterationAuditCompletionGate(
     { outcome_status: "not_recorded" },
@@ -584,6 +674,18 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   );
   assert.equal(missingRuntimeAttention.status, "blocked");
   assert.deepEqual(missingRuntimeAttention.blockers, ["runtime_attention_outcome_coverage"]);
+
+  const missingWorkspaceCoverage = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "missing_workspace_claim" }
+  );
+  assert.equal(missingWorkspaceCoverage.status, "blocked");
+  assert.deepEqual(missingWorkspaceCoverage.blockers, ["workspace_outcome_coverage"]);
 
   const partial = buildIterationAuditCompletionGate(
     { outcome_status: "partial" },

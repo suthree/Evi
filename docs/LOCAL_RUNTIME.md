@@ -715,13 +715,18 @@ tokens: `status=<status>`, the current reason codes,
 and, for `repair_needed`, a `follow_up=...`/`follow-up=...`/`followup=...` or
 `no_follow_up=...` token. This only checks recorded evidence; it does not repair
 or prove the service.
+`workspace_outcome_coverage` checks outcome claims against bounded fixed
+`git status` output. If the worktree is dirty, the `workspace:` claim must carry
+`status=dirty` and every reported changed path; truncated change lists stay
+blocked. This only records current-state evidence and never reads file bodies,
+stages files, commits, resets, or proves completion.
 `completion_gate` summarizes structural blockers before the audited iteration is
 ready for manual completion review: missing verified outcome record, missing
 outcome evidence refs, missing plan ref coverage, or missing outcome
 verification command coverage, missing outcome verification claim coverage, or
-missing runtime attention outcome coverage. A partial or failed outcome stays
-blocked by `verified_outcome`. It remains read-only and does not approve seeds
-or prove the commands passed.
+missing runtime attention outcome coverage, or missing workspace outcome
+coverage. A partial or failed outcome stays blocked by `verified_outcome`. It
+remains read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited

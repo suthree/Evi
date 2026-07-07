@@ -230,12 +230,19 @@ verification claim must include `status=<status>`, the current reason codes,
 `handling=<policy>`; `repair_needed` claims must also include `follow_up=...`,
 `follow-up=...`, `followup=...`, or `no_follow_up=...`. This is read-only claim
 coverage, not a service repair or proof of health.
+`workspace_outcome_coverage` reads the bounded fixed `git status` workspace
+diagnostic during the iteration audit. When the worktree is dirty, the
+`workspace:` outcome verification claim must include `status=dirty` and each
+reported changed path. Truncated workspace diagnostics remain blocked until the
+change list is not truncated. This is read-only current-state coverage; it does
+not read file bodies, stage, commit, reset, or prove completion.
 `completion_gate` summarizes the structural blockers before an iteration can be
 treated as ready for manual completion review: verified outcome record, outcome
 evidence refs, plan ref coverage, outcome verification command coverage, and
-outcome verification claim coverage, and runtime attention outcome coverage. A
-partial or failed outcome remains blocked by `verified_outcome`. It is a
-read-only gate and does not approve seeds, execute checks, or prove completion.
+outcome verification claim coverage, runtime attention outcome coverage, and
+workspace outcome coverage. A partial or failed outcome remains blocked by
+`verified_outcome`. It is a read-only gate and does not approve seeds, execute
+checks, or prove completion.
 `governance iterations --iteration <id> --audit-seed all` aggregates every
 project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded

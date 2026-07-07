@@ -834,6 +834,7 @@ function buildCompletionAuditSeeds(
       reject_if: [
         "older memory is the only evidence",
         "external adapter pressure is treated as core identity without a reusable contract",
+        "worktree changes are present but the outcome omits workspace status or changed paths",
         "runtime attention reasons are omitted from the outcome when service health is not healthy",
         "service health is a required verification command but the outcome omits service health status or reasons",
         "runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker",

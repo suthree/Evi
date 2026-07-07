@@ -81,7 +81,7 @@ import {
 } from "../../../packages/core/src/working_checkpoints.js";
 import { getSessionRecap } from "../../../packages/core/src/session_recap.js";
 import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_workspace.js";
-import { getWorkspaceStatus } from "../../../packages/core/src/workspace_status.js";
+import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
 import { getServiceHealth, type ServiceHealthResult } from "../../../packages/core/src/service_health.js";
 import {
@@ -376,6 +376,14 @@ type IterationAuditRuntimeAttentionCoverageStatus =
   | "missing_handling_policy"
   | "missing_repair_follow_up";
 
+type IterationAuditWorkspaceCoverageStatus =
+  | "not_required"
+  | "covered"
+  | "missing_workspace_claim"
+  | "missing_workspace_status"
+  | "missing_changed_paths"
+  | "truncated_workspace_changes";
+
 const RUNTIME_ATTENTION_CLASSIFICATIONS = ["acceptable", "repair_needed", "verification_blocker"] as const;
 
 export function buildIterationAuditSeedEvidenceStatus(
@@ -383,7 +391,8 @@ export function buildIterationAuditSeedEvidenceStatus(
   iteration: { outcome_status: string },
   evidence: IterationAuditEvidenceAvailable,
   outcomeVerificationClaimCoverage?: { status: string },
-  runtimeAttentionOutcomeCoverage?: { status: string }
+  runtimeAttentionOutcomeCoverage?: { status: string },
+  workspaceOutcomeCoverage?: { status: string }
 ): {
   seed_id: GaProjectDesignCompletionAuditSeed["id"];
   phase_id: GaProjectDesignCompletionAuditSeed["phase_id"];
@@ -410,10 +419,13 @@ export function buildIterationAuditSeedEvidenceStatus(
   const hasEntrypointClaimCoverage = !needsVerificationClaims
     || !outcomeVerificationClaimCoverage
     || outcomeVerificationClaimCoverage.status === "covered";
-  const needsRuntimeAttentionCoverage = seed.id === "current_state";
-  const hasRuntimeAttentionCoverage = !needsRuntimeAttentionCoverage
+  const needsCurrentStateCoverage = seed.id === "current_state";
+  const hasRuntimeAttentionCoverage = !needsCurrentStateCoverage
     || !runtimeAttentionOutcomeCoverage
     || runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status);
+  const hasWorkspaceOutcomeCoverage = !needsCurrentStateCoverage
+    || !workspaceOutcomeCoverage
+    || workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status);
   const missing = [
     ...(!evidence.iteration_evidence_refs.length ? ["iteration_evidence_refs"] : []),
     ...(!evidence.iteration_verification_commands.length ? ["iteration_verification_commands"] : []),
@@ -422,7 +434,8 @@ export function buildIterationAuditSeedEvidenceStatus(
     ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : []),
     ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : []),
     ...(hasOutcome && needsVerificationClaims && !hasEntrypointClaimCoverage ? ["outcome_verification_claim_coverage"] : []),
-    ...(hasOutcome && needsRuntimeAttentionCoverage && !hasRuntimeAttentionCoverage ? ["runtime_attention_outcome_coverage"] : [])
+    ...(hasOutcome && needsCurrentStateCoverage && !hasRuntimeAttentionCoverage ? ["runtime_attention_outcome_coverage"] : []),
+    ...(hasOutcome && needsCurrentStateCoverage && !hasWorkspaceOutcomeCoverage ? ["workspace_outcome_coverage"] : [])
   ];
   return {
     seed_id: seed.id,
@@ -431,7 +444,7 @@ export function buildIterationAuditSeedEvidenceStatus(
       ? "missing_declared_evidence"
       : !hasOutcome
         ? "missing_outcome"
-        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage || !hasRuntimeAttentionCoverage
+        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage || !hasRuntimeAttentionCoverage || !hasWorkspaceOutcomeCoverage
           ? "missing_outcome_evidence"
           : "ready_for_manual_review",
     missing,
@@ -630,13 +643,66 @@ export function buildIterationAuditRuntimeAttentionOutcomeCoverage(
   };
 }
 
+export function buildIterationAuditWorkspaceOutcomeCoverage(
+  evidence: Pick<IterationAuditEvidenceAvailable, "outcome_verification_claims">,
+  workspaceStatus: Pick<WorkspaceStatusResult, "status" | "changed_file_count" | "changes" | "truncated">
+): {
+  status: IterationAuditWorkspaceCoverageStatus;
+  workspace_status: WorkspaceStatusResult["status"];
+  changed_file_count: number;
+  change_paths: string[];
+  missing_paths: string[];
+  claim_count: number;
+  truncated: boolean;
+  required_tokens: string[];
+  boundary: string;
+} {
+  const dirty = workspaceStatus.status === "dirty" && workspaceStatus.changed_file_count > 0;
+  const changePaths = workspaceStatus.changes.map((change) => change.path.trim()).filter(Boolean);
+  const workspaceClaims = evidence.outcome_verification_claims
+    .map((claim) => claim.trim())
+    .filter((claim) => claimCoversEntrypoint(claim, "workspace"));
+  const claimText = workspaceClaims.join("\n").toLowerCase();
+  const missingPaths = changePaths.filter((path) => !claimText.includes(path.toLowerCase()));
+  let status: IterationAuditWorkspaceCoverageStatus = "not_required";
+  if (dirty && !workspaceClaims.length) {
+    status = "missing_workspace_claim";
+  } else if (dirty && !claimText.includes("status=dirty")) {
+    status = "missing_workspace_status";
+  } else if (dirty && missingPaths.length) {
+    status = "missing_changed_paths";
+  } else if (dirty && workspaceStatus.truncated) {
+    status = "truncated_workspace_changes";
+  } else if (dirty) {
+    status = "covered";
+  }
+  return {
+    status,
+    workspace_status: workspaceStatus.status,
+    changed_file_count: workspaceStatus.changed_file_count,
+    change_paths: changePaths,
+    missing_paths: dirty ? missingPaths : [],
+    claim_count: workspaceClaims.length,
+    truncated: workspaceStatus.truncated,
+    required_tokens: dirty
+      ? [
+        "workspace: status=dirty",
+        ...changePaths.map((path) => `path=${path}`),
+        ...(workspaceStatus.truncated ? ["workspace changes must not be truncated"] : [])
+      ]
+      : [],
+    boundary: "read-only workspace outcome coverage diagnostic; compares fixed git status change paths with outcome workspace claims only; does not read file bodies, stage, commit, reset, mutate state, or prove completion"
+  };
+}
+
 export function buildIterationAuditCompletionGate(
   iteration: { outcome_status: string },
   evidence: Pick<IterationAuditEvidenceAvailable, "outcome_evidence_refs">,
   planRefCoverage: { status: string },
   outcomeVerificationCommandCoverage: { status: string },
   outcomeVerificationClaimCoverage?: { status: string },
-  runtimeAttentionOutcomeCoverage?: { status: string }
+  runtimeAttentionOutcomeCoverage?: { status: string },
+  workspaceOutcomeCoverage?: { status: string }
 ): {
   status: "blocked" | "ready_for_manual_review";
   blockers: string[];
@@ -651,12 +717,13 @@ export function buildIterationAuditCompletionGate(
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
     ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
     ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
-    ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : [])
+    ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
+    ...(workspaceOutcomeCoverage && !workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status) ? ["workspace_outcome_coverage"] : [])
   ];
   return {
     status: blockers.length ? "blocked" : "ready_for_manual_review",
     blockers,
-    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, outcome verification command coverage, outcome verification claim coverage, and runtime attention outcome coverage before manual review; does not approve seeds or prove completion"
+    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, outcome verification command coverage, outcome verification claim coverage, runtime attention outcome coverage, and workspace outcome coverage before manual review; does not approve seeds or prove completion"
   };
 }
 
@@ -669,6 +736,10 @@ function claimCoversEntrypoint(claim: string, entrypoint: string): boolean {
 }
 
 function runtimeAttentionOutcomeCoverageIsSatisfied(status: string): boolean {
+  return status === "covered" || status === "not_required";
+}
+
+function workspaceOutcomeCoverageIsSatisfied(status: string): boolean {
   return status === "covered" || status === "not_required";
 }
 
@@ -1709,10 +1780,12 @@ export async function main(): Promise<number> {
         const outcomeVerificationClaimCoverage = buildIterationAuditOutcomeVerificationClaimCoverage(auditGuidance.verification_entrypoints, evidenceAvailable);
         const serviceHealth = await getServiceHealth(store);
         const runtimeAttentionOutcomeCoverage = buildIterationAuditRuntimeAttentionOutcomeCoverage(auditGuidance.verification_entrypoints, evidenceAvailable, serviceHealth);
+        const workspaceStatus = await getWorkspaceStatus(store, { limit: 200 });
+        const workspaceOutcomeCoverage = buildIterationAuditWorkspaceOutcomeCoverage(evidenceAvailable, workspaceStatus);
         const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
-          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage)
+          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage)
         );
-        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage);
+        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage);
         const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
           console.log(JSON.stringify({
@@ -1728,6 +1801,7 @@ export async function main(): Promise<number> {
             outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
             outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
             runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
+            workspace_outcome_coverage: workspaceOutcomeCoverage,
             completion_gate: completionGate,
             audit_guidance: auditGuidance,
             next_command: nextCommand,
@@ -1745,13 +1819,14 @@ export async function main(): Promise<number> {
           status: "advisory",
           iteration,
           seed,
-          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage),
+          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage),
           evidence_available: evidenceAvailable,
           plan_ref_coverage: planRefCoverage,
           verification_command_coverage: verificationCommandCoverage,
           outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
           outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
           runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
+          workspace_outcome_coverage: workspaceOutcomeCoverage,
           completion_gate: completionGate,
           audit_guidance: auditGuidance,
           next_command: nextCommand,
