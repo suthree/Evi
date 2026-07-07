@@ -658,9 +658,12 @@ verification commands, non-goals, and advisory expert roles before major work
 is treated as core/basic/local-learning/application progress. `governance
 iterations` lists or inspects those records. `governance record-iteration-outcome`
 updates an existing record with verification status, cited evidence, commands
-run, and next moves. These records do not execute the slice, invoke models,
-mutate repo files, write the active vault, manage services, promote SOPs,
-promote skills, or prove completion beyond cited evidence. With the current
+run, verification claims, and next moves. Use repeated
+`--verification-claim "<entrypoint>: <claim>"` values to bind required entrypoints such as
+`project-design`, `scorecard`, `iterations`, `service-health`, and `check` to
+the completion claim they support. These records do not execute the slice,
+invoke models, mutate repo files, write the active vault, manage services,
+promote SOPs, promote skills, or prove completion beyond cited evidence. With the current
 state root, both record commands return an `inspect_command` that already binds
 that root and can be run directly.
 When you inspect one concrete iteration with `governance iterations --iteration
@@ -699,12 +702,15 @@ not move the audit target.
 against outcome verification command refs only. It helps distinguish "the
 iteration declared these checks" from "the recorded outcome cited these checks";
 it still does not execute or prove them.
+`outcome_verification_claim_coverage` checks required verification entrypoints
+against outcome verification claims, so every entrypoint must map to a
+completion claim before review.
 `completion_gate` summarizes structural blockers before the audited iteration is
 ready for manual completion review: missing verified outcome record, missing
 outcome evidence refs, missing plan ref coverage, or missing outcome
-verification command coverage. A partial or failed outcome stays blocked by
-`verified_outcome`. It remains read-only and does not approve seeds or prove
-the commands passed.
+verification command coverage, or missing outcome verification claim coverage.
+A partial or failed outcome stays blocked by `verified_outcome`. It remains
+read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited
@@ -808,12 +814,13 @@ command can point to that iteration's inspection command instead of another
 record command. It may also show the matching `--audit-seed all` command as
 operator guidance. A compact `review_gate` line may appear when the matching
 open iteration still lacks an outcome record and outcome verification command
-coverage. It may include the required verification entrypoints from the plan;
-it is handoff guidance, while the full iteration audit packet remains the
-authoritative completion-audit view. A compact `after_verify` line may also
-show the matching `record-iteration-outcome` template, but only as
-post-verification writeback guidance. It keeps repeatable evidence-ref and
-verification-command placeholders plus a next-move placeholder visible, so the
+coverage plus outcome verification claim coverage. It may include the required
+verification entrypoints from the plan; it is handoff guidance, while the full
+iteration audit packet remains the authoritative completion-audit view. A
+compact `after_verify` line may also show the matching
+`record-iteration-outcome` template, but only as post-verification writeback
+guidance. It keeps repeatable evidence-ref, verification-command, and
+verification-claim placeholders plus a next-move placeholder visible, so the
 outcome record is not confused with evidence by itself or a terminal stop. A
 compact `evidence_basis` line may also show
 bounded candidate refs from the plan; these are citation guidance only, not

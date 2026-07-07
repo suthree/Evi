@@ -9,6 +9,7 @@ import {
   buildIterationAuditEvidenceAvailable,
   buildIterationAuditGuidance,
   buildIterationAuditNextCommand,
+  buildIterationAuditOutcomeVerificationClaimCoverage,
   buildIterationAuditOutcomeVerificationCommandCoverage,
   buildIterationAuditPlanRefCoverage,
   buildIterationAuditRefs,
@@ -175,7 +176,8 @@ test("iteration audit seed evidence status stays conservative before outcome evi
       iteration_verification_commands: ["pnpm run check"],
       runtime_iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missingOutcome.evidence_status, "missing_outcome");
@@ -190,7 +192,8 @@ test("iteration audit seed evidence status stays conservative before outcome evi
       iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
-      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"]
+      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
     }
   );
   assert.equal(readyForReview.evidence_status, "ready_for_manual_review");
@@ -276,7 +279,8 @@ test("iteration audit verification command coverage compares required commands t
         "pnpm run runtime -- governance scorecard --state-root .runtime/state"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: ["pnpm run check"]
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: []
     }
   );
   assert.equal(covered.status, "covered");
@@ -297,7 +301,8 @@ test("iteration audit verification command coverage compares required commands t
         "pnpm run runtime -- governance scorecard --state-root .runtime/state"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missing.status, "missing_commands");
@@ -319,7 +324,8 @@ test("iteration audit outcome verification command coverage ignores declared ite
         "pnpm run check"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missingOutcome.status, "missing_outcome_commands");
@@ -343,12 +349,66 @@ test("iteration audit outcome verification command coverage ignores declared ite
       outcome_verification_commands: [
         "pnpm run runtime -- governance scorecard --state-root .runtime/state",
         "pnpm run check"
-      ]
+      ],
+      outcome_verification_claims: []
     }
   );
   assert.equal(covered.status, "covered");
   assert.equal(covered.covered_command_count, 2);
   assert.deepEqual(covered.missing_commands, []);
+});
+
+test("iteration audit outcome verification claim coverage maps required entrypoints", () => {
+  const missingClaims = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
+    }
+  );
+  assert.equal(missingClaims.status, "missing_claims");
+  assert.deepEqual(missingClaims.missing_entrypoints, ["project-design", "scorecard", "check"]);
+
+  const missingEntrypoint = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: [
+        "project-design: plan stays on the successor core/basic slice",
+        "check: full repo checks pass before outcome recording"
+      ]
+    }
+  );
+  assert.equal(missingEntrypoint.status, "missing_entrypoints");
+  assert.deepEqual(missingEntrypoint.missing_entrypoints, ["scorecard"]);
+
+  const covered = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: [
+        "project-design: plan stays on the successor core/basic slice",
+        "scorecard: next core/basic slice remains ahead of expert scheduling",
+        "entrypoint=check full repo checks pass before outcome recording"
+      ]
+    }
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.covered_entrypoint_count, 3);
+  assert.deepEqual(covered.missing_entrypoints, []);
+  assert.match(covered.boundary, /does not execute commands or prove completion/);
 });
 
 test("iteration audit completion gate blocks before outcome evidence and coverage are present", () => {
@@ -364,6 +424,16 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     "outcome_verification_command_coverage"
   ]);
   assert.match(blocked.boundary, /does not approve seeds or prove completion/);
+
+  const missingClaims = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "missing_claims" }
+  );
+  assert.equal(missingClaims.status, "blocked");
+  assert.deepEqual(missingClaims.blockers, ["outcome_verification_claim_coverage"]);
 
   const partial = buildIterationAuditCompletionGate(
     { outcome_status: "partial" },
@@ -610,7 +680,17 @@ test("iteration audit evidence adds bound runtime verification commands", () => 
     verification_commands: [
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
       "pnpm run check"
-    ]
+    ],
+    outcome: {
+      status: "verified",
+      summary: "Verified the bounded slice.",
+      evidence_refs: ["tests/cli.test.ts"],
+      verification_commands: ["pnpm run check"],
+      verification_claims: ["check: full repo checks pass before outcome recording"],
+      next_moves: [],
+      recorded_at: "2026-07-07T00:00:00Z",
+      boundary: "bounded outcome"
+    }
   } as Parameters<typeof buildIterationAuditEvidenceAvailable>[0], ".runtime/state");
 
   assert.equal(evidence.iteration_verification_commands[0]?.includes("<state-root>"), true);
@@ -618,7 +698,8 @@ test("iteration audit evidence adds bound runtime verification commands", () => 
     "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root .runtime/state",
     "pnpm run check"
   ]);
-  assert.deepEqual(evidence.outcome_evidence_refs, []);
+  assert.deepEqual(evidence.outcome_evidence_refs, ["tests/cli.test.ts"]);
+  assert.deepEqual(evidence.outcome_verification_claims, ["check: full repo checks pass before outcome recording"]);
 });
 
 test("workspace status command parses read-only git diagnostic options", () => {
@@ -1114,6 +1195,8 @@ test("governance status command parses scoped status options", () => {
     "tests/self_evolution_iterations.test.ts",
     "--verification-command",
     "pnpm run check",
+    "--verification-claim",
+    "check: full repo checks pass before outcome recording",
     "--next-move",
     "Open the next bounded core/basic slice.",
     "--state-root",
@@ -1126,6 +1209,7 @@ test("governance status command parses scoped status options", () => {
   assert.equal(iterationOutcome.iterationSummary, "Verified the bounded core iteration.");
   assert.deepEqual(iterationOutcome.iterationEvidenceRefs, ["tests/self_evolution_iterations.test.ts"]);
   assert.deepEqual(iterationOutcome.iterationVerificationCommands, ["pnpm run check"]);
+  assert.deepEqual(iterationOutcome.iterationVerificationClaims, ["check: full repo checks pass before outcome recording"]);
   assert.deepEqual(iterationOutcome.iterationNextMoves, ["Open the next bounded core/basic slice."]);
   assert.equal(iterationOutcome.stateRoot, ".runtime/state");
 

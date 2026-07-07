@@ -31,6 +31,7 @@ export interface SelfEvolutionIterationOutcome {
   summary: string;
   evidence_refs: string[];
   verification_commands: string[];
+  verification_claims: string[];
   next_moves: string[];
   recorded_at: string;
   boundary: string;
@@ -193,6 +194,7 @@ export async function recordSelfEvolutionIterationOutcome(
     summary: string;
     evidenceRefs?: string[];
     verificationCommands?: string[];
+    verificationClaims?: string[];
     nextMoves?: string[];
   }
 ): Promise<SelfEvolutionIterationOutcomeRecordResult> {
@@ -204,6 +206,7 @@ export async function recordSelfEvolutionIterationOutcome(
     summary,
     evidence_refs: compact(args.evidenceRefs ?? []),
     verification_commands: compact(args.verificationCommands ?? []),
+    verification_claims: compact(args.verificationClaims ?? []),
     next_moves: compact(args.nextMoves ?? []),
     recorded_at: utcNow(),
     boundary: OUTCOME_BOUNDARY

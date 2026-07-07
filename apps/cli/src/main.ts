@@ -300,6 +300,7 @@ interface CliOptions {
   iterationSourceRef?: string;
   iterationEvidenceRefs: string[];
   iterationVerificationCommands: string[];
+  iterationVerificationClaims: string[];
   iterationNonGoals: string[];
   iterationOutcomeStatus?: SelfEvolutionIterationOutcomeStatus;
   iterationNextMoves: string[];
@@ -322,6 +323,7 @@ interface IterationAuditEvidenceAvailable {
   runtime_iteration_verification_commands?: string[];
   outcome_evidence_refs: string[];
   outcome_verification_commands: string[];
+  outcome_verification_claims: string[];
 }
 
 interface IterationAuditGuidanceInput {
@@ -379,6 +381,7 @@ export function buildIterationAuditSeedEvidenceStatus(
     runtime_iteration_verification_commands: number;
     outcome_evidence_refs: number;
     outcome_verification_commands: number;
+    outcome_verification_claims: number;
   };
   manual_review_required: true;
   review_note: string;
@@ -388,12 +391,15 @@ export function buildIterationAuditSeedEvidenceStatus(
   const hasOutcome = iteration.outcome_status !== "not_recorded";
   const hasOutcomeEvidence = evidence.outcome_evidence_refs.length > 0
     && evidence.outcome_verification_commands.length > 0;
+  const needsVerificationClaims = seed.id === "verification_scope";
+  const hasOutcomeClaims = !needsVerificationClaims || evidence.outcome_verification_claims.length > 0;
   const missing = [
     ...(!evidence.iteration_evidence_refs.length ? ["iteration_evidence_refs"] : []),
     ...(!evidence.iteration_verification_commands.length ? ["iteration_verification_commands"] : []),
     ...(!hasOutcome ? ["outcome_record"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
-    ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : [])
+    ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : []),
+    ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : [])
   ];
   return {
     seed_id: seed.id,
@@ -402,7 +408,7 @@ export function buildIterationAuditSeedEvidenceStatus(
       ? "missing_declared_evidence"
       : !hasOutcome
         ? "missing_outcome"
-        : !hasOutcomeEvidence
+        : !hasOutcomeEvidence || !hasOutcomeClaims
           ? "missing_outcome_evidence"
           : "ready_for_manual_review",
     missing,
@@ -411,7 +417,8 @@ export function buildIterationAuditSeedEvidenceStatus(
       iteration_verification_commands: evidence.iteration_verification_commands.length,
       runtime_iteration_verification_commands: evidence.runtime_iteration_verification_commands?.length ?? 0,
       outcome_evidence_refs: evidence.outcome_evidence_refs.length,
-      outcome_verification_commands: evidence.outcome_verification_commands.length
+      outcome_verification_commands: evidence.outcome_verification_commands.length,
+      outcome_verification_claims: evidence.outcome_verification_claims.length
     },
     manual_review_required: true,
     review_note: "evidence_status summarizes evidence presence only; it does not prove the seed is satisfied"
@@ -509,11 +516,40 @@ export function buildIterationAuditOutcomeVerificationCommandCoverage(
   };
 }
 
+export function buildIterationAuditOutcomeVerificationClaimCoverage(
+  requiredEntrypoints: string[],
+  evidence: IterationAuditEvidenceAvailable
+): {
+  status: "covered" | "missing_claims" | "missing_entrypoints";
+  required_entrypoint_count: number;
+  covered_entrypoint_count: number;
+  missing_entrypoints: string[];
+  boundary: string;
+} {
+  const claims = evidence.outcome_verification_claims.map((claim) => claim.trim()).filter(Boolean);
+  const required = [...new Set(requiredEntrypoints.map((entrypoint) => entrypoint.trim()).filter(Boolean))];
+  const missingEntrypoints = required.filter((entrypoint) =>
+    !claims.some((claim) => claimCoversEntrypoint(claim, entrypoint))
+  );
+  let status: "covered" | "missing_claims" | "missing_entrypoints" = "covered";
+  if (missingEntrypoints.length) {
+    status = claims.length ? "missing_entrypoints" : "missing_claims";
+  }
+  return {
+    status,
+    required_entrypoint_count: required.length,
+    covered_entrypoint_count: required.length - missingEntrypoints.length,
+    missing_entrypoints: missingEntrypoints,
+    boundary: "read-only outcome verification claim coverage diagnostic; compares required verification entrypoints with outcome claim refs only; does not execute commands or prove completion"
+  };
+}
+
 export function buildIterationAuditCompletionGate(
   iteration: { outcome_status: string },
   evidence: Pick<IterationAuditEvidenceAvailable, "outcome_evidence_refs">,
   planRefCoverage: { status: string },
-  outcomeVerificationCommandCoverage: { status: string }
+  outcomeVerificationCommandCoverage: { status: string },
+  outcomeVerificationClaimCoverage?: { status: string }
 ): {
   status: "blocked" | "ready_for_manual_review";
   blockers: string[];
@@ -526,13 +562,22 @@ export function buildIterationAuditCompletionGate(
     ...(hasOutcome && !hasVerifiedOutcome ? ["verified_outcome"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
-    ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : [])
+    ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
+    ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : [])
   ];
   return {
     status: blockers.length ? "blocked" : "ready_for_manual_review",
     blockers,
-    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, and outcome verification command coverage before manual review; does not approve seeds or prove completion"
+    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, outcome verification command coverage, and outcome verification claim coverage before manual review; does not approve seeds or prove completion"
   };
+}
+
+function claimCoversEntrypoint(claim: string, entrypoint: string): boolean {
+  const normalizedClaim = claim.toLowerCase();
+  const normalizedEntrypoint = entrypoint.toLowerCase();
+  return normalizedClaim.startsWith(`${normalizedEntrypoint}:`)
+    || normalizedClaim.startsWith(`${normalizedEntrypoint}=`)
+    || normalizedClaim.includes(`entrypoint=${normalizedEntrypoint}`);
 }
 
 export function selectIterationAuditVerificationCoverageCommands(
@@ -629,7 +674,8 @@ export function buildIterationAuditEvidenceAvailable(
       outcome_status: iteration.outcome?.status ?? "not_recorded"
     }, stateRoot),
     outcome_evidence_refs: iteration.outcome?.evidence_refs ?? [],
-    outcome_verification_commands: iteration.outcome?.verification_commands ?? []
+    outcome_verification_commands: iteration.outcome?.verification_commands ?? [],
+    outcome_verification_claims: iteration.outcome?.verification_claims ?? []
   };
 }
 
@@ -1564,7 +1610,8 @@ export async function main(): Promise<number> {
         const verificationCoverageRequiredCommands = selectIterationAuditVerificationCoverageCommands(auditGuidance.guidance_scope, auditGuidance.required_before_outcome, evidenceAvailable);
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationCommandCoverage = buildIterationAuditOutcomeVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
-        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage);
+        const outcomeVerificationClaimCoverage = buildIterationAuditOutcomeVerificationClaimCoverage(auditGuidance.verification_entrypoints, evidenceAvailable);
+        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage);
         const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
           console.log(JSON.stringify({
@@ -1578,6 +1625,7 @@ export async function main(): Promise<number> {
             plan_ref_coverage: planRefCoverage,
             verification_command_coverage: verificationCommandCoverage,
             outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
+            outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
             completion_gate: completionGate,
             audit_guidance: auditGuidance,
             next_command: nextCommand,
@@ -1600,6 +1648,7 @@ export async function main(): Promise<number> {
           plan_ref_coverage: planRefCoverage,
           verification_command_coverage: verificationCommandCoverage,
           outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
+          outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
           completion_gate: completionGate,
           audit_guidance: auditGuidance,
           next_command: nextCommand,
@@ -1663,6 +1712,7 @@ export async function main(): Promise<number> {
         summary: required(options.iterationSummary, "governance record-iteration-outcome requires --summary"),
         evidenceRefs: options.iterationEvidenceRefs,
         verificationCommands: options.iterationVerificationCommands,
+        verificationClaims: options.iterationVerificationClaims,
         nextMoves: options.iterationNextMoves
       });
       console.log(JSON.stringify(bindIterationRecordResultCommand(result, config.state.root), null, 2));
@@ -2094,6 +2144,7 @@ export function parseArgs(argv: string[]): CliOptions {
     correctionEvidenceRefs: [],
     iterationEvidenceRefs: [],
     iterationVerificationCommands: [],
+    iterationVerificationClaims: [],
     iterationNonGoals: [],
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
@@ -2209,6 +2260,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--from-project-design-plan" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationFromProjectDesignPlan = true;
     else if (arg === "--iteration-source-ref") options.iterationSourceRef = required(rest[++index], "--iteration-source-ref requires a value");
     else if (arg === "--verification-command") options.iterationVerificationCommands.push(required(rest[++index], "--verification-command requires a value"));
+    else if (arg === "--verification-claim") options.iterationVerificationClaims.push(required(rest[++index], "--verification-claim requires a value"));
     else if (arg === "--non-goal") options.iterationNonGoals.push(required(rest[++index], "--non-goal requires a value"));
     else if (arg === "--outcome-status") options.iterationOutcomeStatus = parseIterationOutcomeStatus(required(rest[++index], "--outcome-status requires a value"));
     else if (arg === "--next-move") options.iterationNextMoves.push(required(rest[++index], "--next-move requires a value"));
@@ -2657,7 +2709,7 @@ function printUsage(): void {
   pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact ga_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
-  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--next-move "..."] [--state-root .runtime/state]
+  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root .runtime/state]
   pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--state-root .runtime/state]
   pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." [--state-root .runtime/state]

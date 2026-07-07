@@ -47,6 +47,7 @@ test("self-evolution iteration contracts record layer declarations without execu
       summary: "Implementation and verification completed for this bounded slice.",
       evidenceRefs: ["tests/self_evolution_iterations.test.ts"],
       verificationCommands: ["pnpm exec tsx --test tests/self_evolution_iterations.test.ts"],
+      verificationClaims: ["check: iteration outcome records persisted verification claim coverage"],
       nextMoves: ["Use outcome records to guide the next scorecard slice."]
     });
 
@@ -54,6 +55,7 @@ test("self-evolution iteration contracts record layer declarations without execu
     assert.equal(outcome.iteration.outcome?.status, "verified");
     assert.equal(outcome.iteration.outcome?.evidence_refs.includes("tests/self_evolution_iterations.test.ts"), true);
     assert.equal(outcome.iteration.outcome?.verification_commands.includes("pnpm exec tsx --test tests/self_evolution_iterations.test.ts"), true);
+    assert.equal(outcome.iteration.outcome?.verification_claims.includes("check: iteration outcome records persisted verification claim coverage"), true);
     assert.equal(outcome.iteration.outcome?.next_moves.includes("Use outcome records to guide the next scorecard slice."), true);
     assert.match(outcome.boundary, /updates one existing local iteration record only/);
     assert.match(outcome.boundary, /does not run verification commands/);

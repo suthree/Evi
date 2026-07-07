@@ -1653,7 +1653,7 @@ export function compactGaPlanReviewGate(
   const required = plan.selection_checks
     .find((check) => check.startsWith("verification_entrypoints="))
     ?.replace("verification_entrypoints=", "");
-  return `blocked; blockers=outcome_record,outcome_verification_command_coverage${required ? `; required=${required}` : ""}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
+  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
 }
 
 export function compactGaPlanVerificationCommands(
@@ -1686,7 +1686,7 @@ export function compactGaPlanAfterVerifyCommand(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available" || !plan.iteration_record_status.id) return null;
-  return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --next-move "..." --state-root <state-root>`;
+  return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --verification-claim "<entrypoint>: <claim>" --next-move "..." --state-root <state-root>`;
 }
 
 export function compactGaPlanEvidenceRefs(refs: string[]): string[] {
@@ -1697,7 +1697,7 @@ export function compactGaPlanProofBoundary(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
-  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage";
+  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage";
 }
 
 async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
