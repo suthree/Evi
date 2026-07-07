@@ -490,7 +490,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
         id: "verification_review",
         title: "Verification review",
         layer: "core_runtime",
-        objective: "Tie completion claims to inspected files, command output, tests, and runtime state.",
+        objective: "Tie completion claims to harness-known evidence refs, inspected files, command output, tests, and runtime state.",
         required_inputs: [
           "diff or touched file refs",
           "test output",
@@ -1219,7 +1219,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       completion_gate: [
         "delegatedResultsCheck fails a done claim when any delegated result failed",
         "delegatedVerificationRefs rejects delegated self-report refs as completion proof",
-        "delegatedIndependentEvidenceCheck fails a done claim after delegation without non-delegated verification refs or successful write/run evidence"
+        "delegatedIndependentEvidenceCheck fails a done claim after delegation without harness-known non-delegated verification refs or successful write/run evidence"
       ]
     },
     recovery_contract: {
@@ -1518,7 +1518,8 @@ function buildCompletionAuditSeeds(
         "targeted checks cover the changed behavior",
         "broad check runs before a verified outcome is recorded",
         "outcome explains which completion claim each verification command supports",
-        "outcome maps each required verification entrypoint to a completion claim"
+        "outcome maps each required verification entrypoint to a completion claim",
+        "claimed verification refs resolve to harness-known tool result ids or tool artifact refs"
       ],
       reject_if: [
         "a narrow command is used to prove a broader capability claim",

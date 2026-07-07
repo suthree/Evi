@@ -2047,14 +2047,16 @@ tools, write state, write the repo, write the active vault, or bypass completion
 verification. A passed delegated result is advisory context only; its result id,
 state ref, or event ref must not be used as `completion_claim.verification_refs`
 proof. If a `done` claim follows any delegated result, completion verification
-also requires independent evidence: at least one non-delegated verification ref
-or successful write/run tool result. The final response artifact alone is not
-independent completion proof. Successful delegated `summary`, `findings_text`,
-and raw preview text are sanitized before persistence and observation feedback,
-and outputs that echo raw delegated task/context fail the delegated output
-contract with raw preview suppressed. Delegated model request failures are
-recorded as failed delegated results with sanitized error text before
-persistence and observation feedback.
+also requires independent evidence: at least one harness-known non-delegated
+tool result id or tool artifact ref, or a successful write/run tool result
+recorded by the harness. Unknown or model-invented refs fail verification and do
+not count as proof. The final response artifact alone is not independent
+completion proof. Successful delegated `summary`, `findings_text`, and raw
+preview text are sanitized before persistence and observation feedback, and
+outputs that echo raw delegated task/context fail the delegated output contract
+with raw preview suppressed. Delegated model request failures are recorded as
+failed delegated results with sanitized error text before persistence and
+observation feedback.
 Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and

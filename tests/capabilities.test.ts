@@ -201,7 +201,7 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /strict task\/context only/);
   assert.match(text, /at most one delegate_agent action per model round/);
   assert.match(text, /failed delegated results block verified completion/);
-  assert.match(text, /done claims after delegation require non-delegated verification refs/);
+  assert.match(text, /done claims after delegation require harness-known non-delegated verification refs/);
   assert.match(text, /dispatch_failure_kind/);
   assert.match(text, /dispatch_limit_exceeded/);
   assert.match(text, /input_contract_failed/);

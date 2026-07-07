@@ -1180,6 +1180,9 @@ completion_claim:
 ```
 
 The model proposes. The harness decides what runs and what counts as complete.
+`completion_claim.verification_refs` may cite only harness-known tool result ids
+or tool artifact refs from the current run. Unknown or model-invented refs fail
+completion verification and do not count as independent proof.
 
 `delegate_agent` is a bounded structured self-report path. The delegated model
 has no tools or memory in the current runtime. The action payload must provide
@@ -1223,12 +1226,12 @@ when any delegated result failed. A passed delegated result remains an advisory
 self-report: it can inform the next model round, but its id, state ref, or event
 ref must not be used as `completion_claim.verification_refs` proof. If a
 `done` claim follows any delegated result, completion verification also requires
-independent evidence: at least one non-delegated verification ref or successful
-write/run tool result. The final response artifact alone is not independent
-completion proof. Non-`done` runs still record a bounded `delegated_results`
-warning when any delegated result failed, so Live Run Trace and replay audit can
-show the failure without changing skipped completion verification into a
-completed claim. Delegated results are recorded with action id, round, sequence, task/context character
+independent evidence: at least one harness-known non-delegated verification ref
+or successful write/run tool result recorded by the harness. The final response
+artifact alone is not independent completion proof. Non-`done` runs still record
+a bounded `delegated_results` warning when any delegated result failed, so Live
+Run Trace and replay audit can show the failure without changing skipped
+completion verification into a completed claim. Delegated results are recorded with action id, round, sequence, task/context character
 counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated
@@ -1265,9 +1268,11 @@ The report records the model `completion_claim`, final response ref, claimed
 verification refs, selected observation refs, and per-check pass/fail/warning
 status. A `done` claim fails verification when required final response or
 write/run/delegation evidence is missing or failed, or when delegated self-report
-refs are used as verification proof. `not_done` and `blocked` claims are
-recorded as skipped completion verification, not as completed work, while still
-surfacing delegated-result warnings for trace and replay visibility.
+refs are used as verification proof. A `done` claim also fails when claimed refs
+are not bound to harness-known tool result ids or tool artifact refs from the
+current run. `not_done` and `blocked` claims are recorded as skipped completion
+verification, not as completed work, while still surfacing delegated-result
+warnings for trace and replay visibility.
 Later context may summarize recent reports, but must not read the referenced
 raw response/tool artifacts or treat prior verification as proof for the current
 task.

@@ -581,7 +581,11 @@ export class LiveAgentRunner {
       finalResponseRef,
       toolResults,
       delegatedResults,
-      modelDiagnosticRefs
+      modelDiagnosticRefs,
+      availableVerificationRefs: compactRefs([
+        ...toolResults.map((result) => result.id),
+        ...toolArtifactRefs
+      ])
     });
     const completionReport = completionVerificationReportSchema.parse({
       session_id: snapshot.session_id,
@@ -2195,6 +2199,7 @@ function verifyCompletionClaim(args: {
   toolResults: ToolResult[];
   delegatedResults: DelegatedResult[];
   modelDiagnosticRefs: string[];
+  availableVerificationRefs: string[];
 }): {
   ok: boolean;
   verified: boolean;
@@ -2266,6 +2271,24 @@ function verifyCompletionClaim(args: {
 
   checks.push(delegatedResultsCheck(args.delegatedResults, true));
   const delegatedProofRefs = delegatedVerificationRefs(claimedRefs, args.delegatedResults);
+  const nonDelegatedClaimedRefs = claimedRefs.filter((ref) => !delegatedProofRefs.includes(ref));
+  const availableVerificationRefSet = new Set(args.availableVerificationRefs);
+  const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => availableVerificationRefSet.has(ref));
+  const unboundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => !availableVerificationRefSet.has(ref));
+  checks.push({
+    id: "claimed_refs_bound_to_evidence",
+    status: unboundClaimedRefs.length > 0
+      ? "fail"
+      : nonDelegatedClaimedRefs.length > 0
+        ? "pass"
+        : "skipped",
+    summary: unboundClaimedRefs.length > 0
+      ? "Claimed verification ref(s) are not bound to harness-known tool evidence."
+      : nonDelegatedClaimedRefs.length > 0
+        ? `All ${nonDelegatedClaimedRefs.length} non-delegated claimed verification ref(s) are bound to harness-known evidence.`
+        : "No non-delegated claimed verification refs require evidence binding.",
+    refs: unboundClaimedRefs.length > 0 ? unboundClaimedRefs : boundClaimedRefs
+  });
   checks.push({
     id: "delegated_self_report_refs",
     status: delegatedProofRefs.length > 0 ? "fail" : args.delegatedResults.length > 0 ? "pass" : "skipped",
@@ -2276,9 +2299,8 @@ function verifyCompletionClaim(args: {
         : "No delegated self-report refs were available for this completion claim.",
     refs: delegatedProofRefs
   });
-  const independentClaimedRefs = claimedRefs.filter((ref) => !delegatedProofRefs.includes(ref));
   const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
-  const independentEvidenceRefs = [...independentClaimedRefs, ...successfulWriteOrRunRefs];
+  const independentEvidenceRefs = [...boundClaimedRefs, ...successfulWriteOrRunRefs];
   checks.push({
     id: "delegated_independent_evidence",
     status: args.delegatedResults.length === 0
@@ -2289,8 +2311,8 @@ function verifyCompletionClaim(args: {
     summary: args.delegatedResults.length === 0
       ? "No delegated result was available for this completion claim."
       : independentEvidenceRefs.length > 0
-        ? `Done claim after delegation has independent evidence: verification_refs=${independentClaimedRefs.length}; write_run_results=${successfulWriteOrRunRefs.length}.`
-        : "Done claim followed delegated result(s) but supplied no independent verification refs or successful write/run evidence.",
+        ? `Done claim after delegation has harness-known independent evidence: verification_refs=${boundClaimedRefs.length}; write_run_results=${successfulWriteOrRunRefs.length}.`
+        : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence.",
     refs: independentEvidenceRefs
   });
 
