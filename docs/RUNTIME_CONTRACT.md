@@ -1221,11 +1221,14 @@ and delegated model request failures record `delegated_model_request_failed`.
 Passed delegated results record `result_failure_kind=none`. A later `done` claim fails completion verification
 when any delegated result failed. A passed delegated result remains an advisory
 self-report: it can inform the next model round, but its id, state ref, or event
-ref must not be used as `completion_claim.verification_refs` proof. Non-`done`
-runs still record a bounded `delegated_results` warning when any delegated
-result failed, so Live Run Trace and replay audit can show the failure without
-changing skipped completion verification into a completed claim. Delegated
-results are recorded with action id, round, sequence, task/context character
+ref must not be used as `completion_claim.verification_refs` proof. If a
+`done` claim follows any delegated result, completion verification also requires
+independent evidence: at least one non-delegated verification ref or successful
+write/run tool result. The final response artifact alone is not independent
+completion proof. Non-`done` runs still record a bounded `delegated_results`
+warning when any delegated result failed, so Live Run Trace and replay audit can
+show the failure without changing skipped completion verification into a
+completed claim. Delegated results are recorded with action id, round, sequence, task/context character
 counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated

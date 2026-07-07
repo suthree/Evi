@@ -2276,6 +2276,23 @@ function verifyCompletionClaim(args: {
         : "No delegated self-report refs were available for this completion claim.",
     refs: delegatedProofRefs
   });
+  const independentClaimedRefs = claimedRefs.filter((ref) => !delegatedProofRefs.includes(ref));
+  const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
+  const independentEvidenceRefs = [...independentClaimedRefs, ...successfulWriteOrRunRefs];
+  checks.push({
+    id: "delegated_independent_evidence",
+    status: args.delegatedResults.length === 0
+      ? "skipped"
+      : independentEvidenceRefs.length > 0
+        ? "pass"
+        : "fail",
+    summary: args.delegatedResults.length === 0
+      ? "No delegated result was available for this completion claim."
+      : independentEvidenceRefs.length > 0
+        ? `Done claim after delegation has independent evidence: verification_refs=${independentClaimedRefs.length}; write_run_results=${successfulWriteOrRunRefs.length}.`
+        : "Done claim followed delegated result(s) but supplied no independent verification refs or successful write/run evidence.",
+    refs: independentEvidenceRefs
+  });
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));
   if (failures.length > 0) {

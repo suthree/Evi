@@ -1218,7 +1218,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       completion_gate: [
         "delegatedResultsCheck fails a done claim when any delegated result failed",
-        "delegatedVerificationRefs rejects delegated self-report refs as completion proof"
+        "delegatedVerificationRefs rejects delegated self-report refs as completion proof",
+        "delegatedIndependentEvidenceCheck fails a done claim after delegation without non-delegated verification refs or successful write/run evidence"
       ]
     },
     recovery_contract: {
