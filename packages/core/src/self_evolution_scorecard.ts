@@ -3,7 +3,6 @@ import {
   type CapabilityLayer
 } from "./capabilities.js";
 import { listLatestDreamSnapshots } from "./dreams.js";
-import { getExpertOrchestrationContract } from "./expert_orchestration.js";
 import {
   deriveGaProjectDesignArtifacts,
   getGaProjectDesignContract
@@ -91,14 +90,6 @@ export async function getSelfEvolutionScorecard(
   const delegated = catalog.categories
     .flatMap((category) => category.capabilities)
     .some((capability) => capability.id === "delegate_agent");
-  const hasExpertContract = catalog.categories
-    .flatMap((category) => category.capabilities)
-    .some((capability) =>
-      capability.id === "expert.orchestration_contract"
-      || capability.id === "multi_expert.delegation_contract"
-    );
-  const expertContract = hasExpertContract ? getExpertOrchestrationContract() : null;
-  const expertPlanSurface = Boolean(expertContract?.commands.some((command) => command.includes("--gate <gate-id>")));
   const projectDesignContract = getGaProjectDesignContract();
   const projectDesignArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
   const latestOpenIteration = iterations.iterations.find((iteration) => !iteration.outcome);
@@ -191,32 +182,24 @@ export async function getSelfEvolutionScorecard(
       ]
     },
     {
-      id: "multi_expert_orchestration",
-      title: "Multi-expert orchestration",
-      stage: delegated && expertContract ? "active" : delegated ? "emerging" : "planned",
+      id: "general_agent_delegation",
+      title: "General agent delegation loop",
+      stage: delegated ? "active" : "planned",
       layer: "core_runtime",
-      score: delegated && expertContract?.delegation_gates.length && expertPlanSurface ? 5 : delegated && expertContract?.delegation_gates.length ? 4 : delegated && expertContract ? 3 : delegated ? 2 : 1,
-      summary: expertContract
-        ? expertContract.delegation_gates.length && expertPlanSurface
-          ? "Delegation vocabulary, expert orchestration contract, explicit delegation gates, and a selectable advisory plan surface exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
-          : expertContract.delegation_gates.length
-            ? "Delegation vocabulary, expert orchestration contract, and explicit delegation gates exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
-          : "Delegation vocabulary and an expert orchestration contract exist; scheduling is deferred until core/basic and learning-persistence gates are stable, and completion stays with main-thread verification."
-        : "The runtime has delegation vocabulary, but expert scheduling should remain advisory until contracts and main-thread verification are stronger.",
+      score: delegated ? 5 : 1,
+      summary: delegated
+        ? "delegate_agent is a bounded general-agent subtask path: the main thread delegates analysis or critique to a tool-less, memory-less subagent, records structured output, feeds it back as observation, and keeps completion authority in the main harness."
+        : "The runtime still needs a bounded general-agent delegation action before expert specialization or multi-agent scheduling can be considered.",
       evidence_refs: compactRefs([
         "packages/core/src/action_contracts.ts",
-        "packages/core/src/capabilities.ts",
-        expertContract ? "packages/core/src/expert_orchestration.ts" : undefined
+        "packages/runtime/src/runner.ts",
+        "tests/context_harness.test.ts",
+        "docs/RUNTIME_CONTRACT.md"
       ]),
-      next_moves: expertContract
-        ? [
-          "Defer expert scheduling until core/basic and learning-persistence gates are stable.",
-          "Keep main-thread verification as the only completion authority."
-        ]
-        : [
-          "Define expert lenses before creating expert personas.",
-          "Require main-thread verification before delegated output can close work."
-        ]
+      next_moves: [
+        "Harden delegate_agent task, context, result, and completion-verification boundaries before widening subagent authority.",
+        "Keep expert personas and multi-agent scheduling deferred until the general delegation loop is stable."
+      ]
     }
   ];
   const nextSlices = buildNextSlices(dimensions);
@@ -227,18 +210,18 @@ export async function getSelfEvolutionScorecard(
     action: "scorecard",
     created_at: utcNow(),
     status: "evolving",
-    summary: "Self-evolution is judged by durable core/basic capability growth, SOP-to-skill persistence, memory/dream continuity, and bounded readiness for future multi-expert orchestration.",
+    summary: "Self-evolution is judged by durable core/basic capability growth, a bounded general-agent delegation baseline, SOP-to-skill persistence, and memory/dream continuity; expert specialization stays deferred.",
     dimensions,
     expert_lenses: buildExpertLenses(
       dimensions,
       backlog.item_refs.slice(0, limit),
       dreams.map((dream) => dream.ref),
-      Boolean(expertContract)
+      delegated
     ),
     next_iterations: [
       firstNextMove(dimensions, "core_ga_design"),
       firstNextMove(dimensions, "sop_skill_memory_loop"),
-      firstNextMove(dimensions, "multi_expert_orchestration")
+      firstNextMove(dimensions, "general_agent_delegation")
     ],
     next_slices: nextSlices,
     next_core_basic_slice: nextCoreBasicSlice,
@@ -246,7 +229,7 @@ export async function getSelfEvolutionScorecard(
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/capabilities.ts",
-      expertContract ? "packages/core/src/expert_orchestration.ts" : undefined,
+      "packages/runtime/src/runner.ts",
       "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/memory_layers.ts",
       "packages/core/src/dreams.ts",
@@ -311,8 +294,8 @@ function layerPriority(layer: CapabilityLayer | "cross_layer"): number {
 }
 
 function nextSliceReason(dimension: SelfEvolutionDimension): string {
-  if (dimension.id === "multi_expert_orchestration") {
-    return "Multi-expert orchestration is an advisory future scheduling layer; defer execution until core/basic and learning-persistence gates are stable.";
+  if (dimension.id === "general_agent_delegation") {
+    return "General-agent delegation is the current subagent baseline; harden dispatch, recovery, and verification before expert specialization.";
   }
   if (dimension.stage === "attention") {
     return `${dimension.title} is attention-stage; resolve observable runtime or learning pressure before expanding authority.`;
@@ -344,10 +327,10 @@ function nextSliceSuccessCriteria(dimensionId: string): string[] {
     "dream snapshots guide direction without executing work",
     "new durable memory remains behind confirmation gates"
   ];
-  if (dimensionId === "multi_expert_orchestration") return [
-    "expert delegation has explicit trigger, input, and output boundaries",
-    "delegated advice remains advisory until main-thread verification",
-    "no autonomous scheduler, model fan-out, or external tool authority is added"
+  if (dimensionId === "general_agent_delegation") return [
+    "delegate_agent requires a bounded task and context before any submodel call",
+    "delegated results are persisted, fed back as observations, and verified by the main harness",
+    "no expert persona, autonomous scheduler, model fan-out, or delegated completion authority is added"
   ];
   return ["the slice has direct evidence refs, verification commands, and non-goals"];
 }
@@ -356,7 +339,7 @@ function buildExpertLenses(
   dimensions: SelfEvolutionDimension[],
   backlogRefs: string[],
   dreamRefs: string[],
-  expertContractActive: boolean
+  delegationActive: boolean
 ): SelfEvolutionExpertLens[] {
   return [
     {
@@ -392,12 +375,12 @@ function buildExpertLenses(
       evidence_refs: backlogRefs
     },
     {
-      id: "orchestration_planner",
-      title: "Orchestration planner lens",
-      status: expertContractActive ? "active" : "planned",
-      focus: "Future multi-expert scheduling under bounded delegation contracts.",
-      current_question: "What must be true before a delegated expert can influence but not close a task?",
-      evidence_refs: refsFor(dimensions, "multi_expert_orchestration")
+      id: "delegation_flow_reviewer",
+      title: "Delegation flow lens",
+      status: delegationActive ? "active" : "planned",
+      focus: "General-agent task dispatch, delegated self-report recovery, and main-harness verification.",
+      current_question: "Can the main agent dispatch a bounded task and verify the delegated self-report without expert scheduling?",
+      evidence_refs: refsFor(dimensions, "general_agent_delegation")
     }
   ];
 }

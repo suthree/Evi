@@ -548,8 +548,8 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       horizons: [{
         id: "later",
         title: "Later horizon",
-        objective: "Evolve into bounded multi-expert orchestration.",
-        success_criteria: ["Delegated expert output remains advisory until verified."]
+        objective: "Evolve into bounded general-agent delegation before expert specialization.",
+        success_criteria: ["Delegated output remains advisory until verified by the main harness."]
       }],
       non_goals: ["Do not treat dream snapshots as completion evidence."],
       boundary: "bounded dream context only"
@@ -1048,12 +1048,12 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /Self-Evolution Scorecard/);
     assert.match(bundle, /core_ga_design=active/);
     assert.match(bundle, /basic_runtime_substrate=attention/);
-    assert.match(bundle, /multi_expert=active/);
+    assert.match(bundle, /general_agent_delegation=active/);
     assert.match(bundle, /Self-Evolution Iteration/);
     assert.match(bundle, /iteration_contract_context/);
     assert.match(bundle, /layer: core_runtime; owner: runtime_contract; slice: self_evolution_iteration_contract/);
     assert.match(bundle, /experts: architect,verification_reviewer,orchestration_planner/);
-    assert.doesNotMatch(bundle, /gap_scorecard_multi_expert_orchestration_contract/);
+    assert.doesNotMatch(bundle, /gap_scorecard_general_agent_delegation_contract/);
     assert.match(bundle, /Opportunity Backlog/);
     assert.match(bundle, /Background Review History/);
     assert.match(bundle, /background_review_context/);
@@ -1138,7 +1138,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.equal(dreamsSection?.item_count, 1);
     assert.equal(scorecardSection?.item_count, 5);
     assert.equal(scorecardSection?.refs.includes("packages/core/src/self_evolution_scorecard.ts"), true);
-    assert.equal(scorecardSection?.refs.includes("packages/core/src/expert_orchestration.ts"), true);
+    assert.equal(scorecardSection?.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.deepEqual(dreamsSection?.refs, ["memory/dreams/dream_context.json"]);
     assert.equal(iterationSection?.item_count, 1);
     assert.deepEqual(iterationSection?.refs, [
@@ -1254,7 +1254,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
-    assert.match(rendered.markdown, /layer_decision: recurring_ga_project_design; external tools and adapters stay application slices unless a reusable runtime contract is named; SOP, skill, memory, and dream promotion follows only after core\/basic evidence supports reuse; multi-expert orchestration follows those gates and remains advisory/);
+    assert.match(rendered.markdown, /layer_decision: recurring_ga_project_design; external tools and adapters stay application slices unless a reusable runtime contract is named; SOP, skill, memory, and dream promotion follows only after core\/basic evidence supports reuse; expert and multi-agent scheduling follow after the general delegation loop is stable/);
     assert.match(rendered.markdown, /layer_guard: stage=core_basic_successor_ready; source=core_runtime\/ga_project_design; selected=core_runtime\/ga_project_design/);
     assert.match(rendered.markdown, /learning_authority: process=self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs; judgment=core\/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence; completion=completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice; promotion=SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates/);
     assert.match(rendered.markdown, /selection: ready; source_status=verified \| source_artifact_quality=attention/);
@@ -1315,7 +1315,7 @@ test("context bundle includes bounded local capability catalog", async () => {
     assert.match(rendered.markdown, /Core tools/);
     assert.match(rendered.markdown, /file\.read/);
     assert.match(rendered.markdown, /Harness actions/);
-    assert.match(rendered.markdown, /expert\.orchestration_contract/);
+    assert.match(rendered.markdown, /ga\.project_design_contract/);
     assert.match(rendered.markdown, /sop\.evolution/);
     assert.match(rendered.markdown, /Resident local service/);
     assert.match(rendered.markdown, /local-only read model/);
@@ -3436,6 +3436,54 @@ test("live runner fails done verification when delegated result violates its con
   }
 });
 
+test("live runner rejects malformed delegate payload without calling the delegated model", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new MalformedDelegationPayloadThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject malformed delegated payload before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      contract_status: string;
+      task: string;
+      error: string | null;
+      raw_output_preview: string;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawFailedDelegationObservation, true);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.equal(delegated.task, "Critique whether the answer needs more evidence.");
+    assert.match(delegated.error ?? "", /payload\.context must be a non-empty string/);
+    assert.equal(delegated.raw_output_preview, "");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner accepts no_sop query/todo runs without blocking supervisor checklist", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -4194,6 +4242,42 @@ class InvalidDelegationThenDoneModel implements ModelClient {
   }
 }
 
+class MalformedDelegationPayloadThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawFailedDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "This delegated response should not be requested.",
+        findings_text: "The malformed payload guard failed to short-circuit."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "malformed-delegation-payload-then-done",
+      responseId: `response-malformed-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      this.sawFailedDelegationObservation = request.input.includes("## Delegated Observations")
+        && request.input.includes('"contract_status": "failed"')
+        && request.input.includes("delegate_agent.payload.context must be a non-empty string");
+      return doneEnvelope();
+    }
+    return malformedDelegatePayloadEnvelope();
+  }
+}
+
 class StateWriteThenNoSopModel implements ModelClient {
   private calls = 0;
 
@@ -4435,6 +4519,23 @@ function delegateCritiqueEnvelope(): Record<string, unknown> {
       payload: {
         task: "Critique whether the answer needs more evidence.",
         context: "No tool or mutation authority is available to the delegated subagent."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function malformedDelegatePayloadEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate bounded critique with a malformed payload.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a bounded subagent self-report for critique before final answer.",
+      payload: {
+        task: "Critique whether the answer needs more evidence."
       }
     }],
     completion_claim: {

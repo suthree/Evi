@@ -577,16 +577,16 @@ function contextReadModelsCategory(): CapabilityCategory {
       {
         id: "expert.orchestration_contract",
         title: expertContract.title,
-        summary: expertContract.summary,
+        summary: `${expertContract.summary} Kept as future advisory context, not the current core/basic target.`,
         status: "implemented",
-        layer: expertContract.layer,
+        layer: "boundary",
         commands: expertContract.commands,
         refs: expertContract.refs,
         boundaries: [
           expertContract.boundary,
           "the --gate form renders a selected advisory delegation plan only; it does not call experts or execute recommendations",
           "expert roles are advisory lenses only; the main runtime keeps execution and completion authority",
-          "contract records core-runtime orchestration boundaries, not provider tools or application adapters"
+          "contract records future orchestration boundaries, not current core/basic maturity, provider tools, or application adapters"
         ]
       },
       {
@@ -721,7 +721,7 @@ function memoryAndLearningCategory(): CapabilityCategory {
       {
         id: "self_evolution.scorecard",
         title: "Self-evolution scorecard",
-        summary: "Assess GA project design artifacts, core/basic capability growth, SOP-to-skill persistence, memory/dream continuity, and future multi-expert orchestration as a read-only local maturity view.",
+        summary: "Assess GA project design artifacts, core/basic capability growth, general-agent delegation, SOP-to-skill persistence, and memory/dream continuity as a read-only local maturity view.",
         status: "implemented",
         layer: "local_learning",
         commands: ["pnpm run runtime -- governance scorecard"],

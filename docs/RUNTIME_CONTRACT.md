@@ -281,12 +281,10 @@ slices for operators, but it does not run those commands.
 
 The CLI also exposes `governance scorecard` as a read-only self-evolution
 maturity view. It tracks current core GA design, basic runtime substrate,
-SOP/skill/memory loop, memory/dream direction, and multi-expert
-orchestration readiness from local metadata. Its expert lenses are advisory
-context only and cannot close work or grant execution authority.
-The scorecard may show an active multi-expert orchestration contract, but its
-next-slice reason must keep execution deferred until core/basic and
-learning-persistence gates are stable.
+general-agent delegation, SOP/skill/memory loop, and memory/dream direction
+from local metadata. Its lenses are advisory context only and cannot close work
+or grant execution authority. Expert specialization and multi-agent scheduling
+stay deferred until the general delegation loop is stable.
 GA project-design planning may expose `learning_authority` to distinguish
 self-evolution SOPs or skills as repeatable procedure scaffolds from runtime
 judgment authority. Core/basic layer selection remains with project-design,
@@ -835,10 +833,10 @@ Required policy:
 - `governance iterations --iteration <id> --audit-seed all` may aggregate every
   completion audit seed for one iteration, but it must remain read-only and
   advisory
-- expert lenses are advisory review perspectives, not autonomous expert agents
-- multi-expert orchestration is a later scheduling layer after core/basic
-  stability and learning-persistence gates, not a current peer of core/basic
-  iteration work
+- review lenses are advisory review perspectives, not autonomous expert agents
+- expert specialization and multi-agent orchestration are later scheduling
+  layers after the general-agent delegation loop, core/basic stability, and
+  learning-persistence gates, not current peers of core/basic iteration work
 - expert orchestration contracts must keep scheduling advisory and completion
   authority in the main runtime
 - expert delegation gates must define trigger, required inputs, expected
@@ -1138,13 +1136,15 @@ completion_claim:
 The model proposes. The harness decides what runs and what counts as complete.
 
 `delegate_agent` is a bounded structured self-report path. The delegated model
-has no tools or memory in the current runtime and must return a JSON object
-with non-empty `summary` and `findings_text`. The harness validates that
-contract before returning the result as a `Delegated Observations` item. Invalid
-or malformed delegated output is recorded as `ok=false`, and a later `done`
-claim fails completion verification when any delegated result failed. Delegated
-results are not tool evidence, final success proof, mutation authority, or a
-second autonomous agent runtime.
+has no tools or memory in the current runtime. The action payload must provide
+non-empty `task` and `context` strings before the delegated model is called, and
+the delegated model must return a JSON object with non-empty `summary` and
+`findings_text`. The harness validates those contracts before returning the
+result as a `Delegated Observations` item. Invalid payloads or malformed
+delegated output are recorded as `ok=false`, and a later `done` claim fails
+completion verification when any delegated result failed. Delegated results are
+not tool evidence, final success proof, mutation authority, or a second
+autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the
 episode context and model artifacts:

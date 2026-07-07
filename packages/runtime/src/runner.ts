@@ -1204,9 +1204,23 @@ export class LiveAgentRunner {
   }
 
   private async executeDelegation(action: ModelActionEnvelope["actions"][number]): Promise<DelegatedResult> {
-    const payload = action.payload as Record<string, unknown>;
-    const task = typeof payload.task === "string" ? payload.task : action.rationale;
-    const context = typeof payload.context === "string" ? payload.context : "";
+    const request = parseDelegationRequest(action);
+    if (!request.ok) {
+      return {
+        id: newId("delegated_result"),
+        ok: false,
+        summary: `Delegated task failed input contract: ${request.error}`,
+        task: request.task,
+        contract_status: "failed",
+        findings_text: null,
+        output_text: request.error,
+        raw_output_preview: "",
+        error: request.error,
+        boundary: delegatedResultBoundary(),
+        created_at: utcNow()
+      };
+    }
+    const { task, context } = request;
     try {
       const response = await this.model.create({
         instructions: [
@@ -1317,6 +1331,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for bounded analysis or critique tasks; delegated results are self-reports and must be verified by the main harness before being treated as success.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; invalid delegated results block verified completion.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1495,6 +1510,44 @@ function modelFailureDiagnosticBoundary(): string {
     "bounded sanitized previews, model/config metadata, and refs only;",
     "not raw auth, not retry authority, not completion proof"
   ].join(" ");
+}
+
+function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]): {
+  ok: true;
+  task: string;
+  context: string;
+} | {
+  ok: false;
+  task: string;
+  error: string;
+} {
+  const payload = action.payload;
+  const fallbackTask = action.rationale.trim();
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      error: "delegate_agent.payload must be an object with non-empty task and context strings."
+    };
+  }
+  const record = payload as Record<string, unknown>;
+  const task = typeof record.task === "string" ? record.task.trim() : "";
+  const context = typeof record.context === "string" ? record.context.trim() : "";
+  if (!task) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      error: "delegate_agent.payload.task must be a non-empty string."
+    };
+  }
+  if (!context) {
+    return {
+      ok: false,
+      task,
+      error: "delegate_agent.payload.context must be a non-empty string."
+    };
+  }
+  return { ok: true, task, context };
 }
 
 function parseDelegatedOutput(outputText: string): {

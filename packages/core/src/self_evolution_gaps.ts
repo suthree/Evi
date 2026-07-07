@@ -122,8 +122,8 @@ interface ContentFeedbackRefreshRouteReviewRecord {
 
 const OPPORTUNITY_DECISIONS_REF = "autonomy/opportunity-decisions.jsonl";
 const OPERATOR_CORRECTIONS_ROOT = "self-evolution/operator-corrections";
-const SCORECARD_MULTI_EXPERT_GAP_ID = "gap_scorecard_multi_expert_orchestration_contract";
-const SCORECARD_MULTI_EXPERT_CREATED_AT = "2026-07-06T00:00:00Z";
+const SCORECARD_GENERAL_DELEGATION_GAP_ID = "gap_scorecard_general_agent_delegation_contract";
+const SCORECARD_GENERAL_DELEGATION_CREATED_AT = "2026-07-06T00:00:00Z";
 const SELF_EVOLUTION_GAP_BOUNDARY = "self-evolution gap metadata derived from bounded state refs, verified iteration outcomes, explicit operator corrections, scorecard metadata, and append-only opportunity decisions; listing is read-only and recording corrections writes only local state; it does not read draft bodies, invoke models, execute tools, publish externally, write repo files, or write the active vault";
 const OPERATOR_CORRECTION_BOUNDARY = "explicit operator correction intake writes one bounded local state record only; it does not draft SOPs, update memory, mutate repo files, write the active vault, invoke models, execute tools, publish externally, or change services";
 const POST_PUBLISH_FEEDBACK_STABLE_WINDOW_MS = 6 * 60 * 60 * 1000;
@@ -301,40 +301,36 @@ async function deriveGapsFromScorecardCatalog(store: AgentStore): Promise<SelfEv
   if (!await hasActiveDreamSnapshot(store)) return [];
   const capabilities = getCapabilityCatalog().categories.flatMap((category) => category.capabilities);
   const hasDelegationVocabulary = capabilities.some((capability) => capability.id === "delegate_agent");
-  const hasExpertContract = capabilities.some((capability) =>
-    capability.id === "expert.orchestration_contract"
-    || capability.id === "multi_expert.delegation_contract"
-  );
-  if (!hasDelegationVocabulary || hasExpertContract) return [];
-  const id = SCORECARD_MULTI_EXPERT_GAP_ID;
+  if (hasDelegationVocabulary) return [];
+  const id = SCORECARD_GENERAL_DELEGATION_GAP_ID;
   return [{
     schema_version: 1,
     id,
     ref: `self-evolution/gaps/${id}.json`,
-    title: "Multi-expert orchestration needs bounded contracts",
+    title: "General-agent delegation needs a bounded contract",
     status: "active",
     source: "scorecard",
     source_ref: "packages/core/src/self_evolution_scorecard.ts",
-    observed_problem: "Self-evolution scorecard keeps multi_expert_orchestration emerging: delegate_agent exists as vocabulary, but expert roles, scheduling boundaries, and main-thread verification are not yet first-class runtime contracts.",
+    observed_problem: "Self-evolution scorecard cannot show general_agent_delegation as active because delegate_agent is missing from the harness action catalog.",
     evidence_refs: [
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/action_contracts.ts",
       "packages/core/src/capabilities.ts"
     ],
     owner_surface: "core_runtime",
-    proposed_slice: "multi_expert_delegation_contract",
+    proposed_slice: "general_agent_delegation_contract",
     follow_up_kind: "sop_candidate",
     acceptance: [
       "scorecard-derived gaps expose low-maturity core dimensions through the normal Opportunity Backlog",
-      "multi-expert roles define advisory responsibilities, allowed evidence, and side-effect boundaries before any expert persona is added",
-      "delegated expert output remains advisory until the main runtime verifies evidence and completion",
+      "delegate_agent defines bounded task, context, result, and completion-verification boundaries before any expert persona is added",
+      "delegated output remains advisory until the main runtime verifies evidence and completion",
       "the gap can be deferred, completed, or retired through append-only opportunity decisions without rewriting scorecard history"
     ],
     non_goals: [
-      "no autonomous multi-agent scheduler in this slice",
+      "no expert persona or autonomous multi-agent scheduler in this slice",
       "no parallel model fan-out or new model provider contract",
       "no external tool expansion, browser automation, publishing, or service restart authority",
-      "no completion claim based only on expert output"
+      "no completion claim based only on delegated output"
     ],
     verification_commands: [
       "pnpm exec tsx --test tests/self_evolution_gaps.test.ts tests/opportunity_backlog.test.ts tests/self_evolution_scorecard.test.ts",
@@ -343,8 +339,8 @@ async function deriveGapsFromScorecardCatalog(store: AgentStore): Promise<SelfEv
       "pnpm run runtime -- governance scorecard --state-root <state-root>"
     ],
     inspect_command: `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
-    created_at: SCORECARD_MULTI_EXPERT_CREATED_AT,
-    updated_at: SCORECARD_MULTI_EXPERT_CREATED_AT,
+    created_at: SCORECARD_GENERAL_DELEGATION_CREATED_AT,
+    updated_at: SCORECARD_GENERAL_DELEGATION_CREATED_AT,
     boundary: SELF_EVOLUTION_GAP_BOUNDARY
   }];
 }

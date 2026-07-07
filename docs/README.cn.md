@@ -30,13 +30,14 @@
 当前自迭代按这个顺序判断能力边界：
 
 1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。
-2. 基础操作：读、写、搜索、抓取、执行；交付标准是路径、side effect、timeout、输出上限和证据都有边界。
-3. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
-4. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
-5. 工具扩展层：GitHub CLI、飞书/Lark、browser、内容 adapter 等；交付标准是默认作为应用/adapter slice，只有抽象成可复用 runtime contract 后才进入核心。
-6. 通用 agent 基线：单个 agent 能稳定 plan、act、verify、learn；交付标准是先把这个基座打牢。
-7. 专家 agent：在通用基线上安装特定 skill、prompt、工具和 SOP；交付标准是专家化是能力打包，不是跳过基础能力。
-8. 多 agent 调度：多个专家 agent 的协作编排；交付标准是必须在单 agent、专家打包、 advisory 边界和主线程验证权稳定之后再推进。
+2. 基础入口：CLI、resident IM、Feishu/private chat、service health、workspace/capability 只读视图；交付标准是 operator 能稳定进入、观察和恢复 runtime。
+3. 核心执行：读、写、搜索、抓取、执行，以及 `delegate_agent` 的有界子任务；交付标准是路径、side effect、timeout、输出上限、payload、结果和证据都有边界。
+4. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
+5. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
+6. 工具扩展层：GitHub CLI、飞书/Lark、browser、内容 adapter 等；交付标准是默认作为应用/adapter slice，只有抽象成可复用 runtime contract 后才进入核心。
+7. 通用 agent 基线：单个 agent 能稳定 plan、act、delegate、recover、verify、learn；交付标准是先把这个基座打牢。
+8. 专家 agent：在通用基线上安装特定 skill、prompt、工具和 SOP；交付标准是专家化是能力打包，不是跳过基础能力。
+9. 多 agent 调度：多个专家 agent 的协作编排；交付标准是必须在单 agent、专家打包、 advisory 边界和主线程验证权稳定之后再推进。
 
 参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
 
@@ -155,10 +156,10 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 可以用 `pnpm run runtime -- memory dream --state-root .runtime/state`
 记录长期能力方向快照，再用 `pnpm run runtime -- memory dreams --state-root .runtime/state`
 查看。dream 快照会吸收已接受语义记忆、近期自我迭代契约、最新已验证 outcome、能力目录和 backlog 压力，
-用于保持核心 GA 设计、基础 runtime、SOP/skill/memory、dream 和未来多专家编排的方向一致。
+用于保持核心 GA 设计、基础 runtime、通用 delegation、SOP/skill/memory 和 dream 的方向一致；专家和多 agent 调度保持后置。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
-只读查看核心能力、基础能力、SOP/skill/memory、dream 和多专家调度方向的当前成熟度。
-scorecard 可以显示 multi-expert orchestration contract 已 active，但它的 next-slice reason 仍必须把执行调度延后到 core/basic 和 learning-persistence gate 稳定之后；
+只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
+scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
 scorecard 还会输出 `next_slices`，按阶段、分数和层级给出下一轮有界迭代优先级；
 这只是只读排序，不会写 backlog 或执行推荐。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`

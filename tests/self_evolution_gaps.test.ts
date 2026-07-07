@@ -169,7 +169,7 @@ test("self-evolution gaps derive SOP candidates from verified iteration outcomes
   }
 });
 
-test("self-evolution gaps suppress multi-expert scorecard work after the expert contract exists", async () => {
+test("self-evolution gaps suppress general delegation scorecard work after delegate_agent exists", async () => {
   const root = await createFixture();
   try {
     const store = new AgentStore(root.repoRoot, root.stateRoot);
@@ -179,17 +179,17 @@ test("self-evolution gaps suppress multi-expert scorecard work after the expert 
 
     await writeActiveDreamSnapshot(store);
     const result = await listSelfEvolutionGaps(store, { limit: 10 });
-    const gap = result.gaps.find((item) => item.id === "gap_scorecard_multi_expert_orchestration_contract");
+    const gap = result.gaps.find((item) => item.id === "gap_scorecard_general_agent_delegation_contract");
     assert.equal(gap, undefined);
 
     await assert.rejects(
-      () => getSelfEvolutionGap(store, { gapRef: "gap_scorecard_multi_expert_orchestration_contract" }),
+      () => getSelfEvolutionGap(store, { gapRef: "gap_scorecard_general_agent_delegation_contract" }),
       /Self-evolution gap not found/
     );
 
     const backlog = await getOpportunityBacklog(store, { limit: 20 });
     assert.equal(
-      backlog.items.some((entry) => entry.id === "gap_scorecard_multi_expert_orchestration_contract"),
+      backlog.items.some((entry) => entry.id === "gap_scorecard_general_agent_delegation_contract"),
       false
     );
   } finally {
@@ -1367,18 +1367,18 @@ async function writeActiveDreamSnapshot(store: AgentStore): Promise<void> {
     action_type: "dream_snapshot",
     status: "active",
     title: "Core self-evolution long-horizon plan",
-    summary: "Keep multi-expert orchestration as a planned core direction.",
+    summary: "Keep general-agent delegation as a planned core direction.",
     created_at: "2026-07-06T00:00:00Z",
     source_refs: ["packages/core/src/self_evolution_scorecard.ts"],
     semantic_memory_refs: [],
     backlog_refs: [],
     axes: [{
-      id: "multi_expert_orchestration",
-      title: "Multi-expert orchestration",
+      id: "general_agent_delegation",
+      title: "General agent delegation",
       status: "planned",
-      summary: "Future orchestration should split expert roles under bounded contracts.",
+      summary: "Future delegation should keep subtask output bounded and verified by the main harness.",
       evidence_refs: ["packages/core/src/action_contracts.ts"],
-      next_moves: ["Define delegation contracts before adding expert personas."]
+      next_moves: ["Define delegate_agent contracts before adding expert personas."]
     }],
     horizons: [],
     non_goals: ["Do not treat dream snapshots as completion evidence."],

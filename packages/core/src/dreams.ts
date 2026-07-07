@@ -1,6 +1,5 @@
 import { basename } from "node:path";
 import { getCapabilityCatalog } from "./capabilities.js";
-import { getExpertOrchestrationContract } from "./expert_orchestration.js";
 import { getOpportunityBacklog, type OpportunityBacklogItem } from "./opportunity_backlog.js";
 import { evidenceEventSchema } from "./schemas.js";
 import {
@@ -92,8 +91,11 @@ export async function createDreamSnapshot(
     Promise.resolve(getCapabilityCatalog()),
     listSelfEvolutionIterations(store, { limit: args.limit ?? 5 })
   ]);
-  const expertContract = getExpertOrchestrationContract();
-  const expertContractRefs = expertContract.status === "implemented" ? expertContract.refs : [];
+  const delegationRefs = [
+    "packages/core/src/action_contracts.ts",
+    "packages/runtime/src/runner.ts",
+    "tests/context_harness.test.ts"
+  ];
   const iterationRefs = iterations.iteration_refs.slice(0, 5);
   const latestIterationOutcome = latestIterationOutcomeContext(iterations.iterations);
   const sourceRefs = compactRefs([
@@ -102,7 +104,7 @@ export async function createDreamSnapshot(
     latestIterationOutcome?.iteration_ref,
     ...backlog.item_refs.slice(0, 5),
     "packages/core/src/capabilities.ts",
-    ...expertContractRefs,
+    ...delegationRefs,
     "docs/RUNTIME_CONTRACT.md"
   ]);
   const dream: DreamSnapshot = {
@@ -112,7 +114,7 @@ export async function createDreamSnapshot(
     status: "active",
     title: "Core self-evolution long-horizon plan",
     summary: [
-      "Keep XingZhe focused on recurring GA project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded multi-expert orchestration.",
+      "Keep XingZhe focused on recurring GA project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded general-agent delegation.",
       "Treat external tools as application slices unless they become reusable runtime contracts."
     ].join(" "),
     created_at: utcNow(),
@@ -125,7 +127,7 @@ export async function createDreamSnapshot(
       iterationRefs,
       backlog.items.slice(0, 5),
       catalog.count,
-      expertContractRefs
+      delegationRefs
     ),
     horizons: buildHorizons(),
     non_goals: [
@@ -224,10 +226,10 @@ function buildAxes(
   iterationRefs: string[],
   backlogItems: OpportunityBacklogItem[],
   capabilityCount: number,
-  expertContractRefs: string[]
+  delegationRefs: string[]
 ): DreamAxis[] {
   const backlogRefs = backlogItems.map((item) => item.ref);
-  const expertContractActive = expertContractRefs.length > 0;
+  const delegationActive = delegationRefs.length > 0;
   return [
     {
       id: "core_ga_design",
@@ -274,18 +276,18 @@ function buildAxes(
       ]
     },
     {
-      id: "multi_expert_orchestration",
-      title: "Multi-expert orchestration",
-      status: expertContractActive ? "active" : "planned",
-      summary: expertContractActive
-        ? "Expert roles and delegation gates are first-class advisory contracts; execution and completion remain with main-thread verification."
-        : "Future orchestration should split architect, reviewer, operator, and executor roles under bounded contracts.",
-      evidence_refs: compactRefs([...expertContractRefs, ...backlogRefs]),
+      id: "general_agent_delegation",
+      title: "General agent delegation",
+      status: delegationActive ? "active" : "planned",
+      summary: delegationActive
+        ? "delegate_agent is the current bounded subtask path; execution and completion remain with the main harness."
+        : "General delegation should exist before expert specialization or multi-agent scheduling.",
+      evidence_refs: compactRefs([...delegationRefs, ...backlogRefs]),
       next_moves: [
-        expertContractActive
-          ? "Use delegation gates before requesting advisory expert critique."
-          : "Define delegation contracts before adding new expert personas.",
-        "Require main-thread verification before expert output can close a task."
+        delegationActive
+          ? "Harden delegate task, context, result, and verification boundaries."
+          : "Define delegate_agent contracts before adding expert personas.",
+        "Require main-thread verification before delegated output can close a task."
       ]
     }
   ];
@@ -316,9 +318,10 @@ function buildHorizons(): DreamHorizon[] {
     {
       id: "later",
       title: "Later horizon",
-      objective: "Evolve from a general local agent into a bounded multi-expert orchestrator.",
+      objective: "Evolve from a stable general local agent into later expert specialization and bounded multi-agent orchestration.",
       success_criteria: [
-        "expert roles have explicit contracts and side-effect boundaries",
+        "the general delegation loop has explicit task, context, result, and verification boundaries",
+        "expert roles have explicit contracts and side-effect boundaries before they are introduced",
         "delegated output remains advisory until verified by the main runtime",
         "application slices remain downstream validation scenarios, not the core identity"
       ]

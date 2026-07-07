@@ -96,33 +96,34 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(memoryDream?.stage, "active");
     assert.equal(memoryDream?.score, 5);
     assert.match(memoryDream?.summary ?? "", /latest verified iteration outcome/);
-    const multiExpert = scorecard.dimensions.find((dimension) => dimension.id === "multi_expert_orchestration");
-    assert.equal(multiExpert?.stage, "active");
-    assert.equal(multiExpert?.score, 5);
-    assert.match(multiExpert?.summary ?? "", /selectable advisory plan surface/);
-    assert.match(multiExpert?.summary ?? "", /scheduling is deferred until core\/basic and learning-persistence gates are stable/);
-    assert.equal(multiExpert?.next_moves[0], "Defer expert scheduling until core/basic and learning-persistence gates are stable.");
-    assert.equal(multiExpert?.evidence_refs.includes("packages/core/src/expert_orchestration.ts"), true);
-    assert.equal(scorecard.expert_lenses.find((lens) => lens.id === "orchestration_planner")?.status, "active");
+    const delegation = scorecard.dimensions.find((dimension) => dimension.id === "general_agent_delegation");
+    assert.equal(delegation?.stage, "active");
+    assert.equal(delegation?.score, 5);
+    assert.match(delegation?.summary ?? "", /bounded general-agent subtask path/);
+    assert.match(delegation?.summary ?? "", /completion authority in the main harness/);
+    assert.match(delegation?.next_moves[0] ?? "", /Harden delegate_agent task, context, result/);
+    assert.equal(delegation?.evidence_refs.includes("packages/runtime/src/runner.ts"), true);
+    assert.equal(delegation?.evidence_refs.includes("tests/context_harness.test.ts"), true);
+    assert.equal(scorecard.expert_lenses.find((lens) => lens.id === "delegation_flow_reviewer")?.status, "active");
     assert.equal(scorecard.next_iterations.length, 3);
     assert.equal(scorecard.next_slices.length, 5);
     assert.equal(scorecard.next_slices[0]?.priority, 1);
     assert.equal(scorecard.next_slices[0]?.dimension_id, "sop_skill_memory_loop");
-    assert.notEqual(scorecard.next_slices[0]?.dimension_id, "multi_expert_orchestration");
+    assert.notEqual(scorecard.next_slices[0]?.dimension_id, "general_agent_delegation");
     assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
     assert.equal(scorecard.next_core_basic_slice?.layer, "core_runtime");
     assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("derived project-design artifact")), true);
-    const multiExpertSlice = scorecard.next_slices.find((slice) => slice.dimension_id === "multi_expert_orchestration");
-    assert.equal(multiExpertSlice?.layer, "core_runtime");
-    assert.equal(multiExpertSlice?.reason.includes("defer execution until core/basic and learning-persistence gates are stable"), true);
-    assert.equal(multiExpertSlice?.success_criteria.some((criterion) => criterion.includes("main-thread verification")), true);
+    const delegationSlice = scorecard.next_slices.find((slice) => slice.dimension_id === "general_agent_delegation");
+    assert.equal(delegationSlice?.layer, "core_runtime");
+    assert.equal(delegationSlice?.reason.includes("current subagent baseline"), true);
+    assert.equal(delegationSlice?.success_criteria.some((criterion) => criterion.includes("main harness")), true);
     assert.equal(scorecard.next_slices.some((slice) =>
       slice.dimension_id === "core_ga_design"
       && slice.success_criteria.some((criterion) => criterion.includes("derived project-design artifact"))
     ), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_scorecard.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/ga_project_design.ts"), true);
-    assert.equal(scorecard.refs.includes("packages/core/src/expert_orchestration.ts"), true);
+    assert.equal(scorecard.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_iterations.ts"), true);
     assert.equal(scorecard.refs.includes("self-evolution/iterations/iteration_contract_scorecard.json"), true);
     assert.equal(scorecard.refs.includes("memory/dreams/dream_scorecard.json"), true);

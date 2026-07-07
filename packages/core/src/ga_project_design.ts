@@ -382,8 +382,8 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "basic entrypoint health must stay observable before adding mutation or publishing authority",
       "major self-evolution work should start with an iteration contract and end with an outcome record",
       "self-evolution SOPs and skills may preserve repeatable procedure, but core layer judgment and completion authority stay with project-design, iteration outcomes, and current evidence",
-      "multi-expert orchestration follows core/basic stability and learning-persistence gates; advisory output never replaces main-thread verification",
-      "expert roles are advisory lenses; main-thread verification keeps completion authority"
+      "general-agent delegation may provide bounded self-report observations, but main-thread verification keeps completion authority",
+      "expert roles and multi-agent scheduling stay deferred until the general delegation loop is stable"
     ],
     verification_policy: [
       "each project slice needs direct evidence for its own scope",
@@ -412,7 +412,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "packages/core/src/capabilities.ts",
       "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/self_evolution_scorecard.ts",
-      "packages/core/src/expert_orchestration.ts"
+      "packages/runtime/src/runner.ts"
     ],
     boundary: BOUNDARY
   };
@@ -820,9 +820,9 @@ function buildCapabilityStagePlan(
     next_iteration_plan: [
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
       "core_runtime[current_state]: choose one reusable GA design contract improvement, not an external adapter task",
+      "core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification before expert specialization",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
-      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse",
-      "multi_expert[orchestration]: defer expert scheduling until core/basic and learning-persistence gates are stable"
+      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
     ]
   };
 }
@@ -848,7 +848,7 @@ function buildLayerDecision(
     ],
     application_boundaries: [
       "external tools and adapters stay application slices unless a reusable runtime contract is named",
-      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse; multi-expert orchestration follows those gates and remains advisory"
+      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse; expert and multi-agent scheduling follow after the general delegation loop is stable"
     ],
     required_before_outcome: [
       `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`,

@@ -409,7 +409,7 @@ change, deferred scopes, and delivery standard before implementation. It is
 pre-execution boundary guidance, not an execution plan or completion proof.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
-deferred tool, learning, or expert-orchestration scope.
+deferred tool, learning, expert-specialization, or multi-agent scheduling scope.
 Plan-derived iteration records persist that implementation contract, so later
 inspection does not have to infer the boundary from the source artifact alone.
 Iteration completion audit also checks contract coverage: it compares the
@@ -434,10 +434,10 @@ must keep service-health attention visible, not that the resident service is
 healthy.
 
 When an active dream exists, low-maturity scorecard dimensions may appear as
-proposal-only self-evolution gaps. Multi-expert orchestration now has a
-read-only core-runtime expert contract, so the previous scorecard-derived
-multi-expert contract gap is suppressed; future low-maturity dimensions still
-use the normal Opportunity Backlog and SOP-candidate gates.
+proposal-only self-evolution gaps. General-agent delegation now has a bounded
+`delegate_agent` harness action, so the scorecard-derived delegation gap is
+suppressed; future low-maturity dimensions still use the normal Opportunity
+Backlog and SOP-candidate gates.
 Verified iteration outcomes may also appear as SOP-candidate gaps when no
 state-only SOP draft cites the iteration yet. They still require review tick,
 draft-sop, audit-sop, and promote-sop gates before any active-vault skill write.
@@ -672,10 +672,10 @@ Current first-version scope:
 - explicit audited SOP promotion into the local active vault
 - read-only SOP self-evolution chain inspection
 - open SOP Evolution Ledger chains in the ranked Opportunity Backlog
-- read-only self-evolution scorecard for core/basic learning maturity and
-  advisory expert lenses
-- read-only expert orchestration contract for advisory roles, scheduling
-  boundaries, and main-thread verification authority
+- read-only self-evolution scorecard for core/basic learning maturity,
+  general-agent delegation, and advisory review lenses
+- read-only expert orchestration contract for future advisory roles,
+  scheduling boundaries, and main-thread verification authority
 - bounded self-evolution iteration contracts for layer, owner, evidence,
   verification, non-goal, and advisory-role declarations
 - bounded self-evolution iteration outcomes for verification status, cited

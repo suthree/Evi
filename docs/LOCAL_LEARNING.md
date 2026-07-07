@@ -198,10 +198,10 @@ Operators can inspect self-evolution maturity through
 `governance scorecard`. The scorecard reads only capability catalog metadata,
 memory-layer diagnostics, accepted dream snapshots, the SOP evolution ledger,
 and the Opportunity Backlog. It classifies current progress across core GA
-design, basic runtime substrate, SOP/skill/memory loop, memory/dream direction,
-and multi-expert orchestration. Its expert lenses are advisory context,
-not delegated agents, and the command never promotes SOPs, writes skills,
-invokes models, or proves completion.
+design, basic runtime substrate, general-agent delegation, SOP/skill/memory
+loop, and memory/dream direction. Its review lenses are advisory context, not
+delegated agents, and the command never promotes SOPs, writes skills, invokes
+models, or proves completion.
 The scorecard also emits `next_slices`: read-only, sorted prioritization hints
 derived from dimension stage, score, and layer. They make the next bounded
 iteration explicit without mutating backlog state or executing the slice. For
@@ -243,9 +243,10 @@ authority before advice can affect an iteration.
 plan packet. The packet can guide a review, but it cannot call experts, execute
 recommendations, promote memory/SOP/skills, or prove completion.
 If an active dream snapshot exists, low-maturity scorecard dimensions can become
-proposal-only `governance gaps` items. The previous multi-expert contract gap is
-suppressed once `expert.orchestration_contract` is present; any future durable
-SOP or skill still moves through the normal review, audit, and promotion gates.
+proposal-only `governance gaps` items. The general-agent delegation gap is
+suppressed once `delegate_agent` exists in the harness action catalog; any
+future durable SOP or skill still moves through the normal review, audit, and
+promotion gates.
 Verified self-evolution iteration outcomes can also become SOP-candidate gaps
 when no state-only SOP draft cites the iteration yet. This preserves reusable
 learning pressure without auto-drafting, auditing, promoting, accepting memory,

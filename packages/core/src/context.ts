@@ -799,7 +799,7 @@ function capabilityCatalogSample(category: CapabilityCategory): string[] {
   }
   if (category.id === "context_read_models") {
     return category.capabilities
-      .filter((capability) => ["context.manifests", "context.health", "review.history", "expert.orchestration_contract"].includes(capability.id))
+      .filter((capability) => ["context.manifests", "context.health", "review.history", "ga.project_design_contract"].includes(capability.id))
       .map(renderCapabilityId);
   }
   if (category.id === "runtime_service") {
@@ -1460,11 +1460,11 @@ async function selfEvolutionScorecardSection(
   const scorecard = await getSelfEvolutionScorecard(store, { limit: 3, vaultRoot });
   const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
   const basic = scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate");
-  const expert = scorecard.dimensions.find((dimension) => dimension.id === "multi_expert_orchestration");
+  const delegation = scorecard.dimensions.find((dimension) => dimension.id === "general_agent_delegation");
   return {
     title: "Self-Evolution Scorecard",
     body: [
-      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};multi_expert=${expert?.stage ?? "unknown"}`
+      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};general_agent_delegation=${delegation?.stage ?? "unknown"}`
     ].join("\n"),
     refs: scorecard.refs.slice(0, 8),
     item_count: scorecard.dimensions.length
@@ -2881,7 +2881,7 @@ Harness policy:
 - command.run must declare side_effect_level, timeout_ms, and max_output_chars.
 - Use repo.search or file.read before source-file claims.
 - A done completion claim is verified by the harness against final response and tool evidence.
-- Failed write/run tool results block verified completion.
+- Failed write/run tool or delegated results block verified completion.
 - respond.payload.markdown defaults to Simplified Chinese unless asked otherwise; keep commands, code, JSON fields, protocols, and quotes literal.
 
 Available delegated agent action:

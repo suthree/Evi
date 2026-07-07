@@ -426,15 +426,15 @@ Gap intake does not read draft bodies, invoke the model, execute tools, publish
 externally, mutate state, write the repository, or write the active vault.
 `governance scorecard` is the local self-evolution maturity read model. It
 summarizes core GA design, basic runtime substrate, SOP/skill/memory loop,
-memory/dream direction, and multi-expert orchestration readiness from the
+general-agent delegation, and memory/dream direction from the
 capability catalog, memory layers, dream snapshots, self-evolution iteration
 contracts, SOP evolution ledger, and Opportunity Backlog. The expert lenses are
 advisory only; the command does not invoke models, execute tools, mutate state,
 promote SOPs, promote skills, restart services, write the repository, or write
 the active vault.
-The scorecard can report an active multi-expert orchestration contract, but its
-next-slice reason keeps execution deferred until core/basic and
-learning-persistence gates are stable.
+The scorecard treats `general_agent_delegation` as the current subagent
+baseline; expert specialization and multi-agent scheduling remain deferred
+until that loop is stable.
 The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
@@ -664,13 +664,14 @@ is a bounded state write, not execution of the planned slice, not verification,
 and not completion proof. If the same layer, owner surface, proposed slice, and
 source ref already have an open iteration, the command returns that existing
 record instead of writing a duplicate.
-`governance experts` is the matching read-only core-runtime contract for
+`governance experts` is the matching read-only future-advisory contract for
 advisory expert roles, scheduling policy, and main-thread verification
 authority. It makes multi-expert orchestration a bounded design capability, not
 a scheduler, model fan-out path, external adapter, or completion proof.
 Multi-expert orchestration is a later scheduling layer after core/basic
 stability and learning-persistence gates; it is not a current peer of
-core/basic iteration work.
+core/basic iteration work, and it follows the general-agent delegation loop
+rather than replacing it.
 Its delegation gates define when to use a role set, which inputs are required,
 what output shape is acceptable, when to reject delegation, and which
 main-runtime check retains completion authority. They do not spawn agents,
@@ -825,9 +826,9 @@ and next-move placeholders visible so the suggested writeback can satisfy the
 completion gate.
 When an active dream snapshot exists, low-maturity scorecard dimensions may
 also surface through `governance gaps` as proposal-only self-evolution gaps.
-Because the expert orchestration contract now exists, the previous
-scorecard-derived multi-expert contract gap is suppressed; future gaps still do
-not create expert personas, run multiple models, execute delegated work, or
+Because `delegate_agent` now exists in the harness action catalog, the
+scorecard-derived general-agent delegation gap is suppressed; future gaps still
+do not create expert personas, run multiple models, execute delegated work, or
 prove completion.
 `governance act-next` is the first narrow typed action over this backlog. It
 supports active `external_publish_preflight_contract` gaps by probing MCP

@@ -127,12 +127,12 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("completion_audit_seeds") && boundary.includes("advisory evidence prompts only")), true);
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("application slices")), true);
   const expertContract = readModels?.capabilities.find((capability) => capability.id === "expert.orchestration_contract");
-  assert.equal(expertContract?.layer, "core_runtime");
+  assert.equal(expertContract?.layer, "boundary");
   assert.equal(expertContract?.commands?.includes("pnpm run runtime -- governance experts"), true);
   assert.equal(expertContract?.refs?.includes("packages/core/src/expert_orchestration.ts"), true);
   assert.equal(expertContract?.refs?.includes("CONTEXT.md"), true);
   assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("read-only expert orchestration contract")), true);
-  assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("not provider tools or application adapters")), true);
+  assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("not current core/basic maturity")), true);
   const writeRepo = coreTools?.capabilities.find((capability) => capability.id === "file.write_repo");
   assert.equal(writeRepo?.refs?.includes("packages/runtime/src/tools.ts"), true);
   assert.equal(writeRepo?.refs?.includes("packages/core/src/workspace_status.ts"), true);

@@ -65,7 +65,7 @@ test("dream snapshot records long-horizon direction without executing work", asy
     assert.equal(result.dream.status, "active");
     assert.equal(result.dream.semantic_memory_refs.includes("memory/semantic/accepted/semantic_memory_core.json"), true);
     assert.equal(result.dream.source_refs.includes("self-evolution/iterations/iteration_contract_core.json"), true);
-    assert.equal(result.dream.source_refs.includes("packages/core/src/expert_orchestration.ts"), true);
+    assert.equal(result.dream.source_refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(result.dream.latest_iteration_outcome?.iteration_ref, "self-evolution/iterations/iteration_contract_core.json");
     assert.equal(result.dream.latest_iteration_outcome?.status, "verified");
     assert.equal(result.dream.latest_iteration_outcome?.next_moves.includes("Use the verified outcome to choose the next bounded slice."), true);
@@ -74,10 +74,10 @@ test("dream snapshot records long-horizon direction without executing work", asy
     const dreamAxis = result.dream.axes.find((axis) => axis.id === "dream_planning");
     assert.equal(dreamAxis?.status, "active");
     assert.equal(dreamAxis?.evidence_refs.includes("self-evolution/iterations/iteration_contract_core.json"), true);
-    const expertAxis = result.dream.axes.find((axis) => axis.id === "multi_expert_orchestration");
-    assert.equal(expertAxis?.status, "active");
-    assert.equal(expertAxis?.evidence_refs.includes("packages/core/src/expert_orchestration.ts"), true);
-    assert.match(expertAxis?.summary ?? "", /delegation gates/);
+    const delegationAxis = result.dream.axes.find((axis) => axis.id === "general_agent_delegation");
+    assert.equal(delegationAxis?.status, "active");
+    assert.equal(delegationAxis?.evidence_refs.includes("packages/runtime/src/runner.ts"), true);
+    assert.match(delegationAxis?.summary ?? "", /bounded subtask path/);
     assert.equal(result.dream.horizons.some((horizon) => horizon.id === "later"), true);
     assert.equal(result.dream.non_goals.some((item) => item.includes("Nasdaq")), true);
     assert.match(result.dream.boundary, /no model call/);
