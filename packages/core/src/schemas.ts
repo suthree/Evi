@@ -94,6 +94,7 @@ export const actionProposalSchema = z.object({
 
 export const DELEGATE_AGENT_TASK_MAX_CHARS = 1000;
 export const DELEGATE_AGENT_CONTEXT_MAX_CHARS = 12000;
+export const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
 export const DELEGATED_AGENT_SUMMARY_MAX_CHARS = 240;
 export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = 2000;
 
@@ -106,6 +107,62 @@ export const delegatedAgentOutputSchema = z.object({
   summary: z.string().trim().min(1).max(DELEGATED_AGENT_SUMMARY_MAX_CHARS),
   findings_text: z.string().trim().min(1).max(DELEGATED_AGENT_FINDINGS_MAX_CHARS)
 }).strict();
+
+export const delegatedDispatchFailureKindSchema = z.enum(["dispatch_limit_exceeded", "input_contract_failed"]);
+export const delegatedDispatchKindSchema = z.enum(["dispatch_limit_exceeded", "input_contract_failed", "none"]);
+export const delegatedResultFailureKindSchema = z.enum([
+  "dispatch_limit_exceeded",
+  "input_contract_failed",
+  "delegated_output_contract_failed",
+  "delegated_model_request_failed"
+]);
+export const delegatedResultKindSchema = z.enum([
+  "dispatch_limit_exceeded",
+  "input_contract_failed",
+  "delegated_output_contract_failed",
+  "delegated_model_request_failed",
+  "none"
+]);
+
+export const delegatedResultSchema = z.object({
+  id: z.string(),
+  ok: z.boolean(),
+  summary: z.string(),
+  task: z.string(),
+  action_id: z.string(),
+  round: z.number().int().positive(),
+  sequence: z.number().int().positive(),
+  task_chars: z.number().int().nonnegative(),
+  context_chars: z.number().int().nonnegative(),
+  contract_status: z.enum(["passed", "failed"]),
+  dispatch_failure_kind: delegatedDispatchKindSchema,
+  result_failure_kind: delegatedResultKindSchema,
+  findings_text: z.string().nullable(),
+  output_text: z.string(),
+  raw_output_preview: z.string(),
+  error: z.string().nullable(),
+  boundary: z.string(),
+  created_at: z.string()
+});
+
+export const delegatedObservationSchema = z.object({
+  id: z.string(),
+  action_id: z.string(),
+  round: z.number().int().positive(),
+  sequence: z.number().int().positive(),
+  ok: z.boolean(),
+  contract_status: z.enum(["passed", "failed"]),
+  dispatch_failure_kind: delegatedDispatchKindSchema,
+  result_failure_kind: delegatedResultKindSchema,
+  task_chars: z.number().int().nonnegative(),
+  context_chars: z.number().int().nonnegative(),
+  summary: z.string(),
+  findings_text: z.string().nullable(),
+  error: z.string().nullable(),
+  recovery_hint: z.string().nullable(),
+  boundary: z.string(),
+  observation_boundary: z.string()
+});
 
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),
@@ -353,6 +410,12 @@ export type TurnSnapshot = z.infer<typeof turnSnapshotSchema>;
 export type ActionProposal = z.infer<typeof actionProposalSchema>;
 export type DelegateAgentPayload = z.infer<typeof delegateAgentPayloadSchema>;
 export type DelegatedAgentOutput = z.infer<typeof delegatedAgentOutputSchema>;
+export type DelegatedDispatchFailureKind = z.infer<typeof delegatedDispatchFailureKindSchema>;
+export type DelegatedDispatchKind = z.infer<typeof delegatedDispatchKindSchema>;
+export type DelegatedResultFailureKind = z.infer<typeof delegatedResultFailureKindSchema>;
+export type DelegatedResultKind = z.infer<typeof delegatedResultKindSchema>;
+export type DelegatedResult = z.infer<typeof delegatedResultSchema>;
+export type DelegatedObservation = z.infer<typeof delegatedObservationSchema>;
 export type ModelActionEnvelope = z.infer<typeof modelActionEnvelopeSchema>;
 export type EvidenceEvent = z.infer<typeof evidenceEventSchema>;
 export type CompletionVerificationReport = z.infer<typeof completionVerificationReportSchema>;

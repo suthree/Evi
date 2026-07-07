@@ -1215,13 +1215,16 @@ Raw task/context echo failures suppress the raw output preview. Dispatch-layer
 rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
-failures record `dispatch_failure_kind=none` explicitly, so trace/replay
-read models can distinguish a real none value from an older or malformed
-summary that omitted the field. Every failed delegated result also carries a
+failures record `dispatch_failure_kind=none` explicitly. This means no
+dispatch-layer failure, not delegated success, so trace/replay read models can
+distinguish a real none value from an older or malformed summary that omitted
+the field. Every failed delegated result also carries a
 safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
 delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.
-Passed delegated results record `result_failure_kind=none`. A later `done` claim
+Passed delegated results record `result_failure_kind=none`; persisted delegated
+results and model observations use explicit `none` values instead of `null` for
+no-failure kinds. A later `done` claim
 fails completion verification when any delegated result failed and no later
 main-harness write/run evidence proves recovery. When later main-harness
 recovery evidence exists, the failed delegated result remains a warning and the

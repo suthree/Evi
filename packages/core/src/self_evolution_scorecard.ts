@@ -385,7 +385,7 @@ function layerPriority(layer: CapabilityLayer | "cross_layer"): number {
 
 function nextSliceReason(dimension: SelfEvolutionDimension): string {
   if (dimension.id === "general_agent_delegation") {
-    return "General-agent delegation is the current subagent baseline; harden dispatch, recovery, and verification before expert specialization.";
+    return "General-agent delegation is the bounded delegation baseline; harden dispatch, recovery, and verification before expert specialization.";
   }
   if (dimension.stage === "attention") {
     return `${dimension.title} is attention-stage; resolve observable runtime or learning pressure before expanding authority.`;

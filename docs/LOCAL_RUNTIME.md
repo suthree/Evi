@@ -454,10 +454,12 @@ core/basic iteration is a closure prompt, not verified progress, until its
 outcome is recorded and the completion audit is ready for review.
 The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
 read-only `next_slices`. `default_next_slice` is the bounded core/basic outlet
-for the next planning handoff. `next_slices` stays ordered by dimension stage,
-score, and layer as all-dimension prioritization context, not backlog writes or
-execution authority; it may still surface local-learning follow-up work first
-when SOP, skill, or memory evidence is the lowest-scoring dimension.
+for the next planning handoff and acceptance posture; `next_core_basic_slice`
+is the runtime/design slice the self-iteration loop should close next.
+`next_slices` stays ordered by dimension stage, score, and layer as
+all-dimension prioritization context, not backlog writes or execution
+authority; it may still surface local-learning follow-up work first when SOP,
+skill, or memory evidence is the lowest-scoring dimension.
 When no blocking core/basic iteration is open, core GA design is already active
 with full local evidence, and the general delegation loop is active, the
 scorecard default core/basic outlet moves to `general_agent_delegation`
@@ -2061,12 +2063,15 @@ Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
 delegated-model contract failures record `dispatch_failure_kind=none`
-explicitly. Failed delegated results also record safe `result_failure_kind`
-values such as `dispatch_limit_exceeded`, `input_contract_failed`,
+explicitly; this means no dispatch-layer failure, not delegated success. Failed
+delegated results also record safe `result_failure_kind` values such as
+`dispatch_limit_exceeded`, `input_contract_failed`,
 `delegated_output_contract_failed`, or `delegated_model_request_failed`; passed
-delegated results record `result_failure_kind=none`. Later traces can therefore
-distinguish real none values from older or malformed summaries that omitted the
-fields, without reading raw delegated context or delegated result bodies. Even
+delegated results record `result_failure_kind=none`. Persisted delegated
+results and model observations use explicit `none` values instead of `null` for
+no-failure kinds. Later traces can therefore distinguish real none values from
+older or malformed summaries that omitted the fields, without reading raw
+delegated context or delegated result bodies. Even
 when the final completion status is `not_done` or `blocked`, failed delegated
 results remain visible as warnings in the completion report, Live Run Trace, and
 replay audit. Replay also compares per-round `delegate_agent` action counts

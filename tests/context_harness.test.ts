@@ -3601,8 +3601,8 @@ test("live runner feeds structured delegated results back as bounded observation
       sequence: number;
       task_chars: number;
       context_chars: number;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -3626,8 +3626,8 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.doesNotMatch(delegated.findings_text ?? "", /SECRET_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(delegated.output_text, /SECRET_SHOULD_NOT_APPEAR/);
     assert.equal(delegated.error, null);
-    assert.equal(delegated.dispatch_failure_kind, null);
-    assert.equal(delegated.result_failure_kind, null);
+    assert.equal(delegated.dispatch_failure_kind, "none");
+    assert.equal(delegated.result_failure_kind, "none");
     assert.match(delegated.action_id, /^action_/);
     assert.equal(delegated.round, 1);
     assert.equal(delegated.sequence, 1);
@@ -3671,7 +3671,7 @@ test("live runner rejects delegated output that echoes raw context before observ
       output_text: string;
       raw_output_preview: string;
       error: string | null;
-      result_failure_kind: string | null;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -3718,8 +3718,8 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -3732,8 +3732,8 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     assert.equal(model.sawSanitizedDelegationObservation, true);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
-    assert.equal(delegated.dispatch_failure_kind, null);
-    assert.equal(delegated.result_failure_kind, null);
+    assert.equal(delegated.dispatch_failure_kind, "none");
+    assert.equal(delegated.result_failure_kind, "none");
     assert.equal(report.verification_status, "passed");
     assert.equal(report.verified, true);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
@@ -3844,15 +3844,15 @@ test("live runner rejects extra delegate actions without calling the delegated m
       ok: boolean;
       sequence: number;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const second = JSON.parse(await readFile(join(fixture.stateRoot, secondRef), "utf8")) as {
       ok: boolean;
       sequence: number;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
       error: string | null;
       raw_output_preview: string;
     };
@@ -3872,8 +3872,8 @@ test("live runner rejects extra delegate actions without calling the delegated m
     assert.equal(first.ok, true);
     assert.equal(first.sequence, 1);
     assert.equal(first.contract_status, "passed");
-    assert.equal(first.dispatch_failure_kind, null);
-    assert.equal(first.result_failure_kind, null);
+    assert.equal(first.dispatch_failure_kind, "none");
+    assert.equal(first.result_failure_kind, "none");
     assert.equal(second.ok, false);
     assert.equal(second.sequence, 2);
     assert.equal(second.contract_status, "failed");
@@ -3985,8 +3985,8 @@ test("live runner fails done verification when delegated result violates its con
       raw_output_preview: string;
       error: string | null;
       boundary: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -3999,7 +3999,7 @@ test("live runner fails done verification when delegated result violates its con
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
-    assert.equal(delegated.dispatch_failure_kind, null);
+    assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
     assert.match(delegated.output_text, /not valid JSON/);
     assert.match(delegated.raw_output_preview, /plain text instead of json/);
@@ -4119,8 +4119,8 @@ test("live runner sanitizes delegated model request failures before observation"
       output_text: string;
       raw_output_preview: string;
       error: string | null;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -4134,7 +4134,7 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
-    assert.equal(delegated.dispatch_failure_kind, null);
+    assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_model_request_failed");
     assert.match(delegated.output_text, /429 Too Many Requests/);
     assert.match(delegated.output_text, /\[REDACTED\]/);
@@ -4174,8 +4174,8 @@ test("live runner fails done verification when delegated output exceeds bounded 
       contract_status: string;
       error: string | null;
       raw_output_preview: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -4187,7 +4187,7 @@ test("live runner fails done verification when delegated output exceeds bounded 
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
-    assert.equal(delegated.dispatch_failure_kind, null);
+    assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
     assert.match(delegated.error ?? "", new RegExp(`output\\.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars`));
     assert.match(delegated.raw_output_preview, /Oversized delegated summary/);
@@ -4225,8 +4225,8 @@ test("live runner rejects malformed delegate payload without calling the delegat
       error: string | null;
       raw_output_preview: string;
       context_chars: number;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -4278,8 +4278,8 @@ test("live runner rejects unsupported delegate payload fields without calling th
       contract_status: string;
       error: string | null;
       raw_output_preview: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
@@ -4326,8 +4326,8 @@ test("live runner rejects delegate context without explicit authority boundary",
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
       error: string | null;
       raw_output_preview: string;
       context_chars: number;
@@ -4389,8 +4389,8 @@ test("live runner rejects contradictory delegate context authority grants", asyn
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
       error: string | null;
       raw_output_preview: string;
       context_chars: number;
@@ -4442,8 +4442,8 @@ test("live runner rejects delegate task authority requests without calling the d
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
       error: string | null;
       raw_output_preview: string;
       task_chars: number;
@@ -4510,8 +4510,8 @@ test("live runner rejects oversized delegate context without calling the delegat
       error: string | null;
       context_chars: number;
       raw_output_preview: string;
-      dispatch_failure_kind: string | null;
-      result_failure_kind: string | null;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
     };
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;

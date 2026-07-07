@@ -8,11 +8,14 @@ import { MemoryStore, type EpisodeSearchHit } from "../../core/src/memory_store.
 import { findDuplicateRecalledSkill, recallSkills, recordSkillUsage, type SkillRecallHit } from "../../core/src/recall.js";
 import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
   DELEGATE_AGENT_TASK_MAX_CHARS,
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   completionVerificationReportSchema,
   delegatedAgentOutputSchema,
+  delegatedObservationSchema,
+  delegatedResultSchema,
   delegateAgentPayloadSchema,
   evidenceEventSchema,
   modelActionEnvelopeSchema,
@@ -23,6 +26,9 @@ import {
   workingCheckpointSchema,
   type ActionProposal,
   type CompletionVerificationReport,
+  type DelegatedDispatchFailureKind,
+  type DelegatedObservation,
+  type DelegatedResult,
   type ModelActionEnvelope,
   type RunResult,
   type SelectedSkillUsageOutcome,
@@ -34,51 +40,6 @@ import { AgentStore } from "../../core/src/store.js";
 import { loadRuntimeConfigSummary, type RuntimeConfig } from "./config.js";
 import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
-
-type DelegatedDispatchFailureKind = "dispatch_limit_exceeded" | "input_contract_failed";
-type DelegatedResultFailureKind = DelegatedDispatchFailureKind
-  | "delegated_output_contract_failed"
-  | "delegated_model_request_failed";
-
-interface DelegatedResult {
-  id: string;
-  ok: boolean;
-  summary: string;
-  task: string;
-  action_id: string;
-  round: number;
-  sequence: number;
-  task_chars: number;
-  context_chars: number;
-  contract_status: "passed" | "failed";
-  dispatch_failure_kind: DelegatedDispatchFailureKind | null;
-  result_failure_kind: DelegatedResultFailureKind | null;
-  findings_text: string | null;
-  output_text: string;
-  raw_output_preview: string;
-  error: string | null;
-  boundary: string;
-  created_at: string;
-}
-
-interface DelegatedObservation {
-  id: string;
-  action_id: string;
-  round: number;
-  sequence: number;
-  ok: boolean;
-  contract_status: "passed" | "failed";
-  dispatch_failure_kind: DelegatedDispatchFailureKind | null;
-  result_failure_kind: DelegatedResultFailureKind | null;
-  task_chars: number;
-  context_chars: number;
-  summary: string;
-  findings_text: string | null;
-  error: string | null;
-  recovery_hint: string | null;
-  boundary: string;
-  observation_boundary: string;
-}
 
 interface HarnessActionResult {
   id: string;
@@ -101,8 +62,6 @@ type ModelFailureKind =
   | "format"
   | "empty_response"
   | "unknown";
-
-const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
 
 interface ModelFailureDiagnostic {
   schema_version: 1;
@@ -1281,7 +1240,7 @@ export class LiveAgentRunner {
       const parsed = parseDelegatedOutput(response.outputText, { task, context });
       if (!parsed.ok) {
         const sanitizedError = sanitizeModelDiagnosticText(parsed.error, 1200);
-        return {
+        return delegatedResultSchema.parse({
           id: newId("delegated_result"),
           ok: false,
           summary: `Delegated task failed contract: ${task.slice(0, 120)}`,
@@ -1292,7 +1251,7 @@ export class LiveAgentRunner {
           task_chars: task.length,
           context_chars: context.length,
           contract_status: "failed",
-          dispatch_failure_kind: null,
+          dispatch_failure_kind: "none",
           result_failure_kind: "delegated_output_contract_failed",
           findings_text: null,
           output_text: sanitizedError,
@@ -1300,9 +1259,9 @@ export class LiveAgentRunner {
           error: sanitizedError,
           boundary: delegatedResultBoundary(),
           created_at: utcNow()
-        };
+        });
       }
-      return {
+      return delegatedResultSchema.parse({
         id: newId("delegated_result"),
         ok: true,
         summary: parsed.summary,
@@ -1313,18 +1272,18 @@ export class LiveAgentRunner {
         task_chars: task.length,
         context_chars: context.length,
         contract_status: "passed",
-        dispatch_failure_kind: null,
-        result_failure_kind: null,
+        dispatch_failure_kind: "none",
+        result_failure_kind: "none",
         findings_text: parsed.findings_text,
         output_text: parsed.findings_text,
         raw_output_preview: sanitizeModelDiagnosticText(response.outputText, 1200),
         error: null,
         boundary: delegatedResultBoundary(),
         created_at: utcNow()
-      };
+      });
     } catch (error) {
       const sanitizedError = sanitizeModelDiagnosticText(errorMessage(error), 1200);
-      return {
+      return delegatedResultSchema.parse({
         id: newId("delegated_result"),
         ok: false,
         summary: `Delegated task failed: ${task.slice(0, 120)}`,
@@ -1335,7 +1294,7 @@ export class LiveAgentRunner {
         task_chars: task.length,
         context_chars: context.length,
         contract_status: "failed",
-        dispatch_failure_kind: null,
+        dispatch_failure_kind: "none",
         result_failure_kind: "delegated_model_request_failed",
         findings_text: null,
         output_text: sanitizedError,
@@ -1343,7 +1302,7 @@ export class LiveAgentRunner {
         error: sanitizedError,
         boundary: delegatedResultBoundary(),
         created_at: utcNow()
-      };
+      });
     }
   }
 
@@ -1366,7 +1325,7 @@ export class LiveAgentRunner {
     error: string,
     dispatchFailureKind: DelegatedDispatchFailureKind = "input_contract_failed"
   ): DelegatedResult {
-    return {
+    return delegatedResultSchema.parse({
       id: newId("delegated_result"),
       ok: false,
       summary: `Delegated task failed input contract: ${error}`,
@@ -1385,7 +1344,7 @@ export class LiveAgentRunner {
       error,
       boundary: delegatedResultBoundary(),
       created_at: utcNow()
-    };
+    });
   }
 
   private async initializeQueryTodoDiscipline(task: string): Promise<DisciplineProgress> {
@@ -1474,7 +1433,7 @@ function renderModelInput(
 }
 
 function delegatedObservationForModelInput(result: DelegatedResult): DelegatedObservation {
-  return {
+  return delegatedObservationSchema.parse({
     id: result.id,
     action_id: result.action_id,
     round: result.round,
@@ -1491,7 +1450,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     recovery_hint: delegatedObservationRecoveryHint(result),
     boundary: result.boundary,
     observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
-  };
+  });
 }
 
 function delegatedObservationSummaryForModelInput(result: DelegatedResult): string {

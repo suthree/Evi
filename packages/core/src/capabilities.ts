@@ -545,7 +545,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "done claims after delegation require harness-known non-delegated verification refs or successful write/run evidence",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",
               "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
-              "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none",
+              "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none; persisted delegated results and model observations use explicit none instead of null",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",
               "successful delegated summary/findings are sanitized, raw task/context echoes fail the delegated output contract, and observations exclude raw task, context, output preview, and artifact bodies",
               "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
