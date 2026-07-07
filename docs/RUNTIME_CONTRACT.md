@@ -500,6 +500,10 @@ The capability catalog is a local truth source for answering what this runtime
 can currently do. It is implemented in `packages/core/src/capabilities.ts` and
 must derive core tools from `coreToolContracts` and harness actions from the
 runtime action list so it cannot drift from the execution contract.
+When a category groups mixed surfaces, the capability-level `layer` is the
+authority; category layer is only navigation. For example,
+`self_evolution.scorecard` is a `core_runtime` read-only selection surface even
+though it is grouped near local-learning evidence.
 
 `capabilities` and Feishu `/capabilities` must not read auth records, API keys,
 app secrets, launchd state, service logs, raw context Markdown, review/SOP/skill
@@ -510,8 +514,10 @@ mutate state, write the repo, or write the active vault.
 ### Self-Evolution Scorecard Rules
 
 The self-evolution scorecard is a local truth source for answering how the
-runtime is progressing against its own core/basic learning standards. It is
-implemented in `packages/core/src/self_evolution_scorecard.ts`.
+runtime is progressing against its own core/basic learning standards. It is a
+`core_runtime` read-only selection surface implemented in
+`packages/core/src/self_evolution_scorecard.ts`; it may inspect local-learning
+maturity metadata only as gated context.
 Live context must keep the core GA design stage and the basic runtime substrate
 stage visible together, so future core/basic slices are chosen from both design
 progress and local runtime health. This summary is context only; it does not
@@ -1716,7 +1722,10 @@ follow-ups, or run shell commands.
 The Capability Catalog context section is bounded read-only orientation from
 the repo-owned local capability catalog. It may render the catalog id, catalog
 version, count, category titles, capability ids, source refs, and explicit
-local-only boundaries. It must not read secrets, auth records, launchd state,
+local-only boundaries. If a sampled capability has a layer that differs from
+its category grouping, compact context may render the explicit child layer so
+models do not inherit broader authority from the category. It must not read
+secrets, auth records, launchd state,
 service logs, raw context Markdown, review/SOP/skill bodies, arbitrary state
 artifacts, or full operator detail; it must not invoke the model, execute tools,
 request confirmations, execute follow-ups, manage services, mutate state, write

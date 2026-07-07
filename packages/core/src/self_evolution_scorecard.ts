@@ -81,7 +81,7 @@ export async function getSelfEvolutionScorecard(
     listLatestDreamSnapshots(store, limit),
     getSopEvolutionLedger(store, { limit, vaultRoot: args.vaultRoot }),
     getOpportunityBacklog(store, { limit, vaultRoot: args.vaultRoot }),
-    listSelfEvolutionIterations(store, { limit })
+    listSelfEvolutionIterations(store)
   ]);
   const layerCounts = countCapabilitiesByLayer(catalog);
   const acceptedSemantic = countLayer(memoryLayers, "semantic_memory", "accepted_valid");

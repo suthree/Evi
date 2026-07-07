@@ -403,6 +403,68 @@ test("self-evolution scorecard separates superseded open iterations from the cur
   }
 });
 
+test("self-evolution scorecard gating sees superseded open iterations beyond display limit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-stale-open-window-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("self-evolution/iterations/iteration_contract_old_open_ga.json", {
+      schema_version: 1,
+      id: "iteration_contract_old_open_ga",
+      ref: "self-evolution/iterations/iteration_contract_old_open_ga.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Older open GA design hardening slice.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "older_open_ga_design_hardening",
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no completion proof"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      created_at: "2026-07-06T00:00:00Z",
+      boundary: "bounded iteration contract"
+    });
+    for (let index = 1; index <= 5; index += 1) {
+      await store.writeJson(`self-evolution/iterations/iteration_contract_new_verified_ga_${index}.json`, {
+        schema_version: 1,
+        id: `iteration_contract_new_verified_ga_${index}`,
+        ref: `self-evolution/iterations/iteration_contract_new_verified_ga_${index}.json`,
+        kind: "self_evolution_iteration_contract",
+        status: "recorded",
+        summary: `Newer verified GA project-design artifact ${index}.`,
+        layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        proposed_slice: `newer_verified_ga_design_${index}`,
+        evidence_refs: ["packages/core/src/ga_project_design.ts"],
+        verification_commands: ["pnpm run check"],
+        non_goals: ["no completion proof"],
+        advisory_expert_roles: ["architect", "verification_reviewer"],
+        outcome: {
+          status: "verified",
+          summary: "Verification passed.",
+          evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
+          verification_commands: ["pnpm run check"],
+          next_moves: ["Use this newer artifact for the next core slice."],
+          recorded_at: `2026-07-06T00:00:0${index}Z`,
+          boundary: "bounded outcome record"
+        },
+        created_at: `2026-07-06T00:00:0${index}Z`,
+        boundary: "bounded iteration contract"
+      });
+    }
+
+    const scorecard = await getSelfEvolutionScorecard(store, { limit: 3 });
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+
+    assert.equal(scorecard.refs.includes("self-evolution/iterations/iteration_contract_old_open_ga.json"), false);
+    assert.match(core?.next_moves[0] ?? "", /superseded open iteration iteration_contract_old_open_ga/);
+    assert.equal(scorecard.next_core_basic_slice?.layer, "core_runtime");
+    assert.equal(scorecard.default_next_slice?.layer, "core_runtime");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("self-evolution scorecard scores the SOP skill memory loop only when all three signals exist", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-sop-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

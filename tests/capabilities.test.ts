@@ -108,10 +108,12 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(dreamSnapshots?.refs?.includes("packages/core/src/dreams.ts"), true);
   assert.equal(dreamSnapshots?.boundaries?.some((boundary) => boundary.includes("context only")), true);
   const scorecard = memoryAndLearning?.capabilities.find((capability) => capability.id === "self_evolution.scorecard");
-  assert.equal(scorecard?.layer, "local_learning");
+  assert.equal(scorecard?.layer, "core_runtime");
   assert.equal(scorecard?.commands?.includes("pnpm run runtime -- governance scorecard"), true);
   assert.equal(scorecard?.refs?.includes("packages/core/src/self_evolution_scorecard.ts"), true);
-  assert.equal(scorecard?.boundaries?.some((boundary) => boundary.includes("advisory context only")), true);
+  assert.equal(scorecard?.summary.includes("core/basic selection view"), true);
+  assert.equal(scorecard?.boundaries?.some((boundary) => boundary.includes("read-only core/basic selection surface")), true);
+  assert.equal(scorecard?.boundaries?.some((boundary) => boundary.includes("local-learning maturity metadata as gated context")), true);
   const iterations = memoryAndLearning?.capabilities.find((capability) => capability.id === "self_evolution.iterations");
   assert.equal(iterations?.layer, "core_runtime");
   assert.equal(iterations?.commands?.includes("pnpm run runtime -- governance iterations"), true);

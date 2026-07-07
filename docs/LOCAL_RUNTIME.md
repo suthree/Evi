@@ -1155,10 +1155,14 @@ tick.
 Live context may also render a bounded `Capability Catalog` section from the
 repo-owned capability catalog. The section is a compact navigation index over
 catalog identity, count, category titles, capability ids, source refs, and
-explicit local-only boundaries. It does not read secrets, raw runtime bodies, or
-full operator detail; it does not invoke the model, execute tools, mutate state,
-write the repo, write the active vault, or manage services. Use CLI
-`capabilities` or Feishu `/capabilities` for the full operator read model.
+explicit local-only boundaries. Category grouping is navigation only; when a
+sampled capability has a different explicit child layer, compact context may
+show that layer, for example `self_evolution.scorecard[core_runtime]`, so
+models do not inherit broader authority from the category. It does not read
+secrets, raw runtime bodies, or full operator detail; it does not invoke the
+model, execute tools, mutate state, write the repo, write the active vault, or
+manage services. Use CLI `capabilities` or Feishu `/capabilities` for the full
+operator read model.
 
 Operators can inspect the next-version acceptance baseline with CLI
 `capabilities acceptance` or Feishu `/capabilities acceptance`. The acceptance
@@ -1473,7 +1477,10 @@ Adapters remain responsible for actual delivery.
 `capabilities` renders the repo-owned local capability catalog. It summarizes
 implemented core tools, harness actions, context/read-model surfaces, memory
 and local-learning gates, resident service surfaces, entrypoints, and explicit
-non-goals. Feishu mirrors the same read model through `/capabilities`,
+non-goals. The capability-level `layer` is authoritative when it differs from a
+mixed category; `self_evolution.scorecard` is a `core_runtime` read-only
+selection surface that may inspect local-learning maturity metadata only as
+gated context. Feishu mirrors the same read model through `/capabilities`,
 `/abilities`, and `/ability`. The catalog does not read auth secrets, service
 logs, launchd state, raw context/review/SOP/skill bodies, or arbitrary state
 artifacts, and it does not invoke the model, execute tools, request

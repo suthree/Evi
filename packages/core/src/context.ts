@@ -791,28 +791,31 @@ function renderCapabilityCatalogCategory(category: CapabilityCategory): string {
   return `- ${category.title}: ${capabilityCatalogSample(category).join(",")}`;
 }
 
-function renderCapabilityId(capability: CapabilitySummary): string {
-  return capability.id;
+function renderCapabilityId(capability: CapabilitySummary, inheritedLayer: CapabilityCategory["layer"]): string {
+  return capability.layer && capability.layer !== inheritedLayer
+    ? `${capability.id}[${capability.layer}]`
+    : capability.id;
 }
 
 function capabilityCatalogSample(category: CapabilityCategory): string[] {
-  if (category.id === "core_tools") return category.capabilities.slice(0, 4).map(renderCapabilityId);
+  const render = (capability: CapabilitySummary) => renderCapabilityId(capability, category.layer);
+  if (category.id === "core_tools") return category.capabilities.slice(0, 4).map(render);
   if (category.id === "memory_and_learning") {
     return category.capabilities
       .filter((capability) => ["semantic.memory", "dream.snapshots", "sop.evolution", "self_evolution.scorecard"].includes(capability.id))
-      .map(renderCapabilityId);
+      .map(render);
   }
   if (category.id === "context_read_models") {
     return category.capabilities
       .filter((capability) => ["context.manifests", "context.health", "review.history", "ga.project_design_contract"].includes(capability.id))
-      .map(renderCapabilityId);
+      .map(render);
   }
   if (category.id === "runtime_service") {
     return category.capabilities
       .filter((capability) => ["service.lifecycle", "service.health", "workspace.status"].includes(capability.id))
-      .map(renderCapabilityId);
+      .map(render);
   }
-  return category.capabilities.slice(0, 4).map(renderCapabilityId);
+  return category.capabilities.slice(0, 4).map(render);
 }
 
 async function taskReferencesSection(store: AgentStore, snapshot: TurnSnapshot): Promise<ContextSection | null> {

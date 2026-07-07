@@ -777,9 +777,9 @@ function memoryAndLearningCategory(): CapabilityCategory {
       {
         id: "self_evolution.scorecard",
         title: "Self-evolution scorecard",
-        summary: "Assess GA project design artifacts, core/basic capability growth, general-agent delegation, SOP-to-skill persistence, and memory/dream continuity as a read-only local maturity view.",
+        summary: "Assess GA project design artifacts, core/basic capability growth, general-agent delegation, and gated local-learning continuity as the read-only core/basic selection view.",
         status: "implemented",
-        layer: "local_learning",
+        layer: "core_runtime",
         commands: ["pnpm run runtime -- governance scorecard"],
         refs: [
           "packages/core/src/self_evolution_scorecard.ts",
@@ -788,7 +788,7 @@ function memoryAndLearningCategory(): CapabilityCategory {
           "packages/core/src/memory_layers.ts",
           "packages/core/src/dreams.ts"
         ],
-        boundaries: ["scorecard is advisory context only; it does not invoke models, execute tools, mutate memory, promote SOPs, promote skills, manage services, write repo files, or prove completion"]
+        boundaries: ["scorecard is a read-only core/basic selection surface; it may inspect local-learning maturity metadata as gated context, but does not invoke models, execute tools, mutate memory, promote SOPs, promote skills, manage services, write repo files, or prove completion"]
       },
       {
         id: "self_evolution.iterations",

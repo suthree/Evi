@@ -1467,6 +1467,7 @@ test("context bundle includes bounded local capability catalog", async () => {
     assert.match(rendered.markdown, /Harness actions/);
     assert.match(rendered.markdown, /ga\.project_design_contract/);
     assert.match(rendered.markdown, /sop\.evolution/);
+    assert.match(rendered.markdown, /self_evolution\.scorecard\[core_runtime\]/);
     assert.match(rendered.markdown, /Resident local service/);
     assert.match(rendered.markdown, /local-only read model/);
     assert.match(rendered.markdown, /do not infer extra authority/);
