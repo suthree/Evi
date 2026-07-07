@@ -232,7 +232,7 @@ export async function getSelfEvolutionScorecard(
     action: "scorecard",
     created_at: utcNow(),
     status: "evolving",
-    summary: "Self-evolution is judged by durable core/basic capability growth, a bounded general-agent delegation baseline, SOP-to-skill persistence, and memory/dream continuity; expert specialization stays deferred.",
+    summary: "Self-evolution is currently judged first by durable core/basic capability growth and a bounded general-agent delegation baseline; SOP-to-skill persistence and memory/dream continuity remain gated follow-up layers.",
     dimensions,
     expert_lenses: buildExpertLenses(
       dimensions,
@@ -243,8 +243,8 @@ export async function getSelfEvolutionScorecard(
     default_next_slice: defaultNextSlice,
     next_iterations: [
       firstNextMove(dimensions, "core_ga_design"),
-      firstNextMove(dimensions, "sop_skill_memory_loop"),
-      firstNextMove(dimensions, "general_agent_delegation")
+      firstNextMove(dimensions, "general_agent_delegation"),
+      firstNextMove(dimensions, "basic_runtime_substrate")
     ],
     next_slices: nextSlices,
     next_core_basic_slice: nextCoreBasicSlice,

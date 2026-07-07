@@ -3613,6 +3613,42 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
   }
 });
 
+test("live runner rejects delegated self-report refs as done proof", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new DelegatedRefAsProofThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Do not treat delegated self-report as completion proof.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.sawDelegatedObservation, true);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "pass");
+    const delegatedProofCheck = report.checks.find((check) => check.id === "delegated_self_report_refs");
+    assert.equal(delegatedProofCheck?.status, "fail");
+    assert.match(delegatedProofCheck?.summary ?? "", /delegated self-report ref/);
+    assert.deepEqual(delegatedProofCheck?.refs, [model.delegatedProofRef]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects extra delegate actions without calling the delegated model", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -3788,6 +3824,46 @@ test("live runner fails done verification when delegated result violates its con
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner surfaces failed delegation on skipped completion traces", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new InvalidDelegationThenBlockedModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Surface failed delegation even when completion is skipped.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      completion_status: string;
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.equal(model.sawSanitizedFailedObservation, true);
+    assert.equal(report.completion_status, "blocked");
+    assert.equal(report.verification_status, "skipped");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
+    assert.match(report.checks.find((check) => check.id === "delegated_results")?.summary ?? "", /Failed delegated result\(s\): 1/);
+    assert.equal(trace.delegated_result_count, 1);
+    assert.equal(trace.delegated_result_failed_count, 1);
+    assert.equal(replay.metrics.delegated_results_failed, 1);
+    assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
   } finally {
     await fixture.cleanup();
   }
@@ -4970,6 +5046,42 @@ class AlternateDelegationBoundaryThenDoneModel implements ModelClient {
   }
 }
 
+class DelegatedRefAsProofThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  sawDelegatedObservation = false;
+  delegatedProofRef = "";
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "Delegated proof boundary summary",
+        findings_text: "The delegated critique is useful context but not independent verification."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "delegated-ref-as-proof-then-done",
+      responseId: `response-delegated-proof-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawDelegatedObservation = delegatedSection.includes('"contract_status": "passed"')
+        && delegatedSection.includes("not independent verification");
+      this.delegatedProofRef = delegatedSection.match(/"id": "([^"]+)"/)?.[1] ?? "";
+      return doneEnvelopeWithVerificationRefs([this.delegatedProofRef]);
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
 class MultiDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
@@ -5081,6 +5193,41 @@ class InvalidDelegationThenDoneModel implements ModelClient {
         && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
     }
     return this.mainCalls > 1 ? doneEnvelope() : delegateCritiqueEnvelope();
+  }
+}
+
+class InvalidDelegationThenBlockedModel implements ModelClient {
+  private mainCalls = 0;
+  sawSanitizedFailedObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? "plain text instead of json"
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-then-blocked",
+      responseId: `response-invalid-delegation-blocked-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawSanitizedFailedObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes("Delegated model output was not valid JSON")
+        && !delegatedSection.includes("plain text instead of json")
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"')
+        && !delegatedSection.includes("Critique whether the answer needs more evidence.")
+        && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
+    }
+    return this.mainCalls > 1 ? blockedEnvelope() : delegateCritiqueEnvelope();
   }
 }
 
@@ -5965,6 +6112,27 @@ function noSopDoneEnvelope(): Record<string, unknown> {
 }
 
 function doneEnvelope(): Record<string, unknown> {
+  return doneEnvelopeWithVerificationRefs([]);
+}
+
+function blockedEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Report blocked task without a done claim.",
+    actions: [{
+      type: "respond",
+      rationale: "Return a blocked completion claim.",
+      payload: {
+        markdown: "The command task is blocked pending independent verification."
+      }
+    }],
+    completion_claim: {
+      status: "blocked",
+      verification_refs: []
+    }
+  };
+}
+
+function doneEnvelopeWithVerificationRefs(verificationRefs: string[]): Record<string, unknown> {
   return {
     summary: "Claim the command task is done.",
     actions: [{
@@ -5976,7 +6144,7 @@ function doneEnvelope(): Record<string, unknown> {
     }],
     completion_claim: {
       status: "done",
-      verification_refs: []
+      verification_refs: verificationRefs
     }
   };
 }

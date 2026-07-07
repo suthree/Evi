@@ -106,6 +106,10 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(delegation?.evidence_refs.includes("tests/context_harness.test.ts"), true);
     assert.equal(scorecard.expert_lenses.find((lens) => lens.id === "delegation_flow_reviewer")?.status, "active");
     assert.equal(scorecard.next_iterations.length, 3);
+    assert.equal(scorecard.next_iterations[0], core?.next_moves[0]);
+    assert.equal(scorecard.next_iterations[1], delegation?.next_moves[0]);
+    assert.equal(scorecard.next_iterations[2], scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate")?.next_moves[0]);
+    assert.equal(scorecard.next_iterations.some((item) => item.includes("SOP candidates")), false);
     assert.equal(scorecard.next_slices.length, 5);
     assert.equal(scorecard.next_slices[0]?.priority, 1);
     assert.equal(scorecard.next_slices[0]?.dimension_id, "sop_skill_memory_loop");

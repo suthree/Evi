@@ -2112,6 +2112,7 @@ function verifyCompletionClaim(args: {
       summary: `No done claim was made; status=${args.envelope.completion_claim.status}.`,
       refs: []
     }];
+    checks.push(delegatedResultsCheck(args.delegatedResults, false));
     if (args.modelDiagnosticRefs.length > 0) {
       checks.push({
         id: "model_diagnostics",
@@ -2165,16 +2166,17 @@ function verifyCompletionClaim(args: {
     refs: writeOrRunResults.map((result) => result.id)
   });
 
-  const failedDelegations = args.delegatedResults.filter((result) => !result.ok);
+  checks.push(delegatedResultsCheck(args.delegatedResults, true));
+  const delegatedProofRefs = delegatedVerificationRefs(claimedRefs, args.delegatedResults);
   checks.push({
-    id: "delegated_results",
-    status: failedDelegations.length > 0 ? "fail" : args.delegatedResults.length > 0 ? "pass" : "skipped",
-    summary: failedDelegations.length > 0
-      ? `Failed delegated result(s): ${failedDelegations.length}.`
+    id: "delegated_self_report_refs",
+    status: delegatedProofRefs.length > 0 ? "fail" : args.delegatedResults.length > 0 ? "pass" : "skipped",
+    summary: delegatedProofRefs.length > 0
+      ? "Done claim used delegated self-report ref(s) as verification proof."
       : args.delegatedResults.length > 0
-        ? `All ${args.delegatedResults.length} delegated result(s) completed.`
-        : "No delegated result was required for this completion claim.",
-    refs: args.delegatedResults.map((result) => result.id)
+        ? "Done claim did not use delegated self-report refs as verification proof."
+        : "No delegated self-report refs were available for this completion claim.",
+    refs: delegatedProofRefs
   });
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));
@@ -2197,6 +2199,36 @@ function verifyCompletionClaim(args: {
       : "Completion verification passed with final response.",
     checks
   };
+}
+
+function delegatedResultsCheck(delegatedResults: DelegatedResult[], isDoneClaim: boolean): CompletionVerificationReport["checks"][number] {
+  const failedDelegations = delegatedResults.filter((result) => !result.ok);
+  let status: CompletionVerificationReport["checks"][number]["status"] = "skipped";
+  if (failedDelegations.length > 0) {
+    status = isDoneClaim ? "fail" : "warning";
+  } else if (delegatedResults.length > 0) {
+    status = "pass";
+  }
+  return {
+    id: "delegated_results",
+    status,
+    summary: failedDelegations.length > 0
+      ? `Failed delegated result(s): ${failedDelegations.length}.`
+      : delegatedResults.length > 0
+        ? `All ${delegatedResults.length} delegated result(s) passed contract validation; they are not completion proof.`
+        : "No delegated result was required for this completion claim.",
+    refs: delegatedResults.map((result) => result.id)
+  };
+}
+
+function delegatedVerificationRefs(claimedRefs: string[], delegatedResults: DelegatedResult[]): string[] {
+  if (claimedRefs.length === 0 || delegatedResults.length === 0) return [];
+  const delegatedIds = delegatedResults.map((result) => result.id);
+  return claimedRefs.filter((ref) =>
+    delegatedIds.includes(ref)
+    || delegatedIds.some((id) => ref.includes(id))
+    || /delegated[_-]result/i.test(ref)
+  );
 }
 
 function compactRefs(refs: Array<string | null | undefined>): string[] {

@@ -335,6 +335,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.context_contract.reject_if.some((item) => item.includes("omits delegated authority limits")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, 240);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, 2000);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("advisory context, not verification proof")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("completion verification proof")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.field, "dispatch_failure_kind");
     assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.values, [
       "dispatch_limit_exceeded",
@@ -344,6 +346,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("harness replay checks")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.reject_if.some((item) => item.includes("free-form error text")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.completion_authority.some((item) => item.includes("main harness verifies")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.completion_authority.some((item) => item.includes("do not prove completion")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.deferred_scope.some((item) => item.includes("no expert personas")), true);
     assert.match(readModel.next_core_basic_plan?.general_delegation_loop.boundary ?? "", /does not spawn agents/);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.layer, "core_runtime");
@@ -544,6 +547,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("bounded analysis or critique task")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("main-harness completion boundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("not verification proof")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("delegated result id or ref")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("more than one delegate_agent action")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("execute tools, mutate state, or decide completion")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("expert scheduling or multi-agent orchestration")), true);

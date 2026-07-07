@@ -1127,12 +1127,14 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       required: [
         "structured summary",
         "bounded findings_text",
-        "main-thread verification before reuse"
+        "main-thread verification before reuse",
+        "passed delegated self-reports remain advisory context, not verification proof"
       ],
       reject_if: [
         "delegated output is not valid structured JSON",
         "summary or findings_text is empty or over the configured max chars",
-        "result is treated as tool evidence, final success, or mutation authority"
+        "result is treated as tool evidence, final success, or mutation authority",
+        "delegated result id or ref is used as completion verification proof"
       ]
     },
     dispatch_failure_kind_contract: {
@@ -1156,6 +1158,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     completion_authority: [
       "main harness verifies delegated results before they influence a done claim",
       "failed delegated results block verified completion",
+      "passed delegated results can inform the next model round but do not prove completion",
       "completion remains with iteration outcome plus completion_gate coverage"
     ],
     deferred_scope: [

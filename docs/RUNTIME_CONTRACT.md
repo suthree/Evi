@@ -1197,14 +1197,19 @@ as observations. Dispatch-layer rejects also carry a safe
 failures record `dispatch_failure_kind=none` explicitly, so trace/replay
 read models can distinguish a real none value from an older or malformed
 summary that omitted the field. A later `done` claim fails completion verification
-when any delegated result failed. Delegated results are recorded with action
-id, round, sequence, task/context character counts, and dispatch failure kind
-so later traces can verify bounded dispatch from harness-owned delegated event
-summaries without reading raw delegated context or delegated result bodies. The
-main-model observation also excludes raw delegated task/context, raw output
-preview, and persisted artifact bodies. They are not tool evidence, final
-success proof, mutation authority, retry/failover authority, or a second
-autonomous agent runtime.
+when any delegated result failed. A passed delegated result remains an advisory
+self-report: it can inform the next model round, but its id, state ref, or event
+ref must not be used as `completion_claim.verification_refs` proof. Non-`done`
+runs still record a bounded `delegated_results` warning when any delegated
+result failed, so Live Run Trace and replay audit can show the failure without
+changing skipped completion verification into a completed claim. Delegated
+results are recorded with action id, round, sequence, task/context character
+counts, and dispatch failure kind so later traces can verify bounded dispatch
+from harness-owned delegated event summaries without reading raw delegated
+context or delegated result bodies. The main-model observation also excludes raw
+delegated task/context, raw output preview, and persisted artifact bodies. They
+are not tool evidence, final success proof, mutation authority,
+retry/failover authority, or a second autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the
 episode context and model artifacts:
@@ -1217,8 +1222,10 @@ memory/episodes/<session>-completion-verification.md
 The report records the model `completion_claim`, final response ref, claimed
 verification refs, selected observation refs, and per-check pass/fail/warning
 status. A `done` claim fails verification when required final response or
-write/run/delegation evidence is missing or failed. `not_done` and `blocked`
-claims are recorded as skipped completion verification, not as completed work.
+write/run/delegation evidence is missing or failed, or when delegated self-report
+refs are used as verification proof. `not_done` and `blocked` claims are
+recorded as skipped completion verification, not as completed work, while still
+surfacing delegated-result warnings for trace and replay visibility.
 Later context may summarize recent reports, but must not read the referenced
 raw response/tool artifacts or treat prior verification as proof for the current
 task.
@@ -3280,6 +3287,11 @@ packages/runtime/src/channels/feishu/ # first IM provider
 ## Command Contract
 
 Target first-version commands:
+The list includes available inspection, application, and local-learning
+surfaces. It is not the self-evolution priority order. Current iteration
+selection stays with core/basic scorecard output and bounded general-agent
+delegation unless a later verified slice explicitly selects SOP/skill,
+memory/dream, content, or expert surfaces.
 
 ```bash
 pnpm run runtime -- doctor
