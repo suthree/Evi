@@ -188,22 +188,31 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
     }
   });
   const text = await response.text();
-  const body = text.length > maxChars ? `${text.slice(0, maxChars).trimEnd()}\n...` : text;
+  const bodyTruncated = text.length > maxChars;
+  const body = bodyTruncated ? truncateOutput(text, maxChars) : text;
   return toolResult("http.fetch", response.ok, `Fetched ${url}: ${response.status} ${response.statusText}.`, {
     url,
     status: response.status,
     status_text: response.statusText,
     response_type: responseType,
+    max_chars: maxChars,
+    response_chars: text.length,
+    returned_body_chars: body.length,
+    body_truncated: bodyTruncated,
+    content_type: response.headers.get("content-type") ?? null,
     body: responseType === "json" ? parseMaybeJson(body) : body
   }, "none");
 }
 
 async function runCommandRun(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
   const command = stringValue(args.command);
-  const commandArgs = stringArrayValue(args.args).slice(0, 64);
+  const requestedArgs = stringArrayValue(args.args);
+  const commandArgs = requestedArgs.slice(0, 64);
   const cwdScope = stringValue(args.cwd) || "repo";
-  const timeoutMs = Math.min(Math.max(intValue(args.timeout_ms, 30000), 1000), 300000);
-  const maxOutputChars = Math.min(Math.max(intValue(args.max_output_chars, 12000), 1000), 50000);
+  const requestedTimeoutMs = intValue(args.timeout_ms, 30000);
+  const requestedMaxOutputChars = intValue(args.max_output_chars, 12000);
+  const timeoutMs = Math.min(Math.max(requestedTimeoutMs, 1000), 300000);
+  const maxOutputChars = Math.min(Math.max(requestedMaxOutputChars, 1000), 50000);
   const sideEffectLevel = parseSideEffectLevel(args.side_effect_level);
   const envResult = buildCommandEnv(args);
 
@@ -229,13 +238,47 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     maxOutputChars,
     env: envResult.env
   });
+  const envAudit = envResult.audit;
   return toolResult("command.run", result.exitCode === 0 && !result.timedOut, result.summary, {
     command,
     args: commandArgs,
     cwd: cwdScope,
     timeout_ms: timeoutMs,
+    max_output_chars: maxOutputChars,
     exitCode: result.exitCode,
     timedOut: result.timedOut,
+    stdout_truncated: result.stdoutTruncated,
+    stderr_truncated: result.stderrTruncated,
+    stdout_chars_observed: result.stdoutObservedChars,
+    stderr_chars_observed: result.stderrObservedChars,
+    stdout_chars_returned: result.stdout.length,
+    stderr_chars_returned: result.stderr.length,
+    audit: {
+      requested: {
+        args_count: requestedArgs.length,
+        timeout_ms: requestedTimeoutMs,
+        max_output_chars: requestedMaxOutputChars,
+        cwd: cwdScope,
+        side_effect_level: args.side_effect_level
+      },
+      effective: {
+        args_count: commandArgs.length,
+        timeout_ms: timeoutMs,
+        max_output_chars: maxOutputChars,
+        cwd: cwdScope,
+        side_effect_level: sideEffectLevel
+      },
+      truncation: {
+        stdout_truncated: result.stdoutTruncated,
+        stderr_truncated: result.stderrTruncated,
+        stdout_chars_observed: result.stdoutObservedChars,
+        stderr_chars_observed: result.stderrObservedChars,
+        stdout_chars_returned: result.stdout.length,
+        stderr_chars_returned: result.stderr.length
+      },
+      cwd_boundary: cwdScope === "repo" ? "repo_root" : "state_root",
+      env_boundary: envAudit
+    },
     stdout: result.stdout,
     stderr: result.stderr
   }, sideEffectLevel);
@@ -252,7 +295,8 @@ async function runCodeExecuteNode(args: Record<string, unknown>, context: ToolEx
   const result = await runNode(code, {
     cwd: context.store.stateRoot,
     timeoutMs,
-    maxOutputChars
+    maxOutputChars,
+    env: minimalEnv()
   });
   return toolResult("code.execute_node", result.exitCode === 0 && !result.timedOut, result.summary, result, "local_reversible");
 }
@@ -505,17 +549,55 @@ function isIgnoredSearchPath(path: string): boolean {
     || path.startsWith(".local-runtime");
 }
 
+interface BoundedOutput {
+  text: string;
+  observedChars: number;
+  truncated: boolean;
+}
+
+function emptyBoundedOutput(): BoundedOutput {
+  return { text: "", observedChars: 0, truncated: false };
+}
+
+function appendBoundedOutput(output: BoundedOutput, chunk: Buffer, maxChars: number): BoundedOutput {
+  const chunkText = chunk.toString("utf8");
+  const next = output.text + chunkText;
+  return {
+    text: truncateOutput(next, maxChars),
+    observedChars: output.observedChars + chunkText.length,
+    truncated: output.truncated || next.length > maxChars
+  };
+}
+
 function runNode(
   code: string,
-  options: { cwd: string; timeoutMs: number; maxOutputChars: number }
-): Promise<{ exitCode: number | null; timedOut: boolean; stdout: string; stderr: string; summary: string }> {
+  options: { cwd: string; timeoutMs: number; maxOutputChars: number; env: NodeJS.ProcessEnv }
+): Promise<{
+  exitCode: number | null;
+  timedOut: boolean;
+  timeout_ms: number;
+  max_output_chars: number;
+  cwd_boundary: "state_root";
+  env_boundary: {
+    mode: "minimal_runtime_env";
+    inherited_keys: string[];
+  };
+  stdout: string;
+  stderr: string;
+  stdout_truncated: boolean;
+  stderr_truncated: boolean;
+  stdout_chars_observed: number;
+  stderr_chars_observed: number;
+  summary: string;
+}> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, ["--input-type=module", "-"], {
       cwd: options.cwd,
-      stdio: ["pipe", "pipe", "pipe"]
+      stdio: ["pipe", "pipe", "pipe"],
+      env: options.env
     });
-    let stdout = "";
-    let stderr = "";
+    let stdout = emptyBoundedOutput();
+    let stderr = emptyBoundedOutput();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -523,18 +605,29 @@ function runNode(
     }, options.timeoutMs);
 
     child.stdout.on("data", (chunk: Buffer) => {
-      stdout = truncateOutput(stdout + chunk.toString("utf8"), options.maxOutputChars);
+      stdout = appendBoundedOutput(stdout, chunk, options.maxOutputChars);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderr = truncateOutput(stderr + chunk.toString("utf8"), options.maxOutputChars);
+      stderr = appendBoundedOutput(stderr, chunk, options.maxOutputChars);
     });
     child.on("close", (exitCode) => {
       clearTimeout(timer);
       resolve({
         exitCode,
         timedOut,
-        stdout,
-        stderr,
+        timeout_ms: options.timeoutMs,
+        max_output_chars: options.maxOutputChars,
+        cwd_boundary: "state_root",
+        env_boundary: {
+          mode: "minimal_runtime_env",
+          inherited_keys: Object.keys(options.env).sort()
+        },
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdout_truncated: stdout.truncated,
+        stderr_truncated: stderr.truncated,
+        stdout_chars_observed: stdout.observedChars,
+        stderr_chars_observed: stderr.observedChars,
         summary: timedOut
           ? `Node execution timed out after ${options.timeoutMs}ms.`
           : `Node execution exited with code ${exitCode}.`
@@ -548,15 +641,25 @@ function runLocalCommand(
   command: string,
   args: string[],
   options: { cwd: string; timeoutMs: number; maxOutputChars: number; env: NodeJS.ProcessEnv }
-): Promise<{ exitCode: number | null; timedOut: boolean; stdout: string; stderr: string; summary: string }> {
+): Promise<{
+  exitCode: number | null;
+  timedOut: boolean;
+  stdout: string;
+  stderr: string;
+  stdoutTruncated: boolean;
+  stderrTruncated: boolean;
+  stdoutObservedChars: number;
+  stderrObservedChars: number;
+  summary: string;
+}> {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
       stdio: ["ignore", "pipe", "pipe"],
       env: options.env
     });
-    let stdout = "";
-    let stderr = "";
+    let stdout = emptyBoundedOutput();
+    let stderr = emptyBoundedOutput();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
@@ -568,24 +671,32 @@ function runLocalCommand(
       resolve({
         exitCode: null,
         timedOut,
-        stdout,
+        stdout: stdout.text,
         stderr: error.message,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
+        stdoutObservedChars: stdout.observedChars,
+        stderrObservedChars: error.message.length,
         summary: `Command failed to start: ${error.message}`
       });
     });
     child.stdout.on("data", (chunk: Buffer) => {
-      stdout = truncateOutput(stdout + chunk.toString("utf8"), options.maxOutputChars);
+      stdout = appendBoundedOutput(stdout, chunk, options.maxOutputChars);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderr = truncateOutput(stderr + chunk.toString("utf8"), options.maxOutputChars);
+      stderr = appendBoundedOutput(stderr, chunk, options.maxOutputChars);
     });
     child.on("close", (exitCode) => {
       clearTimeout(timer);
       resolve({
         exitCode,
         timedOut,
-        stdout,
-        stderr,
+        stdout: stdout.text,
+        stderr: stderr.text,
+        stdoutTruncated: stdout.truncated,
+        stderrTruncated: stderr.truncated,
+        stdoutObservedChars: stdout.observedChars,
+        stderrObservedChars: stderr.observedChars,
         summary: timedOut
           ? `Command timed out after ${options.timeoutMs}ms.`
           : `Command exited with code ${exitCode}.`
@@ -622,7 +733,15 @@ function parseSideEffectLevel(value: unknown): ToolResult["side_effect_level"] |
   return null;
 }
 
-function buildCommandEnv(args: Record<string, unknown>): { ok: true; env: NodeJS.ProcessEnv } | { ok: false; summary: string; output: Record<string, unknown> } {
+function buildCommandEnv(args: Record<string, unknown>): {
+  ok: true;
+  env: NodeJS.ProcessEnv;
+  audit: {
+    requested_keys: string[];
+    allowlisted_keys: string[];
+    applied_keys: string[];
+  };
+} | { ok: false; summary: string; output: Record<string, unknown> } {
   const requested = recordValue(args.env);
   const allowlist = new Set(stringArrayValue(args.env_allowlist));
   const rejected = Object.keys(requested).filter((key) => !allowlist.has(key) || typeof requested[key] !== "string");
@@ -633,11 +752,18 @@ function buildCommandEnv(args: Record<string, unknown>): { ok: true; env: NodeJS
       output: { rejected_env: rejected }
     };
   }
+  const requestedKeys = Object.keys(requested).sort();
+  const allowlistedKeys = [...allowlist].sort();
   return {
     ok: true,
     env: {
       ...minimalEnv(),
       ...Object.fromEntries(Object.entries(requested).map(([key, value]) => [key, String(value)]))
+    },
+    audit: {
+      requested_keys: requestedKeys,
+      allowlisted_keys: allowlistedKeys,
+      applied_keys: requestedKeys
     }
   };
 }

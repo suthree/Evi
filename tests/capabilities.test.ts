@@ -137,6 +137,13 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(writeRepo?.refs?.includes("packages/runtime/src/tools.ts"), true);
   assert.equal(writeRepo?.refs?.includes("packages/core/src/workspace_status.ts"), true);
   assert.equal(writeRepo?.boundaries?.some((boundary) => boundary.includes("pre/post workspace status evidence")), true);
+  const commandRun = coreTools?.capabilities.find((capability) => capability.id === "command.run");
+  assert.equal(commandRun?.refs?.includes("packages/runtime/src/tools.ts"), true);
+  assert.equal(commandRun?.boundaries?.some((boundary) => boundary.includes("output budget and truncation metadata")), true);
+  const httpFetch = coreTools?.capabilities.find((capability) => capability.id === "http.fetch");
+  assert.equal(httpFetch?.boundaries?.some((boundary) => boundary.includes("output budget and truncation metadata")), true);
+  const executeNode = coreTools?.capabilities.find((capability) => capability.id === "code.execute_node");
+  assert.equal(executeNode?.boundaries?.some((boundary) => boundary.includes("minimal runtime environment")), true);
   const reviewHistory = readModels?.capabilities.find((capability) => capability.id === "review.history");
   assert.equal(reviewHistory?.boundaries?.some((boundary) => boundary.includes("repo-write workspace guard summaries")), true);
   assert.equal(reviewHistory?.commands?.includes("pnpm run runtime -- review replays"), true);
@@ -149,6 +156,8 @@ test("capability acceptance audit records next-version gates without execution a
   assert.equal(audit.audit_id, "local_runtime_next_version_capability_acceptance");
   assert.equal(audit.status, "operator_check_required");
   assert.equal(audit.gates.some((gate) => gate.id === "core_execution" && gate.status === "ready"), true);
+  assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.summary.includes("auditable bounded result metadata"), true);
+  assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.boundaries.some((boundary) => boundary.includes("bounded audit metadata")), true);
   assert.equal(audit.gates.some((gate) => gate.id === "basic_entrypoints" && gate.status === "operator_check"), true);
   assert.equal(audit.gates.some((gate) => gate.id === "sop_self_evolution"), true);
   assert.equal(audit.gates.every((gate) => typeof gate.layer === "string"), true);

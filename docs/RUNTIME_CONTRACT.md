@@ -149,7 +149,10 @@ Core execution is the tool layer:
 - `code.execute_node`
 
 Current implementation status: the first-version core execution surface is
-implemented and covered by local capability tests.
+implemented and covered by local capability tests. Core tool results must keep
+bounded audit metadata such as status, side-effect level, scope or cwd, output
+budget, observed/returned size, and truncation state where the tool can produce
+large output.
 
 `code.execute_node` is a convenience tool for bounded JavaScript snippets. It is
 not the general run capability. General run belongs to `command.run`.
@@ -1435,6 +1438,19 @@ adjustment, and latest outcome ref before the selected `SKILL.md` body.
 
 ## Tool Contracts
 
+Common result audit policy:
+
+- every core tool call returns a bounded `tool_result` object
+- result metadata must make output budgets and truncation visible where output
+  can be large
+- command-like tools must expose effective timeout, output cap, cwd boundary,
+  exit status, and side-effect level
+- HTTP/search/read-like tools must expose bounded status, scope, count, size, or
+  truncation metadata appropriate to the tool
+- audit metadata is evidence substrate only; it must not render unbounded raw
+  output, expose secrets, rerun tools, or prove completion without verification
+  claim coverage
+
 ### `file.read`
 
 Reads text from repo or state scope by relative path.
@@ -1534,6 +1550,7 @@ Required policy:
 - timeout
 - max output chars
 - state-root cwd
+- minimal runtime environment only; no arbitrary parent environment passthrough
 - side effect: `local_reversible`
 
 This remains useful for small transformations, but it should not replace

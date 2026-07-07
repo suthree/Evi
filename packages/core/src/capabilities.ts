@@ -99,6 +99,8 @@ const harnessActionSummaries: Record<AllowedAction, string> = {
   pause_autonomy: "Record a stop signal for future autonomous exploration without stopping the resident service."
 };
 
+const outputBudgetToolIds = new Set(["repo.search", "http.fetch", "command.run", "code.execute_node"]);
+
 export function getCapabilityCatalog(): CapabilityCatalog {
   const categories: CapabilityCategory[] = [
     coreToolsCategory(),
@@ -185,7 +187,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "core_execution",
         title: "Core execution",
-        summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, and Node execution.",
+        summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, Node execution, and auditable bounded result metadata.",
         status: "ready",
         layer: "core_runtime",
         evidence_refs: [
@@ -200,6 +202,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         ],
         boundaries: [
           "tool requests must pass harness contracts before execution",
+          "tool results expose bounded audit metadata without rendering raw unbounded output",
           "repo writes record bounded workspace status evidence but do not mutate git state"
         ]
       },
@@ -469,7 +472,7 @@ function coreToolsCategory(): CapabilityCategory {
   return {
     id: "core_tools",
     title: "Core tools",
-    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution.",
+    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution with auditable output budgets.",
     status: "implemented",
     layer: "core_runtime",
     capabilities: coreToolContracts.map((contract) => ({
@@ -477,12 +480,22 @@ function coreToolsCategory(): CapabilityCategory {
       title: contract.tool,
       summary: contract.rationale,
       status: "implemented",
-      refs: contract.tool === "file.write_repo"
-        ? ["packages/core/src/tool_contracts.ts", "packages/runtime/src/tools.ts", "packages/core/src/workspace_status.ts"]
-        : ["packages/core/src/tool_contracts.ts"],
+      refs: [
+        "packages/core/src/tool_contracts.ts",
+        ...(contract.tool === "file.write_repo" || outputBudgetToolIds.has(contract.tool)
+          ? ["packages/runtime/src/tools.ts"]
+          : []),
+        ...(contract.tool === "file.write_repo" ? ["packages/core/src/workspace_status.ts"] : [])
+      ],
       boundaries: [
         `side_effect_level: ${contract.side_effect_level}`,
         "arguments must match the tool contract before execution",
+        ...(outputBudgetToolIds.has(contract.tool)
+          ? ["tool results expose output budget and truncation metadata for auditability"]
+          : []),
+        ...(contract.tool === "code.execute_node"
+          ? ["uses a minimal runtime environment and does not pass arbitrary parent environment values"]
+          : []),
         ...(contract.tool === "file.write_repo"
           ? ["records fixed pre/post workspace status evidence; does not read file bodies, mutate git state, block writes, or roll back"]
           : [])

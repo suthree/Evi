@@ -82,7 +82,8 @@ export const coreToolContracts: ToolContract[] = [
     arguments: {
       code: "console.log('ok')",
       timeout_ms: 10000,
-      max_output_chars: 12000
+      max_output_chars: 12000,
+      env_policy: "minimal runtime env; no arbitrary parent env passthrough"
     }
   }
 ];
