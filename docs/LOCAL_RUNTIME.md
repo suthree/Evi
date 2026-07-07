@@ -591,6 +591,9 @@ command remains the runtime evidence.
 The `current_state` audit seed requires service-health status and reasons when
 resident runtime behavior changed, and rejects verified outcomes that omit
 runtime attention reasons while service health is not healthy.
+When service health is not healthy, the same seed requires runtime attention to
+be classified as `acceptable`, `repair_needed`, or `verification_blocker`.
+Naming the reason without classification is not enough outcome evidence.
 The `verification_scope` audit seed requires the outcome to explain which
 completion claim each verification command supports. A command list without
 claim coverage is not enough evidence for a verified outcome.

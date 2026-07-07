@@ -537,6 +537,10 @@ Required policy:
   and reasons when resident runtime behavior changed, and must reject verified
   outcomes that omit runtime attention reasons while service health is not
   healthy
+- When service health is not healthy, the `current_state` completion audit seed
+  must require runtime attention to be classified as `acceptable`,
+  `repair_needed`, or `verification_blocker`; naming the reason without a
+  classification is not sufficient
 - The `verification_scope` completion audit seed must require the outcome to
   explain which completion claim each verification command supports; a command
   list without claim coverage is not sufficient verification evidence

@@ -785,15 +785,17 @@ function buildCompletionAuditSeeds(
     {
       id: "current_state",
       phase_id: "capability_layering",
-      requirement: "Use current worktree and runtime state before trusting older memory or prior summaries.",
+      requirement: "Use current worktree and runtime state, and classify runtime attention before trusting older memory or prior summaries.",
       evidence_needed: [
         "workspace or git status when files changed",
-        "service health status and reasons when resident runtime behavior changed"
+        "service health status and reasons when resident runtime behavior changed",
+        "runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy"
       ],
       reject_if: [
         "older memory is the only evidence",
         "external adapter pressure is treated as core identity without a reusable contract",
-        "runtime attention reasons are omitted from the outcome when service health is not healthy"
+        "runtime attention reasons are omitted from the outcome when service health is not healthy",
+        "runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker"
       ]
     },
     {
