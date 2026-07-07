@@ -133,6 +133,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `evidence_basis` 会给出有界候选 refs，方便 outcome 写回时引用，但它本身不是完成证明；
 `proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs 和 outcome verification command coverage；
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；
+`audit_evidence` 会按每个 completion audit seed 保留一条 evidence-needed，让 handoff 看得到后续 outcome 必须引用什么；对 `verification_scope`，它会优先保留 required verification entrypoint 到 completion claim 的映射证据；
 `audit_reject` 会按每个 completion audit seed 保留一条 reject condition，让复制旧成功标准、只凭旧 memory、窄验证证明大能力、或过早提升 SOP/skill/memory/dream 这类失败条件保持可见；
 对 `verification_scope`，compact `audit_reject` 会优先保留 required verification entrypoint 缺 claim coverage 的失败条件，避免 handoff 隐藏漏入口问题；
 `acceptance` 会按 `goal_scope`、`current_state`、`verification_scope`、`learning_persistence` 各保留一条，并额外保留 fresh successor 与 external adapter 边界验收，避免只看到重复的 goal scope 或 current_state；

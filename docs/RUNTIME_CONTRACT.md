@@ -570,6 +570,11 @@ Required policy:
   match the completion audit seed vocabulary
 - Compact `audit_require` must preserve the requirement for every completion
   audit seed, so seed ids are not mistaken for sufficient review evidence
+- Compact `audit_evidence` must preserve one evidence-needed item for every
+  completion audit seed, so handoff shows what a later outcome must cite
+  without replacing the authoritative audit
+- For `verification_scope`, compact `audit_evidence` should prefer the
+  required verification-entrypoint claim-coverage evidence when present
 - Compact `audit_reject` must preserve one reject condition for every
   completion audit seed, so false-completion failure modes stay visible during
   handoff without replacing the authoritative iteration audit

@@ -1569,6 +1569,25 @@ export function compactGaPlanAuditRequirements(
     .join("; ");
 }
 
+export function compactGaPlanAuditEvidence(
+  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+): string {
+  return plan.completion_audit_seeds
+    .map((seed) => `${seed.id}=${compactGaPlanAuditEvidenceItem(seed)}`)
+    .join("; ");
+}
+
+function compactGaPlanAuditEvidenceItem(
+  seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
+): string {
+  if (seed.id === "verification_scope") {
+    return seed.evidence_needed.find((evidence) => evidence.includes("required verification entrypoint"))
+      ?? seed.evidence_needed[0]
+      ?? "unknown";
+  }
+  return seed.evidence_needed[0] ?? "unknown";
+}
+
 export function compactGaPlanAuditRejects(
   plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
@@ -1688,6 +1707,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactGoalScope = compactGaPlanGoalScope(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
+  const compactAuditEvidence = compactGaPlanAuditEvidence(plan);
   const compactAuditRejects = compactGaPlanAuditRejects(plan);
   const compactStageExitCriteria = compactGaPlanStageExitCriteria(plan);
   const runtimeObservabilityGuard = compactGaPlanRuntimeObservabilityGuard(plan);
@@ -1732,6 +1752,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       ...(proofBoundary ? [`proof_boundary: ${proofBoundary}`] : []),
       `audit: ${plan.completion_audit_seeds.map((seed) => seed.id).join(",")}`,
       `audit_require: ${compactAuditRequirements}`,
+      `audit_evidence: ${compactAuditEvidence}`,
       `audit_reject: ${compactAuditRejects}`,
       `acceptance: ${compactAcceptanceCriteria.join(" | ")}`,
       `next_command: ${plan.next_command}`
