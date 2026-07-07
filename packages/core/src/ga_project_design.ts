@@ -806,11 +806,15 @@ function buildCompletionAuditSeeds(
       evidence_needed: [
         `proposed_slice=${proposedSlice}`,
         `source_proposed_slice=${source.proposed_slice}`,
-        "operator goal or accepted task states the intended end state"
+        "operator goal or accepted task states the intended end state",
+        "next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence",
+        "goal_scope.success_evidence distinguishes the completed source slice from the successor slice"
       ],
       reject_if: [
         "success criteria only describe the completed source artifact",
-        "the next slice is easier than the operator objective"
+        "the next slice is easier than the operator objective",
+        "goal_scope is missing objective, owner_surface, source_of_truth, or success_evidence",
+        "goal_scope success evidence does not distinguish source slice from successor slice"
       ]
     },
     {

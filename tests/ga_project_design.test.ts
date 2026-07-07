@@ -260,7 +260,12 @@ test("GA project design read model derives reusable artifacts from verified iter
     );
     assert.equal(
       readModel.next_core_basic_plan?.completion_audit_seeds.some((seed) =>
-        seed.evidence_needed.includes("operator goal or accepted task states the intended end state")
+        seed.id === "goal_scope"
+        && seed.evidence_needed.includes("operator goal or accepted task states the intended end state")
+        && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")
+        && seed.evidence_needed.includes("goal_scope.success_evidence distinguishes the completed source slice from the successor slice")
+        && seed.reject_if.includes("goal_scope is missing objective, owner_surface, source_of_truth, or success_evidence")
+        && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")
       ),
       true
     );
@@ -356,6 +361,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("dream snapshots as execution plans"))), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention handling says why acceptable is safe, what repair_needed follows up, or why verification_blocker stops the outcome")), true);

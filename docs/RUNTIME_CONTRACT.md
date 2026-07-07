@@ -454,6 +454,9 @@ Required policy:
   owner surface, source of truth, and success evidence before the next slice is
   reused; it is read-only orientation, not execution authority or completion
   proof
+- The `goal_scope` completion audit seed must require that structured
+  `goal_scope` evidence and reject outcomes whose success evidence does not
+  distinguish the completed source slice from the successor slice
 - `next_core_basic_plan.scorecard_basis` must keep the scorecard
   `next_core_basic_slice`, target dimension, target layer, and scorecard command
   visible as read-only planning evidence

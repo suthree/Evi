@@ -802,6 +802,9 @@ readiness, check summary, and audit-seed summary, which are quality hints only.
 The `goal_scope` line restates the operator objective, owner surface, source of
 truth, and success evidence before a next slice is reused; it is orientation,
 not execution authority or completion proof.
+The `goal_scope` audit seed also requires that structured evidence and rejects
+success evidence that does not distinguish the completed source slice from the
+successor slice.
 The audit-seed summary should include goal scope, current state, verification
 scope, and learning persistence, so completion review keeps both verification
 evidence and outcome reuse in view. The compact `acceptance` line keeps one
