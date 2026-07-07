@@ -681,7 +681,9 @@ same iteration verification commands with the active state root and concrete
 iteration id, while the stored templates remain unchanged. The
 `seed_evidence_status.evidence_counts` section may count both stored and
 runtime-bound command views; those numbers are diagnostics, not completion
-proof.
+proof. For the `verification_scope` seed, `seed_evidence_status` also respects
+outcome verification claim coverage, so claim refs that omit a required
+entrypoint still keep that seed out of `ready_for_manual_review`.
 The audit packet keeps the iteration `source_ref` summary when present, so the
 operator can trace the planned core/basic slice back to the source iteration
 without opening the full record.

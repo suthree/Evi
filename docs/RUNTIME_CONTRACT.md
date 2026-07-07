@@ -195,7 +195,10 @@ and iteration id into the stored iteration command templates for the current
 CLI run only; the stored `iteration_verification_commands` remain unchanged.
 `seed_evidence_status.evidence_counts` may count both stored and runtime-bound
 verification command views, but those counts remain evidence presence
-diagnostics, not completion proof.
+diagnostics, not completion proof. For the `verification_scope` seed,
+`seed_evidence_status` must also respect outcome verification claim coverage, so
+claim refs that omit a required entrypoint still keep the seed out of
+`ready_for_manual_review`.
 The audit packet's `iteration` summary keeps `source_ref` when present so GA
 project-design completion review can trace the planned slice back to its source
 iteration without reading the full record.

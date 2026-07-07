@@ -185,6 +185,21 @@ test("iteration audit seed evidence status stays conservative before outcome evi
   assert.equal(missingOutcome.evidence_counts.runtime_iteration_verification_commands, 1);
   assert.equal(missingOutcome.manual_review_required, true);
 
+  const missingEntrypointClaim = buildIterationAuditSeedEvidenceStatus(
+    seed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
+      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
+    },
+    { status: "missing_entrypoints" }
+  );
+  assert.equal(missingEntrypointClaim.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingEntrypointClaim.missing.includes("outcome_verification_claim_coverage"), true);
+
   const readyForReview = buildIterationAuditSeedEvidenceStatus(
     seed,
     { outcome_status: "verified" },
@@ -194,7 +209,8 @@ test("iteration audit seed evidence status stays conservative before outcome evi
       outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
       outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
       outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
-    }
+    },
+    { status: "covered" }
   );
   assert.equal(readyForReview.evidence_status, "ready_for_manual_review");
   assert.equal(readyForReview.missing.length, 0);

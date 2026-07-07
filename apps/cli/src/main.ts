@@ -369,7 +369,8 @@ export type IterationAuditSeedEvidenceStatus =
 export function buildIterationAuditSeedEvidenceStatus(
   seed: GaProjectDesignCompletionAuditSeed,
   iteration: { outcome_status: string },
-  evidence: IterationAuditEvidenceAvailable
+  evidence: IterationAuditEvidenceAvailable,
+  outcomeVerificationClaimCoverage?: { status: string }
 ): {
   seed_id: GaProjectDesignCompletionAuditSeed["id"];
   phase_id: GaProjectDesignCompletionAuditSeed["phase_id"];
@@ -393,13 +394,17 @@ export function buildIterationAuditSeedEvidenceStatus(
     && evidence.outcome_verification_commands.length > 0;
   const needsVerificationClaims = seed.id === "verification_scope";
   const hasOutcomeClaims = !needsVerificationClaims || evidence.outcome_verification_claims.length > 0;
+  const hasEntrypointClaimCoverage = !needsVerificationClaims
+    || !outcomeVerificationClaimCoverage
+    || outcomeVerificationClaimCoverage.status === "covered";
   const missing = [
     ...(!evidence.iteration_evidence_refs.length ? ["iteration_evidence_refs"] : []),
     ...(!evidence.iteration_verification_commands.length ? ["iteration_verification_commands"] : []),
     ...(!hasOutcome ? ["outcome_record"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
     ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : []),
-    ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : [])
+    ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : []),
+    ...(hasOutcome && needsVerificationClaims && !hasEntrypointClaimCoverage ? ["outcome_verification_claim_coverage"] : [])
   ];
   return {
     seed_id: seed.id,
@@ -408,7 +413,7 @@ export function buildIterationAuditSeedEvidenceStatus(
       ? "missing_declared_evidence"
       : !hasOutcome
         ? "missing_outcome"
-        : !hasOutcomeEvidence || !hasOutcomeClaims
+        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage
           ? "missing_outcome_evidence"
           : "ready_for_manual_review",
     missing,
@@ -1601,9 +1606,6 @@ export async function main(): Promise<number> {
           outcome_status: detail.iteration.outcome?.status ?? "not_recorded"
         };
         const evidenceAvailable = buildIterationAuditEvidenceAvailable(detail.iteration, config.state.root);
-        const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
-          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable)
-        );
         const auditGuidance = buildIterationAuditGuidance(plan, iteration, config.state.root);
         const nextCommand = buildIterationAuditNextCommand(iteration, config.state.root);
         const planRefCoverage = buildIterationAuditPlanRefCoverage(plan.refs, detail.iteration);
@@ -1611,6 +1613,9 @@ export async function main(): Promise<number> {
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationCommandCoverage = buildIterationAuditOutcomeVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationClaimCoverage = buildIterationAuditOutcomeVerificationClaimCoverage(auditGuidance.verification_entrypoints, evidenceAvailable);
+        const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
+          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage)
+        );
         const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage);
         const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
