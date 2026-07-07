@@ -37,6 +37,7 @@ test("GA project design contract keeps core project design separate from applica
   assert.equal(contract.phases.some((phase) => phase.layer === "basic_entrypoint"), true);
   assert.equal(contract.phases.some((phase) => phase.layer === "local_learning"), true);
   assert.equal(contract.decision_rules.some((rule) => rule.includes("application slices")), true);
+  assert.equal(contract.decision_rules.some((rule) => rule.includes("SOPs and skills may preserve repeatable procedure")), true);
   assert.equal(contract.verification_policy.some((policy) => policy.includes("current worktree and runtime state")), true);
   assert.equal(contract.non_goals.includes("no external-tool execution"), true);
   assert.equal(contract.refs.includes("packages/core/src/ga_project_design.ts"), true);
@@ -171,6 +172,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("operator_objective=core_basic_self_evolution_first"), true);
     assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("source_artifact=ga_design_artifact_iteration_contract_verified"), true);
     assert.equal(readModel.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("target_slice=core_ga_design_next_slice_after_verified")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.proposed_slice, "core_ga_design_next_slice_after_verified");
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.selected_layer, "core_runtime");
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /Clarify the next core\/basic GA design improvement/);
     assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified GA design evidence/);
@@ -228,7 +234,14 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.layer_decision.stage, "core_basic_successor_ready");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
+    assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("multi-expert orchestration follows those gates and remains advisory")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.judgment_authority.includes("core/basic layer selection stays with ga_project_design"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.completion_authority.includes("verified iteration outcome plus completion_gate coverage"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.promotion_gate.includes("later local-learning gates"), true);
+    assert.match(readModel.next_core_basic_plan?.learning_authority.boundary ?? "", /read-only learning authority boundary/);
+    assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("multi_expert[orchestration]: defer expert scheduling")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.owner_surface, "ga_project_design");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
@@ -254,6 +267,10 @@ test("GA project design read model derives reusable artifacts from verified iter
       readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "learning_persistence")?.forbidden_shortcuts.includes("do not treat dream snapshots as execution plans"),
       true
     );
+    assert.equal(
+      readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "learning_persistence")?.forbidden_shortcuts.includes("do not let a self-evolution SOP or selected skill override project-design judgment or completion gates"),
+      true
+    );
     assert.deepEqual(
       readModel.next_core_basic_plan?.completion_audit_seeds.map((seed) => seed.id),
       ["goal_scope", "current_state", "verification_scope", "learning_persistence"]
@@ -274,7 +291,14 @@ test("GA project design read model derives reusable artifacts from verified iter
         seed.id === "current_state"
         && seed.requirement.includes("classify runtime attention")
         && seed.requirement.includes("name the handling policy")
+        && seed.evidence_needed.includes("implementation_contract.proposed_slice=core_ga_design_next_slice_after_verified")
+        && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")
+        && seed.evidence_needed.includes("outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope")
+        && seed.reject_if.includes("implementation_contract.proposed_slice does not match the iteration proposed slice")
+        && seed.reject_if.includes("implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard")
+        && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")
         && seed.evidence_needed.includes("service health status and reasons when resident runtime behavior changed")
+        && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")
         && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")
         && seed.reject_if.includes("runtime attention reasons are omitted from the outcome when service health is not healthy")
         && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")
@@ -303,6 +327,14 @@ test("GA project design read model derives reusable artifacts from verified iter
       ),
       true
     );
+    assert.equal(
+      readModel.next_core_basic_plan?.completion_audit_seeds.some((seed) =>
+        seed.id === "learning_persistence"
+        && seed.evidence_needed.includes("learning_authority states that SOPs and skills preserve procedure while project-design and verified outcomes retain judgment and completion authority")
+        && seed.reject_if.includes("a self-evolution SOP or selected skill overrides project-design layer judgment or the iteration completion gate")
+      ),
+      true
+    );
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("instead of copied from the source artifact")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("external adapters remain application slices")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:")), true);
@@ -310,6 +342,13 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("required entrypoints are covered by completion claims")), true);
     assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.includes("SOP or skill artifacts preserve procedure only")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.length, readModel.next_core_basic_plan?.acceptance_criteria.length);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.every((trace) => readModel.next_core_basic_plan?.acceptance_criteria.includes(trace.criterion)), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.required_entrypoints.includes("check")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.outcome_claim_prefixes.includes("workspace:")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.criterion.includes("implementation contract bounds allowed scope")), true);
+    assert.equal(readModel.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "learning_persistence" && trace.phase_id === "learning_persistence"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- governance scorecard --state-root <state-root>"), true);
     assert.equal(readModel.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /governance record-iteration/);
@@ -352,6 +391,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.match(packet.next_core_basic_plan?.planning_basis ?? "", /instead of repeating completed slice verified_iteration_to_design_artifact/);
     assert.equal(packet.next_core_basic_plan?.goal_scope.owner_surface, "ga_project_design");
     assert.equal(packet.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("verified outcome records evidence refs")), true);
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_proposed_slice, "verified_iteration_to_design_artifact");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.improvement_type, "reusable_ga_design_contract");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no expert-agent scheduling")), true);
+    assert.match(packet.next_core_basic_plan?.implementation_contract.boundary ?? "", /does not execute commands/);
     assert.equal(packet.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.core_capabilities.some((capability) => capability.id === "contract_design" && capability.stage === "hardening"), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.basic_capabilities.some((capability) => capability.id === "runtime_observability" && capability.stage === "attention_guard"), true);
@@ -362,12 +406,17 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.core_identity, "recurring_ga_project_design");
     assert.equal(packet.next_core_basic_plan?.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
+    assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("multi-expert orchestration follows those gates and remains advisory")), true);
+    assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("multi_expert[orchestration]: defer expert scheduling")), true);
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.proposed_slice, "core_ga_design_next_slice_after_verified");
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("dream snapshots as execution plans"))), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy")), true);
@@ -382,6 +431,10 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "verification_scope" && seed.reject_if.includes("a required verification entrypoint is omitted from outcome claim coverage")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:")), true);
     assert.equal(packet.next_core_basic_plan?.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.length, packet.next_core_basic_plan?.acceptance_criteria.length);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.outcome_claim_prefixes.includes("check:")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("service-health")), true);
+    assert.equal(packet.next_core_basic_plan?.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace") && trace.criterion.includes("deferred scope")), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run runtime -- service health --target im --state-root <state-root>"), true);
     assert.equal(packet.next_core_basic_plan?.verification_commands.includes("pnpm run check"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);

@@ -413,10 +413,10 @@ test("compact GA plan review gate names open iteration blockers", () => {
   assert.equal(compactGaPlanReviewGate({
     iteration_record_status: openIterationStatus,
     selection_checks: ["verification_entrypoints=project-design,scorecard,iterations,service-health,check"]
-  }), "blocked; blockers=outcome_record,outcome_verification_command_coverage; required=project-design,scorecard,iterations,service-health,check; outcome_status=not_recorded");
+  }), "blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage; required=project-design,scorecard,iterations,service-health,check; required_coverage=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage; outcome_status=not_recorded");
   assert.equal(
     compactGaPlanAfterVerifyCommand({ iteration_record_status: openIterationStatus }),
-    "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --evidence-ref <ref...> --verification-command \"<command...>\" --next-move \"...\" --state-root <state-root>"
+    "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --evidence-ref <ref...> --verification-command \"<command...>\" --verification-claim \"<entrypoint>: <claim>\" --next-move \"...\" --state-root <state-root>"
   );
   assert.deepEqual(compactGaPlanVerificationCommands({
     iteration_record_status: openIterationStatus,
@@ -448,7 +448,7 @@ test("compact GA plan review gate names open iteration blockers", () => {
   ]);
   assert.equal(
     compactGaPlanProofBoundary({ iteration_record_status: openIterationStatus }),
-    "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage"
+    "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage"
   );
   assert.equal(compactGaPlanReviewGate({
     iteration_record_status: {
@@ -1021,7 +1021,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /Local runtime contract/);
     assert.match(bundle, /Authoritative query/);
     assert.match(bundle, /Service Runtime/);
-    assert.match(bundle, /service_health: attention/);
+    assert.match(bundle, /service_health: attention reasons=heartbeat_stale,deployment_stale followups=status,restart/);
     assert.match(bundle, /im_state: running/);
     assert.match(bundle, /heartbeat_freshness: stale/);
     assert.match(bundle, /review_tick: ok next=2026-06-30T00:30:02\.500Z inbox=2\/2 why=completed=1,executed=1/);
@@ -1242,6 +1242,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /layer: core_runtime; owner: ga_project_design; slice: core_ga_design_next_slice_after_context_plan/);
     assert.match(rendered.markdown, /source_truth: artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; source_slice=context_ga_project_design_plan; target_slice=core_ga_design_next_slice_after_context_plan; status=verified; quality=attention; fresh_successor=true/);
     assert.match(rendered.markdown, /goal_scope: objective=Continue self-evolution through core\/basic GA project-design capability gains before SOP, skill, memory, or dream promotion\.; owner=ga_project_design; source=operator_objective=core_basic_self_evolution_first\|source_artifact=ga_design_artifact_iteration_contract_context_plan; success=fresh_successor_slice=true; source_slice=context_ga_project_design_plan; target_slice=core_ga_design_next_slice_after_context_plan/);
+    assert.match(rendered.markdown, /implementation_contract: type=reusable_ga_design_contract; scope=change one reusable GA project-design contract or read-model surface; defer=no external adapter or tool integration unless it names a reusable runtime contract; deliver=future iterations can inspect the contract without inferring intent from the opaque slice id/);
     assert.match(rendered.markdown, /planning_basis: Use ga_design_artifact_iteration_contract_context_plan as evidence, then choose a new core\/basic slice instead of repeating completed slice context_ga_project_design_plan\./);
     assert.match(rendered.markdown, /focus: Clarify the next core\/basic GA design improvement before implementation\./);
     assert.match(rendered.markdown, /focus_next: inspect the current project-design plan and matching open iteration/);
@@ -1253,8 +1254,9 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue core_ga_design_next_slice_after_context_plan as a ga_project_design hardening slice/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| target_dimension=core_ga_design/);
-    assert.match(rendered.markdown, /layer_decision: recurring_ga_project_design; external tools and adapters stay application slices unless a reusable runtime contract is named/);
+    assert.match(rendered.markdown, /layer_decision: recurring_ga_project_design; external tools and adapters stay application slices unless a reusable runtime contract is named; SOP, skill, memory, and dream promotion follows only after core\/basic evidence supports reuse; multi-expert orchestration follows those gates and remains advisory/);
     assert.match(rendered.markdown, /layer_guard: stage=core_basic_successor_ready; source=core_runtime\/ga_project_design; selected=core_runtime\/ga_project_design/);
+    assert.match(rendered.markdown, /learning_authority: process=self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs; judgment=core\/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence; completion=completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice; promotion=SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates/);
     assert.match(rendered.markdown, /selection: ready; source_status=verified \| source_artifact_quality=attention/);
     assert.match(rendered.markdown, /checks: source_artifact_verified=verified/);
     assert.match(rendered.markdown, /source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2/);
@@ -1263,11 +1265,11 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /verify: verification_entrypoints=project-design,scorecard,iterations,service-health,check/);
     assert.match(rendered.markdown, /verify_commands: project-design=ga_design_artifact_iteration_contract_context_plan \| scorecard \| iterations=iteration_contract_context_open;audit=all \| service-health=im \| check/);
     assert.match(rendered.markdown, /iteration_record_status: open_iteration_available; iteration_contract_context_open/);
-    assert.match(rendered.markdown, /review_gate: blocked; blockers=outcome_record,outcome_verification_command_coverage; required=project-design,scorecard,iterations,service-health,check; outcome_status=not_recorded/);
+    assert.match(rendered.markdown, /review_gate: blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage; required=project-design,scorecard,iterations,service-health,check; required_coverage=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage; outcome_status=not_recorded/);
     assert.match(rendered.markdown, /audit_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --audit-seed all --state-root <state-root>/);
-    assert.match(rendered.markdown, /after_verify: pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_context_open --outcome-status verified --summary "\.\.\." --evidence-ref <ref\.\.\.> --verification-command "<command\.\.\.>" --next-move "\.\.\." --state-root <state-root>/);
+    assert.match(rendered.markdown, /after_verify: pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_context_open --outcome-status verified --summary "\.\.\." --evidence-ref <ref\.\.\.> --verification-command "<command\.\.\.>" --verification-claim "<entrypoint>: <claim>" --next-move "\.\.\." --state-root <state-root>/);
     assert.match(rendered.markdown, /evidence_basis: packages\/core\/src\/ga_project_design\.ts \| self-evolution\/iterations\/iteration_contract_context_open\.json \| self-evolution\/iterations\/iteration_contract_context_plan\.json \| tests\/context_harness\.test\.ts/);
-    assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage/);
+    assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage/);
     assert.match(rendered.markdown, /audit: goal_scope,current_state,verification_scope,learning_persistence/);
     assert.match(rendered.markdown, /audit_require: goal_scope=Preserve the latest operator objective and do not redefine success around completed work.; current_state=Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.; verification_scope=Match verification evidence to the scope of the completion claim.; learning_persistence=Record the verified outcome before reusing the slice as future GA design evidence./);
     assert.match(rendered.markdown, /audit_evidence: goal_scope=proposed_slice=core_ga_design_next_slice_after_context_plan; current_state=service health status and reasons when service health is a required verification command; verification_scope=outcome maps each required verification entrypoint to a completion claim; learning_persistence=record-iteration-outcome ref/);

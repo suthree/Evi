@@ -100,6 +100,8 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(multiExpert?.stage, "active");
     assert.equal(multiExpert?.score, 5);
     assert.match(multiExpert?.summary ?? "", /selectable advisory plan surface/);
+    assert.match(multiExpert?.summary ?? "", /scheduling is deferred until core\/basic and learning-persistence gates are stable/);
+    assert.equal(multiExpert?.next_moves[0], "Defer expert scheduling until core/basic and learning-persistence gates are stable.");
     assert.equal(multiExpert?.evidence_refs.includes("packages/core/src/expert_orchestration.ts"), true);
     assert.equal(scorecard.expert_lenses.find((lens) => lens.id === "orchestration_planner")?.status, "active");
     assert.equal(scorecard.next_iterations.length, 3);
@@ -112,7 +114,7 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("derived project-design artifact")), true);
     const multiExpertSlice = scorecard.next_slices.find((slice) => slice.dimension_id === "multi_expert_orchestration");
     assert.equal(multiExpertSlice?.layer, "core_runtime");
-    assert.equal(multiExpertSlice?.reason.includes("stable enough"), true);
+    assert.equal(multiExpertSlice?.reason.includes("defer execution until core/basic and learning-persistence gates are stable"), true);
     assert.equal(multiExpertSlice?.success_criteria.some((criterion) => criterion.includes("main-thread verification")), true);
     assert.equal(scorecard.next_slices.some((slice) =>
       slice.dimension_id === "core_ga_design"

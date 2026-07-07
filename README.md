@@ -404,6 +404,17 @@ or executing the recommendation.
 The plan includes a read-only `iteration_focus` so the next model turn sees the
 core/basic direction, next steps, and anti-drift checks instead of inferring
 purpose from the opaque slice id alone.
+Its `implementation_contract` states the allowed reusable contract/read-model
+change, deferred scopes, and delivery standard before implementation. It is
+pre-execution boundary guidance, not an execution plan or completion proof.
+Completion audit seeds and acceptance trace require the later outcome to show
+that the delivered change stayed inside that contract and did not enter
+deferred tool, learning, or expert-orchestration scope.
+Plan-derived iteration records persist that implementation contract, so later
+inspection does not have to infer the boundary from the source artifact alone.
+Iteration completion audit also checks contract coverage: it compares the
+current plan when it still targets the audited iteration, and otherwise checks
+the audited iteration's persisted contract for self-consistency.
 Phase gates carry their `forbidden_shortcuts`, so anti-drift constraints stay
 visible with the phase contract.
 It also includes `capability_stage_plan`, a read-only split of current core
@@ -415,6 +426,9 @@ hardening, basic entrypoint verification, deferred local-learning reuse, and
 completion review stay tied together.
 Acceptance criteria use the same audit-seed labels, keeping goal scope, current
 state, verification scope, and learning persistence review aligned.
+The matching `acceptance_trace` maps each criterion to required verification
+entrypoints and outcome claim prefixes, so outcome writeback can stay tied to
+direct evidence without making the trace itself completion proof.
 The basic runtime observability stage may be `attention_guard`; that means it
 must keep service-health attention visible, not that the resident service is
 healthy.

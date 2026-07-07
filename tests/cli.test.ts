@@ -8,7 +8,11 @@ import {
   buildIterationAuditCompletionGate,
   buildIterationAuditEvidenceAvailable,
   buildIterationAuditGuidance,
+  buildIterationAuditImplementationContractCoverage,
   buildIterationAuditNextCommand,
+  buildIterationAuditRuntimeAttentionOutcomeCoverage,
+  buildIterationAuditWorkspaceOutcomeCoverage,
+  buildIterationAuditOutcomeVerificationClaimCoverage,
   buildIterationAuditOutcomeVerificationCommandCoverage,
   buildIterationAuditPlanRefCoverage,
   buildIterationAuditRefs,
@@ -232,13 +236,29 @@ test("iteration audit seed evidence status stays conservative before outcome evi
       iteration_verification_commands: ["pnpm run check"],
       runtime_iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missingOutcome.evidence_status, "missing_outcome");
   assert.equal(missingOutcome.missing.includes("outcome_record"), true);
   assert.equal(missingOutcome.evidence_counts.runtime_iteration_verification_commands, 1);
   assert.equal(missingOutcome.manual_review_required, true);
+
+  const missingEntrypointClaim = buildIterationAuditSeedEvidenceStatus(
+    seed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
+      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
+    },
+    { status: "missing_entrypoints" }
+  );
+  assert.equal(missingEntrypointClaim.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingEntrypointClaim.missing.includes("outcome_verification_claim_coverage"), true);
 
   const readyForReview = buildIterationAuditSeedEvidenceStatus(
     seed,
@@ -247,13 +267,145 @@ test("iteration audit seed evidence status stays conservative before outcome evi
       iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
-      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"]
-    }
+      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
+    },
+    { status: "covered" }
   );
   assert.equal(readyForReview.evidence_status, "ready_for_manual_review");
   assert.equal(readyForReview.missing.length, 0);
   assert.equal(readyForReview.evidence_counts.runtime_iteration_verification_commands, 0);
   assert.match(readyForReview.review_note, /does not prove/);
+
+  const currentStateSeed = {
+    id: "current_state",
+    phase_id: "capability_layering",
+    requirement: "Check current runtime state.",
+    evidence_needed: ["service health status and reasons"],
+    reject_if: ["runtime attention is not handled"]
+  } as const;
+  const missingRuntimeAttention = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "missing_classification" }
+  );
+  assert.equal(missingRuntimeAttention.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingRuntimeAttention.missing.includes("runtime_attention_outcome_coverage"), true);
+
+  const missingWorkspaceCoverage = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "missing_workspace_claim" }
+  );
+  assert.equal(missingWorkspaceCoverage.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingWorkspaceCoverage.missing.includes("workspace_outcome_coverage"), true);
+
+  const missingImplementationContractCoverage = buildIterationAuditSeedEvidenceStatus(
+    currentStateSeed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/cli.test.ts"],
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: ["check: full repo checks pass before outcome recording"]
+    },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
+    { status: "missing_contract" }
+  );
+  assert.equal(missingImplementationContractCoverage.evidence_status, "missing_outcome_evidence");
+  assert.equal(missingImplementationContractCoverage.missing.includes("implementation_contract_coverage"), true);
+});
+
+test("iteration audit implementation contract coverage compares plan and iteration contracts", () => {
+  const planContract = {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    source_artifact_id: "ga_design_artifact_iteration_contract_source",
+    source_proposed_slice: "completed_source",
+    selected_layer: "core_runtime" as const,
+    owner_surface: "ga_project_design",
+    improvement_type: "reusable_ga_design_contract" as const,
+    implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+    deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
+    delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
+    boundary: "read-only GA implementation contract"
+  };
+
+  const missing = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design"
+  });
+  assert.equal(missing.status, "missing_contract");
+  assert.deepEqual(missing.missing_fields, ["implementation_contract"]);
+
+  const mismatched = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      deferred_scope: ["no SOP or skill promotion"]
+    }
+  });
+  assert.equal(mismatched.status, "mismatched_contract");
+  assert.deepEqual(mismatched.mismatched_fields, ["deferred_scope"]);
+
+  const covered = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
+  assert.match(covered.boundary, /does not mutate state or prove completion/);
+
+  const coveredHistorical = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(coveredHistorical.status, "covered");
+  assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
+
+  const missingHistoricalFields = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      implementation_scope: []
+    }
+  });
+  assert.equal(missingHistoricalFields.status, "missing_required_fields");
+  assert.deepEqual(missingHistoricalFields.missing_fields, ["implementation_scope"]);
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
@@ -277,6 +429,8 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.equal(covered.plan_ref_count, 4);
   assert.equal(covered.covered_ref_count, 4);
   assert.deepEqual(covered.missing_refs, []);
+  assert.deepEqual(covered.required_outcome_evidence_refs, []);
+  assert.equal(covered.repair_note, "no plan ref repair required");
   assert.match(covered.boundary, /does not read file bodies or prove completion/);
 
   const missing = buildIterationAuditPlanRefCoverage(
@@ -293,6 +447,8 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.equal(missing.status, "missing_refs");
   assert.equal(missing.covered_ref_count, 1);
   assert.deepEqual(missing.missing_refs, ["docs/RUNTIME_CONTRACT.md"]);
+  assert.deepEqual(missing.required_outcome_evidence_refs, ["docs/RUNTIME_CONTRACT.md"]);
+  assert.match(missing.repair_note, /--merge-existing-outcome/);
 });
 
 test("iteration audit refs include source and outcome evidence refs", () => {
@@ -333,7 +489,8 @@ test("iteration audit verification command coverage compares required commands t
         "pnpm run runtime -- governance scorecard --state-root .runtime/state"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: ["pnpm run check"]
+      outcome_verification_commands: ["pnpm run check"],
+      outcome_verification_claims: []
     }
   );
   assert.equal(covered.status, "covered");
@@ -354,7 +511,8 @@ test("iteration audit verification command coverage compares required commands t
         "pnpm run runtime -- governance scorecard --state-root .runtime/state"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missing.status, "missing_commands");
@@ -376,7 +534,8 @@ test("iteration audit outcome verification command coverage ignores declared ite
         "pnpm run check"
       ],
       outcome_evidence_refs: [],
-      outcome_verification_commands: []
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
     }
   );
   assert.equal(missingOutcome.status, "missing_outcome_commands");
@@ -400,12 +559,237 @@ test("iteration audit outcome verification command coverage ignores declared ite
       outcome_verification_commands: [
         "pnpm run runtime -- governance scorecard --state-root .runtime/state",
         "pnpm run check"
-      ]
+      ],
+      outcome_verification_claims: []
     }
   );
   assert.equal(covered.status, "covered");
   assert.equal(covered.covered_command_count, 2);
   assert.deepEqual(covered.missing_commands, []);
+});
+
+test("iteration audit outcome verification claim coverage maps required entrypoints", () => {
+  const missingClaims = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: []
+    }
+  );
+  assert.equal(missingClaims.status, "missing_claims");
+  assert.deepEqual(missingClaims.missing_entrypoints, ["project-design", "scorecard", "check"]);
+
+  const missingEntrypoint = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: [
+        "project-design: plan stays on the successor core/basic slice",
+        "check: full repo checks pass before outcome recording"
+      ]
+    }
+  );
+  assert.equal(missingEntrypoint.status, "missing_entrypoints");
+  assert.deepEqual(missingEntrypoint.missing_entrypoints, ["scorecard"]);
+
+  const covered = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: [
+        "project-design: plan stays on the successor core/basic slice",
+        "scorecard: next core/basic slice remains ahead of expert scheduling",
+        "entrypoint=check full repo checks pass before outcome recording"
+      ]
+    }
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.covered_entrypoint_count, 3);
+  assert.deepEqual(covered.missing_entrypoints, []);
+  assert.match(covered.boundary, /does not execute commands or prove completion/);
+});
+
+test("iteration audit runtime attention coverage requires structured service-health handling", () => {
+  const serviceHealth = {
+    status: "attention",
+    status_reasons: ["heartbeat_stale", "deployment_stale"]
+  } as const;
+
+  const notRequired = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["check"],
+    { outcome_verification_claims: [] },
+    serviceHealth
+  );
+  assert.equal(notRequired.status, "not_required");
+  assert.equal(notRequired.service_health_required, false);
+
+  const missingClaim = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    { outcome_verification_claims: ["check: full repo check passed"] },
+    serviceHealth
+  );
+  assert.equal(missingClaim.status, "missing_service_health_claim");
+
+  const missingStatus = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart follow_up=service restart"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingStatus.status, "missing_service_health_status");
+
+  const missingReasons = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale classification=repair_needed handling=restart follow_up=service restart"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingReasons.status, "missing_service_health_reasons");
+  assert.deepEqual(missingReasons.missing_reasons, ["deployment_stale"]);
+
+  const missingClassification = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingClassification.status, "missing_classification");
+
+  const missingHandling = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingHandling.status, "missing_handling_policy");
+
+  const missingRepairFollowUp = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart resident runtime"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(missingRepairFollowUp.status, "missing_repair_follow_up");
+
+  const covered = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    {
+      outcome_verification_claims: [
+        "service-health: status=attention reasons=heartbeat_stale,deployment_stale classification=repair_needed handling=restart resident runtime follow_up=service restart after commit"
+      ]
+    },
+    serviceHealth
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.selected_classification, "repair_needed");
+  assert.deepEqual(covered.missing_reasons, []);
+  assert.match(covered.boundary, /does not execute commands/);
+
+  const healthy = buildIterationAuditRuntimeAttentionOutcomeCoverage(
+    ["service-health"],
+    { outcome_verification_claims: [] },
+    { status: "healthy", status_reasons: [] }
+  );
+  assert.equal(healthy.status, "not_required");
+});
+
+test("iteration audit workspace coverage requires dirty paths in outcome claims", () => {
+  const dirtyWorkspace = {
+    status: "dirty",
+    changed_file_count: 2,
+    changes: [
+      { status_code: " M", path: "apps/cli/src/main.ts", category: "unstaged" },
+      { status_code: " M", path: "tests/cli.test.ts", category: "unstaged" }
+    ],
+    truncated: false
+  } as const;
+
+  const missingClaim = buildIterationAuditWorkspaceOutcomeCoverage(
+    { outcome_verification_claims: ["check: tests passed"] },
+    dirtyWorkspace
+  );
+  assert.equal(missingClaim.status, "missing_workspace_claim");
+  assert.deepEqual(missingClaim.required_tokens, [
+    "workspace: status=dirty",
+    "path=apps/cli/src/main.ts",
+    "path=tests/cli.test.ts"
+  ]);
+
+  const missingStatus = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(missingStatus.status, "missing_workspace_status");
+
+  const missingPath = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(missingPath.status, "missing_changed_paths");
+  assert.deepEqual(missingPath.missing_paths, ["tests/cli.test.ts"]);
+
+  const covered = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    dirtyWorkspace
+  );
+  assert.equal(covered.status, "covered");
+  assert.deepEqual(covered.missing_paths, []);
+  assert.match(covered.boundary, /does not read file bodies/);
+
+  const clean = buildIterationAuditWorkspaceOutcomeCoverage(
+    { outcome_verification_claims: [] },
+    { status: "clean", changed_file_count: 0, changes: [], truncated: false }
+  );
+  assert.equal(clean.status, "not_required");
+
+  const truncated = buildIterationAuditWorkspaceOutcomeCoverage(
+    {
+      outcome_verification_claims: [
+        "workspace: status=dirty paths=apps/cli/src/main.ts,tests/cli.test.ts"
+      ]
+    },
+    { ...dirtyWorkspace, truncated: true }
+  );
+  assert.equal(truncated.status, "truncated_workspace_changes");
 });
 
 test("iteration audit completion gate blocks before outcome evidence and coverage are present", () => {
@@ -421,6 +805,52 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     "outcome_verification_command_coverage"
   ]);
   assert.match(blocked.boundary, /does not approve seeds or prove completion/);
+
+  const missingClaims = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "missing_claims" }
+  );
+  assert.equal(missingClaims.status, "blocked");
+  assert.deepEqual(missingClaims.blockers, ["outcome_verification_claim_coverage"]);
+
+  const missingRuntimeAttention = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "missing_classification" }
+  );
+  assert.equal(missingRuntimeAttention.status, "blocked");
+  assert.deepEqual(missingRuntimeAttention.blockers, ["runtime_attention_outcome_coverage"]);
+
+  const missingWorkspaceCoverage = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "missing_workspace_claim" }
+  );
+  assert.equal(missingWorkspaceCoverage.status, "blocked");
+  assert.deepEqual(missingWorkspaceCoverage.blockers, ["workspace_outcome_coverage"]);
+
+  const missingImplementationContractCoverage = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
+    { status: "missing_contract" }
+  );
+  assert.equal(missingImplementationContractCoverage.status, "blocked");
+  assert.deepEqual(missingImplementationContractCoverage.blockers, ["implementation_contract_coverage"]);
 
   const partial = buildIterationAuditCompletionGate(
     { outcome_status: "partial" },
@@ -439,6 +869,7 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   );
   assert.equal(ready.status, "ready_for_manual_review");
   assert.deepEqual(ready.blockers, []);
+  assert.match(ready.boundary, /implementation contract coverage/);
 });
 
 test("iteration audit verification coverage uses stable iteration commands for historical audits", () => {
@@ -469,8 +900,169 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     proposed_slice: "core_ga_design_next_slice_after_source",
     source_artifact_id: "ga_design_artifact_iteration_contract_source",
     source_iteration_ref: "self-evolution/iterations/iteration_contract_source.json",
+    goal_scope: {
+      objective: "continue core/basic GA project-design capability gains before SOP or skill promotion",
+      owner_surface: "ga_project_design",
+      source_of_truth: [
+        "operator_objective=core_basic_self_evolution_first",
+        "source_artifact=ga_design_artifact_iteration_contract_source"
+      ],
+      success_evidence: [
+        "target_slice=core_ga_design_next_slice_after_source",
+        "verified outcome records evidence refs and completion claims"
+      ]
+    },
+    implementation_contract: {
+      proposed_slice: "core_ga_design_next_slice_after_source",
+      source_artifact_id: "ga_design_artifact_iteration_contract_source",
+      source_proposed_slice: "completed_source",
+      selected_layer: "core_runtime" as const,
+      owner_surface: "ga_project_design",
+      improvement_type: "reusable_ga_design_contract" as const,
+      implementation_scope: [
+        "change one reusable GA project-design contract or read-model surface"
+      ],
+      deferred_scope: [
+        "no external adapter or tool integration unless it names a reusable runtime contract"
+      ],
+      delivery_standard: [
+        "future iterations can inspect the contract without inferring intent from the opaque slice id"
+      ],
+      boundary: "read-only GA implementation contract"
+    },
+    iteration_focus: {
+      direction_id: "core_basic_plan_clarity" as const,
+      direction: "Clarify the next core/basic GA design improvement before implementation.",
+      rationale: "The successor should be chosen from verified GA design evidence.",
+      next_steps: [
+        "inspect the current project-design plan and matching open iteration",
+        "pick one small reusable GA design contract improvement",
+        "verify the slice with project-design, scorecard, iteration audit, service health, and broad checks before recording an outcome"
+      ],
+      anti_drift_checks: [
+        "do not infer core identity from external adapter or MCP pressure",
+        "do not promote SOP, skill, memory, or dream artifacts before verified core/basic reuse evidence exists",
+        "do not claim completion until outcome verification commands cover the required project-design checks"
+      ]
+    },
+    capability_stage_plan: {
+      core_capabilities: [
+        {
+          id: "goal_intake",
+          title: "Goal intake",
+          layer: "core_runtime",
+          stage: "active",
+          current_state: "goal scope is explicit",
+          next_iteration: "keep successor goal scope visible in audit",
+          exit_criteria: [
+            "objective and owner surface are visible",
+            "success evidence distinguishes source from successor"
+          ],
+          evidence_refs: ["packages/core/src/ga_project_design.ts"]
+        }
+      ],
+      basic_capabilities: [
+        {
+          id: "runtime_observability",
+          title: "Runtime observability",
+          layer: "basic_entrypoint",
+          stage: "attention_guard",
+          current_state: "service health remains visible",
+          next_iteration: "keep workspace and service health in completion claims",
+          exit_criteria: [
+            "resident health is checked after service-facing changes",
+            "workspace status is covered when dirty"
+          ],
+          evidence_refs: ["packages/core/src/service_health.ts"]
+        }
+      ],
+      next_iteration_plan: [
+        "core_runtime[goal_scope]: preserve goal scope in audit guidance",
+        "basic_entrypoint[runtime_observability]: preserve service health evidence"
+      ]
+    },
+    phase_gates: [
+      {
+        phase_id: "capability_layering",
+        title: "Capability layering",
+        layer: "core_runtime",
+        objective: "classify the work before implementation",
+        required_inputs: ["scorecard"],
+        exit_evidence: ["selected layer is explicit"],
+        forbidden_shortcuts: [
+          "do not promote one adapter into core identity",
+          "do not hide basic runtime failures under application progress"
+        ]
+      },
+      {
+        phase_id: "learning_persistence",
+        title: "Learning persistence",
+        layer: "local_learning",
+        objective: "persist only reusable lessons",
+        required_inputs: ["verified outcome"],
+        exit_evidence: ["next moves preserve boundaries"],
+        forbidden_shortcuts: [
+          "do not let a self-evolution SOP override completion gates"
+        ]
+      }
+    ],
+    acceptance_criteria: [
+      "goal_scope: objective and owner surface stay visible",
+      "current_state: implementation contract bounds allowed scope before outcome",
+      "verification_scope: required entrypoints are covered by completion claims",
+      "learning_persistence: SOPs and skills preserve procedure only"
+    ],
+    acceptance_trace: [
+      {
+        seed_id: "goal_scope" as const,
+        phase_id: "goal_intake" as const,
+        criterion: "goal_scope: objective and owner surface stay visible",
+        required_entrypoints: ["project-design", "iterations"],
+        outcome_claim_prefixes: ["project-design:", "iterations:"]
+      },
+      {
+        seed_id: "current_state" as const,
+        phase_id: "capability_layering" as const,
+        criterion: "current_state: implementation contract bounds allowed scope before outcome",
+        required_entrypoints: ["project-design", "iterations", "workspace"],
+        outcome_claim_prefixes: ["project-design:", "iterations:", "workspace:"]
+      },
+      {
+        seed_id: "verification_scope" as const,
+        phase_id: "verification_review" as const,
+        criterion: "verification_scope: required entrypoints are covered by completion claims",
+        required_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
+        outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:", "service-health:", "check:"]
+      },
+      {
+        seed_id: "learning_persistence" as const,
+        phase_id: "learning_persistence" as const,
+        criterion: "learning_persistence: SOPs and skills preserve procedure only",
+        required_entrypoints: ["project-design", "iterations"],
+        outcome_claim_prefixes: ["project-design:", "iterations:"]
+      }
+    ],
+    non_goals: [
+      "does not promote SOPs, skills, memory, dreams, or application adapters",
+      "does not create expert agents or scheduling",
+      "does not execute the next slice"
+    ],
+    scorecard_basis: [
+      "next_core_basic_slice=next_slice_core_ga_design",
+      "target_dimension=core_ga_design",
+      "target_layer=core_runtime"
+    ],
+    selection_status: "ready" as const,
+    selection_reasons: [
+      "source_status=verified",
+      "fresh_successor_slice=true",
+      "target_layer=core_runtime",
+      "owner_surface=ga_project_design"
+    ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
+      "fresh_successor_slice=true; source_slice=completed_source; target_slice=core_ga_design_next_slice_after_source",
+      "target_layer=core_runtime; owner_surface=ga_project_design",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     verification_commands: [
@@ -480,10 +1072,27 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "pnpm run runtime -- service health --target im --state-root <state-root>",
       "pnpm run check"
     ],
+    learning_authority: {
+      process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
+      judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+      completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
+      promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
+      boundary: "read-only learning authority boundary"
+    },
     layer_decision: {
       selected_layer: "core_runtime",
       selected_owner_surface: "ga_project_design",
+      source_layer: "core_runtime",
+      source_owner_surface: "ga_project_design",
+      source_proposed_slice: "completed_source",
+      proposed_slice: "core_ga_design_next_slice_after_source",
       core_identity: "recurring_ga_project_design",
+      stage: "core_basic_successor_ready",
+      reasons: [
+        "core identity is the reusable GA project-design loop, not a single external adapter",
+        "the next slice is a core/basic successor because it improves design classification, planning, or verification reuse",
+        "source_layer=core_runtime; selected_layer=core_runtime"
+      ],
       application_boundaries: [
         "external tools and adapters stay application slices unless a reusable runtime contract is named"
       ],
@@ -505,6 +1114,47 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.core_identity, "recurring_ga_project_design");
   assert.equal(guidance.selected_layer, "core_runtime");
   assert.equal(guidance.guidance_scope, "current_plan_context");
+  assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
+  assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
+  assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
+  assert.equal(guidance.implementation_contract.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.implementation_contract.selected_layer, "core_runtime");
+  assert.equal(guidance.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+  assert.equal(guidance.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
+  assert.equal(guidance.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
+  assert.equal(guidance.implementation_contract.boundary.includes("read-only"), true);
+  assert.equal(guidance.iteration_focus.direction_id, "core_basic_plan_clarity");
+  assert.equal(guidance.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
+  assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);
+  assert.equal(guidance.iteration_focus.anti_drift_checks.some((check) => check.includes("SOP, skill, memory, or dream artifacts")), true);
+  assert.equal(guidance.capability_stage_plan.core_capabilities.some((stage) => stage.id === "goal_intake" && stage.exit_criteria.length === 2), true);
+  assert.equal(guidance.capability_stage_plan.basic_capabilities.some((stage) => stage.id === "runtime_observability" && stage.stage === "attention_guard"), true);
+  assert.equal(guidance.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[goal_scope]:")), true);
+  assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter"))), true);
+  assert.equal(guidance.phase_gates.some((gate) => gate.phase_id === "learning_persistence" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("completion gates"))), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("goal_scope:") && criterion.includes("owner surface")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("current_state:") && criterion.includes("implementation contract")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("verification_scope:") && criterion.includes("completion claims")), true);
+  assert.equal(guidance.acceptance_criteria.some((criterion) => criterion.startsWith("learning_persistence:") && criterion.includes("procedure only")), true);
+  assert.equal(guidance.acceptance_trace.length, guidance.acceptance_criteria.length);
+  assert.equal(guidance.acceptance_trace.every((trace) => guidance.acceptance_criteria.includes(trace.criterion)), true);
+  assert.equal(guidance.acceptance_trace.some((trace) => trace.seed_id === "current_state" && trace.required_entrypoints.includes("workspace")), true);
+  assert.equal(guidance.acceptance_trace.some((trace) => trace.seed_id === "verification_scope" && trace.required_entrypoints.includes("check")), true);
+  assert.equal(guidance.acceptance_trace.some((trace) => trace.outcome_claim_prefixes.includes("service-health:")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("does not promote SOPs")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("expert agents or scheduling")), true);
+  assert.equal(guidance.non_goals.some((nonGoal) => nonGoal.includes("next slice")), true);
+  assert.equal(guidance.selection_status, "ready");
+  assert.equal(guidance.selection_reasons.some((reason) => reason === "source_status=verified"), true);
+  assert.equal(guidance.selection_reasons.some((reason) => reason === "fresh_successor_slice=true"), true);
+  assert.equal(guidance.selection_checks.some((check) => check.includes("target_layer=core_runtime")), true);
+  assert.equal(guidance.scorecard_basis.some((basis) => basis === "next_core_basic_slice=next_slice_core_ga_design"), true);
+  assert.equal(guidance.layer_decision.source_layer, "core_runtime");
+  assert.equal(guidance.layer_decision.source_proposed_slice, "completed_source");
+  assert.equal(guidance.layer_decision.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.layer_decision.stage, "core_basic_successor_ready");
+  assert.equal(guidance.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
+  assert.equal(guidance.layer_decision.application_boundaries[0]?.includes("application slices"), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",
@@ -515,6 +1165,8 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
   assert.equal(guidance.verification_commands.some((command) => command.includes("service health")), true);
   assert.equal(guidance.application_boundaries[0]?.includes("application slices"), true);
+  assert.equal(guidance.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
+  assert.match(guidance.learning_authority.completion_authority, /not SOP text/);
   assert.equal(guidance.iteration_record_status.id, "iteration_contract_open");
   assert.match(guidance.boundary, /does not execute checks/);
 
@@ -524,6 +1176,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       id: "iteration_contract_source",
       ref: "self-evolution/iterations/iteration_contract_source.json",
       source_ref: "self-evolution/iterations/iteration_contract_parent.json",
+      implementation_contract: plan.implementation_contract,
       proposed_slice: "completed_source_slice",
       outcome_status: "verified"
     },
@@ -532,6 +1185,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.guidance_scope, "source_iteration_for_current_plan");
   assert.equal(sourceGuidance.audited_iteration?.id, "iteration_contract_source");
   assert.equal(sourceGuidance.audited_iteration?.source_ref, "self-evolution/iterations/iteration_contract_parent.json");
+  assert.equal(sourceGuidance.audited_iteration?.implementation_contract?.proposed_slice, "core_ga_design_next_slice_after_source");
   assert.equal(sourceGuidance.iteration_record_status.id, "iteration_contract_source");
   assert.equal(sourceGuidance.iteration_record_status.status, "outcome_recorded");
   assert.equal(sourceGuidance.iteration_record_status.outcome_status, "verified");
@@ -539,6 +1193,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<iteration-ref>")), false);
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<state-root>")), false);
   assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("--state-root .runtime/state")), true);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("--iteration iteration_contract_source --audit-seed all")), true);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("<iteration-ref>")), false);
+  assert.equal(sourceGuidance.layer_decision.required_before_outcome.some((command) => command.includes("<state-root>")), false);
   assert.equal(sourceGuidance.iteration_record_status.audit_command?.includes("--state-root .runtime/state"), true);
   assert.notEqual(sourceGuidance.iteration_record_status.id, "iteration_contract_open");
 });
@@ -549,7 +1206,7 @@ test("iteration audit next command binds current state root", () => {
     ".runtime/state"
   );
   assert.equal(openNext.includes("<state-root>"), false);
-  assert.equal(openNext, "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --state-root .runtime/state");
+  assert.equal(openNext, "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --evidence-ref <ref...> --verification-command \"<command...>\" --verification-claim \"<entrypoint>: <claim>\" --next-move \"...\" --state-root .runtime/state");
 
   const verifiedNext = buildIterationAuditNextCommand(
     { id: "iteration_contract_done", outcome_status: "verified" },
@@ -667,7 +1324,17 @@ test("iteration audit evidence adds bound runtime verification commands", () => 
     verification_commands: [
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
       "pnpm run check"
-    ]
+    ],
+    outcome: {
+      status: "verified",
+      summary: "Verified the bounded slice.",
+      evidence_refs: ["tests/cli.test.ts"],
+      verification_commands: ["pnpm run check"],
+      verification_claims: ["check: full repo checks pass before outcome recording"],
+      next_moves: [],
+      recorded_at: "2026-07-07T00:00:00Z",
+      boundary: "bounded outcome"
+    }
   } as Parameters<typeof buildIterationAuditEvidenceAvailable>[0], ".runtime/state");
 
   assert.equal(evidence.iteration_verification_commands[0]?.includes("<state-root>"), true);
@@ -675,7 +1342,8 @@ test("iteration audit evidence adds bound runtime verification commands", () => 
     "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root .runtime/state",
     "pnpm run check"
   ]);
-  assert.deepEqual(evidence.outcome_evidence_refs, []);
+  assert.deepEqual(evidence.outcome_evidence_refs, ["tests/cli.test.ts"]);
+  assert.deepEqual(evidence.outcome_verification_claims, ["check: full repo checks pass before outcome recording"]);
 });
 
 test("workspace status command parses read-only git diagnostic options", () => {
@@ -1167,10 +1835,13 @@ test("governance status command parses scoped status options", () => {
     "verified",
     "--summary",
     "Verified the bounded core iteration.",
+    "--merge-existing-outcome",
     "--evidence-ref",
     "tests/self_evolution_iterations.test.ts",
     "--verification-command",
     "pnpm run check",
+    "--verification-claim",
+    "check: full repo checks pass before outcome recording",
     "--next-move",
     "Open the next bounded core/basic slice.",
     "--state-root",
@@ -1181,8 +1852,10 @@ test("governance status command parses scoped status options", () => {
   assert.equal(iterationOutcome.iterationRef, "iteration_contract_1");
   assert.equal(iterationOutcome.iterationOutcomeStatus, "verified");
   assert.equal(iterationOutcome.iterationSummary, "Verified the bounded core iteration.");
+  assert.equal(iterationOutcome.iterationMergeExistingOutcome, true);
   assert.deepEqual(iterationOutcome.iterationEvidenceRefs, ["tests/self_evolution_iterations.test.ts"]);
   assert.deepEqual(iterationOutcome.iterationVerificationCommands, ["pnpm run check"]);
+  assert.deepEqual(iterationOutcome.iterationVerificationClaims, ["check: full repo checks pass before outcome recording"]);
   assert.deepEqual(iterationOutcome.iterationNextMoves, ["Open the next bounded core/basic slice."]);
   assert.equal(iterationOutcome.stateRoot, ".runtime/state");
 

@@ -460,9 +460,18 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
   const feedbackRefreshSkip = health.content_feedback_refresh.last_top_skip_reason
     ? ` skip=${health.content_feedback_refresh.last_top_skip_reason}:${health.content_feedback_refresh.last_skipped_count ?? "unknown"}`
     : "";
+  const healthStatus = health.status_reasons.length > 0
+    ? `${health.status} reasons=${health.status_reasons.join(",")}`
+    : health.status;
+  const followups = health.attention_followups
+    .slice(0, 4)
+    .map((followup) => compactServiceHealthFollowupCommand(followup.command));
+  const serviceHealthSummary = followups.length > 0
+    ? `${healthStatus} followups=${followups.join(",")}`
+    : healthStatus;
   const lines = [
     "Read-only service runtime health.",
-    `- service_health: ${health.status}`,
+    `- service_health: ${serviceHealthSummary}`,
     `- im_state: ${health.im.state}`,
     `- pid: ${health.im.pid ?? "unknown"}`,
     `- channel: ${health.im.channel_id ?? "unknown"}`,
@@ -471,7 +480,6 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
     `- heartbeat_age_ms: ${health.im.heartbeat_age_ms ?? "unknown"}`,
     `- heartbeat_updated_at: ${health.im.heartbeat_updated_at ?? "unknown"}`,
     `- deployment_status: ${deployment.status}`,
-    `- deployment_reason: ${deployment.reason}`,
     `- repo_commit: ${deployment.repo_commit_short ?? "unknown"}`,
     `- repo_branch: ${deployment.repo_branch ?? "unknown"}`,
     `- review_tick: ${health.review_tick.state}${reviewTickNext}${reviewTickInbox}`,
@@ -509,6 +517,16 @@ async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection>
     refs: health.refs,
     item_count: health.refs.length
   };
+}
+
+function compactServiceHealthFollowupCommand(command: string | undefined): string {
+  if (!command) return "inspect";
+  if (command.includes("service status")) return "status";
+  if (command.includes("service restart")) return "restart";
+  if (command.includes("workspace status")) return "workspace";
+  if (command.includes("resume-autonomy")) return "resume";
+  if (command.includes("service health")) return "health";
+  return truncate(command, 80);
 }
 
 async function workspaceStatusSection(store: AgentStore): Promise<ContextSection> {
@@ -1554,11 +1572,30 @@ export function compactGaPlanGoalScope(
   return `objective=${scope.objective}; owner=${scope.owner_surface}; source=${source}; success=${success}`;
 }
 
+export function compactGaPlanImplementationContract(
+  plan: Pick<GaProjectDesignPlanPacket, "implementation_contract">
+): string {
+  const contract = plan.implementation_contract;
+  return [
+    `type=${contract.improvement_type}`,
+    `scope=${contract.implementation_scope[0] ?? "unknown"}`,
+    `defer=${contract.deferred_scope[0] ?? "unknown"}`,
+    `deliver=${contract.delivery_standard[0] ?? "unknown"}`
+  ].join("; ");
+}
+
 export function compactGaPlanLayerGuard(
   plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
 ): string {
   const decision = plan.layer_decision;
   return `stage=${decision.stage}; source=${decision.source_layer}/${decision.source_owner_surface}; selected=${decision.selected_layer}/${decision.selected_owner_surface}`;
+}
+
+export function compactGaPlanLearningAuthority(
+  plan: Pick<GaProjectDesignPlanPacket, "learning_authority">
+): string {
+  const authority = plan.learning_authority;
+  return `process=${authority.process_scaffold}; judgment=${authority.judgment_authority}; completion=${authority.completion_authority}; promotion=${authority.promotion_gate}`;
 }
 
 export function compactGaPlanAuditRequirements(
@@ -1646,6 +1683,17 @@ export function compactGaPlanPhaseForbids(
     .join("; ");
 }
 
+const COMPACT_GA_PLAN_PROOF_REQUIREMENTS = [
+  "verified_outcome",
+  "outcome_evidence_refs",
+  "plan_ref_coverage",
+  "implementation_contract_coverage",
+  "outcome_verification_command_coverage",
+  "outcome_verification_claim_coverage",
+  "runtime_attention_outcome_coverage",
+  "workspace_outcome_coverage"
+].join(",");
+
 export function compactGaPlanReviewGate(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status" | "selection_checks">
 ): string | null {
@@ -1653,7 +1701,7 @@ export function compactGaPlanReviewGate(
   const required = plan.selection_checks
     .find((check) => check.startsWith("verification_entrypoints="))
     ?.replace("verification_entrypoints=", "");
-  return `blocked; blockers=outcome_record,outcome_verification_command_coverage${required ? `; required=${required}` : ""}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
+  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; required_coverage=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
 }
 
 export function compactGaPlanVerificationCommands(
@@ -1686,7 +1734,7 @@ export function compactGaPlanAfterVerifyCommand(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available" || !plan.iteration_record_status.id) return null;
-  return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --next-move "..." --state-root <state-root>`;
+  return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --verification-claim "<entrypoint>: <claim>" --next-move "..." --state-root <state-root>`;
 }
 
 export function compactGaPlanEvidenceRefs(refs: string[]): string[] {
@@ -1697,7 +1745,7 @@ export function compactGaPlanProofBoundary(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
-  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage";
+  return `evidence_basis=candidate_refs_only; require=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}`;
 }
 
 async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
@@ -1715,7 +1763,9 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactNonGoals = compactGaPlanNonGoals(plan.non_goals);
   const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
   const compactGoalScope = compactGaPlanGoalScope(plan);
+  const compactImplementationContract = compactGaPlanImplementationContract(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
+  const compactLearningAuthority = compactGaPlanLearningAuthority(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
   const compactAuditEvidence = compactGaPlanAuditEvidence(plan);
   const compactAuditRejects = compactGaPlanAuditRejects(plan);
@@ -1735,6 +1785,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `source_artifact: ${plan.source_artifact_id}`,
       `source_truth: ${sourceTruth}`,
       `goal_scope: ${compactGoalScope}`,
+      `implementation_contract: ${compactImplementationContract}`,
       `planning_basis: ${plan.planning_basis}`,
       `focus: ${plan.iteration_focus.direction}`,
       `focus_next: ${plan.iteration_focus.next_steps.slice(0, 2).join(" | ")}`,
@@ -1746,8 +1797,9 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `stage_next: ${plan.capability_stage_plan.next_iteration_plan.slice(0, 2).join(" | ")}`,
       `phase_forbid: ${compactPhaseForbids}`,
       `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
-      `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries[0]}`,
+      `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries.slice(0, 2).join("; ")}`,
       `layer_guard: ${compactLayerGuard}`,
+      `learning_authority: ${compactLearningAuthority}`,
       `selection: ${plan.selection_status}; ${compactSelectionReasons.join(" | ")}`,
       `checks: ${compactSelectionChecks.join(" | ")}`,
       ...(freshSuccessorCheck ? [`successor: ${freshSuccessorCheck}`] : []),

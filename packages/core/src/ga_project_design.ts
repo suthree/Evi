@@ -75,6 +75,14 @@ export interface GaProjectDesignCompletionAuditSeed {
   reject_if: string[];
 }
 
+export interface GaProjectDesignAcceptanceTrace {
+  seed_id: GaProjectDesignCompletionAuditSeed["id"];
+  phase_id: GaProjectDesignPhaseId;
+  criterion: string;
+  required_entrypoints: string[];
+  outcome_claim_prefixes: string[];
+}
+
 export interface GaProjectDesignLayerDecision {
   selected_layer: CapabilityLayer;
   selected_owner_surface: string;
@@ -87,6 +95,14 @@ export interface GaProjectDesignLayerDecision {
   reasons: string[];
   application_boundaries: string[];
   required_before_outcome: string[];
+}
+
+export interface GaProjectDesignLearningAuthority {
+  process_scaffold: string;
+  judgment_authority: string;
+  completion_authority: string;
+  promotion_gate: string;
+  boundary: string;
 }
 
 export interface GaProjectDesignIterationFocus {
@@ -102,6 +118,19 @@ export interface GaProjectDesignGoalScope {
   owner_surface: string;
   source_of_truth: string[];
   success_evidence: string[];
+}
+
+export interface GaProjectDesignImplementationContract {
+  proposed_slice: string;
+  source_artifact_id: string;
+  source_proposed_slice: string;
+  selected_layer: CapabilityLayer;
+  owner_surface: string;
+  improvement_type: "reusable_ga_design_contract";
+  implementation_scope: string[];
+  deferred_scope: string[];
+  delivery_standard: string[];
+  boundary: string;
 }
 
 export interface GaProjectDesignCapabilityStage {
@@ -161,6 +190,7 @@ export interface GaProjectDesignPlanPacket {
   source_proposed_slice: string;
   planning_basis: string;
   goal_scope: GaProjectDesignGoalScope;
+  implementation_contract: GaProjectDesignImplementationContract;
   iteration_focus: GaProjectDesignIterationFocus;
   capability_stage_plan: GaProjectDesignCapabilityStagePlan;
   scorecard_basis: string[];
@@ -168,11 +198,13 @@ export interface GaProjectDesignPlanPacket {
   selection_reasons: string[];
   selection_checks: string[];
   layer_decision: GaProjectDesignLayerDecision;
+  learning_authority: GaProjectDesignLearningAuthority;
   iteration_record_status: GaProjectDesignIterationRecordStatus;
   next_iteration_seed: GaProjectDesignIterationSeed;
   phase_gates: GaProjectDesignPlanPhaseGate[];
   completion_audit_seeds: GaProjectDesignCompletionAuditSeed[];
   acceptance_criteria: string[];
+  acceptance_trace: GaProjectDesignAcceptanceTrace[];
   verification_commands: string[];
   next_command: string;
   non_goals: string[];
@@ -339,7 +371,8 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
         ],
         forbidden_shortcuts: [
           "do not promote one-off application behavior to skill or semantic memory",
-          "do not treat dream snapshots as execution plans"
+          "do not treat dream snapshots as execution plans",
+          "do not let a self-evolution SOP or selected skill override project-design judgment or completion gates"
         ]
       }
     ],
@@ -348,6 +381,8 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "application slices are valid only when they validate, pressure-test, or consume the reusable runtime contract",
       "basic entrypoint health must stay observable before adding mutation or publishing authority",
       "major self-evolution work should start with an iteration contract and end with an outcome record",
+      "self-evolution SOPs and skills may preserve repeatable procedure, but core layer judgment and completion authority stay with project-design, iteration outcomes, and current evidence",
+      "multi-expert orchestration follows core/basic stability and learning-persistence gates; advisory output never replaces main-thread verification",
       "expert roles are advisory lenses; main-thread verification keeps completion authority"
     ],
     verification_policy: [
@@ -485,6 +520,7 @@ function buildNextCoreBasicPlan(
     `owner_surface=${NEXT_CORE_GA_DESIGN_TARGET.owner_surface}`,
     `iteration_record_status=${iterationRecordStatus.status}`
   ];
+  const acceptanceTrace = buildAcceptanceTrace();
   return {
     schema_version: 1,
     action: "project-design-plan",
@@ -501,6 +537,7 @@ function buildNextCoreBasicPlan(
     source_proposed_slice: source.proposed_slice,
     planning_basis: `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`,
     goal_scope: buildGoalScope(source, proposedSlice),
+    implementation_contract: buildImplementationContract(source, proposedSlice),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
     scorecard_basis: [
@@ -522,6 +559,7 @@ function buildNextCoreBasicPlan(
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     layer_decision: buildLayerDecision(source, proposedSlice, selectionStatus),
+    learning_authority: buildLearningAuthority(),
     iteration_record_status: iterationRecordStatus,
     next_iteration_seed: nextIterationSeed,
     phase_gates: contract.phases.map((phase) => ({
@@ -534,14 +572,8 @@ function buildNextCoreBasicPlan(
       forbidden_shortcuts: phase.forbidden_shortcuts
     })),
     completion_audit_seeds: buildCompletionAuditSeeds(source, proposedSlice),
-    acceptance_criteria: [
-      "goal_scope: operator goal is restated with owner surface, source of truth, and success evidence",
-      "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
-      "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
-      "current_state: external adapters remain application slices unless a reusable runtime contract is named",
-      "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
-      "learning_persistence: outcome is recorded before reuse"
-    ],
+    acceptance_criteria: acceptanceTrace.map((trace) => trace.criterion),
+    acceptance_trace: acceptanceTrace,
     verification_commands: nextIterationSeed.verification_commands,
     next_command: iterationRecordStatus.inspect_command ?? nextIterationSeed.record_command,
     non_goals: buildSuccessorNonGoals(source, contract, ["does not execute the next slice"]),
@@ -552,6 +584,97 @@ function buildNextCoreBasicPlan(
     ]),
     boundary: PLAN_BOUNDARY
   };
+}
+
+function buildImplementationContract(
+  source: GaProjectDesignArtifact,
+  proposedSlice: string
+): GaProjectDesignImplementationContract {
+  return {
+    proposed_slice: proposedSlice,
+    source_artifact_id: source.id,
+    source_proposed_slice: source.proposed_slice,
+    selected_layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
+    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    improvement_type: "reusable_ga_design_contract",
+    implementation_scope: [
+      "change one reusable GA project-design contract or read-model surface",
+      "carry the change through audit guidance or context only when it improves output standardization",
+      "cover the change with targeted tests, docs, outcome evidence, and runtime health"
+    ],
+    deferred_scope: [
+      "no external adapter or tool integration unless it names a reusable runtime contract",
+      "no SOP, skill, memory, or dream promotion before verified reuse evidence exists",
+      "no expert-agent scheduling or delegation automation"
+    ],
+    delivery_standard: [
+      "future iterations can inspect the contract without inferring intent from the opaque slice id",
+      "verification maps to project-design, scorecard, iterations, service-health, and check entrypoints",
+      "a verified outcome is recorded before the contract is reused as future GA design evidence"
+    ],
+    boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
+  };
+}
+
+function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
+  return [
+    {
+      seed_id: "goal_scope",
+      phase_id: "goal_intake",
+      criterion: "goal_scope: operator goal is restated with owner surface, source of truth, and success evidence",
+      required_entrypoints: ["project-design", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "iterations:"]
+    },
+    {
+      seed_id: "goal_scope",
+      phase_id: "goal_intake",
+      criterion: "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
+      required_entrypoints: ["project-design", "scorecard", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:"]
+    },
+    {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
+      required_entrypoints: ["project-design", "scorecard", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:"]
+    },
+    {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: external adapters remain application slices unless a reusable runtime contract is named",
+      required_entrypoints: ["project-design", "scorecard", "service-health"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "service-health:", "workspace:"]
+    },
+    {
+      seed_id: "current_state",
+      phase_id: "capability_layering",
+      criterion: "current_state: implementation contract bounds allowed scope, deferred scope, and delivery standard before outcome",
+      required_entrypoints: ["project-design", "iterations", "workspace"],
+      outcome_claim_prefixes: ["project-design:", "iterations:", "workspace:"]
+    },
+    {
+      seed_id: "verification_scope",
+      phase_id: "verification_review",
+      criterion: "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
+      required_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
+      outcome_claim_prefixes: ["project-design:", "scorecard:", "iterations:", "service-health:", "check:"]
+    },
+    {
+      seed_id: "learning_persistence",
+      phase_id: "learning_persistence",
+      criterion: "learning_persistence: outcome is recorded before reuse",
+      required_entrypoints: ["iterations"],
+      outcome_claim_prefixes: ["iterations:"]
+    },
+    {
+      seed_id: "learning_persistence",
+      phase_id: "learning_persistence",
+      criterion: "learning_persistence: SOP or skill artifacts preserve procedure only; project-design and verified outcomes retain judgment and completion authority",
+      required_entrypoints: ["project-design", "iterations"],
+      outcome_claim_prefixes: ["project-design:", "iterations:"]
+    }
+  ];
 }
 
 function buildGoalScope(
@@ -698,7 +821,8 @@ function buildCapabilityStagePlan(
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
       "core_runtime[current_state]: choose one reusable GA design contract improvement, not an external adapter task",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
-      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
+      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse",
+      "multi_expert[orchestration]: defer expert scheduling until core/basic and learning-persistence gates are stable"
     ]
   };
 }
@@ -724,7 +848,7 @@ function buildLayerDecision(
     ],
     application_boundaries: [
       "external tools and adapters stay application slices unless a reusable runtime contract is named",
-      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse"
+      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse; multi-expert orchestration follows those gates and remains advisory"
     ],
     required_before_outcome: [
       `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`,
@@ -733,6 +857,16 @@ function buildLayerDecision(
       BASIC_RUNTIME_HEALTH_COMMAND,
       "pnpm run check"
     ]
+  };
+}
+
+function buildLearningAuthority(): GaProjectDesignLearningAuthority {
+  return {
+    process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
+    judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+    completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
+    promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
+    boundary: "read-only learning authority boundary; does not draft SOPs, promote skills, accept memory, refresh dreams, select skills, invoke models, execute tools, or prove completion"
   };
 }
 
@@ -823,6 +957,9 @@ function buildCompletionAuditSeeds(
       requirement: "Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.",
       evidence_needed: [
         "workspace or git status when files changed",
+        `implementation_contract.proposed_slice=${proposedSlice}`,
+        "implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation",
+        "outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope",
         "service health status and reasons when resident runtime behavior changed",
         "service health status and reasons when service health is a required verification command",
         "runtime attention classification is acceptable, repair_needed, or verification_blocker when service health is not healthy",
@@ -831,7 +968,11 @@ function buildCompletionAuditSeeds(
       ],
       reject_if: [
         "older memory is the only evidence",
+        "implementation_contract.proposed_slice does not match the iteration proposed slice",
+        "implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard",
+        "outcome claims changes outside implementation_contract without a later-layer iteration contract",
         "external adapter pressure is treated as core identity without a reusable contract",
+        "worktree changes are present but the outcome omits workspace status or changed paths",
         "runtime attention reasons are omitted from the outcome when service health is not healthy",
         "service health is a required verification command but the outcome omits service health status or reasons",
         "runtime attention is named but not classified as acceptable, repair_needed, or verification_blocker",
@@ -862,11 +1003,13 @@ function buildCompletionAuditSeeds(
       requirement: "Record the verified outcome before reusing the slice as future GA design evidence.",
       evidence_needed: [
         "record-iteration-outcome ref",
-        "next moves preserve non-goals and boundaries"
+        "next moves preserve non-goals and boundaries",
+        "learning_authority states that SOPs and skills preserve procedure while project-design and verified outcomes retain judgment and completion authority"
       ],
       reject_if: [
         "dream, SOP, skill, or memory artifacts are treated as completion proof",
-        "one-off application behavior is promoted as core runtime identity"
+        "one-off application behavior is promoted as core runtime identity",
+        "a self-evolution SOP or selected skill overrides project-design layer judgment or the iteration completion gate"
       ]
     }
   ];

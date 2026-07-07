@@ -81,9 +81,9 @@ import {
 } from "../../../packages/core/src/working_checkpoints.js";
 import { getSessionRecap } from "../../../packages/core/src/session_recap.js";
 import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_workspace.js";
-import { getWorkspaceStatus } from "../../../packages/core/src/workspace_status.js";
+import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
-import { getServiceHealth } from "../../../packages/core/src/service_health.js";
+import { getServiceHealth, type ServiceHealthResult } from "../../../packages/core/src/service_health.js";
 import {
   getContentRun,
   getContentDailyReadiness,
@@ -311,8 +311,10 @@ interface CliOptions {
   iterationSourceRef?: string;
   iterationEvidenceRefs: string[];
   iterationVerificationCommands: string[];
+  iterationVerificationClaims: string[];
   iterationNonGoals: string[];
   iterationOutcomeStatus?: SelfEvolutionIterationOutcomeStatus;
+  iterationMergeExistingOutcome?: boolean;
   iterationNextMoves: string[];
   inboxItemRef?: string;
   inboxStatus?: "active" | "all" | "open" | "confirmation_requested" | "executed";
@@ -333,21 +335,28 @@ interface IterationAuditEvidenceAvailable {
   runtime_iteration_verification_commands?: string[];
   outcome_evidence_refs: string[];
   outcome_verification_commands: string[];
+  outcome_verification_claims: string[];
 }
 
 interface IterationAuditGuidanceInput {
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
+  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
+  iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
+  capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
+  phase_gates: GaProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
+  non_goals: GaProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: GaProjectDesignPlanPacket["selection_status"];
+  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
   selection_checks: string[];
   verification_commands: string[];
-  layer_decision: {
-    selected_layer: string;
-    selected_owner_surface: string;
-    core_identity: string;
-    application_boundaries: string[];
-    required_before_outcome: string[];
-  };
+  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
+  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
   iteration_record_status: {
     status: string;
     id?: string;
@@ -363,6 +372,7 @@ interface IterationAuditGuidanceSubject {
   id: string;
   ref: string;
   source_ref?: string;
+  implementation_contract?: GaProjectDesignPlanPacket["implementation_contract"];
   proposed_slice: string;
   outcome_status: string;
 }
@@ -375,10 +385,40 @@ export type IterationAuditSeedEvidenceStatus =
   | "missing_outcome_evidence"
   | "ready_for_manual_review";
 
+type IterationAuditRuntimeAttentionCoverageStatus =
+  | "not_required"
+  | "covered"
+  | "missing_service_health_claim"
+  | "missing_service_health_status"
+  | "missing_service_health_reasons"
+  | "missing_classification"
+  | "missing_handling_policy"
+  | "missing_repair_follow_up";
+
+type IterationAuditWorkspaceCoverageStatus =
+  | "not_required"
+  | "covered"
+  | "missing_workspace_claim"
+  | "missing_workspace_status"
+  | "missing_changed_paths"
+  | "truncated_workspace_changes";
+
+type IterationAuditImplementationContractCoverageStatus =
+  | "covered"
+  | "missing_contract"
+  | "missing_required_fields"
+  | "mismatched_contract";
+
+const RUNTIME_ATTENTION_CLASSIFICATIONS = ["acceptable", "repair_needed", "verification_blocker"] as const;
+
 export function buildIterationAuditSeedEvidenceStatus(
   seed: GaProjectDesignCompletionAuditSeed,
   iteration: { outcome_status: string },
-  evidence: IterationAuditEvidenceAvailable
+  evidence: IterationAuditEvidenceAvailable,
+  outcomeVerificationClaimCoverage?: { status: string },
+  runtimeAttentionOutcomeCoverage?: { status: string },
+  workspaceOutcomeCoverage?: { status: string },
+  implementationContractCoverage?: { status: string }
 ): {
   seed_id: GaProjectDesignCompletionAuditSeed["id"];
   phase_id: GaProjectDesignCompletionAuditSeed["phase_id"];
@@ -390,6 +430,7 @@ export function buildIterationAuditSeedEvidenceStatus(
     runtime_iteration_verification_commands: number;
     outcome_evidence_refs: number;
     outcome_verification_commands: number;
+    outcome_verification_claims: number;
   };
   manual_review_required: true;
   review_note: string;
@@ -399,12 +440,32 @@ export function buildIterationAuditSeedEvidenceStatus(
   const hasOutcome = iteration.outcome_status !== "not_recorded";
   const hasOutcomeEvidence = evidence.outcome_evidence_refs.length > 0
     && evidence.outcome_verification_commands.length > 0;
+  const needsVerificationClaims = seed.id === "verification_scope";
+  const hasOutcomeClaims = !needsVerificationClaims || evidence.outcome_verification_claims.length > 0;
+  const hasEntrypointClaimCoverage = !needsVerificationClaims
+    || !outcomeVerificationClaimCoverage
+    || outcomeVerificationClaimCoverage.status === "covered";
+  const needsCurrentStateCoverage = seed.id === "current_state";
+  const hasRuntimeAttentionCoverage = !needsCurrentStateCoverage
+    || !runtimeAttentionOutcomeCoverage
+    || runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status);
+  const hasWorkspaceOutcomeCoverage = !needsCurrentStateCoverage
+    || !workspaceOutcomeCoverage
+    || workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status);
+  const hasImplementationContractCoverage = !needsCurrentStateCoverage
+    || !implementationContractCoverage
+    || implementationContractCoverage.status === "covered";
   const missing = [
     ...(!evidence.iteration_evidence_refs.length ? ["iteration_evidence_refs"] : []),
     ...(!evidence.iteration_verification_commands.length ? ["iteration_verification_commands"] : []),
     ...(!hasOutcome ? ["outcome_record"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
-    ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : [])
+    ...(hasOutcome && !evidence.outcome_verification_commands.length ? ["outcome_verification_commands"] : []),
+    ...(hasOutcome && needsVerificationClaims && !evidence.outcome_verification_claims.length ? ["outcome_verification_claims"] : []),
+    ...(hasOutcome && needsVerificationClaims && !hasEntrypointClaimCoverage ? ["outcome_verification_claim_coverage"] : []),
+    ...(hasOutcome && needsCurrentStateCoverage && !hasRuntimeAttentionCoverage ? ["runtime_attention_outcome_coverage"] : []),
+    ...(hasOutcome && needsCurrentStateCoverage && !hasWorkspaceOutcomeCoverage ? ["workspace_outcome_coverage"] : []),
+    ...(hasOutcome && needsCurrentStateCoverage && !hasImplementationContractCoverage ? ["implementation_contract_coverage"] : [])
   ];
   return {
     seed_id: seed.id,
@@ -413,7 +474,7 @@ export function buildIterationAuditSeedEvidenceStatus(
       ? "missing_declared_evidence"
       : !hasOutcome
         ? "missing_outcome"
-        : !hasOutcomeEvidence
+        : !hasOutcomeEvidence || !hasOutcomeClaims || !hasEntrypointClaimCoverage || !hasRuntimeAttentionCoverage || !hasWorkspaceOutcomeCoverage || !hasImplementationContractCoverage
           ? "missing_outcome_evidence"
           : "ready_for_manual_review",
     missing,
@@ -422,7 +483,8 @@ export function buildIterationAuditSeedEvidenceStatus(
       iteration_verification_commands: evidence.iteration_verification_commands.length,
       runtime_iteration_verification_commands: evidence.runtime_iteration_verification_commands?.length ?? 0,
       outcome_evidence_refs: evidence.outcome_evidence_refs.length,
-      outcome_verification_commands: evidence.outcome_verification_commands.length
+      outcome_verification_commands: evidence.outcome_verification_commands.length,
+      outcome_verification_claims: evidence.outcome_verification_claims.length
     },
     manual_review_required: true,
     review_note: "evidence_status summarizes evidence presence only; it does not prove the seed is satisfied"
@@ -437,6 +499,8 @@ export function buildIterationAuditPlanRefCoverage(
   plan_ref_count: number;
   covered_ref_count: number;
   missing_refs: string[];
+  required_outcome_evidence_refs: string[];
+  repair_note: string;
   boundary: string;
 } {
   const availableRefs = new Set([
@@ -452,6 +516,10 @@ export function buildIterationAuditPlanRefCoverage(
     plan_ref_count: requiredRefs.length,
     covered_ref_count: requiredRefs.length - missingRefs.length,
     missing_refs: missingRefs,
+    required_outcome_evidence_refs: missingRefs,
+    repair_note: missingRefs.length
+      ? "record-iteration-outcome replaces the outcome by default; use --merge-existing-outcome or preserve existing outcome fields while adding these refs as outcome evidence before rerunning the audit"
+      : "no plan ref repair required",
     boundary: "read-only plan ref coverage diagnostic; compares GA project-design plan refs with the audited iteration refs and outcome refs; does not read file bodies or prove completion"
   };
 }
@@ -520,11 +588,221 @@ export function buildIterationAuditOutcomeVerificationCommandCoverage(
   };
 }
 
+export function buildIterationAuditOutcomeVerificationClaimCoverage(
+  requiredEntrypoints: string[],
+  evidence: IterationAuditEvidenceAvailable
+): {
+  status: "covered" | "missing_claims" | "missing_entrypoints";
+  required_entrypoint_count: number;
+  covered_entrypoint_count: number;
+  missing_entrypoints: string[];
+  boundary: string;
+} {
+  const claims = evidence.outcome_verification_claims.map((claim) => claim.trim()).filter(Boolean);
+  const required = [...new Set(requiredEntrypoints.map((entrypoint) => entrypoint.trim()).filter(Boolean))];
+  const missingEntrypoints = required.filter((entrypoint) =>
+    !claims.some((claim) => claimCoversEntrypoint(claim, entrypoint))
+  );
+  let status: "covered" | "missing_claims" | "missing_entrypoints" = "covered";
+  if (missingEntrypoints.length) {
+    status = claims.length ? "missing_entrypoints" : "missing_claims";
+  }
+  return {
+    status,
+    required_entrypoint_count: required.length,
+    covered_entrypoint_count: required.length - missingEntrypoints.length,
+    missing_entrypoints: missingEntrypoints,
+    boundary: "read-only outcome verification claim coverage diagnostic; compares required verification entrypoints with outcome claim refs only; does not execute commands or prove completion"
+  };
+}
+
+export function buildIterationAuditRuntimeAttentionOutcomeCoverage(
+  requiredEntrypoints: string[],
+  evidence: Pick<IterationAuditEvidenceAvailable, "outcome_verification_claims">,
+  serviceHealth: Pick<ServiceHealthResult, "status" | "status_reasons">
+): {
+  status: IterationAuditRuntimeAttentionCoverageStatus;
+  service_health_required: boolean;
+  service_health_status: ServiceHealthResult["status"];
+  service_health_reasons: string[];
+  missing_reasons: string[];
+  claim_count: number;
+  selected_classification?: typeof RUNTIME_ATTENTION_CLASSIFICATIONS[number];
+  required_tokens: string[];
+  boundary: string;
+} {
+  const serviceHealthRequired = requiredEntrypoints.some((entrypoint) => entrypoint.trim().toLowerCase() === "service-health");
+  const serviceHealthReasons = serviceHealth.status_reasons.map((reason) => reason.trim()).filter(Boolean);
+  const attentionRequired = serviceHealthRequired && serviceHealth.status !== "healthy" && serviceHealthReasons.length > 0;
+  const serviceHealthClaims = evidence.outcome_verification_claims
+    .map((claim) => claim.trim())
+    .filter((claim) => claimCoversEntrypoint(claim, "service-health"));
+  const claimText = serviceHealthClaims.join("\n").toLowerCase();
+  const selectedClassification = RUNTIME_ATTENTION_CLASSIFICATIONS.find((classification) =>
+    claimText.includes(`classification=${classification}`)
+  );
+  const missingReasons = serviceHealthReasons.filter((reason) => !claimText.includes(reason.toLowerCase()));
+  let status: IterationAuditRuntimeAttentionCoverageStatus = "not_required";
+  if (attentionRequired && !serviceHealthClaims.length) {
+    status = "missing_service_health_claim";
+  } else if (attentionRequired && !claimText.includes(`status=${serviceHealth.status}`)) {
+    status = "missing_service_health_status";
+  } else if (attentionRequired && missingReasons.length) {
+    status = "missing_service_health_reasons";
+  } else if (attentionRequired && !selectedClassification) {
+    status = "missing_classification";
+  } else if (attentionRequired && !claimText.includes("handling=")) {
+    status = "missing_handling_policy";
+  } else if (attentionRequired && selectedClassification === "repair_needed" && !hasRepairFollowUpToken(claimText)) {
+    status = "missing_repair_follow_up";
+  } else if (attentionRequired) {
+    status = "covered";
+  }
+  return {
+    status,
+    service_health_required: serviceHealthRequired,
+    service_health_status: serviceHealth.status,
+    service_health_reasons: serviceHealthReasons,
+    missing_reasons: attentionRequired ? missingReasons : [],
+    claim_count: serviceHealthClaims.length,
+    selected_classification: selectedClassification,
+    required_tokens: attentionRequired
+      ? [
+        `status=${serviceHealth.status}`,
+        ...serviceHealthReasons.map((reason) => `reason=${reason}`),
+        "classification=acceptable|repair_needed|verification_blocker",
+        "handling=<policy>",
+        ...(selectedClassification === "repair_needed" ? ["follow_up=<action-or-rationale>"] : [])
+      ]
+      : [],
+    boundary: "read-only runtime attention outcome coverage diagnostic; compares required service-health entrypoint, current service-health status/reasons, and outcome verification claims only; does not execute commands, repair services, or prove completion"
+  };
+}
+
+export function buildIterationAuditWorkspaceOutcomeCoverage(
+  evidence: Pick<IterationAuditEvidenceAvailable, "outcome_verification_claims">,
+  workspaceStatus: Pick<WorkspaceStatusResult, "status" | "changed_file_count" | "changes" | "truncated">
+): {
+  status: IterationAuditWorkspaceCoverageStatus;
+  workspace_status: WorkspaceStatusResult["status"];
+  changed_file_count: number;
+  change_paths: string[];
+  missing_paths: string[];
+  claim_count: number;
+  truncated: boolean;
+  required_tokens: string[];
+  boundary: string;
+} {
+  const dirty = workspaceStatus.status === "dirty" && workspaceStatus.changed_file_count > 0;
+  const changePaths = workspaceStatus.changes.map((change) => change.path.trim()).filter(Boolean);
+  const workspaceClaims = evidence.outcome_verification_claims
+    .map((claim) => claim.trim())
+    .filter((claim) => claimCoversEntrypoint(claim, "workspace"));
+  const claimText = workspaceClaims.join("\n").toLowerCase();
+  const missingPaths = changePaths.filter((path) => !claimText.includes(path.toLowerCase()));
+  let status: IterationAuditWorkspaceCoverageStatus = "not_required";
+  if (dirty && !workspaceClaims.length) {
+    status = "missing_workspace_claim";
+  } else if (dirty && !claimText.includes("status=dirty")) {
+    status = "missing_workspace_status";
+  } else if (dirty && missingPaths.length) {
+    status = "missing_changed_paths";
+  } else if (dirty && workspaceStatus.truncated) {
+    status = "truncated_workspace_changes";
+  } else if (dirty) {
+    status = "covered";
+  }
+  return {
+    status,
+    workspace_status: workspaceStatus.status,
+    changed_file_count: workspaceStatus.changed_file_count,
+    change_paths: changePaths,
+    missing_paths: dirty ? missingPaths : [],
+    claim_count: workspaceClaims.length,
+    truncated: workspaceStatus.truncated,
+    required_tokens: dirty
+      ? [
+        "workspace: status=dirty",
+        ...changePaths.map((path) => `path=${path}`),
+        ...(workspaceStatus.truncated ? ["workspace changes must not be truncated"] : [])
+      ]
+      : [],
+    boundary: "read-only workspace outcome coverage diagnostic; compares fixed git status change paths with outcome workspace claims only; does not read file bodies, stage, commit, reset, mutate state, or prove completion"
+  };
+}
+
+export function buildIterationAuditImplementationContractCoverage(
+  planContract: GaProjectDesignPlanPacket["implementation_contract"],
+  iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice" | "layer" | "owner_surface">
+): {
+  status: IterationAuditImplementationContractCoverageStatus;
+  missing_fields: string[];
+  mismatched_fields: string[];
+  required_tokens: string[];
+  boundary: string;
+} {
+  const contract = iteration.implementation_contract;
+  if (!contract) {
+    return {
+      status: "missing_contract",
+      missing_fields: ["implementation_contract"],
+      mismatched_fields: [],
+      required_tokens: implementationContractRequiredTokens(planContract),
+      boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record; does not mutate state or prove completion"
+    };
+  }
+  const expectedContract = planContract.proposed_slice === iteration.proposed_slice ? planContract : contract;
+  const missingFields = [
+    ...(!contract.proposed_slice ? ["proposed_slice"] : []),
+    ...(!contract.selected_layer ? ["selected_layer"] : []),
+    ...(!contract.owner_surface ? ["owner_surface"] : []),
+    ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
+    ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
+    ...(!contract.delivery_standard?.length ? ["delivery_standard"] : [])
+  ];
+  const mismatchedFields = [
+    ...(contract.proposed_slice !== expectedContract.proposed_slice || contract.proposed_slice !== iteration.proposed_slice ? ["proposed_slice"] : []),
+    ...(contract.selected_layer !== expectedContract.selected_layer || contract.selected_layer !== iteration.layer ? ["selected_layer"] : []),
+    ...(contract.owner_surface !== expectedContract.owner_surface || contract.owner_surface !== iteration.owner_surface ? ["owner_surface"] : []),
+    ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
+    ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
+    ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : [])
+  ];
+  return {
+    status: missingFields.length
+      ? "missing_required_fields"
+      : mismatchedFields.length
+        ? "mismatched_contract"
+        : "covered",
+    missing_fields: missingFields,
+    mismatched_fields: mismatchedFields,
+    required_tokens: implementationContractRequiredTokens(expectedContract),
+    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, otherwise checks the audited iteration's persisted contract self-consistency; does not mutate state or prove completion"
+  };
+}
+
+function implementationContractRequiredTokens(
+  contract: Partial<GaProjectDesignPlanPacket["implementation_contract"]>
+): string[] {
+  return [
+    `implementation_contract.proposed_slice=${contract.proposed_slice}`,
+    `implementation_contract.selected_layer=${contract.selected_layer}`,
+    `implementation_contract.owner_surface=${contract.owner_surface}`,
+    "implementation_contract.implementation_scope",
+    "implementation_contract.deferred_scope",
+    "implementation_contract.delivery_standard"
+  ];
+}
+
 export function buildIterationAuditCompletionGate(
   iteration: { outcome_status: string },
   evidence: Pick<IterationAuditEvidenceAvailable, "outcome_evidence_refs">,
   planRefCoverage: { status: string },
-  outcomeVerificationCommandCoverage: { status: string }
+  outcomeVerificationCommandCoverage: { status: string },
+  outcomeVerificationClaimCoverage?: { status: string },
+  runtimeAttentionOutcomeCoverage?: { status: string },
+  workspaceOutcomeCoverage?: { status: string },
+  implementationContractCoverage?: { status: string }
 ): {
   status: "blocked" | "ready_for_manual_review";
   blockers: string[];
@@ -537,13 +815,40 @@ export function buildIterationAuditCompletionGate(
     ...(hasOutcome && !hasVerifiedOutcome ? ["verified_outcome"] : []),
     ...(hasOutcome && !evidence.outcome_evidence_refs.length ? ["outcome_evidence_refs"] : []),
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
-    ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : [])
+    ...(implementationContractCoverage && implementationContractCoverage.status !== "covered" ? ["implementation_contract_coverage"] : []),
+    ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
+    ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
+    ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
+    ...(workspaceOutcomeCoverage && !workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status) ? ["workspace_outcome_coverage"] : [])
   ];
   return {
     status: blockers.length ? "blocked" : "ready_for_manual_review",
     blockers,
-    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, and outcome verification command coverage before manual review; does not approve seeds or prove completion"
+    boundary: "read-only structural completion gate; requires a verified outcome record, outcome evidence refs, plan ref coverage, implementation contract coverage, outcome verification command coverage, outcome verification claim coverage, runtime attention outcome coverage, and workspace outcome coverage before manual review; does not approve seeds or prove completion"
   };
+}
+
+function claimCoversEntrypoint(claim: string, entrypoint: string): boolean {
+  const normalizedClaim = claim.toLowerCase();
+  const normalizedEntrypoint = entrypoint.toLowerCase();
+  return normalizedClaim.startsWith(`${normalizedEntrypoint}:`)
+    || normalizedClaim.startsWith(`${normalizedEntrypoint}=`)
+    || normalizedClaim.includes(`entrypoint=${normalizedEntrypoint}`);
+}
+
+function runtimeAttentionOutcomeCoverageIsSatisfied(status: string): boolean {
+  return status === "covered" || status === "not_required";
+}
+
+function workspaceOutcomeCoverageIsSatisfied(status: string): boolean {
+  return status === "covered" || status === "not_required";
+}
+
+function hasRepairFollowUpToken(text: string): boolean {
+  return text.includes("follow_up=")
+    || text.includes("follow-up=")
+    || text.includes("followup=")
+    || text.includes("no_follow_up=");
 }
 
 export function selectIterationAuditVerificationCoverageCommands(
@@ -564,12 +869,26 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
+  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
+  iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
+  capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
+  phase_gates: GaProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
+  non_goals: GaProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: GaProjectDesignPlanPacket["selection_status"];
+  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
+  selection_checks: GaProjectDesignPlanPacket["selection_checks"];
+  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   verification_entrypoints: string[];
   required_before_outcome: string[];
   verification_commands: string[];
   application_boundaries: string[];
+  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
   iteration_record_status: IterationAuditGuidanceInput["iteration_record_status"];
   boundary: string;
 } {
@@ -594,6 +913,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
       boundary: "read-only audited iteration status; prevents current successor plan status from being mistaken for the audited iteration"
     };
   const boundIterationRecordStatus = bindIterationRecordStatus(iterationRecordStatus, stateRoot);
+  const boundRequiredBeforeOutcome = bindCommandPlaceholders(plan.layer_decision.required_before_outcome, subject, stateRoot);
   return {
     core_identity: plan.layer_decision.core_identity,
     selected_layer: plan.layer_decision.selected_layer,
@@ -601,6 +921,22 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     proposed_slice: plan.proposed_slice,
     source_artifact_id: plan.source_artifact_id,
     source_iteration_ref: plan.source_iteration_ref,
+    goal_scope: plan.goal_scope,
+    implementation_contract: plan.implementation_contract,
+    iteration_focus: plan.iteration_focus,
+    capability_stage_plan: plan.capability_stage_plan,
+    phase_gates: plan.phase_gates,
+    acceptance_criteria: plan.acceptance_criteria,
+    acceptance_trace: plan.acceptance_trace,
+    non_goals: plan.non_goals,
+    scorecard_basis: plan.scorecard_basis,
+    selection_status: plan.selection_status,
+    selection_reasons: plan.selection_reasons,
+    selection_checks: plan.selection_checks,
+    layer_decision: {
+      ...plan.layer_decision,
+      required_before_outcome: boundRequiredBeforeOutcome
+    },
     guidance_scope: matchesOpenIteration
       ? "matching_open_iteration"
       : isSourceIteration
@@ -608,9 +944,10 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
         : "current_plan_context",
     ...(subject ? { audited_iteration: subject } : {}),
     verification_entrypoints: entrypoints,
-    required_before_outcome: bindCommandPlaceholders(plan.layer_decision.required_before_outcome, subject, stateRoot),
+    required_before_outcome: boundRequiredBeforeOutcome,
     verification_commands: bindCommandPlaceholders(plan.verification_commands, subject, stateRoot),
     application_boundaries: plan.layer_decision.application_boundaries,
+    learning_authority: plan.learning_authority,
     iteration_record_status: boundIterationRecordStatus,
     boundary: "read-only iteration audit guidance; restates core/basic verification entrypoints and commands from the GA project-design plan only; does not execute checks, write outcomes, or prove completion"
   };
@@ -622,7 +959,7 @@ export function buildIterationAuditNextCommand(
 ): string {
   const command = iteration.outcome_status !== "not_recorded"
     ? `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`
-    : `pnpm run runtime -- governance record-iteration-outcome --iteration ${iteration.id} --outcome-status verified --summary "..." --state-root <state-root>`;
+    : `pnpm run runtime -- governance record-iteration-outcome --iteration ${iteration.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --verification-claim "<entrypoint>: <claim>" --next-move "..." --state-root <state-root>`;
   return bindStateRoot(command, stateRoot);
 }
 
@@ -640,7 +977,8 @@ export function buildIterationAuditEvidenceAvailable(
       outcome_status: iteration.outcome?.status ?? "not_recorded"
     }, stateRoot),
     outcome_evidence_refs: iteration.outcome?.evidence_refs ?? [],
-    outcome_verification_commands: iteration.outcome?.verification_commands ?? []
+    outcome_verification_commands: iteration.outcome?.verification_commands ?? [],
+    outcome_verification_claims: iteration.outcome?.verification_claims ?? []
   };
 }
 
@@ -1661,22 +1999,29 @@ export async function main(): Promise<number> {
           id: detail.iteration.id,
           ref: detail.iteration.ref,
           source_ref: detail.iteration.source_ref,
+          implementation_contract: detail.iteration.implementation_contract,
           layer: detail.iteration.layer,
           owner_surface: detail.iteration.owner_surface,
           proposed_slice: detail.iteration.proposed_slice,
           outcome_status: detail.iteration.outcome?.status ?? "not_recorded"
         };
         const evidenceAvailable = buildIterationAuditEvidenceAvailable(detail.iteration, config.state.root);
-        const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
-          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable)
-        );
         const auditGuidance = buildIterationAuditGuidance(plan, iteration, config.state.root);
         const nextCommand = buildIterationAuditNextCommand(iteration, config.state.root);
         const planRefCoverage = buildIterationAuditPlanRefCoverage(plan.refs, detail.iteration);
+        const implementationContractCoverage = buildIterationAuditImplementationContractCoverage(plan.implementation_contract, detail.iteration);
         const verificationCoverageRequiredCommands = selectIterationAuditVerificationCoverageCommands(auditGuidance.guidance_scope, auditGuidance.required_before_outcome, evidenceAvailable);
         const verificationCommandCoverage = buildIterationAuditVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
         const outcomeVerificationCommandCoverage = buildIterationAuditOutcomeVerificationCommandCoverage(verificationCoverageRequiredCommands, evidenceAvailable);
-        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage);
+        const outcomeVerificationClaimCoverage = buildIterationAuditOutcomeVerificationClaimCoverage(auditGuidance.verification_entrypoints, evidenceAvailable);
+        const serviceHealth = await getServiceHealth(store);
+        const runtimeAttentionOutcomeCoverage = buildIterationAuditRuntimeAttentionOutcomeCoverage(auditGuidance.verification_entrypoints, evidenceAvailable, serviceHealth);
+        const workspaceStatus = await getWorkspaceStatus(store, { limit: 200 });
+        const workspaceOutcomeCoverage = buildIterationAuditWorkspaceOutcomeCoverage(evidenceAvailable, workspaceStatus);
+        const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
+          buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage)
+        );
+        const completionGate = buildIterationAuditCompletionGate(iteration, evidenceAvailable, planRefCoverage, outcomeVerificationCommandCoverage, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage);
         const refs = buildIterationAuditRefs(plan.refs, detail.iteration);
         if (options.projectDesignAuditSeedId === "all") {
           console.log(JSON.stringify({
@@ -1688,8 +2033,12 @@ export async function main(): Promise<number> {
             seed_evidence_statuses: seedEvidenceStatuses,
             evidence_available: evidenceAvailable,
             plan_ref_coverage: planRefCoverage,
+            implementation_contract_coverage: implementationContractCoverage,
             verification_command_coverage: verificationCommandCoverage,
             outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
+            outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
+            runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
+            workspace_outcome_coverage: workspaceOutcomeCoverage,
             completion_gate: completionGate,
             audit_guidance: auditGuidance,
             next_command: nextCommand,
@@ -1707,11 +2056,15 @@ export async function main(): Promise<number> {
           status: "advisory",
           iteration,
           seed,
-          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable),
+          seed_evidence_status: buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage),
           evidence_available: evidenceAvailable,
           plan_ref_coverage: planRefCoverage,
+          implementation_contract_coverage: implementationContractCoverage,
           verification_command_coverage: verificationCommandCoverage,
           outcome_verification_command_coverage: outcomeVerificationCommandCoverage,
+          outcome_verification_claim_coverage: outcomeVerificationClaimCoverage,
+          runtime_attention_outcome_coverage: runtimeAttentionOutcomeCoverage,
+          workspace_outcome_coverage: workspaceOutcomeCoverage,
           completion_gate: completionGate,
           audit_guidance: auditGuidance,
           next_command: nextCommand,
@@ -1741,6 +2094,7 @@ export async function main(): Promise<number> {
           ownerSurface: options.iterationOwnerSurface ?? seed.owner_surface,
           proposedSlice: options.iterationProposedSlice ?? seed.proposed_slice,
           sourceRef: options.iterationSourceRef ?? seed.source_ref,
+          implementationContract: plan.implementation_contract,
           evidenceRefs: [...seed.evidence_refs, ...options.iterationEvidenceRefs],
           verificationCommands: [...seed.verification_commands, ...options.iterationVerificationCommands],
           nonGoals: [...seed.non_goals, ...options.iterationNonGoals],
@@ -1775,7 +2129,9 @@ export async function main(): Promise<number> {
         summary: required(options.iterationSummary, "governance record-iteration-outcome requires --summary"),
         evidenceRefs: options.iterationEvidenceRefs,
         verificationCommands: options.iterationVerificationCommands,
-        nextMoves: options.iterationNextMoves
+        verificationClaims: options.iterationVerificationClaims,
+        nextMoves: options.iterationNextMoves,
+        mergeExisting: options.iterationMergeExistingOutcome
       });
       console.log(JSON.stringify(bindIterationRecordResultCommand(result, config.state.root), null, 2));
       return 0;
@@ -2209,6 +2565,7 @@ export function parseArgs(argv: string[]): CliOptions {
     correctionEvidenceRefs: [],
     iterationEvidenceRefs: [],
     iterationVerificationCommands: [],
+    iterationVerificationClaims: [],
     iterationNonGoals: [],
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
@@ -2327,8 +2684,10 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--from-project-design-plan" && options.command === "governance" && options.governanceAction === "record-iteration") options.iterationFromProjectDesignPlan = true;
     else if (arg === "--iteration-source-ref") options.iterationSourceRef = required(rest[++index], "--iteration-source-ref requires a value");
     else if (arg === "--verification-command") options.iterationVerificationCommands.push(required(rest[++index], "--verification-command requires a value"));
+    else if (arg === "--verification-claim") options.iterationVerificationClaims.push(required(rest[++index], "--verification-claim requires a value"));
     else if (arg === "--non-goal") options.iterationNonGoals.push(required(rest[++index], "--non-goal requires a value"));
     else if (arg === "--outcome-status") options.iterationOutcomeStatus = parseIterationOutcomeStatus(required(rest[++index], "--outcome-status requires a value"));
+    else if (arg === "--merge-existing-outcome" && options.command === "governance" && options.governanceAction === "record-iteration-outcome") options.iterationMergeExistingOutcome = true;
     else if (arg === "--next-move") options.iterationNextMoves.push(required(rest[++index], "--next-move requires a value"));
     else if (arg === "--correction-source-ref") options.correctionSourceRef = required(rest[++index], "--correction-source-ref requires a value");
     else if (arg === "--evidence-ref" && options.command === "governance" && (options.governanceAction === "record-iteration" || options.governanceAction === "record-iteration-outcome")) options.iterationEvidenceRefs.push(required(rest[++index], "--evidence-ref requires a value"));
@@ -2779,7 +3138,7 @@ function printUsage(): void {
   pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact ga_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
-  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--next-move "..."] [--state-root .runtime/state]
+  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root .runtime/state]
   pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--state-root .runtime/state]
   pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." [--state-root .runtime/state]

@@ -106,6 +106,7 @@ test("service health derives fresh resident runtime status from local state and 
 
     assert.equal(health.status, "healthy");
     assert.deepEqual(health.status_reasons, []);
+    assert.deepEqual(health.attention_followups, []);
     assert.equal(health.layers.runtime_substrate.status, "healthy");
     assert.deepEqual(health.layers.runtime_substrate.reason_codes, []);
     assert.equal(health.layers.application_slices.status, "healthy");
@@ -300,6 +301,11 @@ test("service health flags blocked review tick auto-actions", async () => {
     assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["review_tick_auto_action_blocked"]);
     assert.equal(health.layers.application_slices.status, "healthy");
     assert.deepEqual(health.status_reasons, ["review_tick_auto_action_blocked"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "review_tick_auto_action_blocked",
+      summary: "inspect bounded service health before treating this attention reason as resolved",
+      command: "pnpm run runtime -- service health --target im"
+    }]);
     assert.equal(health.review_tick.last_focus_current_status, "resolved");
     assert.match(health.review_tick.last_focus_current_reason ?? "", /no longer present/);
     assert.equal(health.review_tick.last_auto_action_status, "blocked");
@@ -349,6 +355,11 @@ test("service health flags resident runtime build that is stale against repo HEA
       health.im.deployment.restart_command,
       "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
     );
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "deployment_stale",
+      summary: "resident runtime build is behind the current repo HEAD; restart the IM service after verifying local changes",
+      command: "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main"
+    }]);
     assert.doesNotMatch(health.im.deployment.restart_command, /--state-root/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -484,6 +495,11 @@ test("service health includes resident content loop status and flags loop errors
     assert.equal(health.layers.application_slices.status, "attention");
     assert.deepEqual(health.layers.application_slices.reason_codes, ["content_daily_loop_attention"]);
     assert.deepEqual(health.status_reasons, ["content_daily_loop_attention"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "content_daily_loop_attention",
+      summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
+      command: "pnpm run runtime -- service health --target im"
+    }]);
     assert.equal(health.content_daily.state, "error");
     assert.equal(health.content_daily.enabled, true);
     assert.equal(health.content_daily.last_job_status, "failed");
@@ -689,6 +705,11 @@ test("service health flags stale content daily progress while preserving step co
     assert.equal(health.content_daily.current_step_freshness, "stale");
     assert.equal(health.content_daily.current_job_ref, "content/daily/ai_compute_market/2026-06-30.json");
     assert.equal(health.content_daily.current_run_ref, "content/runs/content_run_compute/run.json");
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "content_daily_current_step_stale",
+      summary: "resident application loop needs attention; inspect bounded service health before retrying or expanding automation",
+      command: "pnpm run runtime -- service health --target im"
+    }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -728,6 +749,12 @@ test("service health flags stale heartbeat and active pause without mutating sta
     assert.equal(health.review_tick.state, "unknown");
     assert.equal(health.autonomy_pause.active, true);
     assert.equal(health.autonomy_pause.reason, "Operator is reviewing the self-evolution direction.");
+    assert.deepEqual(health.status_reasons, ["autonomy_pause_active"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "autonomy_pause_active",
+      summary: "autonomy is paused; resume only after the operator confirms the pause reason is resolved",
+      command: "pnpm run runtime -- governance resume-autonomy --reason \"...\""
+    }]);
     assert.deepEqual(health.refs, [
       "services/im/heartbeat.json",
       "autonomy/runs/pause_signal.json"
@@ -753,6 +780,16 @@ test("service health reports missing heartbeat as unknown", async () => {
     assert.equal(health.status, "unknown");
     assert.equal(health.im.heartbeat_freshness, "missing");
     assert.equal(health.im.state, "unknown");
+    assert.deepEqual(health.status_reasons, ["heartbeat_missing", "im_not_running"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "heartbeat_missing",
+      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: "pnpm run runtime -- service status --target im"
+    }, {
+      reason_code: "im_not_running",
+      summary: "resident IM heartbeat is not healthy; inspect service lifecycle before claiming runtime health",
+      command: "pnpm run runtime -- service status --target im"
+    }]);
     assert.deepEqual(health.refs, []);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -803,6 +840,7 @@ test("service health CLI reads bounded health without service control fields", a
     assert.equal(output.target, "im");
     assert.equal(output.status, "healthy");
     assert.deepEqual(output.refs, ["services/im/heartbeat.json"]);
+    assert.deepEqual(output.attention_followups, []);
     assert.equal("launchd" in output, false);
     assert.equal("logs" in output, false);
     assert.match(String(output.boundary), /does not inspect launchd/);

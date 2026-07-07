@@ -220,7 +220,9 @@ If the latest reusable artifact is core/basic, `project-design` also emits
 `next_core_basic_plan`, an advisory planning packet with phase gates,
 acceptance criteria, verification commands, non-goals, selection readiness, and
 completion-audit seeds. It is not an execution plan, backlog write, SOP draft,
-or completion claim.
+or completion claim. Its `acceptance_trace` can map each criterion to required
+verification entrypoints and outcome claim prefixes, but that trace is review
+guidance only and does not promote SOPs, skills, memory, or dreams.
 Operators can record the layer discipline for a major iteration through
 `governance record-iteration`. The record declares whether the work is
 `core_runtime`, `basic_entrypoint`, `local_learning`, `application_slice`, or
@@ -403,9 +405,10 @@ attempts, and updates the checkpoint for later context.
 Live context also includes a bounded read-only `Service Runtime` section when
 the resident IM heartbeat exists. It summarizes only the heartbeat state and the
 copied-runtime build metadata already carried by
-`services/im/heartbeat.json`. This is runtime orientation for the model; it does
-not restart services, read copied-runtime files, run shell commands, or prove
-that current repo edits have been deployed.
+`services/im/heartbeat.json`, plus service-health reason codes and read-only
+follow-up guidance when runtime attention exists. This is runtime orientation
+for the model; it does not restart services, read copied-runtime files, run
+shell commands, or prove that current repo edits have been deployed.
 
 Live context also includes a bounded read-only `Runtime Config` section when
 the runner has an effective config summary. It mirrors the non-secret CLI

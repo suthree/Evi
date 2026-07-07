@@ -432,6 +432,9 @@ contracts, SOP evolution ledger, and Opportunity Backlog. The expert lenses are
 advisory only; the command does not invoke models, execute tools, mutate state,
 promote SOPs, promote skills, restart services, write the repository, or write
 the active vault.
+The scorecard can report an active multi-expert orchestration contract, but its
+next-slice reason keeps execution deferred until core/basic and
+learning-persistence gates are stable.
 The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
@@ -469,6 +472,12 @@ It may include plan identity and authority fields such as `schema_version`,
 `action`, `status`, `title`, target ids, `layer`, `owner_surface`, `refs`, and
 `boundary`, so the artifact-scoped plan keeps its versioned read-only advisory
 status visible.
+It also includes `learning_authority`, which keeps self-evolution SOPs and
+skills in the process-scaffold role. Core/basic layer judgment stays with
+project-design, scorecard, iteration contracts, and current runtime evidence;
+completion authority stays with verified iteration outcomes and completion
+gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert
+advice.
 It may include `source_artifact_id`, `source_iteration_ref`,
 `source_proposed_slice`, `planning_basis`, `next_iteration_seed`, and
 `non_goals`, so artifact review can distinguish the evidence source from the
@@ -487,6 +496,19 @@ checks from the same packet.
 It may also include the plan's audit-seed-labeled `acceptance_criteria`, so the
 artifact-scoped entrypoint can inspect the same review target as the full
 project-design view.
+It may include `acceptance_trace`, which maps each acceptance criterion to the
+verification entrypoints and outcome claim prefixes that should support it
+during outcome writeback.
+It may include `implementation_contract`, which names the allowed reusable
+contract/read-model change, deferred scopes, and delivery standard before
+implementation. This is boundary guidance only; it does not execute the slice,
+schedule experts, promote learning artifacts, or prove completion.
+The plan's completion-audit seeds may require the later outcome to explain how
+the delivered change stayed inside `implementation_scope` and did not enter
+`deferred_scope`.
+When the plan opens an iteration, the resulting iteration record can carry the
+same contract as state evidence rather than leaving later agents to infer it
+from the advisory packet.
 When a verified artifact belongs to `core_runtime` or `basic_entrypoint`, the
 same output includes a read-only `next_core_basic_plan` with phase gates,
 acceptance criteria, verification commands, non-goals, and a record-iteration
@@ -563,6 +585,9 @@ reusable runtime contract is named.
 Compact context may render `layer_guard` with the decision stage and source to
 selected layer/owner continuity; it is handoff context, not approval or
 completion proof.
+Compact context may also render `learning_authority`, so handoff context keeps
+the SOP/skill-as-procedure boundary visible without reading raw skill bodies or
+promotion artifacts.
 `iteration_record_status` shows whether the matching next iteration is already
 open. When it is open, `next_command` points to the existing iteration
 inspection command instead of another record command; this is still read-only
@@ -643,6 +668,9 @@ record instead of writing a duplicate.
 advisory expert roles, scheduling policy, and main-thread verification
 authority. It makes multi-expert orchestration a bounded design capability, not
 a scheduler, model fan-out path, external adapter, or completion proof.
+Multi-expert orchestration is a later scheduling layer after core/basic
+stability and learning-persistence gates; it is not a current peer of
+core/basic iteration work.
 Its delegation gates define when to use a role set, which inputs are required,
 what output shape is acceptable, when to reject delegation, and which
 main-runtime check retains completion authority. They do not spawn agents,
@@ -655,13 +683,24 @@ contract under `self-evolution/iterations/`. It is the local state record that
 declares the capability layer, owner surface, proposed slice, evidence refs,
 verification commands, non-goals, and advisory expert roles before major work
 is treated as core/basic/local-learning/application progress. `governance
+record-iteration --from-project-design-plan` also persists the plan's
+`implementation_contract` into that iteration record, so future inspection can
+read the selected layer, implementation scope, deferred scope, and delivery
+standard from the state record itself. `governance
 iterations` lists or inspects those records. `governance record-iteration-outcome`
 updates an existing record with verification status, cited evidence, commands
-run, and next moves. These records do not execute the slice, invoke models,
-mutate repo files, write the active vault, manage services, promote SOPs,
-promote skills, or prove completion beyond cited evidence. With the current
+run, verification claims, and next moves. Use repeated
+`--verification-claim "<entrypoint>: <claim>"` values to bind required entrypoints such as
+`project-design`, `scorecard`, `iterations`, `service-health`, and `check` to
+the completion claim they support. These records do not execute the slice,
+invoke models, mutate repo files, write the active vault, manage services,
+promote SOPs, promote skills, or prove completion beyond cited evidence. With the current
 state root, both record commands return an `inspect_command` that already binds
 that root and can be run directly.
+By default, `record-iteration-outcome` replaces the existing outcome. Use
+`--merge-existing-outcome` for explicit repair writes that should keep existing
+evidence refs, verification commands, verification claims, and next moves while
+adding new list values; status and summary still come from the current command.
 When you inspect one concrete iteration with `governance iterations --iteration
 <id>`, the CLI also adds `runtime_verification_commands`. Those commands bind
 the current state root and iteration id for the local run, while the stored
@@ -677,16 +716,28 @@ same iteration verification commands with the active state root and concrete
 iteration id, while the stored templates remain unchanged. The
 `seed_evidence_status.evidence_counts` section may count both stored and
 runtime-bound command views; those numbers are diagnostics, not completion
-proof.
+proof. For the `verification_scope` seed, `seed_evidence_status` also respects
+outcome verification claim coverage, so claim refs that omit a required
+entrypoint still keep that seed out of `ready_for_manual_review`.
 The audit packet keeps the iteration `source_ref` summary when present, so the
 operator can trace the planned core/basic slice back to the source iteration
 without opening the full record.
 It also includes `plan_ref_coverage`, which compares GA project-design plan refs
 against the audited iteration, source, and outcome refs; it is a diagnostic and
-does not read file bodies or prove completion.
+does not read file bodies or prove completion. If refs are missing,
+`required_outcome_evidence_refs` lists the refs to add to outcome evidence.
+`record-iteration-outcome` replaces the outcome by default, so use
+`--merge-existing-outcome` or keep existing outcome evidence, commands, claims,
+and next moves when adding those refs.
 The packet's top-level `refs` list uses the same audited surfaces, including
 source and outcome evidence refs, so the cited evidence list is not narrower
 than the coverage diagnostic.
+`implementation_contract_coverage` compares the current project-design plan's
+`implementation_contract` with the audited iteration record when the plan still
+targets that iteration; after the plan advances, it checks the audited
+iteration's persisted contract for self-consistency. Missing, incomplete, or
+mismatched contract fields keep completion review blocked. This is read-only
+coverage; it does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs. It only
 shows declaration coverage; it does not mean the commands were executed or
@@ -698,23 +749,80 @@ not move the audit target.
 against outcome verification command refs only. It helps distinguish "the
 iteration declared these checks" from "the recorded outcome cited these checks";
 it still does not execute or prove them.
+`outcome_verification_claim_coverage` checks required verification entrypoints
+against outcome verification claims, so every entrypoint must map to a
+completion claim before review.
+`runtime_attention_outcome_coverage` checks the same outcome claims against
+bounded `service health` when `service-health` is required and current health
+has non-healthy reasons. The `service-health:` claim must carry structured
+tokens: `status=<status>`, the current reason codes,
+`classification=acceptable|repair_needed|verification_blocker`, `handling=...`,
+and, for `repair_needed`, a `follow_up=...`/`follow-up=...`/`followup=...` or
+`no_follow_up=...` token. This only checks recorded evidence; it does not repair
+or prove the service.
+`workspace_outcome_coverage` checks outcome claims against bounded fixed
+`git status` output. If the worktree is dirty, the `workspace:` claim must carry
+`status=dirty` and every reported changed path; truncated change lists stay
+blocked. This only records current-state evidence and never reads file bodies,
+stages files, commits, resets, or proves completion.
 `completion_gate` summarizes structural blockers before the audited iteration is
 ready for manual completion review: missing verified outcome record, missing
-outcome evidence refs, missing plan ref coverage, or missing outcome
-verification command coverage. A partial or failed outcome stays blocked by
-`verified_outcome`. It remains read-only and does not approve seeds or prove
-the commands passed.
+outcome evidence refs, missing plan ref coverage, missing implementation
+contract coverage, missing outcome verification command coverage, missing
+outcome verification claim coverage, missing runtime attention outcome coverage,
+or missing workspace outcome coverage. A partial or failed outcome stays blocked
+by `verified_outcome`. It
+remains read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited
 evidence, and bounded `audit_guidance` from the GA project-design plan without
-running checks, writing outcomes, or approving completion. The guidance names
+running checks, writing outcomes, or approving completion. The guidance carries
+`goal_scope`, so completion review can see the objective, owner surface, source
+of truth, and success evidence without leaving the audit packet. It also
+carries `iteration_focus`, so direction, next steps, and anti-drift checks such
+as resisting external-adapter pressure and premature SOP/skill/memory/dream
+promotion stay visible as review evidence. It carries `capability_stage_plan`
+too, so the same packet shows core/basic capability stages, next-iteration
+direction, and exit criteria as review evidence, not completion proof. It also
+carries `phase_gates` with `forbidden_shortcuts`, so
+anti-drift constraints such as keeping one-off adapters out of core identity
+and keeping SOPs/skills behind completion gates stay visible during review. It
+also carries audit-seed-labeled `acceptance_criteria`, so completion review can
+compare claims to the project-design criteria without treating those criteria
+as completion proof. It also carries `acceptance_trace`, so each criterion stays
+connected to required verification entrypoints and outcome claim prefixes
+without becoming completion proof. It also carries `non_goals`, so boundaries such as no
+automatic SOP/skill/memory/dream promotion, no scheduler, and no execution of
+the next slice stay visible while reviewing the outcome. It also carries
+`scorecard_basis`, `selection_status`, `selection_reasons`, and
+`selection_checks`, so source verification, fresh successor, target layer,
+owner surface, and scorecard target evidence stay visible while reviewing why
+the slice remains core/basic. It also carries `layer_decision`, so
+source/selected layer, core-identity reasons, application boundaries, and
+required-before-outcome commands stay visible as review evidence while external
+adapters remain application slices unless a reusable runtime contract is named.
+It also carries `implementation_contract`, so the next slice states the one
+allowed reusable GA design contract/read-model improvement, the deferred
+external-tool/local-learning/expert scopes, and the delivery standard before
+implementation begins.
+The same guidance can audit that contract through `current_state`: outcome
+claims must preserve the implementation contract's selected layer, allowed
+scope, deferred scope, and delivery standard instead of treating the contract as
+decorative text.
+It also carries `learning_authority`, so self-evolution SOPs and skills
+preserve procedure while project-design, scorecard, iteration contracts,
+current evidence, verified outcomes, and completion-gate coverage retain
+judgment and completion authority. The guidance names
 whether it is reviewing the matching open iteration, the source iteration for
 the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited
 iteration is selected, guidance commands bind `<iteration-ref>` to that
 iteration id and `<state-root>` to the current runtime state root. The packet's
-top-level `next_command` also binds the current state root.
+top-level `next_command` also binds the current state root. For open
+iterations, it keeps evidence-ref, verification-command, verification-claim,
+and next-move placeholders visible so the suggested writeback can satisfy the
+completion gate.
 When an active dream snapshot exists, low-maturity scorecard dimensions may
 also surface through `governance gaps` as proposal-only self-evolution gaps.
 Because the expert orchestration contract now exists, the previous
@@ -807,18 +915,22 @@ command can point to that iteration's inspection command instead of another
 record command. It may also show the matching `--audit-seed all` command as
 operator guidance. A compact `review_gate` line may appear when the matching
 open iteration still lacks an outcome record and outcome verification command
-coverage. It may include the required verification entrypoints from the plan;
-it is handoff guidance, while the full iteration audit packet remains the
-authoritative completion-audit view. A compact `after_verify` line may also
-show the matching `record-iteration-outcome` template, but only as
-post-verification writeback guidance. It keeps repeatable evidence-ref and
-verification-command placeholders plus a next-move placeholder visible, so the
+coverage plus outcome verification claim coverage. It may include the required
+verification entrypoints and required completion coverage list from the plan; it
+is handoff guidance, while the full iteration audit packet remains the
+authoritative completion-audit view. A
+compact `after_verify` line may also show the matching
+`record-iteration-outcome` template, but only as post-verification writeback
+guidance. It keeps repeatable evidence-ref, verification-command, and
+verification-claim placeholders plus a next-move placeholder visible, so the
 outcome record is not confused with evidence by itself or a terminal stop. A
 compact `evidence_basis` line may also show
 bounded candidate refs from the plan; these are citation guidance only, not
 completion proof. When present, `proof_boundary` keeps the required verified
-outcome, outcome evidence refs, plan ref coverage, and outcome verification
-command coverage explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
+outcome, outcome evidence refs, plan ref coverage, implementation contract
+coverage, outcome verification command coverage, outcome verification claim
+coverage, runtime attention outcome coverage, and workspace outcome coverage
+explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
 completed source slice. It may show a short selection
 readiness, check summary, and audit-seed summary, which are quality hints only.
 The `goal_scope` line restates the operator objective, owner surface, source of
@@ -1374,6 +1486,10 @@ It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice
 pressure such as content publishing or feedback refresh loops.
+When `status_reasons` is non-empty, it also returns `attention_followups` that
+map each reason code to read-only next-step guidance. These follow-ups may point
+to bounded inspect, workspace status, resume, or restart commands, but `service
+health` does not run those commands or repair the service.
 If review tick still records an `active` focus but a later executed manual
 `governance act-next` action covers the same focus, service health may render
 that focus as `covered_by_manual_action` and point at the action artifact

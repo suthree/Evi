@@ -23,6 +23,23 @@
 
 本地 SOP、技能和记忆学习是可用能力，但不是每次运行的主要成功标准。主要标准是 runtime 是否能通过具体核心能力完成并验证工作。
 
+## 能力边界
+
+模型能力是底层智能来源，但模型本身是黑盒，不能只靠“相信模型”保证输出质量。本仓库要交付的是模型外层的工程化能力：用 prompt、context、harness、loop、证据、验证和标准化输出，把模型产出约束成可检查、可复用、可迭代的结果。
+
+当前自迭代按这个顺序判断能力边界：
+
+1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。
+2. 基础操作：读、写、搜索、抓取、执行；交付标准是路径、side effect、timeout、输出上限和证据都有边界。
+3. agent 工程核心：prompt、context、harness、loop、completion verification、输出标准化；交付标准是能把目标转成标准动作、标准 claim、验证命令和可审计 outcome。
+4. 流程和协议层：SOP、skills、MCP 类 adapter；交付标准是提升复用和效率，但不能覆盖核心判断和完成门槛。
+5. 工具扩展层：GitHub CLI、飞书/Lark、browser、内容 adapter 等；交付标准是默认作为应用/adapter slice，只有抽象成可复用 runtime contract 后才进入核心。
+6. 通用 agent 基线：单个 agent 能稳定 plan、act、verify、learn；交付标准是先把这个基座打牢。
+7. 专家 agent：在通用基线上安装特定 skill、prompt、工具和 SOP；交付标准是专家化是能力打包，不是跳过基础能力。
+8. 多 agent 调度：多个专家 agent 的协作编排；交付标准是必须在单 agent、专家打包、 advisory 边界和主线程验证权稳定之后再推进。
+
+参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
+
 ## 核心能力
 
 - `file.read`：读取仓库或状态文件。
@@ -141,6 +158,7 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 用于保持核心 GA 设计、基础 runtime、SOP/skill/memory、dream 和未来多专家编排的方向一致。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、SOP/skill/memory、dream 和多专家调度方向的当前成熟度。
+scorecard 可以显示 multi-expert orchestration contract 已 active，但它的 next-slice reason 仍必须把执行调度延后到 core/basic 和 learning-persistence gate 稳定之后；
 scorecard 还会输出 `next_slices`，按阶段、分数和层级给出下一轮有界迭代优先级；
 这只是只读排序，不会写 backlog 或执行推荐。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`
@@ -176,7 +194,7 @@ compact GA Project Design Plan context 会按稳定 check 前缀优先级保留�
 compact context 也会按稳定 reason 前缀优先级保留 `source_status` 和 `source_artifact_quality`；
 但不会把 advisory warning 直接升级成 completion gate；
 `source_truth` 会把 source artifact、source iteration ref、已完成 source slice、目标 successor slice、source status/quality 和 fresh successor 标记合成一行，方便下一轮 handoff 不靠记忆拼证据；它本身不是完成证明；
-compact context 还可以显示 `verify_commands`，用短摘要保留 project-design artifact、open iteration、service health target 和 broad check 身份，方便 handoff 对齐验证范围；权威覆盖证据仍以 outcome 里的 verification command refs 和 iteration audit 为准；
+compact context 还可以显示 `verify_commands`，用短摘要保留 project-design artifact、open iteration、service health target 和 broad check 身份，方便 handoff 对齐验证范围；权威覆盖证据仍以 outcome 里的 verification command refs、verification claim coverage 和 iteration audit 为准；
 下一步迭代方案会带 layer 和 audit seed 前缀，避免把 core runtime 强化、basic entrypoint 验证、完成审计和延后的 local learning 复用混在一起；
 验收条件也会带同一套 audit seed 前缀，让 goal scope、current state、verification scope 和 learning persistence 可以直接对应；
 其中 `runtime_observability:attention_guard` 表示它要守住 service health attention 的可见性，不代表 resident service 已健康；
@@ -186,19 +204,27 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 当 service health 不是 healthy 时，`current_state` audit seed 还会要求把 runtime attention 分类为 `acceptable`、`repair_needed` 或 `verification_blocker`；只写原因、不分类，不足以作为 outcome 证据；
 完成分类后还必须写 handling policy：`acceptable` 为什么对当前 claim 安全，`repair_needed` 后续修什么，或 `verification_blocker` 为什么阻止 verified outcome；
 如果分类是 `repair_needed`，handling policy 必须写 follow-up action，或说明为什么不需要 follow-up；只分类、不追踪，不够；
+iteration audit 会用 `runtime_attention_outcome_coverage` 对这些要求做结构化检查：`service-health:` verification claim 需要包含 `status=<status>`、当前 reason codes、`classification=...`、`handling=...`，`repair_needed` 还需要 `follow_up=...` 或 `no_follow_up=...`；
+iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结构化检查：如果固定 `git status` 显示 dirty，`workspace:` verification claim 必须包含 `status=dirty` 和每个 changed path；如果变更列表被截断，completion gate 会继续阻塞；
 `verification_scope` audit seed 会要求 outcome 说明每条 verification command 支撑哪个 completion claim；只有命令列表、没有 claim coverage，不足以作为 verified outcome 证据；
 它还要求每个 required verification entrypoint 都映射到 completion claim；遗漏任一入口的 claim coverage，不能作为 verified outcome；
 `layer_decision` 会明确把 GA 项目设计识别为核心能力，并把外部工具
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。
+多 agent / 多专家调度属于 core/basic 稳定和 learning-persistence gate 之后的调度层；当前阶段只保留 advisory contract，不把它当作与 core/basic 并列的当前目标。
 `layer_guard` 会保留 decision stage 和 source -> selected layer/owner 连续性，避免只靠 slice id 判断 core/basic 继承关系；
+`learning_authority` 会明确自迭代 SOP/skill 只承载可重复流程，核心/基础能力的层级判断和完成证明仍由 project-design、scorecard、iteration outcome、completion gate 和当前证据负责；
 `anti_drift` 会保留有界的反漂移检查，让外部 adapter 压力、过早提升 SOP/skill/memory/dream、以及未验证就声明完成这三类风险在 handoff 中保持可见；
 `non_goals` 会保留关键边界：不自动提升 SOP/skill/memory/dream，不执行外部工具，不把 application slice 当核心身份，也不把未执行验证当完成证明；
 如果匹配的下一条 iteration 已经打开，`iteration_record_status` 会显示它，`next_command` 也会指向
 现有 iteration 的 inspect 命令，而不是继续提示重复登记；这仍然不会写状态或证明完成。
-compact context 也可以显示 `review_gate`，用于提示 open iteration 仍缺 outcome record、outcome verification command coverage，以及必跑 verification entrypoints；
-也可以显示 `after_verify`，给出验证通过后写回 `record-iteration-outcome` 的模板，并保留可重复的 evidence ref、verification command 和 next move 占位；
+在 `governance iterations --audit-seed all` 里，open iteration 的 `next_command`
+会保留 evidence ref、verification command、verification claim 和 next move 占位，避免写回一个缺 claim coverage 的 outcome；
+compact context 也可以显示 `review_gate`，用于提示 open iteration 仍缺 outcome record、outcome verification command coverage、outcome verification claim coverage，以及必跑 verification entrypoints 和 required completion coverage；
+也可以显示 `after_verify`，给出验证通过后写回 `record-iteration-outcome` 的模板，并保留可重复的 evidence ref、verification command、verification claim 和 next move 占位；
 `evidence_basis` 会给出有界候选 refs，方便 outcome 写回时引用，但它本身不是完成证明；
-`proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage 和 outcome verification command coverage；
+`proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage、implementation contract coverage、outcome verification command coverage、outcome verification claim coverage、runtime attention outcome coverage 和 workspace outcome coverage；
+`plan_ref_coverage` 如果缺 refs，会用 `required_outcome_evidence_refs` 列出必须补进 outcome evidence 的 refs；`record-iteration-outcome` 默认是覆盖式写入，补 refs 时可以用 `--merge-existing-outcome` 保留已有 outcome evidence、commands、claims 和 next moves 后再追加；
+`implementation_contract_coverage` 会比较当前 project-design plan 的 `implementation_contract` 与被审计 iteration record；如果 plan 已推进，则检查被审计 iteration 持久化 contract 的自一致性；缺失、不完整或错配都会阻塞 completion gate；
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；
 `audit_evidence` 会按每个 completion audit seed 保留一条 evidence-needed，让 handoff 看得到后续 outcome 必须引用什么；对 `current_state`，如果 service health 是 required verification command，它会优先保留 service health status/reasons；对 `verification_scope`，它会优先保留 required verification entrypoint 到 completion claim 的映射证据；
 `audit_reject` 会按每个 completion audit seed 保留一条 reject condition，让复制旧成功标准、只凭旧 memory、窄验证证明大能力、或过早提升 SOP/skill/memory/dream 这类失败条件保持可见；对 `current_state`，如果 service health 是 required verification command，它会优先保留缺少 service health status/reasons 的失败条件；
@@ -206,6 +232,9 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `acceptance` 会按 `goal_scope`、`current_state`、`verification_scope`、`learning_persistence` 各保留一条，并额外保留 fresh successor 与 external adapter 边界验收，避免只看到重复的 goal scope 或 current_state；
 `goal_scope` 会直接保留 operator objective、owner surface、source of truth 和 success evidence；它只用于目标定向，不执行、不证明完成；
 `goal_scope` audit seed 还会要求 outcome 核对这些结构化证据，并拒绝无法区分 completed source slice 与 successor slice 的 success evidence；
+`implementation_contract` 会在执行前说明本轮只允许一个可复用 GA design contract/read-model 改进、哪些外部工具/local-learning/专家调度范围要递延、以及交付标准是什么；它是边界提示，不执行、不调度、不提升学习资产、不证明完成；
+由 project-design plan 打开的 iteration record 会持久化同一份 `implementation_contract`，后续审计可以直接从 state record 读取边界，而不是只回推 source artifact；
+`current_state` audit seed 会要求后续 outcome 说明实际改动如何留在 `implementation_scope` 内、没有进入 `deferred_scope`，并保持 selected layer、owner surface 和 delivery standard 一致；
 `stage_exit` 会按每个 core/basic capability stage 各保留一条退出标准；
 `phase_forbid` 会按每个 phase gate 各保留一条 forbidden shortcut；
 权威完成审计仍以 `governance iterations --audit-seed all` 为准。
@@ -226,9 +255,15 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 可以用 `pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed verification_scope --state-root .runtime/state`
 把某个完成审计种子套到具体迭代记录上，只读查看声明证据和 outcome 证据；它不会运行验证或写 outcome。
 输出里的 `seed_evidence_status` 只说明声明证据、outcome 证据和验证命令引用是否存在，不证明种子已满足。
+对 `verification_scope`，`seed_evidence_status` 也会看 outcome verification claim coverage；如果 claim refs 漏掉 required entrypoint，它仍不会进入 ready 状态。
 也可以把 `verification_scope` 换成 `all`，一次查看所有完成审计种子、证据状态和同一组迭代证据；这仍然只是完成前审计视图。
 可以用 `pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified --summary "..." --state-root .runtime/state`
 给已有迭代契约补充验证结果、证据和下一步，让自我迭代形成“声明 -> 验证 -> 复盘”的闭环。
+如果是在修复已有 outcome 的缺失 evidence、commands、claims 或 next moves，可以显式加
+`--merge-existing-outcome`，它只合并这些列表字段；status 和 summary 仍来自本次命令。
+记录 outcome 时可重复传 `--verification-claim "<entrypoint>: <claim>"`，
+把 `project-design`、`scorecard`、`iterations`、`service-health`、`check`
+等 required entrypoint 绑定到它支撑的 completion claim；只列命令、不列 claim coverage，不能作为 verified outcome。
 当已有 active dream 快照时，低成熟度 scorecard 维度也会以 proposal-only
 gap 进入 `governance gaps` / Opportunity Backlog；当前多专家编排契约已存在，
 因此旧的多专家契约 gap 会被压掉。它仍不会直接创建专家 agent、并行调用模型或执行委托结果。
@@ -257,6 +292,9 @@ pnpm run runtime -- service logs --target im --limit 40
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
 `application_slices` 的分层状态和原因码，避免把 resident IM/runtime 的基础健康
 和内容发布、反馈刷新这类应用切片压力混为一谈。
+当 `status_reasons` 非空时，它还会返回 `attention_followups`，把每个原因码映射
+成只读的下一步指引，例如 inspect、workspace status、resume 或 restart 命令；
+这些是操作提示，不代表 `service health` 会执行修复。
 
 主动给 Feishu 操作者发进度时，CLI 只写本地通知 outbox，不直接调用
 Feishu。resident IM 服务会从同一个状态根 drain 并发送：
