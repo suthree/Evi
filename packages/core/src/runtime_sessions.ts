@@ -1,22 +1,21 @@
 import { basename } from "node:path";
 import { newId, utcNow } from "./ids.js";
+import {
+  runtimeChannelRouteKey,
+  runtimeChannelSourceFromRouteKey,
+  runtimeChannelSourceKey,
+  type RuntimeChannelKind,
+  type RuntimeChannelSource
+} from "./runtime_channel_messages.js";
 import type { RunResult } from "./schemas.js";
 import { AgentStore } from "./store.js";
 
 export type RuntimeSessionStatus = "pending" | "active" | "archived";
-export type RuntimeSessionSourceKind = "feishu" | "local" | "runtime";
+export type RuntimeSessionSourceKind = RuntimeChannelKind | "local" | "runtime";
 export type InboxTriggerKind = "inbox_only" | "run_command" | "mention" | "authorized_direct" | "session_command";
 
-export interface FeishuSessionSource {
-  kind: "feishu";
-  channelId: string;
-  chatType: string;
-  chatId: string;
-  threadId?: string | null;
-  profile?: string | null;
-  openId?: string | null;
-  perUser?: boolean;
-}
+export type RuntimeSessionSource = RuntimeChannelSource;
+export type FeishuSessionSource = RuntimeChannelSource & { kind: "feishu" };
 
 export interface RuntimeSessionRecord {
   type: "runtime_session";
@@ -35,12 +34,14 @@ export interface RuntimeSessionRecord {
 export interface RuntimeSessionBindingRecord {
   type: "session_binding";
   id: string;
-  source_kind: "feishu";
+  source_kind: RuntimeChannelKind;
   route_key: string;
   source_key: string;
   runtime_session_id: string;
   profile: string;
   status: "active" | "retired";
+  created_by_actor_id: string | null;
+  // Legacy Feishu-named alias kept for existing JSONL consumers.
   created_by_open_id: string | null;
   created_at: string;
   updated_at: string;
@@ -51,12 +52,18 @@ export interface RuntimeInboxEntry {
   type: "runtime_inbox";
   id: string;
   runtime_session_id: string;
-  source_kind: "feishu";
+  source_kind: RuntimeChannelKind;
   route_key: string;
   source_key: string;
   message_id: string;
   chat_type: string;
+  conversation_type: string;
+  conversation_id: string;
+  thread_id: string | null;
+  sender_actor_id: string | null;
+  // Legacy Feishu-named alias kept for existing JSONL consumers.
   sender_open_id: string | null;
+  sender_id: string | null;
   text: string;
   trigger_kind: InboxTriggerKind;
   run_requested: boolean;
@@ -68,7 +75,7 @@ export interface RuntimeTaskRunRecord {
   type: "runtime_task_run";
   id: string;
   runtime_session_id: string | null;
-  source_kind: "feishu" | "local" | "runtime";
+  source_kind: RuntimeSessionSourceKind;
   source_key: string | null;
   task: string;
   status: "queued" | "running" | "done" | "blocked" | "failed";
@@ -97,38 +104,22 @@ const DEFAULT_PROFILE = "unassigned";
 const STATE_BOUNDARY = "local runtime session control state; ignored by git, not a hosted or multi-user session database";
 
 export function feishuRouteKey(source: FeishuSessionSource): string {
-  return [
-    "feishu",
-    cleanPart(source.channelId),
-    cleanPart(source.chatType),
-    cleanPart(source.chatId),
-    cleanPart(source.threadId || "main")
-  ].join(":");
+  return runtimeChannelRouteKey(source);
 }
 
 export function feishuSourceKey(source: FeishuSessionSource, profile = source.profile || DEFAULT_PROFILE): string {
-  const parts = [feishuRouteKey(source), cleanPart(profile)];
-  if (source.perUser && source.openId) parts.push("user", cleanPart(source.openId));
-  return parts.join(":");
+  return runtimeChannelSourceKey(source, profile);
 }
 
 export function feishuSourceFromRouteKey(routeKey: string, profile?: string | null): FeishuSessionSource | null {
-  const [kind, channelId, chatType, chatId, threadId] = routeKey.split(":");
-  if (kind !== "feishu" || !channelId || !chatType || !chatId) return null;
-  return {
-    kind: "feishu",
-    channelId,
-    chatType,
-    chatId,
-    threadId: threadId && threadId !== "main" ? threadId : null,
-    profile
-  };
+  const source = runtimeChannelSourceFromRouteKey(routeKey, profile);
+  return source?.kind === "feishu" ? { ...source, kind: "feishu" } : null;
 }
 
 export async function resolveRuntimeSession(
   store: AgentStore,
   args: {
-    source: FeishuSessionSource;
+    source: RuntimeSessionSource;
     actorAuthorized: boolean;
     defaultProfile?: string;
     allowCreatePending?: boolean;
@@ -138,8 +129,8 @@ export async function resolveRuntimeSession(
 ): Promise<RuntimeSessionResolution> {
   await store.ensureLayout();
   const profile = normalizeProfile(args.source.profile || args.defaultProfile || DEFAULT_PROFILE);
-  const routeKey = feishuRouteKey(args.source);
-  const sourceKey = feishuSourceKey({ ...args.source, profile }, profile);
+  const routeKey = runtimeChannelRouteKey(args.source);
+  const sourceKey = runtimeChannelSourceKey({ ...args.source, profile }, profile);
   const bindings = await listRuntimeSessionBindings(store);
   const binding = bindings.find((item) => item.route_key === routeKey && item.status === "active")
     ?? bindings.find((item) => item.source_key === sourceKey && item.status === "active")
@@ -155,10 +146,10 @@ export async function resolveRuntimeSession(
   const now = args.now ?? utcNow();
   const session = await upsertRuntimeSession(store, {
     id: newId("runtime_session"),
-    title: args.title?.trim() || defaultFeishuSessionTitle(args.source),
+    title: args.title?.trim() || defaultRuntimeSessionTitle(args.source),
     profile,
     status: profile === DEFAULT_PROFILE ? "pending" : "active",
-    source_kind: "feishu",
+    source_kind: args.source.kind,
     source_route_key: routeKey,
     source_key: sourceKey,
     created_at: now,
@@ -168,7 +159,7 @@ export async function resolveRuntimeSession(
     source: { ...args.source, profile },
     runtimeSessionId: session.id,
     profile,
-    createdByOpenId: args.source.openId ?? null,
+    createdByActorId: args.source.actorId ?? null,
     now
   });
   return { ok: true, reason: "created_pending", session, binding: createdBinding };
@@ -177,28 +168,32 @@ export async function resolveRuntimeSession(
 export async function bindRuntimeSessionSource(
   store: AgentStore,
   args: {
-    source: FeishuSessionSource;
+    source: RuntimeSessionSource;
     runtimeSessionId: string;
     profile?: string;
+    createdByActorId?: string | null;
+    /** @deprecated Use createdByActorId for provider-neutral channel sources. */
     createdByOpenId?: string | null;
     now?: string;
   }
 ): Promise<RuntimeSessionBindingRecord> {
   await store.ensureLayout();
   const profile = normalizeProfile(args.profile || args.source.profile || DEFAULT_PROFILE);
-  const routeKey = feishuRouteKey(args.source);
-  const sourceKey = feishuSourceKey({ ...args.source, profile }, profile);
+  const routeKey = runtimeChannelRouteKey(args.source);
+  const sourceKey = runtimeChannelSourceKey({ ...args.source, profile }, profile);
   const now = args.now ?? utcNow();
+  const createdByActorId = args.createdByActorId ?? args.createdByOpenId ?? null;
   const binding: RuntimeSessionBindingRecord = {
     type: "session_binding",
     id: newId("session_binding"),
-    source_kind: "feishu",
+    source_kind: args.source.kind,
     route_key: routeKey,
     source_key: sourceKey,
     runtime_session_id: args.runtimeSessionId,
     profile,
     status: "active",
-    created_by_open_id: args.createdByOpenId ?? null,
+    created_by_actor_id: createdByActorId,
+    created_by_open_id: createdByActorId,
     created_at: now,
     updated_at: now,
     boundary: STATE_BOUNDARY
@@ -237,7 +232,7 @@ export async function appendRuntimeInboxEntry(
   store: AgentStore,
   args: {
     sessionId: string;
-    source: FeishuSessionSource;
+    source: RuntimeSessionSource;
     messageId: string;
     text: string;
     triggerKind: InboxTriggerKind;
@@ -251,17 +246,22 @@ export async function appendRuntimeInboxEntry(
     type: "runtime_inbox",
     id: newId("runtime_inbox"),
     runtime_session_id: args.sessionId,
-    source_kind: "feishu",
-    route_key: feishuRouteKey(args.source),
-    source_key: feishuSourceKey({ ...args.source, profile }, profile),
+    source_kind: args.source.kind,
+    route_key: runtimeChannelRouteKey(args.source),
+    source_key: runtimeChannelSourceKey({ ...args.source, profile }, profile),
     message_id: args.messageId,
-    chat_type: args.source.chatType,
-    sender_open_id: args.source.openId ?? null,
+    chat_type: args.source.conversationType,
+    conversation_type: args.source.conversationType,
+    conversation_id: args.source.conversationId,
+    thread_id: args.source.threadId ?? null,
+    sender_actor_id: args.source.actorId ?? null,
+    sender_open_id: args.source.actorId ?? null,
+    sender_id: args.source.actorId ?? null,
     text: args.text,
     trigger_kind: args.triggerKind,
     run_requested: Boolean(args.runRequested),
     created_at: args.now ?? utcNow(),
-    boundary: "runtime session inbox entry; local state only, not durable Feishu replay authority"
+    boundary: "runtime session inbox entry; local state only, not durable provider replay authority"
   };
   await store.appendJsonl(`sessions/inbox/${safeFilePart(args.sessionId)}.jsonl`, entry);
   return entry;
@@ -276,6 +276,8 @@ export async function recordRuntimeTaskRun(
     task: string;
     status?: RuntimeTaskRunRecord["status"];
     runResult?: RunResult | null;
+    id?: string;
+    createdAt?: string;
     now?: string;
   }
 ): Promise<RuntimeTaskRunRecord> {
@@ -284,19 +286,19 @@ export async function recordRuntimeTaskRun(
   const result = args.runResult ?? null;
   const record: RuntimeTaskRunRecord = {
     type: "runtime_task_run",
-    id: newId("runtime_run"),
+    id: args.id ?? newId("runtime_run"),
     runtime_session_id: args.runtimeSessionId ?? null,
     source_kind: args.sourceKind ?? "local",
     source_key: args.sourceKey ?? null,
     task: args.task,
-    status: args.status ?? statusFromRunResult(result),
+    status: args.status ?? runtimeTaskRunStatusFromResult(result),
     live_session_id: result?.session_id ?? null,
     turn_id: result?.turn_id ?? null,
     verdict: result?.verdict ?? null,
     evidence_refs: result?.evidence_refs ?? [],
     final_response_ref: result?.final_response_ref ?? null,
     completion_report_ref: result?.completion_report_ref ?? null,
-    created_at: now,
+    created_at: args.createdAt ?? now,
     updated_at: now,
     boundary: "runtime task run index; points to existing run evidence and does not duplicate raw artifacts"
   };
@@ -325,7 +327,12 @@ export async function listRuntimeInbox(store: AgentStore, sessionId: string): Pr
 }
 
 export async function listRuntimeTaskRuns(store: AgentStore): Promise<RuntimeTaskRunRecord[]> {
-  return (await readJsonlRecords<RuntimeTaskRunRecord>(store, RUN_INDEX_REF, "runtime_task_run"))
+  const byId = new Map<string, RuntimeTaskRunRecord>();
+  for (const record of await readJsonlRecords<RuntimeTaskRunRecord>(store, RUN_INDEX_REF, "runtime_task_run")) {
+    const existing = byId.get(record.id);
+    if (!existing || existing.updated_at.localeCompare(record.updated_at) <= 0) byId.set(record.id, record);
+  }
+  return Array.from(byId.values())
     .sort((left, right) => right.updated_at.localeCompare(left.updated_at) || right.id.localeCompare(left.id));
 }
 
@@ -345,16 +352,18 @@ async function readJsonlRecords<T extends { type?: string }>(store: AgentStore, 
   return records;
 }
 
-function statusFromRunResult(result: RunResult | null): RuntimeTaskRunRecord["status"] {
+export function runtimeTaskRunStatusFromResult(result: RunResult | null): RuntimeTaskRunRecord["status"] {
   if (!result) return "done";
   if (result.verdict.includes("blocked")) return "blocked";
   if (result.verdict.includes("failed") || result.verdict.includes("unverified")) return "failed";
   return "done";
 }
 
-function defaultFeishuSessionTitle(source: FeishuSessionSource): string {
-  const scope = source.chatType === "p2p" ? "Feishu private chat" : "Feishu group";
-  return `${scope} ${basename(source.chatId)}`;
+function defaultRuntimeSessionTitle(source: RuntimeSessionSource): string {
+  const scope = source.conversationType === "p2p"
+    ? `${source.kind} private chat`
+    : `${source.kind} ${source.conversationType}`;
+  return `${scope} ${basename(source.conversationId)}`;
 }
 
 function normalizeProfile(profile: string): string {

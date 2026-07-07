@@ -2558,3 +2558,59 @@ This does not introduce hosted auth, multi-user tenancy, desktop packaging,
 remote session databases, durable cross-process queues, or automatic
 LLM-inferred role assignment. Project-scheduled or local tasks may record task
 runs without any Feishu source mapping.
+
+## 2026-07-07 Runtime Daemon And MessageGateway
+
+The resident process should be a unified local runtime daemon rather than a
+Feishu-specific process with GUI bolted on. `im serve` remains a compatibility
+entrypoint, while `daemon serve` and `service --target runtime` are the
+provider-neutral resident surfaces.
+
+Web, Feishu, Telegram, and Discord are channel adapters behind a MessageGateway
+lifecycle interface. Provider-specific route identifiers stay inside adapters
+and runtime session source mappings. Discord is a first bot adapter using
+Gateway events plus REST message sends; slash commands, full resume/sharding,
+and rich interactions remain out of scope.
+
+IM channel configuration uses a provider-neutral loader. Channel records can
+declare `kind: feishu`, `kind: telegram`, or `kind: discord`, and resident CLI
+surfaces accept `--provider` as a selector guard. Feishu, Telegram, and Discord
+are startable in this slice. Config resolution stays in
+`im_config.ts`; provider startability and concrete adapter construction live in
+`im_adapters.ts`.
+
+Channel messages normalize into a provider-neutral source envelope before
+runtime session binding. The source envelope carries channel kind, configured
+channel id, conversation type, conversation id, optional thread id, optional
+actor id, and optional profile. Route keys, source keys, inbox entries, and task
+run source refs are derived from that envelope rather than from Feishu-specific
+fields.
+
+Inbound channel messages go through a shared runtime channel dispatcher after
+provider normalization. The dispatcher owns `/session use`, pending bootstrap,
+inbox append, and `/run`/mention trigger classification; adapters keep SDK and
+reply transport logic.
+
+Explicit runtime-session runs write to a local append-only task queue before
+invoking the runner. Feishu group runs and web-console runs synchronously claim
+their own queued task, while the task-run read model mirrors `queued`,
+`running`, and final rows with the same id for GUI/history visibility. The
+queue read model can surface queued or stale running tasks for recovery, and
+the resident daemon owns a bounded queue worker that consumes stale
+queued/running tasks and writes `services/<target>/task_queue.json` status.
+This recovers self-contained runner work without introducing a remote broker,
+or cross-process scheduling.
+
+Outbound communication gets the same local-first treatment. Task final/error
+results from Feishu, Web, and daemon recovery append provider-neutral rows to
+`channels/outbox.jsonl`; provider-specific delivery refs stay optional metadata
+owned by adapters. Feishu/Telegram/Discord recovery rows can be queued and drained by
+the matching adapter back to the original conversation. This gives GUI/diagnostics a stable
+outbox read model without turning the runtime core into a Telegram/Discord/Feishu
+send adapter or retry broker.
+
+This slice standardizes channel lifecycle and resident service composition. It
+does not add hosted service governance, durable cross-process task scheduling,
+multi-user auth, desktop packaging, a generic retry broker, Telegram adapter
+features beyond the long-polling Bot API adapter, or Discord features beyond
+the Gateway/REST bot adapter.

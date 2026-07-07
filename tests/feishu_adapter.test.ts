@@ -9,6 +9,11 @@ import type { ContextBundleManifest } from "../packages/core/src/context.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
 import type { RunResult } from "../packages/core/src/schemas.js";
+import { listRuntimeTaskQueue } from "../packages/core/src/runtime_task_queue.js";
+import {
+  listRuntimeChannelOutbox,
+  recordRuntimeChannelOutbound
+} from "../packages/core/src/runtime_channel_outbox.js";
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { FeishuPrivateChatAdapter, normalizePrivateTextMessage, parseFeishuTextContent, splitText } from "../packages/runtime/src/channels/feishu/adapter.js";
@@ -537,6 +542,112 @@ test("bound Feishu group run command executes and records a runtime task run", a
     assert.equal(runs[0]?.status, "done");
     assert.equal(runs[0]?.task, "check service status");
     assert.equal(runs[0]?.source_kind, "feishu");
+    const tasks = await listRuntimeTaskQueue(fixture.store);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0]?.id, runs[0]?.id);
+    assert.equal(tasks[0]?.status, "done");
+    const rawRuns = await readJsonl(join(fixture.stateRoot, "runs/index.jsonl"));
+    assert.deepEqual(rawRuns.map((entry) => entry.status), ["queued", "running", "done"]);
+    assert.equal(rawRuns[0]?.id, rawRuns[1]?.id);
+    assert.equal(rawRuns[1]?.id, rawRuns[2]?.id);
+    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
+    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "done"]);
+    assert.match(String(rawQueue[0]?.runner_task), /Feishu group runtime session message received/);
+    const outbox = await listRuntimeChannelOutbox(fixture.store);
+    assert.equal(outbox.length, 1);
+    assert.equal(outbox[0]?.source_kind, "feishu");
+    assert.equal(outbox[0]?.purpose, "final");
+    assert.equal(outbox[0]?.status, "sent");
+    assert.equal(outbox[0]?.task_run_id, runs[0]?.id);
+    assert.equal(outbox[0]?.runtime_session_id, runs[0]?.runtime_session_id);
+    assert.equal(outbox[0]?.in_reply_to_message_id, "om_group_run");
+    assert.equal(outbox[0]?.text, "Group final answer.");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu adapter drains queued provider-neutral outbox replies", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "unused");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport,
+      runner,
+      store: fixture.store
+    });
+    const queued = await recordRuntimeChannelOutbound(fixture.store, {
+      source: {
+        kind: "feishu",
+        channelId: "feishu-test",
+        conversationType: "group",
+        conversationId: "oc_group_session",
+        threadId: "main",
+        profile: "ops"
+      },
+      sourceKey: "feishu:feishu-test:group:oc_group_session:main:ops",
+      runtimeSessionId: "runtime_session_group",
+      taskRunId: "runtime_task_group",
+      purpose: "final",
+      status: "queued",
+      text: "Recovered group final answer.",
+      now: "2026-07-07T00:00:00.000Z"
+    });
+
+    const drained = await adapter.drainRuntimeChannelOutbox();
+
+    assert.equal(drained.queued_count, 1);
+    assert.equal(drained.sent_count, 1);
+    assert.deepEqual(drained.outbox_ids, [queued.id]);
+    assert.deepEqual(transport.chatSent.map((item) => item.text), ["Recovered group final answer."]);
+    const outbox = await listRuntimeChannelOutbox(fixture.store);
+    assert.equal(outbox.length, 1);
+    assert.equal(outbox[0]?.id, queued.id);
+    assert.equal(outbox[0]?.status, "sent");
+    assert.equal(outbox[0]?.provider_delivery_ref, `channels/feishu/outbox/${queued.id}.json`);
+    assert.deepEqual(outbox[0]?.provider_message_ids, ["chat_sent_1"]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu outbox drain can replay p2p replies by chat id", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "unused");
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport,
+      runner,
+      store: fixture.store
+    });
+    await recordRuntimeChannelOutbound(fixture.store, {
+      source: {
+        kind: "feishu",
+        channelId: "feishu-test",
+        conversationType: "p2p",
+        conversationId: "oc_p2p_chat",
+        threadId: "main",
+        profile: "ops"
+      },
+      runtimeSessionId: "runtime_session_p2p",
+      taskRunId: "runtime_task_p2p",
+      purpose: "final",
+      status: "queued",
+      text: "Recovered p2p final answer.",
+      now: "2026-07-07T00:00:00.000Z"
+    });
+
+    const drained = await adapter.drainRuntimeChannelOutbox();
+
+    assert.equal(drained.sent_count, 1);
+    assert.deepEqual(transport.chatSent.map((item) => item.chatId), ["oc_p2p_chat"]);
+    assert.equal(transport.sent.length, 0);
+    const outbox = await listRuntimeChannelOutbox(fixture.store);
+    assert.equal(outbox[0]?.status, "sent");
   } finally {
     await fixture.cleanup();
   }

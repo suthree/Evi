@@ -139,6 +139,54 @@ test("web command parses local console host and port", () => {
   assert.equal(options.stateRoot, ".runtime/state");
 });
 
+test("daemon command parses runtime channel surface options", () => {
+  const options = parseArgs([
+    "daemon",
+    "serve",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "9876",
+    "--provider",
+    "telegram",
+    "--no-im",
+    "--state-root",
+    ".runtime/state"
+  ]);
+
+  assert.equal(options.command, "daemon");
+  assert.equal(options.daemonAction, "serve");
+  assert.equal(options.webHost, "127.0.0.1");
+  assert.equal(options.webPort, 9876);
+  assert.equal(options.imProvider, "telegram");
+  assert.equal(options.requireIm, false);
+  assert.equal(options.stateRoot, ".runtime/state");
+});
+
+test("service command parses runtime target and web host options", () => {
+  const options = parseArgs([
+    "service",
+    "start",
+    "--target",
+    "runtime",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "9877",
+    "--provider",
+    "feishu",
+    "--no-im"
+  ]);
+
+  assert.equal(options.command, "service");
+  assert.equal(options.serviceAction, "start");
+  assert.equal(options.serviceTarget, "runtime");
+  assert.equal(options.webHost, "127.0.0.1");
+  assert.equal(options.webPort, 9877);
+  assert.equal(options.imProvider, "feishu");
+  assert.equal(options.requireIm, false);
+});
+
 test("governance project-design command parses core design read model", () => {
   const options = parseArgs(["governance", "project-design", "--state-root", ".runtime/state"]);
 

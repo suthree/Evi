@@ -65,9 +65,61 @@ pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." -
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 ```
 
-Web console 用于查看 runtime sessions、Feishu inbox 和 task runs，也可以把
-pending 的 Feishu 群 session 绑定到某个 profile，并显式提交一次本地 task run。
+Web console 用于查看 runtime sessions、channel inbox 和 task runs，也可以把
+pending 的 channel session 绑定到某个 profile，并显式提交一次本地 task run。
+这个绑定走 Feishu、Telegram、Discord 共用的 provider-neutral route key。
 它只是 localhost 操作者界面，不是托管、多用户、带登录体系或桌面版 GUI。
+
+启动统一常驻 runtime daemon：
+
+```bash
+pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+如果只需要 Web/operator 面、暂不启动 IM provider：
+
+```bash
+pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+安装或启动 launchd 常驻服务时使用 `runtime` target：
+
+```bash
+pnpm run runtime -- service start --target runtime --host 127.0.0.1 --port 8765
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service health --target runtime
+```
+
+当前真实外部 IM provider 是 Feishu、Telegram 和 Discord。Web、Feishu、
+Telegram、Discord 已经通过 MessageGateway 作为通讯 Adapter 管理。Discord
+当前是 Bot Gateway + REST send 的最小接入，不包含 slash commands、完整
+resume/sharding 或 rich interaction。
+
+IM channel 配置已经走 provider-neutral loader：channel record 可声明
+`kind: "feishu" | "telegram" | "discord"`，`doctor`、`daemon serve`、
+`im serve` 和 `service` 可用 `--provider` 做选择/校验。当前 Feishu、
+Telegram 和 Discord 都能启动。config loader
+只解析 provider-neutral scenario；是否可启动和具体 Adapter 创建由
+`im_adapters.ts` 负责。
+
+IM 消息进入 runtime session 前会先变成统一 source envelope：channel kind、
+channel id、conversation type/id、thread id、actor id 和 profile。session
+route key、inbox 和 task run 都从这个结构派生，避免把 Feishu `chat_id`
+这类平台字段扩散到 runtime core。
+
+归一后的入站消息会进入共享 runtime channel dispatcher；dispatcher 负责
+`/session use`、pending session 创建、inbox append，以及 `/run` 或 mention
+触发分类。Adapter 只保留平台解析和回复发送。
+
+IM 或 Web console 触发的显式任务会先写入本地 runtime task queue，然后同步
+领取同一条任务并调用 runner。task-run index 会用同一个 id 追加 `queued`、
+`running` 和最终状态，供 Web GUI/history 展示；queue read model 也能列出
+queued 或 stale running 任务。常驻 daemon 已有一个有界 queue worker，会消费
+过期 queued/running 项并写回最终 task-run 状态。Feishu/Telegram/Discord 来源的
+recovery 结果会以 queued outbound row 写入统一 `channels/outbox.jsonl`，再由
+对应 Adapter 投递回原会话；Web 和直接 Adapter 回复会记录本地 sent row。真实
+发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不属于当前
+channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询反复处理。
 
 Feishu 群会映射到本地 runtime session。未知群只有授权 operator 的消息能创建
 pending/unassigned session；绑定方式是在群里发送 `/session use <profile>`，
@@ -184,7 +236,16 @@ gap 进入 `governance gaps` / Opportunity Backlog；当前多专家编排契约
 SOP-candidate gap；它仍必须走 review tick、draft-sop、audit-sop、promote-sop
 门禁，才可能写 active vault skill。
 
-管理本地 resident IM 服务：
+管理统一本地 resident runtime 服务：
+
+```bash
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service start --target runtime --host 127.0.0.1 --port 8765
+pnpm run runtime -- service health --target runtime
+pnpm run runtime -- service logs --target runtime --limit 40
+```
+
+兼容的 Feishu-only `im` target 仍可用：
 
 ```bash
 pnpm run runtime -- service status --target im

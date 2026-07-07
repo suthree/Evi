@@ -2,13 +2,26 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { URL } from "node:url";
 import {
   bindRuntimeSessionSource,
-  feishuSourceFromRouteKey,
   listRuntimeInbox,
   listRuntimeSessionBindings,
   listRuntimeSessions,
   listRuntimeTaskRuns,
-  recordRuntimeTaskRun
+  recordRuntimeTaskRun,
+  runtimeTaskRunStatusFromResult
 } from "../../core/src/runtime_sessions.js";
+import { recordRuntimeChannelOutbound } from "../../core/src/runtime_channel_outbox.js";
+import {
+  isRuntimeChannelKind,
+  runtimeChannelSourceFromRouteKey,
+  type RuntimeChannelSource
+} from "../../core/src/runtime_channel_messages.js";
+import {
+  claimRuntimeTask,
+  completeRuntimeTask,
+  enqueueRuntimeTask,
+  failRuntimeTask,
+  type RuntimeTaskQueueTerminalStatus
+} from "../../core/src/runtime_task_queue.js";
 import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
 
@@ -93,20 +106,20 @@ async function handleRequest(
         writeJson(response, 404, { error: "session not found" });
         return;
       }
-      if (session.source_kind !== "feishu" || !session.source_route_key) {
-        writeJson(response, 400, { error: "only Feishu-backed sessions can be profile-bound by route" });
+      if (!session.source_route_key || !isRuntimeChannelKind(session.source_kind)) {
+        writeJson(response, 400, { error: "only channel-backed sessions can be profile-bound by route" });
         return;
       }
-      const source = feishuSourceFromRouteKey(session.source_route_key, profile);
-      if (!source) {
-        writeJson(response, 400, { error: "invalid Feishu route key" });
+      const source = runtimeChannelSourceFromRouteKey(session.source_route_key, profile);
+      if (!source || source.kind !== session.source_kind) {
+        writeJson(response, 400, { error: "invalid channel route key" });
         return;
       }
       const binding = await bindRuntimeSessionSource(options.store, {
         source,
         runtimeSessionId: session.id,
         profile,
-        createdByOpenId: null
+        createdByActorId: null
       });
       writeJson(response, 200, { binding, sessions: await listRuntimeSessions(options.store) });
       return;
@@ -130,13 +143,81 @@ async function handleRequest(
         return;
       }
       const runtimeSessionId = stringField(body, "runtime_session_id")?.trim() || null;
-      const result = await options.runTask(task, { runtimeSessionId });
-      const run = await recordRuntimeTaskRun(options.store, {
+      const sourceKind = runtimeSessionId ? "runtime" : "local";
+      const sourceKey = runtimeSessionId;
+      const webSource = webConsoleSource(runtimeSessionId);
+      const queued = await enqueueRuntimeTask(options.store, {
         runtimeSessionId,
-        sourceKind: runtimeSessionId ? "runtime" : "local",
-        sourceKey: runtimeSessionId,
+        sourceKind,
+        sourceKey,
+        task
+      });
+      await recordRuntimeTaskRun(options.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
+        runtimeSessionId,
+        sourceKind,
+        sourceKey,
+        task,
+        status: "queued"
+      });
+      const started = await claimRuntimeTask(options.store, { id: queued.id });
+      if (!started) throw new Error(`runtime task ${queued.id} could not be claimed`);
+      await recordRuntimeTaskRun(options.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
+        runtimeSessionId,
+        sourceKind,
+        sourceKey,
+        task,
+        status: "running"
+      });
+      let result: RunResult;
+      try {
+        result = await options.runTask(task, { runtimeSessionId });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        await failRuntimeTask(options.store, { id: queued.id, error: message });
+        await recordRuntimeTaskRun(options.store, {
+          id: queued.id,
+          createdAt: queued.created_at,
+          runtimeSessionId,
+          sourceKind,
+          sourceKey,
+          task,
+          status: "failed"
+        });
+        await recordRuntimeChannelOutbound(options.store, {
+          source: webSource,
+          runtimeSessionId,
+          taskRunId: queued.id,
+          purpose: "error",
+          status: "failed",
+          text: message,
+          error: message
+        });
+        throw error;
+      }
+      await completeRuntimeTask(options.store, {
+        id: queued.id,
+        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
+      });
+      const run = await recordRuntimeTaskRun(options.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
+        runtimeSessionId,
+        sourceKind,
+        sourceKey,
         task,
         runResult: result
+      });
+      await recordRuntimeChannelOutbound(options.store, {
+        source: webSource,
+        runtimeSessionId,
+        taskRunId: queued.id,
+        purpose: "final",
+        status: "sent",
+        text: result.verdict
       });
       writeJson(response, 200, { run, result });
       return;
@@ -177,6 +258,15 @@ function writeText(response: ServerResponse, status: number, text: string): void
 function stringField(value: Record<string, unknown>, field: string): string | null {
   const raw = value[field];
   return typeof raw === "string" ? raw : null;
+}
+
+function webConsoleSource(runtimeSessionId: string | null): RuntimeChannelSource {
+  return {
+    kind: "web",
+    channelId: "console",
+    conversationType: runtimeSessionId ? "runtime_session" : "local",
+    conversationId: runtimeSessionId ?? "local"
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -137,6 +137,7 @@ type ActiveScenarioRecord = z.infer<typeof activeScenarioRecordSchema>;
 type ModelRecord = z.infer<typeof modelRecordSchema>;
 type ImageModelRecord = z.infer<typeof imageModelRecordSchema>;
 type AuthRecord = z.infer<typeof authRecordSchema>;
+export type ApiKeyAuthRecord = z.infer<typeof authRecordSchema>;
 export type AppSecretAuthRecord = z.infer<typeof appSecretAuthRecordSchema>;
 export type ImageModelConfig = ImageModelRecord & {
   api_key: string;
@@ -355,7 +356,7 @@ export interface RuntimeAuthDiagnostics {
   action: "auth-diagnostics";
   created_at: string;
   active_model_auth: ApiKeyAuthDiagnostic | null;
-  active_channel_auth: AppSecretAuthDiagnostic | null;
+  active_channel_auth: ApiKeyAuthDiagnostic | AppSecretAuthDiagnostic | null;
   refs: string[];
   boundary: string;
 }
@@ -394,6 +395,10 @@ export interface RuntimeConfigUpdatePatch {
 export interface UpdateRuntimeConfigOptions extends ConfigSourceOptions {
   patch: RuntimeConfigUpdatePatch;
   confirmedExternalWrite?: boolean;
+}
+
+export interface RuntimeAuthDiagnosticsOptions extends ConfigSourceOptions {
+  channelId?: string;
 }
 
 export interface RuntimeConfigUpdateResult {
@@ -786,12 +791,12 @@ export async function updateRuntimeConfig(options: UpdateRuntimeConfigOptions): 
     after: after.runtime,
     changed_fields: changedRuntimeFields(before.runtime, after.runtime),
     restart_required: true,
-    restart_command: "pnpm run runtime -- service restart --target im --scenario im-default --channel feishu-main",
+    restart_command: "pnpm run runtime -- service restart --target runtime",
     boundary: "append-only runtime config update; writes only the local home config.jsonl runtime record, reads only non-secret config summary inputs, never reads or writes auth.jsonl, does not restart services, invoke models, fetch sources, publish externally, mutate repo files, or write the active vault"
   };
 }
 
-export async function loadRuntimeAuthDiagnostics(options: ConfigSourceOptions = {}): Promise<RuntimeAuthDiagnostics> {
+export async function loadRuntimeAuthDiagnostics(options: RuntimeAuthDiagnosticsOptions = {}): Promise<RuntimeAuthDiagnostics> {
   const selectors = await loadConfigSelectors(options);
   const configLayers = await readConfigSourceLayers(selectors, "config.jsonl");
   const modelLayers = await readConfigSourceLayers(selectors, "models.jsonl");
@@ -809,16 +814,20 @@ export async function loadRuntimeAuthDiagnostics(options: ConfigSourceOptions = 
     ? [...modelRecords].reverse().find((item) => item.value.id === activeModel.value.model_id)
     : undefined;
   const activeChannel = activeChannelRecords.at(-1);
-  const channel = activeChannel
-    ? [...channelRecords].reverse().find((item) => stringField(item.raw, "id") === activeChannel.value.channel_id)
+  const selectedChannelId = options.channelId ?? activeChannel?.value.channel_id;
+  const channel = selectedChannelId
+    ? [...channelRecords].reverse().find((item) => stringField(item.raw, "id") === selectedChannelId)
     : undefined;
   const env = options.env ?? process.env;
   const modelAuth = model?.value.auth_id
     ? apiKeyDiagnostic(model.value.auth_id, [...apiKeyRecords].reverse().find((item) => item.value.id === model.value.auth_id), env)
     : null;
   const channelAuthId = stringField(channel?.raw, "auth_id");
+  const channelKind = stringField(channel?.raw, "kind");
   const channelAuth = channelAuthId
-    ? appSecretDiagnostic(channelAuthId, [...appSecretRecords].reverse().find((item) => item.value.id === channelAuthId), env)
+    ? channelKind === "telegram" || channelKind === "discord"
+      ? apiKeyDiagnostic(channelAuthId, [...apiKeyRecords].reverse().find((item) => item.value.id === channelAuthId), env)
+      : appSecretDiagnostic(channelAuthId, [...appSecretRecords].reverse().find((item) => item.value.id === channelAuthId), env)
     : null;
 
   return {
@@ -830,25 +839,26 @@ export async function loadRuntimeAuthDiagnostics(options: ConfigSourceOptions = 
       activeModel?.ref,
       model?.ref,
       modelAuth?.source_ref ?? undefined,
-      activeChannel?.ref,
+      options.channelId ? undefined : activeChannel?.ref,
       channel?.ref,
       channelAuth?.source_ref ?? undefined
     ]),
-    boundary: "read-only auth source diagnostics; reads auth.jsonl metadata across tracked, ignored local, home, and state layers and checks whether direct or explicitly named env-backed fields are configured; never renders API keys, app ids, app secrets, or env values; does not mutate config, state, service, repo, or active vault"
+    boundary: "read-only auth source diagnostics; reads auth.jsonl metadata across tracked, ignored local, home, and state layers and checks whether direct or explicitly named env-backed fields are configured for the active model and active or explicitly selected channel; never renders API keys, app ids, app secrets, or env values; does not mutate config, state, service, repo, or active vault"
   };
 }
 
 export async function loadSettingsRecords<T>(
   options: ConfigSourceOptions,
   schema: z.ZodType<T>,
-  type: string
+  type: string,
+  rawFilter?: (record: Record<string, unknown>) => boolean
 ): Promise<T[]> {
   const selectors = await loadConfigSelectors(options);
   return [
-    ...parseJsonl<T>(await readOptional(selectors.configDir, "settings.jsonl"), schema, type),
-    ...parseJsonl<T>(await readOptional(selectors.configDir, localConfigFile("settings.jsonl")), schema, type),
-    ...parseJsonl<T>(await readOptional(selectors.homeConfigDir, "settings.jsonl"), schema, type),
-    ...parseJsonl<T>(await readOptional(selectors.stateRoot, "settings.jsonl"), schema, type)
+    ...parseJsonl<T>(await readOptional(selectors.configDir, "settings.jsonl"), schema, type, rawFilter),
+    ...parseJsonl<T>(await readOptional(selectors.configDir, localConfigFile("settings.jsonl")), schema, type, rawFilter),
+    ...parseJsonl<T>(await readOptional(selectors.homeConfigDir, "settings.jsonl"), schema, type, rawFilter),
+    ...parseJsonl<T>(await readOptional(selectors.stateRoot, "settings.jsonl"), schema, type, rawFilter)
   ];
 }
 
@@ -864,6 +874,20 @@ export async function loadAppSecretAuth(
   return {
     appId: resolveSecretValue(record.app_id, record.app_id_env, env, `app_id for auth ${authId}`),
     appSecret: resolveSecretValue(record.app_secret, record.app_secret_env, env, `app_secret for auth ${authId}`),
+    record
+  };
+}
+
+export async function loadApiKeyAuth(
+  options: ConfigSourceOptions,
+  authId: string
+): Promise<{ apiKey: string; record: ApiKeyAuthRecord }> {
+  const selectors = await loadConfigSelectors(options);
+  const records = await loadAuthRecords<ApiKeyAuthRecord>(selectors, authRecordSchema, "api_key");
+  const record = [...records].reverse().find((item) => item.id === authId);
+  if (!record) throw new Error(`API key auth record not found: ${authId}`);
+  return {
+    apiKey: resolveSecretValue(record.key, record.env, options.env ?? process.env, `api_key for auth ${authId}`),
     record
   };
 }
@@ -966,13 +990,19 @@ async function readOptional(dir: string, file: string): Promise<string> {
   return readFile(path, "utf8");
 }
 
-function parseJsonl<T>(raw: string, schema: z.ZodType<T>, type: string): T[] {
+function parseJsonl<T>(
+  raw: string,
+  schema: z.ZodType<T>,
+  type: string,
+  rawFilter?: (record: Record<string, unknown>) => boolean
+): T[] {
   const records: T[] = [];
   for (const [index, line] of raw.split(/\r?\n/).entries()) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
     const parsed = JSON.parse(trimmed) as unknown;
     if (isRecord(parsed) && parsed.type !== type) continue;
+    if (isRecord(parsed) && rawFilter && !rawFilter(parsed)) continue;
     try {
       records.push(schema.parse(parsed));
     } catch (error) {

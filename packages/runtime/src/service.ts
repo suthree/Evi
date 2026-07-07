@@ -6,19 +6,21 @@ import { dirname, resolve } from "node:path";
 import { promisify } from "node:util";
 import { summarizeContentDailyEffectiveStatus } from "../../core/src/service_health.js";
 import { AgentStore } from "../../core/src/store.js";
-import { loadFeishuScenarioConfig } from "./channels/feishu/config.js";
 import { loadConfig, loadConfigSelectors, type ConfigSelectors } from "./config.js";
+import { assertRuntimeImAdapterSupported } from "./im_adapters.js";
+import { loadImScenarioConfig, type ImProvider } from "./im_config.js";
 import type { ContentDailyLoopStatus } from "./content_daily_service.js";
 import type { ContentCreatorMetricsLoopStatus } from "./content_creator_metrics_service.js";
 import type { ContentFeedbackRefreshLoopStatus } from "./content_feedback_refresh_service.js";
 import type { ReviewTickLoopStatus } from "./review_tick_service.js";
 import type { DisciplineMode } from "./runner.js";
+import type { RuntimeTaskQueueWorkerStatus } from "./runtime_task_queue_worker.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
 const execFile = promisify(execFileCallback);
 
 export type ServiceAction = "install" | "start" | "stop" | "restart" | "status" | "logs" | "uninstall";
-export type ServiceTarget = "im";
+export type ServiceTarget = "im" | "runtime";
 
 export interface ServiceCommandOptions {
   action: ServiceAction;
@@ -26,9 +28,14 @@ export interface ServiceCommandOptions {
   configDir?: string;
   repoRoot?: string;
   stateRoot?: string;
+  provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
   discipline?: DisciplineMode;
+  enableIm?: boolean;
+  enableWeb?: boolean;
+  webHost?: string;
+  webPort?: number;
   limit?: number;
 }
 
@@ -45,9 +52,14 @@ export interface ServiceDefinitionInput {
   configDir: string;
   stateRoot: string;
   homeRoot: string;
+  provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
   discipline?: DisciplineMode;
+  enableIm?: boolean;
+  enableWeb?: boolean;
+  webHost?: string;
+  webPort?: number;
   nodePath?: string;
   pathEnv?: string;
 }
@@ -74,6 +86,7 @@ export interface ServiceDefinition {
   stderrPath: string;
   heartbeatPath: string;
   reviewTickStatusPath: string;
+  taskQueueStatusPath: string;
   contentDailyStatusPath: string;
   contentFeedbackRefreshStatusPath: string;
   contentCreatorMetricsStatusPath: string;
@@ -88,6 +101,8 @@ export interface ServiceCommandResult {
   action: ServiceAction;
   target: ServiceTarget;
   label: string;
+  boundary: string;
+  health_command: string;
   plist_path: string;
   manifest_path: string;
   state_root: string;
@@ -102,6 +117,7 @@ export interface ServiceCommandResult {
   runtime?: ServiceRuntimeBuild | null;
   heartbeat?: ServiceHeartbeat | null;
   review_tick?: ReviewTickLoopStatus | null;
+  task_queue?: RuntimeTaskQueueWorkerStatus | null;
   content_daily?: ContentDailyLoopStatus | null;
   content_feedback_refresh?: ContentFeedbackRefreshLoopStatus | null;
   content_creator_metrics?: ContentCreatorMetricsLoopStatus | null;
@@ -125,6 +141,7 @@ export interface ServiceHeartbeat {
   state_root: string;
   channel_id?: string;
   scenario_id?: string;
+  gateway?: unknown;
   runtime_build?: ServiceRuntimeBuild;
   started_at: string;
   updated_at: string;
@@ -167,6 +184,7 @@ export async function runServiceCommand(
       },
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -183,6 +201,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -200,6 +219,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -215,6 +235,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -232,6 +253,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -247,6 +269,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -261,6 +284,7 @@ export async function runServiceCommand(
       launchd: await inspectLaunchd(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -275,6 +299,7 @@ export async function runServiceCommand(
     launchd: await inspectLaunchd(definition, run),
     heartbeat: await readHeartbeat(definition),
     reviewTick: await readReviewTickStatus(definition),
+    taskQueue: await readTaskQueueStatus(definition),
     contentDaily: await readContentDailyStatus(definition),
     contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
     contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -287,20 +312,25 @@ export async function resolveServiceDefinition(
   options: ServiceCommandOptions,
   validateRuntime = false
 ): Promise<ServiceDefinition> {
-  if (options.target !== "im") throw new Error(`Unsupported service target: ${options.target}`);
+  assertSupportedServiceTarget(options.target);
   const serviceSelectors = await resolveServiceConfigSelectors(options);
 
   let channelId = options.channelId ?? serviceSelectors.activeChannelId ?? undefined;
   let scenarioId = options.scenarioId ?? serviceSelectors.activeScenarioId ?? undefined;
+  let provider = options.provider;
   let discipline: "query_todo" | undefined = options.discipline === "query_todo" ? "query_todo" : undefined;
+  const enableIm = options.target === "im" ? true : options.enableIm !== false;
+  const enableWeb = options.target === "runtime" ? options.enableWeb !== false : false;
 
-  if (validateRuntime) {
-    const scenario = await loadFeishuScenarioConfig({
+  if (validateRuntime && enableIm) {
+    const scenario = await loadImScenarioConfig({
       configDir: options.configDir,
       stateRoot: serviceSelectors.stateRoot,
+      provider: options.provider,
       channelId: options.channelId,
       scenarioId: options.scenarioId
     });
+    assertRuntimeImAdapterSupported(scenario);
     await loadConfig({
       configDir: options.configDir,
       stateRoot: serviceSelectors.stateRoot,
@@ -308,28 +338,44 @@ export async function resolveServiceDefinition(
     });
     channelId = scenario.channelId;
     scenarioId = scenario.id;
+    provider = scenario.provider;
     discipline = options.discipline === "query_todo"
       ? "query_todo"
       : scenario.discipline === "query_todo"
         ? "query_todo"
         : undefined;
   }
+  if (validateRuntime && !enableIm) {
+    await loadConfig({
+      configDir: options.configDir,
+      stateRoot: serviceSelectors.stateRoot,
+      skipAuth: true
+    });
+  }
 
-  return buildImServiceDefinition({
+  const input: ServiceDefinitionInput = {
     repoRoot: resolve(options.repoRoot ?? "."),
     configDir: serviceSelectors.configDir,
     stateRoot: serviceSelectors.stateRoot,
     homeRoot: serviceSelectors.homeRoot,
+    provider,
     channelId,
     scenarioId,
-    discipline
-  });
+    discipline,
+    enableIm,
+    enableWeb,
+    webHost: options.webHost,
+    webPort: options.webPort
+  };
+  return options.target === "runtime"
+    ? buildRuntimeServiceDefinition(input)
+    : buildImServiceDefinition(input);
 }
 
 export async function resolveServiceConfigSelectors(
   options: Pick<ServiceCommandOptions, "target" | "configDir" | "stateRoot">
 ): Promise<ConfigSelectors> {
-  if (options.target !== "im") throw new Error(`Unsupported service target: ${options.target}`);
+  assertSupportedServiceTarget(options.target);
   const selectors = await loadConfigSelectors({
     configDir: options.configDir,
     stateRoot: options.stateRoot
@@ -345,7 +391,15 @@ export async function resolveServiceConfigSelectors(
 }
 
 export function buildImServiceDefinition(input: ServiceDefinitionInput): ServiceDefinition {
-  const label = "local.runtime.im";
+  return buildLocalRuntimeServiceDefinition("im", input);
+}
+
+export function buildRuntimeServiceDefinition(input: ServiceDefinitionInput): ServiceDefinition {
+  return buildLocalRuntimeServiceDefinition("runtime", input);
+}
+
+function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: ServiceDefinitionInput): ServiceDefinition {
+  const label = `local.runtime.${target}`;
   const repoRoot = resolve(input.repoRoot);
   const configDir = resolve(input.configDir);
   const stateRoot = resolve(input.stateRoot);
@@ -357,12 +411,12 @@ export function buildImServiceDefinition(input: ServiceDefinitionInput): Service
   const runtimeNextRoot = resolve(runtimeRoot, "next");
   const runtimeConfigDir = resolve(runtimeCurrentRoot, "config");
   const runtimeBuildPath = resolve(runtimeCurrentRoot, "build.json");
-  const stdoutPath = resolve(logDir, "im.out.log");
-  const stderrPath = resolve(logDir, "im.err.log");
+  const stdoutPath = resolve(logDir, `${target}.out.log`);
+  const stderrPath = resolve(logDir, `${target}.err.log`);
   const runtimeCliEntry = resolve(runtimeCurrentRoot, "dist/apps/cli/src/main.js");
   const runtimeNodeModules = resolve(runtimeCurrentRoot, "node_modules");
-  const imArgs = [
-    "im",
+  const serviceArgs = [
+    target === "runtime" ? "daemon" : "im",
     "serve",
     "--config-dir",
     runtimeConfigDir,
@@ -371,17 +425,24 @@ export function buildImServiceDefinition(input: ServiceDefinitionInput): Service
     "--state-root",
     stateRoot
   ];
-  if (input.scenarioId) imArgs.push("--scenario", input.scenarioId);
-  if (input.channelId) imArgs.push("--channel", input.channelId);
-  if (input.discipline && input.discipline !== "none") imArgs.push("--discipline", input.discipline);
-  imArgs.push("--runtime-build", runtimeBuildPath);
+  if (input.scenarioId) serviceArgs.push("--scenario", input.scenarioId);
+  if (input.provider) serviceArgs.push("--provider", input.provider);
+  if (input.channelId) serviceArgs.push("--channel", input.channelId);
+  if (input.discipline && input.discipline !== "none") serviceArgs.push("--discipline", input.discipline);
+  if (target === "runtime") {
+    if (input.enableIm === false) serviceArgs.push("--no-im");
+    if (input.enableWeb === false) serviceArgs.push("--no-web");
+    if (input.webHost) serviceArgs.push("--host", input.webHost);
+    if (input.webPort) serviceArgs.push("--port", String(input.webPort));
+  }
+  serviceArgs.push("--runtime-build", runtimeBuildPath);
 
   return {
-    target: "im",
+    target,
     label,
     domain: `gui/${process.getuid?.() ?? 501}`,
     plistPath: resolve(homedir(), "Library/LaunchAgents", `${label}.plist`),
-    manifestPath: resolve(serviceDir, "im.json"),
+    manifestPath: resolve(serviceDir, `${target}.json`),
     workingDirectory: homeRoot,
     repoRoot,
     sourceConfigDir: configDir,
@@ -396,17 +457,18 @@ export function buildImServiceDefinition(input: ServiceDefinitionInput): Service
     logDir,
     stdoutPath,
     stderrPath,
-    heartbeatPath: resolve(stateRoot, "services/im/heartbeat.json"),
-    reviewTickStatusPath: resolve(stateRoot, "services/im/review_tick.json"),
-    contentDailyStatusPath: resolve(stateRoot, "services/im/content_daily.json"),
-    contentFeedbackRefreshStatusPath: resolve(stateRoot, "services/im/content_feedback_refresh.json"),
-    contentCreatorMetricsStatusPath: resolve(stateRoot, "services/im/content_creator_metrics.json"),
+    heartbeatPath: resolve(stateRoot, `services/${target}/heartbeat.json`),
+    reviewTickStatusPath: resolve(stateRoot, `services/${target}/review_tick.json`),
+    taskQueueStatusPath: resolve(stateRoot, `services/${target}/task_queue.json`),
+    contentDailyStatusPath: resolve(stateRoot, `services/${target}/content_daily.json`),
+    contentFeedbackRefreshStatusPath: resolve(stateRoot, `services/${target}/content_feedback_refresh.json`),
+    contentCreatorMetricsStatusPath: resolve(stateRoot, `services/${target}/content_creator_metrics.json`),
     autonomyPausePath: resolve(stateRoot, "autonomy/runs/pause_signal.json"),
     runnerFiles: [runtimeCliEntry, runtimeNodeModules],
     programArguments: [
       input.nodePath ?? process.execPath,
       runtimeCliEntry,
-      ...imArgs
+      ...serviceArgs
     ],
     environment: {
       LOCAL_RUNTIME_HOME: homeRoot,
@@ -487,6 +549,7 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     stderr_path: definition.stderrPath,
     heartbeat_path: definition.heartbeatPath,
     review_tick_status_path: definition.reviewTickStatusPath,
+    task_queue_status_path: definition.taskQueueStatusPath,
     content_daily_status_path: definition.contentDailyStatusPath,
     content_feedback_refresh_status_path: definition.contentFeedbackRefreshStatusPath,
     content_creator_metrics_status_path: definition.contentCreatorMetricsStatusPath,
@@ -628,6 +691,15 @@ async function readReviewTickStatus(definition: ServiceDefinition): Promise<Revi
   }
 }
 
+async function readTaskQueueStatus(definition: ServiceDefinition): Promise<RuntimeTaskQueueWorkerStatus | null> {
+  try {
+    const raw = await readFile(definition.taskQueueStatusPath, "utf8");
+    return JSON.parse(raw) as RuntimeTaskQueueWorkerStatus;
+  } catch {
+    return null;
+  }
+}
+
 async function readContentDailyStatus(definition: ServiceDefinition): Promise<ContentDailyLoopStatus | null> {
   try {
     const raw = await readFile(definition.contentDailyStatusPath, "utf8");
@@ -699,6 +771,7 @@ function buildResult(
     launchd?: LaunchdStatus;
     heartbeat?: ServiceHeartbeat | null;
     reviewTick?: ReviewTickLoopStatus | null;
+    taskQueue?: RuntimeTaskQueueWorkerStatus | null;
     contentDaily?: ContentDailyLoopStatus | null;
     contentFeedbackRefresh?: ContentFeedbackRefreshLoopStatus | null;
     contentCreatorMetrics?: ContentCreatorMetricsLoopStatus | null;
@@ -714,6 +787,8 @@ function buildResult(
     action,
     target: definition.target,
     label: definition.label,
+    boundary: "local service lifecycle status; may inspect launchd, service manifests, log paths, copied runtime build metadata, and service status files; use health_command for bounded runtime/channel health; does not invoke models or contact providers.",
+    health_command: `pnpm run runtime -- service health --target ${definition.target}`,
     plist_path: definition.plistPath,
     manifest_path: definition.manifestPath,
     state_root: definition.stateRoot,
@@ -728,6 +803,7 @@ function buildResult(
     runtime: args.runtime,
     heartbeat: args.heartbeat,
     review_tick: args.reviewTick,
+    task_queue: args.taskQueue,
     content_daily: args.contentDaily,
     content_feedback_refresh: args.contentFeedbackRefresh,
     content_creator_metrics: args.contentCreatorMetrics,
@@ -768,4 +844,9 @@ function escapeXml(value: string): string {
 
 function currentUserName(): string {
   return process.env.USER ?? process.env.LOGNAME ?? userInfo().username;
+}
+
+function assertSupportedServiceTarget(target: ServiceTarget): void {
+  if (target === "im" || target === "runtime") return;
+  throw new Error(`Unsupported service target: ${target}`);
 }

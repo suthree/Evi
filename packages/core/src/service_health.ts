@@ -2,11 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { AgentStore } from "./store.js";
 
-const HEARTBEAT_REF = "services/im/heartbeat.json";
-const REVIEW_TICK_REF = "services/im/review_tick.json";
-const CONTENT_DAILY_REF = "services/im/content_daily.json";
-const CONTENT_FEEDBACK_REFRESH_REF = "services/im/content_feedback_refresh.json";
-const CONTENT_CREATOR_METRICS_REF = "services/im/content_creator_metrics.json";
+const DEFAULT_SERVICE_HEALTH_TARGET = "im";
 const PAUSE_REF = "autonomy/runs/pause_signal.json";
 const DEFAULT_HEARTBEAT_STALE_AFTER_MS = 90_000;
 const DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS = 10 * 60_000;
@@ -26,6 +22,20 @@ export type ServiceProgressFreshness = "fresh" | "stale" | "unknown";
 export type ServiceRepoHeadReadStatus = "ok" | "missing" | "unreadable";
 export type ServiceDeploymentStatus = "current" | "stale" | "unknown";
 export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_generated" | "preflight_ok" | "published" | "blocked";
+export type ServiceGatewayState = "running" | "stopped" | "error";
+export type ServiceHealthTarget = "im" | "runtime";
+
+export interface ServiceGatewayChannelSummary {
+  kind: string;
+  channel_id: string;
+  state: ServiceGatewayState;
+  detail?: string;
+}
+
+export interface ServiceGatewaySummary {
+  state: ServiceGatewayState;
+  channels: ServiceGatewayChannelSummary[];
+}
 
 export interface ServiceHealthLayerSummary {
   status: ServiceHealthStatus;
@@ -98,6 +108,7 @@ interface ManualFocusCoverage {
 
 export interface ServiceHealthResult {
   created_at: string;
+  target: ServiceHealthTarget;
   status: ServiceHealthStatus;
   status_reasons: string[];
   layers: {
@@ -106,23 +117,12 @@ export interface ServiceHealthResult {
   };
   boundary: string;
   refs: string[];
-  im: {
-    state: string;
-    pid?: number;
-    channel_id?: string;
-    scenario_id?: string;
-    heartbeat_ref: typeof HEARTBEAT_REF;
-    heartbeat_updated_at?: string;
-    heartbeat_age_ms?: number;
-    heartbeat_freshness: ServiceHeartbeatFreshness;
-    runtime_build?: ServiceRuntimeBuildSummary;
-    repo_head: ServiceRepoHeadSummary;
-    deployment: ServiceDeploymentSummary;
-  };
+  service: ServiceHealthServiceSummary;
+  im: ServiceHealthServiceSummary;
   review_tick: {
     state: string;
     enabled: boolean;
-    ref: typeof REVIEW_TICK_REF;
+    ref: string;
     updated_at?: string;
     last_tick_ref?: string;
     last_inbox_count?: number;
@@ -150,7 +150,7 @@ export interface ServiceHealthResult {
   content_daily: {
     state: string;
     enabled: boolean;
-    ref: typeof CONTENT_DAILY_REF;
+    ref: string;
     updated_at?: string;
     last_finished_at?: string;
     last_date_key?: string;
@@ -200,7 +200,7 @@ export interface ServiceHealthResult {
   content_feedback_refresh: {
     state: string;
     enabled: boolean;
-    ref: typeof CONTENT_FEEDBACK_REFRESH_REF;
+    ref: string;
     updated_at?: string;
     last_finished_at?: string;
     last_queue_count?: number;
@@ -240,7 +240,7 @@ export interface ServiceHealthResult {
   content_creator_metrics: {
     state: string;
     enabled: boolean;
-    ref: typeof CONTENT_CREATOR_METRICS_REF;
+    ref: string;
     updated_at?: string;
     last_finished_at?: string;
     last_queue_count?: number;
@@ -269,19 +269,50 @@ export interface ServiceHealthResult {
   };
 }
 
+export interface ServiceHealthServiceSummary {
+  state: string;
+  error?: string;
+  pid?: number;
+  channel_id?: string;
+  scenario_id?: string;
+  heartbeat_ref: string;
+  heartbeat_updated_at?: string;
+  heartbeat_age_ms?: number;
+  heartbeat_freshness: ServiceHeartbeatFreshness;
+  gateway?: ServiceGatewaySummary;
+  runtime_build?: ServiceRuntimeBuildSummary;
+  repo_head: ServiceRepoHeadSummary;
+  deployment: ServiceDeploymentSummary;
+}
+
+interface ServiceHealthRefs {
+  heartbeat: string;
+  reviewTick: string;
+  contentDaily: string;
+  contentFeedbackRefresh: string;
+  contentCreatorMetrics: string;
+}
+
 export async function getServiceHealth(
   store: AgentStore,
-  args: { now?: Date | string; heartbeatStaleAfterMs?: number; contentDailyStepStaleAfterMs?: number } = {}
+  args: {
+    target?: ServiceHealthTarget;
+    now?: Date | string;
+    heartbeatStaleAfterMs?: number;
+    contentDailyStepStaleAfterMs?: number;
+  } = {}
 ): Promise<ServiceHealthResult> {
+  const target = args.target ?? DEFAULT_SERVICE_HEALTH_TARGET;
+  const serviceRefs = serviceHealthRefs(target);
   const now = args.now instanceof Date ? args.now : new Date(args.now ?? Date.now());
   const staleAfterMs = args.heartbeatStaleAfterMs ?? DEFAULT_HEARTBEAT_STALE_AFTER_MS;
   const contentDailyStepStaleAfterMs = args.contentDailyStepStaleAfterMs ?? DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS;
   const [heartbeat, reviewTick, contentDaily, contentFeedbackRefresh, contentCreatorMetrics, pauseSignal, repoHead] = await Promise.all([
-    readStateRecord(store, HEARTBEAT_REF),
-    readStateRecord(store, REVIEW_TICK_REF),
-    readStateRecord(store, CONTENT_DAILY_REF),
-    readStateRecord(store, CONTENT_FEEDBACK_REFRESH_REF),
-    readStateRecord(store, CONTENT_CREATOR_METRICS_REF),
+    readStateRecord(store, serviceRefs.heartbeat),
+    readStateRecord(store, serviceRefs.reviewTick),
+    readStateRecord(store, serviceRefs.contentDaily),
+    readStateRecord(store, serviceRefs.contentFeedbackRefresh),
+    readStateRecord(store, serviceRefs.contentCreatorMetrics),
     readStateRecord(store, PAUSE_REF),
     readRepoHead(store.repoRoot)
   ]);
@@ -291,6 +322,7 @@ export async function getServiceHealth(
   const channelId = stringField(heartbeat.record, "channel_id") ?? undefined;
   const scenarioId = stringField(heartbeat.record, "scenario_id") ?? undefined;
   const deployment = summarizeDeployment(runtimeBuild, repoHead, {
+    target,
     channelId,
     scenarioId
   });
@@ -307,8 +339,24 @@ export async function getServiceHealth(
     now,
     contentDailyStepStaleAfterMs
   );
+  const service: ServiceHealthServiceSummary = {
+    state: stringField(heartbeat.record, "state") ?? "unknown",
+    error: stringField(heartbeat.record, "error") ?? undefined,
+    pid: numberField(heartbeat.record, "pid") ?? undefined,
+    channel_id: channelId,
+    scenario_id: scenarioId,
+    heartbeat_ref: serviceRefs.heartbeat,
+    heartbeat_updated_at: stringField(heartbeat.record, "updated_at") ?? undefined,
+    heartbeat_age_ms: heartbeatFreshness.ageMs,
+    heartbeat_freshness: heartbeatFreshness.status,
+    gateway: serviceGatewaySummary(recordField(heartbeat.record, "gateway")),
+    runtime_build: runtimeBuild ?? undefined,
+    repo_head: repoHead,
+    deployment
+  };
   const result: ServiceHealthResult = {
     created_at: now.toISOString(),
+    target,
     status: "unknown",
     status_reasons: [],
     layers: {
@@ -317,30 +365,19 @@ export async function getServiceHealth(
     },
     boundary: BOUNDARY,
     refs: [
-      ...(heartbeat.exists ? [HEARTBEAT_REF] : []),
-      ...(reviewTick.exists ? [REVIEW_TICK_REF] : []),
-      ...(contentDaily.exists ? [CONTENT_DAILY_REF] : []),
-      ...(contentFeedbackRefresh.exists ? [CONTENT_FEEDBACK_REFRESH_REF] : []),
-      ...(contentCreatorMetrics.exists ? [CONTENT_CREATOR_METRICS_REF] : []),
+      ...(heartbeat.exists ? [serviceRefs.heartbeat] : []),
+      ...(reviewTick.exists ? [serviceRefs.reviewTick] : []),
+      ...(contentDaily.exists ? [serviceRefs.contentDaily] : []),
+      ...(contentFeedbackRefresh.exists ? [serviceRefs.contentFeedbackRefresh] : []),
+      ...(contentCreatorMetrics.exists ? [serviceRefs.contentCreatorMetrics] : []),
       ...(pauseSignal.exists ? [PAUSE_REF] : [])
     ],
-    im: {
-      state: stringField(heartbeat.record, "state") ?? "unknown",
-      pid: numberField(heartbeat.record, "pid") ?? undefined,
-      channel_id: channelId,
-      scenario_id: scenarioId,
-      heartbeat_ref: HEARTBEAT_REF,
-      heartbeat_updated_at: stringField(heartbeat.record, "updated_at") ?? undefined,
-      heartbeat_age_ms: heartbeatFreshness.ageMs,
-      heartbeat_freshness: heartbeatFreshness.status,
-      runtime_build: runtimeBuild ?? undefined,
-      repo_head: repoHead,
-      deployment
-    },
+    service,
+    im: service,
     review_tick: {
       state: stringField(reviewTick.record, "state") ?? "unknown",
       enabled: booleanField(reviewTick.record, "enabled") ?? false,
-      ref: REVIEW_TICK_REF,
+      ref: serviceRefs.reviewTick,
       updated_at: stringField(reviewTick.record, "updated_at") ?? undefined,
       last_tick_ref: stringField(reviewTick.record, "last_tick_ref") ?? undefined,
       last_inbox_count: numberField(reviewTick.record, "last_inbox_count") ?? undefined,
@@ -368,7 +405,7 @@ export async function getServiceHealth(
     content_daily: {
       state: stringField(contentDaily.record, "state") ?? "unknown",
       enabled: booleanField(contentDaily.record, "enabled") ?? false,
-      ref: CONTENT_DAILY_REF,
+      ref: serviceRefs.contentDaily,
       updated_at: stringField(contentDaily.record, "updated_at") ?? undefined,
       last_finished_at: stringField(contentDaily.record, "last_finished_at") ?? undefined,
       last_date_key: stringField(contentDaily.record, "last_date_key") ?? undefined,
@@ -418,7 +455,7 @@ export async function getServiceHealth(
     content_feedback_refresh: {
       state: stringField(contentFeedbackRefresh.record, "state") ?? "unknown",
       enabled: booleanField(contentFeedbackRefresh.record, "enabled") ?? false,
-      ref: CONTENT_FEEDBACK_REFRESH_REF,
+      ref: serviceRefs.contentFeedbackRefresh,
       updated_at: stringField(contentFeedbackRefresh.record, "updated_at") ?? undefined,
       last_finished_at: stringField(contentFeedbackRefresh.record, "last_finished_at") ?? undefined,
       last_queue_count: numberField(contentFeedbackRefresh.record, "last_queue_count") ?? undefined,
@@ -458,7 +495,7 @@ export async function getServiceHealth(
     content_creator_metrics: {
       state: stringField(contentCreatorMetrics.record, "state") ?? "unknown",
       enabled: booleanField(contentCreatorMetrics.record, "enabled") ?? false,
-      ref: CONTENT_CREATOR_METRICS_REF,
+      ref: serviceRefs.contentCreatorMetrics,
       updated_at: stringField(contentCreatorMetrics.record, "updated_at") ?? undefined,
       last_finished_at: stringField(contentCreatorMetrics.record, "last_finished_at") ?? undefined,
       last_queue_count: numberField(contentCreatorMetrics.record, "last_queue_count") ?? undefined,
@@ -557,9 +594,41 @@ function serviceHeartbeatFreshness(
   };
 }
 
+function serviceGatewaySummary(record: Record<string, unknown> | null): ServiceGatewaySummary | undefined {
+  if (!record) return undefined;
+  const state = serviceGatewayState(stringField(record, "state"));
+  const rawChannels = Array.isArray(record.channels) ? record.channels : [];
+  const channels = rawChannels.flatMap((item): ServiceGatewayChannelSummary[] => {
+    if (!isRecord(item)) return [];
+    const kind = stringField(item, "kind");
+    const channelId = stringField(item, "channel_id");
+    const channelState = serviceGatewayState(stringField(item, "state"));
+    if (!kind || !channelId || !channelState) return [];
+    return [{
+      kind,
+      channel_id: channelId,
+      state: channelState,
+      detail: stringField(item, "detail") ?? undefined
+    }];
+  });
+  if (!state && channels.length === 0) return undefined;
+  return {
+    state: state ?? (channels.some((channel) => channel.state === "error")
+      ? "error"
+      : channels.some((channel) => channel.state === "running")
+        ? "running"
+        : "stopped"),
+    channels
+  };
+}
+
+function serviceGatewayState(value: string | null): ServiceGatewayState | null {
+  return value === "running" || value === "stopped" || value === "error" ? value : null;
+}
+
 function overallServiceHealth(result: ServiceHealthResult): ServiceHealthStatus {
   if (result.autonomy_pause.active) return "paused";
-  if (result.im.heartbeat_freshness === "missing" || result.im.heartbeat_freshness === "invalid") return "unknown";
+  if (result.service.heartbeat_freshness === "missing" || result.service.heartbeat_freshness === "invalid") return "unknown";
   if (result.layers.runtime_substrate.status === "attention" || result.layers.application_slices.status === "attention") return "attention";
   return "healthy";
 }
@@ -575,7 +644,7 @@ function serviceHealthLayers(result: ServiceHealthResult): ServiceHealthResult["
   const applicationReasons = applicationSliceReasonCodes(result);
   return {
     runtime_substrate: {
-      status: result.im.heartbeat_freshness === "missing" || result.im.heartbeat_freshness === "invalid"
+      status: result.service.heartbeat_freshness === "missing" || result.service.heartbeat_freshness === "invalid"
         ? "unknown"
         : runtimeReasons.length > 0 ? "attention" : "healthy",
       reason_codes: runtimeReasons
@@ -589,12 +658,12 @@ function serviceHealthLayers(result: ServiceHealthResult): ServiceHealthResult["
 
 function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
   return compactUnique([
-    result.im.heartbeat_freshness === "missing" ? "heartbeat_missing" : undefined,
-    result.im.heartbeat_freshness === "invalid" ? "heartbeat_invalid" : undefined,
-    result.im.state !== "running" ? "im_not_running" : undefined,
-    result.im.heartbeat_freshness === "stale" ? "heartbeat_stale" : undefined,
-    result.im.deployment.status === "stale" ? "deployment_stale" : undefined,
-    result.im.runtime_build?.source_is_dirty === true ? "runtime_build_dirty" : undefined,
+    result.service.heartbeat_freshness === "missing" ? "heartbeat_missing" : undefined,
+    result.service.heartbeat_freshness === "invalid" ? "heartbeat_invalid" : undefined,
+    result.service.state !== "running" ? `${result.target}_not_running` : undefined,
+    result.service.heartbeat_freshness === "stale" ? "heartbeat_stale" : undefined,
+    result.service.deployment.status === "stale" ? "deployment_stale" : undefined,
+    result.service.runtime_build?.source_is_dirty === true ? "runtime_build_dirty" : undefined,
     result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
   ]);
 }
@@ -753,7 +822,7 @@ async function readTextIfExists(path: string): Promise<string> {
 function summarizeDeployment(
   runtimeBuild: ServiceRuntimeBuildSummary | null,
   repoHead: ServiceRepoHeadSummary,
-  ids: { channelId?: string; scenarioId?: string }
+  ids: { target: ServiceHealthTarget; channelId?: string; scenarioId?: string }
 ): ServiceDeploymentSummary {
   const restartCommand = serviceRestartCommand(ids);
   const runtimeCommit = runtimeBuild?.source_commit;
@@ -801,12 +870,22 @@ function summarizeDeployment(
   };
 }
 
-function serviceRestartCommand(ids: { channelId?: string; scenarioId?: string }): string {
+function serviceRestartCommand(ids: { target: ServiceHealthTarget; channelId?: string; scenarioId?: string }): string {
   return [
-    "pnpm run runtime -- service restart --target im",
+    `pnpm run runtime -- service restart --target ${ids.target}`,
     ids.scenarioId ? `--scenario ${ids.scenarioId}` : "",
     ids.channelId ? `--channel ${ids.channelId}` : ""
   ].filter((part) => part.length > 0).join(" ");
+}
+
+function serviceHealthRefs(target: ServiceHealthTarget): ServiceHealthRefs {
+  return {
+    heartbeat: `services/${target}/heartbeat.json`,
+    reviewTick: `services/${target}/review_tick.json`,
+    contentDaily: `services/${target}/content_daily.json`,
+    contentFeedbackRefresh: `services/${target}/content_feedback_refresh.json`,
+    contentCreatorMetrics: `services/${target}/content_creator_metrics.json`
+  };
 }
 
 function branchFromHeadRef(ref: string): string {

@@ -19,6 +19,20 @@ test("service health derives fresh resident runtime status from local state and 
       channel_id: "feishu-main",
       scenario_id: "im-default",
       updated_at: "2026-06-30T00:00:30.000Z",
+      gateway: {
+        state: "running",
+        channels: [{
+          kind: "feishu",
+          channel_id: "feishu-main",
+          state: "running",
+          detail: "feishu:feishu-main"
+        }, {
+          kind: "web",
+          channel_id: "127.0.0.1:8765",
+          state: "running",
+          detail: "http://127.0.0.1:8765"
+        }]
+      },
       runtime_build: {
         schema_version: 1,
         target: "im",
@@ -99,6 +113,11 @@ test("service health derives fresh resident runtime status from local state and 
     assert.equal(health.im.state, "running");
     assert.equal(health.im.heartbeat_freshness, "fresh");
     assert.equal(health.im.heartbeat_age_ms, 30_000);
+    assert.equal(health.im.gateway?.state, "running");
+    assert.deepEqual(health.im.gateway?.channels.map((channel) => `${channel.kind}:${channel.state}`), [
+      "feishu:running",
+      "web:running"
+    ]);
     assert.equal(health.im.runtime_build?.source_commit_short, "abcdef012345");
     assert.equal(health.im.repo_head.read_status, "ok");
     assert.equal(health.im.repo_head.head_commit_short, "abcdef012345");
@@ -784,6 +803,70 @@ test("service health CLI reads bounded health without service control fields", a
     assert.equal(output.target, "im");
     assert.equal(output.status, "healthy");
     assert.deepEqual(output.refs, ["services/im/heartbeat.json"]);
+    assert.equal("launchd" in output, false);
+    assert.equal("logs" in output, false);
+    assert.match(String(output.boundary), /does not inspect launchd/);
+  } finally {
+    process.argv = originalArgv;
+    console.log = originalLog;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service health CLI reads runtime target through the bounded health model", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-runtime-cli-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const originalArgv = process.argv;
+  const originalLog = console.log;
+  const logs: string[] = [];
+  try {
+    await store.writeJson("services/runtime/heartbeat.json", {
+      service: "runtime",
+      state: "running",
+      pid: 9877,
+      updated_at: new Date().toISOString(),
+      gateway: {
+        state: "running",
+        channels: [{
+          kind: "web",
+          channel_id: "127.0.0.1:8765",
+          state: "running",
+          detail: "http://127.0.0.1:8765"
+        }]
+      }
+    });
+
+    process.argv = [
+      "node",
+      "apps/cli/src/main.ts",
+      "service",
+      "health",
+      "--target",
+      "runtime",
+      "--repo-root",
+      repoRoot,
+      "--state-root",
+      stateRoot
+    ];
+    console.log = (value?: unknown): void => {
+      logs.push(String(value));
+    };
+
+    const code = await main();
+    assert.equal(code, 0);
+    const output = JSON.parse(logs.join("\n")) as Record<string, any>;
+    assert.equal(output.action, "health");
+    assert.equal(output.target, "runtime");
+    assert.equal(output.status, "healthy");
+    assert.equal(output.service.state, "running");
+    assert.equal(output.service.heartbeat_freshness, "fresh");
+    assert.equal(output.service.gateway.state, "running");
+    assert.deepEqual(output.service.gateway.channels.map((channel: Record<string, unknown>) => `${channel.kind}:${channel.state}`), [
+      "web:running"
+    ]);
+    assert.deepEqual(output.refs, ["services/runtime/heartbeat.json"]);
     assert.equal("launchd" in output, false);
     assert.equal("logs" in output, false);
     assert.match(String(output.boundary), /does not inspect launchd/);

@@ -95,14 +95,29 @@ import {
   renderSopEvolutionLedgerMarkdown
 } from "../../../../core/src/sop_evolution_ledger.js";
 import {
-  appendRuntimeInboxEntry,
-  bindRuntimeSessionSource,
-  feishuSourceKey,
   recordRuntimeTaskRun,
-  resolveRuntimeSession,
-  type FeishuSessionSource,
+  runtimeTaskRunStatusFromResult,
+  type RuntimeSessionSource,
   type RuntimeSessionRecord
 } from "../../../../core/src/runtime_sessions.js";
+import {
+  recordRuntimeChannelOutbound,
+  recordRuntimeChannelOutboundDelivery,
+  type RuntimeChannelOutboundRecord
+} from "../../../../core/src/runtime_channel_outbox.js";
+import {
+  runtimeChannelRouteKey,
+  runtimeChannelSourceKey,
+  type RuntimeChannelSource
+} from "../../../../core/src/runtime_channel_messages.js";
+import {
+  claimRuntimeTask,
+  completeRuntimeTask,
+  enqueueRuntimeTask,
+  failRuntimeTask,
+  type RuntimeTaskQueueEntry,
+  type RuntimeTaskQueueTerminalStatus
+} from "../../../../core/src/runtime_task_queue.js";
 import {
   getPipelineRun,
   listPipelineRuns,
@@ -168,6 +183,9 @@ import {
 import { loadRuntimeConfigSummary, type RuntimeConfigSummary } from "../../config.js";
 import type { DailyContentJobResult, DailyContentJobStep } from "../../content_pipeline.js";
 import { getGovernanceStatus, type GovernanceOpportunitySummary, type GovernanceStatusResult } from "../../governance_status.js";
+import { dispatchRuntimeChannelMessage } from "../../channel_message_dispatcher.js";
+import type { RuntimeChannelAdapter, RuntimeChannelHealth } from "../../message_gateway.js";
+import { drainRuntimeChannelOutboxForAdapter } from "../../runtime_channel_outbox_drainer.js";
 import type {
   TaskRunner,
   FeishuChannelConfig,
@@ -208,7 +226,9 @@ interface OperatorNotificationDrainResult {
   }>;
 }
 
-export class FeishuPrivateChatAdapter {
+export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
+  readonly kind = "feishu" as const;
+  readonly channelId: string;
   private readonly config: FeishuChannelConfig;
   private readonly transport: FeishuTransport;
   private readonly runner: TaskRunner;
@@ -223,8 +243,11 @@ export class FeishuPrivateChatAdapter {
   private readonly seenMessageIds: string[] = [];
   private readonly seenSet = new Set<string>();
   private notificationPollTimer: ReturnType<typeof setInterval> | null = null;
+  private outboxPollTimer: ReturnType<typeof setInterval> | null = null;
   private notificationDrainActive = false;
+  private outboxDrainActive = false;
   private loaded = false;
+  private running = false;
 
   constructor(args: {
     config: FeishuChannelConfig;
@@ -236,6 +259,7 @@ export class FeishuPrivateChatAdapter {
     configDir?: string;
   }) {
     this.config = args.config;
+    this.channelId = args.config.channelId ?? "feishu";
     this.transport = args.transport;
     this.runner = args.runner;
     this.store = args.store;
@@ -255,13 +279,30 @@ export class FeishuPrivateChatAdapter {
     await this.transport.start((event) => {
       void this.handleInboundEvent(event);
     });
+    this.running = true;
     await this.drainOperatorNotifications();
     this.startOperatorNotificationPoll();
+    await this.drainRuntimeChannelOutbox();
+    this.startRuntimeChannelOutboxPoll();
   }
 
   async stop(): Promise<void> {
     this.stopOperatorNotificationPoll();
-    await this.transport.stop();
+    this.stopRuntimeChannelOutboxPoll();
+    try {
+      await this.transport.stop();
+    } finally {
+      this.running = false;
+    }
+  }
+
+  health(): RuntimeChannelHealth {
+    return {
+      kind: this.kind,
+      channel_id: this.channelId,
+      state: this.running ? "running" : "stopped",
+      detail: `${this.config.domain}:${this.config.channelId ?? this.channelId}`
+    };
   }
 
   async drainOperatorNotifications(limit = 10): Promise<OperatorNotificationDrainResult> {
@@ -302,6 +343,35 @@ export class FeishuPrivateChatAdapter {
     }
   }
 
+  async drainRuntimeChannelOutbox(limit = 10): Promise<{
+    queued_count: number;
+    sent_count: number;
+    failed_count: number;
+    skipped_count: number;
+    outbox_ids: string[];
+  }> {
+    if (this.outboxDrainActive) {
+      return {
+        queued_count: 0,
+        sent_count: 0,
+        failed_count: 0,
+        skipped_count: 1,
+        outbox_ids: []
+      };
+    }
+    this.outboxDrainActive = true;
+    try {
+      return await drainRuntimeChannelOutboxForAdapter(this.store, {
+        sourceKind: "feishu",
+        channelId: this.channelId,
+        limit,
+        deliver: (entry, source) => this.deliverRuntimeChannelOutbox(entry, source)
+      });
+    } finally {
+      this.outboxDrainActive = false;
+    }
+  }
+
   private startOperatorNotificationPoll(): void {
     if (this.notificationPollTimer) return;
     this.notificationPollTimer = setInterval(() => {
@@ -316,6 +386,22 @@ export class FeishuPrivateChatAdapter {
     if (!this.notificationPollTimer) return;
     clearInterval(this.notificationPollTimer);
     this.notificationPollTimer = null;
+  }
+
+  private startRuntimeChannelOutboxPoll(): void {
+    if (this.outboxPollTimer) return;
+    this.outboxPollTimer = setInterval(() => {
+      void this.drainRuntimeChannelOutbox().catch((error: unknown) => {
+        console.error(errorMessage(error));
+      });
+    }, 5000);
+    this.outboxPollTimer.unref?.();
+  }
+
+  private stopRuntimeChannelOutboxPoll(): void {
+    if (!this.outboxPollTimer) return;
+    clearInterval(this.outboxPollTimer);
+    this.outboxPollTimer = null;
   }
 
   private async drainOperatorNotification(
@@ -447,120 +533,83 @@ export class FeishuPrivateChatAdapter {
 
   private async handleGroupTextMessage(message: NormalizedFeishuTextMessage): Promise<void> {
     const actorAuthorized = this.isAllowed(message.openId);
-    const sessionCommand = parseSessionUseCommand(message.text);
-    if (sessionCommand && !actorAuthorized) {
-      await this.recordChannelEvent("denied", `Denied Feishu session bind from unauthorized open_id ${message.openId}.`, {
-        message_id: message.messageId,
-        chat_id: message.chatId,
-        open_id: message.openId,
-        command: "session_use"
-      });
-      return;
-    }
-
-    const baseSource = this.feishuSessionSource(message);
-    const resolution = await resolveRuntimeSession(this.store, {
-      source: baseSource,
-      actorAuthorized,
-      now: utcNow()
-    });
-    if (!resolution.ok || !resolution.session) {
-      await this.recordChannelEvent("denied", `Denied unknown Feishu group ${message.chatId}.`, {
-        message_id: message.messageId,
-        chat_id: message.chatId,
-        open_id: message.openId,
-        reason: resolution.reason
-      });
-      return;
-    }
-
-    let session = resolution.session;
-    let source = this.feishuSessionSource(message, session.profile);
-    if (sessionCommand) {
-      const binding = await bindRuntimeSessionSource(this.store, {
-        source: this.feishuSessionSource(message, sessionCommand.profile),
-        runtimeSessionId: session.id,
-        profile: sessionCommand.profile,
-        createdByOpenId: message.openId
-      });
-      session = {
-        ...session,
-        profile: binding.profile,
-        status: "active",
-        source_route_key: binding.route_key,
-        source_key: binding.source_key,
-        updated_at: binding.updated_at
-      };
-      source = this.feishuSessionSource(message, binding.profile);
-      await appendRuntimeInboxEntry(this.store, {
-        sessionId: session.id,
-        source,
+    const dispatched = await dispatchRuntimeChannelMessage(this.store, {
+      message: {
+        source: this.feishuSessionSource(message),
         messageId: message.messageId,
-        text: message.text,
-        triggerKind: "session_command",
-        runRequested: false
+        text: message.text
+      },
+      actorAuthorized,
+      triggerOptions: {
+        isMention: isFeishuMention,
+        stripMention: stripFeishuMention
+      }
+    });
+
+    if (dispatched.kind === "denied") {
+      await this.recordChannelEvent("denied", dispatched.reason === "unauthorized_session_command"
+        ? `Denied Feishu session bind from unauthorized open_id ${message.openId}.`
+        : `Denied unknown Feishu group ${message.chatId}.`, {
+        message_id: message.messageId,
+        chat_id: message.chatId,
+        open_id: message.openId,
+        reason: dispatched.reason
       });
+      return;
+    }
+
+    if (dispatched.kind === "session_bound") {
       const outbound = await this.sendChunksToMessage(message, [
-        `已绑定 runtime session: ${session.id}`,
-        `profile: ${binding.profile}`,
+        `已绑定 runtime session: ${dispatched.session.id}`,
+        `profile: ${dispatched.binding.profile}`,
         "后续普通群消息会进入 inbox；使用 /run 或 @bot 才会执行任务。"
       ].join("\n"));
-      await this.recordChannelEvent("session_bound", `Bound Feishu group ${message.chatId} to runtime session ${session.id}.`, {
+      await this.recordChannelEvent("session_bound", `Bound Feishu group ${message.chatId} to runtime session ${dispatched.session.id}.`, {
         message_id: message.messageId,
         chat_id: message.chatId,
         open_id: message.openId,
-        runtime_session_id: session.id,
-        profile: binding.profile,
+        runtime_session_id: dispatched.session.id,
+        profile: dispatched.binding.profile,
         outbound
       });
       return;
     }
 
-    const trigger = classifyRuntimeSessionTrigger(message.text);
-    await appendRuntimeInboxEntry(this.store, {
-      sessionId: session.id,
-      source,
-      messageId: message.messageId,
-      text: message.text,
-      triggerKind: trigger.kind,
-      runRequested: trigger.runRequested
-    });
-
-    if (session.status !== "active" || session.profile === "unassigned") {
-      if (trigger.runRequested || resolution.reason === "created_pending") {
+    if (dispatched.kind === "session_pending") {
+      if (dispatched.notify) {
         const outbound = await this.sendChunksToMessage(message, [
-          `已记录到 pending runtime session: ${session.id}`,
+          `已记录到 pending runtime session: ${dispatched.session.id}`,
           "请由授权 operator 在群里发送 /session use <profile> 绑定角色后再执行。"
         ].join("\n"));
-        await this.recordChannelEvent("session_pending", `Created pending Feishu runtime session ${session.id}.`, {
+        await this.recordChannelEvent("session_pending", `Created pending Feishu runtime session ${dispatched.session.id}.`, {
           message_id: message.messageId,
           chat_id: message.chatId,
           open_id: message.openId,
-          runtime_session_id: session.id,
+          runtime_session_id: dispatched.session.id,
           outbound
         });
       }
       return;
     }
 
-    if (!trigger.runRequested) {
+    if (dispatched.kind === "session_inbox") {
       await this.recordChannelEvent("session_inbox", `Recorded Feishu group message ${message.messageId} in runtime session inbox.`, {
         message_id: message.messageId,
         chat_id: message.chatId,
         open_id: message.openId,
-        runtime_session_id: session.id,
-        profile: session.profile
+        runtime_session_id: dispatched.session.id,
+        profile: dispatched.session.profile
       });
       return;
     }
 
-    await this.runRuntimeSessionMessage(message, session, source, trigger.taskText);
+    await this.runRuntimeSessionMessage(message, dispatched.session, dispatched.source, dispatched.taskText);
   }
 
   private async runRuntimeSessionMessage(
     message: NormalizedFeishuTextMessage,
     session: RuntimeSessionRecord,
-    source: FeishuSessionSource,
+    source: RuntimeSessionSource,
     taskText: string
   ): Promise<void> {
     if (this.activeRuntimeSessionIds.has(session.id)) {
@@ -578,21 +627,59 @@ export class FeishuPrivateChatAdapter {
     this.activeRuntimeSessionIds.add(session.id);
     let inboundRef = "";
     let outboundRef = "";
+    const sourceKey = runtimeChannelSourceKey(source, session.profile);
+    let queued: RuntimeTaskQueueEntry | null = null;
     try {
+      const task = renderAgentTask(message, [], session, taskText);
+      queued = await enqueueRuntimeTask(this.store, {
+        runtimeSessionId: session.id,
+        source,
+        task: taskText,
+        runnerTask: task
+      });
+      await recordRuntimeTaskRun(this.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
+        runtimeSessionId: session.id,
+        sourceKind: source.kind,
+        sourceKey,
+        task: taskText,
+        status: "queued"
+      });
+      const claimed = await claimRuntimeTask(this.store, { id: queued.id });
+      if (!claimed) throw new Error(`runtime task ${queued.id} could not be claimed`);
+      await recordRuntimeTaskRun(this.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
+        runtimeSessionId: session.id,
+        sourceKind: source.kind,
+        sourceKey,
+        task: taskText,
+        status: "running"
+      });
       inboundRef = await this.recordInbound(message);
       await this.sendChunksToMessage(message, this.config.ackText);
-      const task = renderAgentTask(message, [], session, taskText);
       const result = await this.runner.runTask(task);
+      await completeRuntimeTask(this.store, {
+        id: queued.id,
+        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
+      });
       await recordRuntimeTaskRun(this.store, {
+        id: queued.id,
+        createdAt: queued.created_at,
         runtimeSessionId: session.id,
-        sourceKind: "feishu",
-        sourceKey: feishuSourceKey(source, session.profile),
+        sourceKind: source.kind,
+        sourceKey,
         task: taskText,
         runResult: result
       });
       const finalText = await this.finalTextForRun(result);
       const outbound = await this.sendChunksToMessage(message, finalText);
-      outboundRef = await this.recordOutbound(message, result, finalText, outbound);
+      outboundRef = await this.recordOutbound(message, result, finalText, outbound, {
+        source,
+        runtimeSessionId: session.id,
+        taskRunId: queued.id
+      });
       await this.recordRunEvidence(result, {
         inboundRef,
         outboundRef,
@@ -600,13 +687,18 @@ export class FeishuPrivateChatAdapter {
       });
     } catch (error) {
       const messageText = errorMessage(error);
-      await recordRuntimeTaskRun(this.store, {
-        runtimeSessionId: session.id,
-        sourceKind: "feishu",
-        sourceKey: feishuSourceKey(source, session.profile),
-        task: taskText,
-        status: "failed"
-      });
+      if (queued) {
+        await failRuntimeTask(this.store, { id: queued.id, error: messageText });
+        await recordRuntimeTaskRun(this.store, {
+          id: queued.id,
+          createdAt: queued.created_at,
+          runtimeSessionId: session.id,
+          sourceKind: source.kind,
+          sourceKey,
+          task: taskText,
+          status: "failed"
+        });
+      }
       const outbound = await this.sendChunksToMessage(message, this.config.errorText);
       outboundRef = await this.store.writeJson(`channels/feishu/errors/${message.messageId}.json`, {
         message_id: message.messageId,
@@ -617,6 +709,18 @@ export class FeishuPrivateChatAdapter {
         outbound,
         inbound_ref: inboundRef || null,
         created_at: utcNow()
+      });
+      await recordRuntimeChannelOutbound(this.store, {
+        source,
+        runtimeSessionId: session.id,
+        taskRunId: queued?.id ?? null,
+        inReplyToMessageId: message.messageId,
+        purpose: "error",
+        status: "sent",
+        text: this.config.errorText,
+        providerDeliveryRef: outboundRef,
+        providerMessageIds: sentMessageIds(outbound),
+        error: messageText
       });
       await this.recordChannelEvent("error", `Feishu runtime session message ${message.messageId} failed: ${messageText}`, {
         message_id: message.messageId,
@@ -665,7 +769,9 @@ export class FeishuPrivateChatAdapter {
       const result = await this.runner.runTask(task);
       const finalText = await this.finalTextForRun(result);
       const outbound = await this.sendChunks(normalized.openId, finalText);
-      outboundRef = await this.recordOutbound(normalized, result, finalText, outbound);
+      outboundRef = await this.recordOutbound(normalized, result, finalText, outbound, {
+        source: this.feishuSessionSource(normalized)
+      });
       await this.recordRunEvidence(result, {
         inboundRef,
         outboundRef,
@@ -680,6 +786,16 @@ export class FeishuPrivateChatAdapter {
         error: message,
         outbound,
         created_at: utcNow()
+      });
+      await recordRuntimeChannelOutbound(this.store, {
+        source: this.feishuSessionSource(normalized),
+        inReplyToMessageId: normalized.messageId,
+        purpose: "error",
+        status: "sent",
+        text: this.config.errorText,
+        providerDeliveryRef: outboundRef,
+        providerMessageIds: sentMessageIds(outbound),
+        error: message
       });
       await this.recordChannelEvent("error", `Feishu message ${normalized.messageId} failed: ${message}`, {
         message_id: normalized.messageId,
@@ -740,14 +856,83 @@ export class FeishuPrivateChatAdapter {
     return this.sendChunks(message.openId, text);
   }
 
-  private feishuSessionSource(message: NormalizedFeishuTextMessage, profile?: string): FeishuSessionSource {
+  private async sendChunksToSource(source: RuntimeChannelSource, text: string): Promise<FeishuSendResult[]> {
+    if (this.transport.sendTextToChat) {
+      const chunks = splitText(text, this.config.textChunkLimit);
+      const results: FeishuSendResult[] = [];
+      for (const chunk of chunks) {
+        results.push(await this.transport.sendTextToChat(source.conversationId, chunk));
+      }
+      return results;
+    }
+    if (!source.actorId) throw new Error(`Feishu outbox ${runtimeChannelRouteKey(source)} has no actor open_id for p2p delivery.`);
+    return this.sendChunks(source.actorId, text);
+  }
+
+  private async deliverRuntimeChannelOutbox(
+    entry: RuntimeChannelOutboundRecord,
+    source: RuntimeChannelSource
+  ): Promise<RuntimeChannelOutboundRecord> {
+    try {
+      const sends = await this.sendChunksToSource(source, entry.text);
+      const failedSend = sends.find((send) => !send.ok);
+      const ref = await this.store.writeJson(`channels/feishu/outbox/${entry.id}.json`, {
+        outbox_id: entry.id,
+        source_route_key: entry.source_route_key,
+        source_key: entry.source_key,
+        runtime_session_id: entry.runtime_session_id,
+        task_run_id: entry.task_run_id,
+        purpose: entry.purpose,
+        text: entry.text,
+        sends,
+        created_at: utcNow()
+      });
+      if (failedSend) {
+        await this.recordChannelEvent("outbox_failed", failedSend.summary, {
+          outbox_id: entry.id,
+          artifact_ref: ref,
+          source_route_key: entry.source_route_key,
+          send_count: sends.length
+        });
+        return recordRuntimeChannelOutboundDelivery(this.store, entry, {
+          status: "failed",
+          providerDeliveryRef: ref,
+          providerMessageIds: sentMessageIds(sends),
+          error: failedSend.summary
+        });
+      }
+      await this.recordChannelEvent("outbox_sent", `Sent Feishu outbox ${entry.id}.`, {
+        outbox_id: entry.id,
+        artifact_ref: ref,
+        source_route_key: entry.source_route_key,
+        send_count: sends.length
+      });
+      return recordRuntimeChannelOutboundDelivery(this.store, entry, {
+        status: "sent",
+        providerDeliveryRef: ref,
+        providerMessageIds: sentMessageIds(sends)
+      });
+    } catch (error) {
+      const message = errorMessage(error);
+      await this.recordChannelEvent("outbox_failed", message, {
+        outbox_id: entry.id,
+        source_route_key: entry.source_route_key
+      });
+      return recordRuntimeChannelOutboundDelivery(this.store, entry, {
+        status: "failed",
+        error: message
+      });
+    }
+  }
+
+  private feishuSessionSource(message: NormalizedFeishuTextMessage, profile?: string): RuntimeSessionSource {
     return {
       kind: "feishu",
-      channelId: this.config.channelId ?? "default",
-      chatType: message.chatType,
-      chatId: message.chatId,
+      channelId: this.channelId,
+      conversationType: message.chatType,
+      conversationId: message.chatId,
       threadId: message.threadId,
-      openId: message.openId,
+      actorId: message.openId,
       profile
     };
   }
@@ -2411,7 +2596,12 @@ export class FeishuPrivateChatAdapter {
     message: NormalizedFeishuTextMessage,
     result: RunResult,
     text: string,
-    sends: FeishuSendResult[]
+    sends: FeishuSendResult[],
+    args: {
+      source?: RuntimeSessionSource;
+      runtimeSessionId?: string | null;
+      taskRunId?: string | null;
+    } = {}
   ): Promise<string> {
     const ref = await this.store.writeJson(`channels/feishu/outbound/${message.messageId}.json`, {
       source_message_id: message.messageId,
@@ -2424,6 +2614,17 @@ export class FeishuPrivateChatAdapter {
       text,
       sends,
       created_at: utcNow()
+    });
+    await recordRuntimeChannelOutbound(this.store, {
+      source: args.source ?? this.feishuSessionSource(message),
+      runtimeSessionId: args.runtimeSessionId ?? null,
+      taskRunId: args.taskRunId ?? null,
+      inReplyToMessageId: message.messageId,
+      purpose: "final",
+      status: "sent",
+      text,
+      providerDeliveryRef: ref,
+      providerMessageIds: sentMessageIds(sends)
     });
     await this.recordChannelEvent("outbound", `Sent Feishu final reply for ${message.messageId}.`, {
       artifact_ref: ref,
@@ -2593,45 +2794,8 @@ function renderAgentTask(
   ].join("\n");
 }
 
-function parseSessionUseCommand(text: string): { profile: string } | null {
-  const compact = text.trim().replace(/\s+/g, " ");
-  const normalized = compact.toLowerCase();
-  for (const prefix of ["/session use ", "session use ", "/session bind ", "session bind "]) {
-    if (!normalized.startsWith(prefix)) continue;
-    const profile = compact.slice(prefix.length).trim();
-    if (!profile) return null;
-    return { profile };
-  }
-  return null;
-}
-
-function classifyRuntimeSessionTrigger(text: string): {
-  kind: "inbox_only" | "run_command" | "mention";
-  runRequested: boolean;
-  taskText: string;
-} {
-  const compact = text.trim();
-  const normalized = compact.toLowerCase();
-  if (normalized === "/run" || normalized.startsWith("/run ")) {
-    const taskText = compact.slice("/run".length).trim();
-    return {
-      kind: "run_command",
-      runRequested: true,
-      taskText: taskText || compact
-    };
-  }
-  if (/@(?:bot|xingzhe|行者)/i.test(compact) || compact.includes("@_user_")) {
-    return {
-      kind: "mention",
-      runRequested: true,
-      taskText: stripFeishuMention(compact)
-    };
-  }
-  return {
-    kind: "inbox_only",
-    runRequested: false,
-    taskText: compact
-  };
+function isFeishuMention(text: string): boolean {
+  return /@(?:bot|xingzhe|行者)/i.test(text) || text.includes("@_user_");
 }
 
 function stripFeishuMention(text: string): string {
@@ -5370,6 +5534,12 @@ async function listContentDailyPublishEvents(
 function truncateText(value: string, maxChars: number): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > maxChars ? `${compact.slice(0, maxChars).trimEnd()}...` : compact;
+}
+
+function sentMessageIds(sends: FeishuSendResult[]): string[] {
+  return sends
+    .map((send) => send.messageId)
+    .filter((messageId): messageId is string => Boolean(messageId));
 }
 
 function shellArg(value: string): string {

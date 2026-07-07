@@ -1,2 +1,4 @@
 {"type":"api_key","id":"model","env":"LOCAL_RUNTIME_MODEL_API_KEY"}
 {"type":"app_secret","id":"feishu-main","app_id_env":"LOCAL_RUNTIME_FEISHU_APP_ID","app_secret_env":"LOCAL_RUNTIME_FEISHU_APP_SECRET"}
+{"type":"api_key","id":"telegram-main","env":"LOCAL_RUNTIME_TELEGRAM_BOT_TOKEN"}
+{"type":"api_key","id":"discord-main","env":"LOCAL_RUNTIME_DISCORD_BOT_TOKEN"}

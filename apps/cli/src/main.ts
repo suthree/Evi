@@ -127,8 +127,12 @@ import {
   XiaohongshuMcpClient,
   summarizeXiaohongshuProbe
 } from "../../../packages/runtime/src/xiaohongshu_mcp.js";
-import { loadFeishuScenarioConfig } from "../../../packages/runtime/src/channels/feishu/config.js";
-import { serveFeishuPrivateChat } from "../../../packages/runtime/src/channels/feishu/service.js";
+import {
+  loadImScenarioConfig,
+  parseImProvider,
+  type ImProvider
+} from "../../../packages/runtime/src/im_config.js";
+import { assertRuntimeImAdapterSupported } from "../../../packages/runtime/src/im_adapters.js";
 import {
   listOperatorNotifications,
   queueOperatorNotification,
@@ -148,6 +152,7 @@ import {
   type ServiceAction,
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
+import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
 import { startRuntimeWebConsole } from "../../../packages/runtime/src/web_console.js";
 import type {
@@ -173,6 +178,7 @@ interface CliOptions {
   requireAuth: boolean;
   requireIm: boolean;
   imAction?: "serve";
+  daemonAction?: "serve";
   serviceAction?: ServiceAction | "health";
   capabilitiesAction?: "catalog" | "acceptance";
   workspaceAction?: "status" | "runtime";
@@ -183,6 +189,7 @@ interface CliOptions {
   notifyRefs: string[];
   notifyStatus?: OperatorNotificationStatus;
   serviceTarget: ServiceTarget;
+  webEnabled: boolean;
   webHost: string;
   webPort: number;
   contentAction?: "run" | "daily" | "daily-readiness" | "channel-readiness" | "daily-advance" | "runs" | "show" | "publish-history" | "feedback-history" | "feedback-review" | "feedback-needed" | "creator-metrics-needed" | "creator-metrics-capture" | "feedback-trends" | "feedback-strategy" | "feedback-capture" | "feedback-refresh" | "generate-image" | "image-evidence" | "publish-preflight" | "publish-execute" | "publish-evidence" | "feedback-evidence" | "reconcile-publish-evidence";
@@ -255,6 +262,7 @@ interface CliOptions {
   postUrl?: string;
   screenshotRef?: string;
   evidenceError?: string;
+  imProvider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
   runtimeBuildPath?: string;
@@ -751,7 +759,8 @@ export async function main(): Promise<number> {
       configDir: options.configDir,
       stateRoot: options.stateRoot,
       requireAuth: options.requireAuth,
-      requireIm: options.requireIm
+      requireIm: options.requireIm,
+      provider: options.imProvider
     });
     console.log(JSON.stringify(report, null, 2));
     return report.ok ? 0 : 1;
@@ -840,10 +849,9 @@ export async function main(): Promise<number> {
         stateRoot: options.stateRoot
       });
       const store = new AgentStore(resolve(options.repoRoot), selectors.stateRoot);
-      const health = await getServiceHealth(store);
+      const health = await getServiceHealth(store, { target: options.serviceTarget });
       console.log(JSON.stringify({
         action: "health",
-        target: options.serviceTarget,
         ...health
       }, null, 2));
       return 0;
@@ -854,39 +862,98 @@ export async function main(): Promise<number> {
       configDir: options.configDir,
       repoRoot: options.repoRoot,
       stateRoot: options.stateRoot,
+      provider: options.imProvider,
       channelId: options.channelId,
       scenarioId: options.scenarioId,
       discipline: options.discipline,
+      enableIm: options.requireIm,
+      enableWeb: options.webEnabled,
+      webHost: options.webHost,
+      webPort: options.webPort,
       limit: options.limit
     });
     console.log(JSON.stringify(result, null, 2));
     return result.ok ? 0 : 1;
   }
 
-  if (options.command === "im") {
-    if (options.imAction !== "serve") throw new Error("im requires an action: serve");
-    const scenario = await loadFeishuScenarioConfig({
+  if (options.command === "daemon") {
+    if (options.daemonAction !== "serve") throw new Error("daemon requires an action: serve");
+    if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
+    const scenario = options.requireIm
+      ? await loadImScenarioConfig({
+        configDir: options.configDir,
+        stateRoot: options.stateRoot,
+        provider: options.imProvider,
+        channelId: options.channelId,
+        scenarioId: options.scenarioId
+      })
+      : null;
+    if (scenario) assertRuntimeImAdapterSupported(scenario);
+    const config = await loadConfig({
       configDir: options.configDir,
       stateRoot: options.stateRoot,
+      modelId: scenario?.modelId,
+      skipAuth: !options.requireIm
+    });
+    await serveRuntimeDaemon({
+      repoRoot: options.repoRoot,
+      config,
+      configDir: options.configDir,
+      discipline: options.discipline === "none" ? scenario?.discipline : options.discipline,
+      target: "runtime",
+      service: scenario
+        ? {
+          channelId: scenario.channelId,
+          scenarioId: scenario.id
+        }
+        : undefined,
+      runtimeBuildPath: options.runtimeBuildPath,
+      im: scenario
+        ? {
+          scenario
+        }
+        : undefined,
+      web: {
+        enabled: options.webEnabled,
+        host: options.webHost,
+        port: options.webPort
+      }
+    });
+    return 0;
+  }
+
+  if (options.command === "im") {
+    if (options.imAction !== "serve") throw new Error("im requires an action: serve");
+    const scenario = await loadImScenarioConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      provider: options.imProvider,
       channelId: options.channelId,
       scenarioId: options.scenarioId
     });
+    assertRuntimeImAdapterSupported(scenario);
     const config = await loadConfig({
       configDir: options.configDir,
       stateRoot: options.stateRoot,
       modelId: scenario.modelId
     });
-    await serveFeishuPrivateChat({
+    await serveRuntimeDaemon({
       repoRoot: options.repoRoot,
       config,
-      feishuConfig: scenario.channel,
       configDir: options.configDir,
+      target: "im",
       discipline: options.discipline === "none" ? scenario.discipline : options.discipline,
       service: {
         channelId: scenario.channelId,
         scenarioId: scenario.id
       },
-      runtimeBuildPath: options.runtimeBuildPath
+      runtimeBuildPath: options.runtimeBuildPath,
+      im: {
+        scenario
+      },
+      web: {
+        enabled: false
+      }
     });
     return 0;
   }
@@ -2129,6 +2196,7 @@ export function parseArgs(argv: string[]): CliOptions {
     requireAuth: true,
     requireIm: true,
     serviceTarget: "im",
+    webEnabled: true,
     webHost: "127.0.0.1",
     webPort: 8765,
     dryRun: false,
@@ -2152,6 +2220,7 @@ export function parseArgs(argv: string[]): CliOptions {
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (options.command === "im" && arg === "serve") options.imAction = arg;
+    else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
     else if (options.command === "service" && isCliServiceAction(arg)) options.serviceAction = arg;
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
@@ -2276,6 +2345,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--source") options.notifySource = required(rest[++index], "--source requires a value");
     else if (arg === "--notification-ref") options.notifyRefs.push(required(rest[++index], "--notification-ref requires a value"));
     else if (arg === "--target") options.serviceTarget = parseServiceTarget(required(rest[++index], "--target requires a value"));
+    else if (arg === "--provider") options.imProvider = parseImProvider(required(rest[++index], "--provider requires a value"));
     else if (arg === "--channel") options.channelId = required(rest[++index], "--channel requires a value");
     else if (arg === "--scenario") options.scenarioId = required(rest[++index], "--scenario requires a value");
     else if (arg === "--runtime-build") options.runtimeBuildPath = required(rest[++index], "--runtime-build requires a value");
@@ -2338,6 +2408,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--query-todo") options.discipline = "query_todo";
     else if (arg === "--no-auth") options.requireAuth = false;
     else if (arg === "--no-im") options.requireIm = false;
+    else if (arg === "--no-web") options.webEnabled = false;
     else if (arg === "--discipline") options.discipline = parseDiscipline(required(rest[++index], "--discipline requires a value"));
     else if (arg === "--stages") options.stages = parseStages(required(rest[++index], "--stages requires a value"));
     else if (arg === "--action") {
@@ -2644,7 +2715,7 @@ function isCliServiceAction(value: string): value is ServiceAction | "health" {
 }
 
 function parseServiceTarget(value: string): ServiceTarget {
-  if (value === "im") return value;
+  if (value === "im" || value === "runtime") return value;
   throw new Error(`Unsupported service target: ${value}`);
 }
 
@@ -2658,6 +2729,7 @@ function printUsage(): void {
   pnpm run runtime -- config set-runtime --content-creator-metrics-enabled [--content-creator-metrics-interval-ms 3600000] [--content-creator-metrics-limit 10] [--content-creator-metrics-creator-url https://creator.xiaohongshu.com/new/note-manager] [--content-creator-metrics-browser-session-name runtime-creator-metrics]
   pnpm run runtime -- capabilities [catalog|acceptance|audit]
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
+  pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root .runtime/state]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]
   pnpm run runtime -- pipeline --task "..." [--stages intake,tool_check,final] [--query-todo]
   pnpm run runtime -- pipeline resume --pipeline pipeline_run_... [--from-stage tool_check] [--query-todo]
@@ -2686,8 +2758,8 @@ function printUsage(): void {
   pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published|failed [--adapter xiaohongshu-mcp] [--tool publish_content] [--external-write] [--confirmed] [--login-status logged_in] [--post-id ...] [--post-url ...] [--screenshot ...] [--state-root .runtime/state]
   pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root .runtime/state]
   pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- im serve [--scenario im-default] [--channel feishu-main] [--config-dir config] [--state-root .runtime/state] [--runtime-build <path>] [--query-todo]
-  pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target im] [--scenario im-default] [--channel feishu-main] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- im serve [--provider feishu] [--scenario im-default] [--channel feishu-main] [--config-dir config] [--state-root .runtime/state] [--runtime-build <path>] [--query-todo]
+  pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target im|runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]
   pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime/state]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]

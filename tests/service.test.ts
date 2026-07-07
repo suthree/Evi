@@ -5,8 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   buildImServiceDefinition,
+  buildRuntimeServiceDefinition,
   parseLaunchdPid,
   renderLaunchdPlist,
+  resolveServiceDefinition,
   resolveServiceConfigSelectors,
   runServiceCommand
 } from "../packages/runtime/src/service.js";
@@ -17,6 +19,7 @@ test("launchd plist uses explicit local runner and does not contain secrets", ()
     configDir: "/work/runtime/config",
     stateRoot: "/work/runtime/.runtime/state",
     homeRoot: "/home/user/.local-runtime",
+    provider: "feishu",
     channelId: "feishu-main",
     scenarioId: "im-default",
     discipline: "query_todo",
@@ -32,15 +35,213 @@ test("launchd plist uses explicit local runner and does not contain secrets", ()
   assert.match(plist, /<string>im<\/string>/);
   assert.match(plist, /<string>serve<\/string>/);
   assert.match(plist, /<string>--runtime-build<\/string>/);
+  assert.match(plist, /<string>--provider<\/string>/);
+  assert.match(plist, /<string>feishu<\/string>/);
   assert.match(plist, /<string>\/home\/user\/\.local-runtime\/service\/runtime\/current\/build\.json<\/string>/);
   assert.match(plist, /<key>LOCAL_RUNTIME_HOME<\/key>/);
   assert.doesNotMatch(plist, /tsx\/dist/);
   assert.doesNotMatch(plist, /api_key|app_secret|sk-test|cli_secret/i);
 });
 
+test("runtime service definition starts the unified daemon with configurable channel surfaces", () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    provider: "feishu",
+    channelId: "feishu-main",
+    scenarioId: "im-default",
+    discipline: "query_todo",
+    enableIm: false,
+    webHost: "127.0.0.1",
+    webPort: 9876,
+    nodePath: "/usr/local/bin/node",
+    pathEnv: "/usr/local/bin:/usr/bin:/bin"
+  });
+  const plist = renderLaunchdPlist(definition);
+
+  assert.equal(definition.target, "runtime");
+  assert.equal(definition.label, "local.runtime.runtime");
+  assert.equal(definition.manifestPath, "/home/user/.local-runtime/service/runtime.json");
+  assert.equal(definition.heartbeatPath, "/work/runtime/.runtime/state/services/runtime/heartbeat.json");
+  assert.equal(definition.taskQueueStatusPath, "/work/runtime/.runtime/state/services/runtime/task_queue.json");
+  assert.match(plist, /<string>daemon<\/string>/);
+  assert.match(plist, /<string>serve<\/string>/);
+  assert.match(plist, /<string>--no-im<\/string>/);
+  assert.match(plist, /<string>--provider<\/string>/);
+  assert.match(plist, /<string>feishu<\/string>/);
+  assert.match(plist, /<string>--host<\/string>/);
+  assert.match(plist, /<string>127\.0\.0\.1<\/string>/);
+  assert.match(plist, /<string>--port<\/string>/);
+  assert.match(plist, /<string>9876<\/string>/);
+  assert.doesNotMatch(plist, /api_key|app_secret|sk-test|cli_secret/i);
+});
+
 test("parseLaunchdPid reads launchctl print output", () => {
   assert.equal(parseLaunchdPid("state = running\npid = 12345\n"), 12345);
   assert.equal(parseLaunchdPid("state = waiting\n"), null);
+});
+
+test("service definition accepts configured Discord IM providers with an adapter", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-provider-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "discord-main" }),
+      JSON.stringify({ type: "active_scenario", scenario_id: "im-discord" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "settings.jsonl"), [
+      JSON.stringify({
+        type: "channel",
+        id: "discord-main",
+        kind: "discord",
+        transport: "gateway",
+        mode: "bot",
+        auth_id: "discord-main"
+      }),
+      JSON.stringify({
+        type: "scenario",
+        id: "im-discord",
+        channel_id: "discord-main",
+        model_id: "test-model",
+        discipline: "query_todo"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), [
+      JSON.stringify({
+        type: "model",
+        id: "test-model",
+        provider: "openai-compatible",
+        base_url: "https://api.example.test/v1",
+        model: "test-model",
+        auth_id: "model-main"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "auth.jsonl"), [
+      JSON.stringify({ type: "api_key", id: "model-main", key: "sk-test" }),
+      JSON.stringify({ type: "api_key", id: "discord-main", key: "discord-test" })
+    ].join("\n") + "\n", "utf8");
+
+    const definition = await resolveServiceDefinition({
+      action: "start",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      provider: "discord"
+    }, true);
+
+    assert.deepEqual(definition.programArguments.slice(-10, -2), [
+      "--scenario",
+      "im-discord",
+      "--provider",
+      "discord",
+      "--channel",
+      "discord-main",
+      "--discipline",
+      "query_todo"
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime service provider flag overrides stale active IM selectors", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-provider-override-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
+      JSON.stringify({ type: "active_scenario", scenario_id: "im-feishu" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "settings.jsonl"), [
+      JSON.stringify({
+        type: "channel",
+        id: "feishu-main",
+        kind: "feishu",
+        transport: "websocket",
+        mode: "private_chat",
+        auth_id: "feishu-main"
+      }),
+      JSON.stringify({
+        type: "scenario",
+        id: "im-feishu",
+        channel_id: "feishu-main",
+        model_id: "test-model",
+        discipline: "query_todo"
+      }),
+      JSON.stringify({
+        type: "channel",
+        id: "telegram-main",
+        kind: "telegram",
+        transport: "long_poll",
+        mode: "bot",
+        auth_id: "telegram-main"
+      }),
+      JSON.stringify({
+        type: "scenario",
+        id: "im-telegram",
+        channel_id: "telegram-main",
+        model_id: "test-model",
+        discipline: "query_todo"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), [
+      JSON.stringify({
+        type: "model",
+        id: "test-model",
+        provider: "openai-compatible",
+        base_url: "https://api.example.test/v1",
+        model: "test-model",
+        auth_id: "model-main"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "auth.jsonl"), [
+      JSON.stringify({ type: "api_key", id: "model-main", key: "sk-test" }),
+      JSON.stringify({ type: "api_key", id: "telegram-main", key: "telegram-test" })
+    ].join("\n") + "\n", "utf8");
+
+    const definition = await resolveServiceDefinition({
+      action: "start",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      provider: "telegram"
+    }, true);
+
+    const serviceArgs = definition.programArguments.slice(2);
+    assert.deepEqual(serviceArgs.slice(serviceArgs.indexOf("--scenario"), serviceArgs.indexOf("--runtime-build")), [
+      "--scenario",
+      "im-telegram",
+      "--provider",
+      "telegram",
+      "--channel",
+      "telegram-main",
+      "--discipline",
+      "query_todo"
+    ]);
+    assert.equal(serviceArgs.includes("--no-im"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("service config selectors use home-scoped state by default and preserve explicit state roots", async () => {
@@ -126,6 +327,24 @@ test("service status combines launchd status and heartbeat", async () => {
       updated_at: "2026-06-29T00:00:30.000Z",
       last_tick_ref: "autonomy/ticks/review_tick_1.json",
       last_inbox_count: 2
+    })}\n`, "utf8");
+    await writeFile(join(stateRoot, "services/im/task_queue.json"), `${JSON.stringify({
+      service: "runtime_task_queue",
+      state: "ok",
+      enabled: true,
+      pid: 777,
+      interval_ms: 30000,
+      limit: 1,
+      queued_stale_ms: 60000,
+      running_stale_ms: 21600000,
+      started_at: "2026-07-01T00:00:00.000Z",
+      updated_at: "2026-07-01T00:00:31.000Z",
+      last_recoverable_count: 2,
+      last_due_count: 1,
+      last_claimed_count: 1,
+      last_completed_count: 1,
+      last_failed_count: 0,
+      last_task_ids: ["runtime_task_1"]
     })}\n`, "utf8");
     await writeFile(join(stateRoot, "services/im/content_daily.json"), `${JSON.stringify({
       service: "content_daily",
@@ -220,6 +439,9 @@ test("service status combines launchd status and heartbeat", async () => {
     });
 
     assert.equal(result.ok, true);
+    assert.match(result.boundary, /local service lifecycle status/);
+    assert.match(result.boundary, /use health_command for bounded runtime\/channel health/);
+    assert.equal(result.health_command, "pnpm run runtime -- service health --target im");
     assert.equal(result.launchd?.loaded, true);
     assert.equal(result.launchd?.pid, 12345);
     assert.equal(result.heartbeat?.pid, 777);
@@ -230,6 +452,9 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.runtime?.runtime_current_root, join(homeRoot, "service/runtime/current"));
     assert.equal(result.review_tick?.state, "ok");
     assert.equal(result.review_tick?.last_inbox_count, 2);
+    assert.equal(result.task_queue?.state, "ok");
+    assert.equal(result.task_queue?.last_recoverable_count, 2);
+    assert.deepEqual(result.task_queue?.last_task_ids, ["runtime_task_1"]);
     assert.equal(result.content_daily?.state, "ok");
     assert.equal(result.content_daily?.last_job_ref, "content/daily/2026-07-01.json");
     assert.equal(result.content_daily?.last_job_status, "preflight_ok");
@@ -243,6 +468,44 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.autonomy_pause?.ref, "autonomy/runs/pause_signal.json");
     assert.equal(result.autonomy_pause?.status, "active");
     assert.equal(result.autonomy_pause?.reason, "Operator should review the current self-evolution direction.");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime service status points operators to runtime bounded health", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-runtime-status-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" })
+    ].join("\n") + "\n", "utf8");
+
+    const result = await runServiceCommand({
+      action: "status",
+      target: "runtime",
+      configDir,
+      repoRoot,
+      stateRoot
+    }, {
+      platform: "darwin",
+      run: async () => ({
+        stdout: "state = waiting\n",
+        stderr: "",
+        exitCode: 0
+      })
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.target, "runtime");
+    assert.equal(result.health_command, "pnpm run runtime -- service health --target runtime");
+    assert.match(result.boundary, /may inspect launchd/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

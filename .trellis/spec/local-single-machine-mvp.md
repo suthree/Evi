@@ -119,10 +119,21 @@ Runtime control keeps core execution bounded:
 - pipeline resume command guidance in read-only backlog/context/operator views
 - local content dry-run publish plans for active exploration, writing only
   state artifacts under `content/runs/`
-- local web console for runtime sessions, Feishu inbox review, profile binding,
+- local web console for runtime sessions, channel inbox review, profile binding,
   and explicit local task runs
-- Feishu group source binding to local runtime sessions with
+- channel source binding to local runtime sessions with
   pending/unassigned bootstrap
+- provider-neutral IM channel config selection for Feishu, Telegram, and
+  Discord kinds, with Feishu, Telegram, and Discord startable through
+  the runtime IM adapter seam
+- provider-neutral channel message dispatch for `/session use`, inbox append,
+  and explicit run trigger classification after adapter normalization
+- local append-only runtime task queue for explicit IM/web runs, mirrored into
+  task-run history as `queued`, `running`, and final rows
+- resident daemon queue worker for stale queued/running runtime tasks, with
+  status under `services/<target>/task_queue.json`
+- provider-neutral local channel outbox for task final/error outcomes from
+  Feishu, Web, and daemon recovery
 - bounded same-sender in-memory follow-up queue for normal Feishu private-chat
   tasks
 - review tick materialization into a state-only self-evolution inbox
@@ -193,15 +204,29 @@ control plane.
 
 ### Basic Entrypoints
 
-CLI, local web console, and IM are first-version basic entrypoints.
+CLI, local web console, unified runtime daemon, and IM are first-version basic
+entrypoints.
 
-Feishu is the first IM provider. It should be exposed as an agent IM capability,
-not as a separate optional Feishu subsystem.
+IM should be exposed as an agent capability, not as separate optional provider
+subsystems. `im serve` remains the Feishu-compatible foreground entrypoint,
+while `daemon serve` and `service --target runtime` are the provider-neutral
+resident runtime surfaces. The daemon owns a MessageGateway lifecycle seam so
+Web, Feishu, Telegram, and Discord are channel adapters.
+IM config selection is provider-neutral: channel records may use Feishu,
+Telegram, or Discord kinds, and resident commands accept `--provider` as a
+selector guard. Provider startability is owned by the adapter factory rather
+than by config parsing.
+Before session binding, channel messages use a provider-neutral source envelope
+with channel kind, configured channel id, conversation type, conversation id,
+optional thread id, optional actor id, and optional profile. Runtime session
+route keys and inbox rows are derived from that envelope, not from
+Feishu-specific fields.
 
 The local web console is a localhost operator surface. It can inspect runtime
-sessions, Feishu inbox entries, and task-run history, bind a pending
-Feishu-backed session to a profile, and submit an explicit local task run. It
-is not a hosted, multi-user, authenticated, or desktop GUI.
+sessions, channel inbox entries, and task-run history, bind a pending
+channel-backed session to a profile, and submit an explicit local task run. It
+is not a hosted, multi-user, authenticated, or desktop GUI. Under the runtime
+daemon it is managed as the Web channel adapter.
 
 Feishu private chat may expose read-only local operator commands for service,
 context manifest, memory, background review history, review tick history,
@@ -246,6 +271,23 @@ unless the sender is an authorized operator; authorized bootstrap creates a
 pending/unassigned session. `/session use <profile>` or the local web console
 binds the profile. Ordinary bound group messages append inbox entries only;
 `/run <task>` or an explicit bot mention requests execution.
+
+Adapter-normalized channel messages use the shared runtime channel dispatcher
+for session binding, pending bootstrap, inbox append, and `/run` or mention
+classification. Provider adapters keep provider parsing and reply transport.
+
+Explicit IM or web-console runs append to the local runtime task queue, claim
+the same queued task, and mirror `queued`, `running`, and final rows into
+task-run history with the same id. This is local durability and recovery
+inspection for accepted work. The resident daemon queue worker may consume stale
+queued/running entries using the stored runner task and write worker status; it
+can queue Feishu/Telegram provider replies for adapter replay, but it does not provide
+cross-process scheduling.
+
+Task final/error communication appends to `channels/outbox.jsonl` as a
+provider-neutral local ledger. Feishu/Telegram/Web adapters still own delivery;
+daemon recovery records queued Feishu/Telegram rows when a route is deliverable
+and skipped rows when no provider source is available.
 
 ### Local Service Runtime
 
@@ -355,6 +397,15 @@ The MVP is healthy when:
 - Feishu groups can be mapped to runtime sessions, with unknown groups requiring
   authorized bootstrap and bound group messages remaining inbox-only unless
   explicitly triggered
+- IM provider config can recognize Feishu, Telegram, and Discord channel kinds,
+  and Feishu, Telegram, and Discord can start through concrete adapters
+- provider-neutral channel dispatch can classify `/session use`, inbox-only,
+  `/run`, and adapter-provided mention triggers without Feishu-specific session
+  routing code
+- explicit IM/web task runs leave local queued/running/final task queue and
+  task-run history rows with one shared id
+- resident daemon queue worker can consume stale queued/running task queue
+  entries and expose worker status for service inspection
 - local service status reports a running IM process and heartbeat when enabled
 - local `service health` returns bounded resident IM health and resident
   deployment status without inspecting launchd, reading logs, restarting

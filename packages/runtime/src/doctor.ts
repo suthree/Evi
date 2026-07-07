@@ -5,13 +5,18 @@ import { validateSkillPackages, scanSkillRegistry } from "../../core/src/skill_r
 import { resolveSkillResolver } from "../../core/src/skill_resolver.js";
 import { AgentStore } from "../../core/src/store.js";
 import { coreToolContracts } from "../../core/src/tool_contracts.js";
-import { assertFeishuConfigReady, loadFeishuScenarioConfig } from "./channels/feishu/config.js";
+import { assertDiscordConfigReady } from "./channels/discord/config.js";
+import { assertFeishuConfigReady } from "./channels/feishu/config.js";
+import { assertTelegramConfigReady } from "./channels/telegram/config.js";
 import {
   loadConfig,
   loadRuntimeAuthDiagnostics,
   type RuntimeAuthDiagnostics,
   type RuntimeConfig
 } from "./config.js";
+import { assertRuntimeImAdapterSupported } from "./im_adapters.js";
+import { loadImScenarioConfig } from "./im_config.js";
+import type { ImProvider } from "./im_config.js";
 
 export type DoctorCheckLevel = "ok" | "warn" | "error";
 
@@ -38,6 +43,7 @@ export interface DoctorOptions {
   stateRoot?: string;
   requireAuth?: boolean;
   requireIm?: boolean;
+  provider?: ImProvider;
 }
 
 export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorReport> {
@@ -138,6 +144,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorRepo
     configDir,
     stateRoot: options.stateRoot,
     requireIm: options.requireIm,
+    provider: options.provider,
     authDiagnostics: await safeRuntimeAuthDiagnostics({
       configDir,
       stateRoot: options.stateRoot
@@ -318,7 +325,7 @@ async function checkSkills(checks: DoctorCheck[], store: AgentStore, vaultRoot: 
 
 async function checkIm(
   checks: DoctorCheck[],
-  options: { configDir: string; stateRoot?: string; requireIm?: boolean; authDiagnostics?: RuntimeAuthDiagnostics | null }
+  options: { configDir: string; stateRoot?: string; requireIm?: boolean; provider?: ImProvider; authDiagnostics?: RuntimeAuthDiagnostics | null }
 ): Promise<void> {
   if (options.requireIm === false) {
     checks.push({
@@ -330,28 +337,44 @@ async function checkIm(
   }
 
   try {
-    const scenario = await loadFeishuScenarioConfig({
+    const scenario = await loadImScenarioConfig({
       configDir: options.configDir,
-      stateRoot: options.stateRoot
+      stateRoot: options.stateRoot,
+      provider: options.provider
     });
-    assertFeishuConfigReady(scenario.channel);
+    assertRuntimeImAdapterSupported(scenario);
+    if (scenario.provider === "feishu") assertFeishuConfigReady(scenario.channel);
+    if (scenario.provider === "telegram") assertTelegramConfigReady(scenario.channel);
+    if (scenario.provider === "discord") assertDiscordConfigReady(scenario.channel);
+    const authDiagnostics = await safeRuntimeAuthDiagnostics({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      channelId: scenario.channelId
+    }) ?? options.authDiagnostics;
     checks.push({
       name: "im",
       level: "ok",
-      summary: "IM scenario and Feishu app auth resolved.",
+      summary: `IM scenario and ${scenario.provider} auth resolved.`,
       details: {
-        provider: "feishu",
+        provider: scenario.provider,
         scenario_id: scenario.id,
         channel_id: scenario.channelId,
-        domain: scenario.channel.domain,
         discipline: scenario.discipline,
         reply_policy: scenario.replyPolicy,
-        allowed_open_ids_count: scenario.channel.allowedOpenIds.length,
-        active_channel_auth: options.authDiagnostics?.active_channel_auth,
-        auth_refs: options.authDiagnostics?.active_channel_auth
-          ? options.authDiagnostics.refs
+        ...(scenario.provider === "feishu" ? {
+          domain: scenario.channel.domain,
+          allowed_open_ids_count: scenario.channel.allowedOpenIds.length
+        } : scenario.provider === "telegram" ? {
+          allowed_user_ids_count: scenario.channel.allowedUserIds.length
+        } : {
+          allowed_user_ids_count: scenario.channel.allowedUserIds.length,
+          allowed_guild_ids_count: scenario.channel.allowedGuildIds.length
+        }),
+        active_channel_auth: authDiagnostics?.active_channel_auth,
+        auth_refs: authDiagnostics?.active_channel_auth
+          ? authDiagnostics.refs
           : undefined,
-        auth_boundary: options.authDiagnostics?.boundary
+        auth_boundary: authDiagnostics?.boundary
       }
     });
   } catch (error) {
@@ -371,7 +394,7 @@ async function checkIm(
   }
 }
 
-async function safeRuntimeAuthDiagnostics(options: { configDir: string; stateRoot?: string }): Promise<RuntimeAuthDiagnostics | null> {
+async function safeRuntimeAuthDiagnostics(options: { configDir: string; stateRoot?: string; channelId?: string }): Promise<RuntimeAuthDiagnostics | null> {
   try {
     return await loadRuntimeAuthDiagnostics(options);
   } catch {

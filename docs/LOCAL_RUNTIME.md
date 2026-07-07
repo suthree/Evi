@@ -2,7 +2,7 @@
 
 The first version is a local single-machine runtime. It is not a hosted
 service, a multi-user bot, or a deployment target. It may run a single-user
-local service process for IM intake.
+local service process for channel adapters and IM intake.
 
 ## Owner Process
 
@@ -12,9 +12,10 @@ The local owner process is:
 apps/cli/src/main.ts
 ```
 
-Foreground commands own one run. The local service process owns resident IM
-intake. Runtime state is written under the selected state root. Learned local
-procedures are written under the configured local agent home and active vault.
+Foreground commands own one run. The local service process owns resident
+channel adapters and IM intake. Runtime state is written under the selected
+state root. Learned local procedures are written under the configured local
+agent home and active vault.
 
 ## Package Manager
 
@@ -49,6 +50,8 @@ pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage too
 pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
+pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root .runtime/state
+pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root .runtime/state
 pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root .runtime/state
 pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root .runtime/state
 pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime/state
@@ -74,6 +77,7 @@ pnpm run runtime -- content publish-execute --run content_run_... --external-wri
 pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime/state
 pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state --dry-run --state-root ~/.local-runtime/state/runtime
 pnpm run runtime -- im serve --scenario im-default --state-root .runtime/state
+pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime
 pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im
 pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- workspace runtime --state-root .runtime/state
@@ -929,8 +933,8 @@ The expected shape is:
 {"type":"app_secret","id":"feishu-main","app_id":"...","app_secret":"..."}
 ```
 
-Repository `config/auth.example.jsonl` is only a template. The tracked
-`config/*.jsonl` files are neutral defaults; ignored `config/*.local.jsonl`
+Repository `config/auth.example.jsonl` and `config/settings.example.jsonl` are
+only templates. The tracked `config/*.jsonl` files are neutral defaults; ignored `config/*.local.jsonl`
 files override those defaults on this machine before home and state config.
 The resident service copies repo config into its runtime snapshot, then still
 layers local config, so real API keys and Feishu app secrets should stay in
@@ -940,7 +944,9 @@ both are present, the direct field wins. There is no implicit `API_KEY`,
 `FEISHU_APP_ID`, or `FEISHU_APP_SECRET` fallback when the auth record omits an
 env field. Feishu channel and scenario shape stays in `settings.jsonl`; missing
 channel records are reported as local config gaps, not reconstructed from
-`FEISHU_*` env values.
+`FEISHU_*` env values. Copy the relevant example rows into `settings.local.jsonl`
+or home config when enabling Telegram or Discord, then select the provider with
+`active_channel`/`active_scenario` or CLI `--provider`.
 
 `active_model` selects the text model. `active_image_model` selects the image
 model used by `content generate-image`; both resolve their `auth_id` through
@@ -980,9 +986,11 @@ config files, and runtime dependencies so the resident process does not depend
 on TypeScript loaders or repo-local package symlinks. It also writes
 `build.json` with the source commit, branch, dirty flag, build time, Node
 version, and runtime root. `service status` reads this file from the copied
-runtime. The service heartbeat carries the same metadata so Feishu `/status`,
-`governance status`, and Feishu `/governance` can confirm which build the
-resident process is actually running without reading the copied runtime path.
+runtime and returns `health_command` pointing to the matching bounded
+`service health --target ...` check. The service heartbeat carries the same
+metadata so Feishu `/status`, `governance status`, and Feishu `/governance` can
+confirm which build the resident process is actually running without reading
+the copied runtime path.
 Live context may render the same heartbeat metadata in a bounded `Service
 Runtime` section for runtime orientation. Context assembly also reads bounded
 repo git identity from `.git/HEAD` and refs so it can mark the resident build
@@ -1227,9 +1235,86 @@ Feishu private chat supports the same read-only summary with `/config`,
 
 `web` starts the local web console. It reads runtime sessions, session inbox
 entries, and task-run history from the configured state root. It can bind a
-pending Feishu-backed session to a profile and submit an explicit local task
-run through the existing live runner. It is localhost operator infrastructure,
-not a hosted, multi-user, authenticated, or desktop GUI.
+pending channel-backed session to a profile and submit an explicit local task
+run through the existing live runner. Profile binding uses the same
+provider-neutral route key shape for Feishu, Telegram, and Discord channel
+sources. It is localhost operator infrastructure, not a hosted, multi-user,
+authenticated, or desktop GUI.
+
+`daemon serve` starts the unified local runtime daemon. It runs channel
+adapters through the `MessageGateway` lifecycle interface, so Web and Feishu are
+communication surfaces rather than runtime core. The default foreground daemon
+enables Web and Feishu when Feishu config is present:
+
+```bash
+pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+For a Web-only local operator surface, skip IM provider startup:
+
+```bash
+pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root .runtime/state
+```
+
+`service --target runtime` installs or starts the same daemon under launchd:
+
+```bash
+pnpm run runtime -- service start --target runtime --host 127.0.0.1 --port 8765
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service health --target runtime
+```
+
+Feishu, Telegram, and Discord are implemented external IM providers in this
+slice. Discord is a first bot adapter over Gateway events plus REST message
+sends; it does not include slash commands, full resume/sharding, or rich
+interactions.
+
+IM channel records are selected through a provider-neutral loader. A channel can
+declare `kind: "feishu"`, `kind: "telegram"`, or `kind: "discord"`, and
+`doctor`, `daemon serve`, `im serve`, and `service` accept `--provider` as a
+selector guard. Feishu, Telegram, and Discord can start today.
+The config loader stops at scenario resolution; `im_adapters.ts` owns the
+runtime seam that decides whether a provider has a concrete adapter.
+The daemon heartbeat includes the provider-neutral MessageGateway state and
+per-channel health, so `service health --target runtime` and
+`service health --target im` can show which channel adapters are running
+without reading provider logs or secrets. If a channel adapter fails during
+daemon startup, the daemon writes an `error` heartbeat with the failed
+MessageGateway channel before exiting.
+
+Channel messages normalize into a provider-neutral source envelope before they
+touch runtime sessions. The envelope records the channel kind, configured
+channel id, conversation type, conversation id, optional thread id, optional
+actor id, and optional profile. Runtime session route keys and inbox entries
+are derived from that shape, so Telegram and Discord adapters do not
+need a separate session database or Feishu-specific state path.
+
+After normalization, inbound channel messages go through the shared runtime
+channel dispatcher. That dispatcher handles `/session use`, pending-session
+creation, inbox append, and `/run` or mention trigger classification. Provider
+adapters still own provider parsing and replies.
+
+Explicit task runs from IM or the web console first append to the local runtime
+task queue, then synchronously claim that same task before invoking the runner.
+The task-run index mirrors the queue with append-only `queued`, `running`, and
+final rows using the same id. The task-run read model shows the latest row, and
+the queue read model can list queued or stale running tasks for recovery
+inspection. The resident daemon also starts a bounded runtime task queue worker:
+it waits for queued entries to pass a short stale threshold, reclaims stale
+running entries after a longer threshold, invokes the ordinary runner with the
+stored `runner_task` when present, and writes `services/<target>/task_queue.json`
+for `service status`. It records final task-run status and can queue
+Feishu/Telegram/Discord provider replies for adapter replay; it is still not a remote broker,
+cancellation system, or cross-process scheduler.
+
+Task communication results are also mirrored into the provider-neutral
+`channels/outbox.jsonl` ledger. Feishu records real delivery refs and provider
+message ids for final/error replies; Web records local console final/error
+responses; daemon recovery records queued Feishu/Telegram/Discord outbound rows when a
+source route is available, or skipped rows when there is no deliverable provider
+source. Provider adapters mark rows that match their provider but not their
+configured channel as skipped, so bad queued rows do not loop forever.
+Adapters remain responsible for actual delivery.
 
 `capabilities` renders the repo-owned local capability catalog. It summarizes
 implemented core tools, harness actions, context/read-model surfaces, memory
@@ -1273,15 +1358,18 @@ pnpm run runtime -- service health --target im
 The service runtime is not a production daemon. It must stay local-only,
 single-user, and restartable from the repo checkout.
 
-`service health` is the bounded read-only diagnostic surface. It reads only
-`services/im/heartbeat.json`, `services/im/review_tick.json`,
-`services/im/content_daily.json`, `services/im/content_feedback_refresh.json`,
+`service health` is the bounded read-only diagnostic surface. It reads only the
+selected target's `services/<target>/heartbeat.json`,
+`services/<target>/review_tick.json`, `services/<target>/content_daily.json`,
+`services/<target>/content_feedback_refresh.json`,
+`services/<target>/content_creator_metrics.json`,
 `autonomy/runs/pause_signal.json`, and latest local
 `autonomy/opportunity-actions/*.json` coverage metadata under the selected state
 root, plus bounded repo git identity from `.git/HEAD`, loose refs, and
-`packed-refs`. It returns heartbeat freshness, runtime-build metadata copied
-from the heartbeat, repo HEAD summary, resident deployment status, review tick
-status/focus, content daily status, feedback refresh status, and pause status.
+`packed-refs`. It returns heartbeat freshness, MessageGateway channel health
+copied from the heartbeat, runtime-build metadata copied from the heartbeat,
+repo HEAD summary, resident deployment status, review tick status/focus,
+content daily status, feedback refresh status, and pause status.
 It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice
@@ -1296,6 +1384,9 @@ launchd, read service logs, invoke the model, restart services, run shell
 commands, read source file bodies, fetch platform state, publish externally, or
 mutate state. Use `service status` when launchd lifecycle status is the question;
 use `service health` when the agent/runtime context needs a bounded health read.
+`service status` outputs the matching `health_command` so operator surfaces can
+link from lifecycle status to bounded runtime/channel health without merging the
+two read models.
 
 Service-health guidance rendered in live context, governance, Opportunity
 Backlog, and Feishu should use the same default service commands:
@@ -1306,14 +1397,15 @@ working against an alternate explicit service state root.
 
 ## IM Entrypoint
 
-IM is a first-version basic entrypoint. Feishu is the first provider.
+IM is a first-version basic entrypoint. Feishu, Telegram, and Discord are the
+implemented external providers behind the provider-neutral daemon seam.
 
 The first version only needs:
 
 - local foreground serve process or local single-user service process
 - private text messages
-- Feishu group source binding to local runtime sessions
-- pending/unassigned bootstrap for unknown groups by authorized operators
+- channel source binding to local runtime sessions
+- pending/unassigned bootstrap for unknown channel sources by authorized operators
 - ordinary bound group messages captured as session inbox entries
 - explicit group execution through `/run <task>` or an explicit bot mention
 - optional allowlist

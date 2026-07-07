@@ -128,25 +128,91 @@ agent framework before core execution is reliable.
 
 The local CLI is the primary foreground entrypoint.
 
-IM is also a first-version basic capability. Feishu is the first provider, but
-the project command surface should be provider-neutral: `doctor` checks IM by
-default, `im serve` starts the local foreground IM process, and `service`
-manages the local resident IM process.
+IM is also a first-version basic capability. The project command surface is
+provider-neutral where possible: `doctor` checks IM by default, `im serve`
+keeps the Feishu-compatible foreground entrypoint, `daemon serve` starts the
+unified local runtime daemon, and `service --target runtime` manages the
+resident daemon through launchd.
+
+The resident daemon owns a `MessageGateway` seam. Web, Feishu, Telegram, and
+Discord are channel adapters behind the same lifecycle interface. Discord is
+implemented as a first bot adapter using Gateway events plus REST message
+sends; slash commands, full Gateway resume/sharding, and rich interactions
+remain out of scope. Provider-specific IDs such as Feishu `chat_id`, Telegram
+`chat_id`, or Discord `channel_id` must stay inside adapters or local
+session-source mappings.
+
+IM channel configuration is provider-neutral at the selector layer. Channel
+records use `kind: "feishu" | "telegram" | "discord"`, and the CLI accepts
+`--provider` for daemon, IM, doctor, and service checks. The runtime currently
+starts Feishu, Telegram, and Discord adapters.
+Provider startability and concrete adapter construction live in
+`packages/runtime/src/im_adapters.ts`; the config loader only resolves the
+provider-neutral scenario.
+The resident heartbeat carries the MessageGateway state and per-channel health
+for operator diagnostics. `service health --target runtime` and
+`service health --target im` render the selected target's heartbeat-carried
+gateway summary, but they must not read provider logs, provider secrets, or
+provider SDK state. If an adapter fails during daemon startup, the daemon must
+write an `error` heartbeat with the failed MessageGateway channel before the
+foreground process or resident service exits.
+
+Runtime channel messages use a provider-neutral source envelope before they are
+bound to sessions. The stable source shape is channel kind, configured channel
+id, conversation type, conversation id, optional thread id, optional actor id,
+and optional profile. Route/source keys are derived from that envelope, so
+Feishu groups, Telegram chats, and Discord conversations can share the same
+runtime session and inbox machinery without making the runtime core depend on a
+provider SDK.
+
+Inbound channel messages then pass through the runtime channel dispatcher. The
+dispatcher owns session binding, pending-session bootstrap, inbox append, and
+`/run`/mention trigger classification. Adapters keep provider normalization and
+reply transport logic, but must not reimplement session-routing rules.
 
 The local web console is also a first-version basic entrypoint. `web` starts a
-localhost-only operator surface over runtime sessions, Feishu inbox entries,
+localhost-only operator surface over runtime sessions, channel inbox entries,
 profile binding, and task-run history. It may submit an explicit local task run
-through the existing live runner. It is not a hosted, multi-user, authenticated,
+through the existing live runner. Profile binding must use the same
+provider-neutral route key shape as Feishu, Telegram, and Discord channel
+sources. Under `daemon serve`, the same console is a Web channel adapter
+managed by the `MessageGateway`. It is not a hosted, multi-user, authenticated,
 or desktop GUI.
 
 Runtime sessions are local state, not model memory and not a hosted session
-database. A Feishu source can map to one runtime session through a source route
-key. Unknown Feishu groups can be bootstrapped only by an authorized operator
-and start as pending/unassigned. A profile can be bound through
+database. A channel source can map to one runtime session through a source
+route key. Unknown Feishu groups can be bootstrapped only by an authorized
+operator and start as pending/unassigned. A profile can be bound through
 `/session use <profile>` in the group or through the web console. Ordinary
 bound group messages append session inbox entries; model execution requires
 `/run <task>`, an explicit mention, an authorized private/direct task, or a web
-console Run action.
+console Run action. Explicit task runs append `queued`, `running`, and final
+task-run rows with the same run id; read models show the latest status per run
+id.
+
+Explicit IM and web-console task runs also write a local runtime task queue
+ledger under `runs/task_queue.jsonl`. The queue is single-machine and
+append-only: enqueue, strict claim, recoverable claim, complete, fail, list, and
+recoverable-task inspection. Feishu group runs and web-console runs
+synchronously claim their own queued task before invoking the runner, while the
+task-run index mirrors `queued`, `running`, and final rows for GUI/history
+visibility. The resident daemon also runs a bounded queue worker that consumes
+stale queued or stale running entries and writes `services/<target>/task_queue.json`
+status. This is local durability and best-effort recovery for self-contained
+runner tasks, not a remote broker, cancellation system, or multi-process
+scheduler.
+
+Outbound task communication also has a provider-neutral local ledger under
+`channels/outbox.jsonl`. Feishu final/error replies, web-console final/error
+responses, and daemon recovery final/error outcomes append rows with source
+kind, source route/source key when available, runtime session id, task run id,
+reply purpose, text, provider delivery ref when a real adapter sent the reply,
+and status. Feishu/Telegram/Discord-sourced daemon recovery rows are queued for adapter
+replay; rows without a deliverable provider source remain skipped. This outbox
+is the standard local communication read model. Provider adapters must mark
+rows that match their provider but not their configured channel as skipped
+instead of leaving them queued forever. It is not a retry broker, provider SDK
+wrapper, or hosted messaging system.
 
 The CLI also exposes `capabilities` as a read-only local capability catalog.
 Feishu mirrors it through `/capabilities`, `/abilities`, and `/ability`. The
@@ -2697,8 +2763,8 @@ Required policy:
 
 ## Local IM Rules
 
-IM is a local foreground or single-user service entrypoint. Feishu is the first
-provider.
+IM is a local foreground or single-user service entrypoint. Feishu, Telegram,
+and Discord are the implemented external providers.
 
 First-version IM supports:
 
@@ -2746,21 +2812,26 @@ invoke the model, request confirmations, execute follow-up actions, build new
 context, read raw review Markdown, read raw context Markdown, read raw episode
 artifacts, draft, audit, promote, revise skills, write the active vault, or run
 shell commands.
-Service health commands may read only `services/im/heartbeat.json`,
-`services/im/review_tick.json`, `services/im/content_daily.json`,
-`services/im/content_feedback_refresh.json`,
-`services/im/content_creator_metrics.json`, and
+Service health commands may read only the selected target's
+`services/<target>/heartbeat.json`,
+`services/<target>/review_tick.json`,
+`services/<target>/content_daily.json`,
+`services/<target>/content_feedback_refresh.json`,
+`services/<target>/content_creator_metrics.json`, and
 `autonomy/runs/pause_signal.json` under the selected state root, plus bounded
 repo git identity from `.git/HEAD`, loose refs, and `packed-refs`. They derive
-heartbeat freshness, runtime-build summary, repo HEAD summary, resident
+heartbeat freshness, MessageGateway channel health, runtime-build summary, repo HEAD summary, resident
 deployment status, review tick focus, content daily status, feedback refresh
 status, pause status, and layered `runtime_substrate` versus
 `application_slices` reason codes, but they must not inspect launchd, read logs,
 run shell commands, invoke the model, restart services, read source file bodies,
 fetch platform state, publish externally, or mutate state.
 The CLI `service health` command returns this same read model with
-`action=health` and `target=im`; it is intentionally separate from
+`action=health` and `target=im|runtime`; it is intentionally separate from
 `service status`, which may inspect launchd and service log locations.
+Lifecycle command results must include a `health_command` for the same target so
+operator surfaces can guide follow-up bounded health inspection without merging
+launchd/service-control state into the health read model.
 Opportunity Backlog may use the same bounded service health read model to
 create a `service_health` attention item when the resident deployment is stale
 against repo HEAD, but it inherits the same read-only boundary and

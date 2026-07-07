@@ -56,8 +56,15 @@ export interface FeishuScenarioConfig {
 
 export async function loadFeishuChannelConfig(options: FeishuChannelLoadOptions = {}): Promise<FeishuChannelConfig> {
   const selectors = await loadConfigSelectors(options);
-  const channels = await loadSettingsRecords<ChannelRecord>(options, channelRecordSchema, "channel");
-  const channel = selectChannel(channels, options.channelId ?? selectors.activeChannelId);
+  const channels = await loadSettingsRecords<ChannelRecord>(
+    options,
+    channelRecordSchema,
+    "channel",
+    (record) => record.kind === "feishu"
+  );
+  const channel = options.channelId
+    ? selectChannel(channels, options.channelId)
+    : selectChannel(channels, selectors.activeChannelId) ?? selectChannel(channels, null);
   if (!channel) throw new Error("No Feishu channel config found; add a channel record to settings.jsonl or pass --channel.");
 
   const auth = await loadAppSecretAuth(options, channel.auth_id);
@@ -81,19 +88,36 @@ export async function loadFeishuChannelConfig(options: FeishuChannelLoadOptions 
 export async function loadFeishuScenarioConfig(options: FeishuChannelLoadOptions = {}): Promise<FeishuScenarioConfig> {
   const selectors = await loadConfigSelectors(options);
   const scenarios = await loadSettingsRecords<ScenarioRecord>(options, scenarioRecordSchema, "scenario");
-  const scenario = selectScenario(scenarios, options.scenarioId ?? selectors.activeScenarioId);
-  const channelId = options.channelId ?? scenario?.channel_id ?? selectors.activeChannelId;
-  if (!channelId) throw new Error("No active Feishu channel found; set active_channel in config/config.jsonl or pass --channel.");
+  const channels = await loadSettingsRecords<ChannelRecord>(
+    options,
+    channelRecordSchema,
+    "channel",
+    (record) => record.kind === "feishu"
+  );
+  const scenario = selectFeishuScenarioForRequest(scenarios, channels, {
+    scenarioId: options.scenarioId ?? null,
+    activeScenarioId: selectors.activeScenarioId,
+    channelId: options.channelId ?? null
+  });
+  const channel = options.channelId
+    ? selectChannel(channels, options.channelId)
+    : scenario
+      ? selectChannel(channels, scenario.channel_id)
+      : selectChannel(channels, selectors.activeChannelId) ?? selectChannel(channels, null);
+  if (!channel) throw new Error("No active Feishu channel found; set active_channel in config/config.jsonl or pass --channel.");
+  if (scenario && scenario.channel_id !== channel.id) {
+    throw new Error(`Configured Feishu scenario ${scenario.id} points to channel ${scenario.channel_id}, not selected channel ${channel.id}.`);
+  }
   const modelId = scenario?.model_id ?? selectors.activeModelId;
   if (!modelId) throw new Error("No model found for Feishu scenario; set scenario.model_id or active_model.");
   return {
     id: scenario?.id ?? "default-feishu-scenario",
-    channelId,
+    channelId: channel.id,
     modelId,
     discipline: scenario?.discipline ?? "query_todo",
     replyPolicy: scenario?.reply_policy ?? "final_response",
     concurrency: scenario?.concurrency ?? "per_sender",
-    channel: await loadFeishuChannelConfig({ ...options, channelId })
+    channel: await loadFeishuChannelConfig({ ...options, channelId: channel.id })
   };
 }
 
@@ -114,6 +138,22 @@ function selectScenario(records: ScenarioRecord[], scenarioId: string | null): S
     return [...records].reverse().find((item) => item.id === scenarioId) ?? null;
   }
   return records.at(-1) ?? null;
+}
+
+function selectFeishuScenarioForRequest(
+  records: ScenarioRecord[],
+  channels: ChannelRecord[],
+  args: { scenarioId: string | null; activeScenarioId: string | null; channelId: string | null }
+): ScenarioRecord | null {
+  if (args.scenarioId) return selectScenario(records, args.scenarioId);
+  if (args.channelId) return [...records].reverse().find((item) => item.channel_id === args.channelId) ?? null;
+  const active = selectScenario(records, args.activeScenarioId);
+  if (active && hasChannel(channels, active.channel_id)) return active;
+  return [...records].reverse().find((item) => hasChannel(channels, item.channel_id)) ?? null;
+}
+
+function hasChannel(records: ChannelRecord[], channelId: string): boolean {
+  return records.some((item) => item.id === channelId);
 }
 
 function clampInt(value: number, min: number, max: number): number {

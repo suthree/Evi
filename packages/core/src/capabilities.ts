@@ -129,6 +129,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
       "packages/core/src/self_evolution_iterations.ts",
+      "packages/core/src/runtime_channel_messages.ts",
       "packages/core/src/runtime_sessions.ts",
       "packages/core/src/workspace_status.ts",
       "packages/runtime/src/runner.ts",
@@ -136,6 +137,10 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/runtime/src/content_pipeline.ts",
       "packages/runtime/src/content_daily_service.ts",
       "packages/runtime/src/xiaohongshu_mcp.ts",
+      "packages/runtime/src/im_config.ts",
+      "packages/runtime/src/message_gateway.ts",
+      "packages/runtime/src/channel_message_dispatcher.ts",
+      "packages/runtime/src/runtime_daemon.ts",
       "packages/runtime/src/web_console.ts",
       "apps/cli/src/main.ts",
       "packages/runtime/src/channels/feishu/adapter.ts"
@@ -181,7 +186,12 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         layer: "basic_entrypoint",
         evidence_refs: [
           "apps/cli/src/main.ts",
+          "packages/core/src/runtime_channel_messages.ts",
           "packages/core/src/runtime_sessions.ts",
+          "packages/runtime/src/im_config.ts",
+          "packages/runtime/src/message_gateway.ts",
+          "packages/runtime/src/channel_message_dispatcher.ts",
+          "packages/runtime/src/runtime_daemon.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
           "packages/runtime/src/web_console.ts",
           "packages/runtime/src/service.ts",
@@ -192,12 +202,18 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         ],
         verification_commands: [
           "pnpm run runtime -- doctor --no-auth --no-im",
+          "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765",
           "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
+          "pnpm run runtime -- service status --target runtime",
           "pnpm run runtime -- service health --target im",
           "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
         ],
         boundaries: [
           "Feishu operator commands are read-only except explicit runtime-session binding and explicit task triggers",
+          "IM channel config recognizes Feishu, Telegram, and Discord provider kinds; all three have startable adapters in this slice",
+          "MessageGateway standardizes local channel adapter lifecycle for Web, Feishu, Telegram, and Discord providers; provider SDK details stay inside adapters",
+          "runtime channel sources use provider-neutral route/source keys before being bound to runtime sessions",
+          "runtime channel messages pass through the shared dispatcher for session binding, inbox append, and /run or mention trigger classification",
           "local web console is localhost-only operator infrastructure, not a hosted multi-user GUI",
           "resident service is single-user local launchd, not hosted service governance"
         ]
@@ -749,26 +765,26 @@ function runtimeServiceCategory(): CapabilityCategory {
   return {
     id: "runtime_service",
     title: "Resident local service",
-    summary: "Single-user macOS launchd runtime for Feishu IM intake, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
+    summary: "Single-user macOS launchd runtime for channel adapters, Feishu IM intake, local Web console, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
     status: "implemented",
     layer: "basic_entrypoint",
     capabilities: [
       {
         id: "service.lifecycle",
         title: "Service lifecycle",
-        summary: "Install, start, stop, restart, status, logs, and uninstall the resident IM service.",
+        summary: "Install, start, stop, restart, status, logs, and uninstall the resident runtime daemon or the Feishu-compatible IM target.",
         status: "implemented",
-        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im"],
-        refs: ["packages/runtime/src/service.ts", "docs/LOCAL_RUNTIME.md"],
-        boundaries: ["local single-user launchd service only; not hosted service design"]
+        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime", "pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target im"],
+        refs: ["packages/runtime/src/service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "docs/LOCAL_RUNTIME.md"],
+        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon; `im` target is kept for Feishu-compatible service operation", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
       },
       {
         id: "service.health",
         title: "Service health",
-        summary: "Read service-scoped heartbeat freshness, runtime build metadata, repo HEAD deployment status, review tick state, application-slice loop state, pause signals, and layered runtime-substrate/application status reasons from bounded local inputs.",
+        summary: "Read service-scoped heartbeat freshness, MessageGateway channel health, runtime build metadata, repo HEAD deployment status, review tick state, application-slice loop state, pause signals, and layered runtime-substrate/application status reasons from bounded local inputs.",
         status: "implemented",
-        commands: ["pnpm run runtime -- service health --target im", "/health", "/status"],
-        refs: ["packages/core/src/service_health.ts"],
+        commands: ["pnpm run runtime -- service health --target runtime", "pnpm run runtime -- service health --target im", "/health", "/status"],
+        refs: ["packages/core/src/service_health.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "tests/service_health.test.ts", "tests/runtime_daemon.test.ts"],
         boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "layered status reasons are read-model explanation only and do not change service lifecycle behavior", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
       },
       {
@@ -777,8 +793,8 @@ function runtimeServiceCategory(): CapabilityCategory {
         summary: "Optionally run the local content daily job from the resident IM service, writing one date-keyed job and service status when explicitly enabled.",
         status: "implemented",
         layer: "application_slice",
-        commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target im"],
-        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
+        commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target runtime", "pnpm run runtime -- service status --target im"],
+        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
         boundaries: [
           "disabled by default",
           "skips duplicate same-date jobs instead of forcing replacement",
@@ -794,10 +810,12 @@ function runtimeServiceCategory(): CapabilityCategory {
         layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled",
+          "pnpm run runtime -- service status --target runtime",
           "pnpm run runtime -- service status --target im"
         ],
         refs: [
           "packages/runtime/src/content_feedback_refresh_service.ts",
+          "packages/runtime/src/runtime_daemon.ts",
           "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_feedback_refresh_service.test.ts"
         ],
@@ -816,10 +834,12 @@ function runtimeServiceCategory(): CapabilityCategory {
         layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-creator-metrics-enabled",
+          "pnpm run runtime -- service status --target runtime",
           "pnpm run runtime -- service status --target im"
         ],
         refs: [
           "packages/runtime/src/content_creator_metrics_service.ts",
+          "packages/runtime/src/runtime_daemon.ts",
           "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_creator_metrics_service.test.ts"
         ],
@@ -842,18 +862,43 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "runtime.sessions",
         title: "Runtime sessions and task runs",
-        summary: "Map local entrypoint sources such as Feishu groups to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, and index local task runs.",
+        summary: "Map provider-neutral runtime channel messages such as Feishu groups, Telegram chats, or Discord channels to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, classify explicit run triggers, mirror local runtime task queue status into append-only task-run history, and record task final/error communication in a provider-neutral outbox.",
         status: "implemented",
         commands: ["pnpm run runtime -- web", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: [
           "packages/core/src/runtime_sessions.ts",
+          "packages/core/src/runtime_channel_messages.ts",
+          "packages/core/src/runtime_channel_outbox.ts",
+          "packages/core/src/runtime_task_queue.ts",
+          "packages/runtime/src/im_config.ts",
+          "packages/runtime/src/im_adapters.ts",
+          "packages/runtime/src/channel_message_dispatcher.ts",
+          "packages/runtime/src/runtime_channel_outbox_drainer.ts",
+          "packages/runtime/src/runtime_task_queue_worker.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
+          "packages/runtime/src/channels/telegram/adapter.ts",
+          "packages/runtime/src/channels/discord/adapter.ts",
           "packages/runtime/src/web_console.ts",
+          "tests/channel_message_dispatcher.test.ts",
+          "tests/im_adapters.test.ts",
+          "tests/runtime_channel_outbox.test.ts",
+          "tests/runtime_channel_outbox_drainer.test.ts",
+          "tests/runtime_task_queue.test.ts",
+          "tests/runtime_task_queue_worker.test.ts",
           "tests/runtime_sessions.test.ts",
+          "tests/telegram_adapter.test.ts",
+          "tests/discord_adapter.test.ts",
           "tests/web_console.test.ts"
         ],
         boundaries: [
           "local append-only state under the configured state root; not a hosted session database",
+          "channel source route keys are provider-neutral and keep provider-specific IDs inside source mappings",
+          "provider adapters normalize inbound messages before the shared dispatcher handles session binding, inbox append, and run trigger classification",
+          "explicit IM and web task runs append local queue rows and task-run rows for queued, running, and final states with one shared id",
+          "the task queue is a single-machine JSONL ledger with recoverable-task inspection and a resident daemon worker for stale queued/running entries",
+          "queue recovery records final run status for self-contained runner tasks; Feishu/Telegram/Discord-sourced recovery replies can be queued for adapter replay, but cross-process scheduling is not implemented",
+          "task final/error outcomes append to channels/outbox.jsonl as a provider-neutral local communication ledger; adapters still own real delivery and provider SDK details",
+          "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
           "ordinary bound group messages append inbox entries only; model execution requires explicit /run, explicit mention, or a local web-console run"
         ]
@@ -864,7 +909,7 @@ function runtimeServiceCategory(): CapabilityCategory {
         summary: "Receive allowed private messages, map Feishu groups to runtime sessions, preserve local channel evidence, queue private-chat follow-ups in process, and run explicit tasks through the agent.",
         status: "implemented",
         commands: ["pnpm run runtime -- im serve --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
-        refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/core/src/runtime_sessions.ts"],
+        refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
           "bound group messages are inbox context by default and do not execute unless explicitly triggered",
@@ -904,14 +949,31 @@ function entrypointsCategory(): CapabilityCategory {
       {
         id: "web.console",
         title: "Local web console",
-        summary: "Serve a localhost operator console for runtime sessions, Feishu inbox review, profile binding, local task submission, and task-run history.",
+        summary: "Serve a localhost operator console for runtime sessions, channel inbox review, profile binding, local task submission, and task-run history; when run under the runtime daemon it is a Web channel adapter managed by the MessageGateway.",
         status: "implemented",
-        commands: ["pnpm run runtime -- web --host 127.0.0.1 --port 8765"],
-        refs: ["packages/runtime/src/web_console.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts"],
+        commands: ["pnpm run runtime -- web --host 127.0.0.1 --port 8765", "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765"],
+        refs: ["packages/runtime/src/web_console.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/runtime_daemon.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts", "tests/message_gateway.test.ts"],
         boundaries: [
           "localhost operator surface only; not a hosted, multi-user, authenticated, or desktop GUI",
           "reads and writes only local runtime session/task state except when the operator submits an explicit Run action",
           "task submission uses the existing LiveAgentRunner and records a local task-run index entry"
+        ]
+      },
+      {
+        id: "runtime.daemon",
+        title: "Runtime daemon and MessageGateway",
+        summary: "Run a unified local daemon that manages channel adapters through a small lifecycle interface. Web, Feishu, Telegram, and Discord are the first adapters.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- daemon serve", "pnpm run runtime -- service start --target runtime", "pnpm run runtime -- service status --target runtime", "pnpm run runtime -- service health --target runtime"],
+        refs: ["packages/runtime/src/im_config.ts", "packages/runtime/src/im_adapters.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/runtime/src/runtime_channel_outbox_drainer.ts", "packages/runtime/src/runtime_task_queue_worker.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/service.ts", "packages/runtime/src/channels/telegram/adapter.ts", "packages/runtime/src/channels/discord/adapter.ts", "apps/cli/src/main.ts", "tests/im_config.test.ts", "tests/im_adapters.test.ts", "tests/message_gateway.test.ts", "tests/runtime_daemon.test.ts", "tests/channel_message_dispatcher.test.ts", "tests/runtime_channel_outbox_drainer.test.ts", "tests/runtime_task_queue_worker.test.ts", "tests/telegram_adapter.test.ts", "tests/discord_adapter.test.ts", "tests/service.test.ts", "tests/cli.test.ts"],
+        boundaries: [
+          "local single-user daemon only; not hosted service governance",
+          "provider-neutral IM config selection supports Feishu, Telegram, and Discord kinds; all three are implemented",
+          "channel adapters own provider-specific IDs and SDK details",
+          "the shared dispatcher standardizes inbound session routing and leaves execution durability to the local runtime task queue",
+          "the daemon queue worker consumes stale queued/running entries and writes services/<target>/task_queue.json status",
+          "task results are mirrored into the provider-neutral channel outbox; Feishu, Telegram, and Discord adapters can drain queued provider rows without making the daemon a provider send adapter",
+          "this slice standardizes lifecycle and status; it does not yet provide a retry broker, durable cross-process task scheduling, Telegram features beyond the long-polling Bot API adapter, or Discord features beyond the Gateway/REST bot adapter"
         ]
       },
       {

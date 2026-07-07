@@ -76,18 +76,19 @@ features. They must stay small and local.
 
 ### Basic Entrypoints
 
-The first version has two basic entrypoints:
+The first version has these basic entrypoints:
 
 - CLI for local foreground operation.
 - IM for local foreground or single-user local service chat intake.
 - Local web console for localhost session/task inspection and operator actions.
+- Unified local runtime daemon for resident channel adapters.
 
-Feishu is the first IM provider. It is a local runtime basic capability, not a
-separate optional product. The first-version command surface is `doctor` for
-baseline checks, `im serve` for the local foreground IM process, and `service`
-for the local resident IM process. Feishu private chat remains a direct task
-entrypoint; Feishu groups map to local runtime sessions and start as
-pending/unassigned until an authorized operator binds a profile.
+IM is a local runtime basic capability, not a separate optional product. The
+first-version command surface is `doctor` for baseline checks, `im serve` for
+Feishu-compatible foreground intake, `daemon serve` for the unified foreground
+runtime daemon, and `service --target runtime` for the local resident daemon.
+Feishu, Telegram, and Discord channel sources can map to local runtime sessions
+and start as pending/unassigned until an authorized operator binds a profile.
 
 ### Local Learning
 
@@ -207,8 +208,17 @@ Live task text may include bounded repo references such as
 `@file:docs/RUNTIME_CONTRACT.md:120-160` or `@folder:docs`. These become a
 `Task References` context section and stay repo-local/read-only.
 
-Manage the local resident IM service when model and IM credentials are
-configured:
+Manage the unified local resident runtime daemon:
+
+```bash
+pnpm run runtime -- service status --target runtime
+pnpm run runtime -- service start --target runtime --host 127.0.0.1 --port 8765
+pnpm run runtime -- service health --target runtime
+pnpm run runtime -- service logs --target runtime --limit 40
+```
+
+The Feishu-compatible `im` target is still available when model and IM
+credentials are configured:
 
 ```bash
 pnpm run runtime -- service status --target im
@@ -223,9 +233,36 @@ Start the localhost web console:
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 ```
 
-The web console lists runtime sessions, Feishu inbox entries, and task runs. It
-can bind a pending Feishu-backed session to a profile and submit an explicit
-local task run. It is a local operator surface, not a hosted multi-user GUI.
+The web console lists runtime sessions, channel inbox entries, and task runs. It
+can bind a pending channel-backed session to a profile and submit an explicit
+local task run. Profile binding uses the same provider-neutral route key shape
+for Feishu, Telegram, and Discord channel sources. It is a local operator
+surface, not a hosted multi-user GUI.
+Under `daemon serve`, the same console runs as the Web channel adapter managed
+by the runtime MessageGateway.
+IM channel config is selected through a provider-neutral loader:
+`kind: "feishu" | "telegram" | "discord"` plus CLI `--provider`. Feishu,
+Telegram, and Discord start through the same adapter seam.
+Provider startability lives in `packages/runtime/src/im_adapters.ts`; config
+loading only resolves the provider-neutral scenario. Use
+`config/settings.example.jsonl` as a non-loaded template for Feishu, Telegram,
+and Discord channel/scenario rows.
+Channel sources normalize into provider-neutral route/source keys before they
+touch runtime sessions, so Telegram and Discord adapters can reuse the
+same session and inbox state path without leaking provider SDK details into the
+runtime core. Inbound channel messages then pass through the shared runtime
+channel dispatcher for session binding, inbox append, and `/run` or mention
+trigger classification. Explicit task runs first append to the local runtime
+task queue, then append `queued`, `running`, and final task-run rows with the
+same id for GUI/history visibility. The queue can surface queued or stale
+running tasks for recovery inspection. The resident daemon has a bounded queue
+worker that consumes stale queued/running entries and records final task-run
+status. Feishu/Telegram/Discord-sourced recovery results append queued provider-neutral
+outbound rows to `channels/outbox.jsonl`, and the matching adapter drains those
+rows back to the originating conversation. Web and direct adapter replies record
+local sent rows; adapters still own real delivery and provider SDK details.
+Rows that match a provider but not the running adapter channel are marked
+skipped instead of being retried forever.
 
 In Feishu private chat, these read-only local operator commands are available
 without invoking the model: `/status`, `/health`, `/logs [lines]`, `/help`,
@@ -569,9 +606,11 @@ Current first-version scope:
 - local state root
 - local active vault under `LOCAL_RUNTIME_HOME`
 - CLI foreground runs
-- local web console for runtime sessions, Feishu inbox, profile binding, and
+- local web console for runtime sessions, channel inbox, profile binding, and
   explicit local task runs
-- Feishu-backed IM foreground entrypoint
+- unified runtime daemon with MessageGateway channel adapter lifecycle for Web,
+  Feishu, Telegram, and Discord
+- Feishu-compatible IM foreground entrypoint plus provider-neutral daemon intake
 - Feishu group to runtime-session binding with pending/unassigned bootstrap
 - Feishu read-only local operator commands for status, service health, service
   logs, governance, Opportunity Backlog, SOP Evolution Ledger, memory, context,
@@ -579,8 +618,9 @@ Current first-version scope:
 - local review inbox operator decision log consumed by backlog, context, and
   Feishu read models
 - Feishu bounded local private-chat history in task context
-- Feishu operator notification outbox drained by the resident IM service
-- single-user local service runtime for Feishu IM
+- Feishu operator notification outbox drained by the resident runtime when
+  Feishu is enabled
+- single-user local service runtime for channel adapters
 - state-only `service health` CLI read model for resident IM diagnostics,
   including runtime-substrate versus application-slice reason codes
 - core tool capability tests
