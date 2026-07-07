@@ -1166,16 +1166,20 @@ has no tools or memory in the current runtime. The action payload must provide
 non-empty `task` and `context` strings before the delegated model is called, and
 `task` is capped at 1000 chars while `context` is capped at 12000 chars. The
 delegated model must return a JSON object with non-empty `summary` and
-`findings_text`; persisted summaries and findings are bounded by the core
-delegated-output limits. The harness validates those contracts before returning
-the result as a `Delegated Observations` item. Invalid payloads or malformed
-delegated output are recorded as `ok=false`, and a later `done` claim fails
-completion verification when any delegated result failed. Delegated results are
-recorded with action id, round, sequence, and task/context character counts so
-later traces can verify bounded dispatch from harness-owned delegated event
-summaries without reading raw delegated context or delegated result bodies.
-They are not tool evidence, final success proof, mutation authority, or a second
-autonomous agent runtime.
+`findings_text`; `summary` is capped at 240 chars and `findings_text` is capped
+at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
+`task` and `context`, so expert persona, model, tool, schedule, or authority
+fields are rejected before any delegated model call. The harness validates those
+contracts before returning the result as a sanitized `Delegated Observations`
+item. Invalid payloads, malformed delegated output, or over-limit delegated
+output are recorded as `ok=false`, and a later `done` claim fails completion
+verification when any delegated result failed. Delegated results are recorded
+with action id, round, sequence, and task/context character counts so later
+traces can verify bounded dispatch from harness-owned delegated event summaries
+without reading raw delegated context or delegated result bodies. The main-model
+observation also excludes raw delegated task/context, raw output preview, and
+persisted artifact bodies. They are not tool evidence, final success proof,
+mutation authority, or a second autonomous agent runtime.
 
 Every live run writes a harness-owned completion verification report beside the
 episode context and model artifacts:

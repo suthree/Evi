@@ -100,12 +100,12 @@ export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = 2000;
 export const delegateAgentPayloadSchema = z.object({
   task: z.string().trim().min(1).max(DELEGATE_AGENT_TASK_MAX_CHARS),
   context: z.string().trim().min(1).max(DELEGATE_AGENT_CONTEXT_MAX_CHARS)
-});
+}).strict();
 
 export const delegatedAgentOutputSchema = z.object({
-  summary: z.string().trim().min(1),
-  findings_text: z.string().trim().min(1)
-});
+  summary: z.string().trim().min(1).max(DELEGATED_AGENT_SUMMARY_MAX_CHARS),
+  findings_text: z.string().trim().min(1).max(DELEGATED_AGENT_FINDINGS_MAX_CHARS)
+}).strict();
 
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),

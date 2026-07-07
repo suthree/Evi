@@ -54,6 +54,22 @@ interface DelegatedResult {
   created_at: string;
 }
 
+interface DelegatedObservation {
+  id: string;
+  action_id: string;
+  round: number;
+  sequence: number;
+  ok: boolean;
+  contract_status: "passed" | "failed";
+  task_chars: number;
+  context_chars: number;
+  summary: string;
+  findings_text: string | null;
+  error: string | null;
+  boundary: string;
+  observation_boundary: string;
+}
+
 interface HarnessActionResult {
   id: string;
   action_type: "record_evidence" | "update_working_state" | "propose_sop" | "propose_memory" | "request_audit" | "pause_autonomy";
@@ -1244,6 +1260,7 @@ export class LiveAgentRunner {
           "You are a bounded local-agent subagent.",
           "You do not have memory or tools in the current minimal runtime.",
           "Return a strict json object with keys summary and findings_text.",
+          `summary max ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars; findings_text max ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.`,
           "Do not claim external writes or final success."
         ].join("\n"),
         input: `Return json only.\n\nTask:\n${task}\n\nContext:\n${context}`
@@ -1386,12 +1403,45 @@ function renderModelInput(
     sections.push(`## Tool Observations\n\n${toolResults.map((item) => JSON.stringify(item, null, 2)).join("\n\n")}`);
   }
   if (delegatedResults.length > 0) {
-    sections.push(`## Delegated Observations\n\n${delegatedResults.map((item) => JSON.stringify(item, null, 2)).join("\n\n")}`);
+    sections.push(`## Delegated Observations\n\n${delegatedResults.map((item) => JSON.stringify(delegatedObservationForModelInput(item), null, 2)).join("\n\n")}`);
   }
   if (harnessActionResults.length > 0) {
     sections.push(`## Harness State Observations\n\n${harnessActionResults.map((item) => JSON.stringify(item, null, 2)).join("\n\n")}`);
   }
   return sections.join("\n\n");
+}
+
+function delegatedObservationForModelInput(result: DelegatedResult): DelegatedObservation {
+  return {
+    id: result.id,
+    action_id: result.action_id,
+    round: result.round,
+    sequence: result.sequence,
+    ok: result.ok,
+    contract_status: result.contract_status,
+    task_chars: result.task_chars,
+    context_chars: result.context_chars,
+    summary: delegatedObservationSummaryForModelInput(result),
+    findings_text: result.findings_text,
+    error: delegatedObservationErrorForModelInput(result.error),
+    boundary: result.boundary,
+    observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
+  };
+}
+
+function delegatedObservationSummaryForModelInput(result: DelegatedResult): string {
+  return result.ok ? result.summary : "Delegated result failed contract validation.";
+}
+
+function delegatedObservationErrorForModelInput(error: string | null): string | null {
+  if (!error) return null;
+  if (error.includes("Delegated model output was not valid JSON")) {
+    return "Delegated model output was not valid JSON.";
+  }
+  if (error.includes("Model output did not contain a JSON object")) {
+    return "Delegated model output was not a JSON object.";
+  }
+  return limitText(error, 300);
 }
 
 function parseEnvelope(outputText: string): ModelActionEnvelope {
@@ -1607,6 +1657,16 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
       error: `delegate_agent.payload.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars.`
     };
   }
+  const unsupportedKeys = Object.keys(record).filter((key) => key !== "task" && key !== "context");
+  if (unsupportedKeys.length > 0) {
+    return {
+      ok: false,
+      task,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: "delegate_agent.payload may only include task and context."
+    };
+  }
   return {
     ok: false,
     task,
@@ -1647,6 +1707,12 @@ function parseDelegatedOutput(outputText: string): {
     }
     if (!findingsText) {
       return { ok: false, error: "Delegated model output missing non-empty findings_text." };
+    }
+    if (summary.length > DELEGATED_AGENT_SUMMARY_MAX_CHARS) {
+      return { ok: false, error: `Delegated model output.summary must be at most ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars.` };
+    }
+    if (findingsText.length > DELEGATED_AGENT_FINDINGS_MAX_CHARS) {
+      return { ok: false, error: `Delegated model output.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.` };
     }
     return { ok: false, error: "Delegated model output failed schema validation." };
   }

@@ -36,6 +36,8 @@ import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
 import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
   DELEGATE_AGENT_TASK_MAX_CHARS,
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   opportunitySchema,
   triggerSchema
 } from "../packages/core/src/schemas.js";
@@ -3544,6 +3546,7 @@ test("live runner feeds structured delegated results back as bounded observation
 
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.sawStructuredDelegation, true);
+    assert.equal(model.sawSanitizedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; ok=true\.$/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
@@ -3569,11 +3572,12 @@ test("live runner fails done verification when delegated result violates its con
     await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
     await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
 
+    const model = new InvalidDelegationThenDoneModel();
     const runner = new LiveAgentRunner({
       repoRoot: fixture.repoRoot,
       stateRoot: fixture.stateRoot,
       config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
-      model: new InvalidDelegationThenDoneModel()
+      model
     });
 
     const result = await runner.runTask("Delegate a bounded critique before answering.");
@@ -3595,6 +3599,7 @@ test("live runner fails done verification when delegated result violates its con
     };
 
     assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.sawSanitizedFailedObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
@@ -3602,6 +3607,49 @@ test("live runner fails done verification when delegated result violates its con
     assert.match(delegated.raw_output_preview, /plain text instead of json/);
     assert.match(delegated.error ?? "", /not valid JSON/);
     assert.match(delegated.boundary, /bounded self-report only/);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner fails done verification when delegated output exceeds bounded result limits", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new OversizedDelegatedOutputThenDoneModel()
+    });
+
+    const result = await runner.runTask("Delegate a bounded critique before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      contract_status: string;
+      error: string | null;
+      raw_output_preview: string;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.match(delegated.error ?? "", new RegExp(`output\\.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars`));
+    assert.match(delegated.raw_output_preview, /Oversized delegated summary/);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
@@ -3652,6 +3700,52 @@ test("live runner rejects malformed delegate payload without calling the delegat
     assert.equal(delegated.task, "Critique whether the answer needs more evidence.");
     assert.equal(delegated.context_chars, 0);
     assert.match(delegated.error ?? "", /payload\.context must be a non-empty string/);
+    assert.equal(delegated.raw_output_preview, "");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner rejects unsupported delegate payload fields without calling the delegated model", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new UnsupportedDelegationPayloadThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject expert-style delegated payload before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      contract_status: string;
+      error: string | null;
+      raw_output_preview: string;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawFailedDelegationObservation, true);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.match(delegated.error ?? "", /payload may only include task and context/);
     assert.equal(delegated.raw_output_preview, "");
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
@@ -4452,6 +4546,7 @@ async function writeRepoHead(store: AgentStore, commit: string, branch = "develo
 class StructuredDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   sawStructuredDelegation = false;
+  sawSanitizedDelegationObservation = false;
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -4474,9 +4569,15 @@ class StructuredDelegationThenDoneModel implements ModelClient {
   private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
     this.mainCalls += 1;
     if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
       this.sawStructuredDelegation = request.input.includes("## Delegated Observations")
         && request.input.includes('"contract_status": "passed"')
         && request.input.includes("The delegated critique found one bounded risk");
+      this.sawSanitizedDelegationObservation = delegatedSection.includes('"observation_boundary": "sanitized delegated observation')
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"')
+        && !delegatedSection.includes("Critique whether the answer needs more evidence.")
+        && !delegatedSection.includes("No tool or mutation authority is available to the delegated subagent.");
       return noSopDoneEnvelope();
     }
     return delegateCritiqueEnvelope();
@@ -4485,12 +4586,13 @@ class StructuredDelegationThenDoneModel implements ModelClient {
 
 class InvalidDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
+  sawSanitizedFailedObservation = false;
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
     const outputText = isDelegation
       ? "plain text instead of json"
-      : JSON.stringify(this.nextMainEnvelope());
+      : JSON.stringify(this.nextMainEnvelope(request));
     return {
       provider: "test",
       api: "responses",
@@ -4501,9 +4603,91 @@ class InvalidDelegationThenDoneModel implements ModelClient {
     };
   }
 
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawSanitizedFailedObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes("Delegated model output was not valid JSON")
+        && !delegatedSection.includes("plain text instead of json")
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"')
+        && !delegatedSection.includes("Critique whether the answer needs more evidence.")
+        && !delegatedSection.includes("No tool or mutation authority is available to the delegated subagent.");
+    }
+    return this.mainCalls > 1 ? doneEnvelope() : delegateCritiqueEnvelope();
+  }
+}
+
+class OversizedDelegatedOutputThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "Oversized delegated summary".padEnd(DELEGATED_AGENT_SUMMARY_MAX_CHARS, "."),
+        findings_text: "x".repeat(DELEGATED_AGENT_FINDINGS_MAX_CHARS + 1)
+      })
+      : JSON.stringify(this.nextMainEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "oversized-delegated-output-then-done",
+      responseId: `response-oversized-delegated-output-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
   private nextMainEnvelope(): Record<string, unknown> {
     this.mainCalls += 1;
     return this.mainCalls > 1 ? doneEnvelope() : delegateCritiqueEnvelope();
+  }
+}
+
+function delegatedObservationsSection(input: string): string {
+  const start = input.indexOf("## Delegated Observations");
+  if (start === -1) return "";
+  const rest = input.slice(start);
+  const nextSection = rest.indexOf("\n\n## ", "## Delegated Observations".length);
+  return nextSection === -1 ? rest : rest.slice(0, nextSection);
+}
+
+class UnsupportedDelegationPayloadThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawFailedDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "This delegated response should not be requested.",
+        findings_text: "The unsupported payload guard failed to short-circuit."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "unsupported-delegation-payload-then-done",
+      responseId: `response-unsupported-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawFailedDelegationObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes("delegate_agent.payload may only include task and context")
+        && !delegatedSection.includes("expert_reviewer")
+        && !delegatedSection.includes("gpt-specialist");
+    }
+    return this.mainCalls > 1 ? doneEnvelope() : unsupportedDelegatePayloadEnvelope();
   }
 }
 
@@ -4866,6 +5050,27 @@ function malformedDelegatePayloadEnvelope(): Record<string, unknown> {
       rationale: "Use a bounded subagent self-report for critique before final answer.",
       payload: {
         task: "Critique whether the answer needs more evidence."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function unsupportedDelegatePayloadEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate bounded critique with unsupported expert-style fields.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a bounded subagent self-report for critique before final answer.",
+      payload: {
+        task: "Critique whether the answer needs more evidence.",
+        context: "No tool or mutation authority is available to the delegated subagent.",
+        persona: "expert_reviewer",
+        model: "gpt-specialist",
+        tools: ["repo.search"]
       }
     }],
     completion_claim: {
