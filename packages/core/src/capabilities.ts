@@ -990,7 +990,7 @@ function entrypointsCategory(): CapabilityCategory {
         commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline runs --pipeline <ref>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
         refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
         boundaries: [
-          "pipeline history exposes bounded metadata and evidence counts without reading raw stage output, prompt, model, or tool artifacts",
+          "pipeline history exposes bounded blocked-tool diagnostic metadata with failure_kind and evidence counts without reading raw stage output, prompt, model, or tool artifacts",
           "pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"
         ]
       },

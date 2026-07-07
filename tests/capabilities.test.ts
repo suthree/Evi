@@ -75,7 +75,11 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   const livePipeline = entrypoints?.capabilities.find((capability) => capability.id === "cli.live.pipeline");
   assert.equal(livePipeline?.commands?.includes("pnpm run runtime -- pipeline runs --pipeline <ref>"), true);
   assert.equal(livePipeline?.refs?.includes("packages/core/src/pipeline_history.ts"), true);
-  assert.equal(livePipeline?.boundaries?.some((boundary) => boundary.includes("bounded metadata") && boundary.includes("tool artifacts")), true);
+  assert.equal(livePipeline?.boundaries?.some((boundary) =>
+    boundary.includes("bounded blocked-tool diagnostic metadata")
+    && boundary.includes("failure_kind")
+    && boundary.includes("tool artifacts")
+  ), true);
   for (const term of ["Image API", "agent-browser", "xiaohongshu-mcp", "market"]) {
     assert.equal(
       contentDryRun?.summary.includes(term) || contentDryRun?.boundaries?.some((boundary) => boundary.includes(term)),

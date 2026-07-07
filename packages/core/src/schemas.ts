@@ -282,6 +282,13 @@ export const pipelineSpecSchema = z.object({
   created_at: z.string().default(utcNow)
 });
 
+export const blockedToolDiagnosticSchema = z.object({
+  tool: z.string(),
+  failure_kind: z.enum(["tool_call_limit_exceeded", "tool_not_allowed"]),
+  summary: z.string().min(1),
+  evidence_ref: z.string()
+});
+
 export const pipelineStageRunSchema = z.object({
   id: z.string().default(() => newId("stage_run")),
   pipeline_id: z.string(),
@@ -292,6 +299,7 @@ export const pipelineStageRunSchema = z.object({
   output_refs: z.array(z.string()).default([]),
   model_response_refs: z.array(z.string()).default([]),
   envelope_refs: z.array(z.string()).default([]),
+  blocked_tool_diagnostics: z.array(blockedToolDiagnosticSchema).default([]),
   failure_kind: z.string().nullable().default(null),
   failure_message: z.string().nullable().default(null),
   started_at: z.string().default(utcNow),
@@ -357,5 +365,6 @@ export type RunResult = z.infer<typeof runResultSchema>;
 export type PipelineStageStatus = z.infer<typeof pipelineStageStatusSchema>;
 export type PipelineStageSpec = z.infer<typeof pipelineStageSpecSchema>;
 export type PipelineSpec = z.infer<typeof pipelineSpecSchema>;
+export type BlockedToolDiagnostic = z.infer<typeof blockedToolDiagnosticSchema>;
 export type PipelineStageRun = z.infer<typeof pipelineStageRunSchema>;
 export type PipelineRunResult = z.infer<typeof pipelineRunResultSchema>;

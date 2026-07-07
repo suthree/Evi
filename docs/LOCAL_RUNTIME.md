@@ -860,7 +860,9 @@ spec refs, stage run refs, failed/blocked stage ids, status counts, query/todo
 refs, stage attempts, evidence counts, bounded blocked-tool diagnostic metadata,
 and final response refs. They do not rerun a pipeline, invoke the model, execute
 tools, read raw stage output Markdown, read query/todo bodies, read
-prompt/model/tool artifacts, or mutate state.
+prompt/model artifacts, read raw tool result bodies, or mutate state.
+Blocked-tool diagnostics are limited to tool name, `failure_kind`, evidence ref,
+and bounded summary.
 Blocked or failed pipeline runs also appear as `pipeline_run` Opportunity
 Backlog items so the local self-evolution loop can focus staged harness
 failures without opening raw stage artifacts. Those items render both a

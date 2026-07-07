@@ -5,6 +5,7 @@ import {
   pipelineStageRunSchema,
   type PipelineRunResult,
   type PipelineSpec,
+  type BlockedToolDiagnostic,
   type PipelineStageRun,
   type PipelineStageStatus
 } from "./schemas.js";
@@ -38,6 +39,7 @@ export interface PipelineHistorySummary {
   failed_stage_ids: string[];
   blocked_stage_id: string | null;
   evidence_ref_count: number;
+  blocked_tool_diagnostic_count: number;
   final_response_ref: string | null;
   query_ref: string | null;
   todo_ref: string | null;
@@ -54,6 +56,7 @@ export interface PipelineStageHistorySummary {
   evidence_ref_count: number;
   model_response_count: number;
   envelope_count: number;
+  blocked_tool_diagnostics: BlockedToolDiagnostic[];
   failure_kind: string | null;
   failure_message: string | null;
   completed_at: string | null;
@@ -222,6 +225,7 @@ function runSummary(args: {
     failed_stage_ids: failedStageIds,
     blocked_stage_id: args.checkpoint.blocked_stage_id ?? null,
     evidence_ref_count: args.checkpoint.evidence_refs?.length ?? 0,
+    blocked_tool_diagnostic_count: args.stages.reduce((count, stage) => count + stage.blocked_tool_diagnostics.length, 0),
     final_response_ref: args.checkpoint.final_response_ref ?? null,
     query_ref: args.queryRef,
     todo_ref: args.todoRef,
@@ -240,6 +244,7 @@ function stageSummary(ref: string, run: PipelineStageRun): PipelineStageHistoryS
     evidence_ref_count: run.evidence_refs.length,
     model_response_count: run.model_response_refs.length,
     envelope_count: run.envelope_refs.length,
+    blocked_tool_diagnostics: run.blocked_tool_diagnostics,
     failure_kind: run.failure_kind,
     failure_message: run.failure_message,
     completed_at: run.completed_at
@@ -280,6 +285,7 @@ function renderPipelineSummary(run: PipelineHistorySummary, index: number): stri
     `   pipeline_ref: ${run.pipeline_ref}`,
     `   checkpoint_ref: ${run.checkpoint_ref}`,
     `   stages: ${run.stage_count} (${renderCounts(run.stage_status_counts)})`,
+    `   blocked_tool_diagnostics: ${run.blocked_tool_diagnostic_count}`,
     `   updated_at: ${run.updated_at}`
   ].join("\n");
 }
@@ -299,6 +305,9 @@ function renderStageSummary(stage: PipelineStageHistorySummary, index: number): 
   ];
   if (stage.failure_kind) lines.push(`   failure_kind: ${stage.failure_kind}`);
   if (stage.failure_message) lines.push(`   failure_message: ${truncate(stage.failure_message, 180)}`);
+  for (const diagnostic of stage.blocked_tool_diagnostics) {
+    lines.push(`   blocked_tool: tool=${diagnostic.tool}; failure_kind=${diagnostic.failure_kind}; evidence=${diagnostic.evidence_ref}; summary=${truncate(diagnostic.summary, 160)}`);
+  }
   return lines.join("\n");
 }
 

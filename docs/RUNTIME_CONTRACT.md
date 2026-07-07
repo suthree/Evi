@@ -1990,6 +1990,8 @@ Required policy:
   pipeline ref, checkpoint ref, stage run refs, stage status counts, failed or
   blocked stage ids, stage attempts, evidence ref counts, final response ref,
   query/todo refs, bounded blocked-tool diagnostic metadata, and update time
+- bounded blocked-tool diagnostic metadata is limited to `tool`,
+  `failure_kind`, `evidence_ref`, and a bounded `summary`
 - blocked or failed runs may appear as read-only `pipeline_run` items in the
   Opportunity Backlog, with checkpoint/pipeline refs and stage status metadata
   only
@@ -1997,7 +1999,7 @@ Required policy:
 - no model invocation
 - no tool execution
 - no raw stage output Markdown, prompt, model response, model action envelope,
-  tool result, or pipeline todo body reads
+  tool result body, or pipeline todo body reads
 - no state writes, repo writes, active-vault writes, review tick execution, or
   SOP/skill/memory mutation
 

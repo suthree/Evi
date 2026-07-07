@@ -87,6 +87,13 @@ pnpm run runtime -- review traces --state-root .runtime/state
 pnpm run runtime -- review traces --trace <ref-or-id> --state-root .runtime/state
 ```
 
+查看 staged pipeline 的有界历史和 blocked-tool 诊断：
+
+```bash
+pnpm run runtime -- pipeline runs --state-root .runtime/state
+pnpm run runtime -- pipeline runs --pipeline <ref-or-id> --state-root .runtime/state
+```
+
 启动本地 Web console：
 
 ```bash

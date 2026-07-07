@@ -50,6 +50,12 @@ test("stage runner reports blocked tool failure kinds to the next model round", 
     assert.ok(blockedEvent);
     assert.equal(result.evidence_refs.includes(blockedEvent.id), true);
     assert.equal(stageRun.evidence_refs.includes(blockedEvent.id), true);
+    assert.deepEqual(stageRun.blocked_tool_diagnostics, [{
+      tool: "unknown.external",
+      failure_kind: "tool_not_allowed",
+      summary: "Tool unknown.external is not allowed in stage tool_check.",
+      evidence_ref: blockedEvent.id
+    }]);
     assert.equal(blockedEvent.artifact_refs.length, 1);
     const blockedResult = await store.readStateJson<{
       ok: boolean;
@@ -61,6 +67,10 @@ test("stage runner reports blocked tool failure kinds to the next model round", 
     assert.equal(blockedResult?.tool, "unknown.external");
     assert.equal(blockedResult?.side_effect_level, "none");
     assert.equal(blockedResult?.output.failure_kind, "tool_not_allowed");
+
+    const history = await getPipelineRun(store, { pipelineRef: result.run_id });
+    assert.equal(history.summary.blocked_tool_diagnostic_count, 1);
+    assert.deepEqual(history.stages[0]?.blocked_tool_diagnostics, stageRun.blocked_tool_diagnostics);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

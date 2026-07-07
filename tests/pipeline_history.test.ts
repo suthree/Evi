@@ -26,14 +26,24 @@ test("pipeline history lists bounded run metadata without raw stage outputs", as
     assert.equal(list.runs[0].stage_status_counts.done, 1);
     assert.equal(list.runs[0].stage_status_counts.blocked, 1);
     assert.deepEqual(list.runs[0].failed_stage_ids, ["tool_check"]);
+    assert.equal(list.runs[0].blocked_tool_diagnostic_count, 1);
     assert.equal(detail.stages.length, 2);
     assert.equal(detail.stages[1].failure_kind, "stage_incomplete");
+    assert.deepEqual(detail.stages[1].blocked_tool_diagnostics, [{
+      tool: "unknown.external",
+      failure_kind: "tool_not_allowed",
+      summary: "Tool unknown.external is not allowed in stage tool_check.",
+      evidence_ref: "evidence_blocked_tool"
+    }]);
     assert.match(listText, /Pipeline runs/);
+    assert.match(listText, /blocked_tool_diagnostics: 1/);
     assert.match(detailText, /Pipeline run/);
     assert.match(detailText, /tool_check/);
     assert.match(detailText, /failure_kind: stage_incomplete/);
+    assert.match(detailText, /blocked_tool: tool=unknown\.external; failure_kind=tool_not_allowed; evidence=evidence_blocked_tool/);
     assert.doesNotMatch(`${listText}\n${detailText}`, /RAW_PIPELINE_OUTPUT_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(`${listText}\n${detailText}`, /RAW_MODEL_RESPONSE_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(`${listText}\n${detailText}`, /RAW_TOOL_RESULT_SHOULD_NOT_APPEAR/);
   } finally {
     await fixture.cleanup();
   }
@@ -100,10 +110,16 @@ async function writePipelineFixture(store: AgentStore): Promise<void> {
     stage_id: "tool_check",
     status: "blocked",
     attempt: 1,
-    evidence_refs: ["evidence_pipeline_tool_check"],
+    evidence_refs: ["evidence_pipeline_tool_check", "evidence_blocked_tool"],
     output_refs: ["pipelines/pipeline_context/artifacts/tool_check.md"],
     model_response_refs: ["pipelines/pipeline_context/responses/tool_check-model-response-r1.json"],
     envelope_refs: ["pipelines/pipeline_context/responses/tool_check-model-action-r1.json"],
+    blocked_tool_diagnostics: [{
+      tool: "unknown.external",
+      failure_kind: "tool_not_allowed",
+      summary: "Tool unknown.external is not allowed in stage tool_check.",
+      evidence_ref: "evidence_blocked_tool"
+    }],
     failure_kind: "stage_incomplete",
     failure_message: "Tool check did not satisfy completion checks.",
     started_at: "2026-06-30T00:00:03.000Z",
@@ -124,6 +140,7 @@ async function writePipelineFixture(store: AgentStore): Promise<void> {
   });
   await store.writeText("pipelines/pipeline_context/artifacts/intake.md", "RAW_PIPELINE_OUTPUT_SHOULD_NOT_APPEAR");
   await store.writeText("pipelines/pipeline_context/responses/intake-model-response-r1.json", "RAW_MODEL_RESPONSE_SHOULD_NOT_APPEAR");
+  await store.writeText("pipelines/pipeline_context/tools/tool_check-tool_result_blocked.json", "RAW_TOOL_RESULT_SHOULD_NOT_APPEAR");
 }
 
 async function createFixture(): Promise<{ store: AgentStore; cleanup: () => Promise<void> }> {

@@ -10,6 +10,7 @@ import {
   pipelineStageSpecSchema,
   workingCheckpointSchema,
   type ActionProposal,
+  type BlockedToolDiagnostic,
   type EvidenceEvent,
   type ModelActionEnvelope,
   type PipelineRunResult,
@@ -352,13 +353,17 @@ export class StageRunner {
         if (toolCallCount > args.stage.max_tool_calls) {
           const result = blockedToolResult(toolName, `Stage ${args.stage.id} exceeded max_tool_calls=${args.stage.max_tool_calls}.`, "tool_call_limit_exceeded");
           toolResults.push(result);
-          stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
+          const evidenceRef = await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result });
+          stageEvidenceRefs.push(evidenceRef);
+          stageRun.blocked_tool_diagnostics.push(blockedToolDiagnostic(result, evidenceRef));
           continue;
         }
         if (args.stage.allowed_tools.length > 0 && !args.stage.allowed_tools.includes(toolName)) {
           const result = blockedToolResult(toolName, `Tool ${toolName} is not allowed in stage ${args.stage.id}.`, "tool_not_allowed");
           toolResults.push(result);
-          stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
+          const evidenceRef = await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result });
+          stageEvidenceRefs.push(evidenceRef);
+          stageRun.blocked_tool_diagnostics.push(blockedToolDiagnostic(result, evidenceRef));
           continue;
         }
 
@@ -743,6 +748,19 @@ function blockedToolResult(tool: string, summary: string, failureKind: "tool_cal
     },
     side_effect_level: "none",
     created_at: utcNow()
+  };
+}
+
+function blockedToolDiagnostic(result: ToolResult, evidenceRef: string): BlockedToolDiagnostic {
+  const failureKind = result.output.failure_kind;
+  if (failureKind !== "tool_call_limit_exceeded" && failureKind !== "tool_not_allowed") {
+    throw new Error(`Unsupported blocked tool failure_kind: ${String(failureKind)}`);
+  }
+  return {
+    tool: result.tool,
+    failure_kind: failureKind,
+    summary: result.summary,
+    evidence_ref: evidenceRef
   };
 }
 
