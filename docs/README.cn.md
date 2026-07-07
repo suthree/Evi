@@ -152,10 +152,10 @@ iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结
 现有 iteration 的 inspect 命令，而不是继续提示重复登记；这仍然不会写状态或证明完成。
 在 `governance iterations --audit-seed all` 里，open iteration 的 `next_command`
 会保留 evidence ref、verification command、verification claim 和 next move 占位，避免写回一个缺 claim coverage 的 outcome；
-compact context 也可以显示 `review_gate`，用于提示 open iteration 仍缺 outcome record、outcome verification command coverage、outcome verification claim coverage，以及必跑 verification entrypoints；
+compact context 也可以显示 `review_gate`，用于提示 open iteration 仍缺 outcome record、outcome verification command coverage、outcome verification claim coverage，以及必跑 verification entrypoints 和 required completion coverage；
 也可以显示 `after_verify`，给出验证通过后写回 `record-iteration-outcome` 的模板，并保留可重复的 evidence ref、verification command、verification claim 和 next move 占位；
 `evidence_basis` 会给出有界候选 refs，方便 outcome 写回时引用，但它本身不是完成证明；
-`proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage、outcome verification command coverage、outcome verification claim coverage、runtime attention outcome coverage 和 workspace outcome coverage；
+`proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage、implementation contract coverage、outcome verification command coverage、outcome verification claim coverage、runtime attention outcome coverage 和 workspace outcome coverage；
 `plan_ref_coverage` 如果缺 refs，会用 `required_outcome_evidence_refs` 列出必须补进 outcome evidence 的 refs；`record-iteration-outcome` 默认是覆盖式写入，补 refs 时可以用 `--merge-existing-outcome` 保留已有 outcome evidence、commands、claims 和 next moves 后再追加；
 `implementation_contract_coverage` 会比较当前 project-design plan 的 `implementation_contract` 与被审计 iteration record；如果 plan 已推进，则检查被审计 iteration 持久化 contract 的自一致性；缺失、不完整或错配都会阻塞 completion gate；
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；

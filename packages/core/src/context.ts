@@ -1683,6 +1683,17 @@ export function compactGaPlanPhaseForbids(
     .join("; ");
 }
 
+const COMPACT_GA_PLAN_PROOF_REQUIREMENTS = [
+  "verified_outcome",
+  "outcome_evidence_refs",
+  "plan_ref_coverage",
+  "implementation_contract_coverage",
+  "outcome_verification_command_coverage",
+  "outcome_verification_claim_coverage",
+  "runtime_attention_outcome_coverage",
+  "workspace_outcome_coverage"
+].join(",");
+
 export function compactGaPlanReviewGate(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status" | "selection_checks">
 ): string | null {
@@ -1690,7 +1701,7 @@ export function compactGaPlanReviewGate(
   const required = plan.selection_checks
     .find((check) => check.startsWith("verification_entrypoints="))
     ?.replace("verification_entrypoints=", "");
-  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
+  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; required_coverage=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
 }
 
 export function compactGaPlanVerificationCommands(
@@ -1734,7 +1745,7 @@ export function compactGaPlanProofBoundary(
   plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
-  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage";
+  return `evidence_basis=candidate_refs_only; require=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}`;
 }
 
 async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {

@@ -622,8 +622,8 @@ Required policy:
 - When a matching open iteration exists, the compact GA Project Design Plan
   context may surface a bounded `review_gate` line with the missing outcome
   record, outcome verification command coverage, outcome verification claim
-  coverage, and required verification entrypoints; this is handoff guidance, not
-  the authoritative completion audit
+  coverage, required verification entrypoints, and required completion coverage
+  list; this is handoff guidance, not the authoritative completion audit
 - The same compact context may surface a bounded `after_verify` outcome-record
   command template for the matching open iteration; it is only used after the
   required verification commands have run, must keep repeatable evidence-ref and
@@ -634,8 +634,10 @@ Required policy:
   artifacts; these refs are candidates, not completion proof
 - When `evidence_basis` appears for a matching open iteration, compact context
   may also render `proof_boundary`; it must keep the requirement for a verified
-  outcome, outcome evidence refs, plan ref coverage, and outcome verification
-  command coverage explicit
+  outcome, outcome evidence refs, plan ref coverage, implementation contract
+  coverage, outcome verification command coverage, outcome verification claim
+  coverage, runtime attention outcome coverage, and workspace outcome coverage
+  explicit
 - Compact `acceptance` must preserve at least one criterion for each audit-seed
   label (`goal_scope`, `current_state`, `verification_scope`, and
   `learning_persistence`) using stable prefix priority rather than raw array
@@ -945,9 +947,10 @@ command rather than the record-iteration command, and the section may show the
 matching `--audit-seed all` audit command as operator guidance. It may also show
 a compact `review_gate` line when the matching open iteration still lacks an
 outcome record, outcome verification command coverage, and outcome verification
-claim coverage. The line may include the required verification entrypoints from
-the plan, while the full `governance iterations --audit-seed all` packet remains
-the authoritative completion-audit view. The section may also include
+claim coverage. The line may include the required verification entrypoints and
+required completion coverage list, while the full
+`governance iterations --audit-seed all` packet remains the authoritative
+completion-audit view. The section may also include
 `after_verify` with a bounded
 `record-iteration-outcome` template for the matching open iteration, but only as
 post-verification writeback guidance. The template must keep repeatable
@@ -956,8 +959,10 @@ next-move placeholder, visible so an outcome record is not mistaken for
 completion evidence by itself or a terminal stop. The section may also include a
 short `evidence_basis` line from the plan refs; it is citation guidance only and
 does not read or prove those refs. When present, `proof_boundary` keeps that same
-  distinction explicit by requiring a verified outcome with outcome evidence refs
-  and outcome verification command coverage. The source artifact is
+distinction explicit by requiring a verified outcome, outcome evidence refs,
+plan ref coverage, implementation contract coverage, outcome verification
+command coverage, outcome verification claim coverage, runtime attention outcome
+coverage, and workspace outcome coverage. The source artifact is
 only the evidence basis; the
 rendered proposed slice must not be a blind repeat of a completed source slice.
 The audit-seed summary should name goal scope, current state, verification

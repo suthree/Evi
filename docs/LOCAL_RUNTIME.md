@@ -911,8 +911,9 @@ record command. It may also show the matching `--audit-seed all` command as
 operator guidance. A compact `review_gate` line may appear when the matching
 open iteration still lacks an outcome record and outcome verification command
 coverage plus outcome verification claim coverage. It may include the required
-verification entrypoints from the plan; it is handoff guidance, while the full
-iteration audit packet remains the authoritative completion-audit view. A
+verification entrypoints and required completion coverage list from the plan; it
+is handoff guidance, while the full iteration audit packet remains the
+authoritative completion-audit view. A
 compact `after_verify` line may also show the matching
 `record-iteration-outcome` template, but only as post-verification writeback
 guidance. It keeps repeatable evidence-ref, verification-command, and
@@ -921,8 +922,10 @@ outcome record is not confused with evidence by itself or a terminal stop. A
 compact `evidence_basis` line may also show
 bounded candidate refs from the plan; these are citation guidance only, not
 completion proof. When present, `proof_boundary` keeps the required verified
-outcome, outcome evidence refs, plan ref coverage, and outcome verification
-command coverage explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
+outcome, outcome evidence refs, plan ref coverage, implementation contract
+coverage, outcome verification command coverage, outcome verification claim
+coverage, runtime attention outcome coverage, and workspace outcome coverage
+explicit. The source artifact is the evidence basis only; the proposed slice must not blindly repeat a
 completed source slice. It may show a short selection
 readiness, check summary, and audit-seed summary, which are quality hints only.
 The `goal_scope` line restates the operator objective, owner surface, source of
