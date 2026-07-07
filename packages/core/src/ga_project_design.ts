@@ -1078,7 +1078,7 @@ function buildCapabilityStagePlan(
     next_iteration_plan: [
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
       `core_runtime[current_state]: choose one reusable ${target.target_dimension_id} improvement, not an external adapter task`,
-      "core_runtime[general_agent_delegation]: harden delegate_agent task/context/result verification before expert specialization",
+      "core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/completion contract before expert specialization",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
       "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
     ]

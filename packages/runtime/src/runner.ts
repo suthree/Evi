@@ -1422,7 +1422,7 @@ ${disciplineText}
 If the task requires fresh local or external data and no relevant Tool Observations are present, call use_tool first.
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
-Use delegate_agent only for one bounded analysis or critique task per model round; delegated results are self-reports and must be verified by the main harness before being treated as success.
+Use delegate_agent only for one bounded analysis or critique task per model round; delegated tasks must not ask the subagent to execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
 delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
@@ -1665,6 +1665,16 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
   const context = typeof record.context === "string" ? record.context.trim() : "";
   const parsed = delegateAgentPayloadSchema.safeParse(record);
   if (parsed.success) {
+    const taskBoundaryError = validateDelegationTaskBoundary(parsed.data.task);
+    if (taskBoundaryError) {
+      return {
+        ok: false,
+        task: parsed.data.task,
+        task_chars: parsed.data.task.length,
+        context_chars: parsed.data.context.length,
+        error: taskBoundaryError
+      };
+    }
     const boundaryError = validateDelegationContextBoundary(parsed.data.context);
     if (!boundaryError) return { ok: true, ...parsed.data };
     return {
@@ -1730,6 +1740,23 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
   };
 }
 
+function validateDelegationTaskBoundary(task: string): string | null {
+  const text = normalizeBoundaryText(task);
+  const asksToolOrMutation =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TOOL_AUTHORITY_TERMS)
+    || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_WRITE_MUTATION_TERMS);
+  const asksCompletion =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
+    || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
+  const asksExpertScheduling =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
+    || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
+  if (asksToolOrMutation || asksCompletion || asksExpertScheduling) {
+    return "delegate_agent.payload.task must be bounded analysis or critique and must not request tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
+  }
+  return null;
+}
+
 function validateDelegationContextBoundary(context: string): string | null {
   const text = normalizeBoundaryText(context);
   const deniesToolAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, TOOL_AUTHORITY_TERMS);
@@ -1763,6 +1790,39 @@ const AUTHORITY_DENIAL_TERMS = [
   "只读"
 ];
 
+const DELEGATE_TASK_REQUEST_TERMS = [
+  "run",
+  "execute",
+  "call",
+  "invoke",
+  "use",
+  "write",
+  "mutate",
+  "modify",
+  "decide",
+  "prove",
+  "mark",
+  "declare",
+  "schedule",
+  "orchestrate",
+  "spawn",
+  "fan out",
+  "delegate",
+  "publish",
+  "调用",
+  "执行",
+  "使用",
+  "写入",
+  "修改",
+  "决定",
+  "证明",
+  "标记",
+  "调度",
+  "编排",
+  "生成",
+  "发布"
+];
+
 const TOOL_AUTHORITY_TERMS = [
   "tool",
   "tools",
@@ -1791,6 +1851,36 @@ const WRITE_MUTATION_TERMS = [
   "仓库写入",
   "外部写入",
   "修改",
+  "突变",
+  "副作用"
+];
+
+const TASK_WRITE_MUTATION_TERMS = [
+  "write repo",
+  "write repository",
+  "repo write",
+  "file write repo",
+  "file write",
+  "write file",
+  "write files",
+  "state write",
+  "write state",
+  "memory write",
+  "write memory",
+  "mutation",
+  "mutate",
+  "mutates",
+  "side effect",
+  "side effects",
+  "external write",
+  "写入状态",
+  "状态写入",
+  "写入仓库",
+  "仓库写入",
+  "写入文件",
+  "文件写入",
+  "外部写入",
+  "修改状态",
   "突变",
   "副作用"
 ];
@@ -1831,6 +1921,39 @@ const MAIN_HARNESS_TERMS = [
   "操作员",
   "用户",
   "验证 outcome"
+];
+
+const EXPERT_SCHEDULING_TERMS = [
+  "expert",
+  "expert persona",
+  "specialist",
+  "multi agent",
+  "multi-agent",
+  "fan out",
+  "scheduler",
+  "orchestration",
+  "autonomous agent",
+  "专家",
+  "专家角色",
+  "多 agent",
+  "多智能体",
+  "调度器",
+  "自主 agent"
+];
+
+const SCHEDULING_TERMS = [
+  "schedule",
+  "scheduling",
+  "orchestrate",
+  "orchestration",
+  "spawn",
+  "fan out",
+  "fan-out",
+  "delegate",
+  "调度",
+  "编排",
+  "生成",
+  "分发"
 ];
 
 function normalizeBoundaryText(value: string): string {
