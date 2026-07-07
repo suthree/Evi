@@ -331,6 +331,7 @@ interface IterationAuditGuidanceInput {
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
+  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
   selection_checks: string[];
   verification_commands: string[];
   learning_authority: GaProjectDesignPlanPacket["learning_authority"];
@@ -776,6 +777,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
+  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   verification_entrypoints: string[];
@@ -814,6 +816,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     proposed_slice: plan.proposed_slice,
     source_artifact_id: plan.source_artifact_id,
     source_iteration_ref: plan.source_iteration_ref,
+    goal_scope: plan.goal_scope,
     guidance_scope: matchesOpenIteration
       ? "matching_open_iteration"
       : isSourceIteration

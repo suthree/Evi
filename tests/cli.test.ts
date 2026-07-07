@@ -738,6 +738,18 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     proposed_slice: "core_ga_design_next_slice_after_source",
     source_artifact_id: "ga_design_artifact_iteration_contract_source",
     source_iteration_ref: "self-evolution/iterations/iteration_contract_source.json",
+    goal_scope: {
+      objective: "continue core/basic GA project-design capability gains before SOP or skill promotion",
+      owner_surface: "ga_project_design",
+      source_of_truth: [
+        "operator_objective=core_basic_self_evolution_first",
+        "source_artifact=ga_design_artifact_iteration_contract_source"
+      ],
+      success_evidence: [
+        "target_slice=core_ga_design_next_slice_after_source",
+        "verified outcome records evidence refs and completion claims"
+      ]
+    },
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
@@ -781,6 +793,9 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.core_identity, "recurring_ga_project_design");
   assert.equal(guidance.selected_layer, "core_runtime");
   assert.equal(guidance.guidance_scope, "current_plan_context");
+  assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
+  assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
+  assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
   assert.deepEqual(guidance.verification_entrypoints, [
     "project-design",
     "scorecard",

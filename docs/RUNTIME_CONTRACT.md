@@ -263,12 +263,12 @@ checks, or prove completion.
 project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
 `audit_guidance` copied from the GA project-design plan: core identity,
-application boundary, learning authority, verification entrypoints, and
-required commands before an outcome is recorded. The guidance must name whether
+goal scope, application boundary, learning authority, verification entrypoints,
+and required commands before an outcome is recorded. The guidance must name whether
 it applies to the matching open iteration, the source iteration for the current
 plan, or only the current plan context, so successor status is not mistaken for
-the audited iteration's status. When an audited iteration is selected, guidance commands
-must bind `<iteration-ref>` to that iteration id and bind `<state-root>` to the
+the audited iteration's status. When an audited iteration is selected, guidance
+commands must bind `<iteration-ref>` to that iteration id and bind `<state-root>` to the
 current runtime state root; the packet's top-level `next_command` must bind the
 same current state root. For open iterations, `next_command` must keep
 repeatable evidence-ref, verification-command, verification-claim, and next-move
