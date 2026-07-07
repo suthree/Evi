@@ -79,11 +79,14 @@ export async function getReusedSkillCoverage(
   const coverageStatus = decideCoverageStatus({
     recordedDuplicateSkillRefs,
     currentDuplicateSkillRef: currentDuplicate?.instructions_ref ?? null,
-    missingSkillRefs
+    missingSkillRefs,
+    latestDecision: entry.latest_decision,
+    chainSkillRefs: entry.skill_refs
   });
   const summary = coverageSummary({
     coverageStatus,
     sop,
+    latestDecision: entry.latest_decision,
     currentDuplicateSkillName: currentDuplicate?.name ?? null,
     recordedDuplicateSkillRefs,
     missingSkillRefs
@@ -122,6 +125,7 @@ export async function getReusedSkillCoverage(
       coverageStatus,
       sopId: entry.sop_id,
       sopRef: entry.sop_ref,
+      latestDecision: entry.latest_decision,
       currentDuplicateSkillRef: currentDuplicate?.instructions_ref ?? null
     })
   };
@@ -180,8 +184,17 @@ function decideCoverageStatus(args: {
   recordedDuplicateSkillRefs: string[];
   currentDuplicateSkillRef: string | null;
   missingSkillRefs: string[];
+  latestDecision: SopEvolutionLedgerEntry["latest_decision"];
+  chainSkillRefs: string[];
 }): ReusedSkillCoverageStatus {
   if (args.recordedDuplicateSkillRefs.length === 0 && !args.currentDuplicateSkillRef) return "no_reuse_evidence";
+  if (
+    args.latestDecision === "promoted"
+    && args.currentDuplicateSkillRef
+    && args.chainSkillRefs.includes(args.currentDuplicateSkillRef)
+  ) {
+    return "covered";
+  }
   if (args.recordedDuplicateSkillRefs.length > 0 && args.missingSkillRefs.length === args.recordedDuplicateSkillRefs.length) {
     return "missing_skill";
   }
@@ -200,11 +213,15 @@ function decideCoverageStatus(args: {
 function coverageSummary(args: {
   coverageStatus: ReusedSkillCoverageStatus;
   sop: SOPDraft;
+  latestDecision: SopEvolutionLedgerEntry["latest_decision"];
   currentDuplicateSkillName: string | null;
   recordedDuplicateSkillRefs: string[];
   missingSkillRefs: string[];
 }): string {
   if (args.coverageStatus === "covered") {
+    if (args.latestDecision === "promoted") {
+      return `Current recall resolves promoted SOP ${args.sop.id} to skill ${args.currentDuplicateSkillName ?? "unknown"}; historical reused-skill refs remain evidence only.`;
+    }
     return `Current recall still resolves ${args.sop.id} to reused skill ${args.currentDuplicateSkillName ?? "unknown"}; keep reuse unless fresh evidence shows drift.`;
   }
   if (args.coverageStatus === "missing_skill") {
@@ -220,9 +237,13 @@ function coverageNextStep(args: {
   coverageStatus: ReusedSkillCoverageStatus;
   sopId: string;
   sopRef: string;
+  latestDecision: SopEvolutionLedgerEntry["latest_decision"];
   currentDuplicateSkillRef: string | null;
 }): string {
   if (args.coverageStatus === "covered") {
+    if (args.latestDecision === "promoted") {
+      return `No revise_skill action is needed unless fresh drift evidence appears; reuse promoted skill ${args.currentDuplicateSkillRef ?? args.sopId}.`;
+    }
     return `If an explicit validation event is still desired, execute the pending revise_skill confirmation after reviewing ${args.currentDuplicateSkillRef ?? args.sopId}.`;
   }
   if (args.coverageStatus === "missing_skill") {

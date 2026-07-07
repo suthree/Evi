@@ -24,6 +24,14 @@ _Avoid_: Tool protocol, project overlay
 A specialized **Host Runtime** that the agent can ask to perform bounded work, then inspect and verify, such as delegating a coding task to Codex. It is more capable than a **Tool Protocol**, but it still does not become the **Self-Growing Agent Core**.
 _Avoid_: Tool protocol, separate self
 
+**Expert Orchestration Contract**:
+The **Core Runtime Capability** boundary that defines advisory expert roles, when they may be consulted, and why the main runtime still owns verification and completion. It is not an autonomous scheduler or a new agent identity.
+_Avoid_: Multi-agent daemon, parallel model fan-out, expert persona, external tool workflow
+
+**Self-Evolution Iteration Contract**:
+A bounded local record made before or during major self-evolution work that declares the capability layer, owner surface, proposed slice, evidence, verification commands, non-goals, and advisory expert roles. It is evidence of iteration discipline, not evidence that the work is complete.
+_Avoid_: Completion proof, task execution, roadmap item, application feature
+
 **Host Instruction File**:
 A file read by a specific host runtime to preload behavior or project guidance, such as Codex `AGENTS.md`, Claude Code `CLAUDE.md`, Hermes `.hermes.md`, or OpenClaw bootstrap files. It adapts the agent to a host and is not the agent core by itself.
 _Avoid_: Self-Growing Agent Core, durable memory
@@ -43,6 +51,18 @@ _Avoid_: Prompt file, SOP text
 **Runtime Contract**:
 The agreement that defines which state enters a model call, what action shape the model may return, how the harness validates and executes it, and how evidence is persisted afterward.
 _Avoid_: README, conceptual overview
+
+**Core Runtime Capability**:
+A domain-independent ability the local runtime must have to perform and verify work: bounded execution, context control, action validation, evidence capture, completion verification, recall, and explicit self-evolution gates. Core capabilities are stable only when they survive different projects, tools, and application examples.
+_Avoid_: Adapter feature, content workflow, provider-specific tool, demo scenario
+
+**Basic Entrypoint Capability**:
+A local surface through which work enters or observes the runtime, such as CLI, IM, or a single-user resident service. It supports the **Core Runtime Capability** layer but does not define the agent's growth loop by itself.
+_Avoid_: Hosted service product, optional plugin, external platform integration
+
+**Application Slice**:
+A bounded scenario that uses core and entrypoint capabilities to prove a workflow, gather evidence, and expose gaps. Active exploration, content publishing plans, image generation, market-source probes, browser automation, and platform MCP adapters belong here unless the pattern generalizes back into the runtime contract.
+_Avoid_: Core Runtime Capability, agent identity, architecture reference
 
 **Turn Snapshot**:
 The immutable state used for one model call: trigger, goal, selected context, available actions, budget, and output expectations. Runtime changes apply to later snapshots, not the in-flight call.

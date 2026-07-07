@@ -193,6 +193,11 @@ on-demand diagnostics:
 
 ```bash
 pnpm run runtime -- memory layers --state-root .runtime/state
+pnpm run runtime -- memory dream --state-root .runtime/state
+pnpm run runtime -- memory dreams --state-root .runtime/state
+pnpm run runtime -- governance scorecard --state-root .runtime/state
+pnpm run runtime -- governance project-design --state-root .runtime/state
+pnpm run runtime -- governance iterations --state-root .runtime/state
 ```
 
 Live task text may include bounded repo references such as
@@ -309,6 +314,72 @@ Open SOP evolution chains also appear in the ranked Opportunity Backlog:
 ```bash
 pnpm run runtime -- governance opportunities --state-root .runtime/state
 ```
+
+Inspect the self-evolution scorecard for current core/basic/SOP-memory/dream
+maturity and advisory expert lenses:
+
+```bash
+pnpm run runtime -- governance scorecard --state-root .runtime/state
+pnpm run runtime -- governance project-design --state-root .runtime/state
+pnpm run runtime -- governance experts --state-root .runtime/state
+pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
+pnpm run runtime -- governance record-iteration --summary "Core runtime iteration" --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --state-root .runtime/state
+pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified --summary "Verified core runtime iteration" --state-root .runtime/state
+```
+
+`governance project-design` is the read-only core GA project design contract:
+goal intake, capability layering, contract design, execution planning,
+verification review, and learning persistence. It is a design source of truth,
+not a scheduler or external-tool execution surface.
+It also derives read-only `artifacts` from verified self-evolution iteration
+outcomes that include outcome evidence refs and verification commands, so prior
+GA project-design lessons can be reused without writing memory, drafting SOPs,
+promoting skills, or proving future completion. Historical completed-source
+non-goals are collapsed during successor planning, so the next seed stays
+focused on the current source slice. Historical iteration evidence refs are
+also collapsed during successor planning, so plan refs stay bounded to the
+current source artifact and direct evidence. `artifact_count` is the total
+reusable artifact count; `listed_artifact_count` is the current limited response
+size.
+The scorecard also emits read-only `next_slices` ordered by stage, score, and
+layer, so the next bounded iteration is explicit without writing backlog state
+or executing the recommendation.
+The plan includes a read-only `iteration_focus` so the next model turn sees the
+core/basic direction, next steps, and anti-drift checks instead of inferring
+purpose from the opaque slice id alone.
+Phase gates carry their `forbidden_shortcuts`, so anti-drift constraints stay
+visible with the phase contract.
+It also includes `capability_stage_plan`, a read-only split of current core
+capability stages and basic capability stages plus the next iteration plan.
+Each stage carries `exit_criteria` so stage movement has evidence standards and
+does not rely on intent or application-tool progress.
+The next iteration plan is layer and audit-seed labeled so core-runtime
+hardening, basic entrypoint verification, deferred local-learning reuse, and
+completion review stay tied together.
+Acceptance criteria use the same audit-seed labels, keeping goal scope, current
+state, verification scope, and learning persistence review aligned.
+The basic runtime observability stage may be `attention_guard`; that means it
+must keep service-health attention visible, not that the resident service is
+healthy.
+
+When an active dream exists, low-maturity scorecard dimensions may appear as
+proposal-only self-evolution gaps. Multi-expert orchestration now has a
+read-only core-runtime expert contract, so the previous scorecard-derived
+multi-expert contract gap is suppressed; future low-maturity dimensions still
+use the normal Opportunity Backlog and SOP-candidate gates.
+Verified iteration outcomes may also appear as SOP-candidate gaps when no
+state-only SOP draft cites the iteration yet. They still require review tick,
+draft-sop, audit-sop, and promote-sop gates before any active-vault skill write.
+The expert contract includes read-only delegation gates for core-boundary,
+runtime-health, learning-persistence, and delegation-budget reviews. Gates name
+trigger, inputs, output, rejection cases, and main-runtime completion authority;
+`governance experts --gate <gate-id>` renders one selected gate as an advisory
+plan packet. They do not spawn agents or schedule model calls.
+Iteration contracts are the lightweight state record for the first scorecard
+next move: declare whether major work is core runtime, basic entrypoint, local
+learning, application slice, or boundary work before treating it as progress.
+Iteration outcomes close that loop with verification status, cited evidence,
+commands run, and next moves before the next core/basic slice is chosen.
 
 `governance status` and Feishu `/governance` also include the active backlog
 count and top bounded attention item, so the aggregate local operator view shows
@@ -487,7 +558,8 @@ Current first-version scope:
 - Feishu bounded local private-chat history in task context
 - Feishu operator notification outbox drained by the resident IM service
 - single-user local service runtime for Feishu IM
-- state-only `service health` CLI read model for resident IM diagnostics
+- state-only `service health` CLI read model for resident IM diagnostics,
+  including runtime-substrate versus application-slice reason codes
 - core tool capability tests
 - minimal context and harness control plane
 - harness-owned completion verification reports
@@ -523,6 +595,17 @@ Current first-version scope:
 - explicit audited SOP promotion into the local active vault
 - read-only SOP self-evolution chain inspection
 - open SOP Evolution Ledger chains in the ranked Opportunity Backlog
+- read-only self-evolution scorecard for core/basic learning maturity and
+  advisory expert lenses
+- read-only expert orchestration contract for advisory roles, scheduling
+  boundaries, and main-thread verification authority
+- bounded self-evolution iteration contracts for layer, owner, evidence,
+  verification, non-goal, and advisory-role declarations
+- bounded self-evolution iteration outcomes for verification status, cited
+  evidence, commands run, and next moves
+- dream snapshots that absorb accepted semantic memory, recent self-evolution
+  iteration contracts, and latest verified outcomes as long-horizon planning
+  context
 - structured SOP evolution next commands in ledger, backlog, and Feishu views
 - SOP evolution next-command confirmation requests with stale-chain revalidation
 - optional local SOP/skill learning experiment

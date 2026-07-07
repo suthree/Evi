@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseArgs } from "../apps/cli/src/main.js";
+import {
+  bindGaProjectDesignArtifactPacketCommands,
+  bindGaProjectDesignReadModelCommands,
+  bindIterationDetailRuntimeCommands,
+  bindIterationRecordResultCommand,
+  buildIterationAuditCompletionGate,
+  buildIterationAuditEvidenceAvailable,
+  buildIterationAuditGuidance,
+  buildIterationAuditNextCommand,
+  buildIterationAuditOutcomeVerificationCommandCoverage,
+  buildIterationAuditPlanRefCoverage,
+  buildIterationAuditRefs,
+  buildIterationAuditSeedEvidenceStatus,
+  buildIterationAuditVerificationCommandCoverage,
+  parseArgs,
+  selectIterationAuditVerificationCoverageCommands
+} from "../apps/cli/src/main.js";
 
 test("doctor checks IM by default and accepts explicit downgrades", () => {
   const defaultOptions = parseArgs(["doctor", "--no-auth"]);
@@ -112,6 +128,497 @@ test("capabilities command parses read-only catalog options", () => {
 
   const auditAlias = parseArgs(["capabilities", "audit"]);
   assert.equal(auditAlias.capabilitiesAction, "acceptance");
+});
+
+test("governance project-design command parses core design read model", () => {
+  const options = parseArgs(["governance", "project-design", "--state-root", ".runtime/state"]);
+
+  assert.equal(options.command, "governance");
+  assert.equal(options.governanceAction, "project-design");
+  assert.equal(options.stateRoot, ".runtime/state");
+
+  const auditSeed = parseArgs([
+    "governance",
+    "project-design",
+    "--audit-seed",
+    "verification_scope"
+  ]);
+  assert.equal(auditSeed.command, "governance");
+  assert.equal(auditSeed.governanceAction, "project-design");
+  assert.equal(auditSeed.projectDesignAuditSeedId, "verification_scope");
+
+  const artifact = parseArgs([
+    "governance",
+    "project-design",
+    "--artifact",
+    "ga_design_artifact_iteration_contract_1"
+  ]);
+  assert.equal(artifact.command, "governance");
+  assert.equal(artifact.governanceAction, "project-design");
+  assert.equal(artifact.projectDesignArtifactRef, "ga_design_artifact_iteration_contract_1");
+});
+
+test("iteration audit seed evidence status stays conservative before outcome evidence exists", () => {
+  const seed = {
+    id: "verification_scope",
+    phase_id: "verification_review",
+    requirement: "Match verification evidence to the scope of the completion claim.",
+    evidence_needed: ["targeted checks cover the changed behavior"],
+    reject_if: ["a narrow command is used to prove a broader capability claim"]
+  } as const;
+
+  const missingOutcome = buildIterationAuditSeedEvidenceStatus(
+    seed,
+    { outcome_status: "not_recorded" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      runtime_iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: []
+    }
+  );
+  assert.equal(missingOutcome.evidence_status, "missing_outcome");
+  assert.equal(missingOutcome.missing.includes("outcome_record"), true);
+  assert.equal(missingOutcome.evidence_counts.runtime_iteration_verification_commands, 1);
+  assert.equal(missingOutcome.manual_review_required, true);
+
+  const readyForReview = buildIterationAuditSeedEvidenceStatus(
+    seed,
+    { outcome_status: "verified" },
+    {
+      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_verification_commands: ["pnpm run check"],
+      outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
+      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"]
+    }
+  );
+  assert.equal(readyForReview.evidence_status, "ready_for_manual_review");
+  assert.equal(readyForReview.missing.length, 0);
+  assert.equal(readyForReview.evidence_counts.runtime_iteration_verification_commands, 0);
+  assert.match(readyForReview.review_note, /does not prove/);
+});
+
+test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {
+  const covered = buildIterationAuditPlanRefCoverage(
+    [
+      "self-evolution/iterations/iteration_contract_open.json",
+      "self-evolution/iterations/iteration_contract_source.json",
+      "packages/core/src/ga_project_design.ts",
+      "tests/ga_project_design.test.ts"
+    ],
+    {
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      source_ref: "self-evolution/iterations/iteration_contract_source.json",
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      outcome: {
+        evidence_refs: ["tests/ga_project_design.test.ts"]
+      }
+    } as Parameters<typeof buildIterationAuditPlanRefCoverage>[1]
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.plan_ref_count, 4);
+  assert.equal(covered.covered_ref_count, 4);
+  assert.deepEqual(covered.missing_refs, []);
+  assert.match(covered.boundary, /does not read file bodies or prove completion/);
+
+  const missing = buildIterationAuditPlanRefCoverage(
+    [
+      "self-evolution/iterations/iteration_contract_open.json",
+      "docs/RUNTIME_CONTRACT.md"
+    ],
+    {
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      evidence_refs: [],
+      verification_commands: []
+    } as Parameters<typeof buildIterationAuditPlanRefCoverage>[1]
+  );
+  assert.equal(missing.status, "missing_refs");
+  assert.equal(missing.covered_ref_count, 1);
+  assert.deepEqual(missing.missing_refs, ["docs/RUNTIME_CONTRACT.md"]);
+});
+
+test("iteration audit refs include source and outcome evidence refs", () => {
+  const refs = buildIterationAuditRefs(
+    [
+      "docs/RUNTIME_CONTRACT.md",
+      "tests/ga_project_design.test.ts"
+    ],
+    {
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      source_ref: "self-evolution/iterations/iteration_contract_source.json",
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      outcome: {
+        evidence_refs: ["tests/ga_project_design.test.ts"]
+      }
+    } as Parameters<typeof buildIterationAuditRefs>[1]
+  );
+
+  assert.deepEqual(refs, [
+    "self-evolution/iterations/iteration_contract_open.json",
+    "self-evolution/iterations/iteration_contract_source.json",
+    "packages/core/src/ga_project_design.ts",
+    "tests/ga_project_design.test.ts",
+    "docs/RUNTIME_CONTRACT.md"
+  ]);
+});
+
+test("iteration audit verification command coverage compares required commands to declared commands", () => {
+  const covered = buildIterationAuditVerificationCommandCoverage(
+    [
+      "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+      "pnpm run check"
+    ],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [
+        "pnpm run runtime -- governance scorecard --state-root .runtime/state"
+      ],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: ["pnpm run check"]
+    }
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.required_command_count, 2);
+  assert.equal(covered.covered_command_count, 2);
+  assert.deepEqual(covered.missing_commands, []);
+  assert.match(covered.boundary, /does not execute commands or prove completion/);
+
+  const missing = buildIterationAuditVerificationCommandCoverage(
+    [
+      "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+      "pnpm run check"
+    ],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [
+        "pnpm run runtime -- governance scorecard --state-root .runtime/state"
+      ],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: []
+    }
+  );
+  assert.equal(missing.status, "missing_commands");
+  assert.equal(missing.covered_command_count, 1);
+  assert.deepEqual(missing.missing_commands, ["pnpm run check"]);
+});
+
+test("iteration audit outcome verification command coverage ignores declared iteration commands", () => {
+  const missingOutcome = buildIterationAuditOutcomeVerificationCommandCoverage(
+    [
+      "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+      "pnpm run check"
+    ],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [
+        "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+        "pnpm run check"
+      ],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: []
+    }
+  );
+  assert.equal(missingOutcome.status, "missing_outcome_commands");
+  assert.equal(missingOutcome.covered_command_count, 0);
+  assert.deepEqual(missingOutcome.missing_commands, [
+    "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+    "pnpm run check"
+  ]);
+  assert.match(missingOutcome.boundary, /outcome verification command refs only/);
+
+  const covered = buildIterationAuditOutcomeVerificationCommandCoverage(
+    [
+      "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+      "pnpm run check"
+    ],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [
+        "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+        "pnpm run check"
+      ]
+    }
+  );
+  assert.equal(covered.status, "covered");
+  assert.equal(covered.covered_command_count, 2);
+  assert.deepEqual(covered.missing_commands, []);
+});
+
+test("iteration audit completion gate blocks before outcome evidence and coverage are present", () => {
+  const blocked = buildIterationAuditCompletionGate(
+    { outcome_status: "not_recorded" },
+    { outcome_evidence_refs: [] },
+    { status: "covered" },
+    { status: "missing_outcome_commands" }
+  );
+  assert.equal(blocked.status, "blocked");
+  assert.deepEqual(blocked.blockers, [
+    "outcome_record",
+    "outcome_verification_command_coverage"
+  ]);
+  assert.match(blocked.boundary, /does not approve seeds or prove completion/);
+
+  const partial = buildIterationAuditCompletionGate(
+    { outcome_status: "partial" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" }
+  );
+  assert.equal(partial.status, "blocked");
+  assert.deepEqual(partial.blockers, ["verified_outcome"]);
+
+  const ready = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" }
+  );
+  assert.equal(ready.status, "ready_for_manual_review");
+  assert.deepEqual(ready.blockers, []);
+});
+
+test("iteration audit verification coverage uses stable iteration commands for historical audits", () => {
+  const evidence = {
+    iteration_verification_commands: [
+      "pnpm run runtime -- governance project-design --artifact old --state-root <state-root>"
+    ],
+    runtime_iteration_verification_commands: [
+      "pnpm run runtime -- governance project-design --artifact old --state-root .runtime/state"
+    ]
+  };
+
+  assert.deepEqual(selectIterationAuditVerificationCoverageCommands(
+    "matching_open_iteration",
+    ["pnpm run runtime -- governance project-design --artifact current --state-root .runtime/state"],
+    evidence
+  ), ["pnpm run runtime -- governance project-design --artifact current --state-root .runtime/state"]);
+
+  assert.deepEqual(selectIterationAuditVerificationCoverageCommands(
+    "source_iteration_for_current_plan",
+    ["pnpm run runtime -- governance project-design --artifact current --state-root .runtime/state"],
+    evidence
+  ), ["pnpm run runtime -- governance project-design --artifact old --state-root .runtime/state"]);
+});
+
+test("iteration audit guidance carries core/basic verification entrypoints", () => {
+  const plan = {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    source_artifact_id: "ga_design_artifact_iteration_contract_source",
+    source_iteration_ref: "self-evolution/iterations/iteration_contract_source.json",
+    selection_checks: [
+      "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
+      "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
+    ],
+    verification_commands: [
+      "pnpm run runtime -- governance project-design --state-root <state-root>",
+      "pnpm run runtime -- governance scorecard --state-root <state-root>",
+      "pnpm run runtime -- governance iterations --state-root <state-root>",
+      "pnpm run runtime -- service health --target im --state-root <state-root>",
+      "pnpm run check"
+    ],
+    layer_decision: {
+      selected_layer: "core_runtime",
+      selected_owner_surface: "ga_project_design",
+      core_identity: "recurring_ga_project_design",
+      application_boundaries: [
+        "external tools and adapters stay application slices unless a reusable runtime contract is named"
+      ],
+      required_before_outcome: [
+        "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+        "pnpm run runtime -- service health --target im --state-root <state-root>",
+        "pnpm run check"
+      ]
+    },
+    iteration_record_status: {
+      status: "open_iteration_available",
+      id: "iteration_contract_open",
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      audit_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root <state-root>"
+    }
+  };
+  const guidance = buildIterationAuditGuidance(plan);
+
+  assert.equal(guidance.core_identity, "recurring_ga_project_design");
+  assert.equal(guidance.selected_layer, "core_runtime");
+  assert.equal(guidance.guidance_scope, "current_plan_context");
+  assert.deepEqual(guidance.verification_entrypoints, [
+    "project-design",
+    "scorecard",
+    "iterations",
+    "service-health",
+    "check"
+  ]);
+  assert.equal(guidance.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
+  assert.equal(guidance.verification_commands.some((command) => command.includes("service health")), true);
+  assert.equal(guidance.application_boundaries[0]?.includes("application slices"), true);
+  assert.equal(guidance.iteration_record_status.id, "iteration_contract_open");
+  assert.match(guidance.boundary, /does not execute checks/);
+
+  const sourceGuidance = buildIterationAuditGuidance(
+    plan,
+    {
+      id: "iteration_contract_source",
+      ref: "self-evolution/iterations/iteration_contract_source.json",
+      source_ref: "self-evolution/iterations/iteration_contract_parent.json",
+      proposed_slice: "completed_source_slice",
+      outcome_status: "verified"
+    },
+    ".runtime/state"
+  );
+  assert.equal(sourceGuidance.guidance_scope, "source_iteration_for_current_plan");
+  assert.equal(sourceGuidance.audited_iteration?.id, "iteration_contract_source");
+  assert.equal(sourceGuidance.audited_iteration?.source_ref, "self-evolution/iterations/iteration_contract_parent.json");
+  assert.equal(sourceGuidance.iteration_record_status.id, "iteration_contract_source");
+  assert.equal(sourceGuidance.iteration_record_status.status, "outcome_recorded");
+  assert.equal(sourceGuidance.iteration_record_status.outcome_status, "verified");
+  assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("--iteration iteration_contract_source --audit-seed all")), true);
+  assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<iteration-ref>")), false);
+  assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("<state-root>")), false);
+  assert.equal(sourceGuidance.required_before_outcome.some((command) => command.includes("--state-root .runtime/state")), true);
+  assert.equal(sourceGuidance.iteration_record_status.audit_command?.includes("--state-root .runtime/state"), true);
+  assert.notEqual(sourceGuidance.iteration_record_status.id, "iteration_contract_open");
+});
+
+test("iteration audit next command binds current state root", () => {
+  const openNext = buildIterationAuditNextCommand(
+    { id: "iteration_contract_open", outcome_status: "not_recorded" },
+    ".runtime/state"
+  );
+  assert.equal(openNext.includes("<state-root>"), false);
+  assert.equal(openNext, "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --state-root .runtime/state");
+
+  const verifiedNext = buildIterationAuditNextCommand(
+    { id: "iteration_contract_done", outcome_status: "verified" },
+    ".runtime/state"
+  );
+  assert.equal(verifiedNext.includes("<state-root>"), false);
+  assert.equal(verifiedNext, "pnpm run runtime -- governance iterations --iteration iteration_contract_done --state-root .runtime/state");
+});
+
+test("project design CLI packets bind current state root in next commands", () => {
+  const readModel = bindGaProjectDesignReadModelCommands({
+    next_core_basic_plan: {
+      scorecard_basis: [
+        "scorecard_command=pnpm run runtime -- governance scorecard --state-root <state-root>"
+      ],
+      verification_commands: [
+        "pnpm run runtime -- governance scorecard --state-root <state-root>"
+      ],
+      layer_decision: {
+        required_before_outcome: [
+          "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>"
+        ]
+      },
+      iteration_record_status: {
+        status: "open_iteration_available",
+        id: "iteration_contract_open",
+        inspect_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root <state-root>",
+        audit_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root <state-root>",
+        record_command: "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>"
+      },
+      next_iteration_seed: {
+        verification_commands: [
+          "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>"
+        ],
+        record_command: "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>"
+      },
+      next_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root <state-root>"
+    }
+  } as Parameters<typeof bindGaProjectDesignReadModelCommands>[0], ".runtime/state");
+
+  const plan = readModel.next_core_basic_plan;
+  assert.equal(plan?.next_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root .runtime/state");
+  assert.equal(plan?.iteration_record_status.audit_command?.includes("<state-root>"), false);
+  assert.equal(plan?.iteration_record_status.audit_command?.includes("--state-root .runtime/state"), true);
+  assert.equal(plan?.next_iteration_seed.record_command.includes("--state-root .runtime/state"), true);
+  assert.equal(plan?.layer_decision.required_before_outcome[0]?.includes("<iteration-ref>"), true);
+  assert.equal(plan?.layer_decision.required_before_outcome[0]?.includes("<state-root>"), false);
+  assert.equal(plan?.scorecard_basis[0], "scorecard_command=pnpm run runtime -- governance scorecard --state-root .runtime/state");
+
+  const packet = bindGaProjectDesignArtifactPacketCommands({
+    next_core_basic_plan: {
+      iteration_record_status: {
+        status: "not_recorded",
+        record_command: "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>"
+      },
+      next_command: "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>"
+    }
+  } as Parameters<typeof bindGaProjectDesignArtifactPacketCommands>[0], ".runtime/state");
+
+  assert.equal(packet.next_core_basic_plan?.next_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state");
+  assert.equal(packet.next_core_basic_plan?.iteration_record_status.record_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state");
+});
+
+test("iteration record CLI results bind inspect command state root", () => {
+  const recordResult = bindIterationRecordResultCommand({
+    action: "record-iteration",
+    created: true,
+    reused_existing: false,
+    iteration: { id: "iteration_contract_open" },
+    inspect_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root <state-root>",
+    boundary: "bounded iteration contract"
+  } as Parameters<typeof bindIterationRecordResultCommand>[0], ".runtime/state");
+  assert.equal(recordResult.inspect_command.includes("<state-root>"), false);
+  assert.equal(recordResult.inspect_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root .runtime/state");
+
+  const outcomeResult = bindIterationRecordResultCommand({
+    action: "record-iteration-outcome",
+    iteration: { id: "iteration_contract_done" },
+    inspect_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_done --state-root <state-root>",
+    boundary: "bounded iteration outcome"
+  } as Parameters<typeof bindIterationRecordResultCommand>[0], ".runtime/state");
+  assert.equal(outcomeResult.inspect_command.includes("<state-root>"), false);
+  assert.equal(outcomeResult.inspect_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_done --state-root .runtime/state");
+});
+
+test("iteration detail CLI output adds bound runtime verification commands", () => {
+  const detail = bindIterationDetailRuntimeCommands({
+    action: "iterations",
+    iteration: {
+      id: "iteration_contract_open",
+      ref: "self-evolution/iterations/iteration_contract_open.json",
+      proposed_slice: "core_ga_design_next_slice",
+      verification_commands: [
+        "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+        "pnpm run check"
+      ]
+    },
+    boundary: "bounded iteration detail"
+  } as Parameters<typeof bindIterationDetailRuntimeCommands>[0], ".runtime/state");
+
+  assert.equal(detail.iteration.verification_commands[0]?.includes("<state-root>"), true);
+  assert.deepEqual(detail.runtime_verification_commands, [
+    "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root .runtime/state",
+    "pnpm run check"
+  ]);
+  assert.match(detail.runtime_command_boundary, /stored iteration verification_commands remain reusable templates/);
+});
+
+test("iteration audit evidence adds bound runtime verification commands", () => {
+  const evidence = buildIterationAuditEvidenceAvailable({
+    id: "iteration_contract_open",
+    ref: "self-evolution/iterations/iteration_contract_open.json",
+    proposed_slice: "core_ga_design_next_slice",
+    evidence_refs: ["packages/core/src/ga_project_design.ts"],
+    verification_commands: [
+      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+      "pnpm run check"
+    ]
+  } as Parameters<typeof buildIterationAuditEvidenceAvailable>[0], ".runtime/state");
+
+  assert.equal(evidence.iteration_verification_commands[0]?.includes("<state-root>"), true);
+  assert.deepEqual(evidence.runtime_iteration_verification_commands, [
+    "pnpm run runtime -- governance iterations --iteration iteration_contract_open --audit-seed all --state-root .runtime/state",
+    "pnpm run check"
+  ]);
+  assert.deepEqual(evidence.outcome_evidence_refs, []);
 });
 
 test("workspace status command parses read-only git diagnostic options", () => {
@@ -347,6 +854,50 @@ test("memory command parses search and session options", () => {
   assert.equal(working.workingCheckpointRef, "memory/working/current.json");
   assert.equal(working.stateRoot, ".runtime/state");
 
+  const dream = parseArgs([
+    "memory",
+    "dream",
+    "--limit",
+    "5"
+  ]);
+  assert.equal(dream.command, "memory");
+  assert.equal(dream.memoryAction, "dream");
+  assert.equal(dream.limit, 5);
+
+  const dreams = parseArgs([
+    "memory",
+    "dreams",
+    "--dream",
+    "dream_1"
+  ]);
+  assert.equal(dreams.command, "memory");
+  assert.equal(dreams.memoryAction, "dreams");
+  assert.equal(dreams.dreamRef, "dream_1");
+
+  const proposal = parseArgs([
+    "memory",
+    "propose-candidate",
+    "--scope",
+    "self_recognition",
+    "--summary",
+    "Core ability boundary",
+    "--content",
+    "Core ability content",
+    "--rationale",
+    "Operator correction",
+    "--artifact-ref",
+    "CONTEXT.md",
+    "--artifact-ref",
+    "docs/RUNTIME_CONTRACT.md"
+  ]);
+  assert.equal(proposal.command, "memory");
+  assert.equal(proposal.memoryAction, "propose-candidate");
+  assert.equal(proposal.memoryCandidateScope, "self_recognition");
+  assert.equal(proposal.memoryCandidateSummary, "Core ability boundary");
+  assert.equal(proposal.memoryCandidateContent, "Core ability content");
+  assert.equal(proposal.memoryCandidateRationale, "Operator correction");
+  assert.deepEqual(proposal.memoryCandidateArtifactRefs, ["CONTEXT.md", "docs/RUNTIME_CONTRACT.md"]);
+
   const candidates = parseArgs([
     "memory",
     "candidates",
@@ -444,6 +995,169 @@ test("governance status command parses scoped status options", () => {
   assert.equal(evolution.governanceAction, "evolution");
   assert.equal(evolution.limit, 2);
   assert.equal(evolution.stateRoot, ".runtime/state");
+
+  const scorecard = parseArgs([
+    "governance",
+    "scorecard",
+    "--limit",
+    "3"
+  ]);
+  assert.equal(scorecard.command, "governance");
+  assert.equal(scorecard.governanceAction, "scorecard");
+  assert.equal(scorecard.limit, 3);
+
+  const experts = parseArgs([
+    "governance",
+    "experts",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(experts.command, "governance");
+  assert.equal(experts.governanceAction, "experts");
+  assert.equal(experts.stateRoot, ".runtime/state");
+
+  const expertGate = parseArgs([
+    "governance",
+    "experts",
+    "--gate",
+    "core_boundary_review"
+  ]);
+  assert.equal(expertGate.command, "governance");
+  assert.equal(expertGate.governanceAction, "experts");
+  assert.equal(expertGate.expertGateId, "core_boundary_review");
+
+  const iterations = parseArgs([
+    "governance",
+    "iterations",
+    "--iteration",
+    "iteration_contract_1",
+    "--limit",
+    "1",
+    "--audit-seed",
+    "verification_scope"
+  ]);
+  assert.equal(iterations.command, "governance");
+  assert.equal(iterations.governanceAction, "iterations");
+  assert.equal(iterations.iterationRef, "iteration_contract_1");
+  assert.equal(iterations.limit, 1);
+  assert.equal(iterations.projectDesignAuditSeedId, "verification_scope");
+
+  const iterationsAllAuditSeeds = parseArgs([
+    "governance",
+    "iterations",
+    "--iteration",
+    "iteration_contract_1",
+    "--audit-seed",
+    "all"
+  ]);
+  assert.equal(iterationsAllAuditSeeds.command, "governance");
+  assert.equal(iterationsAllAuditSeeds.governanceAction, "iterations");
+  assert.equal(iterationsAllAuditSeeds.iterationRef, "iteration_contract_1");
+  assert.equal(iterationsAllAuditSeeds.projectDesignAuditSeedId, "all");
+
+  const iteration = parseArgs([
+    "governance",
+    "record-iteration",
+    "--summary",
+    "Record current work as a core iteration.",
+    "--layer",
+    "core_runtime",
+    "--owner-surface",
+    "runtime_contract",
+    "--proposed-slice",
+    "self_evolution_iteration_contract",
+    "--iteration-source-ref",
+    "memory/dreams/dream_core.json",
+    "--evidence-ref",
+    "packages/core/src/self_evolution_scorecard.ts",
+    "--verification-command",
+    "pnpm run check",
+    "--non-goal",
+    "no scheduler",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(iteration.command, "governance");
+  assert.equal(iteration.governanceAction, "record-iteration");
+  assert.equal(iteration.iterationSummary, "Record current work as a core iteration.");
+  assert.equal(iteration.iterationLayer, "core_runtime");
+  assert.equal(iteration.iterationOwnerSurface, "runtime_contract");
+  assert.equal(iteration.iterationProposedSlice, "self_evolution_iteration_contract");
+  assert.equal(iteration.iterationSourceRef, "memory/dreams/dream_core.json");
+  assert.deepEqual(iteration.iterationEvidenceRefs, ["packages/core/src/self_evolution_scorecard.ts"]);
+  assert.deepEqual(iteration.iterationVerificationCommands, ["pnpm run check"]);
+  assert.deepEqual(iteration.iterationNonGoals, ["no scheduler"]);
+  assert.equal(iteration.stateRoot, ".runtime/state");
+
+  const iterationFromPlan = parseArgs([
+    "governance",
+    "record-iteration",
+    "--from-project-design-plan",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(iterationFromPlan.command, "governance");
+  assert.equal(iterationFromPlan.governanceAction, "record-iteration");
+  assert.equal(iterationFromPlan.iterationFromProjectDesignPlan, true);
+  assert.equal(iterationFromPlan.stateRoot, ".runtime/state");
+
+  const iterationOutcome = parseArgs([
+    "governance",
+    "record-iteration-outcome",
+    "--iteration",
+    "iteration_contract_1",
+    "--outcome-status",
+    "verified",
+    "--summary",
+    "Verified the bounded core iteration.",
+    "--evidence-ref",
+    "tests/self_evolution_iterations.test.ts",
+    "--verification-command",
+    "pnpm run check",
+    "--next-move",
+    "Open the next bounded core/basic slice.",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(iterationOutcome.command, "governance");
+  assert.equal(iterationOutcome.governanceAction, "record-iteration-outcome");
+  assert.equal(iterationOutcome.iterationRef, "iteration_contract_1");
+  assert.equal(iterationOutcome.iterationOutcomeStatus, "verified");
+  assert.equal(iterationOutcome.iterationSummary, "Verified the bounded core iteration.");
+  assert.deepEqual(iterationOutcome.iterationEvidenceRefs, ["tests/self_evolution_iterations.test.ts"]);
+  assert.deepEqual(iterationOutcome.iterationVerificationCommands, ["pnpm run check"]);
+  assert.deepEqual(iterationOutcome.iterationNextMoves, ["Open the next bounded core/basic slice."]);
+  assert.equal(iterationOutcome.stateRoot, ".runtime/state");
+
+  const correction = parseArgs([
+    "governance",
+    "record-correction",
+    "--summary",
+    "Correct core capability classification.",
+    "--owner-surface",
+    "runtime_contract",
+    "--proposed-slice",
+    "capability_self_recognition_guard",
+    "--correction-source-ref",
+    "CONTEXT.md",
+    "--evidence-ref",
+    ".trellis/tasks/217-capability-layer-classification-guard.md",
+    "--evidence-ref",
+    "packages/core/src/capabilities.ts",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(correction.command, "governance");
+  assert.equal(correction.governanceAction, "record-correction");
+  assert.equal(correction.correctionSummary, "Correct core capability classification.");
+  assert.equal(correction.correctionOwnerSurface, "runtime_contract");
+  assert.equal(correction.correctionProposedSlice, "capability_self_recognition_guard");
+  assert.equal(correction.correctionSourceRef, "CONTEXT.md");
+  assert.deepEqual(correction.correctionEvidenceRefs, [
+    ".trellis/tasks/217-capability-layer-classification-guard.md",
+    "packages/core/src/capabilities.ts"
+  ]);
+  assert.equal(correction.stateRoot, ".runtime/state");
 
   const decision = parseArgs([
     "governance",

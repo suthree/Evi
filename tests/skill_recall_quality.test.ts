@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { recallSkills } from "../packages/core/src/recall.js";
+import { findDuplicateRecalledSkill, recallSkills, type SkillRecallHit } from "../packages/core/src/recall.js";
+import type { SOPDraft } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("skill recall lowers ranking for recent failed selected skill outcomes", async () => {
@@ -65,6 +66,81 @@ test("skill recall gives a bounded bonus for verified passed outcomes", async ()
   }
 });
 
+test("duplicate skill detection ignores generic vault-promotion overlap", () => {
+  const sop = sopDraft({
+    title: "Draft SOP for self-evolution gap: capability_self_recognition_guard",
+    trigger: "Use when operator corrections distinguish core GA project design from application tool adapters.",
+    procedure: [
+      "Inspect the operator correction gap.",
+      "Confirm Nasdaq data and Xiaohongshu MCP are application slices, not core runtime capability.",
+      "Keep SOP drafting, audit, promotion, and memory updates behind confirmation gates."
+    ],
+    verification: "Verify capability layers and governance gaps still expose the correction.",
+    required_tools: ["governance.gaps", "review.draft-sop", "review.audit-sop"]
+  });
+
+  const hit = skillHit({
+    name: "verify-local-vault-promotion-loop-from-docs",
+    description: "Run this SOP when a task asks the agent to verify the local active vault-backed SOP-to-skill promotion loop using repository documentation and no external publication."
+  });
+
+  assert.equal(findDuplicateRecalledSkill(sop, [hit]), null);
+});
+
+test("duplicate skill detection requires specific skill-name overlap for fuzzy matches", () => {
+  const sop = sopDraft({
+    title: "Draft SOP for self-evolution gap: verified_iteration_outcome_sop_candidate",
+    trigger: "Use when verified iteration outcomes need GA project-design artifact review.",
+    procedure: [
+      "Inspect the verified iteration outcome.",
+      "Confirm derived project-design artifacts stay read-only.",
+      "Keep draft, audit, and promote gates explicit."
+    ],
+    verification: "Verify governance project-design still exposes the derived artifact.",
+    required_tools: ["governance.project-design", "review.draft-sop", "review.audit-sop"]
+  });
+
+  const hit = skillHit({
+    name: "capability-self-recognition-guard",
+    description: "Use when operator corrections distinguish core GA project design from application tool adapters and keep self-evolution gates explicit."
+  });
+
+  assert.equal(findDuplicateRecalledSkill(sop, [hit]), null);
+});
+
+test("duplicate skill detection keeps fuzzy protection when the skill name matches the SOP slice", () => {
+  const sop = sopDraft({
+    title: "Draft SOP for self-evolution gap: capability_self_recognition_guard",
+    trigger: "Use when capability self recognition guard corrections recur.",
+    procedure: ["Inspect the capability self recognition guard gap."],
+    verification: "Verify capability self recognition guard evidence still applies.",
+    required_tools: ["governance.gaps"]
+  });
+
+  const hit = skillHit({
+    name: "capability-self-recognition-guard",
+    description: "Use when capability self recognition guard corrections recur."
+  });
+
+  assert.equal(findDuplicateRecalledSkill(sop, [hit])?.name, "capability-self-recognition-guard");
+});
+
+test("duplicate skill detection keeps exact-name promotion protection", () => {
+  const sop = sopDraft({
+    title: "Review runtime failures",
+    trigger: "Use when runtime failures need review before promotion.",
+    procedure: ["Review runtime failure evidence."],
+    verification: "Verify runtime failures were reviewed.",
+    required_tools: ["review.background"]
+  });
+  const hit = skillHit({
+    name: "review-runtime-failures",
+    description: "Review runtime failures before promotion."
+  });
+
+  assert.equal(findDuplicateRecalledSkill(sop, [hit])?.name, "review-runtime-failures");
+});
+
 async function writeSkill(store: AgentStore, name: string): Promise<void> {
   await store.writeRepoText(`vault/skills/${name}/SKILL.md`, [
     "---",
@@ -90,6 +166,49 @@ async function createFixture(): Promise<{
   return {
     store,
     cleanup: () => rm(root, { recursive: true, force: true })
+  };
+}
+
+function sopDraft(args: {
+  title: string;
+  trigger: string;
+  procedure: string[];
+  verification: string;
+  required_tools: string[];
+}): SOPDraft {
+  return {
+    id: "sop_test",
+    title: args.title,
+    trigger: args.trigger,
+    procedure: args.procedure,
+    required_tools: args.required_tools,
+    verification: args.verification,
+    failure_modes: [],
+    evidence_refs: [],
+    revision: 1,
+    status: "draft"
+  };
+}
+
+function skillHit(args: { name: string; description: string }): SkillRecallHit {
+  return {
+    name: args.name,
+    description: args.description,
+    instructions_ref: `vault/skills/${args.name}/SKILL.md`,
+    metadata_ref: `vault/registry/skills.jsonl#${args.name}`,
+    score: 20,
+    base_score: 20,
+    source: "personal",
+    quality: {
+      outcome_count: 0,
+      passed_count: 0,
+      attention_count: 0,
+      failed_count: 0,
+      blocked_count: 0,
+      skipped_count: 0,
+      score_adjustment: 0,
+      latest_outcome_ref: null
+    }
   };
 }
 

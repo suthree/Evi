@@ -27,6 +27,11 @@ export type ServiceRepoHeadReadStatus = "ok" | "missing" | "unreadable";
 export type ServiceDeploymentStatus = "current" | "stale" | "unknown";
 export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_generated" | "preflight_ok" | "published" | "blocked";
 
+export interface ServiceHealthLayerSummary {
+  status: ServiceHealthStatus;
+  reason_codes: string[];
+}
+
 export interface ServiceRuntimeBuildSummary {
   schema_version?: number;
   target?: string;
@@ -94,6 +99,11 @@ interface ManualFocusCoverage {
 export interface ServiceHealthResult {
   created_at: string;
   status: ServiceHealthStatus;
+  status_reasons: string[];
+  layers: {
+    runtime_substrate: ServiceHealthLayerSummary;
+    application_slices: ServiceHealthLayerSummary;
+  };
   boundary: string;
   refs: string[];
   im: {
@@ -300,6 +310,11 @@ export async function getServiceHealth(
   const result: ServiceHealthResult = {
     created_at: now.toISOString(),
     status: "unknown",
+    status_reasons: [],
+    layers: {
+      runtime_substrate: { status: "unknown", reason_codes: [] },
+      application_slices: { status: "unknown", reason_codes: [] }
+    },
     boundary: BOUNDARY,
     refs: [
       ...(heartbeat.exists ? [HEARTBEAT_REF] : []),
@@ -471,6 +486,11 @@ export async function getServiceHealth(
       resume_hint: stringField(pauseSignal.record, "resume_hint") ?? undefined
     }
   };
+  result.layers = serviceHealthLayers(result);
+  result.status_reasons = compactUnique([
+    ...result.layers.runtime_substrate.reason_codes,
+    ...result.layers.application_slices.reason_codes
+  ]);
   result.status = overallServiceHealth(result);
   return result;
 }
@@ -540,16 +560,52 @@ function serviceHeartbeatFreshness(
 function overallServiceHealth(result: ServiceHealthResult): ServiceHealthStatus {
   if (result.autonomy_pause.active) return "paused";
   if (result.im.heartbeat_freshness === "missing" || result.im.heartbeat_freshness === "invalid") return "unknown";
-  if (result.im.state !== "running") return "attention";
-  if (result.im.heartbeat_freshness === "stale") return "attention";
-  if (result.im.deployment.status === "stale") return "attention";
-  if (result.im.runtime_build?.source_is_dirty === true) return "attention";
-  if (result.review_tick.last_auto_action_status === "blocked") return "attention";
-  if (result.content_daily.current_step_freshness === "stale") return "attention";
-  if (residentLoopNeedsAttention(result.content_daily, result.autonomy_pause.active)) return "attention";
-  if (residentLoopNeedsAttention(result.content_feedback_refresh, result.autonomy_pause.active)) return "attention";
-  if (residentLoopNeedsAttention(result.content_creator_metrics, result.autonomy_pause.active)) return "attention";
+  if (result.layers.runtime_substrate.status === "attention" || result.layers.application_slices.status === "attention") return "attention";
   return "healthy";
+}
+
+function serviceHealthLayers(result: ServiceHealthResult): ServiceHealthResult["layers"] {
+  if (result.autonomy_pause.active) {
+    return {
+      runtime_substrate: { status: "paused", reason_codes: ["autonomy_pause_active"] },
+      application_slices: { status: "paused", reason_codes: ["autonomy_pause_active"] }
+    };
+  }
+  const runtimeReasons = runtimeSubstrateReasonCodes(result);
+  const applicationReasons = applicationSliceReasonCodes(result);
+  return {
+    runtime_substrate: {
+      status: result.im.heartbeat_freshness === "missing" || result.im.heartbeat_freshness === "invalid"
+        ? "unknown"
+        : runtimeReasons.length > 0 ? "attention" : "healthy",
+      reason_codes: runtimeReasons
+    },
+    application_slices: {
+      status: applicationReasons.length > 0 ? "attention" : "healthy",
+      reason_codes: applicationReasons
+    }
+  };
+}
+
+function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
+  return compactUnique([
+    result.im.heartbeat_freshness === "missing" ? "heartbeat_missing" : undefined,
+    result.im.heartbeat_freshness === "invalid" ? "heartbeat_invalid" : undefined,
+    result.im.state !== "running" ? "im_not_running" : undefined,
+    result.im.heartbeat_freshness === "stale" ? "heartbeat_stale" : undefined,
+    result.im.deployment.status === "stale" ? "deployment_stale" : undefined,
+    result.im.runtime_build?.source_is_dirty === true ? "runtime_build_dirty" : undefined,
+    result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
+  ]);
+}
+
+function applicationSliceReasonCodes(result: ServiceHealthResult): string[] {
+  return compactUnique([
+    result.content_daily.current_step_freshness === "stale" ? "content_daily_current_step_stale" : undefined,
+    residentLoopNeedsAttention(result.content_daily, result.autonomy_pause.active) ? "content_daily_loop_attention" : undefined,
+    residentLoopNeedsAttention(result.content_feedback_refresh, result.autonomy_pause.active) ? "content_feedback_refresh_loop_attention" : undefined,
+    residentLoopNeedsAttention(result.content_creator_metrics, result.autonomy_pause.active) ? "content_creator_metrics_loop_attention" : undefined
+  ]);
 }
 
 function serviceProgressFreshness(

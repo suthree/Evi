@@ -136,6 +136,59 @@ export interface MemoryCandidateExecutionResult {
   accepted: AcceptedSemanticMemory;
 }
 
+export interface ProposeMemoryCandidateResult {
+  candidate_ref: string;
+  candidate_markdown_ref: string;
+  evidence_event_id: string;
+  candidate: MemoryCandidate;
+}
+
+export async function proposeMemoryCandidate(
+  store: AgentStore,
+  args: {
+    scope?: string;
+    summary: string;
+    content: string;
+    rationale?: string;
+    artifactRefs?: string[];
+  }
+): Promise<ProposeMemoryCandidateResult> {
+  await store.ensureLayout();
+  const summary = limitText(requiredText(args.summary, "memory candidate summary"), 500);
+  const content = limitText(requiredText(args.content, "memory candidate content"), 6000);
+  const scope = limitText(args.scope?.trim() || "local", 120);
+  const rationale = limitText(args.rationale?.trim() || "Operator-proposed semantic memory candidate.", 1000);
+  const artifactRefs = compactRefs(args.artifactRefs ?? []).slice(0, 20);
+  const candidate: MemoryCandidate = {
+    id: newId("memory_proposal"),
+    action_type: "propose_memory",
+    status: "candidate",
+    scope,
+    summary,
+    content,
+    rationale,
+    artifact_refs: artifactRefs,
+    created_at: utcNow()
+  };
+  const root = `memory/semantic/candidates/${candidate.id}`;
+  const candidateRef = await store.writeJson(`${root}.json`, candidate);
+  const candidateMarkdownRef = await store.writeText(`${root}.md`, renderMemoryProposalMarkdown(candidate));
+  const event = evidenceEventSchema.parse({
+    session_id: candidate.id,
+    turn_id: candidate.id,
+    kind: "report",
+    summary: `Recorded memory proposal candidate: ${limitText(summary, 180)}`,
+    artifact_refs: compactRefs([candidateRef, candidateMarkdownRef, ...artifactRefs])
+  });
+  await store.appendJsonl("memory/episodes/events.jsonl", event);
+  return {
+    candidate_ref: candidateRef,
+    candidate_markdown_ref: candidateMarkdownRef,
+    evidence_event_id: event.id,
+    candidate
+  };
+}
+
 export async function listMemoryCandidates(
   store: AgentStore,
   args: { limit?: number } = {}
@@ -623,8 +676,47 @@ function renderAcceptedSemanticMemory(memory: AcceptedSemanticMemory): string {
   ].join("\n");
 }
 
+function renderMemoryProposalMarkdown(candidate: MemoryCandidate): string {
+  return [
+    "# Memory Proposal Candidate",
+    "",
+    `- id: ${candidate.id}`,
+    `- created_at: ${candidate.created_at}`,
+    `- status: ${candidate.status}`,
+    `- scope: ${candidate.scope}`,
+    `- rationale: ${candidate.rationale ?? ""}`,
+    `- summary: ${candidate.summary}`,
+    "",
+    "## Referenced Artifacts",
+    "",
+    ...(candidate.artifact_refs.length > 0 ? candidate.artifact_refs.map((ref) => `- ${ref}`) : ["- none"]),
+    "",
+    "## Proposed Memory",
+    "",
+    candidate.content,
+    "",
+    "## Boundary",
+    "",
+    "This candidate is state-only. It does not update durable memory, core files, SOPs, skills, confirmations, or the active vault."
+  ].join("\n");
+}
+
 function memoryCandidateConfirmationMarkdownRefFromJsonRef(value: string): string {
   return value.replace(/\.json$/, ".md");
+}
+
+function requiredText(value: string, label: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error(`${label} is required`);
+  return trimmed;
+}
+
+function compactRefs(refs: Array<string | null | undefined>): string[] {
+  return [...new Set(refs.map((ref) => ref?.trim()).filter((ref): ref is string => Boolean(ref)))];
+}
+
+function limitText(value: string, maxChars: number): string {
+  return value.length > maxChars ? `${value.slice(0, maxChars).trimEnd()}...` : value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

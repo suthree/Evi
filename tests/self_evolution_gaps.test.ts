@@ -11,8 +11,13 @@ import {
 } from "../packages/core/src/opportunity_backlog.js";
 import {
   getSelfEvolutionGap,
-  listSelfEvolutionGaps
+  listSelfEvolutionGaps,
+  recordOperatorCorrection
 } from "../packages/core/src/self_evolution_gaps.js";
+import {
+  recordSelfEvolutionIteration,
+  recordSelfEvolutionIterationOutcome
+} from "../packages/core/src/self_evolution_iterations.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import {
   recordContentImageEvidence,
@@ -55,6 +60,138 @@ test("self-evolution gaps derive external publish evidence gaps from content run
     assert.equal(byId.gap.ref, gap.ref);
     const bySource = await getSelfEvolutionGap(store, { gapRef: run.refs.run_ref });
     assert.equal(bySource.gap.id, gap.id);
+  } finally {
+    await rm(root.root, { recursive: true, force: true });
+  }
+});
+
+test("self-evolution gaps derive SOP candidates from operator corrections", async () => {
+  const root = await createFixture();
+  try {
+    const store = new AgentStore(root.repoRoot, root.stateRoot);
+
+    const recorded = await recordOperatorCorrection(store, {
+      summary: "Operator corrected capability classification: external tool usage is an application slice, while repeated GA project design is core capability.",
+      ownerSurface: "runtime_contract",
+      proposedSlice: "capability_self_recognition_guard",
+      sourceRef: "CONTEXT.md",
+      evidenceRefs: [".trellis/tasks/217-capability-layer-classification-guard.md"]
+    });
+
+    assert.equal(recorded.action, "record-correction");
+    assert.match(recorded.gap_id, /^gap_operator_correction_/);
+    assert.equal(recorded.boundary.includes("writes one bounded local state record only"), true);
+
+    const detail = await getSelfEvolutionGap(store, { gapRef: recorded.gap_id });
+    assert.equal(detail.gap.source, "operator_correction");
+    assert.equal(detail.gap.source_ref, recorded.correction.ref);
+    assert.equal(detail.gap.owner_surface, "runtime_contract");
+    assert.equal(detail.gap.proposed_slice, "capability_self_recognition_guard");
+    assert.equal(detail.gap.follow_up_kind, "sop_candidate");
+    assert.deepEqual(detail.gap.evidence_refs, [
+      recorded.correction.ref,
+      "CONTEXT.md",
+      ".trellis/tasks/217-capability-layer-classification-guard.md"
+    ]);
+    assert.equal(detail.gap.acceptance.some((item) => item.includes("SOP-candidate")), true);
+    assert.equal(detail.gap.non_goals.some((item) => item.includes("auto-promote")), true);
+
+    const backlog = await getOpportunityBacklog(store, { limit: 20 });
+    const item = backlog.items.find((entry) => entry.id === recorded.gap_id);
+    assert.ok(item);
+    assert.equal(item.kind, "self_evolution_gap");
+    assert.equal(item.action_kind, "draft_sop");
+    assert.equal(item.self_evolution_gap?.source, "operator_correction");
+    assert.equal(item.next_step.includes("review tick"), true);
+  } finally {
+    await rm(root.root, { recursive: true, force: true });
+  }
+});
+
+test("self-evolution gaps derive SOP candidates from verified iteration outcomes until drafted", async () => {
+  const root = await createFixture();
+  try {
+    const store = new AgentStore(root.repoRoot, root.stateRoot);
+    const recorded = await recordSelfEvolutionIteration(store, {
+      summary: "Persist verified outcomes through the SOP candidate gate.",
+      layer: "local_learning",
+      ownerSurface: "sop_skill_memory_loop",
+      proposedSlice: "verified_iteration_outcome_sop_candidate",
+      sourceRef: "memory/dreams/dream_iteration.json",
+      evidenceRefs: ["packages/core/src/self_evolution_iterations.ts"],
+      verificationCommands: ["pnpm run check"],
+      nonGoals: ["no active-vault write"]
+    });
+    await recordSelfEvolutionIterationOutcome(store, {
+      iterationRef: recorded.iteration.id,
+      status: "verified",
+      summary: "Verified outcome should be reusable through SOP candidate review.",
+      evidenceRefs: ["tests/self_evolution_gaps.test.ts"],
+      verificationCommands: ["pnpm exec tsx --test tests/self_evolution_gaps.test.ts"],
+      nextMoves: ["Materialize a state-only SOP candidate through review tick."]
+    });
+
+    const result = await listSelfEvolutionGaps(store, { limit: 20 });
+    const gap = result.gaps.find((item) => item.source === "iteration_outcome");
+    assert.ok(gap);
+    assert.equal(gap.source_ref, recorded.iteration.ref);
+    assert.equal(gap.owner_surface, "sop_skill_memory_loop");
+    assert.equal(gap.proposed_slice, "verified_iteration_outcome_sop_candidate");
+    assert.equal(gap.follow_up_kind, "sop_candidate");
+    assert.equal(gap.evidence_refs.includes(recorded.iteration.ref), true);
+    assert.equal(gap.evidence_refs.includes("tests/self_evolution_gaps.test.ts"), true);
+    assert.equal(gap.acceptance.some((item) => item.includes("SOP-candidate")), true);
+    assert.equal(gap.non_goals.some((item) => item.includes("active-vault")), true);
+
+    const backlog = await getOpportunityBacklog(store, { limit: 20 });
+    const item = backlog.items.find((entry) => entry.id === gap.id);
+    assert.ok(item);
+    assert.equal(item.action_kind, "draft_sop");
+    assert.equal(item.self_evolution_gap?.source, "iteration_outcome");
+    assert.equal(item.self_evolution_gap?.verification_commands.some((command) => command.includes("review tick")), true);
+
+    await store.writeJson("sop/drafts/sop_iteration_outcome.json", {
+      id: "sop_iteration_outcome",
+      title: "Verified iteration outcome SOP candidate",
+      trigger: "Use when a verified self-evolution outcome recurs.",
+      procedure: ["Inspect the iteration and verify the reusable pattern."],
+      required_tools: ["governance.iterations"],
+      verification: "The SOP cites the verified iteration evidence.",
+      failure_modes: ["Leave unpromoted if the iteration evidence is stale."],
+      evidence_refs: [recorded.iteration.ref],
+      revision: 1,
+      status: "draft"
+    });
+    const suppressed = await listSelfEvolutionGaps(store, { limit: 20 });
+    assert.equal(suppressed.gaps.some((item) => item.id === gap.id), false);
+  } finally {
+    await rm(root.root, { recursive: true, force: true });
+  }
+});
+
+test("self-evolution gaps suppress multi-expert scorecard work after the expert contract exists", async () => {
+  const root = await createFixture();
+  try {
+    const store = new AgentStore(root.repoRoot, root.stateRoot);
+
+    const beforeDream = await listSelfEvolutionGaps(store, { limit: 10 });
+    assert.equal(beforeDream.gaps.some((gap) => gap.source === "scorecard"), false);
+
+    await writeActiveDreamSnapshot(store);
+    const result = await listSelfEvolutionGaps(store, { limit: 10 });
+    const gap = result.gaps.find((item) => item.id === "gap_scorecard_multi_expert_orchestration_contract");
+    assert.equal(gap, undefined);
+
+    await assert.rejects(
+      () => getSelfEvolutionGap(store, { gapRef: "gap_scorecard_multi_expert_orchestration_contract" }),
+      /Self-evolution gap not found/
+    );
+
+    const backlog = await getOpportunityBacklog(store, { limit: 20 });
+    assert.equal(
+      backlog.items.some((entry) => entry.id === "gap_scorecard_multi_expert_orchestration_contract"),
+      false
+    );
   } finally {
     await rm(root.root, { recursive: true, force: true });
   }
@@ -266,7 +403,7 @@ test("self-evolution gaps derive stale daily source freshness gaps from content 
                   lastSalePrice: "$101.00",
                   netChange: "+1.00",
                   percentageChange: "+1.00%",
-                  lastTradeTimestamp: oldIso(80),
+                  lastTradeTimestamp: oldIso(160),
                   volume: "12,345"
                 },
                 marketStatus: "Closed"
@@ -435,7 +572,7 @@ test("self-evolution gaps keep older source-quality gaps when the later equivale
                   lastSalePrice: "$101.00",
                   netChange: "+1.00",
                   percentageChange: "+1.00%",
-                  lastTradeTimestamp: oldIso(80),
+                  lastTradeTimestamp: oldIso(160),
                   volume: "12,345"
                 },
                 marketStatus: "Closed"
@@ -1220,6 +1357,32 @@ async function rewriteContentRunTime(store: AgentStore, run: ContentRun, timesta
     ...run,
     created_at: timestamp,
     updated_at: timestamp
+  });
+}
+
+async function writeActiveDreamSnapshot(store: AgentStore): Promise<void> {
+  await store.writeJson("memory/dreams/dream_scorecard_gap.json", {
+    schema_version: 1,
+    id: "dream_scorecard_gap",
+    action_type: "dream_snapshot",
+    status: "active",
+    title: "Core self-evolution long-horizon plan",
+    summary: "Keep multi-expert orchestration as a planned core direction.",
+    created_at: "2026-07-06T00:00:00Z",
+    source_refs: ["packages/core/src/self_evolution_scorecard.ts"],
+    semantic_memory_refs: [],
+    backlog_refs: [],
+    axes: [{
+      id: "multi_expert_orchestration",
+      title: "Multi-expert orchestration",
+      status: "planned",
+      summary: "Future orchestration should split expert roles under bounded contracts.",
+      evidence_refs: ["packages/core/src/action_contracts.ts"],
+      next_moves: ["Define delegation contracts before adding expert personas."]
+    }],
+    horizons: [],
+    non_goals: ["Do not treat dream snapshots as completion evidence."],
+    boundary: "bounded dream context only"
   });
 }
 

@@ -1257,7 +1257,8 @@ export class BackgroundReviewRunner {
     const skillName = slugify(args.skillName ?? sop.title);
     const duplicateSkill = findDuplicateRecalledSkill(
       sop,
-      await recallSkills(this.store, `${sop.title}\n${sop.trigger}\n${sop.verification}`, 5, args.vaultRoot)
+      await recallSkills(this.store, `${sop.title}\n${sop.trigger}\n${sop.verification}`, 5, args.vaultRoot),
+      { skillName }
     );
     if (duplicateSkill) {
       if (sop.status !== "promoted") sop.status = "audited";
@@ -3067,7 +3068,8 @@ function buildProposals(
   const failureEvents = events.filter((event) => hasFailureSignal(event) && !selectedSkillEventIds.has(event.id));
   const sopEvents = events.filter(hasSopSignal);
   const skippedSkillEvents = events.filter((event) => /skipped skill promotion|already covers this sop/i.test(event.summary));
-  const reusedSkillChains = chainSummaries.filter((chain) => chain.latest_decision === "reused_skill" || chain.reuse_events > 0);
+  const reusedSkillChains = chainSummaries.filter((chain) => chain.latest_decision === "reused_skill");
+  const promotedReuseChains = chainSummaries.filter((chain) => chain.latest_decision === "promoted" && chain.reuse_events > 0);
   const auditedOpenChains = chainSummaries.filter((chain) => chain.latest_decision === "audited" && chain.audit_count > 0);
   const workingCheckpointProposal = workingCheckpoint ? buildWorkingCheckpointProposal(workingCheckpoint) : null;
 
@@ -3121,7 +3123,7 @@ function buildProposals(
       evidence_refs: chainEvidenceRefs(reusedSkillChains),
       next_action: "Run review chain for the cited SOP(s); keep reuse if the duplicate skill still covers the trigger, otherwise revise skill metadata or the SOP draft."
     });
-  } else if (skippedSkillEvents.length > 0) {
+  } else if (skippedSkillEvents.length > 0 && promotedReuseChains.length === 0) {
     proposals.push({
       id: newId("review_proposal"),
       type: "skill_revision",

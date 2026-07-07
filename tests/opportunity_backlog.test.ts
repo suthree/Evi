@@ -5,6 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import type { ContextBundleManifest } from "../packages/core/src/context.js";
 import { decideOpportunity, getOpportunityBacklog } from "../packages/core/src/opportunity_backlog.js";
+import {
+  recordSelfEvolutionIteration,
+  recordSelfEvolutionIterationOutcome
+} from "../packages/core/src/self_evolution_iterations.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("opportunity backlog ranks local self-evolution attention without executing work", async () => {
@@ -208,6 +212,71 @@ test("opportunity backlog ranks local self-evolution attention without executing
     assert.equal(reopenedItem?.opportunity_decision?.status, "open");
     assert.equal(reopenedItem?.opportunity_decision?.ref, "autonomy/opportunity-decisions.jsonl#2");
     assert.match(reopenedItem?.summary ?? "", /Operator reopened it/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("opportunity backlog demotes core/basic iteration outcome SOP follow-ups", async () => {
+  const fixture = await createFixture();
+  try {
+    const coreIteration = await recordSelfEvolutionIteration(fixture.store, {
+      summary: "Keep cumulative GA project design ahead of SOP follow-up churn.",
+      layer: "core_runtime",
+      ownerSurface: "ga_project_design",
+      proposedSlice: "next_core_basic_plan",
+      sourceRef: "self-evolution/scorecard/latest.json",
+      evidenceRefs: ["packages/core/src/ga_project_design.ts"],
+      verificationCommands: ["pnpm run check"],
+      nonGoals: ["do not treat application tools as core runtime identity"]
+    });
+    await recordSelfEvolutionIterationOutcome(fixture.store, {
+      iterationRef: coreIteration.iteration.id,
+      status: "verified",
+      summary: "The GA plan was verified and should remain the core/basic planning source.",
+      evidenceRefs: ["tests/ga_project_design.test.ts"],
+      verificationCommands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      nextMoves: ["Use the plan before drafting SOP follow-ups."]
+    });
+
+    const localIteration = await recordSelfEvolutionIteration(fixture.store, {
+      summary: "Preserve reusable local-learning lessons as SOP candidates.",
+      layer: "local_learning",
+      ownerSurface: "sop_skill_memory_loop",
+      proposedSlice: "verified_iteration_outcome_sop_candidate",
+      sourceRef: "memory/dreams/dream_iteration.json",
+      evidenceRefs: ["packages/core/src/self_evolution_iterations.ts"],
+      verificationCommands: ["pnpm run check"],
+      nonGoals: ["do not write active-vault skills automatically"]
+    });
+    await recordSelfEvolutionIterationOutcome(fixture.store, {
+      iterationRef: localIteration.iteration.id,
+      status: "verified",
+      summary: "The reusable lesson should still be available for review tick SOP drafting.",
+      evidenceRefs: ["tests/opportunity_backlog.test.ts"],
+      verificationCommands: ["pnpm exec tsx --test tests/opportunity_backlog.test.ts"],
+      nextMoves: ["Route through review tick before drafting."]
+    });
+
+    const backlog = await getOpportunityBacklog(fixture.store, { limit: 20 });
+    const coreItem = backlog.items.find((item) =>
+      item.self_evolution_gap?.source_ref === coreIteration.iteration.ref
+    );
+    const localItem = backlog.items.find((item) =>
+      item.self_evolution_gap?.source_ref === localIteration.iteration.ref
+    );
+    if (!coreItem) throw new Error("expected core/basic iteration outcome backlog item");
+    if (!localItem) throw new Error("expected local-learning iteration outcome backlog item");
+
+    assert.equal(coreItem.action_kind, "draft_sop");
+    assert.equal(localItem.action_kind, "draft_sop");
+    assert.equal(coreItem.score < localItem.score, true);
+    assert.equal(coreItem.score_reasons.includes("source_iteration_layer=core_runtime"), true);
+    assert.equal(coreItem.score_reasons.includes("core_basic_iteration_outcome_followup=demoted"), true);
+    assert.equal(localItem.score_reasons.includes("source_iteration_layer=local_learning"), true);
+    assert.equal(localItem.score_reasons.includes("core_basic_iteration_outcome_followup=demoted"), false);
+    assert.match(coreItem.next_step, /low-priority learning follow-up/);
+    assert.equal(backlog.items.indexOf(localItem) < backlog.items.indexOf(coreItem), true);
   } finally {
     await fixture.cleanup();
   }

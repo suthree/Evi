@@ -5,6 +5,7 @@ import {
 } from "./selected_skill_outcome_history.js";
 import { recordRegistrySkillUsage, scanSkillRegistry, type SkillRegistryEntry } from "./skill_registry.js";
 import type { SkillResolverLike } from "./skill_resolver.js";
+import { slugify } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const RECENT_SELECTED_SKILL_OUTCOME_LIMIT = 50;
@@ -13,6 +14,48 @@ const ATTENTION_OUTCOME_PENALTY = 8;
 const PASSED_OUTCOME_BONUS = 2;
 const MIN_QUALITY_ADJUSTMENT = -16;
 const MAX_QUALITY_ADJUSTMENT = 4;
+const GENERIC_DUPLICATE_TOKENS = new Set([
+  "active",
+  "agent",
+  "adapter",
+  "adapters",
+  "audit",
+  "audited",
+  "candidate",
+  "command",
+  "capabilities",
+  "capability",
+  "core",
+  "docs",
+  "documentation",
+  "draft",
+  "drafted",
+  "evidence",
+  "evolution",
+  "external",
+  "gap",
+  "local",
+  "loop",
+  "publication",
+  "procedure",
+  "promote",
+  "promoted",
+  "promotion",
+  "review",
+  "self",
+  "skill",
+  "skills",
+  "sop",
+  "state",
+  "tool",
+  "tools",
+  "use",
+  "using",
+  "vault",
+  "verification",
+  "verify",
+  "when"
+]);
 
 export interface SkillRecallQuality {
   outcome_count: number;
@@ -81,7 +124,11 @@ export async function recordSkillUsage(store: AgentStore, hit: SkillRecallHit, v
   return updated ? { usage: updated.usage } : null;
 }
 
-export function findDuplicateRecalledSkill(sop: SOPDraft, hits: SkillRecallHit[]): SkillRecallHit | null {
+export function findDuplicateRecalledSkill(
+  sop: SOPDraft,
+  hits: SkillRecallHit[],
+  args: { skillName?: string } = {}
+): SkillRecallHit | null {
   const candidate = [
     sop.title,
     sop.trigger,
@@ -89,14 +136,20 @@ export function findDuplicateRecalledSkill(sop: SOPDraft, hits: SkillRecallHit[]
     ...sop.procedure,
     ...sop.required_tools
   ].join(" ");
+  const expectedName = slugify(args.skillName ?? sop.title);
 
   let best: { hit: SkillRecallHit; score: number } | null = null;
   for (const hit of hits) {
+    if (hit.name === expectedName || hit.instructions_ref.endsWith(`/skills/${expectedName}/SKILL.md`)) {
+      return hit;
+    }
     const score = overlapScore(candidate, `${hit.name} ${hit.description}`);
-    if (!best || score > best.score) best = { hit, score };
+    const specificScore = specificOverlapScore(candidate, `${hit.name} ${hit.description}`);
+    const nameSpecificScore = specificOverlapScore(candidate, hit.name);
+    if (score >= 12 && specificScore >= 16 && nameSpecificScore >= 4 && (!best || score > best.score)) best = { hit, score };
   }
 
-  return best && best.score >= 12 ? best.hit : null;
+  return best?.hit ?? null;
 }
 
 function scoreRegistrySkill(query: string, skill: SkillRegistryEntry): number {
@@ -213,6 +266,20 @@ function overlapScore(left: string, right: string): number {
     if (rightTokens.has(token)) score += token.length <= 3 ? 2 : 4;
   }
   return score;
+}
+
+function specificOverlapScore(left: string, right: string): number {
+  const leftTokens = tokenize(left).filter(isSpecificDuplicateToken);
+  const rightTokens = new Set(tokenize(right).filter(isSpecificDuplicateToken));
+  let score = 0;
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) score += token.length <= 3 ? 2 : 4;
+  }
+  return score;
+}
+
+function isSpecificDuplicateToken(token: string): boolean {
+  return !GENERIC_DUPLICATE_TOKENS.has(token);
 }
 
 function tokenize(text: string): string[] {

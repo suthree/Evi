@@ -857,9 +857,11 @@ test("operator capabilities command replies with local capability catalog withou
     assert.equal(transport.sent.length > 0, true);
     const fullText = transport.sent.map((item) => item.text).join("\n");
     assert.match(fullText, /Local Runtime capabilities/);
-    assert.match(fullText, /Core tools/);
+    assert.match(fullText, /Core tools \(implemented, layer: core_runtime\)/);
     assert.match(fullText, /file\.read/);
     assert.match(fullText, /SOP self-evolution/);
+    assert.match(fullText, /Content planning and evidence \[application_slice\]/);
+    assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
     assert.match(fullText, /Feishu/);
     assert.match(fullText, /local-only/);
     assert.match(fullText, /This command is read-only/);
@@ -895,8 +897,11 @@ test("operator capability acceptance command replies with next-version gates wit
     assert.equal(transport.sent.length > 0, true);
     const fullText = transport.sent.map((item) => item.text).join("\n");
     assert.match(fullText, /Capability acceptance/);
-    assert.match(fullText, /core execution/i);
+    assert.match(fullText, /Core execution \(ready, layer: core_runtime\)/);
     assert.match(fullText, /SOP self-evolution/);
+    assert.match(fullText, /SOP self-evolution \(ready, layer: local_learning\)/);
+    assert.match(fullText, /active_exploration_publish_plan \| layer: application_slice/);
+    assert.doesNotMatch(fullText, /active_exploration_publish_plan \| layer: core_runtime/);
     assert.match(fullText, /pnpm run check/);
     assert.match(fullText, /review rehearse-sop-loop/);
     assert.match(fullText, /context pressure --limit 10/);

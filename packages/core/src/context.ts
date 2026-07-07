@@ -7,6 +7,13 @@ import {
   type CapabilityCategory,
   type CapabilitySummary
 } from "./capabilities.js";
+import { listLatestDreamSnapshots } from "./dreams.js";
+import {
+  getGaProjectDesignReadModel,
+  type GaProjectDesignPlanPacket
+} from "./ga_project_design.js";
+import { getSelfEvolutionScorecard } from "./self_evolution_scorecard.js";
+import { getLatestSelfEvolutionIteration } from "./self_evolution_iterations.js";
 import {
   listBackgroundReviews,
   type BackgroundReviewHistorySummary
@@ -331,6 +338,7 @@ async function buildContextSections(
   const taskReferences = await taskReferencesSection(store, snapshot);
   const harnessReplayAudits = await harnessReplayAuditSection(store);
   const attentionPlan = await attentionPlanSection(store, snapshot, options);
+  const gaPlan = await gaProjectDesignPlanSection(store);
   return [
     {
       title: "Stable Core",
@@ -350,6 +358,10 @@ async function buildContextSections(
     ...(attentionPlan ? [attentionPlan] : []),
     capabilityCatalogSection(),
     await semanticMemorySection(store),
+    await dreamSection(store),
+    await selfEvolutionScorecardSection(store, options.vaultRoot),
+    ...(gaPlan ? [gaPlan] : []),
+    ...(await selfEvolutionIterationSection(store)),
     ...(taskReferences ? [taskReferences] : []),
     await opportunityBacklogSection(store, options.vaultRoot),
     await backgroundReviewHistorySection(store),
@@ -742,8 +754,8 @@ function capabilityCatalogSection(): ContextSection {
   return {
     title: "Capability Catalog",
     body: [
-      "Read-only index; use /capabilities for detail; do not infer extra authority.",
-      `- catalog: ${catalog.catalog_id}@${catalog.catalog_version}; count: ${catalog.count}; boundary: local-only read model; no secrets, model calls, tool execution, state mutation, repo writes, or active-vault writes`,
+      "do not infer extra authority; /capabilities for detail.",
+      `- count: ${catalog.count}; local-only read model`,
       "",
       ...catalog.categories.map(renderCapabilityCatalogCategory)
     ].join("\n"),
@@ -753,11 +765,31 @@ function capabilityCatalogSection(): ContextSection {
 }
 
 function renderCapabilityCatalogCategory(category: CapabilityCategory): string {
-  return `- ${category.title}: ${category.capabilities.map(renderCapabilityId).join(",")}`;
+  return `- ${category.title}: ${capabilityCatalogSample(category).join(",")}`;
 }
 
 function renderCapabilityId(capability: CapabilitySummary): string {
   return capability.id;
+}
+
+function capabilityCatalogSample(category: CapabilityCategory): string[] {
+  if (category.id === "core_tools") return category.capabilities.slice(0, 4).map(renderCapabilityId);
+  if (category.id === "memory_and_learning") {
+    return category.capabilities
+      .filter((capability) => ["semantic.memory", "dream.snapshots", "sop.evolution", "self_evolution.scorecard"].includes(capability.id))
+      .map(renderCapabilityId);
+  }
+  if (category.id === "context_read_models") {
+    return category.capabilities
+      .filter((capability) => ["context.manifests", "context.health", "review.history", "expert.orchestration_contract"].includes(capability.id))
+      .map(renderCapabilityId);
+  }
+  if (category.id === "runtime_service") {
+    return category.capabilities
+      .filter((capability) => ["service.lifecycle", "service.health", "workspace.status"].includes(capability.id))
+      .map(renderCapabilityId);
+  }
+  return category.capabilities.slice(0, 4).map(renderCapabilityId);
 }
 
 async function taskReferencesSection(store: AgentStore, snapshot: TurnSnapshot): Promise<ContextSection | null> {
@@ -1380,6 +1412,331 @@ async function semanticMemorySection(store: AgentStore): Promise<ContextSection>
     refs: selected.map((memory) => memory.ref),
     item_count: selected.length
   };
+}
+
+async function dreamSection(store: AgentStore): Promise<ContextSection> {
+  const dreams = await listLatestDreamSnapshots(store, 3);
+  if (dreams.length === 0) {
+    return {
+      title: "Dreams",
+      body: "No dream snapshots selected for this turn.",
+      refs: [],
+      item_count: 0
+    };
+  }
+  return {
+    title: "Dreams",
+    body: dreams.map((dream, index) => [
+      `### ${index + 1}. ${dream.id}`,
+      ...dream.axes.slice(0, 1).map((axis) => `- axis: ${axis.title} ${axis.status}`)
+    ].join("\n")).join("\n\n"),
+    refs: dreams.map((dream) => dream.ref),
+    item_count: dreams.length
+  };
+}
+
+async function selfEvolutionScorecardSection(
+  store: AgentStore,
+  vaultRoot: SkillResolverLike | undefined
+): Promise<ContextSection> {
+  const scorecard = await getSelfEvolutionScorecard(store, { limit: 3, vaultRoot });
+  const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+  const basic = scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate");
+  const expert = scorecard.dimensions.find((dimension) => dimension.id === "multi_expert_orchestration");
+  return {
+    title: "Self-Evolution Scorecard",
+    body: [
+      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};multi_expert=${expert?.stage ?? "unknown"}`
+    ].join("\n"),
+    refs: scorecard.refs.slice(0, 8),
+    item_count: scorecard.dimensions.length
+  };
+}
+
+const COMPACT_GA_PLAN_CHECK_PREFIXES = [
+  "source_artifact_verified=",
+  "source_artifact_evidence=",
+  "source_artifact_warning_thresholds="
+];
+
+const COMPACT_GA_PLAN_REASON_PREFIXES = [
+  "source_status=",
+  "source_artifact_quality="
+];
+
+const COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES = [
+  "goal_scope:",
+  "current_state:",
+  "verification_scope:",
+  "learning_persistence:"
+];
+
+const COMPACT_GA_PLAN_CRITICAL_ACCEPTANCE_PARTS = [
+  "instead of copied from the source artifact",
+  "external adapters remain application slices"
+];
+
+const COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS = [
+  "does not promote SOPs",
+  "does not promote one-off external adapter behavior",
+  "no external-tool execution",
+  "no automatic SOP, skill, memory, or dream promotion",
+  "no completion proof without executed verification"
+];
+
+function compactGaPlanPrefixedItems(items: string[], prefixes: string[]): string[] {
+  const selected: string[] = [];
+  for (const prefix of prefixes) {
+    const item = items.find((candidate) => candidate.startsWith(prefix));
+    if (item) selected.push(item);
+  }
+  for (const item of items) {
+    if (selected.length >= prefixes.length) break;
+    if (!selected.includes(item)) selected.push(item);
+  }
+  return selected;
+}
+
+export function compactGaPlanNonGoals(nonGoals: string[]): string[] {
+  const selected: string[] = [];
+  for (const part of COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS) {
+    const item = nonGoals.find((candidate) => candidate.includes(part));
+    if (item) selected.push(item);
+  }
+  return selected;
+}
+
+export function compactGaPlanSelectionChecks(selectionChecks: string[]): string[] {
+  return compactGaPlanPrefixedItems(selectionChecks, COMPACT_GA_PLAN_CHECK_PREFIXES);
+}
+
+export function compactGaPlanSelectionReasons(selectionReasons: string[]): string[] {
+  return compactGaPlanPrefixedItems(selectionReasons, COMPACT_GA_PLAN_REASON_PREFIXES);
+}
+
+export function compactGaPlanSourceTruth(
+  plan: Pick<GaProjectDesignPlanPacket,
+    "source_artifact_id" | "source_iteration_ref" | "source_proposed_slice" | "proposed_slice" | "selection_checks" | "selection_reasons">
+): string {
+  const sourceStatus = plan.selection_reasons
+    .find((reason) => reason.startsWith("source_status="))
+    ?.replace("source_status=", "");
+  const sourceQuality = plan.selection_reasons
+    .find((reason) => reason.startsWith("source_artifact_quality="))
+    ?.replace("source_artifact_quality=", "");
+  const freshSuccessor = plan.selection_checks
+    .find((check) => check.startsWith("fresh_successor_slice="))
+    ?.match(/^fresh_successor_slice=([^;]+)/)?.[1];
+  return `artifact=${plan.source_artifact_id}; ref=${plan.source_iteration_ref}; source_slice=${plan.source_proposed_slice}; target_slice=${plan.proposed_slice}; status=${sourceStatus ?? "unknown"}; quality=${sourceQuality ?? "unknown"}; fresh_successor=${freshSuccessor ?? "unknown"}`;
+}
+
+export function compactGaPlanAcceptanceCriteria(acceptanceCriteria: string[]): string[] {
+  const selected = compactGaPlanPrefixedItems(acceptanceCriteria, COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES);
+  for (const part of COMPACT_GA_PLAN_CRITICAL_ACCEPTANCE_PARTS) {
+    const item = acceptanceCriteria.find((candidate) => candidate.includes(part));
+    if (item && !selected.includes(item)) selected.push(item);
+  }
+  return selected;
+}
+
+export function compactGaPlanAntiDriftChecks(
+  plan: Pick<GaProjectDesignPlanPacket, "iteration_focus">
+): string {
+  return plan.iteration_focus.anti_drift_checks.slice(0, 3).join(" | ");
+}
+
+export function compactGaPlanLayerGuard(
+  plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
+): string {
+  const decision = plan.layer_decision;
+  return `stage=${decision.stage}; source=${decision.source_layer}/${decision.source_owner_surface}; selected=${decision.selected_layer}/${decision.selected_owner_surface}`;
+}
+
+export function compactGaPlanAuditRequirements(
+  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+): string {
+  return plan.completion_audit_seeds
+    .map((seed) => `${seed.id}=${seed.requirement}`)
+    .join("; ");
+}
+
+export function compactGaPlanAuditRejects(
+  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+): string {
+  return plan.completion_audit_seeds
+    .map((seed) => `${seed.id}=${seed.reject_if[0] ?? "unknown"}`)
+    .join("; ");
+}
+
+export function compactGaPlanStageExitCriteria(
+  plan: Pick<GaProjectDesignPlanPacket, "capability_stage_plan">
+): string {
+  const core = plan.capability_stage_plan.core_capabilities
+    .map((item) => `${item.id}=${item.exit_criteria[0] ?? "unknown"}`)
+    .join(",");
+  const basic = plan.capability_stage_plan.basic_capabilities
+    .map((item) => `${item.id}=${item.exit_criteria[0] ?? "unknown"}`)
+    .join(",");
+  return `core=${core}; basic=${basic}`;
+}
+
+export function compactGaPlanRuntimeObservabilityGuard(
+  plan: Pick<GaProjectDesignPlanPacket, "capability_stage_plan">
+): string | null {
+  const capability = plan.capability_stage_plan.basic_capabilities
+    .find((item) => item.id === "runtime_observability");
+  if (!capability) return null;
+  return `stage=${capability.stage}; current=${capability.current_state}; next=${capability.next_iteration}; exit=${capability.exit_criteria[1] ?? capability.exit_criteria[0] ?? "unknown"}`;
+}
+
+export function compactGaPlanPhaseForbids(
+  plan: Pick<GaProjectDesignPlanPacket, "phase_gates">
+): string {
+  return plan.phase_gates
+    .map((gate) => `${gate.phase_id}=${gate.forbidden_shortcuts[0] ?? "unknown"}`)
+    .join("; ");
+}
+
+export function compactGaPlanReviewGate(
+  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status" | "selection_checks">
+): string | null {
+  if (plan.iteration_record_status.status !== "open_iteration_available") return null;
+  const required = plan.selection_checks
+    .find((check) => check.startsWith("verification_entrypoints="))
+    ?.replace("verification_entrypoints=", "");
+  return `blocked; blockers=outcome_record,outcome_verification_command_coverage${required ? `; required=${required}` : ""}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
+}
+
+export function compactGaPlanVerificationCommands(
+  plan: Pick<GaProjectDesignPlanPacket, "verification_commands" | "iteration_record_status">
+): string[] {
+  const iterationId = plan.iteration_record_status.status === "open_iteration_available"
+    ? plan.iteration_record_status.id
+    : undefined;
+  return plan.verification_commands.map((command) => {
+    if (command.includes("governance project-design")) {
+      const artifact = command.match(/--artifact\s+(\S+)/)?.[1];
+      return artifact ? `project-design=${artifact}` : "project-design";
+    }
+    if (command.includes("governance scorecard")) return "scorecard";
+    if (command.includes("governance iterations")) {
+      const iteration = iterationId ?? command.match(/--iteration\s+(\S+)/)?.[1] ?? "<iteration-ref>";
+      const auditSeed = command.match(/--audit-seed\s+(\S+)/)?.[1];
+      return `iterations=${iteration}${auditSeed ? `;audit=${auditSeed}` : ""}`;
+    }
+    if (command.includes("service health")) {
+      const target = command.match(/--target\s+(\S+)/)?.[1];
+      return target ? `service-health=${target}` : "service-health";
+    }
+    if (command.includes("pnpm run check")) return "check";
+    return command;
+  });
+}
+
+export function compactGaPlanAfterVerifyCommand(
+  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
+): string | null {
+  if (plan.iteration_record_status.status !== "open_iteration_available" || !plan.iteration_record_status.id) return null;
+  return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --next-move "..." --state-root <state-root>`;
+}
+
+export function compactGaPlanEvidenceRefs(refs: string[]): string[] {
+  return refs.slice(0, 4);
+}
+
+export function compactGaPlanProofBoundary(
+  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
+): string | null {
+  if (plan.iteration_record_status.status !== "open_iteration_available") return null;
+  return "evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,outcome_verification_command_coverage";
+}
+
+async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
+  const readModel = await getGaProjectDesignReadModel(store, { limit: 3 });
+  const plan = readModel.next_core_basic_plan;
+  if (!plan) return null;
+  const auditCommand = plan.iteration_record_status.audit_command;
+  const freshSuccessorCheck = plan.selection_checks.find((check) => check.startsWith("fresh_successor_slice="));
+  const targetLayerCheck = plan.selection_checks.find((check) => check.startsWith("target_layer="));
+  const verificationEntryPoints = plan.selection_checks.find((check) => check.startsWith("verification_entrypoints="));
+  const compactSelectionReasons = compactGaPlanSelectionReasons(plan.selection_reasons);
+  const compactSelectionChecks = compactGaPlanSelectionChecks(plan.selection_checks);
+  const sourceTruth = compactGaPlanSourceTruth(plan);
+  const compactAcceptanceCriteria = compactGaPlanAcceptanceCriteria(plan.acceptance_criteria);
+  const compactNonGoals = compactGaPlanNonGoals(plan.non_goals);
+  const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
+  const compactLayerGuard = compactGaPlanLayerGuard(plan);
+  const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
+  const compactAuditRejects = compactGaPlanAuditRejects(plan);
+  const compactStageExitCriteria = compactGaPlanStageExitCriteria(plan);
+  const runtimeObservabilityGuard = compactGaPlanRuntimeObservabilityGuard(plan);
+  const compactPhaseForbids = compactGaPlanPhaseForbids(plan);
+  const reviewGate = compactGaPlanReviewGate(plan);
+  const compactVerificationCommands = compactGaPlanVerificationCommands(plan);
+  const afterVerifyCommand = compactGaPlanAfterVerifyCommand(plan);
+  const evidenceRefs = compactGaPlanEvidenceRefs(plan.refs);
+  const proofBoundary = compactGaPlanProofBoundary(plan);
+  return {
+    title: "GA Project Design Plan",
+    body: [
+      `plan: ${plan.id}`,
+      `layer: ${plan.layer}; owner: ${plan.owner_surface}; slice: ${plan.proposed_slice}`,
+      `source_artifact: ${plan.source_artifact_id}`,
+      `source_truth: ${sourceTruth}`,
+      `planning_basis: ${plan.planning_basis}`,
+      `focus: ${plan.iteration_focus.direction}`,
+      `focus_next: ${plan.iteration_focus.next_steps.slice(0, 2).join(" | ")}`,
+      ...(compactAntiDriftChecks ? [`anti_drift: ${compactAntiDriftChecks}`] : []),
+      ...(compactNonGoals.length ? [`non_goals: ${compactNonGoals.join(" | ")}`] : []),
+      `capability_stage: core=${plan.capability_stage_plan.core_capabilities.map((item) => `${item.id}:${item.stage}`).join(",")}; basic=${plan.capability_stage_plan.basic_capabilities.map((item) => `${item.id}:${item.stage}`).join(",")}`,
+      ...(runtimeObservabilityGuard ? [`runtime_guard: ${runtimeObservabilityGuard}`] : []),
+      `stage_exit: ${compactStageExitCriteria}`,
+      `stage_next: ${plan.capability_stage_plan.next_iteration_plan.slice(0, 2).join(" | ")}`,
+      `phase_forbid: ${compactPhaseForbids}`,
+      `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
+      `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries[0]}`,
+      `layer_guard: ${compactLayerGuard}`,
+      `selection: ${plan.selection_status}; ${compactSelectionReasons.join(" | ")}`,
+      `checks: ${compactSelectionChecks.join(" | ")}`,
+      ...(freshSuccessorCheck ? [`successor: ${freshSuccessorCheck}`] : []),
+      ...(targetLayerCheck ? [`target: ${targetLayerCheck}`] : []),
+      ...(verificationEntryPoints ? [`verify: ${verificationEntryPoints}`] : []),
+      ...(compactVerificationCommands.length ? [`verify_commands: ${compactVerificationCommands.join(" | ")}`] : []),
+      `iteration_record_status: ${plan.iteration_record_status.status}${plan.iteration_record_status.id ? `; ${plan.iteration_record_status.id}` : ""}`,
+      ...(reviewGate ? [`review_gate: ${reviewGate}`] : []),
+      ...(auditCommand ? [`audit_command: ${auditCommand}`] : []),
+      ...(afterVerifyCommand ? [`after_verify: ${afterVerifyCommand}`] : []),
+      ...(evidenceRefs.length ? [`evidence_basis: ${evidenceRefs.join(" | ")}`] : []),
+      ...(proofBoundary ? [`proof_boundary: ${proofBoundary}`] : []),
+      `audit: ${plan.completion_audit_seeds.map((seed) => seed.id).join(",")}`,
+      `audit_require: ${compactAuditRequirements}`,
+      `audit_reject: ${compactAuditRejects}`,
+      `acceptance: ${compactAcceptanceCriteria.join(" | ")}`,
+      `next_command: ${plan.next_command}`
+    ].join("\n"),
+    refs: plan.refs.slice(0, 6),
+    item_count: 1
+  };
+}
+
+async function selfEvolutionIterationSection(store: AgentStore): Promise<ContextSection[]> {
+  const iteration = await getLatestSelfEvolutionIteration(store);
+  if (!iteration) return [];
+  return [{
+    title: "Self-Evolution Iteration",
+    body: [
+      `iteration: ${iteration.id}`,
+      `layer: ${iteration.layer}; owner: ${iteration.owner_surface}; slice: ${iteration.proposed_slice}`,
+      `summary: ${iteration.summary}`,
+      `experts: ${iteration.advisory_expert_roles.join(",")}`,
+      `verify: ${iteration.verification_commands.slice(0, 2).join(" | ")}`
+    ].join("\n"),
+    refs: [
+      iteration.ref,
+      ...iteration.evidence_refs.slice(0, 4)
+    ],
+    item_count: 1
+  }];
 }
 
 async function governanceQueueSection(

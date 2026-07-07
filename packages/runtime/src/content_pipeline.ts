@@ -67,6 +67,7 @@ interface ParsedNewsItem {
 
 const NEWS_FRESHNESS_WINDOW_HOURS = 72;
 const MARKET_FRESHNESS_WINDOW_HOURS = 36;
+const CLOSED_MARKET_FRESHNESS_WINDOW_HOURS = 96;
 
 export interface ContentDryRunArgs {
   workflowId?: string;
@@ -77,6 +78,7 @@ export interface ContentDryRunArgs {
   liveSources?: boolean;
   fetchText?: FetchText;
   strategyFromRunRef?: string;
+  now?: string;
 }
 
 export interface RecordContentImageEvidenceArgs {
@@ -501,7 +503,7 @@ export async function runContentDryRun(
   const workflowId = args.workflowId ?? "daily_ai_market_xhs";
   const topic = args.topic ?? "daily AI news and AI stock hotspots";
   const root = `content/runs/${runId}`;
-  const now = utcNow();
+  const now = args.now ?? utcNow();
   const imageOutputRel = `${root}/cover.png`;
   const sourceResult = args.liveSources
     ? await buildLiveSourceItems({
@@ -2153,16 +2155,33 @@ async function fetchMarketQuote(args: {
   const url = quoteUrl(args.ticker);
   try {
     const response = await args.fetchText(url);
-    const quote = response.ok ? parseMarketQuote(response.text) : null;
+    let quote = response.ok ? parseMarketQuote(response.text) : null;
+    let quoteUrlUsed = url;
+    let fallbackStatus: number | undefined;
+    let fallbackStatusText: string | undefined;
+    const primaryFreshness = quote
+      ? marketQuoteFreshness(normalizeMarketTimestamp(quote.timestamp, args.now), args.now)
+      : { status: "unknown" as const };
+    if (primaryFreshness.status !== "fresh") {
+      const fallbackUrl = historicalQuoteUrl(args.ticker, args.now);
+      const fallbackResponse = await args.fetchText(fallbackUrl);
+      fallbackStatus = fallbackResponse.status;
+      fallbackStatusText = fallbackResponse.statusText;
+      const fallbackQuote = fallbackResponse.ok ? parseNasdaqHistoricalQuote(fallbackResponse.text) : null;
+      if (fallbackQuote) {
+        quote = fallbackQuote;
+        quoteUrlUsed = fallbackUrl;
+      }
+    }
+    const quoteFreshnessWindowHours = marketFreshnessWindowHours(args.now);
     const quoteFreshness = quote
-      ? sourceFreshnessFromPublishedAt(
+      ? marketQuoteFreshness(
         normalizeMarketTimestamp(quote.timestamp, args.now),
-        args.now,
-        MARKET_FRESHNESS_WINDOW_HOURS
+        args.now
       )
       : { status: "unknown" as const };
     const percentChange = quote ? parsePercentChange(quote.percent_change || quote.change_percent || "") : null;
-    const summary = response.ok && quote
+    const summary = quote
       ? renderQuoteSummary(args.ticker, quote)
       : `Quote fetch failed: ${response.status} ${response.statusText}`;
     await args.store.writeJson(args.evidenceRef, {
@@ -2170,15 +2189,18 @@ async function fetchMarketQuote(args: {
       kind: "market_quote",
       ticker: args.ticker,
       url,
-      ok: response.ok && Boolean(quote),
+      ok: Boolean(quote),
       status: response.status,
       statusText: response.statusText,
+      quote_url: quoteUrlUsed,
+      ...(quoteUrlUsed === url ? {} : { fallback_url: quoteUrlUsed, fallback_status: fallbackStatus, fallback_statusText: fallbackStatusText }),
       quote,
       normalized_timestamp: quoteFreshness.published_at ?? null,
       quote_age_hours: quoteFreshness.age_hours ?? null,
       latest_published_at: quoteFreshness.published_at ?? null,
       source_age_hours: quoteFreshness.age_hours ?? null,
       freshness_status: quoteFreshness.status,
+      freshness_window_hours: quoteFreshnessWindowHours,
       percent_change_numeric: percentChange,
       abs_percent_change: percentChange === null ? null : Math.abs(percentChange),
       preview: compactText(response.text, 800),
@@ -2191,11 +2213,11 @@ async function fetchMarketQuote(args: {
       kind: "market_quote",
       title: `${args.ticker} market hotspot`,
       ticker: args.ticker,
-      url,
+      url: quoteUrlUsed,
       summary,
       evidence_ref: args.evidenceRef,
-      fetched: response.ok && Boolean(quote),
-      ...(response.ok && quote ? {} : { error: response.ok ? "quote_not_parseable" : `${response.status} ${response.statusText}` }),
+      fetched: Boolean(quote),
+      ...(quote ? {} : { error: response.ok ? "quote_not_parseable" : `${response.status} ${response.statusText}` }),
       metadata: quote
         ? {
           ...quote,
@@ -2204,7 +2226,7 @@ async function fetchMarketQuote(args: {
           latest_published_at: quoteFreshness.published_at ?? null,
           source_age_hours: quoteFreshness.age_hours ?? null,
           freshness_status: quoteFreshness.status,
-          freshness_window_hours: MARKET_FRESHNESS_WINDOW_HOURS,
+          freshness_window_hours: quoteFreshnessWindowHours,
           percent_change_numeric: percentChange,
           abs_percent_change: percentChange === null ? null : Math.abs(percentChange)
         }
@@ -3491,6 +3513,25 @@ function sourceFreshnessFromPublishedAt(
   };
 }
 
+function marketQuoteFreshness(
+  publishedAt: string | null | undefined,
+  now: string
+): { status: SourceFreshnessStatus; published_at?: string; age_hours?: number } {
+  return sourceFreshnessFromPublishedAt(publishedAt, now, marketFreshnessWindowHours(now));
+}
+
+function marketFreshnessWindowHours(now: string): number {
+  const timestamp = Date.parse(now);
+  if (!Number.isFinite(timestamp)) return MARKET_FRESHNESS_WINDOW_HOURS;
+  const nyTime = new Date(new Date(timestamp).toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const day = nyTime.getDay();
+  const minutes = nyTime.getHours() * 60 + nyTime.getMinutes();
+  const beforeMarketOpen = minutes < 9 * 60 + 30;
+  return day === 0 || day === 6 || (day === 1 && beforeMarketOpen)
+    ? CLOSED_MARKET_FRESHNESS_WINDOW_HOURS
+    : MARKET_FRESHNESS_WINDOW_HOURS;
+}
+
 function normalizeDateString(value: string | null | undefined): Pick<ParsedNewsItem, "published_at"> | null {
   if (!value) return null;
   const cleaned = stripCdata(decodeHtmlEntities(stripHtml(value))).trim();
@@ -3559,6 +3600,35 @@ function parseNasdaqQuote(text: string): Record<string, string> | null {
   }
 }
 
+function parseNasdaqHistoricalQuote(text: string): Record<string, string> | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed) || !isRecord(parsed.data) || !isRecord(parsed.data.tradesTable)) return null;
+    const rows = isRecord(parsed.data.tradesTable) && Array.isArray(parsed.data.tradesTable.rows)
+      ? parsed.data.tradesTable.rows
+      : [];
+    const row = rows.find(isRecord);
+    if (!row) return null;
+    const close = stringField(row, "close");
+    const date = stringField(row, "date");
+    if (!close || !date) return null;
+    return {
+      source: "nasdaq_historical",
+      symbol: stringField(parsed.data, "symbol") ?? "",
+      price: close,
+      close,
+      volume: stringField(row, "volume") ?? "",
+      open: stringField(row, "open") ?? "",
+      high: stringField(row, "high") ?? "",
+      low: stringField(row, "low") ?? "",
+      timestamp: `${date} 16:00 ET`,
+      market_status: "Historical Close"
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseStooqQuote(csv: string): Record<string, string> | null {
   const [headerLine, rowLine] = csv.trim().split(/\r?\n/);
   if (!headerLine || !rowLine) return null;
@@ -3603,6 +3673,18 @@ function parsePercentChange(value: string): number | null {
 function quoteUrl(ticker: string): string {
   const symbol = ticker.toUpperCase().replace(/[^A-Z0-9.-]/g, "");
   return `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol)}/info?assetclass=stocks`;
+}
+
+function historicalQuoteUrl(ticker: string, now: string): string {
+  const symbol = ticker.toUpperCase().replace(/[^A-Z0-9.-]/g, "");
+  const nowTime = Date.parse(now);
+  const end = Number.isFinite(nowTime) ? new Date(nowTime) : new Date();
+  const start = new Date(end.getTime() - 14 * 24 * 60 * 60 * 1000);
+  return `https://api.nasdaq.com/api/quote/${encodeURIComponent(symbol)}/historical?assetclass=stocks&fromdate=${formatDateOnly(start)}&todate=${formatDateOnly(end)}&limit=10`;
+}
+
+function formatDateOnly(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function renderQuoteSummary(ticker: string, quote: Record<string, string>): string {

@@ -1,4 +1,6 @@
 import { allowedActions, type AllowedAction } from "./action_contracts.js";
+import { getExpertOrchestrationContract } from "./expert_orchestration.js";
+import { getGaProjectDesignContract } from "./ga_project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
 
 export type CapabilityCategoryId =
@@ -11,12 +13,19 @@ export type CapabilityCategoryId =
   | "boundaries";
 
 export type CapabilityStatus = "implemented" | "guarded" | "out_of_scope";
+export type CapabilityLayer =
+  | "core_runtime"
+  | "basic_entrypoint"
+  | "local_learning"
+  | "application_slice"
+  | "boundary";
 
 export interface CapabilitySummary {
   id: string;
   title: string;
   summary: string;
   status: CapabilityStatus;
+  layer?: CapabilityLayer;
   commands?: string[];
   refs?: string[];
   boundaries?: string[];
@@ -27,13 +36,14 @@ export interface CapabilityCategory {
   title: string;
   summary: string;
   status: CapabilityStatus;
+  layer: CapabilityLayer;
   capabilities: CapabilitySummary[];
 }
 
 export interface CapabilityCatalog {
   schema_version: 1;
   catalog_id: "local_runtime_capabilities";
-  catalog_version: "2026-06-30";
+  catalog_version: "2026-07-06";
   count: number;
   categories: CapabilityCategory[];
   refs: string[];
@@ -47,6 +57,7 @@ export interface CapabilityAcceptanceGate {
   title: string;
   summary: string;
   status: CapabilityAcceptanceGateStatus;
+  layer: CapabilityLayer;
   evidence_refs: string[];
   verification_commands: string[];
   boundaries: string[];
@@ -55,6 +66,7 @@ export interface CapabilityAcceptanceGate {
 export interface CapabilityNextSlice {
   id: string;
   title: string;
+  layer: CapabilityLayer;
   reason: string;
   success_criteria: string[];
   refs: string[];
@@ -63,7 +75,7 @@ export interface CapabilityNextSlice {
 export interface CapabilityAcceptanceAudit {
   schema_version: 1;
   audit_id: "local_runtime_next_version_capability_acceptance";
-  audit_version: "2026-07-01";
+  audit_version: "2026-07-06";
   status: "operator_check_required";
   summary: string;
   gates: CapabilityAcceptanceGate[];
@@ -98,7 +110,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
   return {
     schema_version: 1,
     catalog_id: "local_runtime_capabilities",
-    catalog_version: "2026-06-30",
+    catalog_version: "2026-07-06",
     count: categories.reduce((total, category) => total + category.capabilities.length, 0),
     categories,
     refs: [
@@ -110,9 +122,13 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/action_contracts.ts",
       "packages/core/src/tool_contracts.ts",
       "packages/core/src/context.ts",
+      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/expert_orchestration.ts",
       "packages/core/src/harness_replay.ts",
       "packages/core/src/content_pipeline.ts",
+      "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
+      "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/workspace_status.ts",
       "packages/runtime/src/runner.ts",
       "packages/runtime/src/sop_loop_rehearsal.ts",
@@ -130,7 +146,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
   return {
     schema_version: 1,
     audit_id: "local_runtime_next_version_capability_acceptance",
-    audit_version: "2026-07-01",
+    audit_version: "2026-07-06",
     status: "operator_check_required",
     summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, service, and SOP self-evolution surfaces. It records what must be checked before another feature slice is considered stable.",
     gates: [
@@ -139,6 +155,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         title: "Core execution",
         summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, and Node execution.",
         status: "ready",
+        layer: "core_runtime",
         evidence_refs: [
           "packages/core/src/tool_contracts.ts",
           "packages/runtime/src/tools.ts",
@@ -159,6 +176,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         title: "Basic entrypoints",
         summary: "CLI, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
         status: "operator_check",
+        layer: "basic_entrypoint",
         evidence_refs: [
           "apps/cli/src/main.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
@@ -182,6 +200,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         title: "Agent harness",
         summary: "Action envelopes, delegated-result validation, staged pipeline checkpoints, completion verification, working checkpoints, live-run trace read models, and bounded harness replay audits are implemented.",
         status: "ready",
+        layer: "core_runtime",
         evidence_refs: [
           "packages/core/src/action_contracts.ts",
           "packages/runtime/src/runner.ts",
@@ -210,6 +229,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         title: "Context runtime",
         summary: "Context bundles, manifests, usage, pressure diagnostics, pressure operator guidance, health diagnostics, repair guidance, capability catalog context, runtime config context, and service health context are implemented.",
         status: "ready",
+        layer: "core_runtime",
         evidence_refs: [
           "packages/core/src/context.ts",
           "packages/core/src/context_health.ts",
@@ -238,6 +258,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         title: "SOP self-evolution",
         summary: "Review-to-SOP draft, audit, promotion, chain inspection, confirmation gates, skill telemetry, registry health, and explicit event retirement gates are implemented.",
         status: "ready",
+        layer: "local_learning",
         evidence_refs: [
           "packages/core/src/sop_evolution_ledger.ts",
           "packages/core/src/skill_registry_health.ts",
@@ -278,6 +299,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "active_exploration_publish_plan",
         title: "Active exploration to publish plan",
+        layer: "application_slice",
         reason: "The next active-exploration slice needs a bounded daily research-to-content plan before the runtime gains any external publishing authority.",
         success_criteria: [
           "a local workflow spec can describe source acquisition, synthesis, image generation, publish gating, and evidence capture without executing external writes",
@@ -292,6 +314,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "self_evolution_gap_intake",
         title: "Self-evolution gap intake",
+        layer: "local_learning",
         reason: "Active exploration now needs a focused gap-intake read model that turns observed runtime shortcomings into bounded implementation slices before any external-write authority is added.",
         success_criteria: [
           "a gap report can cite content run refs, source evidence refs, completion verification, trace, replay, skill telemetry, context pressure, archive health, and operator corrections as evidence",
@@ -308,6 +331,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "active_exploration_daily_job",
         title: "Active exploration daily job",
+        layer: "application_slice",
         reason: "Daily active exploration needs a date-keyed local job that can run source collection, Xiaohongshu drafting, image generation, and preflight without acquiring automatic publishing authority.",
         success_criteria: [
           "content daily writes a content/daily/YYYY-MM-DD.json job artifact and linked content run",
@@ -324,6 +348,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "active_exploration_daily_service_loop",
         title: "Active exploration daily service loop",
+        layer: "application_slice",
         reason: "The manual daily job needs a local resident trigger so active exploration can run once per date without becoming an external publish daemon.",
         success_criteria: [
           "resident service can run content daily once per date when explicitly enabled in runtime config",
@@ -340,6 +365,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "active_exploration_daily_advance",
         title: "Active exploration daily advance",
+        layer: "application_slice",
         reason: "Resident dry-run daily jobs need a controlled operator step for image generation and optional read-only Xiaohongshu preflight before any external publish command is considered.",
         success_criteria: [
           "content daily-advance reads an existing content/daily/YYYY-MM-DD.json job and linked content run",
@@ -356,6 +382,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "active_exploration_adapter_execution",
         title: "Active exploration publish execution",
+        layer: "application_slice",
         reason: "Typed image generation and publish preflight evidence can now be recorded, so the next slice is the confirmed Xiaohongshu publish adapter execution layer.",
         success_criteria: [
           "image generation evidence from the configured Image API remains a prerequisite before external publishing",
@@ -391,6 +418,7 @@ function coreToolsCategory(): CapabilityCategory {
     title: "Core tools",
     summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution.",
     status: "implemented",
+    layer: "core_runtime",
     capabilities: coreToolContracts.map((contract) => ({
       id: contract.tool,
       title: contract.tool,
@@ -416,6 +444,7 @@ function harnessActionsCategory(): CapabilityCategory {
     title: "Harness actions",
     summary: "Model action envelope types the runtime may accept before the harness validates what actually happens.",
     status: "implemented",
+    layer: "core_runtime",
     capabilities: allowedActions.map((action) => ({
       id: action,
       title: action,
@@ -431,11 +460,14 @@ function harnessActionsCategory(): CapabilityCategory {
 }
 
 function contextReadModelsCategory(): CapabilityCategory {
+  const projectDesignContract = getGaProjectDesignContract();
+  const expertContract = getExpertOrchestrationContract();
   return {
     id: "context_read_models",
     title: "Context and review read models",
     summary: "Bounded state summaries for local runtime orientation without raw artifact dumps.",
     status: "implemented",
+    layer: "core_runtime",
     capabilities: [
       {
         id: "context.manifests",
@@ -499,6 +531,41 @@ function contextReadModelsCategory(): CapabilityCategory {
         ]
       },
       {
+        id: "ga.project_design_contract",
+        title: projectDesignContract.title,
+        summary: projectDesignContract.summary,
+        status: "implemented",
+        layer: projectDesignContract.layer,
+        commands: projectDesignContract.commands,
+        refs: projectDesignContract.refs,
+        boundaries: [
+          projectDesignContract.boundary,
+          "project-design may derive and inspect read-only artifacts from verified iteration outcomes; artifacts are reuse guidance, not state writes or completion proof",
+          "project-design may expose a read-only next_core_basic_plan from verified core/basic artifacts; the plan is advisory context and does not record iterations or execute work",
+          "next_core_basic_plan includes a read-only layer_decision that keeps recurring GA project design as core identity and external adapters as application slices by default",
+          "next_core_basic_plan includes read-only iteration_record_status so matching open iterations are inspected instead of blindly recording duplicates",
+          "next_core_basic_plan may include a read-only next_iteration_seed for record-iteration --from-project-design-plan; the seed itself does not write state",
+          "next_core_basic_plan may include completion_audit_seeds for goal scope, current state, verification scope, and learning persistence; seeds are advisory evidence prompts only",
+          "classifies external adapters as application slices unless their pattern generalizes back into the runtime contract",
+          "keeps GA project design as a core-runtime loop over goal intake, layering, contract design, execution planning, verification, and durable learning"
+        ]
+      },
+      {
+        id: "expert.orchestration_contract",
+        title: expertContract.title,
+        summary: expertContract.summary,
+        status: "implemented",
+        layer: expertContract.layer,
+        commands: expertContract.commands,
+        refs: expertContract.refs,
+        boundaries: [
+          expertContract.boundary,
+          "the --gate form renders a selected advisory delegation plan only; it does not call experts or execute recommendations",
+          "expert roles are advisory lenses only; the main runtime keeps execution and completion authority",
+          "contract records core-runtime orchestration boundaries, not provider tools or application adapters"
+        ]
+      },
+      {
         id: "working.checkpoints",
         title: "Working checkpoints",
         summary: "Expose current and recent working state snapshots and next actions.",
@@ -517,6 +584,7 @@ function memoryAndLearningCategory(): CapabilityCategory {
     title: "Memory and local learning",
     summary: "Local episode recall, semantic memory confirmation, and SOP/skill self-evolution gates.",
     status: "implemented",
+    layer: "local_learning",
     capabilities: [
       {
         id: "episode.memory",
@@ -563,9 +631,18 @@ function memoryAndLearningCategory(): CapabilityCategory {
         title: "Semantic memory confirmations",
         summary: "Propose, inspect, confirm, and accept local semantic memory through explicit CLI gates.",
         status: "implemented",
-        commands: ["pnpm run runtime -- memory candidates", "pnpm run runtime -- memory confirmations", "pnpm run runtime -- memory execute-candidate-confirmation --confirmation <ref>"],
+        commands: ["pnpm run runtime -- memory propose-candidate --summary <summary> --content <content>", "pnpm run runtime -- memory candidates", "pnpm run runtime -- memory confirmations", "pnpm run runtime -- memory request-candidate-confirmation --candidate <ref>", "pnpm run runtime -- memory execute-candidate-confirmation --confirmation <ref>"],
         refs: ["packages/runtime/src/memory_candidates.ts"],
-        boundaries: ["IM surfaces do not execute confirmations"]
+        boundaries: ["propose-candidate writes candidate state only", "IM surfaces do not execute confirmations"]
+      },
+      {
+        id: "dream.snapshots",
+        title: "Dream snapshots",
+        summary: "Record and inspect deterministic long-horizon capability direction from accepted memory, verified iteration outcomes, and bounded backlog pressure.",
+        status: "implemented",
+        commands: ["pnpm run runtime -- memory dream", "pnpm run runtime -- memory dreams"],
+        refs: ["packages/core/src/dreams.ts", "packages/core/src/memory_layers.ts", "packages/core/src/context.ts"],
+        boundaries: ["dream snapshots are context only; latest_iteration_outcome preserves verification context but does not execute backlog work, call models, promote SOPs, write skills, publish externally, or prove completion"]
       },
       {
         id: "sop.evolution",
@@ -606,15 +683,55 @@ function memoryAndLearningCategory(): CapabilityCategory {
       {
         id: "self_evolution.gaps",
         title: "Self-evolution gaps",
-        summary: "Derive proposal-only implementation gaps from bounded local evidence, suppress superseded publish-run noise, and surface current gaps through governance gaps and Opportunity Backlog.",
+        summary: "Derive proposal-only implementation gaps from bounded local evidence, explicit operator corrections, verified iteration outcomes, and scorecard maturity signals; suppress superseded publish-run noise and surface current gaps through governance gaps and Opportunity Backlog.",
         status: "implemented",
-        commands: ["pnpm run runtime -- governance gaps", "pnpm run runtime -- governance gaps --gap <gap-id>", "pnpm run runtime -- governance opportunities"],
+        commands: ["pnpm run runtime -- governance gaps", "pnpm run runtime -- governance gaps --gap <gap-id>", "pnpm run runtime -- governance record-correction --summary <summary>", "pnpm run runtime -- governance opportunities"],
         refs: [
           "packages/core/src/self_evolution_gaps.ts",
+          "packages/core/src/self_evolution_scorecard.ts",
           "packages/core/src/opportunity_backlog.ts",
           "docs/ACTIVE_EXPLORATION.md"
         ],
-        boundaries: ["gap intake reads bounded state refs only; superseded publish-gap suppression is read-model filtering, not historical state rewriting; it does not read draft bodies, invoke models, execute tools, publish externally, mutate state, write repo files, or write the active vault"]
+        boundaries: ["gap intake reads bounded state refs, active dream metadata, verified iteration outcome metadata, scorecard maturity metadata, and explicit operator-correction records only; record-correction writes one local state artifact and does not draft SOPs, update memory, mutate repo files, write the active vault, invoke models, execute tools, publish externally, or change services; verified outcomes may become SOP-candidate gaps but do not auto-draft, audit, promote, or write skills; superseded publish-gap suppression is read-model filtering, not historical state rewriting"]
+      },
+      {
+        id: "self_evolution.scorecard",
+        title: "Self-evolution scorecard",
+        summary: "Assess GA project design artifacts, core/basic capability growth, SOP-to-skill persistence, memory/dream continuity, and future multi-expert orchestration as a read-only local maturity view.",
+        status: "implemented",
+        layer: "local_learning",
+        commands: ["pnpm run runtime -- governance scorecard"],
+        refs: [
+          "packages/core/src/self_evolution_scorecard.ts",
+          "packages/core/src/ga_project_design.ts",
+          "packages/core/src/capabilities.ts",
+          "packages/core/src/memory_layers.ts",
+          "packages/core/src/dreams.ts"
+        ],
+        boundaries: ["scorecard is advisory context only; it does not invoke models, execute tools, mutate memory, promote SOPs, promote skills, manage services, write repo files, or prove completion"]
+      },
+      {
+        id: "self_evolution.iterations",
+        title: "Self-evolution iteration contracts",
+        summary: "Record, inspect, and close bounded iteration contracts that declare core/basic/local-learning/application layer, owner surface, evidence, verification commands, non-goals, advisory expert roles, and operator-supplied outcomes for major work.",
+        status: "implemented",
+        layer: "core_runtime",
+        commands: [
+          "pnpm run runtime -- governance iterations",
+          "pnpm run runtime -- governance iterations --iteration <ref-or-id>",
+          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed <seed-id>",
+          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed all",
+          "pnpm run runtime -- governance record-iteration --summary <summary> --layer core_runtime --owner-surface <surface> --proposed-slice <slice>",
+          "pnpm run runtime -- governance record-iteration --from-project-design-plan",
+          "pnpm run runtime -- governance record-iteration-outcome --iteration <ref-or-id> --outcome-status verified --summary <summary>"
+        ],
+        refs: [
+          "packages/core/src/self_evolution_iterations.ts",
+          "packages/core/src/self_evolution_scorecard.ts",
+          "packages/core/src/expert_orchestration.ts",
+          "CONTEXT.md"
+        ],
+        boundaries: ["iteration contracts and outcomes write one local state record only; they declare layer, verification intent, outcome evidence, and next moves, but do not execute work, run verification commands, invoke models, mutate repo files, write the active vault, manage services, promote SOPs, promote skills, or prove completion beyond cited evidence; plan-derived iteration recording copies a read-only GA project-design seed into one iteration contract only and reuses a matching open iteration instead of writing duplicates; iteration audit-seed inspection and aggregate completion audit are read-only and advisory; seed evidence status summarizes evidence presence only and does not prove the seed is satisfied"]
       }
     ]
   };
@@ -626,6 +743,7 @@ function runtimeServiceCategory(): CapabilityCategory {
     title: "Resident local service",
     summary: "Single-user macOS launchd runtime for Feishu IM intake, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
     status: "implemented",
+    layer: "basic_entrypoint",
     capabilities: [
       {
         id: "service.lifecycle",
@@ -639,17 +757,18 @@ function runtimeServiceCategory(): CapabilityCategory {
       {
         id: "service.health",
         title: "Service health",
-        summary: "Read service-scoped heartbeat freshness, runtime build metadata, repo HEAD deployment status, review tick state, content loop state, feedback refresh state, creator metrics state, and pause signals from bounded local inputs.",
+        summary: "Read service-scoped heartbeat freshness, runtime build metadata, repo HEAD deployment status, review tick state, application-slice loop state, pause signals, and layered runtime-substrate/application status reasons from bounded local inputs.",
         status: "implemented",
         commands: ["pnpm run runtime -- service health --target im", "/health", "/status"],
         refs: ["packages/core/src/service_health.ts"],
-        boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
+        boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "layered status reasons are read-model explanation only and do not change service lifecycle behavior", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
       },
       {
         id: "service.content_daily_loop",
         title: "Daily content loop",
         summary: "Optionally run the local content daily job from the resident IM service, writing one date-keyed job and service status when explicitly enabled.",
         status: "implemented",
+        layer: "application_slice",
         commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target im"],
         refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
         boundaries: [
@@ -664,6 +783,7 @@ function runtimeServiceCategory(): CapabilityCategory {
         title: "Content feedback refresh loop",
         summary: "Optionally refresh Xiaohongshu post-publish feedback from the resident IM service, appending typed local feedback evidence after a stable follow-up window.",
         status: "implemented",
+        layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled",
           "pnpm run runtime -- service status --target im"
@@ -685,6 +805,7 @@ function runtimeServiceCategory(): CapabilityCategory {
         title: "Content creator metrics loop",
         summary: "Optionally capture Xiaohongshu creator-backend view_count from the resident IM service for posts whose typed feedback lacks creator metrics.",
         status: "implemented",
+        layer: "application_slice",
         commands: [
           "pnpm run runtime -- config set-runtime --content-creator-metrics-enabled",
           "pnpm run runtime -- service status --target im"
@@ -732,6 +853,7 @@ function entrypointsCategory(): CapabilityCategory {
     title: "Entrypoints",
     summary: "Foreground and resident command surfaces for the local runtime.",
     status: "implemented",
+    layer: "basic_entrypoint",
     capabilities: [
       {
         id: "cli.doctor.config",
@@ -756,6 +878,7 @@ function entrypointsCategory(): CapabilityCategory {
         title: "Content planning and evidence",
         summary: "Create local content publish-plan artifacts, run date-keyed daily active-exploration jobs across default AI application and compute/market tracks, generate configured Image API outputs, execute confirmed xiaohongshu-mcp publishes, and record typed image/publish evidence without widening read-only surfaces.",
         status: "implemented",
+        layer: "application_slice",
         commands: [
           "pnpm run runtime -- content run --dry-run",
           "pnpm run runtime -- content run --dry-run --live-sources",
@@ -807,6 +930,7 @@ function boundariesCategory(): CapabilityCategory {
     title: "Explicit boundaries",
     summary: "Known non-goals that keep the first version local, inspectable, and bounded.",
     status: "guarded",
+    layer: "boundary",
     capabilities: [
       {
         id: "boundary.local_only",

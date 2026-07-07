@@ -91,6 +91,11 @@ test("service health derives fresh resident runtime status from local state and 
     });
 
     assert.equal(health.status, "healthy");
+    assert.deepEqual(health.status_reasons, []);
+    assert.equal(health.layers.runtime_substrate.status, "healthy");
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, []);
+    assert.equal(health.layers.application_slices.status, "healthy");
+    assert.deepEqual(health.layers.application_slices.reason_codes, []);
     assert.equal(health.im.state, "running");
     assert.equal(health.im.heartbeat_freshness, "fresh");
     assert.equal(health.im.heartbeat_age_ms, 30_000);
@@ -272,6 +277,10 @@ test("service health flags blocked review tick auto-actions", async () => {
     });
 
     assert.equal(health.status, "attention");
+    assert.equal(health.layers.runtime_substrate.status, "attention");
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["review_tick_auto_action_blocked"]);
+    assert.equal(health.layers.application_slices.status, "healthy");
+    assert.deepEqual(health.status_reasons, ["review_tick_auto_action_blocked"]);
     assert.equal(health.review_tick.last_focus_current_status, "resolved");
     assert.match(health.review_tick.last_focus_current_reason ?? "", /no longer present/);
     assert.equal(health.review_tick.last_auto_action_status, "blocked");
@@ -306,6 +315,9 @@ test("service health flags resident runtime build that is stale against repo HEA
     });
 
     assert.equal(health.status, "attention");
+    assert.equal(health.layers.runtime_substrate.status, "attention");
+    assert.equal(health.layers.runtime_substrate.reason_codes.includes("deployment_stale"), true);
+    assert.equal(health.layers.application_slices.status, "healthy");
     assert.equal(health.im.heartbeat_freshness, "fresh");
     assert.equal(health.im.runtime_build?.source_is_dirty, false);
     assert.equal(health.im.repo_head.read_status, "ok");
@@ -448,6 +460,11 @@ test("service health includes resident content loop status and flags loop errors
     });
 
     assert.equal(health.status, "attention");
+    assert.equal(health.layers.runtime_substrate.status, "healthy");
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, []);
+    assert.equal(health.layers.application_slices.status, "attention");
+    assert.deepEqual(health.layers.application_slices.reason_codes, ["content_daily_loop_attention"]);
+    assert.deepEqual(health.status_reasons, ["content_daily_loop_attention"]);
     assert.equal(health.content_daily.state, "error");
     assert.equal(health.content_daily.enabled, true);
     assert.equal(health.content_daily.last_job_status, "failed");

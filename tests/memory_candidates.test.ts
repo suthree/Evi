@@ -13,8 +13,46 @@ import {
   listAcceptedSemanticMemories,
   listMemoryCandidateConfirmations,
   listMemoryCandidates,
+  proposeMemoryCandidate,
   requestMemoryCandidateConfirmation
 } from "../packages/runtime/src/memory_candidates.js";
+
+test("propose memory candidate writes state-only candidate and evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-memory-propose-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    const proposed = await proposeMemoryCandidate(store, {
+      scope: "self_recognition",
+      summary: "Core capability boundary",
+      content: "Core capabilities are recurring GA project design and runtime self-evolution, not one-off application tools.",
+      rationale: "The operator corrected the capability taxonomy.",
+      artifactRefs: ["CONTEXT.md", "CONTEXT.md", "docs/RUNTIME_CONTRACT.md"]
+    });
+
+    assert.equal(proposed.candidate.status, "candidate");
+    assert.equal(proposed.candidate.action_type, "propose_memory");
+    assert.equal(proposed.candidate.scope, "self_recognition");
+    assert.deepEqual(proposed.candidate.artifact_refs, ["CONTEXT.md", "docs/RUNTIME_CONTRACT.md"]);
+    assert.equal(existsSync(join(stateRoot, proposed.candidate_ref)), true);
+    assert.equal(existsSync(join(stateRoot, proposed.candidate_markdown_ref)), true);
+    assert.equal(proposed.candidate.accepted_ref, undefined);
+
+    const byId = await getMemoryCandidate(store, { candidateRef: proposed.candidate.id });
+    assert.equal(byId.candidate_ref, proposed.candidate_ref);
+    assert.equal(byId.candidate.content, proposed.candidate.content);
+
+    const markdown = await readFile(join(stateRoot, proposed.candidate_markdown_ref), "utf8");
+    assert.match(markdown, /Core capability boundary/);
+    assert.match(markdown, /state-only/);
+    const events = await readFile(join(stateRoot, "memory/episodes/events.jsonl"), "utf8");
+    assert.match(events, /Recorded memory proposal candidate: Core capability boundary/);
+    assert.match(events, new RegExp(proposed.evidence_event_id));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("memory candidate read model lists summaries and inspects one candidate", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-memory-candidates-"));

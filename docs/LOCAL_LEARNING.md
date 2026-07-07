@@ -134,6 +134,8 @@ pnpm run runtime -- memory archive --state-root .runtime/state
 pnpm run runtime -- memory archives --state-root .runtime/state
 pnpm run runtime -- memory archive-health --state-root .runtime/state
 pnpm run runtime -- memory layers --state-root .runtime/state
+pnpm run runtime -- memory dream --state-root .runtime/state
+pnpm run runtime -- memory dreams --state-root .runtime/state
 ```
 
 The MemoryStore index is local and rebuildable. It does not replace the episode
@@ -145,6 +147,15 @@ bounded governance context, selected-skill recall quality, or diagnostics only.
 It does not rebuild the MemoryStore index, render semantic memory content, read
 raw episode artifacts, execute confirmations, mutate state, or invoke the
 model.
+
+`memory dream` records a deterministic long-horizon dream snapshot under
+`memory/dreams/` from accepted semantic memory, recent self-evolution iteration
+contracts, the latest verified iteration outcome, the bounded capability
+catalog, and current Opportunity Backlog pressure. `memory dreams` lists or
+inspects those snapshots. Dreams are planning context only; their
+`latest_iteration_outcome` field preserves verification context but does not
+execute backlog items, call models, promote SOPs, write skills, publish
+externally, or prove that a goal is complete.
 
 Daily episode archives are deterministic bounded summaries generated from the
 append-only episode JSONL. `memory archive-health` compares event metadata with
@@ -182,6 +193,61 @@ and Feishu `/skill <name-or-ref>`. These views show bounded frontmatter and
 registry fields such as source, status, trust level, refs, version, and usage
 counters. They do not rewrite registry metadata, mutate skill files, write the
 active vault, invoke the model, or run shell commands.
+
+Operators can inspect self-evolution maturity through
+`governance scorecard`. The scorecard reads only capability catalog metadata,
+memory-layer diagnostics, accepted dream snapshots, the SOP evolution ledger,
+and the Opportunity Backlog. It classifies current progress across core GA
+design, basic runtime substrate, SOP/skill/memory loop, memory/dream direction,
+and multi-expert orchestration. Its expert lenses are advisory context,
+not delegated agents, and the command never promotes SOPs, writes skills,
+invokes models, or proves completion.
+The scorecard also emits `next_slices`: read-only, sorted prioritization hints
+derived from dimension stage, score, and layer. They make the next bounded
+iteration explicit without mutating backlog state or executing the slice. For
+core/basic iteration planning, use `next_core_basic_slice` so local-learning SOP
+follow-ups do not accidentally redefine the agent's core capability direction.
+`governance project-design` exposes the core GA project design contract. It
+keeps goal intake, capability layering, contract design, execution planning,
+verification review, and learning persistence as the reusable loop before a
+project slice is treated as durable progress. It is read-only and does not
+execute tools, create projects, spawn experts, promote memories, or prove
+completion.
+Verified self-evolution iteration outcomes can also appear there as read-only
+project-design artifacts. They are reusable GA design lessons, not state
+writes, SOP drafts, skill promotion, or future completion proof.
+If the latest reusable artifact is core/basic, `project-design` also emits
+`next_core_basic_plan`, an advisory planning packet with phase gates,
+acceptance criteria, verification commands, non-goals, selection readiness, and
+completion-audit seeds. It is not an execution plan, backlog write, SOP draft,
+or completion claim.
+Operators can record the layer discipline for a major iteration through
+`governance record-iteration`. The record declares whether the work is
+`core_runtime`, `basic_entrypoint`, `local_learning`, `application_slice`, or
+`boundary`, plus owner surface, proposed slice, evidence refs, verification
+commands, non-goals, and advisory expert roles. `governance iterations` lists
+or inspects these records. They are context and governance evidence only; they
+do not execute work, write repo files, write the active vault, promote SOPs, or
+prove completion.
+`governance experts` exposes the matching read-only expert orchestration
+contract. It defines advisory roles, scheduling boundaries, and main-thread
+verification authority; it does not spawn expert agents, call multiple models,
+execute tools, mutate state, or prove completion.
+The same contract includes delegation gates for core-boundary, runtime-health,
+learning-persistence, and delegation-budget reviews. Each gate names trigger,
+required inputs, expected output, rejection cases, and main-runtime completion
+authority before advice can affect an iteration.
+`governance experts --gate <gate-id>` turns one gate into a read-only advisory
+plan packet. The packet can guide a review, but it cannot call experts, execute
+recommendations, promote memory/SOP/skills, or prove completion.
+If an active dream snapshot exists, low-maturity scorecard dimensions can become
+proposal-only `governance gaps` items. The previous multi-expert contract gap is
+suppressed once `expert.orchestration_contract` is present; any future durable
+SOP or skill still moves through the normal review, audit, and promotion gates.
+Verified self-evolution iteration outcomes can also become SOP-candidate gaps
+when no state-only SOP draft cites the iteration yet. This preserves reusable
+learning pressure without auto-drafting, auditing, promoting, accepting memory,
+or writing the active vault.
 
 Operators can also inspect active-vault skill registry health through
 `skills health`, `skills health --skill-name <name>`, Feishu `/skill health`,
@@ -373,9 +439,10 @@ produced refs, evidence id, and execution time. It does not inject raw SOP
 drafts, audits, promoted skills, accepted-memory Markdown, safety boundaries,
 or command strings, and it does not replay or authorize another execution.
 
-Inspect memory proposal candidates without promotion:
+Record and inspect memory proposal candidates without promotion:
 
 ```bash
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --scope local --artifact-ref memory/episodes/events.jsonl --state-root .runtime/state
 pnpm run runtime -- memory candidates --state-root .runtime/state
 pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime/state
 ```

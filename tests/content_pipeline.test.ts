@@ -277,6 +277,91 @@ test("content live-source defaults cover official AI feeds and market tickers", 
   }
 });
 
+test("content live-source falls back to Nasdaq historical close when primary quote is stale", async () => {
+  const root = await createFixture();
+  try {
+    const store = new AgentStore(root.repoRoot, root.stateRoot);
+    const run = await runContentDryRun(store, {
+      topic: "daily AI news and semiconductor stock hotspots",
+      sourceUrls: ["https://example.com/ai.json"],
+      tickers: ["NVDA"],
+      liveSources: true,
+      now: "2026-07-06T03:35:00Z",
+      fetchText: async (url) => {
+        if (url.includes("/historical")) {
+          return {
+            url,
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            contentType: "application/json",
+            text: JSON.stringify({
+              data: {
+                symbol: "NVDA",
+                tradesTable: {
+                  rows: [{
+                    date: "07/02/2026",
+                    close: "$194.83",
+                    volume: "142,385,500",
+                    open: "$197.14",
+                    high: "$200.055",
+                    low: "$192.35"
+                  }]
+                }
+              }
+            })
+          };
+        }
+        if (url.includes("api.nasdaq.com")) {
+          return {
+            url,
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            contentType: "application/json",
+            text: JSON.stringify({
+              data: {
+                symbol: "NVDA",
+                companyName: "NVIDIA Corporation Common Stock",
+                primaryData: {
+                  lastSalePrice: "$101.00",
+                  netChange: "+1.00",
+                  percentageChange: "+1.00%",
+                  lastTradeTimestamp: "2026-06-30T16:00:00Z",
+                  volume: "12,345"
+                },
+                marketStatus: "Closed"
+              }
+            })
+          };
+        }
+        return {
+          url,
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          contentType: "application/json",
+          text: JSON.stringify({ hits: [{ title: "AI chip startup raises new round", created_at: "2026-07-06T01:35:00Z" }] })
+        };
+      }
+    });
+
+    const quote = run.source_items.find((item) => item.kind === "market_quote" && item.ticker === "NVDA");
+    assert.ok(quote);
+    assert.equal(quote.url?.includes("/historical"), true);
+    assert.equal(quote.metadata.source, "nasdaq_historical");
+    assert.equal(quote.metadata.freshness_status, "fresh");
+    assert.equal(quote.metadata.freshness_window_hours, 96);
+    assert.equal(quote.metadata.source_quality.usable_for_draft, true);
+
+    const sourceIndex = JSON.parse(await readFile(store.statePath(run.refs.source_evidence_ref as string), "utf8")) as Record<string, unknown>;
+    const quality = sourceIndex.quality as Record<string, unknown>;
+    assert.equal(quality.fresh_market_count, 1);
+  } finally {
+    await rm(root.root, { recursive: true, force: true });
+  }
+});
+
 test("content live-source ranks and de-duplicates usable draft sources", async () => {
   const root = await createFixture();
   try {
@@ -1054,6 +1139,76 @@ test("content publish-preflight records readiness checks without external writes
   }
 });
 
+test("content publish-preflight accepts last-session quotes before Monday market open", async () => {
+  const root = await createFixture();
+  try {
+    const store = new AgentStore(root.repoRoot, root.stateRoot);
+    const now = "2026-07-06T03:35:00Z";
+    const hoursAgo = (hours: number) => new Date(Date.parse(now) - hours * 60 * 60 * 1000).toISOString();
+    const run = await runContentDryRun(store, {
+      topic: "daily AI news and semiconductor stock hotspots",
+      sourceUrls: ["https://example.com/ai.json"],
+      tickers: ["NVDA"],
+      liveSources: true,
+      now,
+      fetchText: async (url) => {
+        if (url.includes("api.nasdaq.com")) {
+          return {
+            url,
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            contentType: "application/json",
+            text: JSON.stringify({
+              data: {
+                symbol: "NVDA",
+                companyName: "NVIDIA Corporation Common Stock",
+                primaryData: {
+                  lastSalePrice: "$101.00",
+                  netChange: "+1.00",
+                  percentageChange: "+1.00%",
+                  lastTradeTimestamp: hoursAgo(80),
+                  volume: "12,345"
+                },
+                marketStatus: "Closed"
+              }
+            })
+          };
+        }
+        return {
+          url,
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          contentType: "application/json",
+          text: JSON.stringify({ hits: [{ title: "AI chip startup raises new round", created_at: hoursAgo(2) }] })
+        };
+      }
+    });
+
+    await mkdir(join(root.stateRoot, "generated"), { recursive: true });
+    const imagePath = join(root.stateRoot, "generated", "cover.png");
+    await writeFile(imagePath, "fake image bytes", "utf8");
+    await recordContentImageEvidence(store, {
+      runRef: run.id,
+      outputPath: imagePath
+    });
+
+    const ok = await recordContentPublishPreflight(store, {
+      runRef: run.id,
+      loginStatus: "logged_in",
+      adapterAvailable: true
+    });
+
+    assert.equal(ok.evidence.status, "preflight_ok");
+    const sourceFreshness = ok.evidence.checks.find((check) => check.id === "source_freshness_ok");
+    assert.equal(sourceFreshness?.status, "pass");
+    assert.equal(sourceFreshness?.evidence.fresh_market_count, 1);
+  } finally {
+    await rm(root.root, { recursive: true, force: true });
+  }
+});
+
 test("content publish-preflight blocks stale live source coverage", async () => {
   const root = await createFixture();
   try {
@@ -1079,7 +1234,7 @@ test("content publish-preflight blocks stale live source coverage", async () => 
                   lastSalePrice: "$101.00",
                   netChange: "+1.00",
                   percentageChange: "+1.00%",
-                  lastTradeTimestamp: oldIso(80),
+                  lastTradeTimestamp: oldIso(160),
                   volume: "12,345"
                 },
                 marketStatus: "Closed"

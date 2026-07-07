@@ -59,6 +59,7 @@ export async function getMemoryLayerDiagnostics(store: AgentStore): Promise<Memo
     semanticLayer,
     governanceLayer,
     workingLayer,
+    dreamLayer,
     archivesLayer,
     skillOutcomeLayer
   ] = await Promise.all([
@@ -66,6 +67,7 @@ export async function getMemoryLayerDiagnostics(store: AgentStore): Promise<Memo
     readSemanticMemoryLayer(store),
     readGovernanceQueueLayer(store),
     readWorkingCheckpointLayer(store),
+    readDreamLayer(store),
     readArchiveLayer(store),
     readSelectedSkillOutcomeLayer(store)
   ]);
@@ -74,6 +76,7 @@ export async function getMemoryLayerDiagnostics(store: AgentStore): Promise<Memo
     semanticLayer,
     governanceLayer,
     workingLayer,
+    dreamLayer,
     archivesLayer,
     skillOutcomeLayer
   ];
@@ -90,7 +93,7 @@ export async function getMemoryLayerDiagnostics(store: AgentStore): Promise<Memo
       diagnostic_only_layers: layers.filter((layer) => layer.context_role === "diagnostic_only").map((layer) => layer.id),
       attention_layer_ids: layers.filter((layer) => layer.status === "needs_attention").map((layer) => layer.id),
       notes: [
-        "Spend prompt budget on selected semantic memory, current working checkpoint, and bounded governance queue only.",
+        "Spend prompt budget on selected semantic memory, dream snapshots, current working checkpoint, and bounded governance queue only.",
         "Keep episode events, archives, and selected-skill outcomes as on-demand or ranking signals unless a command asks for details."
       ],
       recommended_commands: unique(layers.flatMap((layer) => layer.recommendations))
@@ -248,6 +251,37 @@ async function readWorkingCheckpointLayer(store: AgentStore): Promise<MemoryLaye
     },
     context_policy: "The latest current checkpoint enters turn context as continuity, not as proof that work is complete.",
     recommendations: needsAttention ? ["pnpm run runtime -- memory working --state-root <state-root>"] : []
+  };
+}
+
+async function readDreamLayer(store: AgentStore): Promise<MemoryLayerSummary> {
+  const refs = await jsonRefs(store, "memory/dreams");
+  let valid = 0;
+  let latestCreatedAt: string | null = null;
+  for (const ref of refs) {
+    const record = await readRecord(store, ref);
+    if (record?.action_type !== "dream_snapshot" || record.status !== "active") continue;
+    valid += 1;
+    latestCreatedAt = maxString(latestCreatedAt, getString(record.created_at));
+  }
+  return {
+    id: "dreams",
+    title: "Dream snapshots",
+    status: valid > 0 ? "active" : "empty",
+    context_role: "selected_context",
+    selected_for_context: valid > 0,
+    state_refs: ["memory/dreams"],
+    commands: [
+      "pnpm run runtime -- memory dream --state-root <state-root>",
+      "pnpm run runtime -- memory dreams --state-root <state-root>"
+    ],
+    counts: {
+      dream_files: refs.length,
+      dream_valid: valid,
+      latest_created_at: latestCreatedAt
+    },
+    context_policy: "The turn context may select the newest dream snapshots as long-horizon direction; dreams are not execution plans or completion evidence.",
+    recommendations: valid === 0 ? ["pnpm run runtime -- memory dream --state-root <state-root>"] : []
   };
 }
 

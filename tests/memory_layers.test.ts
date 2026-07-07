@@ -82,6 +82,22 @@ test("memory layer diagnostic summarizes context entrypoints without leaking raw
       open_questions: ["Which layer enters context?"],
       created_at: "2026-07-03T00:00:07.000Z"
     });
+    await store.writeJson("memory/dreams/dream_layer.json", {
+      schema_version: 1,
+      id: "dream_layer",
+      action_type: "dream_snapshot",
+      status: "active",
+      title: "Long horizon layer",
+      summary: "Keep core evolution visible.",
+      created_at: "2026-07-03T00:00:08.000Z",
+      source_refs: ["memory/semantic/accepted/semantic_memory_1.json"],
+      semantic_memory_refs: ["memory/semantic/accepted/semantic_memory_1.json"],
+      backlog_refs: [],
+      axes: [],
+      horizons: [],
+      non_goals: [],
+      boundary: "bounded dream"
+    });
     await store.writeJson("memory/archives/2026-07-03.json", {
       date: "2026-07-03",
       event_count: 2,
@@ -97,7 +113,7 @@ test("memory layer diagnostic summarizes context entrypoints without leaking raw
 
     assert.equal(result.action, "layers");
     assert.match(result.boundary, /does not sync indexes/);
-    assert.deepEqual(result.context_entry.selected_context_layers, ["semantic_memory", "working_checkpoint"]);
+    assert.deepEqual(result.context_entry.selected_context_layers, ["semantic_memory", "working_checkpoint", "dreams"]);
     assert.deepEqual(result.context_entry.governance_context_layers, ["memory_governance_queue"]);
     assert.ok(result.context_entry.attention_layer_ids.includes("memory_governance_queue"));
     assert.ok(result.context_entry.attention_layer_ids.includes("working_checkpoint"));
@@ -122,6 +138,11 @@ test("memory layer diagnostic summarizes context entrypoints without leaking raw
     assert.equal(working.status, "needs_attention");
     assert.equal(working.counts.current_open_questions, 1);
     assert.equal(working.counts.blocked_signal, true);
+
+    const dreams = layer(result.layers, "dreams");
+    assert.equal(dreams.status, "active");
+    assert.equal(dreams.counts.dream_valid, 1);
+    assert.equal(dreams.selected_for_context, true);
 
     const skills = layer(result.layers, "selected_skill_outcomes");
     assert.equal(skills.context_role, "recall_quality_signal");

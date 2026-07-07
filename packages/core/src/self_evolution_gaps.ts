@@ -8,13 +8,18 @@ import {
   type ContentFeedbackMetricName,
   type ContentRun
 } from "./content_pipeline.js";
+import { getCapabilityCatalog } from "./capabilities.js";
 import { getServiceHealth, type ServiceHealthResult } from "./service_health.js";
-import { slugify, utcNow } from "./ids.js";
+import {
+  listSelfEvolutionIterations,
+  type SelfEvolutionIterationContract
+} from "./self_evolution_iterations.js";
+import { newId, slugify, utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 export type SelfEvolutionGapStatus = "active" | "waiting";
 export type SelfEvolutionGapEffectiveStatus = SelfEvolutionGapStatus | "deferred" | "completed" | "retired";
-export type SelfEvolutionGapSource = "content_run" | "service_status";
+export type SelfEvolutionGapSource = "content_run" | "service_status" | "operator_correction" | "scorecard" | "iteration_outcome";
 export type SelfEvolutionGapFollowUpKind = "act_next" | "sop_candidate" | "narrow_review" | "waiting";
 export type SelfEvolutionGapOpportunityDecisionStatus = "open" | "deferred" | "completed" | "retired";
 
@@ -68,6 +73,29 @@ export interface SelfEvolutionGapDetailResult {
   boundary: string;
 }
 
+export interface OperatorCorrectionRecord {
+  schema_version: 1;
+  id: string;
+  ref: string;
+  kind: "operator_correction";
+  summary: string;
+  source_ref?: string;
+  owner_surface: string;
+  proposed_slice: string;
+  evidence_refs: string[];
+  created_at: string;
+  boundary: string;
+}
+
+export interface OperatorCorrectionRecordResult {
+  action: "record-correction";
+  correction: OperatorCorrectionRecord;
+  gap_id: string;
+  gap_ref: string;
+  inspect_command: string;
+  boundary: string;
+}
+
 interface ContentFeedbackRecord {
   ref: string;
   evidence: ContentFeedbackEvidence;
@@ -93,13 +121,18 @@ interface ContentFeedbackRefreshRouteReviewRecord {
 }
 
 const OPPORTUNITY_DECISIONS_REF = "autonomy/opportunity-decisions.jsonl";
-const SELF_EVOLUTION_GAP_BOUNDARY = "read-only self-evolution gap metadata derived from bounded state refs and append-only opportunity decisions; does not read draft bodies, invoke models, execute tools, publish externally, mutate state, write repo files, or write the active vault";
+const OPERATOR_CORRECTIONS_ROOT = "self-evolution/operator-corrections";
+const SCORECARD_MULTI_EXPERT_GAP_ID = "gap_scorecard_multi_expert_orchestration_contract";
+const SCORECARD_MULTI_EXPERT_CREATED_AT = "2026-07-06T00:00:00Z";
+const SELF_EVOLUTION_GAP_BOUNDARY = "self-evolution gap metadata derived from bounded state refs, verified iteration outcomes, explicit operator corrections, scorecard metadata, and append-only opportunity decisions; listing is read-only and recording corrections writes only local state; it does not read draft bodies, invoke models, execute tools, publish externally, write repo files, or write the active vault";
+const OPERATOR_CORRECTION_BOUNDARY = "explicit operator correction intake writes one bounded local state record only; it does not draft SOPs, update memory, mutate repo files, write the active vault, invoke models, execute tools, publish externally, or change services";
 const POST_PUBLISH_FEEDBACK_STABLE_WINDOW_MS = 6 * 60 * 60 * 1000;
 
 export async function listSelfEvolutionGaps(
   store: AgentStore,
   args: { limit?: number } = {}
 ): Promise<SelfEvolutionGapListResult> {
+  const correctionRecords = await readOperatorCorrectionRecords(store);
   const runs = await readContentRuns(store);
   const decisions = await readSelfEvolutionGapOpportunityDecisions(store);
   const feedbackByRunId = latestFeedbackByRunId(await readContentFeedbackRecords(store));
@@ -109,6 +142,9 @@ export async function listSelfEvolutionGaps(
   );
   const serviceHealth = await getServiceHealth(store);
   const routeReviewRecords = await readContentFeedbackRefreshRouteReviewRecords(store);
+  const correctionGaps = correctionRecords.map(deriveGapFromOperatorCorrection);
+  const scorecardGaps = await deriveGapsFromScorecardCatalog(store);
+  const iterationOutcomeGaps = await deriveGapsFromVerifiedIterationOutcomes(store);
   const serviceGaps = deriveGapsFromServiceHealth(serviceHealth, routeReviewRecords);
   const runGaps = runs.flatMap((run) =>
     deriveGapsFromContentRun(
@@ -120,6 +156,9 @@ export async function listSelfEvolutionGaps(
     )
   );
   const gaps = [
+    ...correctionGaps,
+    ...scorecardGaps,
+    ...iterationOutcomeGaps,
     ...serviceGaps,
     ...runGaps
   ].map((gap) => withOpportunityDecision(gap, decisions));
@@ -132,6 +171,45 @@ export async function listSelfEvolutionGaps(
     gap_refs: selected.map((gap) => gap.ref),
     gaps: selected,
     boundary: SELF_EVOLUTION_GAP_BOUNDARY
+  };
+}
+
+export async function recordOperatorCorrection(
+  store: AgentStore,
+  args: {
+    summary: string;
+    ownerSurface?: string;
+    proposedSlice?: string;
+    sourceRef?: string;
+    evidenceRefs?: string[];
+  }
+): Promise<OperatorCorrectionRecordResult> {
+  const summary = args.summary.trim();
+  if (!summary) throw new Error("operator correction summary is required");
+  const id = newId("operator_correction");
+  const ref = `${OPERATOR_CORRECTIONS_ROOT}/${id}.json`;
+  const record: OperatorCorrectionRecord = {
+    schema_version: 1,
+    id,
+    ref,
+    kind: "operator_correction",
+    summary,
+    ...(args.sourceRef ? { source_ref: args.sourceRef } : {}),
+    owner_surface: args.ownerSurface?.trim() || "runtime_contract",
+    proposed_slice: args.proposedSlice?.trim() || "operator_correction_to_sop_guard",
+    evidence_refs: compactRefs(args.evidenceRefs ?? []),
+    created_at: utcNow(),
+    boundary: OPERATOR_CORRECTION_BOUNDARY
+  };
+  await store.writeJson(ref, record);
+  const gap = deriveGapFromOperatorCorrection(record);
+  return {
+    action: "record-correction",
+    correction: record,
+    gap_id: gap.id,
+    gap_ref: gap.ref,
+    inspect_command: gap.inspect_command,
+    boundary: OPERATOR_CORRECTION_BOUNDARY
   };
 }
 
@@ -217,6 +295,164 @@ function deriveGapsFromServiceHealth(
 ): SelfEvolutionGap[] {
   const feedbackRefreshRouteGap = deriveFeedbackRefreshRouteReviewGapFromServiceHealth(health, routeReviews);
   return [feedbackRefreshRouteGap].filter((gap): gap is SelfEvolutionGap => gap !== null);
+}
+
+async function deriveGapsFromScorecardCatalog(store: AgentStore): Promise<SelfEvolutionGap[]> {
+  if (!await hasActiveDreamSnapshot(store)) return [];
+  const capabilities = getCapabilityCatalog().categories.flatMap((category) => category.capabilities);
+  const hasDelegationVocabulary = capabilities.some((capability) => capability.id === "delegate_agent");
+  const hasExpertContract = capabilities.some((capability) =>
+    capability.id === "expert.orchestration_contract"
+    || capability.id === "multi_expert.delegation_contract"
+  );
+  if (!hasDelegationVocabulary || hasExpertContract) return [];
+  const id = SCORECARD_MULTI_EXPERT_GAP_ID;
+  return [{
+    schema_version: 1,
+    id,
+    ref: `self-evolution/gaps/${id}.json`,
+    title: "Multi-expert orchestration needs bounded contracts",
+    status: "active",
+    source: "scorecard",
+    source_ref: "packages/core/src/self_evolution_scorecard.ts",
+    observed_problem: "Self-evolution scorecard keeps multi_expert_orchestration emerging: delegate_agent exists as vocabulary, but expert roles, scheduling boundaries, and main-thread verification are not yet first-class runtime contracts.",
+    evidence_refs: [
+      "packages/core/src/self_evolution_scorecard.ts",
+      "packages/core/src/action_contracts.ts",
+      "packages/core/src/capabilities.ts"
+    ],
+    owner_surface: "core_runtime",
+    proposed_slice: "multi_expert_delegation_contract",
+    follow_up_kind: "sop_candidate",
+    acceptance: [
+      "scorecard-derived gaps expose low-maturity core dimensions through the normal Opportunity Backlog",
+      "multi-expert roles define advisory responsibilities, allowed evidence, and side-effect boundaries before any expert persona is added",
+      "delegated expert output remains advisory until the main runtime verifies evidence and completion",
+      "the gap can be deferred, completed, or retired through append-only opportunity decisions without rewriting scorecard history"
+    ],
+    non_goals: [
+      "no autonomous multi-agent scheduler in this slice",
+      "no parallel model fan-out or new model provider contract",
+      "no external tool expansion, browser automation, publishing, or service restart authority",
+      "no completion claim based only on expert output"
+    ],
+    verification_commands: [
+      "pnpm exec tsx --test tests/self_evolution_gaps.test.ts tests/opportunity_backlog.test.ts tests/self_evolution_scorecard.test.ts",
+      `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
+      "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>",
+      "pnpm run runtime -- governance scorecard --state-root <state-root>"
+    ],
+    inspect_command: `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
+    created_at: SCORECARD_MULTI_EXPERT_CREATED_AT,
+    updated_at: SCORECARD_MULTI_EXPERT_CREATED_AT,
+    boundary: SELF_EVOLUTION_GAP_BOUNDARY
+  }];
+}
+
+async function deriveGapsFromVerifiedIterationOutcomes(store: AgentStore): Promise<SelfEvolutionGap[]> {
+  const [iterations, sopEvidenceRefs] = await Promise.all([
+    listSelfEvolutionIterations(store, { limit: 10 }),
+    readSopDraftEvidenceRefs(store)
+  ]);
+  return iterations.iterations
+    .filter((iteration) => iteration.outcome?.status === "verified")
+    .filter((iteration) => !sopEvidenceRefs.has(iteration.ref) && !sopEvidenceRefs.has(iteration.id))
+    .map(deriveGapFromVerifiedIterationOutcome);
+}
+
+function deriveGapFromVerifiedIterationOutcome(iteration: SelfEvolutionIterationContract): SelfEvolutionGap {
+  const outcome = iteration.outcome;
+  if (!outcome) throw new Error(`verified iteration outcome missing for ${iteration.id}`);
+  const id = `gap_iteration_outcome_sop_${safeGapIdPart(iteration.id)}`;
+  return {
+    schema_version: 1,
+    id,
+    ref: `self-evolution/gaps/${id}.json`,
+    title: "Verified iteration outcome needs SOP candidate review",
+    status: "active",
+    source: "iteration_outcome",
+    source_ref: iteration.ref,
+    observed_problem: `Verified self-evolution iteration ${iteration.proposed_slice} has not yet been represented by a state-only SOP draft, so the reusable lesson can stall before the SOP/skill/memory gate.`,
+    evidence_refs: compactRefs([
+      iteration.ref,
+      iteration.source_ref,
+      ...iteration.evidence_refs,
+      ...outcome.evidence_refs
+    ]),
+    owner_surface: iteration.owner_surface,
+    proposed_slice: "verified_iteration_outcome_sop_candidate",
+    follow_up_kind: "sop_candidate",
+    acceptance: [
+      "verified iteration outcomes can surface as SOP-candidate self-evolution gaps",
+      "Opportunity Backlog and review tick can materialize the candidate without automatically drafting, auditing, promoting, or writing skills",
+      "the SOP draft, if requested later, cites the iteration contract and verification evidence",
+      "application-specific external tool lessons remain evidence or application slices unless the reusable runtime pattern is explicit"
+    ],
+    non_goals: [
+      "auto-draft SOPs from every iteration outcome",
+      "auto-audit, auto-promote, or write active-vault skills",
+      "accept semantic memory without confirmation",
+      "treat NASD, Xiaohongshu MCP, browser automation, or other external adapters as core runtime identity"
+    ],
+    verification_commands: compactRefs([
+      ...outcome.verification_commands,
+      "pnpm exec tsx --test tests/self_evolution_iterations.test.ts tests/self_evolution_gaps.test.ts tests/background_review.test.ts",
+      `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
+      "pnpm run runtime -- review tick --state-root <state-root>"
+    ]),
+    inspect_command: `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`,
+    created_at: outcome.recorded_at,
+    updated_at: outcome.recorded_at,
+    boundary: SELF_EVOLUTION_GAP_BOUNDARY
+  };
+}
+
+async function hasActiveDreamSnapshot(store: AgentStore): Promise<boolean> {
+  for (const ref of (await store.listStateFiles("memory/dreams")).filter((item) => item.endsWith(".json"))) {
+    const record = await store.readStateJson<unknown>(ref);
+    if (isRecord(record) && record.action_type === "dream_snapshot" && record.status === "active") return true;
+  }
+  return false;
+}
+
+function deriveGapFromOperatorCorrection(record: OperatorCorrectionRecord): SelfEvolutionGap {
+  const id = `gap_operator_correction_${safeGapIdPart(record.id)}`;
+  const gapRef = `self-evolution/gaps/${id}.json`;
+  return {
+    schema_version: 1,
+    id,
+    ref: gapRef,
+    title: "Operator correction needs self-evolution follow-up",
+    status: "active",
+    source: "operator_correction",
+    source_ref: record.ref,
+    observed_problem: record.summary,
+    evidence_refs: compactRefs([record.ref, record.source_ref, ...record.evidence_refs]),
+    owner_surface: record.owner_surface,
+    proposed_slice: record.proposed_slice,
+    follow_up_kind: "sop_candidate",
+    acceptance: [
+      "operator correction is recorded as bounded local state evidence",
+      "governance gaps and Opportunity Backlog expose the correction as a SOP-candidate self-evolution item",
+      "SOP drafting, auditing, promotion, and memory updates still require the existing review confirmation gates",
+      "the correction intake path never mutates repo files, active vault, services, or external systems by itself"
+    ],
+    non_goals: [
+      "auto-rewrite project memory or model-facing identity files from a correction",
+      "auto-promote the correction into a SOP or skill without review",
+      "invoke external tools, model calls, content publishing, browser automation, or service restarts",
+      "classify application-specific tool adapters as core runtime capability"
+    ],
+    verification_commands: [
+      "pnpm exec tsx --test tests/self_evolution_gaps.test.ts tests/cli.test.ts tests/capabilities.test.ts",
+      `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
+      "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
+    ],
+    inspect_command: `pnpm run runtime -- governance gaps --gap ${id} --state-root <state-root>`,
+    created_at: record.created_at,
+    updated_at: record.created_at,
+    boundary: SELF_EVOLUTION_GAP_BOUNDARY
+  };
 }
 
 function deriveFeedbackRefreshRouteReviewGapFromServiceHealth(
@@ -1159,6 +1395,64 @@ async function readContentRuns(store: AgentStore): Promise<ContentRun[]> {
     if (parsed.success) runs.push(parsed.data);
   }
   return runs.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+}
+
+async function readOperatorCorrectionRecords(store: AgentStore): Promise<OperatorCorrectionRecord[]> {
+  const refs = (await store.listStateFiles(OPERATOR_CORRECTIONS_ROOT))
+    .filter((ref) => ref.endsWith(".json"));
+  const records: OperatorCorrectionRecord[] = [];
+  for (const ref of refs) {
+    const record = parseOperatorCorrectionRecord(await store.readStateJson<unknown>(ref), ref);
+    if (record) records.push(record);
+  }
+  return records.sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+async function readSopDraftEvidenceRefs(store: AgentStore): Promise<Set<string>> {
+  const refs = new Set<string>();
+  for (const ref of (await store.listStateFiles("sop/drafts")).filter((item) => item.endsWith(".json"))) {
+    let record: unknown;
+    try {
+      record = await store.readStateJson<unknown>(ref);
+    } catch {
+      continue;
+    }
+    if (!isRecord(record)) continue;
+    const evidenceRefs = Array.isArray(record.evidence_refs) ? record.evidence_refs : [];
+    for (const evidenceRef of evidenceRefs) {
+      if (typeof evidenceRef === "string" && evidenceRef.trim()) refs.add(evidenceRef);
+    }
+  }
+  return refs;
+}
+
+function parseOperatorCorrectionRecord(value: unknown, ref: string): OperatorCorrectionRecord | null {
+  if (!isRecord(value)) return null;
+  if (value.schema_version !== 1 || value.kind !== "operator_correction") return null;
+  const id = stringField(value, "id");
+  const summary = stringField(value, "summary");
+  const ownerSurface = stringField(value, "owner_surface");
+  const proposedSlice = stringField(value, "proposed_slice");
+  const createdAt = stringField(value, "created_at");
+  const boundary = stringField(value, "boundary") ?? OPERATOR_CORRECTION_BOUNDARY;
+  if (!id || !summary || !ownerSurface || !proposedSlice || !createdAt) return null;
+  const sourceRef = stringField(value, "source_ref") ?? undefined;
+  const evidenceRefs = Array.isArray(value.evidence_refs)
+    ? value.evidence_refs.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+  return {
+    schema_version: 1,
+    id,
+    ref: stringField(value, "ref") ?? ref,
+    kind: "operator_correction",
+    summary,
+    ...(sourceRef ? { source_ref: sourceRef } : {}),
+    owner_surface: ownerSurface,
+    proposed_slice: proposedSlice,
+    evidence_refs: compactRefs(evidenceRefs),
+    created_at: createdAt,
+    boundary
+  };
 }
 
 async function readSelfEvolutionGapOpportunityDecisions(

@@ -680,6 +680,8 @@ export class FeishuPrivateChatAdapter {
       "Service health",
       "",
       `overall: ${health.status}`,
+      `runtime_substrate: ${health.layers.runtime_substrate.status} reasons=${health.layers.runtime_substrate.reason_codes.join(",") || "none"}`,
+      `application_slices: ${health.layers.application_slices.status} reasons=${health.layers.application_slices.reason_codes.join(",") || "none"}`,
       `im_state: ${health.im.state}`,
       `pid: ${health.im.pid ?? "unknown"}`,
       `channel: ${health.im.channel_id ?? "unknown"}`,
@@ -2992,7 +2994,7 @@ function renderCapabilityAcceptanceAudit(audit: CapabilityAcceptanceAudit): stri
 
 function renderCapabilityAcceptanceGate(gate: CapabilityAcceptanceGate, index: number): string[] {
   return [
-    `${index + 1}. ${gate.title} (${gate.status})`,
+    `${index + 1}. ${gate.title} (${gate.status}, layer: ${gate.layer})`,
     `   ${truncateText(gate.summary, 220)}`,
     `   evidence: ${gate.evidence_refs.slice(0, 4).join(" | ")}`,
     `   verify: ${gate.verification_commands.slice(0, 3).join(" | ")}`,
@@ -3003,7 +3005,7 @@ function renderCapabilityAcceptanceGate(gate: CapabilityAcceptanceGate, index: n
 function renderCapabilityNextSlice(slice: CapabilityNextSlice, index: number): string[] {
   return [
     `${index + 1}. ${slice.title}`,
-    `   id: ${slice.id}`,
+    `   id: ${slice.id} | layer: ${slice.layer}`,
     `   reason: ${truncateText(slice.reason, 220)}`,
     `   success: ${slice.success_criteria.slice(0, 3).join(" | ")}`,
     `   refs: ${slice.refs.join(" | ")}`
@@ -3012,15 +3014,16 @@ function renderCapabilityNextSlice(slice: CapabilityNextSlice, index: number): s
 
 function renderCapabilityCategory(category: CapabilityCategory, index: number): string[] {
   return [
-    `${index + 1}. ${category.title} (${category.status})`,
+    `${index + 1}. ${category.title} (${category.status}, layer: ${category.layer})`,
     `   ${truncateText(category.summary, 220)}`,
-    ...category.capabilities.flatMap(renderCapabilitySummary)
+    ...category.capabilities.flatMap((capability) => renderCapabilitySummary(capability, category.layer))
   ];
 }
 
-function renderCapabilitySummary(capability: CapabilitySummary): string[] {
+function renderCapabilitySummary(capability: CapabilitySummary, inheritedLayer: CapabilityCategory["layer"]): string[] {
+  const layer = capability.layer ?? inheritedLayer;
   return [
-    `   - ${capability.title}: ${truncateText(capability.summary, 220)}`,
+    `   - ${capability.title} [${layer}]: ${truncateText(capability.summary, 220)}`,
     ...(capability.commands && capability.commands.length > 0
       ? [`     commands: ${capability.commands.slice(0, 3).join(" | ")}`]
       : []),

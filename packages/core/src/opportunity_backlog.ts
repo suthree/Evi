@@ -84,6 +84,10 @@ import {
   listSelfEvolutionGaps,
   type SelfEvolutionGap
 } from "./self_evolution_gaps.js";
+import {
+  listSelfEvolutionIterations,
+  type SelfEvolutionIterationContract
+} from "./self_evolution_iterations.js";
 import { AgentStore } from "./store.js";
 import { newId, utcNow } from "./ids.js";
 
@@ -101,6 +105,10 @@ const MAX_WORKING_CHECKPOINT_ITEMS = 5;
 const MAX_ARCHIVE_HEALTH_ITEMS = 5;
 const MAX_SKILL_REGISTRY_HEALTH_ITEMS = 5;
 const MAX_SELF_EVOLUTION_GAP_ITEMS = 10;
+const CORE_BASIC_ITERATION_LAYERS = new Set<SelfEvolutionIterationContract["layer"]>([
+  "core_runtime",
+  "basic_entrypoint"
+]);
 const ACT_NEXT_MCP_SERVER_URL = "http://localhost:18060/mcp";
 const CREATOR_METRICS_BROWSER_SESSION_NAME = "runtime-creator-metrics";
 const SUPPORTED_ACT_NEXT_SELF_EVOLUTION_SLICES = new Set([
@@ -1767,11 +1775,43 @@ async function readSopEvolutionChainItems(
 }
 
 async function readSelfEvolutionGapItems(store: AgentStore): Promise<OpportunityBacklogItem[]> {
-  const result = await listSelfEvolutionGaps(store, { limit: MAX_SELF_EVOLUTION_GAP_ITEMS });
+  const [result, iterationResult] = await Promise.all([
+    listSelfEvolutionGaps(store, { limit: MAX_SELF_EVOLUTION_GAP_ITEMS }),
+    listSelfEvolutionIterations(store, { limit: MAX_SELF_EVOLUTION_GAP_ITEMS })
+  ]);
+  const iterationByRef = new Map<string, SelfEvolutionIterationContract>();
+  for (const iteration of iterationResult.iterations) {
+    iterationByRef.set(iteration.ref, iteration);
+    iterationByRef.set(iteration.id, iteration);
+  }
   return result.gaps.map((gap) => {
     const isWaiting = gap.status === "waiting";
     const actNextCommand = selfEvolutionActNextCommandForGap(gap);
     const actionKind = selfEvolutionActionKindForGap(gap, actNextCommand);
+    const sourceIteration = iterationByRef.get(gap.source_ref);
+    const isCoreBasicIterationOutcomeFollowUp = Boolean(
+      sourceIteration
+      && gap.source === "iteration_outcome"
+      && gap.follow_up_kind === "sop_candidate"
+      && CORE_BASIC_ITERATION_LAYERS.has(sourceIteration.layer)
+    );
+    const growthValue: GrowthValue = isCoreBasicIterationOutcomeFollowUp
+      ? {
+          capability_gain: 1,
+          repeat_demand: 1,
+          evidence_available: gap.evidence_refs.length > 0 ? 4 : 2,
+          urgency_or_unblock: 0,
+          risk: 2,
+          cost: 1
+        }
+      : {
+          capability_gain: isWaiting ? 2 : 4,
+          repeat_demand: isWaiting ? 2 : 3,
+          evidence_available: gap.evidence_refs.length > 0 ? 4 : 2,
+          urgency_or_unblock: isWaiting ? 0 : 3,
+          risk: 2,
+          cost: 2
+        };
     return buildItem({
       kind: "self_evolution_gap",
       ref: gap.ref,
@@ -1800,20 +1840,15 @@ async function readSelfEvolutionGapItems(store: AgentStore): Promise<Opportunity
         verification_commands: gap.verification_commands,
         boundary: gap.boundary
       },
-      growth_value: {
-        capability_gain: isWaiting ? 2 : 4,
-        repeat_demand: isWaiting ? 2 : 3,
-        evidence_available: gap.evidence_refs.length > 0 ? 4 : 2,
-        urgency_or_unblock: isWaiting ? 0 : 3,
-        risk: 2,
-        cost: 2
-      },
+      growth_value: growthValue,
       budget_hint: {
         max_turns: 2,
         max_tool_calls: actNextCommand ? 3 : 2,
         side_effect_level: actNextCommand ? "local_write" : "none"
       },
-      next_step: actNextCommand
+      next_step: isCoreBasicIterationOutcomeFollowUp
+        ? `Inspect the derived gap as a low-priority learning follow-up after the GA project-design plan: ${gap.inspect_command}. Do not draft a SOP unless the lesson recurs outside the core/basic project-design artifact.`
+        : actNextCommand
         ? `Inspect the derived gap, then run the typed opportunity executor: ${actNextCommand}.`
         : actionKind === "draft_sop"
         ? `Inspect the derived gap, then run review tick to materialize a SOP candidate inbox item: pnpm run runtime -- review tick --state-root <state-root>.`
@@ -1827,6 +1862,8 @@ async function readSelfEvolutionGapItems(store: AgentStore): Promise<Opportunity
         `follow_up_kind=${gap.follow_up_kind}`,
         `evidence_refs=${gap.evidence_refs.length}`,
         `source=${gap.source}`,
+        ...(sourceIteration ? [`source_iteration_layer=${sourceIteration.layer}`] : []),
+        ...(isCoreBasicIterationOutcomeFollowUp ? ["core_basic_iteration_outcome_followup=demoted"] : []),
         ...(gap.not_before_at ? [`not_before_at=${gap.not_before_at}`] : [])
       ],
       created_at: gap.created_at,

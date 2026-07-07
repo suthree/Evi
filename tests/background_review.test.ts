@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { AgentStore } from "../packages/core/src/store.js";
+import {
+  recordSelfEvolutionIteration,
+  recordSelfEvolutionIterationOutcome
+} from "../packages/core/src/self_evolution_iterations.js";
 import { BackgroundReviewRunner } from "../packages/runtime/src/background_review.js";
 import {
   recordContentFeedbackEvidence,
@@ -1477,6 +1481,65 @@ test("review tick routes SOP-candidate self-evolution gaps into draft SOP inbox"
   }
 });
 
+test("review tick routes verified iteration outcomes into state-only SOP drafts", async () => {
+  const fixture = await createFixture();
+  try {
+    const store = new AgentStore(fixture.repoRoot, fixture.stateRoot);
+    const recorded = await recordSelfEvolutionIteration(store, {
+      summary: "Preserve verified self-evolution outcomes as SOP candidates.",
+      layer: "local_learning",
+      ownerSurface: "sop_skill_memory_loop",
+      proposedSlice: "verified_iteration_outcome_sop_candidate",
+      sourceRef: "memory/dreams/dream_iteration.json",
+      evidenceRefs: ["packages/core/src/self_evolution_iterations.ts"],
+      verificationCommands: ["pnpm run check"],
+      nonGoals: ["no active-vault write"]
+    });
+    await recordSelfEvolutionIterationOutcome(store, {
+      iterationRef: recorded.iteration.id,
+      status: "verified",
+      summary: "The bounded iteration passed and should be reusable.",
+      evidenceRefs: ["tests/background_review.test.ts"],
+      verificationCommands: ["pnpm exec tsx --test tests/background_review.test.ts"],
+      nextMoves: ["Route through review tick before drafting."]
+    });
+
+    const runner = new BackgroundReviewRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot
+    });
+    const tick = await runner.runTick({ limit: 5 });
+
+    assert.equal(tick.focus.source, "opportunity_backlog");
+    assert.equal(tick.focus.opportunity?.kind, "self_evolution_gap");
+    assert.equal(tick.focus.opportunity?.self_evolution_gap?.source, "iteration_outcome");
+    assert.equal(tick.focus.opportunity?.self_evolution_gap?.source_ref, recorded.iteration.ref);
+    assert.equal(tick.focus.opportunity?.action_kind, "draft_sop");
+
+    const draftItem = tick.inbox_items.find((item) =>
+      item.proposal_type === "sop_candidate"
+      && item.action_kind === "draft_sop"
+      && item.required_refs.includes(recorded.iteration.ref)
+    );
+    if (!draftItem) throw new Error("expected iteration outcome draft_sop inbox item");
+
+    const executed = await runner.draftSopFromProposal({
+      reviewRef: tick.review_ref,
+      proposalId: draftItem.proposal_id
+    });
+
+    assert.equal(executed.sop.status, "draft");
+    assert.equal(executed.sop.evidence_refs.includes(recorded.iteration.ref), true);
+    assert.match(executed.sop.trigger, /verified_iteration_outcome_sop_candidate/);
+    assert.equal(executed.sop.procedure.some((step) => step.includes("governance iterations")), true);
+    assert.equal(executed.sop.verification.includes("tests/background_review.test.ts"), true);
+    assert.equal(executed.sop.failure_modes.some((mode) => mode.includes("active-vault")), true);
+    assert.equal(existsSync(join(fixture.repoRoot, "vault")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("review tick keeps source-quality self-evolution gaps as actionable backlog", async () => {
   const fixture = await createFixture();
   try {
@@ -2101,7 +2164,7 @@ test("background review promotes audited SOP drafts through an explicit vault ga
     assert.equal(coverage.current_duplicate_skill_ref, skillRef);
     assert.equal(coverage.recorded_duplicate_skill_refs.includes(skillRef), true);
     assert.equal(coverage.current_recall_hits.some((hit) => hit.instructions_ref === skillRef && hit.current_duplicate), true);
-    assert.match(coverage.next_step, /pending revise_skill confirmation/);
+    assert.match(coverage.next_step, /No revise_skill action is needed/);
 
     const chainAwareReview = await runner.run({ query: "explicit SOP promotion", limit: 5 });
     const promotedChain = chainAwareReview.chain_summaries.find((item) => item.sop_id === draft.sop.id);
@@ -2109,82 +2172,116 @@ test("background review promotes audited SOP drafts through an explicit vault ga
     assert.equal(promotedChain?.promotion_events, 1);
     assert.equal(promotedChain?.reuse_events, 1);
     const reuseProposal = chainAwareReview.proposals.find((item) => item.title === "Review reused-skill coverage before changing SOPs");
-    assert.ok(reuseProposal);
-    const eventsBeforeReusePlan = await readFile(join(fixture.stateRoot, "memory/episodes/events.jsonl"), "utf8");
-    const reusePlan = await runner.planProposalFollowUp({
-      reviewRef: chainAwareReview.id,
-      proposalId: reuseProposal.id
+    assert.equal(reuseProposal, undefined);
+
+    const rawEvents = await readFile(join(fixture.stateRoot, "memory/episodes/events.jsonl"), "utf8");
+    assert.match(rawEvents, /Promoted audited state SOP/);
+    assert.match(rawEvents, /Executed confirmed promote_sop follow-up action/);
+    assert.match(rawEvents, /Skipped explicit SOP promotion because recalled skill already covers this SOP/);
+    assert.doesNotMatch(rawEvents, /Validated reused-skill coverage/);
+    assert.doesNotMatch(rawEvents, /Executed confirmed revise_skill follow-up action/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("reused skill coverage treats historical duplicate refs as evidence after successful promotion", async () => {
+  const fixture = await createFixture();
+  try {
+    const store = new AgentStore(fixture.repoRoot, fixture.stateRoot);
+    await store.ensureLayout();
+    const staleSkillRef = join(fixture.activeVault, "skills/capability-self-recognition-guard/SKILL.md");
+    const promotedSkillRef = join(fixture.activeVault, "skills/verified-iteration-outcome-sop-candidate/SKILL.md");
+    await store.writeJson("sop/drafts/sop_promoted_after_reuse.json", {
+      id: "sop_promoted_after_reuse",
+      title: "Draft SOP for self-evolution gap: verified_iteration_outcome_sop_candidate",
+      trigger: "Use when verified iteration outcomes need GA project-design artifact review.",
+      procedure: [
+        "Inspect the verified iteration outcome.",
+        "Keep draft, audit, promote, and skill gates explicit."
+      ],
+      required_tools: ["review.coverage", "review.promote-sop"],
+      verification: "Verify the promoted verified iteration outcome skill is current.",
+      failure_modes: ["Do not treat historical reused-skill refs as current drift after successful promotion."],
+      evidence_refs: ["self-evolution/iterations/iteration_contract_test.json"],
+      revision: 1,
+      status: "promoted",
+      created_at: "2026-06-30T00:00:00.000Z",
+      updated_at: "2026-06-30T00:00:01.000Z"
     });
-    const reusePlanAgain = await runner.planProposalFollowUp({
-      reviewRef: chainAwareReview.id,
-      proposalId: reuseProposal.id
+    await store.writeRepoText(staleSkillRef, [
+      "---",
+      "name: capability-self-recognition-guard",
+      "description: Use when operator corrections distinguish core GA project design from application tool adapters.",
+      "---",
+      "",
+      "Historical stale skill."
+    ].join("\n"));
+    await store.writeRepoText(promotedSkillRef, [
+      "---",
+      "name: verified-iteration-outcome-sop-candidate",
+      "description: Use when verified iteration outcomes need GA project-design artifact review and explicit SOP gates.",
+      "---",
+      "",
+      "Current promoted skill."
+    ].join("\n"));
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_historical_reuse",
+      session_id: "sop_promoted_after_reuse",
+      turn_id: "audit_promoted_after_reuse",
+      kind: "report",
+      summary: "Skipped explicit SOP promotion because recalled skill already covers this SOP: capability-self-recognition-guard.",
+      artifact_refs: [
+        "sop/drafts/sop_promoted_after_reuse.json",
+        staleSkillRef
+      ],
+      created_at: "2026-06-30T00:00:00.500Z"
     });
-    const eventsAfterReusePlan = await readFile(join(fixture.stateRoot, "memory/episodes/events.jsonl"), "utf8");
-    assert.equal(eventsAfterReusePlan, eventsBeforeReusePlan);
-    assert.deepEqual(reusePlanAgain.actions, reusePlan.actions);
-    assert.equal(reusePlan.actions.some((action) => action.kind === "inspect_chain"), true);
-    assert.equal(reusePlan.actions.some((action) => action.kind === "revise_skill" && action.command === null), true);
-    assert.equal(reusePlan.actions.some((action) => action.kind === "draft_sop" || action.kind === "promote_sop"), false);
-    const reviseAction = reusePlan.actions.find((action) => action.kind === "revise_skill");
-    if (!reviseAction) throw new Error("expected revise_skill follow-up action");
-    const reviseConfirmation = await runner.requestFollowUpConfirmation({
-      reviewRef: chainAwareReview.id,
-      proposalId: reuseProposal.id,
-      actionId: reviseAction.id
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_promoted_after_reuse",
+      session_id: "sop_promoted_after_reuse",
+      turn_id: "audit_promoted_after_reuse",
+      kind: "report",
+      summary: "Promoted audited state SOP sop_promoted_after_reuse into vault skill verified-iteration-outcome-sop-candidate.",
+      artifact_refs: [
+        "sop/drafts/sop_promoted_after_reuse.json",
+        promotedSkillRef
+      ],
+      created_at: "2026-06-30T00:00:01.000Z"
     });
-    assert.equal(reviseConfirmation.confirmation.status, "pending");
-    assert.equal(reviseConfirmation.confirmation.action_kind, "revise_skill");
-    assert.match(reviseConfirmation.confirmation.next_step, /review coverage --sop/);
-    assert.match(reviseConfirmation.confirmation.next_step, /execute this pending confirmation/);
-    await assert.rejects(
-      () => runner.executeConfirmedFollowUp({
-        confirmationRef: reviseConfirmation.confirmation_ref
-      }),
-      /requires vaultRoot/
-    );
-    const confirmedRevision = await runner.executeConfirmedFollowUp({
-      confirmationRef: reviseConfirmation.confirmation_ref,
+    await store.appendRepoJsonl(join(fixture.activeVault, "registry/skill-events.jsonl"), {
+      id: "skill_event_promoted_after_reuse",
+      kind: "promoted",
+      skill_name: "verified-iteration-outcome-sop-candidate",
+      instructions_ref: promotedSkillRef,
+      source_sop_ref: join(fixture.activeVault, "sop/promoted/sop_promoted_after_reuse.md"),
+      audit_ref: null,
+      evidence_refs: ["sop/drafts/sop_promoted_after_reuse.json"],
+      artifact_refs: [
+        promotedSkillRef,
+        "sop/drafts/sop_promoted_after_reuse.json"
+      ],
+      summary: "Promoted audited SOP sop_promoted_after_reuse into vault skill verified-iteration-outcome-sop-candidate.",
+      created_at: "2026-06-30T00:00:01.000Z"
+    });
+
+    const runner = new BackgroundReviewRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
       vaultRoot: {
         root: fixture.activeVault,
         seed_roots: ["vault", "skills"],
         project_roots: []
       }
     });
-    assert.equal(confirmedRevision.confirmation.status, "executed");
-    assert.equal(confirmedRevision.confirmation.execution_result?.kind, "revise_skill");
-    if (confirmedRevision.confirmation.execution_result?.kind !== "revise_skill") {
-      throw new Error("expected revise_skill execution summary");
-    }
-    assert.equal(confirmedRevision.confirmation.execution_result.status, "validated");
-    if (!("event_refs" in confirmedRevision.result)) throw new Error("expected skill revision result");
-    assert.equal(confirmedRevision.result.status, "validated");
-    assert.equal(confirmedRevision.result.skill_refs.includes(skillRef), true);
-    assert.equal(confirmedRevision.result.event_refs.length, 1);
-    assert.equal(confirmedRevision.result.evidence_event_id, confirmedRevision.confirmation.execution_result.evidence_event_id);
-    await assert.rejects(
-      () => runner.executeConfirmedFollowUp({
-        confirmationRef: reviseConfirmation.confirmation_ref,
-        vaultRoot: {
-          root: fixture.activeVault,
-          seed_roots: ["vault", "skills"],
-          project_roots: []
-        }
-      }),
-      /not pending/
-    );
+    const coverage = await runner.getReusedSkillCoverage({ sopRef: "sop_promoted_after_reuse" });
 
-    const revisionMarkdown = await readFile(join(fixture.stateRoot, confirmedRevision.confirmation_markdown_ref), "utf8");
-    assert.match(revisionMarkdown, /Kind: revise_skill/);
-    assert.match(revisionMarkdown, /Status: validated/);
-    const registryEvents = await readJsonl(join(fixture.activeVault, "registry/skill-events.jsonl"));
-    assert.equal(registryEvents.some((event) => event.kind === "validated" && event.skill_name === "review-runtime-failures"), true);
-
-    const rawEvents = await readFile(join(fixture.stateRoot, "memory/episodes/events.jsonl"), "utf8");
-    assert.match(rawEvents, /Promoted audited state SOP/);
-    assert.match(rawEvents, /Executed confirmed promote_sop follow-up action/);
-    assert.match(rawEvents, /Skipped explicit SOP promotion because recalled skill already covers this SOP/);
-    assert.match(rawEvents, /Validated reused-skill coverage/);
-    assert.match(rawEvents, /Executed confirmed revise_skill follow-up action/);
+    assert.equal(coverage.latest_decision, "promoted");
+    assert.equal(coverage.coverage_status, "covered");
+    assert.equal(coverage.current_duplicate_skill_ref, promotedSkillRef);
+    assert.equal(coverage.recorded_duplicate_skill_refs.includes(staleSkillRef), true);
+    assert.match(coverage.summary, /historical reused-skill refs remain evidence only/);
+    assert.match(coverage.next_step, /No revise_skill action is needed/);
   } finally {
     await fixture.cleanup();
   }
