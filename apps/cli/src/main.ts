@@ -656,7 +656,7 @@ export function buildIterationAuditNextCommand(
 ): string {
   const command = iteration.outcome_status !== "not_recorded"
     ? `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`
-    : `pnpm run runtime -- governance record-iteration-outcome --iteration ${iteration.id} --outcome-status verified --summary "..." --state-root <state-root>`;
+    : `pnpm run runtime -- governance record-iteration-outcome --iteration ${iteration.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --verification-claim "<entrypoint>: <claim>" --next-move "..." --state-root <state-root>`;
   return bindStateRoot(command, stateRoot);
 }
 

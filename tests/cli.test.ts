@@ -562,7 +562,7 @@ test("iteration audit next command binds current state root", () => {
     ".runtime/state"
   );
   assert.equal(openNext.includes("<state-root>"), false);
-  assert.equal(openNext, "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --state-root .runtime/state");
+  assert.equal(openNext, "pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_open --outcome-status verified --summary \"...\" --evidence-ref <ref...> --verification-command \"<command...>\" --verification-claim \"<entrypoint>: <claim>\" --next-move \"...\" --state-root .runtime/state");
 
   const verifiedNext = buildIterationAuditNextCommand(
     { id: "iteration_contract_done", outcome_status: "verified" },

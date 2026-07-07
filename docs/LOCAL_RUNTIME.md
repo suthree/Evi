@@ -721,7 +721,10 @@ the current plan, or only the current plan context, so a successor plan's open
 status is not confused with the audited iteration's status. When an audited
 iteration is selected, guidance commands bind `<iteration-ref>` to that
 iteration id and `<state-root>` to the current runtime state root. The packet's
-top-level `next_command` also binds the current state root.
+top-level `next_command` also binds the current state root. For open
+iterations, it keeps evidence-ref, verification-command, verification-claim,
+and next-move placeholders visible so the suggested writeback can satisfy the
+completion gate.
 When an active dream snapshot exists, low-maturity scorecard dimensions may
 also surface through `governance gaps` as proposal-only self-evolution gaps.
 Because the expert orchestration contract now exists, the previous

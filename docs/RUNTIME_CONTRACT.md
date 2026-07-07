@@ -236,8 +236,11 @@ current plan context, so successor status is not mistaken for the audited
 iteration's status. When an audited iteration is selected, guidance commands
 must bind `<iteration-ref>` to that iteration id and bind `<state-root>` to the
 current runtime state root; the packet's top-level `next_command` must bind the
-same current state root. It must not run checks, write outcomes, mutate state,
-or approve completion.
+same current state root. For open iterations, `next_command` must keep
+repeatable evidence-ref, verification-command, verification-claim, and next-move
+placeholders visible so the suggested writeback can satisfy the completion
+gate. It must not run checks, write outcomes, mutate state, or approve
+completion.
 
 Current acceptance guidance tracks proposal-only and explicit gated slices:
 
