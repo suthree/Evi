@@ -420,6 +420,7 @@ function nextSliceSuccessCriteria(dimensionId: string): string[] {
   if (dimensionId === "general_agent_delegation") return [
     "delegate_agent requires a bounded task and context before any submodel call",
     "delegated results are persisted, fed back as observations, and verified by the main harness",
+    "failed delegated results carry bounded result_failure_kind metadata and can only guide main-harness recovery",
     "no expert persona, autonomous scheduler, model fan-out, or delegated completion authority is added"
   ];
   return ["the slice has direct evidence refs, verification commands, and non-goals"];

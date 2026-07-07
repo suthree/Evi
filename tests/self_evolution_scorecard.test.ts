@@ -120,10 +120,13 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(scorecard.next_core_basic_slice?.dimension_id, "general_agent_delegation");
     assert.equal(scorecard.next_core_basic_slice?.layer, "core_runtime");
     assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("main harness")), true);
+    assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("result_failure_kind")), true);
+    assert.equal(scorecard.next_core_basic_slice?.success_criteria.some((criterion) => criterion.includes("main-harness recovery")), true);
     const delegationSlice = scorecard.next_slices.find((slice) => slice.dimension_id === "general_agent_delegation");
     assert.equal(delegationSlice?.layer, "core_runtime");
     assert.equal(delegationSlice?.reason.includes("current subagent baseline"), true);
     assert.equal(delegationSlice?.success_criteria.some((criterion) => criterion.includes("main harness")), true);
+    assert.equal(delegationSlice?.success_criteria.some((criterion) => criterion.includes("result_failure_kind")), true);
     assert.equal(scorecard.next_slices.some((slice) =>
       slice.dimension_id === "core_ga_design"
       && slice.success_criteria.some((criterion) => criterion.includes("derived project-design artifact"))

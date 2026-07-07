@@ -541,6 +541,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
               "delegated failures stay ok=false and failed delegated results block verified completion, including invalid payloads, submodel request failures, malformed output, over-limit output, and over-limit action counts",
               "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
+              "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none",
               "delegated observations are sanitized and exclude raw task, context, output preview, and artifact bodies",
               "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
             ]

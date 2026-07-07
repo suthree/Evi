@@ -935,7 +935,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     if (diagnostic.error_preview) lines.push(`  error_preview: ${truncate(diagnostic.error_preview, 220)}`);
   }
   for (const dispatch of trace.delegated_dispatches.slice(0, 3)) {
-    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} ref=${dispatch.result_ref}`);
+    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} ref=${dispatch.result_ref}`);
   }
   for (const guard of trace.repo_write_guards.slice(0, 3)) {
     lines.push(`- repo_write_guard: ${truncate(guard.path, 180)} before=${guard.before_status} after=${guard.after_status} changed_files=${guard.before_changed_file_count}->${guard.after_changed_file_count} delta=${guard.changed_file_count_delta} preexisting_dirty=${guard.preexisting_dirty} target_changed=${guard.target_changed_after_write}`);
@@ -993,7 +993,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 5)) {
+  for (const check of replay.checks.slice(0, 7)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }
@@ -1726,7 +1726,7 @@ export function compactGaPlanGeneralDelegationLoop(
   plan: Pick<GaProjectDesignPlanPacket, "general_delegation_loop">
 ): string {
   const loop = plan.general_delegation_loop;
-  return `action=${loop.action}; stage=${loop.stage}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; runner=${loop.runner_enforcement_contract.input_contract[0] ?? "input contract"}; replay=${loop.replay_audit_contract.checks.join("+")}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
+  return `action=${loop.action}; stage=${loop.stage}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; result_kind=${loop.result_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; runner=${loop.runner_enforcement_contract.input_contract[0] ?? "input contract"}; recovery=${loop.recovery_contract.required[0] ?? "main harness recovery"}; replay=${loop.replay_audit_contract.checks.join("+")}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
 }
 
 export function compactGaPlanPhaseForbids(

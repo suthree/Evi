@@ -52,7 +52,7 @@
 - `http.fetch`：抓取 HTTP(S) 内容，要求响应大小上限和 timeout。
 - `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记和环境变量 allowlist。
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段；只继承最小 runtime 环境，不透传任意父进程环境变量。
-- `delegate_agent`：每个 model round 最多分发一个有界分析子任务，payload 只能包含 `task/context`；`task` 本身不能要求 delegated subagent 执行工具、写入或突变状态、决定完成、调度专家或多 agent 工作，`context` 必须显式声明 delegated subagent 没有工具/写入/突变权限，且完成判断仍归主 harness；结果必须是受 schema 约束的 `summary/findings_text` 且遵守输出上限。它不是任务执行调度器，不能授予工具、状态写入、专家调度或完成判断权。超出的 delegate action，或违反 task/context 权限边界的输入，会记录为失败且不会调用子模型，并带有安全的 `dispatch_failure_kind`；没有分发层失败时也要显式记录 `dispatch_failure_kind=none`。子模型请求失败会以失败 delegated result 记录，并在持久化和回灌前脱敏错误文本。回灌给主模型的是脱敏观察，不包含 raw delegated task/context/output preview 或 artifact body。即使 delegated result 通过 schema，它也只是 advisory self-report，不能作为 `completion_claim.verification_refs` 的完成证明；非 `done` run 中的失败 delegated result 也会以 warning 进入 completion report、Live Run Trace 和 replay audit。Live Run Trace 可查看 action id、round、sequence、字符计数、合同状态和失败类型等安全分发元数据，但不会读取或展示 raw delegated task/context/findings/output。
+- `delegate_agent`：每个 model round 最多分发一个有界分析子任务，payload 只能包含 `task/context`；`task` 本身不能要求 delegated subagent 执行工具、写入或突变状态、决定完成、调度专家或多 agent 工作，`context` 必须显式声明 delegated subagent 没有工具/写入/突变权限，且完成判断仍归主 harness；结果必须是受 schema 约束的 `summary/findings_text` 且遵守输出上限。它不是任务执行调度器，不能授予工具、状态写入、专家调度或完成判断权。超出的 delegate action，或违反 task/context 权限边界的输入，会记录为失败且不会调用子模型，并带有安全的 `dispatch_failure_kind`；没有分发层失败时也要显式记录 `dispatch_failure_kind=none`。失败 delegated result 还会记录安全的 `result_failure_kind`，区分 dispatch limit、input contract、delegated output contract、delegated model request failure；这些失败只能作为主 harness 后续恢复输入，不能触发自动 retry、模型 fan-out、专家调度或 delegated completion。子模型请求失败会以失败 delegated result 记录，并在持久化和回灌前脱敏错误文本。回灌给主模型的是脱敏观察，不包含 raw delegated task/context/output preview 或 artifact body。即使 delegated result 通过 schema，它也只是 advisory self-report，不能作为 `completion_claim.verification_refs` 的完成证明；非 `done` run 中的失败 delegated result 也会以 warning 进入 completion report、Live Run Trace 和 replay audit。Live Run Trace 可查看 action id、round、sequence、字符计数、合同状态和失败类型等安全分发元数据，但不会读取或展示 raw delegated task/context/findings/output。
 
 核心工具结果需要带有有界审计元数据，例如状态、side effect、scope/cwd、输出预算、实际/返回长度、截断状态，以及失败时的 `failure_kind`；StageRunner 合成的 blocked tool observation 也必须带 `failure_kind`，并作为有界 `tool_result` evidence 持久化，但不会执行被拦截的工具。这些元数据是证据基础，不展示无界 raw output，也不能绕过完成验证。
 
@@ -193,8 +193,8 @@ manual local、external adapter 或 local-learning follow-up 必须显式选择 
 该视图也会从已验证的 self-evolution iteration outcome 派生只读 project-design
 artifacts，用来复用 GA 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
 派生 successor plan 时会折叠历史 completed-source non-goals，避免下一轮 seed 递归膨胀。
-Replay audit 会检查 delegated dispatch metadata 和 `dispatch_failure_kind`
-覆盖；缺少该字段会被标记为 warning，显式 `none` 才表示没有分发层失败。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
+Replay audit 会检查 delegated dispatch metadata、`dispatch_failure_kind`、
+`result_failure_kind` 和每轮 active delegate 上限；缺少这些失败分类字段会被标记为 warning，显式 `none` 才表示该层没有失败。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
 历史 iteration evidence refs 也会在 successor planning 中折叠，只保留当前 source artifact 和直接证据。
 其中 `artifact_count` 是可复用 artifact 总数，`listed_artifact_count` 是当前 limit 下实际列出的数量。
 可以用 `pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state`

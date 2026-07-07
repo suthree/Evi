@@ -63,6 +63,8 @@ export interface LiveRunDelegatedDispatchSummary {
   contract_status: string;
   dispatch_failure_kind: string | null;
   dispatch_failure_kind_present: boolean;
+  result_failure_kind: string | null;
+  result_failure_kind_present: boolean;
   ok: boolean;
 }
 
@@ -257,9 +259,10 @@ function readDelegatedDispatchSummaries(
 }
 
 function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
-  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
+  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
   const dispatchFailureKind = match[7];
+  const resultFailureKind = match[8];
   return {
     action_id: match[1].trim(),
     round: Number.parseInt(match[2], 10),
@@ -269,7 +272,9 @@ function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDi
     contract_status: match[6],
     dispatch_failure_kind: dispatchFailureKind && dispatchFailureKind !== "none" ? dispatchFailureKind : null,
     dispatch_failure_kind_present: dispatchFailureKind !== undefined,
-    ok: match[8] === "true"
+    result_failure_kind: resultFailureKind && resultFailureKind !== "none" ? resultFailureKind : null,
+    result_failure_kind_present: resultFailureKind !== undefined,
+    ok: match[9] === "true"
   };
 }
 

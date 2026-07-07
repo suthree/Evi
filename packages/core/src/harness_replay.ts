@@ -12,6 +12,12 @@ import { AgentStore } from "./store.js";
 const REPLAY_ROOT = "governance/replays";
 const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
 const DISPATCH_FAILURE_KINDS = new Set(["dispatch_limit_exceeded", "input_contract_failed"]);
+const RESULT_FAILURE_KINDS = new Set([
+  "dispatch_limit_exceeded",
+  "input_contract_failed",
+  "delegated_output_contract_failed",
+  "delegated_model_request_failed"
+]);
 const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
@@ -218,7 +224,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     ...(report.delegated_dispatches.length > 0
       ? [
         ...report.delegated_dispatches.slice(0, DELEGATED_DISPATCH_MARKDOWN_LIMIT).map((dispatch) =>
-          `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+          `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
         ),
         ...(report.delegated_dispatches.length > DELEGATED_DISPATCH_MARKDOWN_LIMIT
           ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
@@ -275,6 +281,8 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
     },
     delegatedDispatchFailureKindCheck(trace),
+    delegatedDispatchRoundLimitCheck(trace),
+    delegatedResultFailureKindCheck(trace),
     {
       id: "repo_write_guard",
       status: trace.repo_write_guards.some((guard) => guard.preexisting_dirty || guard.target_changed_after_write) ? "warning" : "pass",
@@ -319,6 +327,61 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
       `invalid_kind=${invalidKindDispatches.length}`,
       `missing_limit_kind=${missingLimitKindDispatches.length}`,
       `unexpected_limit_kind=${unexpectedLimitKindDispatches.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  };
+}
+
+function delegatedDispatchRoundLimitCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const activeByRound = new Map<number, LiveRunDelegatedDispatchSummary[]>();
+  for (const dispatch of trace.delegated_dispatches) {
+    if (dispatch.dispatch_failure_kind === "dispatch_limit_exceeded") continue;
+    activeByRound.set(dispatch.round, [...(activeByRound.get(dispatch.round) ?? []), dispatch]);
+  }
+  const overLimitDispatches = [...activeByRound.values()]
+    .filter((dispatches) => dispatches.length > DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND)
+    .flatMap((dispatches) => dispatches.slice(DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND));
+  const problemRefs = unique(overLimitDispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_dispatch_round_limit",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}`,
+      `rounds=${activeByRound.size}`,
+      `over_limit_active_dispatches=${overLimitDispatches.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  };
+}
+
+function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
+  const missingKindFieldDispatches = failedDispatches.filter((dispatch) =>
+    !dispatch.result_failure_kind_present || dispatch.result_failure_kind === null
+  );
+  const invalidKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.result_failure_kind !== null && !RESULT_FAILURE_KINDS.has(dispatch.result_failure_kind)
+  );
+  const unexpectedKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.ok && dispatch.contract_status === "passed" && dispatch.result_failure_kind !== null
+  );
+  const problemRefs = unique([
+    ...missingKindFieldDispatches,
+    ...invalidKindDispatches,
+    ...unexpectedKindDispatches
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_result_failure_kind",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `failed_dispatches=${failedDispatches.length}`,
+      `missing_result_kind=${missingKindFieldDispatches.length}`,
+      `invalid_result_kind=${invalidKindDispatches.length}`,
+      `unexpected_result_kind=${unexpectedKindDispatches.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs
@@ -403,6 +466,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   const actionId = stringField(value, "action_id");
   const contractStatus = stringField(value, "contract_status");
   const dispatchFailureKind = stringField(value, "dispatch_failure_kind");
+  const resultFailureKind = stringField(value, "result_failure_kind");
   const round = numberField(value, "round");
   const sequence = numberField(value, "sequence");
   const taskChars = numberField(value, "task_chars");
@@ -422,6 +486,8 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     contract_status: contractStatus,
     dispatch_failure_kind: dispatchFailureKind,
     dispatch_failure_kind_present: Object.hasOwn(value, "dispatch_failure_kind"),
+    result_failure_kind: resultFailureKind,
+    result_failure_kind_present: Object.hasOwn(value, "result_failure_kind"),
     ok: value.ok
   };
 }

@@ -44,6 +44,16 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.summary.includes("missing_kind_field=0")
         && check.summary.includes("missing_limit_kind=0")
     ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_dispatch_round_limit"
+        && check.status === "pass"
+        && check.summary.includes("over_limit_active_dispatches=0")
+    ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_result_failure_kind"
+        && check.status === "pass"
+        && check.summary.includes("missing_result_kind=0")
+    ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
       result_ref: dispatch.result_ref,
@@ -55,6 +65,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       contract_status: dispatch.contract_status,
       dispatch_failure_kind: dispatch.dispatch_failure_kind,
       dispatch_failure_kind_present: dispatch.dispatch_failure_kind_present,
+      result_failure_kind: dispatch.result_failure_kind,
+      result_failure_kind_present: dispatch.result_failure_kind_present,
       ok: dispatch.ok
     })), [{
       event_id: "evidence_replay_delegated",
@@ -67,6 +79,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       contract_status: "failed",
       dispatch_failure_kind: "dispatch_limit_exceeded",
       dispatch_failure_kind_present: true,
+      result_failure_kind: "dispatch_limit_exceeded",
+      result_failure_kind_present: true,
       ok: false
     }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
@@ -113,7 +127,67 @@ test("harness replay audit warns when over-limit delegated dispatch lacks failur
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /missing_kind_field=1/);
     assert.match(check?.summary ?? "", /missing_limit_kind=1/);
+    assert.equal(report.checks.find((item) => item.id === "delegated_result_failure_kind")?.status, "warning");
+    assert.match(report.checks.find((item) => item.id === "delegated_result_failure_kind")?.summary ?? "", /missing_result_kind=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when failed delegated result lacks result failure kind", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-result-kind-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(
+      store,
+      "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false."
+    );
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const dispatchCheck = report.checks.find((item) => item.id === "delegated_dispatch_failure_kind");
+    const resultCheck = report.checks.find((item) => item.id === "delegated_result_failure_kind");
+
+    assert.equal(dispatchCheck?.status, "pass");
+    assert.equal(resultCheck?.status, "warning");
+    assert.match(resultCheck?.summary ?? "", /missing_result_kind=1/);
+    assert.equal(resultCheck?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when a trace shows two active delegates in one round", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-round-limit-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(
+      store,
+      "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true."
+    );
+    await appendActiveLookingDelegatedDispatch(store);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_round_limit");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /over_limit_active_dispatches=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_active_extra")), true);
+    assert.equal(report.delegated_dispatches.length, 2);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -153,7 +227,7 @@ test("harness replay audit keeps all delegated dispatch metadata", async () => {
   }
 });
 
-async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false."): Promise<void> {
+async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false."): Promise<void> {
   const sessionId = "session_replay_test";
   const turnId = "turn_replay_test";
   await store.writeText(`memory/episodes/${sessionId}-context.md`, "RAW_REPLAY_CONTEXT_SHOULD_NOT_APPEAR");
@@ -314,9 +388,25 @@ async function appendExtraDelegatedDispatches(store: AgentStore, count: number):
       session_id: sessionId,
       turn_id: turnId,
       kind: "delegated_result",
-      summary: `Delegated result: action_id=action_delegate_replay_extra_${sequence}; round=1; sequence=${sequence}; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; ok=false.`,
+      summary: `Delegated result: action_id=action_delegate_replay_extra_${sequence}; round=1; sequence=${sequence}; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false.`,
       artifact_refs: [resultRef],
       created_at: `2026-06-30T01:00:0${sequence}.750Z`
     });
   }
+}
+
+async function appendActiveLookingDelegatedDispatch(store: AgentStore): Promise<void> {
+  const sessionId = "session_replay_test";
+  const turnId = "turn_replay_test";
+  const resultRef = `memory/episodes/${sessionId}-delegated_result_active_extra.json`;
+  await store.writeText(resultRef, "RAW_REPLAY_ACTIVE_EXTRA_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
+  await store.appendJsonl("memory/episodes/events.jsonl", {
+    id: "evidence_replay_delegated_active_extra",
+    session_id: sessionId,
+    turn_id: turnId,
+    kind: "delegated_result",
+    summary: "Delegated result: action_id=action_delegate_replay_active_extra; round=1; sequence=1; task_chars=31; context_chars=74; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true.",
+    artifact_refs: [resultRef],
+    created_at: "2026-06-30T01:00:04.750Z"
+  });
 }

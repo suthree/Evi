@@ -36,6 +36,9 @@ import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
 
 type DelegatedDispatchFailureKind = "dispatch_limit_exceeded" | "input_contract_failed";
+type DelegatedResultFailureKind = DelegatedDispatchFailureKind
+  | "delegated_output_contract_failed"
+  | "delegated_model_request_failed";
 
 interface DelegatedResult {
   id: string;
@@ -49,6 +52,7 @@ interface DelegatedResult {
   context_chars: number;
   contract_status: "passed" | "failed";
   dispatch_failure_kind: DelegatedDispatchFailureKind | null;
+  result_failure_kind: DelegatedResultFailureKind | null;
   findings_text: string | null;
   output_text: string;
   raw_output_preview: string;
@@ -65,6 +69,7 @@ interface DelegatedObservation {
   ok: boolean;
   contract_status: "passed" | "failed";
   dispatch_failure_kind: DelegatedDispatchFailureKind | null;
+  result_failure_kind: DelegatedResultFailureKind | null;
   task_chars: number;
   context_chars: number;
   summary: string;
@@ -1278,6 +1283,7 @@ export class LiveAgentRunner {
           context_chars: context.length,
           contract_status: "failed",
           dispatch_failure_kind: null,
+          result_failure_kind: "delegated_output_contract_failed",
           findings_text: null,
           output_text: parsed.error,
           raw_output_preview: limitText(response.outputText, 1200),
@@ -1298,6 +1304,7 @@ export class LiveAgentRunner {
         context_chars: context.length,
         contract_status: "passed",
         dispatch_failure_kind: null,
+        result_failure_kind: null,
         findings_text: parsed.findings_text,
         output_text: parsed.findings_text,
         raw_output_preview: limitText(response.outputText, 1200),
@@ -1319,6 +1326,7 @@ export class LiveAgentRunner {
         context_chars: context.length,
         contract_status: "failed",
         dispatch_failure_kind: null,
+        result_failure_kind: "delegated_model_request_failed",
         findings_text: null,
         output_text: sanitizedError,
         raw_output_preview: "",
@@ -1360,6 +1368,7 @@ export class LiveAgentRunner {
       context_chars: request.ok ? request.context.length : request.context_chars,
       contract_status: "failed",
       dispatch_failure_kind: dispatchFailureKind,
+      result_failure_kind: dispatchFailureKind,
       findings_text: null,
       output_text: error,
       raw_output_preview: "",
@@ -1463,6 +1472,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     ok: result.ok,
     contract_status: result.contract_status,
     dispatch_failure_kind: result.dispatch_failure_kind,
+    result_failure_kind: result.result_failure_kind,
     task_chars: result.task_chars,
     context_chars: result.context_chars,
     summary: delegatedObservationSummaryForModelInput(result),
@@ -2249,6 +2259,7 @@ function delegatedResultEventSummary(result: DelegatedResult): string {
     `context_chars=${result.context_chars};`,
     `contract_status=${result.contract_status};`,
     `dispatch_failure_kind=${result.dispatch_failure_kind ?? "none"};`,
+    `result_failure_kind=${result.result_failure_kind ?? "none"};`,
     `ok=${result.ok}.`
   ].join(" ");
 }

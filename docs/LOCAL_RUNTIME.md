@@ -1212,11 +1212,13 @@ counts and refs. Replay reports may carry safe delegated dispatch metadata and
 a dispatch-coverage check from the source trace. They also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
-explicitly recorded as `none`. The replay JSON keeps the full delegated
-dispatch set for audit coverage; Markdown and context renderers may show only
-the first entries plus an omitted count. These surfaces do not invoke the model,
-execute tools, read raw model/tool/delegation/final/context artifacts, write
-the repo, write the active vault, or manage services.
+explicitly recorded as `none`. Replay also checks `result_failure_kind`
+coverage for failed delegated results and warns when the trace shows more than
+one active-looking delegated dispatch in one model round. The replay JSON keeps
+the full delegated dispatch set for audit coverage; Markdown and context
+renderers may show only the first entries plus an omitted count. These surfaces
+do not invoke the model, execute tools, read raw model/tool/delegation/final/
+context artifacts, write the repo, write the active vault, or manage services.
 
 When model cognition fails before a valid action envelope exists, live runs
 write `memory/episodes/<session>-model-diagnostic-r<round>.json` and append a
@@ -2049,11 +2051,18 @@ Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
 delegated-model contract failures record `dispatch_failure_kind=none`
-explicitly. Later traces can therefore distinguish a real none value from an
-older or malformed summary that omitted the field, without reading raw
-delegated context or delegated result bodies. Even when the final completion
-status is `not_done` or `blocked`, failed delegated results remain visible as
-warnings in the completion report, Live Run Trace, and replay audit.
+explicitly. Failed delegated results also record safe `result_failure_kind`
+values such as `dispatch_limit_exceeded`, `input_contract_failed`,
+`delegated_output_contract_failed`, or `delegated_model_request_failed`; passed
+delegated results record `result_failure_kind=none`. Later traces can therefore
+distinguish real none values from older or malformed summaries that omitted the
+fields, without reading raw delegated context or delegated result bodies. Even
+when the final completion status is `not_done` or `blocked`, failed delegated
+results remain visible as warnings in the completion report, Live Run Trace, and
+replay audit. Those failures are recovery input only for a later main-harness
+model round and still require independent verification evidence; they do not
+authorize automatic retry, model fan-out, expert scheduling, delegated
+completion, or raw delegated artifact reads.
 
 Normal private-chat tasks may include a small, truncated history window from
 local `channels/feishu/inbound/` and `channels/feishu/outbound/` state for the

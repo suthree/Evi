@@ -1103,6 +1103,7 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /failed delegated results block verified completion/);
     assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none/);
     assert.match(fullText, /none means no dispatch-layer failure, not delegated success/);
+    assert.match(fullText, /result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none/);
     assert.match(fullText, /sanitized and exclude raw task, context, output preview, and artifact bodies/);
     assert.match(fullText, /delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority/);
     assert.match(fullText, /Feishu/);
@@ -2823,7 +2824,7 @@ test("operator live run trace commands read bounded run metadata without running
       session_id: sessionId,
       turn_id: turnId,
       kind: "delegated_result",
-      summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; dispatch_failure_kind=none; ok=false.",
+      summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false.",
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
       created_at: "2026-06-30T00:29:03.500Z"
     });
@@ -2874,8 +2875,9 @@ test("operator live run trace commands read bounded run metadata without running
     }));
 
     const allSent = transport.sent.map((item) => item.text).join("\n");
+    const replayDetailText = transport.sent.slice(3).map((item) => item.text).join("\n");
     assert.equal(runner.tasks.length, 0);
-    assert.equal(transport.sent.length, 4);
+    assert.equal(transport.sent.length >= 4, true);
     assert.match(transport.sent[0].text, /Live run traces/);
     assert.match(transport.sent[0].text, /completion_verification_trace_feishu_new/);
     assert.match(transport.sent[0].text, /events: 6/);
@@ -2894,6 +2896,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /sequence: 1/);
     assert.match(transport.sent[1].text, /contract_status: failed/);
     assert.match(transport.sent[1].text, /dispatch_failure_kind: none/);
+    assert.match(transport.sent[1].text, /result_failure_kind: delegated_output_contract_failed/);
     assert.match(transport.sent[1].text, /task_chars: 55/);
     assert.match(transport.sent[1].text, /context_chars: 99/);
     assert.match(transport.sent[1].text, /repo_write_guards: 1/);
@@ -2911,15 +2914,17 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[2].text, /completion_verification_trace_feishu_new/);
     assert.match(transport.sent[2].text, /delegated_failed: 1/);
     assert.match(transport.sent[2].text, /delegated_dispatches: 1/);
-    assert.match(transport.sent[3].text, /Harness replay audit/);
-    assert.match(transport.sent[3].text, new RegExp(replay.id));
-    assert.match(transport.sent[3].text, /trace_ref: memory\/episodes\/session_trace_feishu_new-completion-verification\.json/);
-    assert.match(transport.sent[3].text, /replay_result: metadata_replay/);
-    assert.match(transport.sent[3].text, /delegated_dispatches=1/);
-    assert.match(transport.sent[3].text, /delegated_dispatch_metadata: pass/);
-    assert.match(transport.sent[3].text, /delegated_dispatch_failure_kind: pass/);
-    assert.match(transport.sent[3].text, /delegated_result_contract: warning/);
-    assert.match(transport.sent[3].text, /This command is read-only/);
+    assert.match(replayDetailText, /Harness replay audit/);
+    assert.match(replayDetailText, new RegExp(replay.id));
+    assert.match(replayDetailText, /trace_ref: memory\/episodes\/session_trace_feishu_new-completion-verification\.json/);
+    assert.match(replayDetailText, /replay_result: metadata_replay/);
+    assert.match(replayDetailText, /delegated_dispatches=1/);
+    assert.match(replayDetailText, /delegated_dispatch_metadata: pass/);
+    assert.match(replayDetailText, /delegated_dispatch_failure_kind: pass/);
+    assert.match(replayDetailText, /delegated_dispatch_round_limit: pass/);
+    assert.match(replayDetailText, /delegated_result_failure_kind: pass/);
+    assert.match(replayDetailText, /delegated_result_contract: warning/);
+    assert.match(replayDetailText, /This command is read-only/);
     assert.doesNotMatch(allSent, /RAW_TRACE_CONTEXT_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_MODEL_RESPONSE_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_HARNESS_PAYLOAD_SHOULD_NOT_BE_SENT/);

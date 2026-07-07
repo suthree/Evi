@@ -1208,7 +1208,11 @@ as observations. Dispatch-layer rejects also carry a safe
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly, so trace/replay
 read models can distinguish a real none value from an older or malformed
-summary that omitted the field. A later `done` claim fails completion verification
+summary that omitted the field. Every failed delegated result also carries a
+safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
+delegated output contract failures record `delegated_output_contract_failed`,
+and delegated model request failures record `delegated_model_request_failed`.
+Passed delegated results record `result_failure_kind=none`. A later `done` claim fails completion verification
 when any delegated result failed. A passed delegated result remains an advisory
 self-report: it can inform the next model round, but its id, state ref, or event
 ref must not be used as `completion_claim.verification_refs` proof. Non-`done`
@@ -1216,18 +1220,25 @@ runs still record a bounded `delegated_results` warning when any delegated
 result failed, so Live Run Trace and replay audit can show the failure without
 changing skipped completion verification into a completed claim. Delegated
 results are recorded with action id, round, sequence, task/context character
-counts, and dispatch failure kind so later traces can verify bounded dispatch
-from harness-owned delegated event summaries without reading raw delegated
-context or delegated result bodies. Trace and replay audit JSON preserve the
-complete delegated dispatch metadata set for counting and coverage; operator
-Markdown/context views may cap the rendered list and show an omitted count.
+counts, dispatch failure kind, and result failure kind so later traces can
+verify bounded dispatch and failure recovery inputs from harness-owned
+delegated event summaries without reading raw delegated context or delegated
+result bodies. Trace and replay audit JSON preserve the complete delegated
+dispatch metadata set for counting and coverage; operator Markdown/context
+views may cap the rendered list and show an omitted count. Failed delegated
+results can only guide a later main-harness model round as sanitized
+observation; recovery still requires subsequent main-harness action and
+independent verification evidence, and must not add automatic retry, model
+fan-out, expert scheduling, delegated completion, or raw delegated artifact
+reads.
 The GA project-design read model mirrors this same runner/replay boundary in
 `next_core_basic_plan.general_delegation_loop`: `runner_enforcement_contract`
 names the live runner instruction, input, result, and completion-gate rules,
-while `replay_audit_contract` names the safe metadata source, required dispatch
-fields, audit checks, and proof boundary. Those fields are read-only planning
-context; they do not spawn subagents, grant tool access, schedule experts, or
-prove completion.
+`result_failure_kind_contract` and `recovery_contract` name the bounded failure
+and recovery rules, while `replay_audit_contract` names the safe metadata
+source, required dispatch fields, audit checks, and proof boundary. Those fields
+are read-only planning context; they do not spawn subagents, grant tool access,
+schedule experts, or prove completion.
 The main-model observation also excludes raw
 delegated task/context, raw output preview, and persisted artifact bodies. They
 are not tool evidence, final success proof, mutation authority,
@@ -1299,7 +1310,10 @@ refs, and the fixed replay boundary. It checks whether delegated result events
 have matching dispatch metadata and whether over-limit delegated dispatches
 carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
-omits the field instead of explicitly recording `none`. It must not invoke the model, execute tools, rerun
+omits the field instead of explicitly recording `none`. It also checks
+`result_failure_kind` coverage for failed delegated results and warns when a
+trace shows more than one active-looking delegate dispatch in the same model
+round. It must not invoke the model, execute tools, rerun
 actions, read raw model responses, read raw action payloads, read raw
 tool/delegation bodies, read raw final responses, read context Markdown, write
 the repo, write the active vault, manage services, or mutate

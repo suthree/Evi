@@ -4918,6 +4918,7 @@ function renderLiveRunDelegatedDispatch(dispatch: LiveRunTraceSummary["delegated
     `  contract_status: ${dispatch.contract_status}`,
     `  ok: ${dispatch.ok}`,
     `  dispatch_failure_kind: ${dispatch.dispatch_failure_kind ?? "none"}`,
+    `  result_failure_kind: ${dispatch.result_failure_kind ?? "none"}`,
     `  task_chars: ${dispatch.task_chars}`,
     `  context_chars: ${dispatch.context_chars}`,
     `  ref: ${dispatch.result_ref}`,

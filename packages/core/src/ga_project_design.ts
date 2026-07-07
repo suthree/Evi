@@ -215,11 +215,22 @@ export interface GaProjectDesignGeneralDelegationLoop {
     required: string[];
     reject_if: string[];
   };
+  result_failure_kind_contract: {
+    field: "result_failure_kind";
+    values: string[];
+    required: string[];
+    reject_if: string[];
+  };
   runner_enforcement_contract: {
     instruction_boundary: string[];
     input_contract: string[];
     result_handling: string[];
     completion_gate: string[];
+  };
+  recovery_contract: {
+    inputs: string[];
+    required: string[];
+    reject_if: string[];
   };
   replay_audit_contract: {
     metadata_source: string;
@@ -1167,6 +1178,27 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "dispatch failure kind is treated as expert scheduling, retry authority, or completion proof"
       ]
     },
+    result_failure_kind_contract: {
+      field: "result_failure_kind",
+      values: [
+        "dispatch_limit_exceeded",
+        "input_contract_failed",
+        "delegated_output_contract_failed",
+        "delegated_model_request_failed",
+        "none"
+      ],
+      required: [
+        "record dispatch_limit_exceeded when the per-round delegate limit creates the failed result",
+        "record input_contract_failed when payload or authority validation creates the failed result",
+        "record delegated_output_contract_failed when the delegated model returned invalid or over-limit structured output",
+        "record delegated_model_request_failed when the delegated model request failed before output validation",
+        "record none for passed delegated results"
+      ],
+      reject_if: [
+        "operators must infer result failure type from raw delegated artifact bodies",
+        "result failure kind grants retry, expert scheduling, or completion authority"
+      ]
+    },
     runner_enforcement_contract: {
       instruction_boundary: [
         "liveInstructions states the model proposes while the harness executes, verifies, audits, and promotes",
@@ -1188,6 +1220,23 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegatedVerificationRefs rejects delegated self-report refs as completion proof"
       ]
     },
+    recovery_contract: {
+      inputs: [
+        "sanitized delegated observation",
+        "result_failure_kind",
+        "dispatch_failure_kind",
+        "harness replay check status"
+      ],
+      required: [
+        "failed delegated results may only guide a later main-harness model round as sanitized observation",
+        "recovery requires a subsequent main-harness action plus independent verification evidence",
+        "a recovered claim must not cite the delegated result id or ref as completion proof"
+      ],
+      reject_if: [
+        "automatic retry, model fan-out, expert scheduling, or delegated completion is added",
+        "raw delegated task, context, output preview, or artifact body is read to decide recovery"
+      ]
+    },
     replay_audit_contract: {
       metadata_source: "harness-owned delegated_result event summaries only",
       required_metadata: [
@@ -1198,11 +1247,14 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "context_chars",
         "contract_status",
         "dispatch_failure_kind",
+        "result_failure_kind",
         "ok"
       ],
       checks: [
         "delegated_dispatch_metadata",
         "delegated_dispatch_failure_kind",
+        "delegated_dispatch_round_limit",
+        "delegated_result_failure_kind",
         "delegated_results"
       ],
       proof_boundary: [
