@@ -55,10 +55,12 @@ export interface GaProjectDesignArtifact {
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
+  source_implementation_contract?: GaProjectDesignImplementationContract;
   reusable_pattern: string;
   evidence_refs: string[];
   verification_commands: string[];
   next_use: string;
+  source_next_moves: string[];
   non_goals: string[];
   boundary: string;
 }
@@ -73,7 +75,9 @@ interface GaProjectDesignPlanSource {
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
+  implementation_contract?: GaProjectDesignImplementationContract;
   next_use: string;
+  source_next_moves: string[];
   evidence_refs: string[];
   verification_commands: string[];
   non_goals: string[];
@@ -152,6 +156,18 @@ export interface GaProjectDesignImplementationContract {
   implementation_scope: string[];
   deferred_scope: string[];
   delivery_standard: string[];
+  boundary: string;
+}
+
+export interface GaProjectDesignSourceContinuation {
+  source_layer: CapabilityLayer;
+  source_owner_surface: string;
+  source_proposed_slice: string;
+  source_iteration_ref: string;
+  next_use: string;
+  source_next_moves: string[];
+  source_contract?: GaProjectDesignImplementationContract;
+  carry_forward: string[];
   boundary: string;
 }
 
@@ -258,6 +274,7 @@ export interface GaProjectDesignPlanPacket {
   planning_basis: string;
   goal_scope: GaProjectDesignGoalScope;
   implementation_contract: GaProjectDesignImplementationContract;
+  source_continuation: GaProjectDesignSourceContinuation;
   iteration_focus: GaProjectDesignIterationFocus;
   capability_stage_plan: GaProjectDesignCapabilityStagePlan;
   general_delegation_loop: GaProjectDesignGeneralDelegationLoop;
@@ -616,6 +633,7 @@ function buildNextCoreBasicPlan(
     planning_basis: buildPlanningBasis(source, proposedSlice),
     goal_scope: buildGoalScope(source, proposedSlice),
     implementation_contract: buildImplementationContract(source, proposedSlice),
+    source_continuation: buildSourceContinuation(source),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, proposedSlice),
     general_delegation_loop: buildGeneralDelegationLoop(),
@@ -691,10 +709,33 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
     layer: artifact.layer,
     owner_surface: artifact.owner_surface,
     proposed_slice: artifact.proposed_slice,
+    implementation_contract: artifact.source_implementation_contract,
     next_use: artifact.next_use,
+    source_next_moves: artifact.source_next_moves,
     evidence_refs: artifact.evidence_refs,
     verification_commands: artifact.verification_commands,
     non_goals: artifact.non_goals
+  };
+}
+
+function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDesignSourceContinuation {
+  return {
+    source_layer: source.layer,
+    source_owner_surface: source.owner_surface,
+    source_proposed_slice: source.proposed_slice,
+    source_iteration_ref: source.source_iteration_ref,
+    next_use: source.next_use,
+    source_next_moves: source.source_next_moves,
+    ...(source.implementation_contract ? { source_contract: source.implementation_contract } : {}),
+    carry_forward: compactRefs([
+      `source=${source.layer}/${source.owner_surface}`,
+      `completed_slice=${source.proposed_slice}`,
+      source.implementation_contract ? `source_contract=${source.implementation_contract.proposed_slice}` : "source_contract=not_recorded",
+      `source_next_move_candidates=${source.source_next_moves.length}`,
+      "do not repeat completed source slice",
+      "use source next_use and source_next_moves as direction, not completion proof"
+    ]),
+    boundary: "read-only source-continuation summary for GA planning; carries forward the verified source layer, owner, completed slice, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
   };
 }
 
@@ -708,6 +749,9 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
     owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
     proposed_slice: BOOTSTRAP_SOURCE_SLICE,
     next_use: "Use the GA project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source.",
+    source_next_moves: [
+      "Use the GA project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source."
+    ],
     evidence_refs: [
       "packages/core/src/ga_project_design.ts",
       "docs/RUNTIME_CONTRACT.md",
@@ -1164,6 +1208,7 @@ function sourceMentionsCleanupCandidate(
 ): boolean {
   const sourceText = [
     source.next_use,
+    ...source.source_next_moves,
     ...source.evidence_refs
   ].join("\n");
   return sourceText.includes(candidate.id) || sourceText.includes(candidate.ref);
@@ -1319,6 +1364,7 @@ export function deriveGaProjectDesignArtifacts(
         layer: iteration.layer,
         owner_surface: iteration.owner_surface,
         proposed_slice: iteration.proposed_slice,
+        ...(iteration.implementation_contract ? { source_implementation_contract: iteration.implementation_contract } : {}),
         reusable_pattern: describeReusablePattern(iteration),
         evidence_refs: buildArtifactEvidenceRefs(iteration, outcome),
         verification_commands: compactRefs([
@@ -1326,6 +1372,7 @@ export function deriveGaProjectDesignArtifacts(
           ...outcome.verification_commands
         ]),
         next_use: outcome.next_moves[0] ?? "Use this artifact when planning a similar bounded GA project slice.",
+        source_next_moves: compactRefs(outcome.next_moves),
         non_goals: compactRefs([
           ...dropHistoricalSourceSliceNonGoals(iteration.non_goals),
           "does not prove future GA project completion",

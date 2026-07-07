@@ -548,6 +548,12 @@ It may include `source_kind`, `source_artifact_id`, `source_iteration_ref`,
 `non_goals`, so review can distinguish a verified artifact source from a
 fresh-state bootstrap source and keep that source separate from the successor
 target.
+It may include `source_continuation`, a read-only summary of the verified
+source layer, owner surface, completed slice, source iteration ref, source
+implementation contract, primary `next_use`, and bounded `source_next_moves`
+candidates. This field preserves source direction for the next core/basic
+slice; it does not execute the next move, prove completion, or promote SOP,
+skill, memory, dream, expert, or adapter work.
 It may also include `capability_stage_plan`; this does not add execution or
 completion authority.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
@@ -746,6 +752,10 @@ Required policy:
   ref, completed source slice, target successor slice, source status, source
   quality, and fresh-successor flag in one bounded handoff line; it is source
   orientation only and does not prove completion
+- Compact `source_continuation` must preserve the source layer/owner, completed
+  source slice, source implementation contract id when present, source next-move
+  candidate count, one candidate next move, and the primary next-use hint; it is
+  source direction only and does not prove completion
 - `next_core_basic_plan.iteration_focus` must explain the next core/basic
   direction and anti-drift checks without authorizing execution
 - Compact GA Project Design Plan context must preserve bounded anti-drift checks
@@ -1019,7 +1029,8 @@ over `governance project-design.next_core_basic_plan`. It may show the plan id,
 target layer, owner surface, proposed slice, source artifact, acceptance
 summary, planning basis, iteration focus, capability-stage summary, phase
 forbidden-shortcut summary, layer-decision summary, selection-check summary,
-`iteration_record_status`, and the current next command. The planning basis names the verified artifact and
+`source_continuation`, `iteration_record_status`, and the current next command.
+The planning basis names the verified artifact and
 completed source slice so the next model turn does not infer purpose from an
 opaque slice id alone. A compact `anti_drift` line may preserve the bounded
 checks that keep external-adapter pressure, premature SOP/skill/memory/dream

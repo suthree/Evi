@@ -649,6 +649,82 @@ test("GA project design planning packet ignores non-core verified artifacts", as
   }
 });
 
+test("GA project design plan carries source continuation from basic iterations", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-basic-source-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const basicIteration: SelfEvolutionIterationContract = {
+      schema_version: 1,
+      id: "iteration_contract_basic_source",
+      ref: "self-evolution/iterations/iteration_contract_basic_source.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified basic runtime tools boundary.",
+      layer: "basic_entrypoint",
+      owner_surface: "runtime_tools",
+      proposed_slice: "runtime_state_boundary_for_basic_tools",
+      implementation_contract: {
+        proposed_slice: "runtime_state_boundary_for_basic_tools",
+        source_artifact_id: "manual_record_iteration",
+        source_proposed_slice: "manual_record_iteration",
+        selected_layer: "basic_entrypoint",
+        owner_surface: "runtime_tools",
+        improvement_type: "reusable_ga_design_contract",
+        implementation_scope: ["change one reusable basic tool boundary"],
+        deferred_scope: ["no external adapters"],
+        delivery_standard: ["repo-scoped tools cannot use runtime state paths"],
+        boundary: "manual implementation contract"
+      },
+      evidence_refs: ["packages/runtime/src/tools.ts"],
+      verification_commands: ["pnpm exec tsx --test tests/runtime_tools.test.ts"],
+      non_goals: ["does not delete runtime state"],
+      advisory_expert_roles: ["runtime_operator", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Runtime tools boundary passed.",
+        evidence_refs: ["tests/runtime_tools.test.ts"],
+        verification_commands: ["pnpm exec tsx --test tests/runtime_tools.test.ts"],
+        next_moves: [
+          "Commit and restart runtime after this slice.",
+          "Tighten basic runtime substrate before expanding SOP/skill/memory/dream layers.",
+          "Keep manual iteration audit coverage explicit."
+        ],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    };
+    await store.writeJson(basicIteration.ref, basicIteration);
+
+    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const plan = readModel.next_core_basic_plan;
+
+    assert.equal(readModel.artifacts[0]?.source_implementation_contract?.proposed_slice, "runtime_state_boundary_for_basic_tools");
+    assert.deepEqual(readModel.artifacts[0]?.source_next_moves, [
+      "Commit and restart runtime after this slice.",
+      "Tighten basic runtime substrate before expanding SOP/skill/memory/dream layers.",
+      "Keep manual iteration audit coverage explicit."
+    ]);
+    assert.equal(plan?.source_continuation.source_layer, "basic_entrypoint");
+    assert.equal(plan?.source_continuation.source_owner_surface, "runtime_tools");
+    assert.equal(plan?.source_continuation.source_proposed_slice, "runtime_state_boundary_for_basic_tools");
+    assert.equal(plan?.source_continuation.source_contract?.selected_layer, "basic_entrypoint");
+    assert.equal(plan?.source_continuation.source_contract?.owner_surface, "runtime_tools");
+    assert.equal(plan?.source_continuation.source_next_moves.length, 3);
+    assert.match(plan?.source_continuation.source_next_moves[1] ?? "", /basic runtime substrate/);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source=basic_entrypoint/runtime_tools"), true);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source_contract=runtime_state_boundary_for_basic_tools"), true);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source_next_move_candidates=3"), true);
+    assert.match(plan?.source_continuation.next_use ?? "", /restart runtime/);
+    assert.match(plan?.source_continuation.boundary ?? "", /read-only source-continuation/);
+    assert.equal(plan?.layer_decision.source_layer, "basic_entrypoint");
+    assert.equal(plan?.layer_decision.selected_layer, "core_runtime");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GA project design planning packet surfaces matching open iteration", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-open-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

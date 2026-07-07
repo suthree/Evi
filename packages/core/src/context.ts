@@ -1598,6 +1598,26 @@ export function compactGaPlanImplementationContract(
   ].join("; ");
 }
 
+export function compactGaPlanSourceContinuation(
+  plan: Pick<GaProjectDesignPlanPacket, "source_continuation">
+): string {
+  const source = plan.source_continuation;
+  const sourceContract = source.source_contract
+    ? `${source.source_contract.selected_layer}/${source.source_contract.owner_surface}/${source.source_contract.proposed_slice}`
+    : "not_recorded";
+  const candidate = source.source_next_moves.find((item) => item !== source.next_use)
+    ?? source.source_next_moves[0]
+    ?? source.next_use;
+  return [
+    `source=${source.source_layer}/${source.source_owner_surface}`,
+    `completed=${source.source_proposed_slice}`,
+    `contract=${sourceContract}`,
+    `candidates=${source.source_next_moves.length}`,
+    `candidate=${candidate}`,
+    `next=${source.next_use}`
+  ].join("; ");
+}
+
 export function compactGaPlanLayerGuard(
   plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
 ): string {
@@ -1793,6 +1813,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
   const compactGoalScope = compactGaPlanGoalScope(plan);
   const compactImplementationContract = compactGaPlanImplementationContract(plan);
+  const compactSourceContinuation = compactGaPlanSourceContinuation(plan);
   const compactLayerGuard = compactGaPlanLayerGuard(plan);
   const compactLearningAuthority = compactGaPlanLearningAuthority(plan);
   const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
@@ -1815,6 +1836,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `layer: ${plan.layer}; owner: ${plan.owner_surface}; slice: ${plan.proposed_slice}`,
       `source_artifact: ${plan.source_artifact_id}`,
       `source_truth: ${sourceTruth}`,
+      `source_continuation: ${compactSourceContinuation}`,
       `goal_scope: ${compactGoalScope}`,
       `implementation_contract: ${compactImplementationContract}`,
       `planning_basis: ${plan.planning_basis}`,
