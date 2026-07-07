@@ -220,7 +220,11 @@ export async function getSelfEvolutionScorecard(
     }
   ];
   const nextSlices = buildNextSlices(dimensions);
-  const nextCoreBasicSlice = selectNextCoreBasicSlice(nextSlices);
+  const nextCoreBasicSlice = selectNextCoreBasicSlice(
+    dimensions,
+    nextSlices,
+    Boolean(latestBlockingOpenIteration)
+  );
   const defaultNextSlice = nextCoreBasicSlice ?? nextSlices[0] ?? null;
 
   return {
@@ -261,11 +265,31 @@ export async function getSelfEvolutionScorecard(
   };
 }
 
-function selectNextCoreBasicSlice(nextSlices: SelfEvolutionNextSlice[]): SelfEvolutionNextSlice | null {
-  return nextSlices.find((slice) =>
+function selectNextCoreBasicSlice(
+  dimensions: SelfEvolutionDimension[],
+  nextSlices: SelfEvolutionNextSlice[],
+  hasBlockingOpenIteration: boolean
+): SelfEvolutionNextSlice | null {
+  const coreBasicSlices = nextSlices.filter((slice) =>
     slice.layer === "core_runtime"
     || slice.layer === "basic_entrypoint"
-  ) ?? null;
+  );
+  const attentionSlice = coreBasicSlices.find((slice) => dimensionStage(dimensions, slice.dimension_id) === "attention");
+  if (attentionSlice) return attentionSlice;
+  if (hasBlockingOpenIteration) return coreBasicSlices[0] ?? null;
+
+  const coreGaDesign = dimensions.find((dimension) => dimension.id === "core_ga_design");
+  const delegation = dimensions.find((dimension) => dimension.id === "general_agent_delegation");
+  const delegationSlice = coreBasicSlices.find((slice) => slice.dimension_id === "general_agent_delegation");
+  if (delegationSlice && delegation?.stage === "active" && coreGaDesign?.stage === "active" && coreGaDesign.score >= 5) {
+    return delegationSlice;
+  }
+
+  return coreBasicSlices[0] ?? null;
+}
+
+function dimensionStage(dimensions: SelfEvolutionDimension[], dimensionId: string): SelfEvolutionStage | undefined {
+  return dimensions.find((dimension) => dimension.id === dimensionId)?.stage;
 }
 
 function latestCoreBasicProjectDesignArtifactSource(

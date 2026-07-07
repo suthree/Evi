@@ -454,6 +454,13 @@ for the next planning handoff. `next_slices` stays ordered by dimension stage,
 score, and layer as all-dimension prioritization context, not backlog writes or
 execution authority; it may still surface local-learning follow-up work first
 when SOP, skill, or memory evidence is the lowest-scoring dimension.
+When no blocking core/basic iteration is open, core GA design is already active
+with full local evidence, and the general delegation loop is active, the
+scorecard default core/basic outlet moves to `general_agent_delegation`
+hardening unless a basic runtime attention slice must be handled first. The
+project-design plan remains the record-iteration seed authority until its own
+selector is explicitly hardened; if these two views differ, treat the difference
+as the next selector-alignment slice rather than execution authority.
 `governance project-design` is the core GA project design contract. It defines
 the reusable loop for goal intake, capability layering, contract design,
 execution planning, verification review, and learning persistence. It is
