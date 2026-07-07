@@ -610,6 +610,9 @@ Required policy:
   completion audit seed for one iteration, but it must remain read-only and
   advisory
 - expert lenses are advisory review perspectives, not autonomous expert agents
+- multi-expert orchestration is a later scheduling layer after core/basic
+  stability and learning-persistence gates, not a current peer of core/basic
+  iteration work
 - expert orchestration contracts must keep scheduling advisory and completion
   authority in the main runtime
 - expert delegation gates must define trigger, required inputs, expected

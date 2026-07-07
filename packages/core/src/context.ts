@@ -1746,7 +1746,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `stage_next: ${plan.capability_stage_plan.next_iteration_plan.slice(0, 2).join(" | ")}`,
       `phase_forbid: ${compactPhaseForbids}`,
       `scorecard_basis: ${plan.scorecard_basis.slice(0, 2).join(" | ")}`,
-      `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries[0]}`,
+      `layer_decision: ${plan.layer_decision.core_identity}; ${plan.layer_decision.application_boundaries.slice(0, 2).join("; ")}`,
       `layer_guard: ${compactLayerGuard}`,
       `selection: ${plan.selection_status}; ${compactSelectionReasons.join(" | ")}`,
       `checks: ${compactSelectionChecks.join(" | ")}`,

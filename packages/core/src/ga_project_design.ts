@@ -348,6 +348,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "application slices are valid only when they validate, pressure-test, or consume the reusable runtime contract",
       "basic entrypoint health must stay observable before adding mutation or publishing authority",
       "major self-evolution work should start with an iteration contract and end with an outcome record",
+      "multi-expert orchestration follows core/basic stability and learning-persistence gates; advisory output never replaces main-thread verification",
       "expert roles are advisory lenses; main-thread verification keeps completion authority"
     ],
     verification_policy: [
@@ -698,7 +699,8 @@ function buildCapabilityStagePlan(
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
       "core_runtime[current_state]: choose one reusable GA design contract improvement, not an external adapter task",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
-      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
+      "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse",
+      "multi_expert[orchestration]: defer expert scheduling until core/basic and learning-persistence gates are stable"
     ]
   };
 }
@@ -724,7 +726,7 @@ function buildLayerDecision(
     ],
     application_boundaries: [
       "external tools and adapters stay application slices unless a reusable runtime contract is named",
-      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse"
+      "SOP, skill, memory, and dream promotion follows only after core/basic evidence supports reuse; multi-expert orchestration follows those gates and remains advisory"
     ],
     required_before_outcome: [
       `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`,

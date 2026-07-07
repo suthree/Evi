@@ -638,6 +638,9 @@ record instead of writing a duplicate.
 advisory expert roles, scheduling policy, and main-thread verification
 authority. It makes multi-expert orchestration a bounded design capability, not
 a scheduler, model fan-out path, external adapter, or completion proof.
+Multi-expert orchestration is a later scheduling layer after core/basic
+stability and learning-persistence gates; it is not a current peer of
+core/basic iteration work.
 Its delegation gates define when to use a role set, which inputs are required,
 what output shape is acceptable, when to reject delegation, and which
 main-runtime check retains completion authority. They do not spawn agents,
