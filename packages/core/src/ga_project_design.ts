@@ -1101,7 +1101,7 @@ function buildCapabilityStagePlan(
     next_iteration_plan: [
       `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
       `core_runtime[current_state]: choose one reusable ${target.target_dimension_id} improvement, not an external adapter task`,
-      "core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/completion contract before expert specialization",
+      "core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/trace/replay/completion contract before expert specialization",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
       "local_learning[learning_persistence]: record an iteration outcome before any SOP, skill, memory, or dream reuse"
     ]
@@ -1248,7 +1248,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ]
     },
     replay_audit_contract: {
-      metadata_source: "harness-owned delegated_result event summaries only",
+      metadata_source: "Live Run Trace delegated dispatch metadata derived from harness-owned delegated_result event summaries only",
       required_metadata: [
         "action_id",
         "round",
@@ -1269,6 +1269,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_results"
       ],
       proof_boundary: [
+        "Live Run Trace exposes safe delegated dispatch metadata, failure kinds, result refs, and per-round action counts without reading delegated artifact bodies",
         "trace and replay audit JSON preserve the full delegated dispatch metadata set",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
         "replay audit warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
@@ -1289,6 +1290,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     ],
     evidence_refs: [
       "packages/core/src/schemas.ts",
+      "packages/core/src/live_run_trace.ts",
       "packages/runtime/src/runner.ts",
       "packages/core/src/harness_replay.ts",
       "tests/context_harness.test.ts",

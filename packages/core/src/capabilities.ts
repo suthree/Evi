@@ -188,12 +188,13 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
     reason: "General-agent delegation is the current bounded core/basic handoff; harden the task, context, result, trace, replay, and completion-verification boundaries before expert scheduling, application adapters, or local-learning follow-ups become the default next step.",
     success_criteria: [
       "delegate_agent rejects unbounded task/context inputs before delegated model dispatch",
-      "delegated failure metadata is visible through bounded live trace and replay audit read models",
+      "delegated failure metadata is visible through bounded Live Run Trace and Harness Replay read models without raw delegated artifact reads",
       "main-harness recovery and completion verification keep authority after delegated results",
       "expert scheduling, model fan-out, external adapters, and local-learning items remain follow-up slices"
     ],
     refs: [
       "packages/core/src/capabilities.ts",
+      "packages/core/src/live_run_trace.ts",
       "packages/core/src/harness_replay.ts",
       "packages/runtime/src/runner.ts",
       "tests/context_harness.test.ts",
@@ -301,6 +302,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "claimed completion refs must bind to harness-known tool result ids or tool artifact refs",
           "pipeline resume is an explicit CLI gate",
           "StageRunner blocked tool observations persist bounded tool_result evidence with failure_kind metadata without executing the blocked tool",
+          "Live Run Trace exposes delegated dispatch failure metadata from harness-owned event summaries without reading delegated result artifact bodies",
           "harness replay audit reads bounded trace metadata only; it does not invoke the model, execute tools, write the repo, or write the active vault"
         ]
       },
