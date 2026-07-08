@@ -541,7 +541,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
         ...(action === "delegate_agent"
           ? [
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
-              "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation instead of vague task handoff",
+              "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
               "delegated context must state the expected summary/findings_text output shape before delegated model dispatch",

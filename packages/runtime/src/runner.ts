@@ -1402,7 +1402,7 @@ ${disciplineText}
 If the task requires fresh local or external data and no relevant Tool Observations are present, call use_tool first.
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
-Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
+Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
 delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
@@ -1742,6 +1742,7 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
 function validateDelegationTaskBoundary(task: string): string | null {
   const text = normalizeBoundaryText(task);
   const hasBoundedAnalysisIntent = hasAnyPhrase(text, DELEGATE_TASK_ANALYSIS_TERMS);
+  const hasConcreteQuestion = hasConcreteDelegationQuestion(task, text);
   const asksToolOrMutation =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TOOL_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_WRITE_MUTATION_TERMS);
@@ -1753,8 +1754,8 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksExpertScheduling =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
-  if (!hasBoundedAnalysisIntent || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksCompletion || asksExpertScheduling) {
-    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation and must not request direct fix/repair/update/edit/patch/commit, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
+  if (!hasBoundedAnalysisIntent || !hasConcreteQuestion || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksCompletion || asksExpertScheduling) {
+    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request direct fix/repair/update/edit/patch/commit, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
   }
   return null;
 }
@@ -2123,6 +2124,12 @@ function hasUndeniedPhrase(text: string, phrase: string, denialWindow = 48): boo
 
 function hasAnyPhrase(text: string, phrases: string[]): boolean {
   return phrases.some((phrase) => text.includes(phrase));
+}
+
+function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {
+  return /[?？]/.test(rawText)
+    || /\b(whether|which|what|why|how|where|when|who|does|do|is|are|can|should|could|would|if)\b/.test(normalizedText)
+    || ["是否", "能否", "可否", "哪", "什么", "为什么", "如何", "怎么", "哪里", "何时", "谁", "吗"].some((term) => rawText.includes(term));
 }
 
 function hasNearbyBoundary(text: string, firstTerms: string[], secondTerms: string[], window = 160): boolean {

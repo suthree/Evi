@@ -607,6 +607,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("not verification proof")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("delegated result id or ref")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("more than one delegate_agent action")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("one concrete question")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("command or test execution")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("execute tools, mutate state, or decide completion")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("expert scheduling or multi-agent orchestration")), true);
@@ -615,6 +616,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.required.some((item) => item.includes("delegated_output_contract_failed")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("expert scheduling")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("validateDelegationTaskBoundary")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("one concrete question")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("validateDelegationContextBoundary rejects context grants")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("expected summary/findings_text output shape")), true);

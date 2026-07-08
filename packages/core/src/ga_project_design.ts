@@ -1126,6 +1126,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       reject_if: [
         "task is empty or over the configured max chars",
         "task is a vague handoff without explicit analysis, critique, review, inspection, comparison, summarization, or evaluation intent",
+        "task lacks one concrete question for the delegated subagent",
         "task combines analysis intent with direct fix, repair, update, edit, patch, or commit intent",
         "task combines analysis intent with command or test execution intent",
         "more than one delegate_agent action is proposed in the same model round",
@@ -1214,7 +1215,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+        "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
         "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
       ],
       result_handling: [

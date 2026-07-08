@@ -217,6 +217,7 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /strict task\/context only/);
   assert.match(text, /at most one delegate_agent action per model round/);
   assert.match(text, /explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation/);
+  assert.match(text, /one concrete question/);
   assert.match(text, /must not combine analysis with direct fix, repair, update, edit, patch, or commit intent/);
   assert.match(text, /run commands, tests, builds, or package-manager scripts/);
   assert.match(text, /expected summary\/findings_text output shape/);
