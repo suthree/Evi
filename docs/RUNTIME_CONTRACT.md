@@ -1201,18 +1201,20 @@ capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contai
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated
-`task`/`context`, and sanitizes successful delegated `summary`, `findings_text`,
-and raw preview before persisting the result or returning it as a sanitized
-`Delegated Observations` item. The live runner allows at most one
+`task`/`context` or claim delegated tool/write/mutation/completion authority,
+and sanitizes successful delegated `summary`, `findings_text`, and raw preview
+before persisting the result or returning it as a sanitized `Delegated
+Observations` item. The live runner allows at most one
 `delegate_agent` action per model
 round; extra delegate actions are recorded as failed delegated results without
 calling the delegated model. Invalid payloads, delegated model request
 failures, malformed delegated output, over-limit delegated output, raw
-task/context echoes, or over-limit delegate action counts are recorded as
+task/context echoes, delegated output authority claims, or over-limit delegate
+action counts are recorded as
 `ok=false`; delegated model request failure messages and contract-failure
 previews are sanitized before they are persisted or returned as observations.
-Raw task/context echo failures suppress the raw output preview. Dispatch-layer
-rejects also carry a safe
+Raw task/context echo failures and delegated output authority-claim failures
+suppress the raw output preview. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no

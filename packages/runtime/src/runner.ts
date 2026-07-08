@@ -2070,6 +2070,13 @@ function parseDelegatedOutput(
     return { ok: false, error: "Delegated model output failed schema validation." };
   }
   const { summary, findings_text: findingsText } = contract.data;
+  if (delegatedOutputClaimsAuthority(summary, findingsText)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim tool/write/mutation or completion authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation or completion authority; raw output preview suppressed."
+    };
+  }
   const rawEcho = delegatedOutputRawEcho(summary, findingsText, source);
   if (rawEcho) {
     return {
@@ -2084,6 +2091,46 @@ function parseDelegatedOutput(
     findings_text: sanitizeModelDiagnosticText(findingsText, DELEGATED_AGENT_FINDINGS_MAX_CHARS)
   };
 }
+
+function delegatedOutputClaimsAuthority(summary: string, findingsText: string): boolean {
+  const text = normalizeBoundaryText(`${summary}\n${findingsText}`);
+  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES);
+}
+
+const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
+  "i used tool",
+  "i used tools",
+  "i used repo search",
+  "i used http fetch",
+  "i used command run",
+  "i used code execute node",
+  "i called tool",
+  "i called repo search",
+  "i called http fetch",
+  "i called command run",
+  "i called file write repo",
+  "i executed command run",
+  "i ran command run",
+  "i wrote state",
+  "i wrote repo",
+  "i wrote file",
+  "i wrote files",
+  "i mutated state",
+  "i decided completion",
+  "i proved completion",
+  "i verified completion",
+  "i verified final success",
+  "delegated subagent used tool",
+  "delegated subagent called tool",
+  "delegated subagent wrote state",
+  "delegated subagent verified completion",
+  "subagent used tool",
+  "subagent called tool",
+  "subagent wrote state",
+  "subagent verified completion",
+  "completion is proven",
+  "final success is proven"
+];
 
 function delegatedOutputRawEcho(
   summary: string,

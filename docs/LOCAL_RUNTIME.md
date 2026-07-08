@@ -2055,7 +2055,8 @@ recorded by the harness. Unknown or model-invented refs fail verification and do
 not count as proof. The final response artifact alone is not independent
 completion proof. Successful delegated `summary`, `findings_text`, and raw
 preview text are sanitized before persistence and observation feedback, and
-outputs that echo raw delegated task/context fail the delegated output contract
+outputs that echo raw delegated task/context or claim delegated
+tool/write/mutation/completion authority fail the delegated output contract
 with raw preview suppressed. Delegated model request failures are recorded as
 failed delegated results with sanitized error text before persistence and
 observation feedback.

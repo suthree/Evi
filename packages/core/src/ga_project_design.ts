@@ -1157,6 +1157,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       reject_if: [
         "delegated output is not valid structured JSON",
         "summary or findings_text is empty or over the configured max chars",
+        "summary or findings_text claims delegated tool, write, mutation, or completion authority",
         "result is treated as tool evidence, final success, or mutation authority",
         "delegated result id or ref is used as completion verification proof"
       ]
