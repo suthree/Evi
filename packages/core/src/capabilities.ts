@@ -101,7 +101,7 @@ const harnessActionSummaries: Record<AllowedAction, string> = {
   delegate_agent: "Ask for bounded structured analysis or critique that must pass a delegated-result contract and still be verified by the main harness.",
   update_working_state: "Write a bounded working checkpoint under local state for later context.",
   record_evidence: "Append a state-only evidence note for the current episode.",
-  propose_sop: "Create a state-only SOP draft candidate only on an explicit not_done claim.",
+  propose_sop: "Create a state-only SOP draft candidate on an explicit not_done claim; live audit and promotion require verified done completion.",
   propose_memory: "Record a candidate semantic memory proposal without promoting it.",
   request_audit: "Record a state-only audit request without executing promotion or confirmations.",
   pause_autonomy: "Record a stop signal for future autonomous exploration without stopping the resident service."
@@ -544,6 +544,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",
               "done claims after delegation require harness-known non-delegated verification refs or successful write/run evidence",
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
+              "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot follow skipped, blocked, or failed-delegation-warning completion reports",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",
               "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
               "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none; persisted delegated results and model observations use explicit none instead of null",

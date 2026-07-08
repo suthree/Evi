@@ -1255,6 +1255,9 @@ independent context for a done claim, but they do not recover the failed
 delegation; only later successful write/run tool results do. Recovery must not
 add automatic retry, model fan-out, expert scheduling, delegated completion, or
 raw delegated artifact reads.
+If a delegated result failed and the run does not reach verified `done`
+completion, any `propose_sop` action remains state-only and must not enter live
+SOP audit, SOP promotion, skill promotion, or active-vault writes.
 The GA project-design read model mirrors this same runner/replay boundary in
 `next_core_basic_plan.general_delegation_loop`: `runner_enforcement_contract`
 names the live runner instruction, input, result, and completion-gate rules,
@@ -1388,7 +1391,9 @@ promote, write skills, write the repository, or write the active vault.
 
 When a final verified envelope uses `respond + propose_sop` with
 `completion_claim.status=done`, the existing completion-time SOP audit and
-promotion path applies.
+promotion path applies. Skipped, blocked, or otherwise unverified completion
+reports, including reports that carry failed delegated result warnings, do not
+enter SOP audit, SOP promotion, skill promotion, or active-vault writes.
 
 `propose_memory` and `request_audit` are implemented as state-only governance
 actions. `propose_memory` writes a candidate under

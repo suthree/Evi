@@ -1272,6 +1272,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     completion_authority: [
       "main harness verifies delegated results before they influence a done claim",
       "failed delegated results block verified completion until later main-harness recovery evidence exists",
+      "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot run from skipped, blocked, or failed-delegation-warning reports",
       "passed delegated results can inform the next model round but do not prove completion",
       "completion remains with iteration outcome plus completion_gate coverage"
     ],

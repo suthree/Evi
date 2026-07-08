@@ -4183,6 +4183,47 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
   }
 });
 
+test("live runner blocks SOP audit after failed delegation without verified completion", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new InvalidDelegationThenBlockedSopModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Do not audit SOPs after failed delegation without verified completion.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      completion_status: string;
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string }>;
+    };
+
+    assert.equal(model.sawSanitizedFailedObservation, true);
+    assert.equal(result.sop_ref, null);
+    assert.equal(result.audit_ref, null);
+    assert.equal(result.skill_ref, null);
+    assert.equal(report.completion_status, "blocked");
+    assert.equal(report.verification_status, "skipped");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
+    assert.match(report.checks.find((check) => check.id === "delegated_results")?.summary ?? "", /Failed delegated result\(s\): 1/);
+    assert.equal(events.some((event) => String(event.summary).includes("Drafted live SOP candidate")), false);
+    assert.equal(events.some((event) => String(event.summary).includes("Autonomous audit verdict")), false);
+    await assert.rejects(readFile(join(activeVault, "skills/blocked-delegation-sop-promotion-guard/SKILL.md"), "utf8"));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner sanitizes delegated model request failures before observation", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -5853,6 +5894,42 @@ class InvalidDelegationThenBlockedModel implements ModelClient {
   }
 }
 
+class InvalidDelegationThenBlockedSopModel implements ModelClient {
+  private mainCalls = 0;
+  sawSanitizedFailedObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? "plain text instead of json"
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-then-blocked-sop",
+      responseId: `response-invalid-delegation-blocked-sop-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawSanitizedFailedObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes('"result_failure_kind": "delegated_output_contract_failed"')
+        && delegatedSection.includes("Delegated model output was not valid JSON")
+        && !delegatedSection.includes("plain text instead of json")
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"')
+        && !delegatedSection.includes("Critique whether the answer needs more evidence.")
+        && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
+    }
+    return this.mainCalls > 1 ? blockedSopEnvelope() : delegateCritiqueEnvelope();
+  }
+}
+
 class DelegationRequestFailureThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
@@ -6830,6 +6907,44 @@ function blockedEnvelope(): Record<string, unknown> {
         markdown: "The command task is blocked pending independent verification."
       }
     }],
+    completion_claim: {
+      status: "blocked",
+      verification_refs: []
+    }
+  };
+}
+
+function blockedSopEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Report blocked task while proposing an audit-ready SOP.",
+    actions: [
+      {
+        type: "respond",
+        rationale: "Return a blocked completion claim.",
+        payload: {
+          markdown: "The command task is blocked pending independent verification."
+        }
+      },
+      {
+        type: "propose_sop",
+        rationale: "This SOP must not be audited without verified completion.",
+        payload: {
+          title: "Blocked delegation SOP promotion guard",
+          trigger: "Use this when failed delegation tries to propose a reusable SOP before verified main-harness completion exists.",
+          procedure: [
+            "Record the failed delegated result as bounded context only.",
+            "Keep SOP audit and skill promotion blocked until completion verification is passed.",
+            "Require a later verified main-harness result before any reusable learning artifact is promoted."
+          ],
+          required_tools: ["delegate_agent"],
+          verification: "Confirm failed delegated results cannot enter SOP audit or skill promotion when completion verification is skipped.",
+          failure_modes: [
+            "If a SOP is drafted after skipped completion, revise the completion gate before trusting learning persistence.",
+            "If a skill is promoted after failed delegation, rollback the vault write and repair the runner gate."
+          ]
+        }
+      }
+    ],
     completion_claim: {
       status: "blocked",
       verification_refs: []

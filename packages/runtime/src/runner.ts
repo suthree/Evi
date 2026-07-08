@@ -591,7 +591,7 @@ export class LiveAgentRunner {
     evidenceRefs.push(completionEvent.id);
     await this.store.appendJsonl("memory/episodes/events.jsonl", completionEvent);
 
-    const sop = completionVerification.ok ? buildSopFromEnvelope(envelope, evidenceRefs) : null;
+    const sop = completionVerification.verified ? buildSopFromEnvelope(envelope, evidenceRefs) : null;
     let sopRef: string | null = null;
     let vaultSopDraftRef: string | null = null;
     let vaultSopPromotedRef: string | null = null;
