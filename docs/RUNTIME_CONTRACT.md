@@ -1236,8 +1236,9 @@ explicitly state that the delegated subagent has no tool, write, or mutation
 authority and that completion remains with the main harness. Tasks or contexts
 that omit, violate, or contradict those authority boundaries are rejected before
 any delegated model call; a context that says no delegated authority and also
-grants tool/write/mutation or completion authority is invalid. The delegated
-model must return a JSON object with non-empty `summary` and `findings_text`;
+grants tool/write/mutation, completion, expert scheduling, multi-agent
+orchestration, or model fan-out authority is invalid. The delegated model must
+return a JSON object with non-empty `summary` and `findings_text`;
 `summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority

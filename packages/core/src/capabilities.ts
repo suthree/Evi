@@ -542,7 +542,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
               "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation instead of vague task handoff",
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
-              "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, or completion authority",
+              "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",
               "done claims after delegation require later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result; failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs",
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",

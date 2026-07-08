@@ -1767,7 +1767,7 @@ function validateDelegationContextBoundary(context: string): string | null {
     return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
   }
   if (grantsDelegatedAuthority(text)) {
-    return "delegate_agent.payload.context must not grant tool/write/mutation or completion authority to the delegated subagent.";
+    return "delegate_agent.payload.context must not grant tool/write/mutation, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
   }
   return null;
 }
@@ -2091,6 +2091,25 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "allowed to decide completion",
   "completion authority allowed",
   "delegated completion authority",
+  "can schedule expert",
+  "may schedule expert",
+  "allowed to schedule expert",
+  "can schedule specialist",
+  "may schedule specialist",
+  "can orchestrate multi agent",
+  "may orchestrate multi agent",
+  "can orchestrate multi-agent",
+  "may orchestrate multi-agent",
+  "can fan out",
+  "may fan out",
+  "allowed to fan out",
+  "can use model fan out",
+  "may use model fan out",
+  "allowed to use model fan out",
+  "model fan out allowed",
+  "can spawn autonomous agent",
+  "may spawn autonomous agent",
+  "allowed to spawn autonomous agent",
   "可以调用工具",
   "允许调用工具",
   "授予工具权限",
@@ -2101,7 +2120,13 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "允许修改",
   "可以决定完成",
   "允许决定完成",
-  "授予完成权"
+  "授予完成权",
+  "可以调度专家",
+  "允许调度专家",
+  "可以编排多 agent",
+  "允许编排多 agent",
+  "可以编排多智能体",
+  "允许编排多智能体"
 ];
 
 function termsAreNearby(text: string, first: string, second: string, window: number): boolean {
