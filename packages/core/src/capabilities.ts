@@ -545,7 +545,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
               "delegated context must state the expected summary/findings_text output shape before delegated model dispatch",
-              "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
+              "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run recovery evidence exists and the done claim binds a non-delegated verification ref",
               "done claims after delegation require later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts as completion proof when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs",
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
@@ -555,7 +555,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none; persisted delegated results and model observations use explicit none instead of null",
               "harness replay warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",
-              "successful delegated summary/findings are sanitized; raw task/context echoes and delegated output authority claims fail the delegated output contract",
+              "successful delegated summary/findings are sanitized; raw task/context echoes and delegated output authority or command/test execution claims fail the delegated output contract",
               "delegated observations exclude raw task, context, output preview, and artifact bodies",
               "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
             ]

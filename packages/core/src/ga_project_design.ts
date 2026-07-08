@@ -1145,8 +1145,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "context is empty or over the configured max chars",
         "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
         "context omits delegated authority limits or main-harness completion ownership",
-        "context simultaneously denies and grants delegated tool, write, mutation, completion, expert, or multi-agent scheduling authority",
-        "context grants external adapter, SOP/skill promotion, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
+        "context simultaneously denies and grants delegated tool, write, mutation, command/test execution, completion, expert, or multi-agent scheduling authority",
+        "context grants external adapter, SOP/skill promotion, command/test execution, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
       ]
     },
     result_contract: {
@@ -1161,7 +1161,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       reject_if: [
         "delegated output is not valid structured JSON",
         "summary or findings_text is empty or over the configured max chars",
-        "summary or findings_text claims delegated tool, write, mutation, completion, expert, multi-agent, model fan-out authority, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+        "summary or findings_text claims delegated tool, write, mutation, command/test execution, completion, expert, multi-agent, model fan-out authority, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
         "result is treated as tool evidence, final success, or mutation authority",
         "delegated result id or ref is used as completion verification proof"
       ]
@@ -1214,11 +1214,11 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
-        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
+        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
       ],
       result_handling: [
-        "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
+        "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],

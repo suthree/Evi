@@ -1774,7 +1774,7 @@ function validateDelegationContextBoundary(context: string): string | null {
     return "delegate_agent.payload.context must state expected delegated output shape with summary and findings_text.";
   }
   if (grantsDelegatedAuthority(text)) {
-    return "delegate_agent.payload.context must not grant tool/write/mutation, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
+    return "delegate_agent.payload.context must not grant tool/write/mutation, command/test execution, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
   }
   if (reliesOnForbiddenDelegationSource(text)) {
     return "delegate_agent.payload.context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.";
@@ -2150,6 +2150,36 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "write access allowed",
   "grant write access",
   "grants write access",
+  "can run command",
+  "may run command",
+  "allowed to run command",
+  "can execute command",
+  "may execute command",
+  "allowed to execute command",
+  "can run test",
+  "may run test",
+  "allowed to run test",
+  "can run tests",
+  "may run tests",
+  "allowed to run tests",
+  "can execute test",
+  "may execute test",
+  "allowed to execute test",
+  "can execute tests",
+  "may execute tests",
+  "allowed to execute tests",
+  "can run pnpm test",
+  "may run pnpm test",
+  "can run npm test",
+  "may run npm test",
+  "can run pytest",
+  "may run pytest",
+  "can run build",
+  "may run build",
+  "can run pnpm build",
+  "may run pnpm build",
+  "can run npm build",
+  "may run npm build",
   "can mutate",
   "may mutate",
   "allowed to mutate",
@@ -2184,6 +2214,16 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "可以写入",
   "允许写入",
   "授予写入权限",
+  "可以运行命令",
+  "允许运行命令",
+  "可以执行命令",
+  "允许执行命令",
+  "可以运行测试",
+  "允许运行测试",
+  "可以执行测试",
+  "允许执行测试",
+  "可以运行构建",
+  "允许运行构建",
   "可以修改",
   "允许修改",
   "可以决定完成",
@@ -2321,8 +2361,8 @@ function parseDelegatedOutput(
   if (delegatedOutputClaimsAuthority(summary, findingsText)) {
     return {
       ok: false,
-      error: "Delegated model output must not claim tool/write/mutation, completion, expert, multi-agent, or model fan-out authority.",
-      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
+      error: "Delegated model output must not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
   if (delegatedOutputClaimsForbiddenSource(summary, findingsText)) {
@@ -2358,8 +2398,8 @@ function delegatedOutputBoundaryFailure(
   if (delegatedTextClaimsAuthority(text)) {
     return {
       ok: false,
-      error: "Delegated model output must not claim tool/write/mutation, completion, expert, multi-agent, or model fan-out authority.",
-      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
+      error: "Delegated model output must not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
   if (delegatedTextClaimsForbiddenSource(text)) {
@@ -2411,7 +2451,21 @@ const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
   "i called command run",
   "i called file write repo",
   "i executed command run",
+  "i executed test",
+  "i executed tests",
+  "i executed pnpm test",
+  "i executed npm test",
+  "i executed pytest",
   "i ran command run",
+  "i ran test",
+  "i ran tests",
+  "i ran pnpm test",
+  "i ran npm test",
+  "i ran pytest",
+  "i ran build",
+  "i ran builds",
+  "i ran pnpm build",
+  "i ran npm build",
   "i wrote state",
   "i wrote repo",
   "i wrote file",
