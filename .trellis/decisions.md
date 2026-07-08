@@ -31,6 +31,28 @@ Stable docs describe the local first-version contract. `.trellis/` carries the
 current implementation plan and decision log. Runtime code remains the source of
 truth for what is currently implemented.
 
+## 2026-07-08 Direction-Controlled Self-Iteration
+
+Self-iteration means slow improvement of core and basic runtime capabilities:
+context assembly, harness validation, bounded tool execution, evidence capture,
+completion verification, recovery, and operator inspection.
+
+Direction control is more important than active iteration. A candidate
+self-iteration slice should be narrow, evidence-backed, reviewable, and
+reversible where possible. If direction, verification, or rollback is unclear,
+record the gap or narrow the task before changing the runtime.
+
+Self-growth means SOP and skill accumulation through explicit local-learning
+gates. SOPs and skills should preserve repeated, verified workflows. They should
+reuse existing commands, tools, adapters, delegated surfaces, and promoted
+skills before introducing new procedure surfaces.
+
+Trellis is the project self-iteration maintenance tool for bounded tasks,
+specs, decisions, and command-maintained agent context. Trellis-generated agent
+context should be refreshed through Trellis commands rather than manually
+owned. Stable runtime docs remain the authority for current runtime behavior,
+language boundaries, and operator-facing principles.
+
 ## 2026-07-02 TrellisVCS Context Hygiene
 
 TrellisVCS is initialized with latest minimal no-index metadata so the repo is

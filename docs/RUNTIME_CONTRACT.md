@@ -155,6 +155,23 @@ Direction control is more important than active iteration. If the direction,
 verification path, or rollback story is unclear, the correct action is to pause,
 record the gap, or narrow the slice.
 
+Gray self-iteration moves through stages:
+
+1. **Proposal or read-only audit**: identify the gap, owner surface, evidence,
+   expected benefit, verification command, and rollback story without changing
+   runtime behavior.
+2. **State-only rehearsal**: exercise the candidate path in local state or a
+   sandboxed rehearsal surface without changing the default runtime path.
+3. **Gated write**: allow a narrow implementation only when evidence, checks,
+   and rollback notes are explicit.
+4. **Default adoption**: make the behavior part of the normal runtime only
+   after targeted verification shows core and basic capabilities were not
+   weakened.
+
+No self-iteration stage may trade away existing core/basic capability,
+completion verification, evidence capture, or operator inspection in order to
+ship faster.
+
 Self-growth means preserving reusable procedures through SOPs and skills. It
 expands the agent's working surface only after repeated or high-value evidence
 shows a clear trigger, bounded procedure, verification command, failure mode,

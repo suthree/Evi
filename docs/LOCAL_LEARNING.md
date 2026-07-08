@@ -97,6 +97,39 @@ model proposes SOP
 The model must not claim that a skill has been promoted. Promotion is a harness
 result backed by local evidence.
 
+## Reuse Before Promotion
+
+Local learning is self-growth. It preserves useful procedures; it is not the
+primary loop for changing the runtime core.
+
+Before proposing or promoting a new SOP or skill, check whether an existing
+runtime command, adapter, delegated agent surface, SOP, skill, or documented
+workflow already covers the need. If an existing surface nearly covers it,
+prefer improving invocation guidance, verification, or examples before creating
+a duplicate procedure.
+
+A task being successful, long, or interesting is not enough to create durable
+learning. A candidate needs a reusable trigger, bounded steps, concrete
+evidence, verification commands, failure modes, and rollback or retirement
+notes.
+
+Reject SOP or skill promotion when any of these are true:
+
+- an existing command, adapter, delegated surface, SOP, skill, or documented
+  workflow already covers the need
+- the task was one-off, exploratory, or mainly project-specific
+- the candidate has no clear future trigger
+- the candidate cannot name bounded steps and required inputs
+- the candidate has no verification command or acceptance evidence
+- the candidate has no known failure mode, rollback, or retirement rule
+- promotion would bypass context, harness, completion, or operator-inspection
+  gates
+
+Self-iteration work that improves context assembly, harness validation, tool
+boundaries, evidence capture, completion checks, recovery, or operator
+inspection belongs in the runtime contract and Trellis task governance before it
+becomes a local-learning artifact.
+
 ## CLI
 
 Validate local seed and active skill packages:
