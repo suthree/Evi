@@ -390,8 +390,11 @@ function delegatedDispatchRoundLimitCheck(trace: LiveRunTraceSummary): HarnessRe
 
 function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
-  const missingKindFieldDispatches = failedDispatches.filter((dispatch) =>
-    !dispatch.result_failure_kind_present || dispatch.result_failure_kind === null
+  const missingKindFieldDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    !dispatch.result_failure_kind_present
+  );
+  const failedNoneKindDispatches = failedDispatches.filter((dispatch) =>
+    dispatch.result_failure_kind_present && dispatch.result_failure_kind === null
   );
   const invalidKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
     dispatch.result_failure_kind !== null && !RESULT_FAILURE_KINDS.has(dispatch.result_failure_kind)
@@ -399,8 +402,13 @@ function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessRep
   const unexpectedKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
     dispatch.ok && dispatch.contract_status === "passed" && dispatch.result_failure_kind !== null
   );
+  const missingResultKindEventIds = unique([
+    ...missingKindFieldDispatches,
+    ...failedNoneKindDispatches
+  ].map((dispatch) => dispatch.event_id));
   const problemRefs = unique([
     ...missingKindFieldDispatches,
+    ...failedNoneKindDispatches,
     ...invalidKindDispatches,
     ...unexpectedKindDispatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
@@ -409,7 +417,7 @@ function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessRep
     status: problemRefs.length > 0 ? "warning" : "pass",
     summary: [
       `failed_dispatches=${failedDispatches.length}`,
-      `missing_result_kind=${missingKindFieldDispatches.length}`,
+      `missing_result_kind=${missingResultKindEventIds.length}`,
       `invalid_result_kind=${invalidKindDispatches.length}`,
       `unexpected_result_kind=${unexpectedKindDispatches.length}`
     ].join("; "),

@@ -1343,7 +1343,8 @@ whether delegated result events have matching dispatch metadata, and whether
 over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
 omits the field instead of explicitly recording `none`. It also checks
-`result_failure_kind` coverage for failed delegated results and warns when a
+`result_failure_kind` coverage for every delegated result summary, including
+passed results that should record `result_failure_kind=none`, and warns when a
 trace shows more than one active-looking delegate dispatch in the same model
 round. It must not invoke the model, execute tools, rerun
 actions, read raw model responses, read raw action payloads, read raw
