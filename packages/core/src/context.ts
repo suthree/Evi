@@ -778,7 +778,7 @@ function capabilityCatalogSection(): ContextSection {
   return {
     title: "Capability Catalog",
     body: [
-      "do not infer extra authority; /capabilities for detail.",
+      "no extra authority;[boundary]=advisory",
       `- count: ${catalog.count}; local-only read model`,
       "",
       ...catalog.categories.map(renderCapabilityCatalogCategory)
@@ -809,7 +809,7 @@ function capabilityCatalogSample(category: CapabilityCategory): string[] {
   }
   if (category.id === "context_read_models") {
     return category.capabilities
-      .filter((capability) => ["context.manifests", "context.health", "review.history", "ga.project_design_contract"].includes(capability.id))
+      .filter((capability) => ["context.manifests", "ga.project_design_contract", "expert.orchestration_contract"].includes(capability.id))
       .map(render);
   }
   if (category.id === "runtime_service") {

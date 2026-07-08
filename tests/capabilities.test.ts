@@ -168,6 +168,8 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(expertContract?.refs?.includes("packages/core/src/expert_orchestration.ts"), true);
   assert.equal(expertContract?.refs?.includes("CONTEXT.md"), true);
   assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("read-only expert orchestration contract")), true);
+  assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("no parallel model fan-out")), true);
+  assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("main runtime keeps execution and completion authority")), true);
   assert.equal(expertContract?.boundaries?.some((boundary) => boundary.includes("not current core/basic maturity")), true);
   const writeRepo = coreTools?.capabilities.find((capability) => capability.id === "file.write_repo");
   assert.equal(writeRepo?.refs?.includes("packages/runtime/src/tools.ts"), true);

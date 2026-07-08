@@ -1497,13 +1497,17 @@ test("context bundle includes bounded local capability catalog", async () => {
     assert.match(rendered.markdown, /file\.read/);
     assert.match(rendered.markdown, /Harness actions/);
     assert.match(rendered.markdown, /ga\.project_design_contract/);
+    assert.match(rendered.markdown, /expert\.orchestration_contract\[boundary\]/);
     assert.match(rendered.markdown, /sop\.evolution/);
     assert.match(rendered.markdown, /self_evolution\.scorecard\[core_runtime\]/);
     assert.match(rendered.markdown, /Resident local service/);
     assert.match(rendered.markdown, /local-only read model/);
-    assert.match(rendered.markdown, /do not infer extra authority/);
+    assert.match(rendered.markdown, /no extra authority/);
+    assert.match(rendered.markdown, /\[boundary\]=advisory/);
     assert.doesNotMatch(rendered.markdown, /api_key/);
     assert.doesNotMatch(rendered.markdown, /app_secret/);
+    assert.doesNotMatch(rendered.markdown, /allowed_inputs/);
+    assert.doesNotMatch(rendered.markdown, /forbidden_authority/);
   } finally {
     await fixture.cleanup();
   }

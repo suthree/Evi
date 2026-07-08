@@ -1832,13 +1832,16 @@ the repo-owned local capability catalog. It may render the catalog id, catalog
 version, count, category titles, capability ids, source refs, and explicit
 local-only boundaries. If a sampled capability has a layer that differs from
 its category grouping, compact context may render the explicit child layer so
-models do not inherit broader authority from the category. It must not read
-secrets, auth records, launchd state,
-service logs, raw context Markdown, review/SOP/skill bodies, arbitrary state
-artifacts, or full operator detail; it must not invoke the model, execute tools,
-request confirmations, execute follow-ups, manage services, mutate state, write
-the repo, or write the active vault. Full operator detail remains available
-through CLI `capabilities` and Feishu `/capabilities`.
+models do not inherit broader authority from the category. The compact sample
+may include `expert.orchestration_contract[boundary]`; that is advisory,
+read-only boundary context, not permission to schedule expert agents, perform
+model fan-out, or claim completion. It must not read secrets, auth records,
+launchd state, service logs, raw context Markdown, review/SOP/skill bodies,
+arbitrary state artifacts, or full operator detail; it must not invoke the
+model, execute tools, request confirmations, execute follow-ups, manage
+services, mutate state, write the repo, or write the active vault. Full
+operator detail remains available through CLI `capabilities` and Feishu
+`/capabilities`.
 
 The Live Run Trace context section is bounded read-only orientation over recent
 live harness runs. It may include completion report refs, context refs, final

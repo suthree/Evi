@@ -1162,11 +1162,13 @@ catalog identity, count, category titles, capability ids, source refs, and
 explicit local-only boundaries. Category grouping is navigation only; when a
 sampled capability has a different explicit child layer, compact context may
 show that layer, for example `self_evolution.scorecard[core_runtime]`, so
-models do not inherit broader authority from the category. It does not read
-secrets, raw runtime bodies, or full operator detail; it does not invoke the
-model, execute tools, mutate state, write the repo, write the active vault, or
-manage services. Use CLI `capabilities` or Feishu `/capabilities` for the full
-operator read model.
+models do not inherit broader authority from the category. It may also show
+`expert.orchestration_contract[boundary]` as advisory/read-only orientation;
+that entry is not permission to schedule experts, run model fan-out, or claim
+completion. It does not read secrets, raw runtime bodies, or full operator
+detail; it does not invoke the model, execute tools, mutate state, write the
+repo, write the active vault, or manage services. Use CLI `capabilities` or
+Feishu `/capabilities` for the full operator read model.
 
 Operators can inspect the next-version acceptance baseline with CLI
 `capabilities acceptance` or Feishu `/capabilities acceptance`. The acceptance

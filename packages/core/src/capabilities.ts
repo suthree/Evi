@@ -666,6 +666,7 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
           expertContract.boundary,
           "the --gate form renders a selected advisory delegation plan only; it does not call experts or execute recommendations",
           "expert roles are advisory lenses only; the main runtime keeps execution and completion authority",
+          "boundary-only expert orchestration grants no parallel model fan-out, expert spawning, or completion authority",
           "contract records future orchestration boundaries, not current core/basic maturity, provider tools, or application adapters"
         ]
       },
