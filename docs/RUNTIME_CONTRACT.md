@@ -2495,6 +2495,9 @@ Required policy:
   state-action counts, delegated result pass/fail counts, safe delegated
   dispatch metadata, per-round action counts, action types, model diagnostic
   failure kind/stage/refs, and envelope refs
+- per-round action counts and envelope refs must come from the current
+  completion turn's `model_action` evidence refs, not from every model-action
+  file under the same session id
 - repo-write guard summaries may include path, before/after workspace status,
   changed-file counts, dirty flag, target-changed flag, and event id parsed
   from bounded `tool_result` event summaries

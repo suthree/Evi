@@ -138,6 +138,32 @@ test("harness replay audit warns when delegate actions lack delegated result eve
   }
 });
 
+test("harness replay audit scopes model-action rounds to the completion turn", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-turn-scope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendOtherTurnDelegateActionRound(store);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const coverage = report.checks.find((item) => item.id === "delegated_action_coverage");
+
+    assert.equal(report.metrics.rounds, 2);
+    assert.equal(coverage?.status, "pass");
+    assert.match(coverage?.summary ?? "", /declared_delegate_actions=0/);
+    assert.match(coverage?.summary ?? "", /missing_delegate_dispatches=0/);
+    assert.equal(coverage?.refs.some((ref) => ref.includes("model-action-r3")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when over-limit delegated dispatch lacks failure kind", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-kind-"));
   const repoRoot = join(root, "repo");
@@ -553,6 +579,36 @@ async function writeReplayRoundOneDelegateActions(store: AgentStore, count: numb
       status: "not_done",
       verification_refs: []
     }
+  });
+}
+
+async function appendOtherTurnDelegateActionRound(store: AgentStore): Promise<void> {
+  const sessionId = "session_replay_test";
+  const otherTurnId = "turn_replay_other";
+  const ref = `memory/episodes/${sessionId}-model-action-r3.json`;
+  await store.writeJson(ref, {
+    summary: "Other turn declares a delegated action that must not affect this replay.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Request bounded delegated review in another turn.",
+      payload: {
+        task: "Review another turn.",
+        context: "No tool, write, or mutation authority is available; completion remains with the main harness."
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  });
+  await store.appendJsonl("memory/episodes/events.jsonl", {
+    id: "evidence_replay_other_turn_model_r3",
+    session_id: sessionId,
+    turn_id: otherTurnId,
+    kind: "model_action",
+    summary: "Other turn declares a delegated action.",
+    artifact_refs: [ref],
+    created_at: "2026-06-30T01:05:00.000Z"
   });
 }
 

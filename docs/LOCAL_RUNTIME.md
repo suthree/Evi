@@ -1185,6 +1185,9 @@ kind counts, observation counts, delegated result pass/fail counts, per-round
 action counts, safe delegated dispatch metadata from harness-owned event
 summaries, model diagnostic failure kind/stage/refs, repo-write workspace guard
 summaries, and envelope refs.
+Per-round action counts and envelope refs are scoped to the selected completion
+turn's `model_action` evidence refs, so another turn in the same session cannot
+pollute the current trace or replay audit.
 Delegated result failure counts are derived from completion verification checks
 and episode event metadata; repo-write guard summaries are parsed from bounded
 tool-result event summaries. Delegated dispatch summaries may include action

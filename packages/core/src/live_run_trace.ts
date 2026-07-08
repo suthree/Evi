@@ -184,7 +184,7 @@ async function summarizeLiveRunTrace(
   const promptEvent = runEvents.find((event) => event.kind === "prompt");
   const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
-  const rounds = await readTraceRounds(store, report.session_id);
+  const rounds = await readTraceRounds(store, runEvents);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
@@ -345,9 +345,11 @@ function matchesTraceRef(trace: LiveRunTraceSummary, requested: string): boolean
     || reportBaseWithoutExt === requested;
 }
 
-async function readTraceRounds(store: AgentStore, sessionId: string): Promise<LiveRunTraceRound[]> {
-  const refs = (await store.listStateFiles("memory/episodes"))
-    .filter((ref) => ref.startsWith(`memory/episodes/${sessionId}-model-action-r`) && ref.endsWith(".json"))
+async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promise<LiveRunTraceRound[]> {
+  const refs = unique(events
+    .filter((event) => event.kind === "model_action")
+    .flatMap((event) => event.artifact_refs)
+    .filter((ref) => /-model-action-r\d+\.json$/.test(ref)))
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
   const rounds: LiveRunTraceRound[] = [];
   for (const ref of refs) {
