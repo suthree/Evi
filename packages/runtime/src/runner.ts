@@ -1400,7 +1400,7 @@ ${disciplineText}
 If the task requires fresh local or external data and no relevant Tool Observations are present, call use_tool first.
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
-Use delegate_agent only for one bounded analysis or critique task per model round; delegated tasks must not ask the subagent to execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
+Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
 delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion until later main-harness write/run evidence proves recovery.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
@@ -1739,17 +1739,19 @@ function parseDelegationRequest(action: ModelActionEnvelope["actions"][number]):
 
 function validateDelegationTaskBoundary(task: string): string | null {
   const text = normalizeBoundaryText(task);
+  const hasBoundedAnalysisIntent = hasAnyPhrase(text, DELEGATE_TASK_ANALYSIS_TERMS);
   const asksToolOrMutation =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TOOL_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_WRITE_MUTATION_TERMS);
+  const asksDirectMutation = hasDirectTaskMutationIntent(text);
   const asksCompletion =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
   const asksExpertScheduling =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
-  if (asksToolOrMutation || asksCompletion || asksExpertScheduling) {
-    return "delegate_agent.payload.task must be bounded analysis or critique and must not request tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
+  if (!hasBoundedAnalysisIntent || asksToolOrMutation || asksDirectMutation || asksCompletion || asksExpertScheduling) {
+    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation and must not request direct fix/repair/update/edit/patch/commit, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
   }
   return null;
 }
@@ -1821,6 +1823,86 @@ const DELEGATE_TASK_REQUEST_TERMS = [
   "编排",
   "生成",
   "发布"
+];
+
+const DELEGATE_TASK_ANALYSIS_TERMS = [
+  "analysis",
+  "analyze",
+  "critique",
+  "review",
+  "inspect",
+  "inspection",
+  "summarize",
+  "summary",
+  "compare",
+  "comparison",
+  "assess",
+  "assessment",
+  "evaluate",
+  "evaluation",
+  "identify",
+  "locate",
+  "find",
+  "explain",
+  "reason",
+  "diagnose",
+  "audit",
+  "分析",
+  "审查",
+  "评审",
+  "批评",
+  "检查",
+  "总结",
+  "对比",
+  "比较",
+  "评估",
+  "识别",
+  "定位",
+  "查找",
+  "解释",
+  "诊断",
+  "审计"
+];
+
+const DIRECT_TASK_MUTATION_PATTERNS = [
+  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise)\b/,
+  /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
+  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise)\b/,
+  /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
+  /(?:并|然后|和|以及|并且|同时|，|、)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件)/u
+];
+
+const DIRECT_TASK_MUTATION_PHRASES = [
+  "并修复",
+  "然后修复",
+  "并更新",
+  "然后更新",
+  "并编辑",
+  "然后编辑",
+  "并修改",
+  "然后修改",
+  "并修补",
+  "然后修补",
+  "并打补丁",
+  "然后打补丁",
+  "并改代码",
+  "然后改代码",
+  "并改文件",
+  "然后改文件",
+  "并提交",
+  "然后提交"
+];
+
+const DIRECT_TASK_MUTATION_PREFIXES = [
+  "修复",
+  "更新",
+  "编辑",
+  "提交",
+  "修改",
+  "修补",
+  "打补丁",
+  "改代码",
+  "改文件"
 ];
 
 const TOOL_AUTHORITY_TERMS = [
@@ -1958,6 +2040,13 @@ const SCHEDULING_TERMS = [
 
 function normalizeBoundaryText(value: string): string {
   return value.toLowerCase().replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function hasDirectTaskMutationIntent(text: string): boolean {
+  const taskCommand = text.replace(/^(?:please\s+|请\s*)+/, "");
+  if (DIRECT_TASK_MUTATION_PATTERNS.some((pattern) => pattern.test(taskCommand))) return true;
+  if (DIRECT_TASK_MUTATION_PHRASES.some((phrase) => taskCommand.includes(phrase))) return true;
+  return DIRECT_TASK_MUTATION_PREFIXES.some((term) => taskCommand.startsWith(term));
 }
 
 function grantsDelegatedAuthority(text: string): boolean {

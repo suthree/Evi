@@ -40,6 +40,8 @@ The command reference below includes application and local-learning surfaces for
 inspection, but current self-evolution priority comes from core/basic runtime
 scorecard output; content, SOP/skill, memory/dream, and expert commands are
 gated follow-up surfaces unless a core/basic slice explicitly selects them.
+This section is command inventory, not self-iteration priority; default
+self-iteration must follow `default_next_slice` / `next_core_basic_plan`.
 
 ```bash
 pnpm run runtime -- doctor
@@ -1571,7 +1573,8 @@ working against an alternate explicit service state root.
 IM is a first-version basic entrypoint. Feishu, Telegram, and Discord are the
 implemented external providers behind the provider-neutral daemon seam.
 
-The first version only needs:
+The first-version IM adapter only needs bounded operator surfaces and explicit
+task intake:
 
 - local foreground serve process or local single-user service process
 - private text messages
@@ -2033,10 +2036,13 @@ result when that contract is missing, malformed, or over-limit. Delegation
 payloads share the core schema contract: `task` must be non-empty and at most
 1000 chars, `context` must be non-empty and at most 12000 chars, and the payload
 may contain only `task` and `context` before the submodel is called. The task
-must stay a bounded analysis or critique request and must not ask the delegated
-subagent to execute tools, write or mutate state, decide completion, or schedule
-expert/multi-agent work. The context must explicitly state that the delegated
-subagent has no tool/write/mutation authority and that completion remains with
+must explicitly request bounded analysis, critique, review, inspection,
+comparison, summarization, or evaluation; it cannot be a vague handoff or
+combine analysis with direct fix/repair/update/edit/patch/commit intent, and it
+must not ask the delegated subagent to execute tools, write or mutate state,
+decide completion, or schedule expert/multi-agent work. The context must
+explicitly state that the delegated subagent has no tool/write/mutation
+authority and that completion remains with
 the main harness, and it must not simultaneously grant those delegated
 authorities; otherwise the runner records `input_contract_failed` without
 calling the submodel. The live

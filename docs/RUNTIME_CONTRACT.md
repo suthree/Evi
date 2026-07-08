@@ -1188,15 +1188,19 @@ completion verification and do not count as independent proof.
 has no tools or memory in the current runtime. The action payload must provide
 non-empty `task` and `context` strings before the delegated model is called, and
 `task` is capped at 1000 chars while `context` is capped at 12000 chars. The
-`task` itself must remain a bounded analysis or critique request: it cannot ask
-the delegated subagent to execute tools, write or mutate state, decide
-completion, or schedule expert/multi-agent work. The context must also
+`task` itself must explicitly request bounded analysis, critique, review,
+inspection, comparison, summarization, or evaluation work: it cannot be a vague
+task handoff, it cannot combine analysis with direct
+fix/repair/update/edit/patch/commit intent, and it cannot ask the delegated
+subagent to execute tools, write or mutate state, decide completion, or schedule
+expert/multi-agent work. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority and that completion remains with the main harness. Tasks or contexts
 that omit, violate, or contradict those authority boundaries are rejected before
 any delegated model call; a context that says no delegated authority and also
-grants tool/write/mutation or completion authority is invalid. The delegated model must return a JSON object with non-empty `summary`
-and `findings_text`; `summary` is capped at 240 chars and `findings_text` is
+grants tool/write/mutation or completion authority is invalid. The delegated
+model must return a JSON object with non-empty `summary` and `findings_text`;
+`summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those

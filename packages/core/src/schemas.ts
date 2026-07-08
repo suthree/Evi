@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { allowedActions } from "./action_contracts.js";
 import { newId, utcNow } from "./ids.js";
 
 export const sideEffectLevelSchema = z.enum(["none", "local_reversible", "local_write", "external_write"]);
@@ -77,17 +78,7 @@ export const turnSnapshotSchema = z.object({
 
 export const actionProposalSchema = z.object({
   id: z.string().default(() => newId("action")),
-  type: z.enum([
-    "respond",
-    "use_tool",
-    "delegate_agent",
-    "update_working_state",
-    "record_evidence",
-    "propose_sop",
-    "propose_memory",
-    "request_audit",
-    "pause_autonomy"
-  ]),
+  type: z.enum(allowedActions),
   rationale: z.string().min(1),
   payload: z.record(z.string(), z.unknown()).default({})
 });

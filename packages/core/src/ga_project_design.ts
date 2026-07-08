@@ -1117,13 +1117,15 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     task_contract: {
       max_chars: DELEGATE_AGENT_TASK_MAX_CHARS,
       required: [
-        "bounded analysis or critique task",
+        "explicit bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task",
         "one concrete question for the delegated subagent",
         "at most one delegate_agent action per model round",
         "no tool, mutation, scheduling, or completion authority"
       ],
       reject_if: [
         "task is empty or over the configured max chars",
+        "task is a vague handoff without explicit analysis, critique, review, inspection, comparison, summarization, or evaluation intent",
+        "task combines analysis intent with direct fix, repair, update, edit, patch, or commit intent",
         "more than one delegate_agent action is proposed in the same model round",
         "task asks the delegated subagent to execute tools, mutate state, or decide completion",
         "task is expert scheduling or multi-agent orchestration instead of general delegation"
@@ -1209,7 +1211,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary rejects tool, write, mutation, completion, expert, or multi-agent scheduling requests",
+        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests",
         "validateDelegationContextBoundary requires no tool/write/mutation authority, rejects contradictory authority grants, and keeps main-harness completion ownership"
       ],
       result_handling: [

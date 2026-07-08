@@ -98,7 +98,7 @@ export interface CapabilityAcceptanceAudit {
 const harnessActionSummaries: Record<AllowedAction, string> = {
   respond: "Return the final user-facing message for the current run.",
   use_tool: "Ask the harness to execute one allowed core tool after contract validation.",
-  delegate_agent: "Ask for bounded structured analysis or critique that must pass a delegated-result contract and still be verified by the main harness.",
+  delegate_agent: "Ask for bounded structured analysis, review, inspection, comparison, summarization, or evaluation that must pass a delegated-result contract and still be verified by the main harness.",
   update_working_state: "Write a bounded working checkpoint under local state for later context.",
   record_evidence: "Append a state-only evidence note for the current episode.",
   propose_sop: "Create a state-only SOP draft candidate on an explicit not_done claim; live audit and promotion require verified done completion.",
@@ -540,6 +540,8 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
         ...(action === "delegate_agent"
           ? [
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
+              "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation instead of vague task handoff",
+              "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, or completion authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",
               "done claims after delegation require later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result; failed delegation still requires later successful write/run recovery evidence",

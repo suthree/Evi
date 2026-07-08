@@ -326,7 +326,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.max_chars, 1000);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("bounded analysis or critique task")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("explicit bounded analysis")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("no tool, mutation, scheduling, or completion authority")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("execute tools, mutate state, or decide completion")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("expert scheduling or multi-agent orchestration")), true);
@@ -573,7 +573,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/completion contract")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
-    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("bounded analysis or critique task")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("explicit bounded analysis")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("main-harness completion boundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("not valid structured JSON")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("not verification proof")), true);

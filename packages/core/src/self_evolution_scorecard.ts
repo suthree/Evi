@@ -206,7 +206,7 @@ export async function getSelfEvolutionScorecard(
       layer: "core_runtime",
       score: delegated ? 5 : 1,
       summary: delegated
-        ? "delegate_agent is a bounded general-agent subtask path: the main thread delegates analysis or critique to a tool-less, memory-less subagent, records structured output, feeds it back as observation, and keeps completion authority in the main harness."
+        ? "delegate_agent is a bounded general-agent subtask path: the main thread delegates explicit read-only analysis, review, inspection, comparison, summarization, or evaluation to a tool-less, memory-less subagent, records structured output, feeds it back as observation, and keeps completion authority in the main harness."
         : "The runtime still needs a bounded general-agent delegation action before expert specialization or multi-agent scheduling can be considered.",
       evidence_refs: compactRefs([
         "packages/core/src/action_contracts.ts",

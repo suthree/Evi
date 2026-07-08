@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { allowedActions } from "../packages/core/src/action_contracts.js";
 import { getCapabilityAcceptanceAudit, getCapabilityCatalog, resolveCapabilityLayer } from "../packages/core/src/capabilities.js";
+import { modelActionEnvelopeSchema } from "../packages/core/src/schemas.js";
 import { coreToolContracts } from "../packages/core/src/tool_contracts.js";
 
 test("capability catalog mirrors core tool and harness action contracts", () => {
@@ -189,6 +190,19 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(reviewHistory?.refs?.includes("packages/core/src/harness_replay.ts"), true);
 });
 
+test("model action schema accepts the shared allowed action catalog", () => {
+  for (const action of allowedActions) {
+    assert.equal(modelActionEnvelopeSchema.safeParse({
+      summary: `accept ${action}`,
+      actions: [{
+        type: action,
+        rationale: `exercise ${action}`,
+        payload: {}
+      }]
+    }).success, true);
+  }
+});
+
 test("capability catalog exposes delegate_agent failure boundaries", () => {
   const catalog = getCapabilityCatalog();
   const delegateAgent = catalog.categories
@@ -200,6 +214,8 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
 
   assert.match(text, /strict task\/context only/);
   assert.match(text, /at most one delegate_agent action per model round/);
+  assert.match(text, /explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation/);
+  assert.match(text, /must not combine analysis with direct fix, repair, update, edit, patch, or commit intent/);
   assert.match(text, /block verified completion until later main-harness write\/run evidence proves recovery/);
   assert.match(text, /failed delegated results may only guide a later main-harness model round/);
   assert.match(text, /done claims after delegation require later harness-known non-delegated verification refs/);
