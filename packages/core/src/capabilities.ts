@@ -182,25 +182,24 @@ function normalizeCapabilityCategory(category: CapabilityCategoryDraft): Capabil
 
 export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
   const defaultNextSlice: CapabilityNextSlice = {
-    id: "basic_entrypoints_operator_check",
-    title: "Basic entrypoints operator check",
-    layer: "basic_entrypoint",
-    reason: "Basic entrypoints are the acceptance gate still requiring operator check, so CLI, Feishu, web, and service health should be hardened before application or local-learning follow-ups are treated as the default next step.",
+    id: "general_agent_delegation_hardening",
+    title: "General agent delegation hardening",
+    layer: "core_runtime",
+    reason: "General-agent delegation is the current bounded core/basic handoff; harden the task, context, result, trace, replay, and completion-verification boundaries before expert scheduling, application adapters, or local-learning follow-ups become the default next step.",
     success_criteria: [
-      "CLI capabilities acceptance exposes the basic-entrypoint default before follow-up slices",
-      "Feishu /capabilities acceptance renders the same default and separates follow-up slices",
-      "service health, web console, CLI, and Feishu refs stay visible as basic entrypoint evidence",
-      "application and local-learning items remain visible only as follow-up slices"
+      "delegate_agent rejects unbounded task/context inputs before delegated model dispatch",
+      "delegated failure metadata is visible through bounded live trace and replay audit read models",
+      "main-harness recovery and completion verification keep authority after delegated results",
+      "expert scheduling, model fan-out, external adapters, and local-learning items remain follow-up slices"
     ],
     refs: [
-      "apps/cli/src/main.ts",
       "packages/core/src/capabilities.ts",
-      "packages/runtime/src/channels/feishu/adapter.ts",
-      "packages/runtime/src/web_console.ts",
+      "packages/core/src/harness_replay.ts",
+      "packages/runtime/src/runner.ts",
+      "tests/context_harness.test.ts",
+      "tests/harness_replay.test.ts",
       "docs/RUNTIME_CONTRACT.md",
-      "docs/LOCAL_RUNTIME.md",
-      "tests/capabilities.test.ts",
-      "tests/feishu_adapter.test.ts"
+      "docs/LOCAL_RUNTIME.md"
     ]
   };
 

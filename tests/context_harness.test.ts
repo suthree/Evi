@@ -5150,10 +5150,13 @@ test("live runner rejects delegate task with command execution intent", async ()
       verified: boolean;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedTaskObservation, true);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5165,6 +5168,14 @@ test("live runner rejects delegate task with command execution intent", async ()
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+    assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind, "input_contract_failed");
+    assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind_present, true);
+    assert.equal(trace.delegated_dispatches[0]?.result_failure_kind, "input_contract_failed");
+    assert.equal(trace.delegated_dispatches[0]?.result_failure_kind_present, true);
+    assert.equal(replay.delegated_dispatches[0]?.dispatch_failure_kind, "input_contract_failed");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.status, "pass");
+    assert.equal(replay.delegated_dispatches[0]?.result_failure_kind, "input_contract_failed");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {
     await fixture.cleanup();
   }
