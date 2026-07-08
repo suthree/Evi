@@ -1217,8 +1217,9 @@ a dispatch-coverage check from the source trace. They also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`
-coverage for failed delegated results and warns when the trace shows more than
-one active-looking delegated dispatch in one model round. The replay JSON keeps
+coverage for failed delegated results, warns when legal dispatch/result failure
+kinds are semantically mismatched, and warns when the trace shows more than one
+active-looking delegated dispatch in one model round. The replay JSON keeps
 the full delegated dispatch set for audit coverage; Markdown and context
 renderers may show only the first entries plus an omitted count. These surfaces
 do not invoke the model, execute tools, read raw model/tool/delegation/final/
@@ -2078,7 +2079,10 @@ delegated results record `result_failure_kind=none`. Persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. Later traces can therefore distinguish real none values from
 older or malformed summaries that omitted the fields, without reading raw
-delegated context or delegated result bodies. Even
+delegated context or delegated result bodies. Replay audit also validates the
+pair: dispatch-layer result failures must mirror `dispatch_failure_kind`,
+delegated output/model failures must keep `dispatch_failure_kind=none`, and
+passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated
 results remain visible as warnings in the completion report, Live Run Trace, and
 replay audit. Replay also compares per-round `delegate_agent` action counts

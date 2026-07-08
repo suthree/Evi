@@ -18,6 +18,10 @@ const RESULT_FAILURE_KINDS = new Set([
   "delegated_output_contract_failed",
   "delegated_model_request_failed"
 ]);
+const RESULT_FAILURE_KINDS_FROM_DISPATCH = new Set([
+  "dispatch_limit_exceeded",
+  "input_contract_failed"
+]);
 const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
@@ -402,6 +406,9 @@ function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessRep
   const unexpectedKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
     dispatch.ok && dispatch.contract_status === "passed" && dispatch.result_failure_kind !== null
   );
+  const mismatchedKindPairDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    hasFailureKindPairMismatch(dispatch)
+  );
   const missingResultKindEventIds = unique([
     ...missingKindFieldDispatches,
     ...failedNoneKindDispatches
@@ -410,7 +417,8 @@ function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessRep
     ...missingKindFieldDispatches,
     ...failedNoneKindDispatches,
     ...invalidKindDispatches,
-    ...unexpectedKindDispatches
+    ...unexpectedKindDispatches,
+    ...mismatchedKindPairDispatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
   return {
     id: "delegated_result_failure_kind",
@@ -419,12 +427,23 @@ function delegatedResultFailureKindCheck(trace: LiveRunTraceSummary): HarnessRep
       `failed_dispatches=${failedDispatches.length}`,
       `missing_result_kind=${missingResultKindEventIds.length}`,
       `invalid_result_kind=${invalidKindDispatches.length}`,
-      `unexpected_result_kind=${unexpectedKindDispatches.length}`
+      `unexpected_result_kind=${unexpectedKindDispatches.length}`,
+      `kind_pair_mismatch=${mismatchedKindPairDispatches.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs
       : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
   };
+}
+
+function hasFailureKindPairMismatch(dispatch: LiveRunDelegatedDispatchSummary): boolean {
+  if (!dispatch.dispatch_failure_kind_present || !dispatch.result_failure_kind_present) return false;
+  if (dispatch.dispatch_failure_kind !== null && !DISPATCH_FAILURE_KINDS.has(dispatch.dispatch_failure_kind)) return false;
+  if (dispatch.result_failure_kind !== null && !RESULT_FAILURE_KINDS.has(dispatch.result_failure_kind)) return false;
+  if (dispatch.result_failure_kind !== null && RESULT_FAILURE_KINDS_FROM_DISPATCH.has(dispatch.result_failure_kind)) {
+    return dispatch.dispatch_failure_kind !== dispatch.result_failure_kind;
+  }
+  return dispatch.dispatch_failure_kind !== null;
 }
 
 function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditStatus): string {

@@ -1268,7 +1268,10 @@ delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.
 Passed delegated results record `result_failure_kind=none`; persisted delegated
 results and model observations use explicit `none` values instead of `null` for
-no-failure kinds. A later `done` claim
+no-failure kinds. Replay audit treats the pair as a semantic contract too:
+dispatch-layer result failures must mirror `dispatch_failure_kind`, delegated
+output/model failures must keep `dispatch_failure_kind=none`, and passed
+delegated results must use explicit `none` for both layers. A later `done` claim
 fails completion verification when any delegated result failed and no later
 main-harness write/run evidence proves recovery. Even when later main-harness
 recovery evidence exists, the failed delegated result remains a warning and the
@@ -1393,7 +1396,8 @@ over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage s
 omits the field instead of explicitly recording `none`. It also checks
 `result_failure_kind` coverage for every delegated result summary, including
 passed results that should record `result_failure_kind=none`, and warns when a
-trace shows more than one active-looking delegate dispatch in the same model
+trace carries legal but semantically mismatched dispatch/result failure kinds,
+or shows more than one active-looking delegate dispatch in the same model
 round. It must not invoke the model, execute tools, rerun
 actions, read raw model responses, read raw action payloads, read raw
 tool/delegation bodies, read raw final responses, read context Markdown, write

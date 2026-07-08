@@ -231,6 +231,39 @@ test("harness replay audit distinguishes failed none result kind from invalid re
   }
 });
 
+test("harness replay audit warns when delegated failure kind pairs mismatch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-kind-pair-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(
+      store,
+      "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=delegated_output_contract_failed; ok=false."
+    );
+    await appendDelegatedDispatchSummary(
+      store,
+      "passed_dispatch_kind_mismatch",
+      "Delegated result: action_id=action_delegate_replay_passed_mismatch; round=2; sequence=1; task_chars=33; context_chars=77; contract_status=passed; dispatch_failure_kind=input_contract_failed; result_failure_kind=none; ok=true."
+    );
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const resultCheck = report.checks.find((item) => item.id === "delegated_result_failure_kind");
+
+    assert.equal(resultCheck?.status, "warning");
+    assert.match(resultCheck?.summary ?? "", /kind_pair_mismatch=2/);
+    assert.equal(resultCheck?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.equal(resultCheck?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_passed_dispatch_kind_mismatch")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when passed delegated result lacks explicit none result kind", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-passed-result-kind-"));
   const repoRoot = join(root, "repo");

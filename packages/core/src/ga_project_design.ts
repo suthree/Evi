@@ -1175,7 +1175,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
         "record input_contract_failed when payload validation fails before delegated model dispatch",
         "record none when there is no dispatch-layer failure, including delegated output contract or model request failures after dispatch",
-        "harness replay checks dispatch_failure_kind coverage without reading delegated result bodies"
+        "harness replay checks dispatch_failure_kind coverage and pair consistency with result_failure_kind without reading delegated result bodies"
       ],
       reject_if: [
         "operators must infer dispatch failure type from free-form error text",
@@ -1196,7 +1196,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "record input_contract_failed when payload or authority validation creates the failed result",
         "record delegated_output_contract_failed when the delegated model returned invalid or over-limit structured output",
         "record delegated_model_request_failed when the delegated model request failed before output validation",
-        "record none for passed delegated results as an explicit no-result-failure kind"
+        "record none for passed delegated results as an explicit no-result-failure kind",
+        "mirror dispatch_failure_kind for dispatch-layer failures and require dispatch_failure_kind=none for delegated output/model failures"
       ],
       reject_if: [
         "operators must infer result failure type from raw delegated artifact bodies",
@@ -1269,6 +1270,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       proof_boundary: [
         "trace and replay audit JSON preserve the full delegated dispatch metadata set",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
+        "replay audit warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
         "replay audit must not read delegated result artifact bodies or raw delegated task/context/output"
       ]
     },
