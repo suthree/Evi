@@ -1213,7 +1213,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
         "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for completion, expert scheduling, multi-agent orchestration, or model fan-out",
-        "validateDelegationContextBoundary requires no tool/write/mutation authority, rejects contradictory completion, expert, or multi-agent scheduling authority grants, and keeps main-harness completion ownership"
+        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory completion, expert, or multi-agent scheduling authority grants, and keeps main-harness completion ownership"
       ],
       result_handling: [
         "executeDelegation validates delegated JSON output, rejects raw task/context echoes, and sanitizes successful summary/findings before persistence or observation",

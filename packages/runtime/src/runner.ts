@@ -1401,7 +1401,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority and that completion remains with the main harness. Invalid delegated results block verified completion until later main-harness write/run evidence proves recovery.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Invalid delegated results block verified completion until later main-harness write/run evidence proves recovery.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1766,10 +1766,18 @@ function validateDelegationContextBoundary(context: string): string | null {
   if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
     return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
   }
+  if (!namesDelegatedOutputShape(text)) {
+    return "delegate_agent.payload.context must state expected delegated output shape with summary and findings_text.";
+  }
   if (grantsDelegatedAuthority(text)) {
     return "delegate_agent.payload.context must not grant tool/write/mutation, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
   }
   return null;
+}
+
+function namesDelegatedOutputShape(text: string): boolean {
+  return hasAnyPhrase(text, ["summary"])
+    && hasAnyPhrase(text, ["findings text", "finding text", "findings"]);
 }
 
 const AUTHORITY_DENIAL_TERMS = [
