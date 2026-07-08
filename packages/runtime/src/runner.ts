@@ -1235,7 +1235,7 @@ export class LiveAgentRunner {
           "You do not have memory or tools in the current minimal runtime.",
           "Return a strict json object with keys summary and findings_text.",
           `summary max ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars; findings_text max ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.`,
-          "Do not claim external writes or final success."
+          "Do not claim external writes, hidden memory, raw delegated artifacts, invented evidence refs, or final success."
         ].join("\n"),
         input: `Return json only.\n\nTask:\n${task}\n\nContext:\n${context}`
       });
@@ -2323,6 +2323,13 @@ function parseDelegatedOutput(
       safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
+  if (delegatedOutputClaimsForbiddenSource(summary, findingsText)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.",
+      safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
+    };
+  }
   const rawEcho = delegatedOutputRawEcho(summary, findingsText, source);
   if (rawEcho) {
     return {
@@ -2341,6 +2348,11 @@ function parseDelegatedOutput(
 function delegatedOutputClaimsAuthority(summary: string, findingsText: string): boolean {
   const text = normalizeBoundaryText(`${summary}\n${findingsText}`);
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES);
+}
+
+function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: string): boolean {
+  const text = normalizeBoundaryText(`${summary}\n${findingsText}`);
+  return reliesOnForbiddenDelegationSource(text);
 }
 
 const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [

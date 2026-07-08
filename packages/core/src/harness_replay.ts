@@ -1,5 +1,8 @@
 import { basename } from "node:path";
-import { evidenceEventSchema } from "./schemas.js";
+import {
+  DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
+  evidenceEventSchema
+} from "./schemas.js";
 import {
   getLiveRunTrace,
   listLiveRunTraces,
@@ -10,7 +13,6 @@ import { newId, utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const REPLAY_ROOT = "governance/replays";
-const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
 const DISPATCH_FAILURE_KINDS = new Set(["dispatch_limit_exceeded", "input_contract_failed"]);
 const RESULT_FAILURE_KINDS = new Set([
   "dispatch_limit_exceeded",

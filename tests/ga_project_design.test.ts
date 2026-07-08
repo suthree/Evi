@@ -11,6 +11,7 @@ import {
   selectGaProjectDesignArtifact
 } from "../packages/core/src/ga_project_design.js";
 import { compactGaPlanGovernanceCleanup } from "../packages/core/src/context.js";
+import { DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND } from "../packages/core/src/schemas.js";
 import type { SelfEvolutionIterationContract } from "../packages/core/src/self_evolution_iterations.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
@@ -324,7 +325,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/trace/replay/completion contract")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.action, "delegate_agent");
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.layer, "core_runtime");
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.max_chars, 1000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("explicit bounded analysis")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("no tool, mutation, scheduling, or completion authority")), true);
@@ -340,6 +341,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, 2000);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("advisory context, not verification proof")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("completion verification proof")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("hidden memory")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.field, "dispatch_failure_kind");
     assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.values, [
       "dispatch_limit_exceeded",
@@ -364,6 +366,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("expected summary/findings_text output shape")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("rejects raw task/context echoes")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("forbidden-source claims")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("sanitizes successful summary/findings")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedVerificationRefs")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedIndependentEvidenceCheck")), true);
@@ -580,7 +583,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.next_iteration_plan.some((step) => step.startsWith("core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/trace/replay/completion contract")), true);
-    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, 1);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.max_actions_per_round, DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.required.some((item) => item.includes("explicit bounded analysis")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("main-harness completion boundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.context_contract.required.some((item) => item.includes("summary/findings_text")), true);

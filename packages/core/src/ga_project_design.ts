@@ -5,6 +5,7 @@ import {
 } from "./self_evolution_iterations.js";
 import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
   DELEGATE_AGENT_TASK_MAX_CHARS,
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS
@@ -1113,7 +1114,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     action: "delegate_agent",
     layer: "core_runtime",
     stage: "active",
-    max_actions_per_round: 1,
+    max_actions_per_round: DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
     task_contract: {
       max_chars: DELEGATE_AGENT_TASK_MAX_CHARS,
       required: [
@@ -1160,7 +1161,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       reject_if: [
         "delegated output is not valid structured JSON",
         "summary or findings_text is empty or over the configured max chars",
-        "summary or findings_text claims delegated tool, write, mutation, or completion authority",
+        "summary or findings_text claims delegated tool, write, mutation, completion, expert, multi-agent, model fan-out authority, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
         "result is treated as tool evidence, final success, or mutation authority",
         "delegated result id or ref is used as completion verification proof"
       ]
@@ -1217,7 +1218,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
       ],
       result_handling: [
-        "executeDelegation validates delegated JSON output, rejects raw task/context echoes, and sanitizes successful summary/findings before persistence or observation",
+        "executeDelegation validates delegated JSON output, rejects raw task/context echoes, rejects delegated output authority or forbidden-source claims, and sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],
