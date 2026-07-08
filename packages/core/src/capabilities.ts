@@ -542,7 +542,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, or completion authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",
-              "done claims after delegation require harness-known non-delegated verification refs or successful write/run evidence",
+              "done claims after delegation require later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result",
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
               "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot follow skipped, blocked, or failed-delegation-warning completion reports",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",

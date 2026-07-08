@@ -2304,6 +2304,18 @@ function verifyCompletionClaim(args: {
   const availableVerificationRefSet = new Set(args.availableVerificationRefs);
   const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => availableVerificationRefSet.has(ref));
   const unboundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => !availableVerificationRefSet.has(ref));
+  const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
+  const postDelegationClaimedRefs = mainHarnessIndependentEvidenceAfterLatestDelegation({
+    delegatedResults: args.delegatedResults,
+    independentEvidenceRefs: boundClaimedRefs,
+    verificationEvidenceRounds: args.verificationEvidenceRounds
+  });
+  const postDelegationWriteOrRunRefs = mainHarnessIndependentEvidenceAfterLatestDelegation({
+    delegatedResults: args.delegatedResults,
+    independentEvidenceRefs: successfulWriteOrRunRefs,
+    verificationEvidenceRounds: args.verificationEvidenceRounds
+  });
+  const postDelegationIndependentEvidenceRefs = [...postDelegationClaimedRefs, ...postDelegationWriteOrRunRefs];
   checks.push({
     id: "claimed_refs_bound_to_evidence",
     status: unboundClaimedRefs.length > 0
@@ -2328,8 +2340,6 @@ function verifyCompletionClaim(args: {
         : "No delegated self-report refs were available for this completion claim.",
     refs: delegatedProofRefs
   });
-  const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
-  const independentEvidenceRefs = [...boundClaimedRefs, ...successfulWriteOrRunRefs];
   const delegatedRecoveryEvidenceRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
     delegatedResults: args.delegatedResults,
     independentEvidenceRefs: successfulWriteOrRunRefs,
@@ -2340,15 +2350,15 @@ function verifyCompletionClaim(args: {
     id: "delegated_independent_evidence",
     status: args.delegatedResults.length === 0
       ? "skipped"
-      : independentEvidenceRefs.length > 0
+      : postDelegationIndependentEvidenceRefs.length > 0
         ? "pass"
         : "fail",
     summary: args.delegatedResults.length === 0
       ? "No delegated result was available for this completion claim."
-      : independentEvidenceRefs.length > 0
-        ? `Done claim after delegation has harness-known independent evidence: verification_refs=${boundClaimedRefs.length}; write_run_results=${successfulWriteOrRunRefs.length}.`
-        : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence.",
-    refs: independentEvidenceRefs
+      : postDelegationIndependentEvidenceRefs.length > 0
+        ? `Done claim after delegation has harness-known independent evidence after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
+        : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence after the latest delegated result.",
+    refs: postDelegationIndependentEvidenceRefs
   });
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));
@@ -2412,6 +2422,20 @@ function mainHarnessRecoveryEvidenceAfterDelegationFailure(args: {
   return args.independentEvidenceRefs.filter((ref) => {
     const evidenceRound = args.verificationEvidenceRounds.get(ref);
     return typeof evidenceRound === "number" && evidenceRound > latestFailedRound;
+  });
+}
+
+function mainHarnessIndependentEvidenceAfterLatestDelegation(args: {
+  delegatedResults: DelegatedResult[];
+  independentEvidenceRefs: string[];
+  verificationEvidenceRounds: Map<string, number>;
+}): string[] {
+  const delegatedRounds = args.delegatedResults.map((result) => result.round);
+  if (delegatedRounds.length === 0) return args.independentEvidenceRefs;
+  const latestDelegatedRound = Math.max(...delegatedRounds);
+  return args.independentEvidenceRefs.filter((ref) => {
+    const evidenceRound = args.verificationEvidenceRounds.get(ref);
+    return typeof evidenceRound === "number" && evidenceRound > latestDelegatedRound;
   });
 }
 
