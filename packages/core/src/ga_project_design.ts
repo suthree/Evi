@@ -1126,6 +1126,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "task is empty or over the configured max chars",
         "task is a vague handoff without explicit analysis, critique, review, inspection, comparison, summarization, or evaluation intent",
         "task combines analysis intent with direct fix, repair, update, edit, patch, or commit intent",
+        "task combines analysis intent with command or test execution intent",
         "more than one delegate_agent action is proposed in the same model round",
         "task asks the delegated subagent to execute tools, mutate state, or decide completion",
         "task is expert scheduling or multi-agent orchestration instead of general delegation"
@@ -1137,7 +1138,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "all relevant constraints and evidence refs needed for the bounded task",
         "current core/basic boundary and deferred expert scope",
         "explicit no tool/write/mutation authority and main-harness completion boundary",
-        "expected output shape"
+        "expected summary/findings_text output shape"
       ],
       reject_if: [
         "context is empty or over the configured max chars",
@@ -1212,7 +1213,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for completion, expert scheduling, multi-agent orchestration, or model fan-out",
+        "validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for completion, expert scheduling, multi-agent orchestration, or model fan-out",
         "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory completion, expert, or multi-agent scheduling authority grants, and keeps main-harness completion ownership"
       ],
       result_handling: [

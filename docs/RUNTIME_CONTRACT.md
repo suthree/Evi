@@ -1230,7 +1230,8 @@ non-empty `task` and `context` strings before the delegated model is called, and
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct
 fix/repair/update/edit/patch/commit intent, and it cannot ask the delegated
-subagent to execute tools, write or mutate state, decide completion, or schedule
+subagent to run commands, tests, builds, or package-manager scripts, execute
+tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected

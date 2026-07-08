@@ -542,6 +542,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
               "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation instead of vague task handoff",
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
+              "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
               "delegated context must state the expected summary/findings_text output shape before delegated model dispatch",
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run evidence proves recovery",

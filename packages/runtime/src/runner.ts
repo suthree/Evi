@@ -1747,17 +1747,19 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksCompletion =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
+  const asksCommandOrTestExecution = hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_COMMAND_EXECUTION_TERMS);
   const asksExpertScheduling =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
-  if (!hasBoundedAnalysisIntent || asksToolOrMutation || asksDirectMutation || asksCompletion || asksExpertScheduling) {
-    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation and must not request direct fix/repair/update/edit/patch/commit, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
+  if (!hasBoundedAnalysisIntent || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksCompletion || asksExpertScheduling) {
+    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation and must not request direct fix/repair/update/edit/patch/commit, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
   }
   return null;
 }
 
 function validateDelegationContextBoundary(context: string): string | null {
   const text = normalizeBoundaryText(context);
+  const rawText = context.toLowerCase();
   const deniesToolAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, TOOL_AUTHORITY_TERMS);
   const deniesWriteOrMutationAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, WRITE_MUTATION_TERMS);
   const keepsCompletionWithMainHarness =
@@ -1766,7 +1768,7 @@ function validateDelegationContextBoundary(context: string): string | null {
   if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
     return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
   }
-  if (!namesDelegatedOutputShape(text)) {
+  if (!namesDelegatedOutputShape(rawText, text)) {
     return "delegate_agent.payload.context must state expected delegated output shape with summary and findings_text.";
   }
   if (grantsDelegatedAuthority(text)) {
@@ -1775,9 +1777,8 @@ function validateDelegationContextBoundary(context: string): string | null {
   return null;
 }
 
-function namesDelegatedOutputShape(text: string): boolean {
-  return hasAnyPhrase(text, ["summary"])
-    && hasAnyPhrase(text, ["findings text", "finding text", "findings"]);
+function namesDelegatedOutputShape(rawText: string, normalizedText: string): boolean {
+  return hasAnyPhrase(normalizedText, ["summary"]) && rawText.includes("findings_text");
 }
 
 const AUTHORITY_DENIAL_TERMS = [
@@ -1973,6 +1974,44 @@ const TASK_WRITE_MUTATION_TERMS = [
   "修改状态",
   "突变",
   "副作用"
+];
+
+const TASK_COMMAND_EXECUTION_TERMS = [
+  "command",
+  "commands",
+  "shell",
+  "terminal",
+  "run test",
+  "run tests",
+  "execute test",
+  "execute tests",
+  "call test",
+  "invoke test",
+  "test command",
+  "test suite",
+  "unit test",
+  "unit tests",
+  "integration test",
+  "integration tests",
+  "run lint",
+  "execute lint",
+  "lint command",
+  "lint script",
+  "run build",
+  "execute build",
+  "build command",
+  "build script",
+  "pnpm",
+  "npm",
+  "yarn",
+  "pytest",
+  "tsc",
+  "命令",
+  "终端",
+  "测试",
+  "单测",
+  "集成测试",
+  "构建"
 ];
 
 const COMPLETION_TERMS = [

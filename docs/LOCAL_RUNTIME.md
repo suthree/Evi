@@ -2042,7 +2042,8 @@ may contain only `task` and `context` before the submodel is called. The task
 must explicitly request bounded analysis, critique, review, inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or
 combine analysis with direct fix/repair/update/edit/patch/commit intent, and it
-must not ask the delegated subagent to execute tools, write or mutate state,
+must not ask the delegated subagent to run commands, tests, builds, or
+package-manager scripts, execute tools, write or mutate state,
 decide completion, or schedule expert/multi-agent work. The context must
 explicitly state that the delegated subagent has no tool/write/mutation
 authority and that completion remains with
