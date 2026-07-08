@@ -4241,6 +4241,66 @@ test("live runner fails done verification when delegated result violates its con
   }
 });
 
+test("live runner rejects later valid delegation as failed delegation recovery", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new InvalidDelegationThenValidDelegationThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Do not recover failed delegation with another delegated self-report.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvents = events.filter((event) => event.kind === "delegated_result");
+    const delegated = await Promise.all(delegatedEvents.map(async (event) => {
+      const ref = (event.artifact_refs as string[] | undefined)?.[0] ?? "";
+      return JSON.parse(await readFile(join(fixture.stateRoot, ref), "utf8")) as {
+        ok: boolean;
+        round: number;
+        contract_status: string;
+        result_failure_kind: string;
+      };
+    }));
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 2);
+    assert.equal(model.sawMainHarnessRecoveryHint, true);
+    assert.equal(model.sawLaterSuccessfulDelegationObservation, true);
+    assert.deepEqual(delegated.map((item) => ({
+      ok: item.ok,
+      round: item.round,
+      contract_status: item.contract_status,
+      result_failure_kind: item.result_failure_kind
+    })), [
+      { ok: false, round: 1, contract_status: "failed", result_failure_kind: "delegated_output_contract_failed" },
+      { ok: true, round: 2, contract_status: "passed", result_failure_kind: "none" }
+    ]);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
+    assert.equal(delegatedResultsCheck?.status, "fail");
+    assert.doesNotMatch(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "fail");
+    assert.match(independentCheck?.summary ?? "", /no successful write\/run recovery evidence/);
+    assert.deepEqual(independentCheck?.refs, []);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects write-run-only recovery after failed delegation", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -6589,6 +6649,51 @@ class InvalidDelegationThenDoneModel implements ModelClient {
         && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
     }
     return this.mainCalls > 1 ? doneEnvelope() : delegateCritiqueEnvelope();
+  }
+}
+
+class InvalidDelegationThenValidDelegationThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawMainHarnessRecoveryHint = false;
+  sawLaterSuccessfulDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? this.delegationCalls === 1
+        ? "plain text instead of json"
+        : JSON.stringify({
+          summary: "Later valid delegated summary",
+          findings_text: "The later delegated critique is valid but still not main-harness recovery evidence."
+        })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-valid-delegation-then-done",
+      responseId: `response-invalid-valid-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    const delegatedSection = delegatedObservationsSection(request.input);
+    if (this.mainCalls === 2) {
+      this.sawMainHarnessRecoveryHint = delegatedSection.includes('"recovery_hint"')
+        && delegatedSection.includes("later write/run evidence plus bound verification refs")
+        && !delegatedSection.includes("later valid bounded delegation");
+      return secondRoundDelegateCritiqueEnvelope();
+    }
+    if (this.mainCalls > 2) {
+      this.sawLaterSuccessfulDelegationObservation = delegatedSection.includes('"contract_status": "passed"')
+        && delegatedSection.includes("not main-harness recovery evidence");
+      return doneEnvelope();
+    }
+    return delegateCritiqueEnvelope();
   }
 }
 

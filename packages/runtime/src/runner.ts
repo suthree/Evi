@@ -1479,7 +1479,7 @@ function delegatedObservationRecoveryHint(result: DelegatedResult): string | nul
     return "Revise the delegated task/context boundary or proceed with main-harness evidence before claiming done.";
   }
   if (result.result_failure_kind === "delegated_output_contract_failed") {
-    return "Treat the delegated output as unusable; recover with main-harness evidence or a later valid bounded delegation before claiming done.";
+    return "Treat the delegated output as unusable; recover with main-harness evidence, including later write/run evidence plus bound verification refs, before claiming done.";
   }
   if (result.result_failure_kind === "delegated_model_request_failed") {
     return "Continue with main-harness verification or report blocked; do not treat the delegated request failure as proof.";
