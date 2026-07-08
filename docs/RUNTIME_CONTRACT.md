@@ -1237,8 +1237,10 @@ state ref, or event ref must not be used as
 delegated result, completion verification also requires later independent
 evidence recorded after the latest delegated result: at least one harness-known
 non-delegated verification ref or successful write/run tool result recorded by
-the harness. The final response artifact alone is not independent completion
-proof. Non-`done` runs still record a bounded
+the harness. If any delegated result failed, that evidence must include later
+successful write/run recovery evidence; later read-only refs are context only.
+The final response artifact alone is not independent completion proof.
+Non-`done` runs still record a bounded
 `delegated_results` warning when any delegated result failed, so Live Run Trace
 and replay audit can show the failure without changing skipped completion
 verification into a completed claim. Delegated results are recorded with action id, round, sequence, task/context character

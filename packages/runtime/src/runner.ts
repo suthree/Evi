@@ -2316,6 +2316,7 @@ function verifyCompletionClaim(args: {
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
   const postDelegationIndependentEvidenceRefs = [...postDelegationClaimedRefs, ...postDelegationWriteOrRunRefs];
+  const failedDelegations = args.delegatedResults.filter((result) => !result.ok);
   checks.push({
     id: "claimed_refs_bound_to_evidence",
     status: unboundClaimedRefs.length > 0
@@ -2346,15 +2347,22 @@ function verifyCompletionClaim(args: {
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
   checks.push(delegatedResultsCheck(args.delegatedResults, true, delegatedRecoveryEvidenceRefs));
+  const failedDelegationWithoutRecovery = failedDelegations.length > 0 && delegatedRecoveryEvidenceRefs.length === 0;
   checks.push({
     id: "delegated_independent_evidence",
     status: args.delegatedResults.length === 0
       ? "skipped"
+      : failedDelegationWithoutRecovery
+        ? "fail"
       : postDelegationIndependentEvidenceRefs.length > 0
         ? "pass"
         : "fail",
     summary: args.delegatedResults.length === 0
       ? "No delegated result was available for this completion claim."
+      : failedDelegationWithoutRecovery
+        ? postDelegationClaimedRefs.length > 0
+          ? `Done claim followed failed delegated result(s); later read-only verification refs do not recover failed delegation without successful write/run evidence: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=0.`
+          : "Done claim followed failed delegated result(s) but supplied no successful write/run recovery evidence after the latest failed delegated result."
       : postDelegationIndependentEvidenceRefs.length > 0
         ? `Done claim after delegation has harness-known independent evidence after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
         : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence after the latest delegated result.",
