@@ -4977,6 +4977,14 @@ function renderHarnessReplayDetail(replay: HarnessReplayAuditReport): string[] {
       `  refs: ${check.refs.slice(0, 5).join(", ") || "none"}`
     ]),
     "",
+    "Delegated dispatches:",
+    ...(replay.delegated_dispatches.length > 0
+      ? replay.delegated_dispatches.slice(0, 5).flatMap(renderLiveRunDelegatedDispatch)
+      : ["- none"]),
+    ...(replay.delegated_dispatches.length > 5
+      ? [`- omitted_delegated_dispatches: ${replay.delegated_dispatches.length - 5}`]
+      : []),
+    "",
     "Refs:",
     ...(replay.refs.length > 0 ? replay.refs.slice(0, 12).map((ref) => `- ${ref}`) : ["- none"])
   ];

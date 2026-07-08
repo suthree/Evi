@@ -2926,6 +2926,12 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(replayDetailText, /delegated_dispatch_round_limit: pass/);
     assert.match(replayDetailText, /delegated_result_failure_kind: pass/);
     assert.match(replayDetailText, /delegated_result_contract: warning/);
+    assert.match(replayDetailText, /Delegated dispatches:/);
+    assert.match(replayDetailText, /action_id: action_delegate_trace_feishu/);
+    assert.match(replayDetailText, /round: 1/);
+    assert.match(replayDetailText, /sequence: 1/);
+    assert.match(replayDetailText, /dispatch_failure_kind: none/);
+    assert.match(replayDetailText, /result_failure_kind: delegated_output_contract_failed/);
     assert.match(replayDetailText, /This command is read-only/);
     assert.doesNotMatch(allSent, /RAW_TRACE_CONTEXT_SHOULD_NOT_BE_SENT/);
     assert.doesNotMatch(allSent, /RAW_TRACE_MODEL_RESPONSE_SHOULD_NOT_BE_SENT/);
