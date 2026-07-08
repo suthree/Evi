@@ -221,9 +221,10 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /run commands, tests, builds, or package-manager scripts/);
   assert.match(text, /expected summary\/findings_text output shape/);
   assert.match(text, /expert scheduling, multi-agent orchestration, or model fan-out authority/);
-  assert.match(text, /block verified completion until later main-harness write\/run evidence proves recovery/);
+  assert.match(text, /block verified completion until later main-harness write\/run recovery evidence exists and the done claim binds a non-delegated verification ref/);
   assert.match(text, /failed delegated results may only guide a later main-harness model round/);
   assert.match(text, /done claims after delegation require later harness-known non-delegated verification refs/);
+  assert.match(text, /successful write\/run evidence only counts as completion proof when its harness-known ref is cited/);
   assert.match(text, /dispatch_failure_kind/);
   assert.match(text, /dispatch_limit_exceeded/);
   assert.match(text, /input_contract_failed/);

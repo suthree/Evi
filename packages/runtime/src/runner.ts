@@ -1403,7 +1403,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Invalid delegated results block verified completion until later main-harness write/run evidence proves recovery.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1412,7 +1412,7 @@ Use pause_autonomy only to request a state-only stop signal for future autonomou
 After Tool or Harness State Observations are present, produce a respond action with the concrete result and one useful propose_sop action if the task can teach a reusable procedure.
 If the context contains Selected Skills, follow the selected skill as the preferred procedure before drafting a new SOP.
 The SOP candidate must be audit-ready: trigger >= 40 chars, verification >= 30 chars, failure_modes is non-empty, and one failure mode explicitly says when to revise, retire, archive, or rollback the SOP.
-Do not invent evidence ids; leave verification_refs empty unless the prompt provides concrete ids.`;
+Do not invent evidence ids. Use only concrete harness-known non-delegated ids from Tool Observations or other prompt-provided evidence in verification_refs; leave verification_refs empty when no concrete refs are present.`;
 }
 
 function renderModelInput(

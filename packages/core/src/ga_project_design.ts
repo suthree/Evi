@@ -1224,7 +1224,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       completion_gate: [
         "delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence",
         "delegatedVerificationRefs rejects delegated self-report refs as completion proof",
-        "delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
+        "delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
       ]
     },
     recovery_contract: {

@@ -138,6 +138,36 @@ test("harness replay audit warns when delegate actions lack delegated result eve
   }
 });
 
+test("harness replay audit counts failed delegated result from event summary when report misses it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-event-failure-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "No failed delegated results.",
+      refs: []
+    }]);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_result_contract");
+
+    assert.equal(report.status, "attention");
+    assert.equal(report.metrics.delegated_results_failed, 1);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /failed=1/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit scopes model-action rounds to the completion turn", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-turn-scope-"));
   const repoRoot = join(root, "repo");
@@ -379,7 +409,16 @@ test("harness replay audit keeps all delegated dispatch metadata", async () => {
   }
 });
 
-async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false."): Promise<void> {
+async function writeReplayTraceFixture(
+  store: AgentStore,
+  delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false.",
+  delegatedResultChecks = [{
+    id: "delegated_results",
+    status: "fail",
+    summary: "Failed delegated result(s): 1.",
+    refs: ["delegated_result_invalid"]
+  }]
+): Promise<void> {
   const sessionId = "session_replay_test";
   const turnId = "turn_replay_test";
   await store.writeText(`memory/episodes/${sessionId}-context.md`, "RAW_REPLAY_CONTEXT_SHOULD_NOT_APPEAR");
@@ -457,12 +496,7 @@ async function writeReplayTraceFixture(store: AgentStore, delegatedSummary = "De
       `memory/episodes/${sessionId}-tool_result_write.json`,
       `memory/episodes/${sessionId}-delegated_result_invalid.json`
     ],
-    checks: [{
-      id: "delegated_results",
-      status: "fail",
-      summary: "Failed delegated result(s): 1.",
-      refs: ["delegated_result_invalid"]
-    }],
+    checks: delegatedResultChecks,
     created_at: "2026-06-30T01:01:00.000Z",
     boundary: "harness-owned completion verification report; read-only context input, not replay authority"
   });

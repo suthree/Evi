@@ -1294,7 +1294,7 @@ dispatch-layer result failures must mirror `dispatch_failure_kind`, delegated
 output/model failures must keep `dispatch_failure_kind=none`, and passed
 delegated results must use explicit `none` for both layers. A later `done` claim
 fails completion verification when any delegated result failed and no later
-main-harness write/run evidence proves recovery. Even when later main-harness
+main-harness write/run recovery evidence exists. Even when later main-harness
 recovery evidence exists, the failed delegated result remains a warning and the
 done claim still needs a bound non-delegated verification ref as independent
 completion proof. A passed delegated result

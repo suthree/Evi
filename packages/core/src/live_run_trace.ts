@@ -188,8 +188,11 @@ async function summarizeLiveRunTrace(
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
-  const delegatedResultFailedCount = delegatedFailureCount(report);
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const delegatedResultFailedCount = Math.max(
+    delegatedFailureCount(report),
+    delegatedDispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length
+  );
   const modelDiagnostics = await readModelDiagnostics(store, runEvents);
   const repoWriteGuards = runEvents.map(extractRepoWriteGuardSummary).filter((item): item is LiveRunRepoWriteGuardSummary => item !== null);
   const refs = unique([
