@@ -38,6 +38,12 @@ test("completion verification history lists and inspects bounded report summarie
       verified: false,
       summary: "New completion verification failed because command.run failed.",
       final_response_ref: "memory/episodes/session_new-final-response.md",
+      delegated_result_failure_kinds: [
+        {
+          result_failure_kind: "delegated_output_contract_failed",
+          count: 2
+        }
+      ],
       checks: [
         {
           id: "write_run_tool_results",
@@ -64,6 +70,12 @@ test("completion verification history lists and inspects bounded report summarie
       "completion_verification_old"
     ]);
     assert.equal(listed.reports[0]?.report_ref, "memory/episodes/session_new-completion-verification.json");
+    assert.deepEqual(listed.reports[0]?.delegated_result_failure_kinds, [
+      {
+        result_failure_kind: "delegated_output_contract_failed",
+        count: 2
+      }
+    ]);
     assert.deepEqual(listed.reports[0]?.failed_checks.map((check) => check.id), ["write_run_tool_results"]);
     assert.deepEqual(listed.reports[0]?.warning_checks.map((check) => check.id), ["delegation_results"]);
 
@@ -72,6 +84,12 @@ test("completion verification history lists and inspects bounded report summarie
     });
     assert.equal(byId.report_ref, "memory/episodes/session_new-completion-verification.json");
     assert.equal(byId.report.id, "completion_verification_new");
+    assert.deepEqual(byId.report.delegated_result_failure_kinds, [
+      {
+        result_failure_kind: "delegated_output_contract_failed",
+        count: 2
+      }
+    ]);
 
     const bySession = await getCompletionVerificationReport(fixture.store, {
       completionRef: "session_new"

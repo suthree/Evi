@@ -2639,6 +2639,7 @@ function renderCompletionVerificationItem(
     `- final_response_ref: ${item.final_response_ref ?? "none"}`,
     `- claimed_verification_refs: ${item.claimed_verification_ref_count}`,
     `- observation_refs: ${item.observation_ref_count}`,
+    `- delegated_result_failure_kinds: ${formatDelegatedResultFailureKinds(item.delegated_result_failure_kinds)}`,
     "",
     "Failed or warning checks:",
     ...(failedOrWarningChecks.length > 0
@@ -2646,6 +2647,12 @@ function renderCompletionVerificationItem(
       : ["- none"]),
     ""
   ];
+}
+
+function formatDelegatedResultFailureKinds(
+  items: CompletionVerificationHistorySummary["delegated_result_failure_kinds"]
+): string {
+  return items.length > 0 ? items.map((item) => `${item.result_failure_kind}:${item.count}`).join(",") : "none";
 }
 
 function episodeRecall(snapshot: TurnSnapshot): string {

@@ -4801,17 +4801,36 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
       completion_status: string;
       verification_status: string;
       verified: boolean;
+      delegated_result_failure_kinds: Array<{ result_failure_kind: string; count: number }>;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
     const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
     const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+    const trigger = triggerSchema.parse({
+      type: "external_task",
+      source: "prompt",
+      text: "Review delegated failure completion verification."
+    });
+    const opportunity = opportunitySchema.parse({
+      source: "explicit_task",
+      description: "Review delegated failure completion verification."
+    });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
 
     assert.equal(model.sawSanitizedFailedObservation, true);
     assert.equal(report.completion_status, "blocked");
     assert.equal(report.verification_status, "skipped");
     assert.equal(report.verified, false);
+    assert.deepEqual(report.delegated_result_failure_kinds, [
+      { result_failure_kind: "delegated_output_contract_failed", count: 1 }
+    ]);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
     assert.match(report.checks.find((check) => check.id === "delegated_results")?.summary ?? "", /Failed delegated result\(s\): 1/);
+    assert.match(report.checks.find((check) => check.id === "delegated_results")?.summary ?? "", /result_failure_kinds=delegated_output_contract_failed:1/);
+    assert.match(rendered.markdown, /delegated_result_failure_kinds: delegated_output_contract_failed:1/);
+    assert.doesNotMatch(rendered.markdown, /BOUNDED_DELEGATE_CONTEXT/);
+    assert.doesNotMatch(rendered.markdown, /raw_output_preview/);
     assert.equal(trace.delegated_result_count, 1);
     assert.equal(trace.delegated_result_failed_count, 1);
     assert.equal(trace.delegated_dispatches[0]?.result_failure_kind, "delegated_output_contract_failed");
@@ -4895,6 +4914,7 @@ test("live runner sanitizes delegated model request failures before observation"
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
       verified: boolean;
+      delegated_result_failure_kinds: Array<{ result_failure_kind: string; count: number }>;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
 
@@ -4915,7 +4935,11 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.doesNotMatch(delegated.error ?? "", /SECRET_SHOULD_NOT_APPEAR/);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
+    assert.deepEqual(report.delegated_result_failure_kinds, [
+      { result_failure_kind: "delegated_model_request_failed", count: 1 }
+    ]);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
+    assert.match(report.checks.find((check) => check.id === "delegated_results")?.summary ?? "", /result_failure_kinds=delegated_model_request_failed:1/);
   } finally {
     await fixture.cleanup();
   }

@@ -200,6 +200,11 @@ export const completionVerificationCheckSchema = z.object({
   refs: z.array(z.string()).default([])
 });
 
+export const delegatedResultFailureKindCountSchema = z.object({
+  result_failure_kind: delegatedResultKindSchema,
+  count: z.number().int().positive()
+});
+
 export const completionVerificationReportSchema = z.object({
   id: z.string().default(() => newId("completion_verification")),
   session_id: z.string(),
@@ -212,6 +217,7 @@ export const completionVerificationReportSchema = z.object({
   final_response_ref: z.string().nullable().default(null),
   claimed_verification_refs: z.array(z.string()).default([]),
   observation_refs: z.array(z.string()).default([]),
+  delegated_result_failure_kinds: z.array(delegatedResultFailureKindCountSchema).default([]),
   checks: z.array(completionVerificationCheckSchema).default([]),
   boundary: z.string().default("harness-owned completion verification report; read-only context input, not replay authority"),
   created_at: z.string().default(utcNow)

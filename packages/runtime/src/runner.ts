@@ -541,6 +541,7 @@ export class LiveAgentRunner {
 
     const successfulToolResults = toolResults.filter((result) => result.ok);
     const successfulToolArtifactRefs = toolArtifactRefs.filter((_, index) => toolResults[index]?.ok);
+    const delegatedResultFailureKinds = summarizeDelegatedResultFailureKindCounts(delegatedResults.filter((result) => !result.ok));
     const completionVerification = verifyCompletionClaim({
       envelope,
       finalResponseRef,
@@ -564,6 +565,7 @@ export class LiveAgentRunner {
       final_response_ref: finalResponseRef,
       claimed_verification_refs: envelope.completion_claim.verification_refs,
       observation_refs: compactRefs([...modelDiagnosticRefs, ...toolArtifactRefs, ...delegatedArtifactRefs, ...harnessArtifactRefs]),
+      delegated_result_failure_kinds: delegatedResultFailureKinds,
       checks: completionVerification.checks
     });
     const completionReportRef = await this.store.writeJson(
@@ -2808,18 +2810,38 @@ function delegatedResultsCheck(
   } else if (delegatedResults.length > 0) {
     status = "pass";
   }
+  const failureKinds = summarizeDelegatedResultFailureKinds(failedDelegations);
   return {
     id: "delegated_results",
     status,
     summary: failedDelegations.length > 0
       ? recoveryEvidenceRefs.length > 0
-        ? `Failed delegated result(s): ${failedDelegations.length}; later main-harness recovery evidence recorded.`
-        : `Failed delegated result(s): ${failedDelegations.length}.`
+        ? `Failed delegated result(s): ${failedDelegations.length}; result_failure_kinds=${failureKinds}; later main-harness recovery evidence recorded.`
+        : `Failed delegated result(s): ${failedDelegations.length}; result_failure_kinds=${failureKinds}.`
       : delegatedResults.length > 0
         ? `All ${delegatedResults.length} delegated result(s) passed contract validation; they are not completion proof.`
         : "No delegated result was required for this completion claim.",
     refs: compactRefs([...delegatedResults.map((result) => result.id), ...recoveryEvidenceRefs])
   };
+}
+
+function summarizeDelegatedResultFailureKinds(failedDelegations: DelegatedResult[]): string {
+  return summarizeDelegatedResultFailureKindCounts(failedDelegations)
+    .map((item) => `${item.result_failure_kind}:${item.count}`)
+    .join(",");
+}
+
+function summarizeDelegatedResultFailureKindCounts(
+  failedDelegations: DelegatedResult[]
+): CompletionVerificationReport["delegated_result_failure_kinds"] {
+  const counts = new Map<DelegatedResult["result_failure_kind"], number>();
+  for (const result of failedDelegations) {
+    const kind = result.result_failure_kind ?? "none";
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([result_failure_kind, count]) => ({ result_failure_kind, count }));
 }
 
 function mainHarnessRecoveryEvidenceAfterDelegationFailure(args: {
@@ -3109,6 +3131,12 @@ function renderCompletionVerificationMarkdown(report: CompletionVerificationRepo
     "## Observation Refs",
     "",
     ...(report.observation_refs.length > 0 ? report.observation_refs.map((ref) => `- ${ref}`) : ["- none"]),
+    "",
+    "## Delegated Result Failure Kinds",
+    "",
+    ...(report.delegated_result_failure_kinds.length > 0
+      ? report.delegated_result_failure_kinds.map((item) => `- ${item.result_failure_kind}: ${item.count}`)
+      : ["- none"]),
     "",
     "## Checks",
     "",
