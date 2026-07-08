@@ -564,7 +564,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
         completion_gate: [
           "delegatedResultsCheck fails a done claim without later recovery evidence",
           "delegatedVerificationRefs rejects delegated self-report refs",
-          "delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence"
+          "delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
         ]
       },
       recovery_contract: {
@@ -590,7 +590,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), "action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim without later recovery evidence+delegatedVerificationRefs rejects delegated self-report refs+delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage+delegated_dispatch_metadata+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
+  }), "action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix/update/edit/patch/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim without later recovery evidence+delegatedVerificationRefs rejects delegated self-report refs+delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage+delegated_dispatch_metadata+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling");
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1426,7 +1426,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue general_agent_delegation_hardening_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240\/2000; runner=parseDelegationRequest validates strict task\/context payloads before delegated model dispatch\+validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix\/update\/edit\/patch\/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence\+delegatedVerificationRefs rejects delegated self-report refs as completion proof\+delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs or successful write\/run evidence after the latest delegated result, and failed delegation still requires later successful write\/run recovery evidence; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage\+delegated_dispatch_metadata\+delegated_dispatch_failure_kind\+delegated_dispatch_round_limit\+delegated_result_failure_kind\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
+    assert.match(rendered.markdown, /delegation_loop: action=delegate_agent; stage=active; max_per_round=1; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240\/2000; runner=parseDelegationRequest validates strict task\/context payloads before delegated model dispatch\+validateDelegationTaskBoundary requires explicit bounded analysis intent and rejects direct fix\/update\/edit\/patch\/commit, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence\+delegatedVerificationRefs rejects delegated self-report refs as completion proof\+delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs or successful write\/run evidence after the latest delegated result, and failed delegation still requires later successful write\/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage\+delegated_dispatch_metadata\+delegated_dispatch_failure_kind\+delegated_dispatch_round_limit\+delegated_result_failure_kind\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling/);
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| plan_target_slice=next_slice_general_agent_delegation/);
@@ -4151,7 +4151,7 @@ test("live runner fails done verification when delegated result violates its con
   }
 });
 
-test("live runner accepts main-harness recovery evidence after failed delegation", async () => {
+test("live runner rejects write-run-only recovery after failed delegation", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -4173,18 +4173,65 @@ test("live runner accepts main-harness recovery evidence after failed delegation
       checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
     };
 
-    assert.equal(result.verdict, "no_sop");
+    assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.sawSanitizedFailedObservation, true);
     assert.equal(model.sawRecoveryHint, true);
     assert.equal(model.sawStateWriteObservation, true);
-    assert.equal(report.verification_status, "passed");
-    assert.equal(report.verified, true);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
     const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
     assert.equal(delegatedResultsCheck?.status, "warning");
     assert.match(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
     assert.match(delegatedResultsCheck?.refs.join("\n") ?? "", /tool_result_/);
-    assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "fail");
+    assert.match(independentCheck?.summary ?? "", /no bound non-delegated verification ref/);
+    assert.match(independentCheck?.summary ?? "", /verification_refs=0; write_run_results=1/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner accepts failed delegation recovery with write-run and verification refs", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new InvalidDelegationThenStateWriteThenVerifiedDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Recover in the main harness after a failed delegated result with a bound verification ref.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "no_sop");
+    assert.equal(model.sawSanitizedFailedObservation, true);
+    assert.equal(model.sawRecoveryHint, true);
+    assert.equal(model.sawStateWriteObservation, true);
+    assert.match(model.claimedWriteRef, /^tool_result_/);
+    assert.equal(report.verification_status, "passed");
+    assert.equal(report.verified, true);
+    assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
+    assert.equal(report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence")?.status, "pass");
+    const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
+    assert.equal(delegatedResultsCheck?.status, "warning");
+    assert.match(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
+    assert.match(delegatedResultsCheck?.refs.join("\n") ?? "", /tool_result_/);
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "pass");
+    assert.match(independentCheck?.summary ?? "", /both later write\/run recovery evidence and bound non-delegated verification refs/);
+    assert.match(independentCheck?.summary ?? "", /verification_refs=1; write_run_results=1/);
   } finally {
     await fixture.cleanup();
   }
@@ -6242,6 +6289,55 @@ class InvalidDelegationThenStateWriteThenDoneModel implements ModelClient {
         && request.input.includes("file.write_state")
         && request.input.includes("observations/no-sop-smoke.txt");
       return noSopDoneEnvelope();
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
+class InvalidDelegationThenStateWriteThenVerifiedDoneModel implements ModelClient {
+  private mainCalls = 0;
+  sawSanitizedFailedObservation = false;
+  sawRecoveryHint = false;
+  sawStateWriteObservation = false;
+  claimedWriteRef = "";
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? "plain text instead of json"
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-state-write-verified-then-done",
+      responseId: `response-invalid-delegation-recovery-verified-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls === 2) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawSanitizedFailedObservation = delegatedSection.includes('"contract_status": "failed"')
+        && delegatedSection.includes('"result_failure_kind": "delegated_output_contract_failed"')
+        && delegatedSection.includes("Delegated model output was not valid JSON")
+        && !delegatedSection.includes("plain text instead of json")
+        && !delegatedSection.includes('"raw_output_preview"')
+        && !delegatedSection.includes('"output_text"')
+        && !delegatedSection.includes("Critique whether the answer needs more evidence.")
+        && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
+      this.sawRecoveryHint = delegatedSection.includes('"recovery_hint"')
+        && delegatedSection.includes("recover with main-harness evidence");
+      return stateWriteEnvelope();
+    }
+    if (this.mainCalls > 2) {
+      this.sawStateWriteObservation = request.input.includes("## Tool Observations")
+        && request.input.includes("file.write_state")
+        && request.input.includes("observations/no-sop-smoke.txt");
+      this.claimedWriteRef = request.input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
     }
     return delegateCritiqueEnvelope();
   }

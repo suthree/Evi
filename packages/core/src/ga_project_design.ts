@@ -1222,7 +1222,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       completion_gate: [
         "delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence",
         "delegatedVerificationRefs rejects delegated self-report refs as completion proof",
-        "delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence"
+        "delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs or successful write/run evidence after the latest delegated result, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
       ]
     },
     recovery_contract: {
@@ -1274,7 +1274,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     },
     completion_authority: [
       "main harness verifies delegated results before they influence a done claim",
-      "failed delegated results block verified completion until later main-harness recovery evidence exists",
+        "failed delegated results block verified completion until later main-harness recovery evidence and bound non-delegated verification refs exist",
       "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot run from skipped, blocked, or failed-delegation-warning reports",
       "passed delegated results can inform the next model round but do not prove completion",
       "completion remains with iteration outcome plus completion_gate coverage"

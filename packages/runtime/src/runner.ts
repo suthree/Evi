@@ -2435,13 +2435,19 @@ function verifyCompletionClaim(args: {
     independentEvidenceRefs: successfulWriteOrRunRefs,
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
+  const failedDelegationVerificationRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
+    delegatedResults: args.delegatedResults,
+    independentEvidenceRefs: boundClaimedRefs,
+    verificationEvidenceRounds: args.verificationEvidenceRounds
+  });
   checks.push(delegatedResultsCheck(args.delegatedResults, true, delegatedRecoveryEvidenceRefs));
   const failedDelegationWithoutRecovery = failedDelegations.length > 0 && delegatedRecoveryEvidenceRefs.length === 0;
+  const failedDelegationWithoutVerification = failedDelegations.length > 0 && failedDelegationVerificationRefs.length === 0;
   checks.push({
     id: "delegated_independent_evidence",
     status: args.delegatedResults.length === 0
       ? "skipped"
-      : failedDelegationWithoutRecovery
+      : failedDelegationWithoutRecovery || failedDelegationWithoutVerification
         ? "fail"
       : postDelegationIndependentEvidenceRefs.length > 0
         ? "pass"
@@ -2452,10 +2458,16 @@ function verifyCompletionClaim(args: {
         ? postDelegationClaimedRefs.length > 0
           ? `Done claim followed failed delegated result(s); later read-only verification refs do not recover failed delegation without successful write/run evidence: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=0.`
           : "Done claim followed failed delegated result(s) but supplied no successful write/run recovery evidence after the latest failed delegated result."
+      : failedDelegationWithoutVerification
+        ? `Done claim followed failed delegated result(s) and supplied write/run recovery evidence, but no bound non-delegated verification ref after the latest failed delegated result: verification_refs=0; write_run_results=${delegatedRecoveryEvidenceRefs.length}.`
       : postDelegationIndependentEvidenceRefs.length > 0
-        ? `Done claim after delegation has harness-known independent evidence after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
+        ? failedDelegations.length > 0
+          ? `Done claim after failed delegation has both later write/run recovery evidence and bound non-delegated verification refs: verification_refs=${failedDelegationVerificationRefs.length}; write_run_results=${delegatedRecoveryEvidenceRefs.length}.`
+          : `Done claim after delegation has harness-known independent evidence after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
         : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence after the latest delegated result.",
-    refs: postDelegationIndependentEvidenceRefs
+    refs: failedDelegations.length > 0
+      ? compactRefs([...failedDelegationVerificationRefs, ...delegatedRecoveryEvidenceRefs])
+      : postDelegationIndependentEvidenceRefs
   });
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));

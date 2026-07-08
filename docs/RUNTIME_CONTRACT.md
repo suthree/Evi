@@ -60,6 +60,11 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
   Chinese reading. Root README files stay thin and link into Chinese companions
   under `docs/`. Extend the `.cn.md` companion pattern to other stable docs
   when the Chinese view needs to stay easy to scan.
+- `docs/AGENTS.cn.md` and `core/soul.cn.md` are Chinese companion files for
+  local operators. `AGENTS.md` and `core/soul.md` remain the default
+  model-facing sources. When either side of a stable pair changes materially,
+  update the companion in the same work item unless the operator explicitly
+  narrows the language scope.
 - Preserve code blocks, command examples, JSON fields, protocol literals, API
   names, and quoted evidence in their original language.
 
@@ -74,6 +79,9 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
   content/publishing/image-generation work only.
 - `.trellis/spec/` and `.trellis/tasks/` are repo-local governance records, not
   runtime state or durable memory.
+- Trellis-generated agent context is tool-owned project governance context. It
+  should be refreshed through Trellis commands instead of hand-owned as the
+  runtime contract.
 
 ## Reference Stance
 
@@ -135,6 +143,36 @@ The capability boundary stack is:
    Delivery standard: orchestration is introduced only after single-agent
    capability, expert packaging, advisory boundaries, and main-thread
    verification authority are stable.
+
+### Capability Growth Boundary
+
+Self-iteration and self-growth are separate loops.
+
+Self-iteration means slow, evidence-backed improvement of the core and basic
+runtime substrate: context assembly, harness validation, bounded tool execution,
+evidence capture, completion verification, recovery, and operator inspection.
+Direction control is more important than active iteration. If the direction,
+verification path, or rollback story is unclear, the correct action is to pause,
+record the gap, or narrow the slice.
+
+Self-growth means preserving reusable procedures through SOPs and skills. It
+expands the agent's working surface only after repeated or high-value evidence
+shows a clear trigger, bounded procedure, verification command, failure mode,
+and rollback or retirement rule.
+
+Existing commands, adapters, delegated agent surfaces, SOPs, skills, and local
+runtime capabilities should be reused before new mechanisms are introduced. If
+an existing surface almost covers the need, improve its invocation, docs, or
+validation before creating a parallel path.
+
+`context` and `harness` are anti-drift infrastructure. They constrain what the
+model sees, validate what the model asks to do, preserve evidence, and decide
+whether completion claims are acceptable.
+
+Trellis is the project self-iteration maintenance tool for bounded tasks,
+specs, decisions, and command-maintained agent context. It is not runtime
+state, durable memory, the active vault, the skill promotion gate, or the
+authority for current runtime behavior.
 
 ### Core Execution
 
@@ -1232,17 +1270,20 @@ Passed delegated results record `result_failure_kind=none`; persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. A later `done` claim
 fails completion verification when any delegated result failed and no later
-main-harness write/run evidence proves recovery. When later main-harness
+main-harness write/run evidence proves recovery. Even when later main-harness
 recovery evidence exists, the failed delegated result remains a warning and the
-done claim still needs independent completion proof. A passed delegated result
+done claim still needs a bound non-delegated verification ref as independent
+completion proof. A passed delegated result
 remains an advisory self-report: it can inform the next model round, but its id,
 state ref, or event ref must not be used as
 `completion_claim.verification_refs` proof. If a `done` claim follows any
 delegated result, completion verification also requires later independent
 evidence recorded after the latest delegated result: at least one harness-known
 non-delegated verification ref or successful write/run tool result recorded by
-the harness. If any delegated result failed, that evidence must include later
-successful write/run recovery evidence; later read-only refs are context only.
+the harness. If any delegated result failed, completion requires both later
+successful write/run recovery evidence and a bound non-delegated verification
+ref after the failed delegated result; later read-only refs without write/run
+recovery are context only.
 The final response artifact alone is not independent completion proof.
 Non-`done` runs still record a bounded
 `delegated_results` warning when any delegated result failed, so Live Run Trace
