@@ -3969,6 +3969,48 @@ test("live runner rejects arbitrary verification refs after delegation", async (
   }
 });
 
+test("live runner rejects failed read-only tool refs as independent proof after delegation", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new SuccessfulDelegationThenFailedReadOnlyToolThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Do not accept failed read-only tool refs as completion proof after delegation.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.sawDelegatedObservation, true);
+    assert.equal(model.sawFailedReadOnlyToolObservation, true);
+    assert.match(model.claimedFailedReadOnlyRef, /^tool_result_/);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "skipped");
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "pass");
+    const boundCheck = report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence");
+    assert.equal(boundCheck?.status, "fail");
+    assert.match(boundCheck?.summary ?? "", /not bound to harness-known/);
+    assert.deepEqual(boundCheck?.refs, [model.claimedFailedReadOnlyRef]);
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "fail");
+    assert.match(independentCheck?.summary ?? "", /harness-known independent verification refs/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects delegated self-report refs as done proof", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -6390,6 +6432,50 @@ class DelegatedRefAsProofThenDoneModel implements ModelClient {
   }
 }
 
+class SuccessfulDelegationThenFailedReadOnlyToolThenDoneModel implements ModelClient {
+  private mainCalls = 0;
+  sawDelegatedObservation = false;
+  sawFailedReadOnlyToolObservation = false;
+  claimedFailedReadOnlyRef = "";
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "Read-only failure proof boundary summary",
+        findings_text: "The delegated critique is useful context but still needs successful main-harness evidence."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "successful-delegation-failed-read-only-tool-then-done",
+      responseId: `response-failed-read-only-proof-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls === 2) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawDelegatedObservation = delegatedSection.includes('"contract_status": "passed"')
+        && delegatedSection.includes("still needs successful main-harness evidence");
+      return failedFileReadEnvelope();
+    }
+    if (this.mainCalls > 2) {
+      this.sawFailedReadOnlyToolObservation = request.input.includes("## Tool Observations")
+        && request.input.includes('"tool": "file.read"')
+        && request.input.includes('"ok": false')
+        && request.input.includes('"side_effect_level": "none"');
+      this.claimedFailedReadOnlyRef = request.input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+      return doneEnvelopeWithVerificationRefs([this.claimedFailedReadOnlyRef]);
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
 class MultiDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
@@ -8108,6 +8194,28 @@ function fileReadEnvelope(): Record<string, unknown> {
         arguments: {
           scope: "repo",
           path: "docs/read-only-evidence.md",
+          max_chars: 200
+        }
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function failedFileReadEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Attempt one invalid read-only check before answering.",
+    actions: [{
+      type: "use_tool",
+      rationale: "The task needs read-only evidence but this request is invalid.",
+      payload: {
+        tool: "file.read",
+        arguments: {
+          scope: "repo",
+          path: "../blocked-read.txt",
           max_chars: 200
         }
       }

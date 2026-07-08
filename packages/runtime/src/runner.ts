@@ -539,6 +539,8 @@ export class LiveAgentRunner {
       await this.writeDisciplineTodo(discipline);
     }
 
+    const successfulToolResults = toolResults.filter((result) => result.ok);
+    const successfulToolArtifactRefs = toolArtifactRefs.filter((_, index) => toolResults[index]?.ok);
     const completionVerification = verifyCompletionClaim({
       envelope,
       finalResponseRef,
@@ -546,8 +548,8 @@ export class LiveAgentRunner {
       delegatedResults,
       modelDiagnosticRefs,
       availableVerificationRefs: compactRefs([
-        ...toolResults.map((result) => result.id),
-        ...toolArtifactRefs
+        ...successfulToolResults.map((result) => result.id),
+        ...successfulToolArtifactRefs
       ]),
       verificationEvidenceRounds
     });
