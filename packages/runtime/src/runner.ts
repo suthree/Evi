@@ -1403,7 +1403,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1776,6 +1776,9 @@ function validateDelegationContextBoundary(context: string): string | null {
   if (grantsDelegatedAuthority(text)) {
     return "delegate_agent.payload.context must not grant tool/write/mutation, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
   }
+  if (reliesOnForbiddenDelegationSource(text)) {
+    return "delegate_agent.payload.context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.";
+  }
   return null;
 }
 
@@ -2102,6 +2105,22 @@ function grantsDelegatedAuthority(text: string): boolean {
   return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES);
 }
 
+function reliesOnForbiddenDelegationSource(text: string): boolean {
+  return DELEGATE_CONTEXT_FORBIDDEN_SOURCE_PHRASES.some((phrase) => hasUndeniedPhrase(text, phrase));
+}
+
+function hasUndeniedPhrase(text: string, phrase: string, denialWindow = 48): boolean {
+  let index = text.indexOf(phrase);
+  while (index !== -1) {
+    const start = Math.max(0, index - denialWindow);
+    const end = Math.min(text.length, index + phrase.length + denialWindow);
+    const nearby = text.slice(start, end);
+    if (!hasAnyPhrase(nearby, SOURCE_DENIAL_TERMS)) return true;
+    index = text.indexOf(phrase, index + phrase.length);
+  }
+  return false;
+}
+
 function hasAnyPhrase(text: string, phrases: string[]): boolean {
   return phrases.some((phrase) => text.includes(phrase));
 }
@@ -2176,6 +2195,70 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "允许编排多 agent",
   "可以编排多智能体",
   "允许编排多智能体"
+];
+
+const SOURCE_DENIAL_TERMS = [
+  "no",
+  "not",
+  "do not",
+  "don't",
+  "without",
+  "cannot",
+  "can't",
+  "can not",
+  "does not",
+  "must not",
+  "never",
+  "exclude",
+  "excludes",
+  "excluded",
+  "excluding",
+  "suppressed",
+  "unavailable",
+  "not available",
+  "不可用",
+  "不使用",
+  "不要",
+  "禁止",
+  "排除"
+];
+
+const DELEGATE_CONTEXT_FORBIDDEN_SOURCE_PHRASES = [
+  "hidden memory",
+  "private memory",
+  "implicit memory",
+  "memory persistence",
+  "persistent memory",
+  "unstated repo state",
+  "unstated state",
+  "raw delegated artifact",
+  "raw delegated artifacts",
+  "raw delegated artifact body",
+  "raw delegated artifact bodies",
+  "raw artifact body",
+  "raw artifact bodies",
+  "delegated artifact body",
+  "delegated artifact bodies",
+  "raw delegated output",
+  "raw output preview",
+  "raw task context",
+  "full transcript",
+  "expand context",
+  "context expansion",
+  "invent evidence",
+  "invent ref",
+  "invent refs",
+  "invent verification ref",
+  "invent verification refs",
+  "隐藏记忆",
+  "隐式记忆",
+  "未声明状态",
+  "原始委托产物",
+  "原始委托 artifact",
+  "扩展上下文",
+  "编造证据",
+  "编造 ref",
+  "编造 verification refs"
 ];
 
 function termsAreNearby(text: string, first: string, second: string, window: number): boolean {

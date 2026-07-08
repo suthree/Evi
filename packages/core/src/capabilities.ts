@@ -187,7 +187,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
     layer: "core_runtime",
     reason: "General-agent delegation is the current bounded core/basic handoff; harden the task, context, result, trace, replay, and completion-verification boundaries before expert scheduling, application adapters, or local-learning follow-ups become the default next step.",
     success_criteria: [
-      "delegate_agent rejects unbounded task/context inputs before delegated model dispatch",
+      "delegate_agent rejects unbounded task/context inputs and forbidden hidden-source context before delegated model dispatch",
       "delegated failure metadata is visible through bounded Live Run Trace and Harness Replay read models without raw delegated artifact reads",
       "main-harness recovery and completion verification keep authority after delegated results",
       "expert scheduling, model fan-out, external adapters, and local-learning items remain follow-up slices"
