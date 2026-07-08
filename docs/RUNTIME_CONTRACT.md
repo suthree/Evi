@@ -100,8 +100,9 @@ Current local reference takeaways:
   verification gates.
 - pi demonstrates harness engineering: turn snapshots, explicit phases,
   queued safe-point mutations, durable session logs, recovery boundaries, and
-  structured observability events. XingZhe should borrow these as standards for
-  output stabilization and runtime control before adding broad tool authority.
+  structured observability events. XingZhe should borrow these as reference
+  patterns for output stabilization and runtime control only when they
+  strengthen the local contract before adding broad tool authority.
 - GenericAgent demonstrates a small general-agent baseline: a minimal loop,
   atomic tools, and task-derived skills. XingZhe should borrow the progression
   from minimal general capability to specialized skills, while keeping skill
@@ -1279,8 +1280,9 @@ task/context echoes, delegated output authority/source claims, or over-limit
 delegate action counts are recorded as
 `ok=false`; delegated model request failure messages and contract-failure
 previews are sanitized before they are persisted or returned as observations.
-Raw task/context echo failures and delegated output authority-claim failures
-suppress the raw output preview. Dispatch-layer rejects also carry a safe
+Full delegated outputs are scanned before JSON extraction, and raw
+task/context echo failures plus delegated output authority/source-claim
+failures suppress the raw output preview. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no

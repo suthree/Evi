@@ -2071,12 +2071,14 @@ completion proof only when the done claim cites its harness-known ref. Unknown
 or model-invented refs fail verification and do not count as proof. The final
 response artifact alone is not independent completion proof. Successful
 delegated `summary`, `findings_text`, and raw preview text are sanitized before
-persistence and observation feedback, and outputs that echo raw delegated
-task/context or claim delegated tool/write/mutation, completion, expert,
-multi-agent, or model fan-out authority fail the delegated output contract with
-raw preview suppressed. Delegated model request failures are recorded as
-failed delegated results with sanitized error text before persistence and
-observation feedback.
+persistence and observation feedback, and the full delegated model output is
+scanned before JSON extraction so wrapper text, extra fields, or structured
+content that echoes raw delegated task/context or claims delegated
+tool/write/mutation, completion, expert, multi-agent, model fan-out,
+hidden-source, raw-artifact, context-expansion, or invented-evidence authority
+fails the delegated output contract with raw preview suppressed. Delegated
+model request failures are recorded as failed delegated results with sanitized
+error text before persistence and observation feedback.
 Each delegated result also records action id, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and

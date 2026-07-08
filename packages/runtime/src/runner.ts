@@ -2287,6 +2287,8 @@ function parseDelegatedOutput(
   if (!trimmed) {
     return { ok: false, error: "Delegated model returned empty output." };
   }
+  const fullOutputBoundaryFailure = delegatedOutputBoundaryFailure(trimmed, source);
+  if (fullOutputBoundaryFailure) return fullOutputBoundaryFailure;
   let parsed: unknown;
   try {
     parsed = JSON.parse(extractJsonObject(trimmed));
@@ -2345,13 +2347,54 @@ function parseDelegatedOutput(
   };
 }
 
+function delegatedOutputBoundaryFailure(
+  text: string,
+  source: { task: string; context: string }
+): {
+    ok: false;
+    error: string;
+    safe_raw_output_preview: string;
+  } | null {
+  if (delegatedTextClaimsAuthority(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim tool/write/mutation, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
+    };
+  }
+  if (delegatedTextClaimsForbiddenSource(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.",
+      safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
+    };
+  }
+  const rawEcho = delegatedOutputRawEcho(text, "", source);
+  if (rawEcho) {
+    return {
+      ok: false,
+      error: `Delegated model output echoed raw delegated ${rawEcho.source_field}; return summarized analysis without raw task/context.`,
+      safe_raw_output_preview: `Delegated model output echoed raw delegated ${rawEcho.source_field}; raw output preview suppressed.`
+    };
+  }
+  return null;
+}
+
 function delegatedOutputClaimsAuthority(summary: string, findingsText: string): boolean {
-  const text = normalizeBoundaryText(`${summary}\n${findingsText}`);
-  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES);
+  return delegatedTextClaimsAuthority(`${summary}\n${findingsText}`);
 }
 
 function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: string): boolean {
-  const text = normalizeBoundaryText(`${summary}\n${findingsText}`);
+  return delegatedTextClaimsForbiddenSource(`${summary}\n${findingsText}`);
+}
+
+function delegatedTextClaimsAuthority(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES);
+}
+
+function delegatedTextClaimsForbiddenSource(value: string): boolean {
+  const text = normalizeBoundaryText(value);
   return reliesOnForbiddenDelegationSource(text);
 }
 

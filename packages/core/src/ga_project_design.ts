@@ -1218,7 +1218,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
       ],
       result_handling: [
-        "executeDelegation validates delegated JSON output, rejects raw task/context echoes, rejects delegated output authority or forbidden-source claims, and sanitizes successful summary/findings before persistence or observation",
+        "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],

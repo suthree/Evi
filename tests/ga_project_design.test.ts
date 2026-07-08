@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -46,6 +46,18 @@ test("GA project design contract keeps core project design separate from applica
   assert.match(contract.boundary, /read-only GA project design contract/);
   assert.match(contract.boundary, /does not invoke models/);
   assert.match(contract.boundary, /prove completion/);
+});
+
+test("runtime reference stance keeps external projects as references only", async () => {
+  const doc = await readFile("docs/RUNTIME_CONTRACT.md", "utf8");
+  const referenceLines = doc
+    .split("\n")
+    .filter((line) => /\b(?:GenericAgent|Hermes|OpenClaw|pi|Codex|Claude Code)\b/.test(line));
+  const positiveStandardLines = referenceLines.filter((line) => /\bstandards?\b/i.test(line) && !/\bnot standards\b/i.test(line));
+
+  assert.match(doc, /They are not standards or compatibility targets/);
+  assert.match(doc, /reference\s+patterns/);
+  assert.deepEqual(positiveStandardLines, []);
 });
 
 test("GA project design read model bootstraps the first core/basic plan from empty state", async () => {
@@ -365,8 +377,9 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("parseDelegationRequest")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("expected summary/findings_text output shape")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("rejects raw task/context echoes")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("forbidden-source claims")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("scans the full delegated output before JSON extraction")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("wrapper text, extra fields, or structured content")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("forbidden-source reliance")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("sanitizes successful summary/findings")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedVerificationRefs")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedIndependentEvidenceCheck")), true);
