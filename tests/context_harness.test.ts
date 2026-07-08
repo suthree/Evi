@@ -3745,10 +3745,10 @@ test("live runner rejects delegated output authority claims before observation",
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
-    assert.match(delegated.output_text, /must not claim tool\/write\/mutation or completion authority/);
-    assert.match(delegated.error ?? "", /must not claim tool\/write\/mutation or completion authority/);
+    assert.match(delegated.output_text, /must not claim tool\/write\/mutation, completion, expert, multi-agent, or model fan-out authority/);
+    assert.match(delegated.error ?? "", /must not claim tool\/write\/mutation, completion, expert, multi-agent, or model fan-out authority/);
     assert.match(delegated.raw_output_preview, /raw output preview suppressed/);
-    assert.doesNotMatch(delegated.raw_output_preview, /repo\.search|file\.write_repo|final success is proven/);
+    assert.doesNotMatch(delegated.raw_output_preview, /repo\.search|file\.write_repo|expert reviewers|ran model fan-out|final success is proven/);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");
@@ -3799,6 +3799,46 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     assert.equal(report.verified, true);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner rejects post-delegation write evidence without bound verification ref", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new AlternateDelegationBoundaryThenDoneModel(false);
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Require bound verification refs after delegation.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 1);
+    assert.equal(model.sawSanitizedDelegationObservation, true);
+    assert.match(model.claimedWriteRef, /^tool_result_/);
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
+    assert.equal(report.checks.find((check) => check.id === "claimed_verification_refs")?.status, "warning");
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "fail");
+    assert.match(independentCheck?.summary ?? "", /no bound non-delegated verification ref/);
+    assert.match(independentCheck?.summary ?? "", /verification_refs=0; write_run_results=1/);
+    assert.deepEqual(independentCheck?.refs, []);
   } finally {
     await fixture.cleanup();
   }
@@ -6221,8 +6261,8 @@ class AuthorityClaimDelegationThenDoneModel implements ModelClient {
     if (isDelegation) this.delegationCalls += 1;
     const outputText = isDelegation
       ? JSON.stringify({
-        summary: "I used repo.search and verified completion.",
-        findings_text: "I called file.write_repo, wrote state, and final success is proven."
+        summary: "I used repo.search, scheduled expert reviewers, and verified completion.",
+        findings_text: "I called file.write_repo, wrote state, ran model fan-out, and final success is proven."
       })
       : JSON.stringify(this.nextMainEnvelope(request));
     return {
@@ -6241,9 +6281,11 @@ class AuthorityClaimDelegationThenDoneModel implements ModelClient {
       const delegatedSection = delegatedObservationsSection(request.input);
       this.sawSanitizedAuthorityFailureObservation = delegatedSection.includes('"contract_status": "failed"')
         && delegatedSection.includes('"result_failure_kind": "delegated_output_contract_failed"')
-        && delegatedSection.includes("must not claim tool/write/mutation or completion authority")
+        && delegatedSection.includes("must not claim tool/write/mutation, completion, expert, multi-agent, or model fan-out authority")
         && !delegatedSection.includes("repo.search")
         && !delegatedSection.includes("file.write_repo")
+        && !delegatedSection.includes("expert reviewers")
+        && !delegatedSection.includes("ran model fan-out")
         && !delegatedSection.includes("final success is proven")
         && !delegatedSection.includes('"raw_output_preview"')
         && !delegatedSection.includes('"output_text"')
@@ -6259,6 +6301,9 @@ class AlternateDelegationBoundaryThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
   sawSanitizedDelegationObservation = false;
+  claimedWriteRef = "";
+
+  constructor(private readonly bindVerificationRef = true) {}
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -6291,7 +6336,9 @@ class AlternateDelegationBoundaryThenDoneModel implements ModelClient {
       return stateWriteEnvelope();
     }
     if (this.mainCalls > 2) {
-      return doneEnvelope();
+      this.claimedWriteRef = latestToolResultRef(request.input);
+      if (!this.bindVerificationRef) return doneEnvelope();
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
     }
     return alternateBoundaryDelegateContextEnvelope();
   }
@@ -6301,6 +6348,7 @@ class ReadOnlyMutationQuestionDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
   sawSanitizedDelegationObservation = false;
+  claimedWriteRef = "";
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -6332,7 +6380,8 @@ class ReadOnlyMutationQuestionDelegationThenDoneModel implements ModelClient {
       return stateWriteEnvelope();
     }
     if (this.mainCalls > 2) {
-      return doneEnvelope();
+      this.claimedWriteRef = latestToolResultRef(request.input);
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
     }
     return readOnlyMutationQuestionDelegateEnvelope();
   }
@@ -6342,6 +6391,7 @@ class LatestContextAnalysisDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
   sawSanitizedDelegationObservation = false;
+  claimedWriteRef = "";
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -6373,7 +6423,8 @@ class LatestContextAnalysisDelegationThenDoneModel implements ModelClient {
       return stateWriteEnvelope();
     }
     if (this.mainCalls > 2) {
-      return doneEnvelope();
+      this.claimedWriteRef = latestToolResultRef(request.input);
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
     }
     return latestContextAnalysisDelegateEnvelope();
   }
@@ -6529,7 +6580,7 @@ class SuccessfulDelegationThenFailedReadOnlyToolThenDoneModel implements ModelCl
         && request.input.includes('"tool": "file.read"')
         && request.input.includes('"ok": false')
         && request.input.includes('"side_effect_level": "none"');
-      this.claimedFailedReadOnlyRef = request.input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+      this.claimedFailedReadOnlyRef = latestToolResultRef(request.input);
       return doneEnvelopeWithVerificationRefs([this.claimedFailedReadOnlyRef]);
     }
     return delegateCritiqueEnvelope();
@@ -6786,7 +6837,7 @@ class InvalidDelegationThenStateWriteThenVerifiedDoneModel implements ModelClien
       this.sawStateWriteObservation = request.input.includes("## Tool Observations")
         && request.input.includes("file.write_state")
         && request.input.includes("observations/no-sop-smoke.txt");
-      this.claimedWriteRef = request.input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+      this.claimedWriteRef = latestToolResultRef(request.input);
       return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
     }
     return delegateCritiqueEnvelope();
@@ -6879,7 +6930,7 @@ class InvalidDelegationThenReadOnlyToolThenDoneModel implements ModelClient {
       this.sawReadOnlyToolObservation = request.input.includes("## Tool Observations")
         && request.input.includes('"tool": "file.read"')
         && request.input.includes('"side_effect_level": "none"');
-      this.claimedReadOnlyRef = request.input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+      this.claimedReadOnlyRef = latestToolResultRef(request.input);
       return doneEnvelopeWithVerificationRefs([this.claimedReadOnlyRef]);
     }
     return delegateCritiqueEnvelope();
@@ -8372,6 +8423,10 @@ function noSopDoneEnvelope(): Record<string, unknown> {
 
 function doneEnvelope(): Record<string, unknown> {
   return doneEnvelopeWithVerificationRefs([]);
+}
+
+function latestToolResultRef(input: string): string {
+  return input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
 }
 
 function blockedEnvelope(): Record<string, unknown> {

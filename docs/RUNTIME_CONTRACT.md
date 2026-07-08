@@ -1263,7 +1263,8 @@ capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contai
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated
-`task`/`context` or claim delegated tool/write/mutation/completion authority,
+`task`/`context` or claim delegated tool/write/mutation, completion, expert,
+multi-agent, or model fan-out authority,
 and sanitizes successful delegated `summary`, `findings_text`, and raw preview
 before persisting the result or returning it as a sanitized `Delegated
 Observations` item. The live runner allows at most one
@@ -1302,11 +1303,12 @@ state ref, or event ref must not be used as
 `completion_claim.verification_refs` proof. If a `done` claim follows any
 delegated result, completion verification also requires later independent
 evidence recorded after the latest delegated result: at least one harness-known
-non-delegated verification ref or successful write/run tool result recorded by
-the harness. If any delegated result failed, completion requires both later
-successful write/run recovery evidence and a bound non-delegated verification
-ref after the failed delegated result; later read-only refs without write/run
-recovery are context only.
+non-delegated verification ref bound through `completion_claim.verification_refs`;
+a successful write/run tool result is completion proof only when the done claim
+cites its harness-known ref. If any delegated result failed, completion requires
+both later successful write/run recovery evidence and a bound non-delegated
+verification ref after the failed delegated result; later read-only refs without
+write/run recovery are context only.
 The final response artifact alone is not independent completion proof.
 Non-`done` runs still record a bounded
 `delegated_results` warning when any delegated result failed, so Live Run Trace

@@ -2236,8 +2236,8 @@ function parseDelegatedOutput(
   if (delegatedOutputClaimsAuthority(summary, findingsText)) {
     return {
       ok: false,
-      error: "Delegated model output must not claim tool/write/mutation or completion authority.",
-      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation or completion authority; raw output preview suppressed."
+      error: "Delegated model output must not claim tool/write/mutation, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
   const rawEcho = delegatedOutputRawEcho(summary, findingsText, source);
@@ -2287,10 +2287,40 @@ const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
   "delegated subagent called tool",
   "delegated subagent wrote state",
   "delegated subagent verified completion",
+  "delegated subagent scheduled expert",
+  "delegated subagent scheduled experts",
+  "delegated subagent orchestrated expert",
+  "delegated subagent orchestrated experts",
+  "delegated subagent orchestrated multi agent",
+  "delegated subagent orchestrated multi agents",
+  "delegated subagent ran model fan out",
+  "delegated subagent used model fan out",
   "subagent used tool",
   "subagent called tool",
   "subagent wrote state",
   "subagent verified completion",
+  "subagent scheduled expert",
+  "subagent scheduled experts",
+  "subagent orchestrated expert",
+  "subagent orchestrated experts",
+  "subagent orchestrated multi agent",
+  "subagent orchestrated multi agents",
+  "subagent ran model fan out",
+  "subagent used model fan out",
+  "i scheduled expert",
+  "i scheduled experts",
+  "i scheduled expert reviewer",
+  "i scheduled expert reviewers",
+  "i orchestrated expert",
+  "i orchestrated experts",
+  "i orchestrated multi agent",
+  "i orchestrated multi agents",
+  "i ran model fan out",
+  "i used model fan out",
+  "i spawned subagent",
+  "i spawned subagents",
+  "i spawned expert",
+  "i spawned experts",
   "completion is proven",
   "final success is proven"
 ];
@@ -2478,7 +2508,6 @@ function verifyCompletionClaim(args: {
     independentEvidenceRefs: successfulWriteOrRunRefs,
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
-  const postDelegationIndependentEvidenceRefs = [...postDelegationClaimedRefs, ...postDelegationWriteOrRunRefs];
   const failedDelegations = args.delegatedResults.filter((result) => !result.ok);
   checks.push({
     id: "claimed_refs_bound_to_evidence",
@@ -2523,7 +2552,7 @@ function verifyCompletionClaim(args: {
       ? "skipped"
       : failedDelegationWithoutRecovery || failedDelegationWithoutVerification
         ? "fail"
-      : postDelegationIndependentEvidenceRefs.length > 0
+      : postDelegationClaimedRefs.length > 0
         ? "pass"
         : "fail",
     summary: args.delegatedResults.length === 0
@@ -2534,14 +2563,16 @@ function verifyCompletionClaim(args: {
           : "Done claim followed failed delegated result(s) but supplied no successful write/run recovery evidence after the latest failed delegated result."
       : failedDelegationWithoutVerification
         ? `Done claim followed failed delegated result(s) and supplied write/run recovery evidence, but no bound non-delegated verification ref after the latest failed delegated result: verification_refs=0; write_run_results=${delegatedRecoveryEvidenceRefs.length}.`
-      : postDelegationIndependentEvidenceRefs.length > 0
+      : postDelegationClaimedRefs.length > 0
         ? failedDelegations.length > 0
           ? `Done claim after failed delegation has both later write/run recovery evidence and bound non-delegated verification refs: verification_refs=${failedDelegationVerificationRefs.length}; write_run_results=${delegatedRecoveryEvidenceRefs.length}.`
-          : `Done claim after delegation has harness-known independent evidence after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
-        : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs or successful write/run evidence after the latest delegated result.",
+          : `Done claim after delegation has bound non-delegated verification ref(s) after the latest delegated result: verification_refs=${postDelegationClaimedRefs.length}; write_run_results=${postDelegationWriteOrRunRefs.length}.`
+        : postDelegationWriteOrRunRefs.length > 0
+          ? `Done claim after delegation has successful write/run evidence, but no bound non-delegated verification ref after the latest delegated result: verification_refs=0; write_run_results=${postDelegationWriteOrRunRefs.length}.`
+          : "Done claim followed delegated result(s) but supplied no harness-known independent verification refs after the latest delegated result.",
     refs: failedDelegations.length > 0
       ? compactRefs([...failedDelegationVerificationRefs, ...delegatedRecoveryEvidenceRefs])
-      : postDelegationIndependentEvidenceRefs
+      : postDelegationClaimedRefs
   });
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));
