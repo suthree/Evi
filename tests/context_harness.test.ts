@@ -7264,7 +7264,7 @@ class StateWriteThenDelegationThenDoneModel implements ModelClient {
 class ArbitraryRefAfterDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   sawDelegatedObservation = false;
-  claimedRef = "made_up_non_delegated_ref";
+  claimedRef = "made_up_delegated_result_ref";
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");

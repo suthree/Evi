@@ -2929,7 +2929,6 @@ function delegatedVerificationRefs(claimedRefs: string[], delegatedResults: Dele
   return claimedRefs.filter((ref) =>
     delegatedIds.includes(ref)
     || delegatedIds.some((id) => ref.includes(id))
-    || /delegated[_-]result/i.test(ref)
   );
 }
 
