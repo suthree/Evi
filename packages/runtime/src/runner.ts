@@ -1240,7 +1240,7 @@ export class LiveAgentRunner {
           "You do not have memory or tools in the current minimal runtime.",
           "Return a strict json object with keys summary and findings_text.",
           `summary max ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars; findings_text max ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.`,
-          "Do not claim external writes, hidden memory, raw delegated artifacts, invented evidence refs, or final success."
+          "Do not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
         ].join("\n"),
         input: `Return json only.\n\nTask:\n${task}\n\nContext:\n${context}`
       });

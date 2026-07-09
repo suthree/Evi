@@ -3673,6 +3673,7 @@ test("live runner feeds structured delegated results back as bounded observation
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.sawStructuredDelegation, true);
+    assert.equal(model.sawDelegatedInstructionsBoundary, true);
     assert.equal(model.sawSanitizedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
     assert.deepEqual(delegatedEvent?.delegated_dispatch, {
@@ -6809,10 +6810,24 @@ async function writeRepoHead(store: AgentStore, commit: string, branch = "develo
 class StructuredDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   sawStructuredDelegation = false;
+  sawDelegatedInstructionsBoundary = false;
   sawSanitizedDelegationObservation = false;
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) {
+      this.sawDelegatedInstructionsBoundary = request.instructions.includes("tool/write/mutation")
+        && request.instructions.includes("command/test execution")
+        && request.instructions.includes("completion")
+        && request.instructions.includes("expert")
+        && request.instructions.includes("multi-agent")
+        && request.instructions.includes("model fan-out")
+        && request.instructions.includes("hidden memory")
+        && request.instructions.includes("raw delegated artifacts")
+        && request.instructions.includes("unstated repo state")
+        && request.instructions.includes("context expansion")
+        && request.instructions.includes("invented evidence refs");
+    }
     const outputText = isDelegation
       ? JSON.stringify({
         summary: "Structured delegate summary token SECRET_SHOULD_NOT_APPEAR",
