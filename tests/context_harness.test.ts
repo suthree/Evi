@@ -3770,6 +3770,7 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.match(delegatedEnvelopeRef, /^memory\/episodes\/session_.*-model-action-r1\.json$/);
     assert.deepEqual(delegatedEvent?.delegated_dispatch, {
       action_id: delegated.action_id,
+      result_ref: delegatedRef,
       envelope_ref: delegatedEnvelopeRef,
       round: 1,
       sequence: 1,

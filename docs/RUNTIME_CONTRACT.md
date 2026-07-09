@@ -1359,9 +1359,12 @@ verification into a completed claim. Delegated results are recorded with action 
 counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated
-result bodies. Trace and replay audit JSON preserve the complete delegated
-dispatch metadata set for counting and coverage. They also preserve bounded
-delegated completion-gate check metadata from the completion report:
+result bodies. New delegated dispatch metadata carries the persisted
+`result_ref` explicitly; trace and replay keep the older delegated-result
+artifact fallback only for historical evidence compatibility. Trace and replay
+audit JSON preserve the complete delegated dispatch metadata set for counting
+and coverage. They also preserve bounded delegated completion-gate check
+metadata from the completion report:
 check id, status, summary, and refs across pass/warning/fail outcomes, without
 treating delegated output as completion proof. Operator Markdown/context
 views may cap the rendered lists and show an omitted count. Failed delegated

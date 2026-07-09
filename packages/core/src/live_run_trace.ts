@@ -24,6 +24,10 @@ const HARNESS_ACTION_TYPES = new Set([
 
 const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set<string>(delegateAgentCompletionGateCheckIds);
 
+type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> & {
+  result_ref?: string;
+};
+
 export interface LiveRunTraceRound {
   round: number;
   envelope_ref: string;
@@ -322,11 +326,14 @@ function readDelegatedDispatchSummaries(
   for (const event of events.filter((item) => item.kind === "delegated_result")) {
     const parsed = delegatedDispatchFromEventMetadata(event) ?? parseDelegatedDispatchSummary(event.summary);
     if (!parsed) continue;
+    const { result_ref: parsedResultRef, ...dispatch } = parsed;
     summaries.push({
       event_id: event.id,
       created_at: event.created_at,
-      result_ref: event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "",
-      ...parsed
+      result_ref: parsedResultRef && parsedResultRef.length > 0
+        ? parsedResultRef
+        : event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "",
+      ...dispatch
     });
   }
   return summaries;
@@ -334,11 +341,12 @@ function readDelegatedDispatchSummaries(
 
 function delegatedDispatchFromEventMetadata(
   event: EpisodeEvent
-): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
+): DelegatedDispatchParsed | null {
   const metadata = event.delegated_dispatch;
   if (!metadata) return null;
   return {
     action_id: metadata.action_id,
+    ...(typeof metadata.result_ref === "string" && metadata.result_ref.length > 0 ? { result_ref: metadata.result_ref } : {}),
     envelope_ref: metadata.envelope_ref,
     round: metadata.round,
     sequence: metadata.sequence,
@@ -355,7 +363,7 @@ function delegatedDispatchFromEventMetadata(
   };
 }
 
-function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
+function parseDelegatedDispatchSummary(summary: string): DelegatedDispatchParsed | null {
   const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+)(?:; model_invoked=(true|false))?; contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
   const modelInvoked = match[6];

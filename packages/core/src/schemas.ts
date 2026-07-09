@@ -172,6 +172,7 @@ export const modelActionEnvelopeSchema = z.object({
 
 export const delegatedDispatchEventMetadataSchema = z.object({
   action_id: z.string(),
+  result_ref: z.string().optional(),
   envelope_ref: z.string().nullable().default(null),
   round: z.number().int().positive(),
   sequence: z.number().int().positive(),

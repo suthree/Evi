@@ -291,6 +291,40 @@ test("harness replay audit warns when delegated dispatch sequence differs from i
   }
 });
 
+test("live run trace prefers delegated dispatch metadata result ref over artifact fallback", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-metadata-result-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const metadataResultRef = "memory/episodes/session_replay_test-delegated_result_metadata_ref.json";
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "metadata_result_ref",
+      actionId: "action_delegate_replay",
+      sequence: 1,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      metadataResultRef,
+      ok: true
+    });
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const dispatch = trace.delegated_dispatches.find((item) => item.event_id === "evidence_replay_delegated_metadata_result_ref");
+
+    assert.equal(dispatch?.result_ref, metadataResultRef);
+    assert.notEqual(dispatch?.result_ref, "memory/episodes/session_replay_test-delegated_result_metadata_result_ref.json");
+    assert.doesNotMatch(JSON.stringify(trace), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when delegated dispatch points outside delegate action rounds", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-round-lineage-"));
   const repoRoot = join(root, "repo");
@@ -931,6 +965,7 @@ async function writeReplayTraceFixture(
       ? {
         delegated_dispatch: {
           action_id: "action_delegate_replay",
+          result_ref: `memory/episodes/${sessionId}-delegated_result_invalid.json`,
           envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
           round: 1,
           sequence: 1,
@@ -985,6 +1020,7 @@ async function appendDelegatedDispatchEvent(
     modelInvoked?: boolean;
     round?: number;
     envelopeRef?: string;
+    metadataResultRef?: string;
     ok: boolean;
   }
 ): Promise<void> {
@@ -994,7 +1030,11 @@ async function appendDelegatedDispatchEvent(
   const modelInvoked = args.modelInvoked ?? (args.dispatchFailureKind === "none");
   const round = args.round ?? 1;
   const envelopeRef = args.envelopeRef ?? `memory/episodes/${sessionId}-model-action-r1.json`;
+  const metadataResultRef = args.metadataResultRef ?? resultRef;
   await store.writeText(resultRef, "RAW_REPLAY_EXTRA_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
+  if (metadataResultRef !== resultRef) {
+    await store.writeText(metadataResultRef, "RAW_REPLAY_METADATA_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
+  }
   await store.appendJsonl("memory/episodes/events.jsonl", {
     id: `evidence_replay_delegated_${args.suffix}`,
     session_id: sessionId,
@@ -1004,6 +1044,7 @@ async function appendDelegatedDispatchEvent(
     artifact_refs: [resultRef],
     delegated_dispatch: {
       action_id: args.actionId,
+      result_ref: metadataResultRef,
       envelope_ref: envelopeRef,
       round,
       sequence: args.sequence,
