@@ -1259,6 +1259,9 @@ Live Run Trace, harness replay checks, capability
 catalog, context read models, and GA project-design read model derive their
 limits, task/context authoring rules, failure-kind values, and delegated
 completion-gate check ids from those sources instead of redeclaring them.
+Completion verification report schema accepts only the shared harness check ids
+plus those delegated completion-gate check ids, so drifted spellings are rejected
+before they can enter history or trace read models.
 `task` itself must explicitly request bounded analysis, critique, review,
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct

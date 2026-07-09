@@ -3,10 +3,15 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { delegateAgentActionContract } from "../packages/core/src/action_contracts.js";
 import {
   getCompletionVerificationReport,
   listCompletionVerificationReports
 } from "../packages/core/src/completion_verification_history.js";
+import {
+  completionVerificationCheckSchema,
+  completionVerificationReportSchema
+} from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("completion verification history lists and inspects bounded report summaries", async () => {
@@ -69,7 +74,7 @@ test("completion verification history lists and inspects bounded report summarie
           refs: ["tool_result_command"]
         },
         {
-          id: "delegation_results",
+          id: "delegated_results",
           status: "warning",
           summary: "Delegation result was not present.",
           refs: []
@@ -95,7 +100,7 @@ test("completion verification history lists and inspects bounded report summarie
     ]);
     assert.equal(listed.reports[0]?.verification_evidence_ref_count, 1);
     assert.deepEqual(listed.reports[0]?.failed_checks.map((check) => check.id), ["write_run_tool_results"]);
-    assert.deepEqual(listed.reports[0]?.warning_checks.map((check) => check.id), ["delegation_results"]);
+    assert.deepEqual(listed.reports[0]?.warning_checks.map((check) => check.id), ["delegated_results"]);
 
     const byId = await getCompletionVerificationReport(fixture.store, {
       completionRef: "completion_verification_new"
@@ -140,6 +145,32 @@ test("completion verification history lists and inspects bounded report summarie
   } finally {
     await fixture.cleanup();
   }
+});
+
+test("completion verification check schema rejects drifted delegated check ids", () => {
+  for (const id of delegateAgentActionContract.completion_gate_check_ids) {
+    assert.equal(completionVerificationCheckSchema.safeParse({
+      id,
+      status: "pass",
+      summary: `Delegated gate ${id} passed.`,
+      refs: []
+    }).success, true);
+  }
+
+  assert.equal(completionVerificationCheckSchema.safeParse({
+    id: "delegation_results",
+    status: "warning",
+    summary: "Typo should not pass schema validation.",
+    refs: []
+  }).success, false);
+  assert.equal(completionVerificationReportSchema.safeParse(completionReport({
+    checks: [{
+      id: "delegation_results",
+      status: "warning",
+      summary: "Typo should make the report invalid.",
+      refs: []
+    }]
+  })).success, false);
 });
 
 async function createFixture(): Promise<{

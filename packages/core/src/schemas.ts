@@ -208,8 +208,17 @@ export const evidenceEventSchema = z.object({
   created_at: z.string().default(utcNow)
 });
 
+export const completionVerificationCheckIds = [
+  "completion_status",
+  "model_diagnostics",
+  "final_response",
+  "claimed_verification_refs",
+  "write_run_tool_results",
+  ...delegateAgentActionContract.completion_gate_check_ids
+] as const;
+
 export const completionVerificationCheckSchema = z.object({
-  id: z.string(),
+  id: z.enum(completionVerificationCheckIds),
   status: z.enum(["pass", "fail", "warning", "skipped"]),
   summary: z.string().min(1),
   refs: z.array(z.string()).default([])

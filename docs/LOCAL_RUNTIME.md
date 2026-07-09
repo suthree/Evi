@@ -2069,7 +2069,9 @@ delegated completion-gate checks in
 `packages/core/src/delegate_agent_completion_gate.ts`; schema validation, the
 live runner, Live Run Trace, replay checks, capability
 summaries, context read models, and GA project-design packets consume those
-shared contracts to avoid drift. The task
+shared contracts to avoid drift. Completion verification report schema accepts
+only the shared harness check ids plus those delegated completion-gate check ids
+so drifted spellings are rejected before they reach read models. The task
 must explicitly request bounded analysis, critique, review,
 inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or
