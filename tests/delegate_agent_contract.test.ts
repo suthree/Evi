@@ -43,6 +43,29 @@ test("delegate_agent context rejects named tool grants before dispatch", () => {
   assert.match(result.error, /must not grant tool\/write\/mutation, command\/test execution/);
 });
 
+test("delegate_agent context rejects read, search, fetch, and browse grants before dispatch", () => {
+  const contexts = [
+    `${VALID_DELEGATE_CONTEXT} The delegated subagent may read files under docs before returning findings.`,
+    `${VALID_DELEGATE_CONTEXT} The delegated subagent may search the repo before returning findings.`,
+    `${VALID_DELEGATE_CONTEXT} The delegated subagent may fetch URLs before returning findings.`,
+    `${VALID_DELEGATE_CONTEXT} The delegated subagent can inspect raw files before returning findings.`,
+    `${VALID_DELEGATE_CONTEXT} The delegated subagent is allowed to browse the web before returning findings.`
+  ];
+
+  for (const context of contexts) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: {
+        task: "Critique whether the answer needs more evidence.",
+        context
+      }
+    });
+
+    assert.equal(result.ok, false, context);
+    assert.match(result.error, /must not grant tool\/write\/mutation, command\/test execution/);
+  }
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",
@@ -82,5 +105,59 @@ test("delegated output rejects natural-language command and test execution claim
       assert.match(result.error, /must not claim .* command\/test execution/);
       assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
     }
+  }
+});
+
+test("delegated output rejects read, search, fetch, and browse tool claims", () => {
+  const outputs = [
+    JSON.stringify({
+      summary: "I read files under docs and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "I searched the repo and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "I fetched the URL and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "I browsed the website and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "我读取了文件，没有发现问题。",
+      findings_text: "无问题。"
+    }),
+    JSON.stringify({
+      summary: "我搜索了仓库，没有发现问题。",
+      findings_text: "无问题。"
+    })
+  ];
+
+  for (const output of outputs) {
+    const result = parseDelegatedOutput(output, DELEGATED_OUTPUT_SOURCE);
+    assert.equal(result.ok, false, output);
+    if (!result.ok) {
+      assert.match(result.error, /must not claim .* command\/test execution/);
+      assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
+    }
+  }
+});
+
+test("delegated output rejects exact raw task echo even when the task is short", () => {
+  const result = parseDelegatedOutput(JSON.stringify({
+    summary: "Short task echoed.",
+    findings_text: "Critique this?"
+  }), {
+    task: "Critique this?",
+    context: VALID_DELEGATE_CONTEXT
+  });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.error, /echoed raw delegated task/);
+    assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
   }
 });

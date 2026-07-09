@@ -612,7 +612,8 @@ function hasDirectTaskMutationIntent(text: string): boolean {
 function grantsDelegatedAuthority(text: string): boolean {
   return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES)
     || hasNearbyBoundary(text, AUTHORITY_COMMAND_GRANT_PREFIXES, TASK_COMMAND_EXECUTION_TERMS, 80)
-    || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80);
+    || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80)
+    || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80);
 }
 
 function reliesOnForbiddenDelegationSource(text: string): boolean {
@@ -796,6 +797,36 @@ const AUTHORITY_TOOL_GRANT_PREFIXES = [
   "允许调用"
 ];
 
+const AUTHORITY_READ_TOOL_GRANT_PREFIXES = [
+  "can read",
+  "may read",
+  "allowed to read",
+  "permission to read",
+  "authority to read",
+  "can inspect",
+  "may inspect",
+  "allowed to inspect",
+  "can search",
+  "may search",
+  "allowed to search",
+  "can fetch",
+  "may fetch",
+  "allowed to fetch",
+  "can browse",
+  "may browse",
+  "allowed to browse",
+  "可以读取",
+  "允许读取",
+  "可以检查",
+  "允许检查",
+  "可以搜索",
+  "允许搜索",
+  "可以抓取",
+  "允许抓取",
+  "可以浏览",
+  "允许浏览"
+];
+
 const DELEGATED_TOOL_SURFACE_TERMS = [
   "tool",
   "tools",
@@ -814,6 +845,38 @@ const DELEGATED_TOOL_SURFACE_TERMS = [
   "文件读取",
   "文件写入",
   "状态写入"
+];
+
+const DELEGATED_READ_TOOL_SURFACE_TERMS = [
+  "file",
+  "files",
+  "raw file",
+  "raw files",
+  "source file",
+  "source files",
+  "repo",
+  "repository",
+  "workspace",
+  "state",
+  "url",
+  "urls",
+  "http",
+  "https",
+  "web",
+  "website",
+  "page",
+  "pages",
+  "browser",
+  "browsing",
+  "文件",
+  "原始文件",
+  "源码文件",
+  "仓库",
+  "工作区",
+  "状态",
+  "网址",
+  "网页",
+  "浏览器"
 ];
 
 const SOURCE_DENIAL_TERMS = [
@@ -938,6 +1001,12 @@ function delegatedTextClaimsAuthority(value: string): boolean {
       text,
       DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES,
       DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS,
+      80
+    )
+    || hasNearbyBoundary(
+      text,
+      DELEGATED_OUTPUT_READ_TOOL_CLAIM_PREFIXES,
+      DELEGATED_READ_TOOL_SURFACE_TERMS,
       80
     );
 }
@@ -1068,6 +1137,39 @@ const DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES = [
   "调用了"
 ];
 
+const DELEGATED_OUTPUT_READ_TOOL_CLAIM_PREFIXES = [
+  "i read",
+  "i have read",
+  "i inspected",
+  "i have inspected",
+  "i searched",
+  "i have searched",
+  "i fetched",
+  "i have fetched",
+  "i browsed",
+  "i have browsed",
+  "delegated subagent read",
+  "delegated subagent inspected",
+  "delegated subagent searched",
+  "delegated subagent fetched",
+  "delegated subagent browsed",
+  "subagent read",
+  "subagent inspected",
+  "subagent searched",
+  "subagent fetched",
+  "subagent browsed",
+  "我读取了",
+  "读取了",
+  "我检查了",
+  "检查了",
+  "我搜索了",
+  "搜索了",
+  "我抓取了",
+  "抓取了",
+  "我浏览了",
+  "浏览了"
+];
+
 const DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS = [
   ...TASK_COMMAND_EXECUTION_TERMS,
   "test",
@@ -1093,8 +1195,8 @@ function delegatedOutputRawEcho(
 
 function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
   const source = normalizeRawEchoText(sourceText);
-  if (source.length < 40) return false;
   if (normalizedOutput.includes(source)) return true;
+  if (source.length < 40) return false;
   return source
     .split(/[.;\n]/)
     .map((chunk) => chunk.trim())

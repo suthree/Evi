@@ -1280,8 +1280,9 @@ authority and also grants tool/write/mutation, completion, expert scheduling,
 multi-agent orchestration, model fan-out, hidden memory, raw delegated artifact,
 unstated repo state, context expansion, or invented evidence-ref authority is
 invalid. Concrete command or tool-surface grants such as `tsc`, `pnpm`,
-`repo.search`, or `command.run` are rejected as command/tool authority grants
-even when the same context also states a no-tool boundary. The delegated
+`repo.search`, `command.run`, file reads, repo search, URL fetches, or web
+browsing are rejected as command/tool authority grants even when the same
+context also states a no-tool boundary. The delegated
 model must return a JSON object with non-empty `summary` and `findings_text`;
 `summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
@@ -1292,7 +1293,8 @@ contracts, rejects successful-looking outputs that echo raw delegated
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
 state, context expansion, or invented evidence-ref authority. Natural-language
 delegated output claims that it ran or executed tests, builds, commands, or
-checks are treated as command/test execution authority claims. The harness
+checks, or that it read files, searched the repo, fetched URLs, or browsed the
+web, are treated as delegated tool authority claims. The harness
 sanitizes successful delegated `summary`, `findings_text`, and raw preview
 before persisting the result or returning it as a sanitized `Delegated
 Observations` item. The live runner allows at most one

@@ -86,7 +86,7 @@ export const delegateAgentAuthoringContract = {
       "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
       "context omits delegated authority limits or main-harness completion ownership",
       "context simultaneously denies and grants delegated tool, write, mutation, command/test execution, completion, expert, or multi-agent scheduling authority",
-      "context grants external adapter, SOP/skill promotion, command/test execution, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
+      "context grants external adapter, SOP/skill promotion, command/test execution, file read, repo search, URL fetch, web browsing, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
     ],
     errors: {
       authority: "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.",
@@ -98,7 +98,7 @@ export const delegateAgentAuthoringContract = {
   },
   runner_input_contract: [
     "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-    "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+    "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
     "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, explicit payload/evidence source boundary, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
   ],
   capability_boundaries: [
@@ -106,9 +106,9 @@ export const delegateAgentAuthoringContract = {
     "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
     "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
     "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
-    "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
+    "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
   ],
-  delegated_model_authority_boundary: "Do not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
+  delegated_model_authority_boundary: "Do not claim tool/write/mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
 } as const;
 
 export const delegateAgentActionContract = {
@@ -145,7 +145,7 @@ export function formatDelegateAgentLiveInstruction(): string {
 
 export function formatDelegateAgentPayloadInstruction(): string {
   const outputShape = delegateAgentActionContract.output_keys.join("/");
-  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.`;
+  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.`;
 }
 
 export function formatDelegateAgentSubagentInstructions(): string[] {
