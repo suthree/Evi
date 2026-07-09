@@ -2572,7 +2572,23 @@ const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
   "i spawned expert",
   "i spawned experts",
   "completion is proven",
-  "final success is proven"
+  "final success is proven",
+  "我调用了工具",
+  "调用了工具",
+  "我运行了测试",
+  "运行了测试",
+  "我完成了验证",
+  "完成了验证",
+  "最终成功已经证明",
+  "最终成功已证明",
+  "我写入了状态",
+  "写入了状态",
+  "我调度了专家",
+  "调度了专家",
+  "编排了多 agent",
+  "编排了多智能体",
+  "运行了模型 fan out",
+  "使用了模型 fan out"
 ];
 
 function delegatedOutputRawEcho(
