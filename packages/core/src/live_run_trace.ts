@@ -32,6 +32,7 @@ export interface LiveRunTraceRound {
   action_counts: Record<string, number>;
   action_types: string[];
   delegated_action_ids: string[];
+  delegated_action_sequence_by_id: Record<string, number>;
   harness_action_types: string[];
 }
 
@@ -414,6 +415,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
     if (!parsed.success) continue;
     const actionTypes = parsed.data.actions.map((action) => action.type);
     const actionCounts = countBy(actionTypes);
+    const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,
@@ -421,10 +423,12 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
       completion_status: parsed.data.completion_claim.status,
       action_counts: actionCounts,
       action_types: Object.keys(actionCounts).sort(),
-      delegated_action_ids: parsed.data.actions
-        .filter((action) => action.type === "delegate_agent")
+      delegated_action_ids: delegateActions
         .map((action) => action.id)
         .sort(),
+      delegated_action_sequence_by_id: Object.fromEntries(delegateActions
+        .map((action, index) => [action.id, index + 1] as const)
+        .sort(([left], [right]) => left.localeCompare(right))),
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
   }

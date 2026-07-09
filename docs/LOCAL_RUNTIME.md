@@ -2109,9 +2109,10 @@ results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. Later traces can therefore distinguish real none values from
 older or malformed summaries that omitted the fields, without reading raw
 delegated context or delegated result bodies. Replay audit also validates the
-lineage pair: delegated dispatches must name the model-action envelope ref for
-their round and an action id declared by that round's `delegate_agent` actions,
-and dispatch-layer result failures must mirror `dispatch_failure_kind`,
+lineage tuple: delegated dispatches must name the model-action envelope ref for
+their round, an action id declared by that round's `delegate_agent` actions, and
+a sequence that matches the declared delegate action order. Dispatch-layer
+result failures must mirror `dispatch_failure_kind`,
 delegated output/model failures must keep `dispatch_failure_kind=none`, and
 passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated

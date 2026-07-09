@@ -370,6 +370,7 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
 function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const envelopeRefsByRound = new Map(trace.rounds.map((round) => [round.round, round.envelope_ref]));
   const delegatedActionIdsByRound = new Map(trace.rounds.map((round) => [round.round, new Set(round.delegated_action_ids)]));
+  const delegatedActionSequencesByRound = new Map(trace.rounds.map((round) => [round.round, round.delegated_action_sequence_by_id]));
   const missingEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.envelope_ref);
   const mismatchedEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => {
     if (!dispatch.envelope_ref) return false;
@@ -380,10 +381,15 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     const roundActionIds = delegatedActionIdsByRound.get(dispatch.round);
     return roundActionIds !== undefined && roundActionIds.size > 0 && !roundActionIds.has(dispatch.action_id);
   });
+  const mismatchedSequences = trace.delegated_dispatches.filter((dispatch) => {
+    const expectedSequence = delegatedActionSequencesByRound.get(dispatch.round)?.[dispatch.action_id];
+    return expectedSequence !== undefined && expectedSequence !== dispatch.sequence;
+  });
   const problemRefs = unique([
     ...missingEnvelopeRefs,
     ...mismatchedEnvelopeRefs,
-    ...mismatchedActionIds
+    ...mismatchedActionIds,
+    ...mismatchedSequences
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
   return {
     id: "delegated_dispatch_lineage",
@@ -392,7 +398,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
       `delegated_dispatches=${trace.delegated_dispatches.length}`,
       `missing_envelope_ref=${missingEnvelopeRefs.length}`,
       `mismatched_envelope_ref=${mismatchedEnvelopeRefs.length}`,
-      `mismatched_action_id=${mismatchedActionIds.length}`
+      `mismatched_action_id=${mismatchedActionIds.length}`,
+      `mismatched_sequence=${mismatchedSequences.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

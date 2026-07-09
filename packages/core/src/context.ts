@@ -952,6 +952,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     lines.push(`  summary: ${truncate(round.summary, 220)}`);
     if (round.delegated_action_ids.length > 0) {
       lines.push(`  delegated_action_ids: ${round.delegated_action_ids.join(", ")}`);
+      lines.push(`  delegated_action_sequence_by_id: ${renderCountMap(round.delegated_action_sequence_by_id)}`);
     }
     if (round.harness_action_types.length > 0) {
       lines.push(`  harness_action_types: ${round.harness_action_types.join(", ")}`);

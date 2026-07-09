@@ -2933,6 +2933,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /round_1: memory\/episodes\/session_trace_feishu_new-model-action-r1\.json/);
     assert.match(transport.sent[1].text, /action_counts: delegate_agent=1, record_evidence=1, use_tool=1/);
     assert.match(transport.sent[1].text, /delegated_action_ids: action_delegate_trace_feishu/);
+    assert.match(transport.sent[1].text, /delegated_action_sequence_by_id: action_delegate_trace_feishu=1/);
     assert.match(transport.sent[1].text, /harness_action_types: record_evidence/);
     assert.match(transport.sent[1].text, /This command is read-only/);
     assert.match(transport.sent[2].text, /Harness replay audits/);

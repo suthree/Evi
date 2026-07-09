@@ -1298,12 +1298,14 @@ Full delegated outputs are scanned before JSON extraction, and raw
 task/context echo failures plus delegated output authority/source-claim
 failures suppress the raw output preview. Delegated dispatch metadata also
 records the model-action `envelope_ref` that declared the delegated action, and
-Live Run Trace exposes the declaring round's safe `delegate_agent` action ids,
-so trace and replay can audit lineage from the model round and action id to the
-delegated result without reading delegated artifact bodies or granting
-delegated completion authority. Missing or mismatched envelope refs, or
-dispatch action ids not declared by the round envelope, are replay warnings, not
-permission to infer hidden context. Dispatch-layer rejects also carry a safe
+Live Run Trace exposes the declaring round's safe `delegate_agent` action ids
+plus an `action_id -> sequence` map, so trace and replay can audit lineage from
+the model round, action id, and declared delegate order to the delegated result
+without reading delegated artifact bodies or granting delegated completion
+authority. Missing or mismatched envelope refs, dispatch action ids not declared
+by the round envelope, or dispatch sequences that do not match the declared
+delegate action order are replay warnings, not permission to infer hidden
+context. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no

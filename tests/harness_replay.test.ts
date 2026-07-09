@@ -49,6 +49,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.summary.includes("missing_envelope_ref=0")
         && check.summary.includes("mismatched_envelope_ref=0")
         && check.summary.includes("mismatched_action_id=0")
+        && check.summary.includes("mismatched_sequence=0")
     ), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_action_coverage"
@@ -213,6 +214,40 @@ test("harness replay audit warns when delegated dispatch action id is not declar
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /mismatched_action_id=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_wrong_action")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegated dispatch sequence differs from its round action order", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-sequence-lineage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "wrong_sequence",
+      actionId: "action_delegate_replay",
+      sequence: 2,
+      contractStatus: "failed",
+      dispatchFailureKind: "dispatch_limit_exceeded",
+      resultFailureKind: "dispatch_limit_exceeded",
+      ok: false
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_lineage");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /mismatched_action_id=0/);
+    assert.match(check?.summary ?? "", /mismatched_sequence=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_wrong_sequence")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });

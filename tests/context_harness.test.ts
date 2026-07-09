@@ -2039,6 +2039,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /round_1: memory\/episodes\/session_live_trace_context-model-action-r1\.json/);
     assert.match(rendered.markdown, /action_counts: delegate_agent=1, record_evidence=1, use_tool=1/);
     assert.match(rendered.markdown, /delegated_action_ids: action_delegate_trace_context/);
+    assert.match(rendered.markdown, /delegated_action_sequence_by_id: action_delegate_trace_context=1/);
     assert.match(rendered.markdown, /harness_action_types: record_evidence/);
     assert.match(rendered.markdown, /## Harness Replay Audits/);
     assert.match(rendered.markdown, new RegExp(replay.id));
