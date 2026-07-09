@@ -285,6 +285,67 @@ test("harness replay audit fails verified traces that claim delegated refs as pr
   }
 });
 
+test("harness replay audit distinguishes fallback delegated proof refs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-fallback-proof-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    const delegatedRef = "memory/episodes/session_replay_test-delegated_result_invalid.json";
+    await writeReplayTraceFixture(store, undefined, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated result(s) passed contract validation; they are not completion proof.",
+      refs: [delegatedRef]
+    }], {
+      includeDelegatedResultRefs: false
+    });
+    await store.writeJson("memory/episodes/session_replay_test-completion-verification.json", {
+      id: "completion_verification_replay_test",
+      session_id: "session_replay_test",
+      turn_id: "turn_replay_test",
+      completion_status: "done",
+      verification_status: "passed",
+      verified: true,
+      summary: "Drifted report claimed a fallback delegated result as proof.",
+      envelope_ref: "memory/episodes/session_replay_test-model-action-r2.json",
+      final_response_ref: "memory/episodes/session_replay_test-final-response.md",
+      claimed_verification_refs: [delegatedRef],
+      observation_refs: [
+        "memory/episodes/session_replay_test-tool_result_write.json",
+        delegatedRef
+      ],
+      checks: [{
+        id: "delegated_results",
+        status: "pass",
+        summary: "All delegated result(s) passed contract validation; they are not completion proof.",
+        refs: [delegatedRef]
+      }],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(check?.status, "fail");
+    assert.deepEqual(report.delegated_result_report_refs, []);
+    assert.deepEqual(report.delegated_result_event_fallback_refs, [delegatedRef]);
+    assert.match(check?.summary ?? "", /claimed_delegated_refs=1/);
+    assert.match(check?.summary ?? "", /claimed_delegated_report_refs=0/);
+    assert.match(check?.summary ?? "", /claimed_delegated_event_fallback_refs=1/);
+    assert.equal(check?.refs.includes(delegatedRef), true);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when delegated dispatch action id is not declared by its round envelope", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-action-lineage-"));
   const repoRoot = join(root, "repo");

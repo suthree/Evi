@@ -2143,11 +2143,14 @@ replay may cite the bounded event id but must not reconstruct the missing
 delegated artifact body. Live Run Trace also keeps completion-report
 `delegated_result_refs` separate from
 `delegated_result_event_fallback_refs`, and replay warns when dispatch result
-refs are only recovered from fallback. Replay
-also compares `claimed_verification_refs` with completion-report
-`delegated_result_refs`; a verified trace that claims a delegated result ref as
-completion proof fails `verification_evidence_lineage` even if the delegated
-completion-gate check was omitted or drifted. Replay also checks the model
+refs are only recovered from fallback. Replay also compares
+`claimed_verification_refs` with delegated result refs from the completion
+report plus event fallback, and its lineage summary separates
+`claimed_delegated_report_refs` from
+`claimed_delegated_event_fallback_refs`; a verified trace that claims either
+kind of delegated result ref as completion proof fails
+`verification_evidence_lineage` even if the delegated completion-gate check was
+omitted or drifted. Replay also checks the model
 invocation boundary: input contract or round-limit rejects must record
 `model_invoked=false`, and results after delegated model dispatch must record
 `model_invoked=true`. Live Run Trace

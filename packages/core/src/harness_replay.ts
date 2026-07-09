@@ -377,9 +377,13 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
 function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const evidenceRefs = new Set(trace.verification_evidence_refs.map((item) => item.ref));
   const delegatedRefs = new Set(trace.delegated_result_refs);
+  const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
+  const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
   const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
   const claimedDelegatedRefs = trace.claimed_verification_refs
     .filter((ref) => delegatedRefs.has(ref));
+  const claimedDelegatedReportRefs = claimedDelegatedRefs.filter((ref) => delegatedReportRefs.has(ref));
+  const claimedDelegatedEventFallbackRefs = claimedDelegatedRefs.filter((ref) => delegatedEventFallbackRefs.has(ref));
   const missingClaimedLineage = trace.claimed_verification_refs.filter((ref) =>
     !delegatedRefs.has(ref) && !evidenceRefs.has(ref)
   );
@@ -410,6 +414,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `independent_evidence_refs=${independentEvidenceRefs.length}`,
       `failed_delegation_recovery_refs=${recoveryEvidenceRefs.length}`,
       `claimed_delegated_refs=${claimedDelegatedRefs.length}`,
+      `claimed_delegated_report_refs=${claimedDelegatedReportRefs.length}`,
+      `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`
@@ -418,6 +424,9 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       ? unique([
         trace.report_ref,
         ...claimedDelegatedRefs,
+        ...trace.delegated_dispatches
+          .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
+          .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
         ...trace.delegated_completion_gate_checks
           .filter((check) =>

@@ -1496,7 +1496,8 @@ report `delegated_result_refs` field instead of only recovered from event
 fallback, whether delegated result events have matching dispatch metadata and
 action ids declared by their round envelope, whether dispatch metadata points
 to a missing model-action round or to a round without `delegate_agent` actions,
-and whether
+whether completion proof claims cite report-declared delegated refs or
+event-fallback delegated refs, and whether
 over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
 omits the field instead of explicitly recording `none`. Replay also checks
