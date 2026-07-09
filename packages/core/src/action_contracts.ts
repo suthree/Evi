@@ -39,11 +39,18 @@ export const delegateAgentResultFailureKindsFromDispatch = [
   "input_contract_failed"
 ] as const;
 
+export const delegateAgentCompletionGateCheckId = {
+  claimedRefsBoundToEvidence: "claimed_refs_bound_to_evidence",
+  delegatedSelfReportRefs: "delegated_self_report_refs",
+  delegatedIndependentEvidence: "delegated_independent_evidence",
+  delegatedResults: "delegated_results"
+} as const;
+
 export const delegateAgentCompletionGateCheckIds = [
-  "claimed_refs_bound_to_evidence",
-  "delegated_self_report_refs",
-  "delegated_independent_evidence",
-  "delegated_results"
+  delegateAgentCompletionGateCheckId.claimedRefsBoundToEvidence,
+  delegateAgentCompletionGateCheckId.delegatedSelfReportRefs,
+  delegateAgentCompletionGateCheckId.delegatedIndependentEvidence,
+  delegateAgentCompletionGateCheckId.delegatedResults
 ] as const;
 
 export const delegateAgentActionContract = {

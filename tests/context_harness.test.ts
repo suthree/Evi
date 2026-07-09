@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { delegateAgentActionContract } from "../packages/core/src/action_contracts.js";
 import {
   buildTurnSnapshot,
   compactGaPlanAfterVerifyCommand,
@@ -3709,6 +3710,9 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.deepEqual(report.claimed_verification_refs, []);
+    for (const checkId of delegateAgentActionContract.completion_gate_check_ids) {
+      assert.equal(report.checks.some((check) => check.id === checkId), true);
+    }
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "pass");
     const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
     assert.equal(independentCheck?.status, "fail");

@@ -1,5 +1,9 @@
 import { basename } from "node:path";
 import {
+  delegateAgentCompletionGateCheckId,
+  delegateAgentCompletionGateCheckIds
+} from "./action_contracts.js";
+import {
   completionVerificationReportSchema,
   evidenceEventSchema,
   modelActionEnvelopeSchema,
@@ -18,12 +22,7 @@ const HARNESS_ACTION_TYPES = new Set([
   "pause_autonomy"
 ]);
 
-const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set([
-  "claimed_refs_bound_to_evidence",
-  "delegated_self_report_refs",
-  "delegated_independent_evidence",
-  "delegated_results"
-]);
+const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set<string>(delegateAgentCompletionGateCheckIds);
 
 export interface LiveRunTraceRound {
   round: number;
@@ -381,7 +380,7 @@ function delegatedFailureCount(report: CompletionVerificationReport): number {
   const typedCount = report.delegated_result_failure_kinds.reduce((sum, item) => sum + item.count, 0);
   if (typedCount > 0) return typedCount;
 
-  const check = report.checks.find((item) => item.id === "delegated_results");
+  const check = report.checks.find((item) => item.id === delegateAgentCompletionGateCheckId.delegatedResults);
   if (!check || (check.status !== "fail" && check.status !== "warning")) return 0;
   const match = check.summary.match(/Failed delegated result\(s\):\s*(\d+)/);
   if (match) return Number(match[1]);

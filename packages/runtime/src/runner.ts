@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import { delegateAgentCompletionGateCheckId } from "../../core/src/action_contracts.js";
 import { auditSop } from "../../core/src/audit.js";
 import { buildTurnSnapshot, renderContextBundleWithManifest, type MemoryRecallHit } from "../../core/src/context.js";
 import { listContextPressure } from "../../core/src/context_pressure.js";
@@ -2759,7 +2760,7 @@ function verifyCompletionClaim(args: {
   });
   const failedDelegations = args.delegatedResults.filter((result) => !result.ok);
   checks.push({
-    id: "claimed_refs_bound_to_evidence",
+    id: delegateAgentCompletionGateCheckId.claimedRefsBoundToEvidence,
     status: unboundClaimedRefs.length > 0
       ? "fail"
       : nonDelegatedClaimedRefs.length > 0
@@ -2773,7 +2774,7 @@ function verifyCompletionClaim(args: {
     refs: unboundClaimedRefs.length > 0 ? unboundClaimedRefs : boundClaimedRefs
   });
   checks.push({
-    id: "delegated_self_report_refs",
+    id: delegateAgentCompletionGateCheckId.delegatedSelfReportRefs,
     status: delegatedProofRefs.length > 0 ? "fail" : args.delegatedResults.length > 0 ? "pass" : "skipped",
     summary: delegatedProofRefs.length > 0
       ? "Done claim used delegated self-report ref(s) as verification proof."
@@ -2796,7 +2797,7 @@ function verifyCompletionClaim(args: {
   const failedDelegationWithoutRecovery = failedDelegations.length > 0 && delegatedRecoveryEvidenceRefs.length === 0;
   const failedDelegationWithoutVerification = failedDelegations.length > 0 && failedDelegationVerificationRefs.length === 0;
   checks.push({
-    id: "delegated_independent_evidence",
+    id: delegateAgentCompletionGateCheckId.delegatedIndependentEvidence,
     status: args.delegatedResults.length === 0
       ? "skipped"
       : failedDelegationWithoutRecovery || failedDelegationWithoutVerification
@@ -2860,7 +2861,7 @@ function delegatedResultsCheck(
   }
   const failureKinds = summarizeDelegatedResultFailureKinds(failedDelegations);
   return {
-    id: "delegated_results",
+    id: delegateAgentCompletionGateCheckId.delegatedResults,
     status,
     summary: failedDelegations.length > 0
       ? recoveryEvidenceRefs.length > 0

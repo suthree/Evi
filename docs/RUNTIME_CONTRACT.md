@@ -1252,9 +1252,10 @@ has no tools or memory in the current runtime. The action payload must provide
 non-empty `task` and `context` strings before the delegated model is called, and
 `task` is capped at 1000 chars while `context` is capped at 12000 chars. The
 shared literal contract lives in `packages/core/src/action_contracts.ts`; the
-schemas, harness replay checks, capability catalog, and GA project-design read
-model derive their limits and failure-kind values from that source instead of
-redeclaring them.
+schemas, live runner, Live Run Trace, harness replay checks, capability
+catalog, and GA project-design read model derive their limits,
+failure-kind values, and delegated completion-gate check ids from that source
+instead of redeclaring them.
 `task` itself must explicitly request bounded analysis, critique, review,
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct
