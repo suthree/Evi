@@ -369,15 +369,21 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
 
 function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const envelopeRefsByRound = new Map(trace.rounds.map((round) => [round.round, round.envelope_ref]));
+  const delegatedActionIdsByRound = new Map(trace.rounds.map((round) => [round.round, new Set(round.delegated_action_ids)]));
   const missingEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.envelope_ref);
   const mismatchedEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => {
     if (!dispatch.envelope_ref) return false;
     const roundEnvelopeRef = envelopeRefsByRound.get(dispatch.round);
     return roundEnvelopeRef !== undefined && roundEnvelopeRef !== dispatch.envelope_ref;
   });
+  const mismatchedActionIds = trace.delegated_dispatches.filter((dispatch) => {
+    const roundActionIds = delegatedActionIdsByRound.get(dispatch.round);
+    return roundActionIds !== undefined && roundActionIds.size > 0 && !roundActionIds.has(dispatch.action_id);
+  });
   const problemRefs = unique([
     ...missingEnvelopeRefs,
-    ...mismatchedEnvelopeRefs
+    ...mismatchedEnvelopeRefs,
+    ...mismatchedActionIds
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
   return {
     id: "delegated_dispatch_lineage",
@@ -385,7 +391,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     summary: [
       `delegated_dispatches=${trace.delegated_dispatches.length}`,
       `missing_envelope_ref=${missingEnvelopeRefs.length}`,
-      `mismatched_envelope_ref=${mismatchedEnvelopeRefs.length}`
+      `mismatched_envelope_ref=${mismatchedEnvelopeRefs.length}`,
+      `mismatched_action_id=${mismatchedActionIds.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

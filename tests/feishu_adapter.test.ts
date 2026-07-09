@@ -2720,6 +2720,15 @@ test("operator live run trace commands read bounded run metadata without running
             tool: "file.read",
             path: "RAW_TRACE_TOOL_PAYLOAD_SHOULD_NOT_BE_SENT"
           }
+        },
+        {
+          id: "action_delegate_trace_feishu",
+          type: "delegate_agent",
+          rationale: "Request bounded trace critique.",
+          payload: {
+            task: "Critique Feishu trace delegated lineage metadata.",
+            context: "No tool, write, or mutation authority is available; completion remains with the main harness; output shape is summary/findings_text; use only explicit payload context or named evidence refs."
+          }
         }
       ],
       completion_claim: {
@@ -2922,7 +2931,8 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /after: dirty \(1 changed\)/);
     assert.match(transport.sent[1].text, /target_changed: true/);
     assert.match(transport.sent[1].text, /round_1: memory\/episodes\/session_trace_feishu_new-model-action-r1\.json/);
-    assert.match(transport.sent[1].text, /action_counts: record_evidence=1, use_tool=1/);
+    assert.match(transport.sent[1].text, /action_counts: delegate_agent=1, record_evidence=1, use_tool=1/);
+    assert.match(transport.sent[1].text, /delegated_action_ids: action_delegate_trace_feishu/);
     assert.match(transport.sent[1].text, /harness_action_types: record_evidence/);
     assert.match(transport.sent[1].text, /This command is read-only/);
     assert.match(transport.sent[2].text, /Harness replay audits/);

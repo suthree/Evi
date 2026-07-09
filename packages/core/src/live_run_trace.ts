@@ -31,6 +31,7 @@ export interface LiveRunTraceRound {
   completion_status: ModelActionEnvelope["completion_claim"]["status"];
   action_counts: Record<string, number>;
   action_types: string[];
+  delegated_action_ids: string[];
   harness_action_types: string[];
 }
 
@@ -420,6 +421,10 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
       completion_status: parsed.data.completion_claim.status,
       action_counts: actionCounts,
       action_types: Object.keys(actionCounts).sort(),
+      delegated_action_ids: parsed.data.actions
+        .filter((action) => action.type === "delegate_agent")
+        .map((action) => action.id)
+        .sort(),
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
   }

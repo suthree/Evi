@@ -1297,10 +1297,12 @@ previews are sanitized before they are persisted or returned as observations.
 Full delegated outputs are scanned before JSON extraction, and raw
 task/context echo failures plus delegated output authority/source-claim
 failures suppress the raw output preview. Delegated dispatch metadata also
-records the model-action `envelope_ref` that declared the delegated action, so
-trace and replay can audit lineage from the model round to the delegated result
-without reading delegated artifact bodies or granting delegated completion
-authority. Missing or mismatched envelope refs are replay warnings, not
+records the model-action `envelope_ref` that declared the delegated action, and
+Live Run Trace exposes the declaring round's safe `delegate_agent` action ids,
+so trace and replay can audit lineage from the model round and action id to the
+delegated result without reading delegated artifact bodies or granting
+delegated completion authority. Missing or mismatched envelope refs, or
+dispatch action ids not declared by the round envelope, are replay warnings, not
 permission to infer hidden context. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
@@ -1437,10 +1439,12 @@ the command chooses the latest bounded live run trace. The command writes
 `governance/replays/<id>.json`, `governance/replays/<id>.md`, and one
 `audit_result` evidence event that cites the replay report and source trace.
 The audit records only replay metadata: source trace refs, completion/session/
-turn ids, per-round action counts, safe delegated dispatch metadata, check
-statuses, report refs, and the fixed replay boundary. It checks whether
+turn ids, per-round action counts, safe delegated action ids, safe delegated
+dispatch metadata, check statuses, report refs, and the fixed replay boundary.
+It checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
-whether delegated result events have matching dispatch metadata, and whether
+whether delegated result events have matching dispatch metadata and action ids
+declared by their round envelope, and whether
 over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
 omits the field instead of explicitly recording `none`. It also checks

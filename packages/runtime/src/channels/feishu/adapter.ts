@@ -4934,6 +4934,7 @@ function renderLiveRunTraceRound(round: LiveRunTraceRound): string[] {
     `  summary: ${truncateText(round.summary, 260)}`,
     `  action_counts: ${renderStatusCounts(round.action_counts)}`,
     `  action_types: ${round.action_types.join(", ") || "none"}`,
+    `  delegated_action_ids: ${round.delegated_action_ids.join(", ") || "none"}`,
     `  harness_action_types: ${round.harness_action_types.join(", ") || "none"}`
   ];
 }

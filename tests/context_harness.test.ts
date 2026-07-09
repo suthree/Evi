@@ -1787,6 +1787,15 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
             tool: "file.read",
             path: "RAW_TOOL_PAYLOAD_SHOULD_NOT_BE_IN_CONTEXT"
           }
+        },
+        {
+          id: "action_delegate_trace_context",
+          type: "delegate_agent",
+          rationale: "Request bounded trace critique.",
+          payload: {
+            task: "Critique live trace delegated lineage metadata.",
+            context: "No tool, write, or mutation authority is available; completion remains with the main harness; output shape is summary/findings_text; use only explicit payload context or named evidence refs."
+          }
         }
       ],
       completion_claim: {
@@ -2028,7 +2037,8 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /repo_write_guards: 1/);
     assert.match(rendered.markdown, /repo_write_guard: docs\/generated\.md before=dirty after=dirty changed_files=1->2 delta=1 preexisting_dirty=true target_changed=true/);
     assert.match(rendered.markdown, /round_1: memory\/episodes\/session_live_trace_context-model-action-r1\.json/);
-    assert.match(rendered.markdown, /action_counts: record_evidence=1, use_tool=1/);
+    assert.match(rendered.markdown, /action_counts: delegate_agent=1, record_evidence=1, use_tool=1/);
+    assert.match(rendered.markdown, /delegated_action_ids: action_delegate_trace_context/);
     assert.match(rendered.markdown, /harness_action_types: record_evidence/);
     assert.match(rendered.markdown, /## Harness Replay Audits/);
     assert.match(rendered.markdown, new RegExp(replay.id));
