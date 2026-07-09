@@ -493,7 +493,7 @@ export class LiveAgentRunner {
           kind: "delegated_result",
           summary: delegatedResultEventSummary(delegated),
           artifact_refs: [delegatedRef],
-          delegated_dispatch: delegatedDispatchEventMetadata(delegated)
+          delegated_dispatch: delegatedDispatchEventMetadata(delegated, envelopeRef)
         });
         evidenceRefs.push(delegatedEvent.id);
         await this.store.appendJsonl("memory/episodes/events.jsonl", delegatedEvent);
@@ -2977,9 +2977,13 @@ function delegatedResultEventSummary(result: DelegatedResult): string {
   ].join(" ");
 }
 
-function delegatedDispatchEventMetadata(result: DelegatedResult): NonNullable<EvidenceEvent["delegated_dispatch"]> {
+function delegatedDispatchEventMetadata(
+  result: DelegatedResult,
+  envelopeRef: string
+): NonNullable<EvidenceEvent["delegated_dispatch"]> {
   return {
     action_id: result.action_id,
+    envelope_ref: envelopeRef,
     round: result.round,
     sequence: result.sequence,
     task_chars: result.task_chars,

@@ -4915,6 +4915,7 @@ function renderLiveRunDelegatedDispatch(dispatch: LiveRunTraceSummary["delegated
     `- action_id: ${dispatch.action_id}`,
     `  round: ${dispatch.round}`,
     `  sequence: ${dispatch.sequence}`,
+    `  envelope_ref: ${dispatch.envelope_ref ?? "none"}`,
     `  contract_status: ${dispatch.contract_status}`,
     `  ok: ${dispatch.ok}`,
     `  dispatch_failure_kind: ${dispatch.dispatch_failure_kind ?? "none"}`,

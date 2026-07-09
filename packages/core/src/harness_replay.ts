@@ -243,7 +243,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     ...(report.delegated_dispatches.length > 0
       ? [
         ...report.delegated_dispatches.slice(0, DELEGATED_DISPATCH_MARKDOWN_LIMIT).map((dispatch) =>
-          `- action_id=${dispatch.action_id}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+          `- action_id=${dispatch.action_id}; envelope_ref=${dispatch.envelope_ref ?? "none"}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
         ),
         ...(report.delegated_dispatches.length > DELEGATED_DISPATCH_MARKDOWN_LIMIT
           ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
@@ -301,6 +301,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
     },
     delegatedActionCoverageCheck(trace),
+    delegatedDispatchLineageCheck(trace),
     delegatedDispatchFailureKindCheck(trace),
     delegatedDispatchRoundLimitCheck(trace),
     delegatedResultFailureKindCheck(trace),
@@ -359,6 +360,35 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
     ].join("; "),
     refs: missingRounds.length > 0
       ? missingRounds.map((round) => round.envelope_ref)
+      : unique([
+          ...trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > 0).map((round) => round.envelope_ref),
+          ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+        ])
+  };
+}
+
+function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const envelopeRefsByRound = new Map(trace.rounds.map((round) => [round.round, round.envelope_ref]));
+  const missingEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.envelope_ref);
+  const mismatchedEnvelopeRefs = trace.delegated_dispatches.filter((dispatch) => {
+    if (!dispatch.envelope_ref) return false;
+    const roundEnvelopeRef = envelopeRefsByRound.get(dispatch.round);
+    return roundEnvelopeRef !== undefined && roundEnvelopeRef !== dispatch.envelope_ref;
+  });
+  const problemRefs = unique([
+    ...missingEnvelopeRefs,
+    ...mismatchedEnvelopeRefs
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_dispatch_lineage",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `delegated_dispatches=${trace.delegated_dispatches.length}`,
+      `missing_envelope_ref=${missingEnvelopeRefs.length}`,
+      `mismatched_envelope_ref=${mismatchedEnvelopeRefs.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
       : unique([
           ...trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > 0).map((round) => round.envelope_ref),
           ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
@@ -572,6 +602,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   const createdAt = stringField(value, "created_at");
   const resultRef = stringField(value, "result_ref");
   const actionId = stringField(value, "action_id");
+  const envelopeRef = stringField(value, "envelope_ref");
   const contractStatus = stringField(value, "contract_status");
   const dispatchFailureKind = stringField(value, "dispatch_failure_kind");
   const resultFailureKind = stringField(value, "result_failure_kind");
@@ -587,6 +618,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     created_at: createdAt,
     result_ref: resultRef,
     action_id: actionId,
+    envelope_ref: envelopeRef,
     round,
     sequence,
     task_chars: taskChars,

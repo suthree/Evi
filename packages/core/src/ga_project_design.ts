@@ -1255,6 +1255,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       metadata_source: "Live Run Trace delegated dispatch metadata derived from harness-owned delegated_result event summaries only",
       required_metadata: [
         "action_id",
+        "envelope_ref",
         "round",
         "sequence",
         "task_chars",
@@ -1268,14 +1269,16 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_completion_gate",
         "delegated_action_coverage",
         "delegated_dispatch_metadata",
+        "delegated_dispatch_lineage",
         "delegated_dispatch_failure_kind",
         "delegated_dispatch_round_limit",
         "delegated_result_failure_kind",
         "delegated_results"
       ],
       proof_boundary: [
-        "Live Run Trace exposes safe delegated dispatch metadata, failure kinds, result refs, and per-round action counts without reading delegated artifact bodies",
+        "Live Run Trace exposes safe delegated dispatch metadata, model-action envelope refs, failure kinds, result refs, and per-round action counts without reading delegated artifact bodies",
         "trace and replay audit JSON preserve the full delegated dispatch metadata set",
+        "replay audit warns when a delegated dispatch lacks a model-action envelope ref or points at a different round envelope",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
         "replay audit warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
         "replay audit must not read delegated result artifact bodies or raw delegated task/context/output"

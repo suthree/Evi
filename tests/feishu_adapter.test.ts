@@ -2830,6 +2830,18 @@ test("operator live run trace commands read bounded run metadata without running
       kind: "delegated_result",
       summary: "Delegated result: action_id=action_delegate_trace_feishu; round=1; sequence=1; task_chars=55; context_chars=99; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false.",
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+      delegated_dispatch: {
+        action_id: "action_delegate_trace_feishu",
+        envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
+        round: 1,
+        sequence: 1,
+        task_chars: 55,
+        context_chars: 99,
+        contract_status: "failed",
+        dispatch_failure_kind: "none",
+        result_failure_kind: "delegated_output_contract_failed",
+        ok: false
+      },
       created_at: "2026-06-30T00:29:03.500Z"
     });
     await fixture.store.appendJsonl("memory/episodes/events.jsonl", {
@@ -2898,6 +2910,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /action_id: action_delegate_trace_feishu/);
     assert.match(transport.sent[1].text, /round: 1/);
     assert.match(transport.sent[1].text, /sequence: 1/);
+    assert.match(transport.sent[1].text, /envelope_ref: memory\/episodes\/session_trace_feishu_new-model-action-r1\.json/);
     assert.match(transport.sent[1].text, /contract_status: failed/);
     assert.match(transport.sent[1].text, /dispatch_failure_kind: none/);
     assert.match(transport.sent[1].text, /result_failure_kind: delegated_output_contract_failed/);
@@ -2924,12 +2937,14 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(replayDetailText, /replay_result: metadata_replay/);
     assert.match(replayDetailText, /delegated_dispatches=1/);
     assert.match(replayDetailText, /delegated_dispatch_metadata: pass/);
+    assert.match(replayDetailText, /delegated_dispatch_lineage: pass/);
     assert.match(replayDetailText, /delegated_dispatch_failure_kind: pass/);
     assert.match(replayDetailText, /delegated_dispatch_round_limit: pass/);
     assert.match(replayDetailText, /delegated_result_failure_kind: pass/);
     assert.match(replayDetailText, /delegated_result_contract: warning/);
     assert.match(replayDetailText, /Delegated dispatches:/);
     assert.match(replayDetailText, /action_id: action_delegate_trace_feishu/);
+    assert.match(replayDetailText, /envelope_ref: memory\/episodes\/session_trace_feishu_new-model-action-r1\.json/);
     assert.match(replayDetailText, /round: 1/);
     assert.match(replayDetailText, /sequence: 1/);
     assert.match(replayDetailText, /dispatch_failure_kind: none/);

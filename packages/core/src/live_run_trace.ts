@@ -63,6 +63,7 @@ export interface LiveRunDelegatedDispatchSummary {
   created_at: string;
   result_ref: string;
   action_id: string;
+  envelope_ref: string | null;
   round: number;
   sequence: number;
   task_chars: number;
@@ -294,6 +295,7 @@ function delegatedDispatchFromEventMetadata(
   if (!metadata) return null;
   return {
     action_id: metadata.action_id,
+    envelope_ref: metadata.envelope_ref,
     round: metadata.round,
     sequence: metadata.sequence,
     task_chars: metadata.task_chars,
@@ -314,6 +316,7 @@ function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDi
   const resultFailureKind = match[8];
   return {
     action_id: match[1].trim(),
+    envelope_ref: null,
     round: Number.parseInt(match[2], 10),
     sequence: Number.parseInt(match[3], 10),
     task_chars: Number.parseInt(match[4], 10),

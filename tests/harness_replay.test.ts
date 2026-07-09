@@ -44,6 +44,12 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     ), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) =>
+      check.id === "delegated_dispatch_lineage"
+        && check.status === "pass"
+        && check.summary.includes("missing_envelope_ref=0")
+        && check.summary.includes("mismatched_envelope_ref=0")
+    ), true);
+    assert.equal(report.checks.some((check) =>
       check.id === "delegated_action_coverage"
         && check.status === "pass"
         && check.summary.includes("missing_delegate_dispatches=0")
@@ -68,6 +74,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       event_id: dispatch.event_id,
       result_ref: dispatch.result_ref,
       action_id: dispatch.action_id,
+      envelope_ref: dispatch.envelope_ref,
       round: dispatch.round,
       sequence: dispatch.sequence,
       task_chars: dispatch.task_chars,
@@ -82,6 +89,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       event_id: "evidence_replay_delegated",
       result_ref: `memory/episodes/session_replay_test-delegated_result_invalid.json`,
       action_id: "action_delegate_replay",
+      envelope_ref: "memory/episodes/session_replay_test-model-action-r1.json",
       round: 1,
       sequence: 2,
       task_chars: 33,
@@ -475,9 +483,11 @@ test("harness replay audit keeps all delegated dispatch metadata", async () => {
   }
 });
 
+const DEFAULT_REPLAY_DELEGATED_SUMMARY = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false.";
+
 async function writeReplayTraceFixture(
   store: AgentStore,
-  delegatedSummary = "Delegated result: action_id=action_delegate_replay; round=1; sequence=2; task_chars=33; context_chars=77; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false.",
+  delegatedSummary = DEFAULT_REPLAY_DELEGATED_SUMMARY,
   delegatedResultChecks = [{
     id: "delegated_results",
     status: "fail",
@@ -615,6 +625,22 @@ async function writeReplayTraceFixture(
     kind: "delegated_result",
     summary: delegatedSummary,
     artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+    ...(delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY
+      ? {
+        delegated_dispatch: {
+          action_id: "action_delegate_replay",
+          envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
+          round: 1,
+          sequence: 2,
+          task_chars: 33,
+          context_chars: 77,
+          contract_status: "failed",
+          dispatch_failure_kind: "dispatch_limit_exceeded",
+          result_failure_kind: "dispatch_limit_exceeded",
+          ok: false
+        }
+      }
+      : {}),
     created_at: "2026-06-30T01:00:03.500Z"
   });
   await store.appendJsonl("memory/episodes/events.jsonl", {

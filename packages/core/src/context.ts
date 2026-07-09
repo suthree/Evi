@@ -940,7 +940,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     if (check.refs.length > 0) lines.push(`  refs: ${check.refs.slice(0, 5).join(", ")}`);
   }
   for (const dispatch of trace.delegated_dispatches.slice(0, 3)) {
-    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} ref=${dispatch.result_ref}`);
+    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} envelope_ref=${dispatch.envelope_ref ?? "none"} ref=${dispatch.result_ref}`);
   }
   for (const guard of trace.repo_write_guards.slice(0, 3)) {
     lines.push(`- repo_write_guard: ${truncate(guard.path, 180)} before=${guard.before_status} after=${guard.after_status} changed_files=${guard.before_changed_file_count}->${guard.after_changed_file_count} delta=${guard.changed_file_count_delta} preexisting_dirty=${guard.preexisting_dirty} target_changed=${guard.target_changed_after_write}`);
@@ -998,7 +998,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 9)) {
+  for (const check of replay.checks.slice(0, 10)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }

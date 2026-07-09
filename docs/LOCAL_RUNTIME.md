@@ -2096,7 +2096,7 @@ hidden-source, raw-artifact, context-expansion, or invented-evidence authority
 fails the delegated output contract with raw preview suppressed. Delegated
 model request failures are recorded as failed delegated results with sanitized
 error text before persistence and observation feedback.
-Each delegated result also records action id, round, sequence,
+Each delegated result also records action id, model-action envelope ref, round, sequence,
 task/context character counts, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
 delegated-model contract failures record `dispatch_failure_kind=none`
@@ -2109,7 +2109,8 @@ results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. Later traces can therefore distinguish real none values from
 older or malformed summaries that omitted the fields, without reading raw
 delegated context or delegated result bodies. Replay audit also validates the
-pair: dispatch-layer result failures must mirror `dispatch_failure_kind`,
+lineage pair: delegated dispatches must name the model-action envelope ref for
+their round, and dispatch-layer result failures must mirror `dispatch_failure_kind`,
 delegated output/model failures must keep `dispatch_failure_kind=none`, and
 passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated

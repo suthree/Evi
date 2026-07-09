@@ -1296,7 +1296,12 @@ delegate action counts are recorded as
 previews are sanitized before they are persisted or returned as observations.
 Full delegated outputs are scanned before JSON extraction, and raw
 task/context echo failures plus delegated output authority/source-claim
-failures suppress the raw output preview. Dispatch-layer rejects also carry a safe
+failures suppress the raw output preview. Delegated dispatch metadata also
+records the model-action `envelope_ref` that declared the delegated action, so
+trace and replay can audit lineage from the model round to the delegated result
+without reading delegated artifact bodies or granting delegated completion
+authority. Missing or mismatched envelope refs are replay warnings, not
+permission to infer hidden context. Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no
@@ -1361,9 +1366,9 @@ The GA project-design read model mirrors this same runner/replay boundary in
 names the live runner instruction, input, result, and completion-gate rules,
 `result_failure_kind_contract` and `recovery_contract` name the bounded failure
 and recovery rules, while `replay_audit_contract` names the safe metadata
-source, required dispatch fields, audit checks, and proof boundary. Those fields
-are read-only planning context; they do not spawn subagents, grant tool access,
-schedule experts, or prove completion.
+source, required dispatch fields, audit checks, lineage checks, and proof
+boundary. Those fields are read-only planning context; they do not spawn
+subagents, grant tool access, schedule experts, or prove completion.
 The main-model observation also excludes raw
 delegated task/context, raw output preview, and persisted artifact bodies. They
 are not tool evidence, final success proof, mutation authority,
