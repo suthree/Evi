@@ -410,9 +410,10 @@ pre-execution boundary guidance, not an execution plan or completion proof.
 For `general_agent_delegation`, the shared contract for hard limits,
 payload/output keys, task/context authoring rules, failure kind values,
 lifecycle steps, and completion-gate check ids is sourced from
-`packages/core/src/action_contracts.ts`. Schemas, the runner, replay checks,
-capability summaries, context read models, and project-design read models consume
-the relevant fields from that contract.
+`packages/core/src/action_contracts.ts`. `packages/core/src/delegate_agent_contract.ts`
+hosts the pure task/context and delegated-output parser. Schemas, the runner,
+replay checks, capability summaries, context read models, and project-design read
+models consume the relevant fields from that contract.
 The lifecycle names the harness-owned flow from `validate_task_context` through
 `verify_main_harness_completion`; it is planning metadata, not delegated
 scheduling or completion authority.

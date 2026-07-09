@@ -224,6 +224,7 @@ export async function getSelfEvolutionScorecard(
         : "The runtime still needs a bounded general-agent delegation action before expert specialization or multi-agent scheduling can be considered.",
       evidence_refs: compactRefs([
         "packages/core/src/action_contracts.ts",
+        "packages/core/src/delegate_agent_contract.ts",
         "packages/runtime/src/runner.ts",
         "tests/context_harness.test.ts",
         "docs/RUNTIME_CONTRACT.md"
@@ -267,6 +268,7 @@ export async function getSelfEvolutionScorecard(
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/capabilities.ts",
+      "packages/core/src/delegate_agent_contract.ts",
       "packages/runtime/src/runner.ts",
       "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/memory_layers.ts",

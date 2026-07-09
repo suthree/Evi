@@ -556,6 +556,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "docs/LOCAL_RUNTIME.md",
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/capabilities.ts",
+      "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/self_evolution_scorecard.ts",
       "packages/runtime/src/runner.ts"
@@ -737,6 +738,7 @@ function buildNextCoreBasicPlan(
     refs: compactRefs([
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/action_contracts.ts",
+      "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/schemas.ts",
       "packages/runtime/src/runner.ts",
       "packages/core/src/harness_replay.ts",
@@ -1193,7 +1195,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [...delegateAgentAuthoringContract.runner_input_contract],
       result_handling: [
-        "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
+        "delegate_agent contract helper scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and executeDelegation sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],
@@ -1274,6 +1276,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     ],
     evidence_refs: [
       "packages/core/src/action_contracts.ts",
+      "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/schemas.ts",
       "packages/core/src/live_run_trace.ts",
       "packages/runtime/src/runner.ts",

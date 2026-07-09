@@ -1812,7 +1812,7 @@ export function compactGaPlanAfterVerifyCommand(
 }
 
 export function compactGaPlanEvidenceRefs(refs: string[]): string[] {
-  return refs.slice(0, 4);
+  return refs.slice(0, 5);
 }
 
 export function compactGaPlanProofBoundary(
@@ -1903,7 +1903,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `acceptance: ${compactAcceptanceCriteria.join(" | ")}`,
       `next_command: ${plan.next_command}`
     ].join("\n"),
-    refs: plan.refs.slice(0, 7),
+    refs: plan.refs.slice(0, 8),
     item_count: 1
   };
 }

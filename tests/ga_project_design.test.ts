@@ -556,6 +556,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_unrelated_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/action_contracts.ts"), true);
+    assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/delegate_agent_contract.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/schemas.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.match(readModel.boundary, /does not write state/);
