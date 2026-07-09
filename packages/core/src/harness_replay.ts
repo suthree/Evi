@@ -536,6 +536,11 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     const roundEnvelopeRef = envelopeRefsByRound.get(dispatch.round);
     return roundEnvelopeRef !== undefined && roundEnvelopeRef !== dispatch.envelope_ref;
   });
+  const missingRounds = trace.delegated_dispatches.filter((dispatch) => !envelopeRefsByRound.has(dispatch.round));
+  const roundsWithoutDelegateAction = trace.delegated_dispatches.filter((dispatch) => {
+    const roundActionIds = delegatedActionIdsByRound.get(dispatch.round);
+    return roundActionIds !== undefined && roundActionIds.size === 0;
+  });
   const mismatchedActionIds = trace.delegated_dispatches.filter((dispatch) => {
     const roundActionIds = delegatedActionIdsByRound.get(dispatch.round);
     return roundActionIds !== undefined && roundActionIds.size > 0 && !roundActionIds.has(dispatch.action_id);
@@ -547,6 +552,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
   const problemRefs = unique([
     ...missingEnvelopeRefs,
     ...mismatchedEnvelopeRefs,
+    ...missingRounds,
+    ...roundsWithoutDelegateAction,
     ...mismatchedActionIds,
     ...mismatchedSequences
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
@@ -557,6 +564,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
       `delegated_dispatches=${trace.delegated_dispatches.length}`,
       `missing_envelope_ref=${missingEnvelopeRefs.length}`,
       `mismatched_envelope_ref=${mismatchedEnvelopeRefs.length}`,
+      `missing_round=${missingRounds.length}`,
+      `round_without_delegate_action=${roundsWithoutDelegateAction.length}`,
       `mismatched_action_id=${mismatchedActionIds.length}`,
       `mismatched_sequence=${mismatchedSequences.length}`
     ].join("; "),

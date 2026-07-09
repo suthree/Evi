@@ -76,6 +76,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "pass"
         && check.summary.includes("missing_envelope_ref=0")
         && check.summary.includes("mismatched_envelope_ref=0")
+        && check.summary.includes("missing_round=0")
+        && check.summary.includes("round_without_delegate_action=0")
         && check.summary.includes("mismatched_action_id=0")
         && check.summary.includes("mismatched_sequence=0")
     ), true);
@@ -283,6 +285,54 @@ test("harness replay audit warns when delegated dispatch sequence differs from i
     assert.match(check?.summary ?? "", /mismatched_action_id=0/);
     assert.match(check?.summary ?? "", /mismatched_sequence=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_wrong_sequence")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegated dispatch points outside delegate action rounds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-round-lineage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "round_without_delegate",
+      actionId: "action_delegate_replay",
+      round: 2,
+      envelopeRef: "memory/episodes/session_replay_test-model-action-r2.json",
+      sequence: 1,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      ok: true
+    });
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "missing_round",
+      actionId: "action_delegate_replay",
+      round: 99,
+      envelopeRef: "memory/episodes/session_replay_test-model-action-r99.json",
+      sequence: 1,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      ok: true
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_lineage");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /missing_round=1/);
+    assert.match(check?.summary ?? "", /round_without_delegate_action=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_round_without_delegate")), true);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_missing_round")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -933,6 +983,8 @@ async function appendDelegatedDispatchEvent(
     dispatchFailureKind: "none" | "dispatch_limit_exceeded" | "input_contract_failed";
     resultFailureKind: "none" | "dispatch_limit_exceeded" | "input_contract_failed" | "delegated_output_contract_failed" | "delegated_model_request_failed";
     modelInvoked?: boolean;
+    round?: number;
+    envelopeRef?: string;
     ok: boolean;
   }
 ): Promise<void> {
@@ -940,18 +992,20 @@ async function appendDelegatedDispatchEvent(
   const turnId = "turn_replay_test";
   const resultRef = `memory/episodes/${sessionId}-delegated_result_${args.suffix}.json`;
   const modelInvoked = args.modelInvoked ?? (args.dispatchFailureKind === "none");
+  const round = args.round ?? 1;
+  const envelopeRef = args.envelopeRef ?? `memory/episodes/${sessionId}-model-action-r1.json`;
   await store.writeText(resultRef, "RAW_REPLAY_EXTRA_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
   await store.appendJsonl("memory/episodes/events.jsonl", {
     id: `evidence_replay_delegated_${args.suffix}`,
     session_id: sessionId,
     turn_id: turnId,
     kind: "delegated_result",
-    summary: `Delegated result: action_id=${args.actionId}; round=1; sequence=${args.sequence}; task_chars=33; context_chars=77; model_invoked=${modelInvoked}; contract_status=${args.contractStatus}; dispatch_failure_kind=${args.dispatchFailureKind}; result_failure_kind=${args.resultFailureKind}; ok=${args.ok}.`,
+    summary: `Delegated result: action_id=${args.actionId}; round=${round}; sequence=${args.sequence}; task_chars=33; context_chars=77; model_invoked=${modelInvoked}; contract_status=${args.contractStatus}; dispatch_failure_kind=${args.dispatchFailureKind}; result_failure_kind=${args.resultFailureKind}; ok=${args.ok}.`,
     artifact_refs: [resultRef],
     delegated_dispatch: {
       action_id: args.actionId,
-      envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
-      round: 1,
+      envelope_ref: envelopeRef,
+      round,
       sequence: args.sequence,
       task_chars: 33,
       context_chars: 77,

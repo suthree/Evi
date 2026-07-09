@@ -1761,7 +1761,23 @@ export function compactGaPlanGeneralDelegationLoop(
 ): string {
   const loop = plan.general_delegation_loop;
   const inputContract = loop.runner_enforcement_contract.input_contract.slice(0, 2).join("+") || "input contract";
-  return `action=${loop.action}; stage=${loop.stage}; lifecycle=${loop.lifecycle_steps.join(">")}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; result_kind=${loop.result_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; runner=${inputContract}; gate=${loop.runner_enforcement_contract.completion_gate.join("+")}; recovery=${loop.recovery_contract.required[0] ?? "main harness recovery"}; replay=${loop.replay_audit_contract.checks.join("+")}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
+  const replayMetadata = loop.replay_audit_contract.required_metadata
+    .filter((item) => [
+      "action_id",
+      "envelope_ref",
+      "delegated_result_refs",
+      "delegated_result_report_refs",
+      "verification_evidence_refs",
+      "event_id",
+      "model_invoked",
+      "result_ref"
+    ].includes(item))
+    .join("+") || "bounded metadata";
+  const proofBoundary = loop.replay_audit_contract.proof_boundary
+    .find((item) => item.includes("without reading delegated artifact") || item.includes("must not read delegated result artifact"))
+    ?? loop.replay_audit_contract.proof_boundary[0]
+    ?? "bounded metadata only";
+  return `action=${loop.action}; stage=${loop.stage}; lifecycle=${loop.lifecycle_steps.join(">")}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; result_kind=${loop.result_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; runner=${inputContract}; gate=${loop.runner_enforcement_contract.completion_gate.join("+")}; recovery=${loop.recovery_contract.required[0] ?? "main harness recovery"}; replay=${loop.replay_audit_contract.checks.join("+")}; metadata=${replayMetadata}; proof=${proofBoundary}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
 }
 
 export function compactGaPlanPhaseForbids(
