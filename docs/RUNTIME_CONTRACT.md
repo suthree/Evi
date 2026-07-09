@@ -1488,7 +1488,7 @@ the command chooses the latest bounded live run trace. The command writes
 The audit records only replay metadata: source trace refs, completion/session/
 turn ids, per-round action counts, safe delegated action ids, safe delegated
 dispatch metadata, check statuses, report-declared delegated result refs,
-event-fallback delegated result refs, and the fixed replay boundary.
+`delegated_result_event_fallback_refs`, and the fixed replay boundary.
 It checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion

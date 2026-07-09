@@ -72,6 +72,7 @@ export interface HarnessReplayAuditReport {
   checks: HarnessReplayAuditCheck[];
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_result_report_refs: string[];
+  delegated_result_event_fallback_refs: string[];
   delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
@@ -144,6 +145,7 @@ export async function runHarnessReplayAudit(
     checks,
     delegated_completion_gate_checks: trace.delegated_completion_gate_checks,
     delegated_result_report_refs: trace.delegated_result_report_refs,
+    delegated_result_event_fallback_refs: trace.delegated_result_event_fallback_refs,
     delegated_result_refs: trace.delegated_result_refs,
     delegated_dispatches: trace.delegated_dispatches,
     verification_evidence_refs: trace.verification_evidence_refs,
@@ -238,6 +240,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `delegated_completion_gate_failed: ${report.metrics.delegated_completion_gate_failed}`,
     `delegated_completion_gate_skipped: ${report.metrics.delegated_completion_gate_skipped}`,
     `delegated_result_report_refs: ${report.delegated_result_report_refs.length}`,
+    `delegated_result_event_fallback_refs: ${report.delegated_result_event_fallback_refs.length}`,
     `delegated_result_refs: ${report.delegated_result_refs.length}`,
     `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
     `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
@@ -433,7 +436,6 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
   const dispatchRefs = new Set(dispatchesWithResultRef.map((dispatch) => dispatch.result_ref));
   const missingReportDispatchRefs = dispatchesWithResultRef.filter((dispatch) => !reportRefs.has(dispatch.result_ref));
   const orphanReportRefs = trace.delegated_result_report_refs.filter((ref) => !dispatchRefs.has(ref));
-  const eventFallbackRefs = trace.delegated_result_refs.filter((ref) => !reportRefs.has(ref));
   return {
     id: "delegated_result_ref_coverage",
     status: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0 ? "warning" : "pass",
@@ -443,7 +445,7 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
       `dispatch_refs=${dispatchesWithResultRef.length}`,
       `missing_dispatch_refs=${missingReportDispatchRefs.length}`,
       `orphan_report_refs=${orphanReportRefs.length}`,
-      `event_fallback_refs=${eventFallbackRefs.length}`
+      `event_fallback_refs=${trace.delegated_result_event_fallback_refs.length}`
     ].join("; "),
     refs: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0
       ? unique([
@@ -772,6 +774,9 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       : [],
     delegated_result_report_refs: Array.isArray(record.delegated_result_report_refs)
       ? record.delegated_result_report_refs.filter((item): item is string => typeof item === "string")
+      : [],
+    delegated_result_event_fallback_refs: Array.isArray(record.delegated_result_event_fallback_refs)
+      ? record.delegated_result_event_fallback_refs.filter((item): item is string => typeof item === "string")
       : [],
     delegated_result_refs: Array.isArray(record.delegated_result_refs)
       ? record.delegated_result_refs.filter((item): item is string => typeof item === "string")

@@ -45,6 +45,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.deepEqual(report.delegated_result_report_refs, [
       `memory/episodes/session_replay_test-delegated_result_invalid.json`
     ]);
+    assert.deepEqual(report.delegated_result_event_fallback_refs, []);
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
@@ -141,6 +142,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.markdown_ref)), true);
     const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
     assert.match(markdown, /delegated_result_report_refs: 1/);
+    assert.match(markdown, /delegated_result_event_fallback_refs: 0/);
     assert.match(markdown, /delegated_result_refs: 1/);
     assert.equal(report.refs.some((ref) => ref.includes("model-response")), false);
     assert.equal(report.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
@@ -578,10 +580,15 @@ test("harness replay audit warns when completion report omits delegated result r
     assert.deepEqual(report.delegated_result_refs, [
       `memory/episodes/session_replay_test-delegated_result_invalid.json`
     ]);
+    assert.deepEqual(report.delegated_result_event_fallback_refs, [
+      `memory/episodes/session_replay_test-delegated_result_invalid.json`
+    ]);
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /report_refs=0/);
     assert.match(check?.summary ?? "", /missing_dispatch_refs=1/);
     assert.match(check?.summary ?? "", /event_fallback_refs=1/);
+    const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
+    assert.match(markdown, /delegated_result_event_fallback_refs: 1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {

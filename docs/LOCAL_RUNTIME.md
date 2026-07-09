@@ -2141,8 +2141,9 @@ a sequence that matches the declared delegate action order. Delegated dispatches
 that lack a persisted delegated result JSON artifact ref are replay warnings;
 replay may cite the bounded event id but must not reconstruct the missing
 delegated artifact body. Live Run Trace also keeps completion-report
-`delegated_result_refs` separate from event-fallback delegated refs, and replay
-warns when dispatch result refs are only recovered from fallback. Replay
+`delegated_result_refs` separate from
+`delegated_result_event_fallback_refs`, and replay warns when dispatch result
+refs are only recovered from fallback. Replay
 also compares `claimed_verification_refs` with completion-report
 `delegated_result_refs`; a verified trace that claims a delegated result ref as
 completion proof fails `verification_evidence_lineage` even if the delegated

@@ -125,6 +125,7 @@ export interface LiveRunTraceSummary {
   delegated_completion_gate_status_counts: LiveRunCompletionGateStatusCounts;
   delegated_dispatch_missing_result_ref_count: number;
   delegated_result_report_refs: string[];
+  delegated_result_event_fallback_refs: string[];
   delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
@@ -221,9 +222,13 @@ async function summarizeLiveRunTrace(
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
   const delegatedResultReportRefs = unique(report.delegated_result_refs);
+  const delegatedResultReportRefSet = new Set(delegatedResultReportRefs);
+  const delegatedResultEventFallbackRefs = unique(delegatedDispatches
+    .map((dispatch) => dispatch.result_ref)
+    .filter((ref) => ref.length > 0 && !delegatedResultReportRefSet.has(ref)));
   const delegatedResultRefs = unique([
     ...delegatedResultReportRefs,
-    ...delegatedDispatches.map((dispatch) => dispatch.result_ref)
+    ...delegatedResultEventFallbackRefs
   ]);
   const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
   const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
@@ -276,6 +281,7 @@ async function summarizeLiveRunTrace(
     delegated_completion_gate_status_counts: delegatedCompletionGateStatusCounts,
     delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
     delegated_result_report_refs: delegatedResultReportRefs,
+    delegated_result_event_fallback_refs: delegatedResultEventFallbackRefs,
     delegated_result_refs: delegatedResultRefs,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,

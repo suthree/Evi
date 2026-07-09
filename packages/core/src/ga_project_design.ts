@@ -1240,6 +1240,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_action_sequence_by_id",
         "delegated_result_refs",
         "delegated_result_report_refs",
+        "delegated_result_event_fallback_refs",
         "claimed_verification_refs",
         "verification_evidence_refs",
         "tool_result_id",
