@@ -2085,8 +2085,10 @@ the main harness, and it must name the expected delegated output shape as
 `summary` plus `findings_text`. It must also state that delegated analysis may
 use only explicit payload context or named evidence refs. It must not simultaneously grant those
 delegated authorities, expert scheduling, multi-agent orchestration, or model
-fan-out; otherwise the runner records `input_contract_failed` without calling
-the submodel. The live
+fan-out; concrete command or tool-surface grants such as `tsc`, `pnpm`,
+`repo.search`, or `command.run` are rejected as command/tool authority grants.
+Otherwise the runner records `input_contract_failed` without calling the
+submodel. The live
 runner allows at most one `delegate_agent` action per model round; extra
 delegate actions are recorded as failed delegated results without calling the
 delegated model. Delegated observations may inform the next model round, but
@@ -2110,9 +2112,12 @@ delegated `summary`, `findings_text`, and raw preview text are sanitized before
 persistence and observation feedback, and the full delegated model output is
 scanned before JSON extraction so wrapper text, extra fields, or structured
 content that echoes raw delegated task/context or claims delegated
-tool/write/mutation, completion, expert, multi-agent, model fan-out,
-hidden-source, raw-artifact, context-expansion, or invented-evidence authority
-fails the delegated output contract with raw preview suppressed. Delegated
+tool/write/mutation, command/test execution, completion, expert, multi-agent,
+model fan-out, hidden-source, raw-artifact, context-expansion, or
+invented-evidence authority. Natural-language delegated output claims that it
+ran or executed tests, builds, commands, or checks are treated as command/test
+execution authority claims; they fail the delegated output contract with raw
+preview suppressed. Delegated
 model request failures are recorded as failed delegated results with sanitized
 error text before persistence and observation feedback.
 Each delegated result also records action id, model-action envelope ref, round, sequence,
@@ -2135,10 +2140,14 @@ that lack a persisted delegated result JSON artifact ref are replay warnings;
 replay may cite the bounded event id but must not reconstruct the missing
 delegated artifact body. Live Run Trace also keeps completion-report
 `delegated_result_refs` separate from event-fallback delegated refs, and replay
-warns when dispatch result refs are only recovered from fallback. Replay also
-checks the model invocation boundary: input contract or round-limit rejects must
-record `model_invoked=false`, and results after delegated model dispatch must
-record `model_invoked=true`. Live Run Trace
+warns when dispatch result refs are only recovered from fallback. Replay
+also compares `claimed_verification_refs` with completion-report
+`delegated_result_refs`; a verified trace that claims a delegated result ref as
+completion proof fails `verification_evidence_lineage` even if the delegated
+completion-gate check was omitted or drifted. Replay also checks the model
+invocation boundary: input contract or round-limit rejects must record
+`model_invoked=false`, and results after delegated model dispatch must record
+`model_invoked=true`. Live Run Trace
 also exposes the missing-result-ref count as bounded metadata for context and IM
 output. Dispatch-layer result failures must mirror `dispatch_failure_kind`,
 delegated output/model failures must keep `dispatch_failure_kind=none`, and

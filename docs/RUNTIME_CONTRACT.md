@@ -1279,7 +1279,9 @@ are rejected before any delegated model call; a context that says no delegated
 authority and also grants tool/write/mutation, completion, expert scheduling,
 multi-agent orchestration, model fan-out, hidden memory, raw delegated artifact,
 unstated repo state, context expansion, or invented evidence-ref authority is
-invalid. The delegated
+invalid. Concrete command or tool-surface grants such as `tsc`, `pnpm`,
+`repo.search`, or `command.run` are rejected as command/tool authority grants
+even when the same context also states a no-tool boundary. The delegated
 model must return a JSON object with non-empty `summary` and `findings_text`;
 `summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
@@ -1288,8 +1290,10 @@ fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated
 `task`/`context` or claim delegated tool/write/mutation, completion, expert,
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
-state, context expansion, or invented evidence-ref authority,
-and sanitizes successful delegated `summary`, `findings_text`, and raw preview
+state, context expansion, or invented evidence-ref authority. Natural-language
+delegated output claims that it ran or executed tests, builds, commands, or
+checks are treated as command/test execution authority claims. The harness
+sanitizes successful delegated `summary`, `findings_text`, and raw preview
 before persisting the result or returning it as a sanitized `Delegated
 Observations` item. The live runner allows at most one
 `delegate_agent` action per model
@@ -1315,7 +1319,11 @@ context. A delegated dispatch that lacks a persisted delegated result JSON
 artifact ref is also a replay warning; replay may cite the bounded event id, but
 it must not infer or reconstruct the missing delegated artifact body. Live Run
 Trace exposes the missing-result-ref count as bounded metadata so context and IM
-surfaces can show the evidence gap without reading the artifact body.
+surfaces can show the evidence gap without reading the artifact body. Replay
+also compares `claimed_verification_refs` with completion-report
+`delegated_result_refs`; a verified trace that claims a delegated result ref as
+completion proof fails `verification_evidence_lineage` even if the delegated
+completion-gate check was omitted or drifted.
 Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract

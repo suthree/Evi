@@ -610,7 +610,9 @@ function hasDirectTaskMutationIntent(text: string): boolean {
 }
 
 function grantsDelegatedAuthority(text: string): boolean {
-  return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES);
+  return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES)
+    || hasNearbyBoundary(text, AUTHORITY_COMMAND_GRANT_PREFIXES, TASK_COMMAND_EXECUTION_TERMS, 80)
+    || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80);
 }
 
 function reliesOnForbiddenDelegationSource(text: string): boolean {
@@ -751,6 +753,69 @@ const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
   "允许编排多智能体"
 ];
 
+const AUTHORITY_COMMAND_GRANT_PREFIXES = [
+  "can run",
+  "may run",
+  "allowed to run",
+  "permission to run",
+  "authority to run",
+  "can execute",
+  "may execute",
+  "allowed to execute",
+  "permission to execute",
+  "authority to execute",
+  "can call",
+  "may call",
+  "allowed to call",
+  "can invoke",
+  "may invoke",
+  "allowed to invoke",
+  "可以运行",
+  "允许运行",
+  "可以执行",
+  "允许执行",
+  "可以调用",
+  "允许调用"
+];
+
+const AUTHORITY_TOOL_GRANT_PREFIXES = [
+  "can use",
+  "may use",
+  "allowed to use",
+  "permission to use",
+  "authority to use",
+  "can call",
+  "may call",
+  "allowed to call",
+  "can invoke",
+  "may invoke",
+  "allowed to invoke",
+  "可以使用",
+  "允许使用",
+  "可以调用",
+  "允许调用"
+];
+
+const DELEGATED_TOOL_SURFACE_TERMS = [
+  "tool",
+  "tools",
+  "repo search",
+  "http fetch",
+  "command run",
+  "code execute node",
+  "file read",
+  "file write",
+  "file write repo",
+  "file write state",
+  "state write",
+  "工具",
+  "仓库搜索",
+  "命令执行",
+  "文件读取",
+  "文件写入",
+  "状态写入"
+];
+
 const SOURCE_DENIAL_TERMS = [
   "no",
   "not",
@@ -868,7 +933,13 @@ function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: str
 
 function delegatedTextClaimsAuthority(value: string): boolean {
   const text = normalizeBoundaryText(value);
-  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES);
+  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
+    || hasNearbyBoundary(
+      text,
+      DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES,
+      DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS,
+      80
+    );
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
@@ -969,6 +1040,44 @@ const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
   "编排了多智能体",
   "运行了模型 fan out",
   "使用了模型 fan out"
+];
+
+const DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES = [
+  "i ran",
+  "i have run",
+  "i executed",
+  "i have executed",
+  "i called",
+  "i invoked",
+  "i used",
+  "delegated subagent ran",
+  "delegated subagent executed",
+  "delegated subagent called",
+  "delegated subagent invoked",
+  "delegated subagent used",
+  "subagent ran",
+  "subagent executed",
+  "subagent called",
+  "subagent invoked",
+  "subagent used",
+  "我运行了",
+  "运行了",
+  "我执行了",
+  "执行了",
+  "我调用了",
+  "调用了"
+];
+
+const DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS = [
+  ...TASK_COMMAND_EXECUTION_TERMS,
+  "test",
+  "tests",
+  "check",
+  "checks",
+  "suite",
+  "suites",
+  "测试",
+  "检查"
 ];
 
 function delegatedOutputRawEcho(
