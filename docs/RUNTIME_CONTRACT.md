@@ -1375,6 +1375,15 @@ independent context for a done claim, but they do not recover the failed
 delegation; only later successful write/run tool results do. Recovery must not
 add automatic retry, model fan-out, expert scheduling, delegated completion, or
 raw delegated artifact reads.
+Completion verification reports preserve bounded `verification_evidence_refs`
+for harness-known successful tool result ids and tool artifact refs. Each entry
+records only lineage metadata: source, tool result id, artifact ref, event id,
+round, tool name, side-effect level, write/run flag, claimed flag, and whether
+the ref counted as post-delegation independent evidence or failed-delegation
+recovery evidence. State-only harness actions and delegated result refs are not
+written into this proof lineage. Live Run Trace and harness replay can audit
+this metadata without opening raw tool bodies, delegated artifacts, or final
+responses.
 If a delegated result failed and the run does not reach verified `done`
 completion, any `propose_sop` action remains state-only and must not enter live
 SOP audit, SOP promotion, skill promotion, or active-vault writes.
@@ -1402,8 +1411,9 @@ memory/episodes/<session>-completion-verification.md
 ```
 
 The report records the model `completion_claim`, final response ref, claimed
-verification refs, selected observation refs, and per-check pass/fail/warning
-status. A `done` claim fails verification when required final response or
+verification refs, selected observation refs, structured verification evidence
+lineage, and per-check pass/fail/warning status. A `done` claim fails
+verification when required final response or
 write/run/delegation evidence is missing or failed, or when delegated self-report
 refs are used as verification proof. A `done` claim also fails when claimed refs
 are not bound to harness-known tool result ids or tool artifact refs from the

@@ -581,6 +581,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
         required_metadata: ["action_id", "envelope_ref", "model_invoked", "dispatch_failure_kind", "result_failure_kind"],
         checks: [
           "delegated_completion_gate",
+          "verification_evidence_lineage",
           "delegated_action_coverage",
           "delegated_result_ref_coverage",
           "delegated_dispatch_metadata",
@@ -598,7 +599,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), `action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim without later recovery evidence+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs+delegate_agent completion-gate helper requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate+delegated_action_coverage+delegated_result_ref_coverage+delegated_dispatch_metadata+delegated_model_invocation_boundary+delegated_dispatch_lineage+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
+  }), `action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim without later recovery evidence+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs+delegate_agent completion-gate helper requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate+verification_evidence_lineage+delegated_action_coverage+delegated_result_ref_coverage+delegated_dispatch_metadata+delegated_model_invocation_boundary+delegated_dispatch_lineage+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1475,7 +1476,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue general_agent_delegation_hardening_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof\\+delegate_agent completion-gate helper fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate\\+delegated_action_coverage\\+delegated_result_ref_coverage\\+delegated_dispatch_metadata\\+delegated_model_invocation_boundary\\+delegated_dispatch_lineage\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
+    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof\\+delegate_agent completion-gate helper fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate\\+verification_evidence_lineage\\+delegated_action_coverage\\+delegated_result_ref_coverage\\+delegated_dispatch_metadata\\+delegated_model_invocation_boundary\\+delegated_dispatch_lineage\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| plan_target_slice=next_slice_general_agent_delegation/);
@@ -4305,6 +4306,24 @@ test("live runner rejects post-delegation write evidence without bound verificat
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
       verified: boolean;
+      claimed_verification_refs: string[];
+      verification_evidence_refs: Array<{
+        ref: string;
+        source: string;
+        tool_result_id: string;
+        artifact_ref: string;
+        event_id: string;
+        round: number;
+        tool: string;
+        ok: boolean;
+        side_effect_level: string;
+        is_write_run: boolean;
+        claimed: boolean;
+        after_latest_delegation: boolean;
+        after_latest_failed_delegation: boolean;
+        counts_as_independent_evidence: boolean;
+        counts_as_failed_delegation_recovery: boolean;
+      }>;
       checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
     };
 
@@ -4931,6 +4950,23 @@ test("live runner accepts failed delegation recovery with write-run and verifica
     assert.match(model.claimedWriteRef, /^tool_result_/);
     assert.equal(report.verification_status, "passed");
     assert.equal(report.verified, true);
+    assert.deepEqual(report.claimed_verification_refs, [model.claimedWriteRef]);
+    const claimedLineage = report.verification_evidence_refs.find((item) => item.ref === model.claimedWriteRef);
+    assert.ok(claimedLineage);
+    assert.equal(claimedLineage.source, "tool_result");
+    assert.equal(claimedLineage.tool_result_id, model.claimedWriteRef);
+    assert.match(claimedLineage.artifact_ref, /^memory\/episodes\/session_.*-tool_result_.*\.json$/);
+    assert.match(claimedLineage.event_id, /^evidence_/);
+    assert.equal(claimedLineage.round > 1, true);
+    assert.equal(claimedLineage.tool, "file.write_state");
+    assert.equal(claimedLineage.ok, true);
+    assert.equal(claimedLineage.side_effect_level, "local_write");
+    assert.equal(claimedLineage.is_write_run, true);
+    assert.equal(claimedLineage.claimed, true);
+    assert.equal(claimedLineage.after_latest_delegation, true);
+    assert.equal(claimedLineage.after_latest_failed_delegation, true);
+    assert.equal(claimedLineage.counts_as_independent_evidence, true);
+    assert.equal(claimedLineage.counts_as_failed_delegation_recovery, true);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
     assert.equal(report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence")?.status, "pass");
     const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");

@@ -61,6 +61,12 @@ interface HarnessActionResult {
   created_at: string;
 }
 
+type CompletionVerificationEvidenceRef = CompletionVerificationReport["verification_evidence_refs"][number];
+type CompletionVerificationEvidenceRefDraft = Pick<
+  CompletionVerificationEvidenceRef,
+  "ref" | "source" | "tool_result_id" | "artifact_ref" | "event_id" | "round" | "tool" | "ok" | "side_effect_level" | "is_write_run"
+>;
+
 type ModelFailureStage = "request" | "envelope_parse";
 type ModelFailureKind =
   | "auth"
@@ -288,6 +294,7 @@ export class LiveAgentRunner {
     const delegatedResults: DelegatedResult[] = [];
     const harnessActionResults: HarnessActionResult[] = [];
     const toolArtifactRefs: string[] = [];
+    const verificationEvidenceRefDrafts: CompletionVerificationEvidenceRefDraft[] = [];
     const delegatedArtifactRefs: string[] = [];
     const harnessArtifactRefs: string[] = [];
     const modelDiagnosticRefs: string[] = [];
@@ -468,6 +475,14 @@ export class LiveAgentRunner {
           summary: toolResult.summary,
           artifact_refs: [toolRef]
         });
+        if (toolResult.ok) {
+          verificationEvidenceRefDrafts.push(...toolVerificationEvidenceRefDrafts({
+            toolResult,
+            artifactRef: toolRef,
+            eventId: toolEvent.id,
+            round
+          }));
+        }
         evidenceRefs.push(toolEvent.id);
         await this.store.appendJsonl("memory/episodes/events.jsonl", toolEvent);
         if (discipline) {
@@ -565,7 +580,8 @@ export class LiveAgentRunner {
         ...successfulToolResults.map((result) => result.id),
         ...successfulToolArtifactRefs
       ]),
-      verificationEvidenceRounds
+      verificationEvidenceRounds,
+      verificationEvidenceRefDrafts
     });
     const completionReport = completionVerificationReportSchema.parse({
       session_id: snapshot.session_id,
@@ -578,6 +594,7 @@ export class LiveAgentRunner {
       final_response_ref: finalResponseRef,
       claimed_verification_refs: envelope.completion_claim.verification_refs,
       observation_refs: compactRefs([...modelDiagnosticRefs, ...toolArtifactRefs, ...delegatedArtifactRefs, ...harnessArtifactRefs]),
+      verification_evidence_refs: completionVerification.verification_evidence_refs,
       delegated_result_refs: compactRefs(delegatedArtifactRefs),
       delegated_result_failure_kinds: delegatedResultFailureKinds,
       checks: completionVerification.checks
@@ -1736,14 +1753,21 @@ function verifyCompletionClaim(args: {
   modelDiagnosticRefs: string[];
   availableVerificationRefs: string[];
   verificationEvidenceRounds: Map<string, number>;
+  verificationEvidenceRefDrafts: CompletionVerificationEvidenceRefDraft[];
 }): {
   ok: boolean;
   verified: boolean;
   verification_status: "passed" | "failed" | "skipped";
   summary: string;
   checks: CompletionVerificationReport["checks"];
+  verification_evidence_refs: CompletionVerificationEvidenceRef[];
 } {
   const claimedRefs = args.envelope.completion_claim.verification_refs;
+  const verificationEvidenceRefs = annotateCompletionVerificationEvidenceRefs({
+    drafts: args.verificationEvidenceRefDrafts,
+    claimedRefs,
+    delegatedResults: args.delegatedResults
+  });
   if (args.envelope.completion_claim.status !== "done") {
     const checks: CompletionVerificationReport["checks"] = [{
       id: "completion_status",
@@ -1765,7 +1789,8 @@ function verifyCompletionClaim(args: {
       verified: false,
       verification_status: "skipped",
       summary: `Completion verification skipped for status=${args.envelope.completion_claim.status}.`,
-      checks
+      checks,
+      verification_evidence_refs: verificationEvidenceRefs
     };
   }
 
@@ -1787,12 +1812,7 @@ function verifyCompletionClaim(args: {
     refs: claimedRefs
   });
 
-  const writeOrRunResults = args.toolResults.filter((result) =>
-    result.tool === "file.write_repo"
-    || result.tool === "command.run"
-    || result.side_effect_level === "local_write"
-    || result.side_effect_level === "external_write"
-  );
+  const writeOrRunResults = args.toolResults.filter(isWriteOrRunToolResult);
   const failedWriteOrRun = writeOrRunResults.filter((result) => !result.ok);
   checks.push({
     id: "write_run_tool_results",
@@ -1895,7 +1915,8 @@ function verifyCompletionClaim(args: {
       verified: false,
       verification_status: "failed",
       summary: `Completion verification failed: ${failures.join("; ")}.`,
-      checks
+      checks,
+      verification_evidence_refs: verificationEvidenceRefs
     };
   }
 
@@ -1906,8 +1927,74 @@ function verifyCompletionClaim(args: {
     summary: writeOrRunResults.length > 0
       ? "Completion verification passed with final response and successful write/run evidence."
       : "Completion verification passed with final response.",
-    checks
+    checks,
+    verification_evidence_refs: verificationEvidenceRefs
   };
+}
+
+function toolVerificationEvidenceRefDrafts(args: {
+  toolResult: ToolResult;
+  artifactRef: string;
+  eventId: string;
+  round: number;
+}): CompletionVerificationEvidenceRefDraft[] {
+  const common = {
+    tool_result_id: args.toolResult.id,
+    artifact_ref: args.artifactRef,
+    event_id: args.eventId,
+    round: args.round,
+    tool: args.toolResult.tool,
+    ok: args.toolResult.ok,
+    side_effect_level: args.toolResult.side_effect_level,
+    is_write_run: isWriteOrRunToolResult(args.toolResult)
+  };
+  return [{
+    ...common,
+    ref: args.toolResult.id,
+    source: "tool_result"
+  }, {
+    ...common,
+    ref: args.artifactRef,
+    source: "tool_artifact"
+  }];
+}
+
+function annotateCompletionVerificationEvidenceRefs(args: {
+  drafts: CompletionVerificationEvidenceRefDraft[];
+  claimedRefs: string[];
+  delegatedResults: DelegatedResult[];
+}): CompletionVerificationEvidenceRef[] {
+  const claimedRefSet = new Set(args.claimedRefs);
+  const latestDelegatedRound = latestRound(args.delegatedResults);
+  const latestFailedDelegatedRound = latestRound(args.delegatedResults.filter((result) => !result.ok));
+  return args.drafts.map((draft) => {
+    const claimed = claimedRefSet.has(draft.ref);
+    const afterLatestDelegation = latestDelegatedRound === null || draft.round > latestDelegatedRound;
+    const afterLatestFailedDelegation = latestFailedDelegatedRound === null || draft.round > latestFailedDelegatedRound;
+    return {
+      ...draft,
+      claimed,
+      after_latest_delegation: afterLatestDelegation,
+      after_latest_failed_delegation: afterLatestFailedDelegation,
+      counts_as_independent_evidence: claimed && afterLatestDelegation,
+      counts_as_failed_delegation_recovery: latestFailedDelegatedRound !== null
+        && draft.source === "tool_result"
+        && draft.is_write_run
+        && afterLatestFailedDelegation
+    };
+  });
+}
+
+function latestRound(results: DelegatedResult[]): number | null {
+  if (results.length === 0) return null;
+  return Math.max(...results.map((result) => result.round));
+}
+
+function isWriteOrRunToolResult(result: ToolResult): boolean {
+  return result.tool === "file.write_repo"
+    || result.tool === "command.run"
+    || result.side_effect_level === "local_write"
+    || result.side_effect_level === "external_write";
 }
 
 function compactRefs(refs: Array<string | null | undefined>): string[] {
@@ -2177,6 +2264,14 @@ function renderCompletionVerificationMarkdown(report: CompletionVerificationRepo
     "## Observation Refs",
     "",
     ...(report.observation_refs.length > 0 ? report.observation_refs.map((ref) => `- ${ref}`) : ["- none"]),
+    "",
+    "## Verification Evidence Refs",
+    "",
+    ...(report.verification_evidence_refs.length > 0
+      ? report.verification_evidence_refs.map((item) =>
+        `- ${item.ref}: source=${item.source}; round=${item.round}; tool=${item.tool}; side_effect_level=${item.side_effect_level}; claimed=${item.claimed}; after_latest_delegation=${item.after_latest_delegation}; after_latest_failed_delegation=${item.after_latest_failed_delegation}; independent=${item.counts_as_independent_evidence}; recovery=${item.counts_as_failed_delegation_recovery}; event=${item.event_id}`
+      )
+      : ["- none"]),
     "",
     "## Delegated Result Refs",
     "",

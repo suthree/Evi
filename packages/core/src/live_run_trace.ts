@@ -87,6 +87,8 @@ export interface LiveRunCompletionCheckSummary {
   refs: string[];
 }
 
+export type LiveRunVerificationEvidenceRefSummary = CompletionVerificationReport["verification_evidence_refs"][number];
+
 type CompletionCheckStatus = CompletionVerificationReport["checks"][number]["status"];
 
 export type LiveRunCompletionGateStatusCounts = Record<CompletionCheckStatus, number>;
@@ -103,6 +105,9 @@ export interface LiveRunTraceSummary {
   summary: string;
   completion_failed_check_ids: string[];
   completion_warning_check_ids: string[];
+  claimed_verification_refs: string[];
+  verification_evidence_ref_count: number;
+  verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
   context_ref?: string;
   context_manifest_ref?: string;
   final_response_ref: string | null;
@@ -234,6 +239,7 @@ async function summarizeLiveRunTrace(
     ...rounds.map((round) => round.envelope_ref),
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...report.observation_refs.slice(0, 12),
+    ...report.verification_evidence_refs.map((item) => item.ref).slice(0, 12),
     ...delegatedResultRefs.slice(0, 12),
     ...delegatedCompletionGateChecks.flatMap((check) => check.refs.slice(0, 5))
   ]);
@@ -250,6 +256,9 @@ async function summarizeLiveRunTrace(
     summary: report.summary,
     completion_failed_check_ids: report.checks.filter((check) => check.status === "fail").map((check) => check.id),
     completion_warning_check_ids: report.checks.filter((check) => check.status === "warning").map((check) => check.id),
+    claimed_verification_refs: [...report.claimed_verification_refs],
+    verification_evidence_ref_count: report.verification_evidence_refs.length,
+    verification_evidence_refs: report.verification_evidence_refs.map((item) => ({ ...item })),
     context_ref: contextRef,
     context_manifest_ref: contextManifestRef,
     final_response_ref: report.final_response_ref,

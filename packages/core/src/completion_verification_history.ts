@@ -24,6 +24,7 @@ export interface CompletionVerificationHistorySummary {
   envelope_ref: string;
   final_response_ref: string | null;
   claimed_verification_ref_count: number;
+  verification_evidence_ref_count: number;
   observation_ref_count: number;
   delegated_result_failure_kinds: CompletionVerificationReport["delegated_result_failure_kinds"];
   failed_checks: CompletionVerificationHistoryCheck[];
@@ -157,6 +158,7 @@ function summarizeCompletionVerificationReport(
     envelope_ref: report.envelope_ref,
     final_response_ref: report.final_response_ref,
     claimed_verification_ref_count: report.claimed_verification_refs.length,
+    verification_evidence_ref_count: report.verification_evidence_refs.length,
     observation_ref_count: report.observation_refs.length,
     delegated_result_failure_kinds: report.delegated_result_failure_kinds.map((item) => ({ ...item })),
     failed_checks: report.checks.filter((check) => check.status === "fail").map((check) => ({ ...check })),

@@ -214,6 +214,24 @@ export const completionVerificationCheckSchema = z.object({
   refs: z.array(z.string()).default([])
 });
 
+export const completionVerificationEvidenceRefSchema = z.object({
+  ref: z.string(),
+  source: z.enum(["tool_result", "tool_artifact"]),
+  tool_result_id: z.string(),
+  artifact_ref: z.string(),
+  event_id: z.string(),
+  round: z.number().int().positive(),
+  tool: z.string(),
+  ok: z.boolean(),
+  side_effect_level: sideEffectLevelSchema,
+  is_write_run: z.boolean(),
+  claimed: z.boolean(),
+  after_latest_delegation: z.boolean(),
+  after_latest_failed_delegation: z.boolean(),
+  counts_as_independent_evidence: z.boolean(),
+  counts_as_failed_delegation_recovery: z.boolean()
+});
+
 export const delegatedResultFailureKindCountSchema = z.object({
   result_failure_kind: delegatedResultKindSchema,
   count: z.number().int().positive()
@@ -231,6 +249,7 @@ export const completionVerificationReportSchema = z.object({
   final_response_ref: z.string().nullable().default(null),
   claimed_verification_refs: z.array(z.string()).default([]),
   observation_refs: z.array(z.string()).default([]),
+  verification_evidence_refs: z.array(completionVerificationEvidenceRefSchema).default([]),
   delegated_result_refs: z.array(z.string()).default([]),
   delegated_result_failure_kinds: z.array(delegatedResultFailureKindCountSchema).default([]),
   checks: z.array(completionVerificationCheckSchema).default([]),

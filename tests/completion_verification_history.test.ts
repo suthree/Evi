@@ -38,6 +38,23 @@ test("completion verification history lists and inspects bounded report summarie
       verified: false,
       summary: "New completion verification failed because command.run failed.",
       final_response_ref: "memory/episodes/session_new-final-response.md",
+      verification_evidence_refs: [{
+        ref: "tool_result_command",
+        source: "tool_result",
+        tool_result_id: "tool_result_command",
+        artifact_ref: "memory/episodes/session_new-tool_result_command.json",
+        event_id: "evidence_tool_command",
+        round: 2,
+        tool: "command.run",
+        ok: true,
+        side_effect_level: "local_write",
+        is_write_run: true,
+        claimed: true,
+        after_latest_delegation: true,
+        after_latest_failed_delegation: true,
+        counts_as_independent_evidence: true,
+        counts_as_failed_delegation_recovery: true
+      }],
       delegated_result_failure_kinds: [
         {
           result_failure_kind: "delegated_output_contract_failed",
@@ -76,6 +93,7 @@ test("completion verification history lists and inspects bounded report summarie
         count: 2
       }
     ]);
+    assert.equal(listed.reports[0]?.verification_evidence_ref_count, 1);
     assert.deepEqual(listed.reports[0]?.failed_checks.map((check) => check.id), ["write_run_tool_results"]);
     assert.deepEqual(listed.reports[0]?.warning_checks.map((check) => check.id), ["delegation_results"]);
 
@@ -90,6 +108,23 @@ test("completion verification history lists and inspects bounded report summarie
         count: 2
       }
     ]);
+    assert.deepEqual(byId.report.verification_evidence_refs.map((item) => ({
+      ref: item.ref,
+      source: item.source,
+      tool: item.tool,
+      side_effect_level: item.side_effect_level,
+      claimed: item.claimed,
+      counts_as_independent_evidence: item.counts_as_independent_evidence,
+      counts_as_failed_delegation_recovery: item.counts_as_failed_delegation_recovery
+    })), [{
+      ref: "tool_result_command",
+      source: "tool_result",
+      tool: "command.run",
+      side_effect_level: "local_write",
+      claimed: true,
+      counts_as_independent_evidence: true,
+      counts_as_failed_delegation_recovery: true
+    }]);
 
     const bySession = await getCompletionVerificationReport(fixture.store, {
       completionRef: "session_new"

@@ -921,6 +921,8 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- events: ${trace.event_count} (${renderCountMap(trace.event_kind_counts)})`,
     `- observations: ${trace.observation_ref_count}`,
     `- tool_results: ${trace.tool_result_count}`,
+    `- claimed_verification_refs: ${trace.claimed_verification_refs.length}`,
+    `- verification_evidence_refs: ${trace.verification_evidence_ref_count}`,
     `- delegated_results: ${trace.delegated_result_count}`,
     `- delegated_results_passed: ${trace.delegated_result_passed_count}`,
     `- delegated_results_failed: ${trace.delegated_result_failed_count}`,
@@ -942,6 +944,9 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     lines.push(`- delegated_completion_gate_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
     if (check.refs.length > 0) lines.push(`  refs: ${check.refs.slice(0, 5).join(", ")}`);
+  }
+  for (const evidence of trace.verification_evidence_refs.filter((item) => item.claimed).slice(0, 3)) {
+    lines.push(`- verification_evidence_ref: ref=${evidence.ref} source=${evidence.source} round=${evidence.round} tool=${evidence.tool} side_effect_level=${evidence.side_effect_level} independent=${evidence.counts_as_independent_evidence} recovery=${evidence.counts_as_failed_delegation_recovery}`);
   }
   for (const dispatch of trace.delegated_dispatches.slice(0, 3)) {
     lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} model_invoked=${dispatch.model_invoked ?? "unknown"} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} envelope_ref=${dispatch.envelope_ref ?? "none"} ref=${dispatch.result_ref}`);
@@ -1003,12 +1008,13 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- replay_result: ${replay.replay_result}`,
     `- summary: ${truncate(replay.summary, 300)}`,
     `- metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, delegated_dispatches=${replay.metrics.delegated_dispatches}, delegated_dispatches_failed=${replay.metrics.delegated_dispatches_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
+    `- verification_evidence_refs: ${replay.metrics.verification_evidence_refs}`,
     `- delegated_completion_gate_statuses: pass=${replay.metrics.delegated_completion_gate_passed}, warning=${replay.metrics.delegated_completion_gate_warning}, fail=${replay.metrics.delegated_completion_gate_failed}, skipped=${replay.metrics.delegated_completion_gate_skipped}`,
     `- delegated_result_refs: report=${replay.delegated_result_report_refs.length}, trace=${replay.delegated_result_refs.length}`,
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 12)) {
+  for (const check of replay.checks.slice(0, 13)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }

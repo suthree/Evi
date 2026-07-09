@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import {
+  delegateAgentCompletionGateCheckId,
   delegateAgentCompletionGateCheckIds,
   delegateAgentDispatchFailureKindValues,
   delegateAgentResultFailureKindsFromDispatch,
@@ -14,7 +15,8 @@ import {
   listLiveRunTraces,
   type LiveRunCompletionCheckSummary,
   type LiveRunDelegatedDispatchSummary,
-  type LiveRunTraceSummary
+  type LiveRunTraceSummary,
+  type LiveRunVerificationEvidenceRefSummary
 } from "./live_run_trace.js";
 import { newId, utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
@@ -61,6 +63,7 @@ export interface HarnessReplayAuditReport {
     delegated_completion_gate_skipped: number;
     delegated_dispatches: number;
     delegated_dispatches_failed: number;
+    verification_evidence_refs: number;
     harness_state_actions: number;
     model_diagnostics: number;
     repo_write_guards: number;
@@ -71,6 +74,7 @@ export interface HarnessReplayAuditReport {
   delegated_result_report_refs: string[];
   delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
+  verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
   artifact_refs: {
     json_ref: string;
     markdown_ref: string;
@@ -131,6 +135,7 @@ export async function runHarnessReplayAudit(
       delegated_completion_gate_skipped: trace.delegated_completion_gate_status_counts.skipped,
       delegated_dispatches: trace.delegated_dispatches.length,
       delegated_dispatches_failed: trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length,
+      verification_evidence_refs: trace.verification_evidence_ref_count,
       harness_state_actions: trace.harness_action_count,
       model_diagnostics: trace.model_diagnostic_count,
       repo_write_guards: trace.repo_write_guard_count,
@@ -141,6 +146,7 @@ export async function runHarnessReplayAudit(
     delegated_result_report_refs: trace.delegated_result_report_refs,
     delegated_result_refs: trace.delegated_result_refs,
     delegated_dispatches: trace.delegated_dispatches,
+    verification_evidence_refs: trace.verification_evidence_refs,
     artifact_refs: {
       json_ref: jsonRef,
       markdown_ref: markdownRef
@@ -151,6 +157,7 @@ export async function runHarnessReplayAudit(
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
+      ...trace.verification_evidence_refs.map((item) => item.ref),
       ...trace.delegated_result_refs,
       ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
       ...trace.delegated_completion_gate_checks.flatMap((check) => check.refs)
@@ -234,6 +241,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `delegated_result_refs: ${report.delegated_result_refs.length}`,
     `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
     `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
+    `verification_evidence_refs: ${report.metrics.verification_evidence_refs}`,
     `harness_state_actions: ${report.metrics.harness_state_actions}`,
     `model_diagnostics: ${report.metrics.model_diagnostics}`,
     `repo_write_guards: ${report.metrics.repo_write_guards}`,
@@ -268,6 +276,14 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
           ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
           : [])
       ]
+      : ["- none"]),
+    "",
+    "## Verification Evidence Refs",
+    "",
+    ...(report.verification_evidence_refs.length > 0
+      ? report.verification_evidence_refs.map((item) =>
+        `- ${item.ref}: source=${item.source}; round=${item.round}; tool=${item.tool}; side_effect_level=${item.side_effect_level}; claimed=${item.claimed}; independent=${item.counts_as_independent_evidence}; recovery=${item.counts_as_failed_delegation_recovery}; event=${item.event_id}`
+      )
       : ["- none"]),
     "",
     "## Boundary",
@@ -307,6 +323,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: [trace.report_ref]
     },
     delegatedCompletionGateCheck(trace),
+    verificationEvidenceLineageCheck(trace),
     {
       id: "delegated_result_contract",
       status: trace.delegated_result_failed_count > 0 ? "warning" : "pass",
@@ -351,6 +368,54 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`
     ].join("; "),
     refs: [trace.report_ref]
+  };
+}
+
+function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const evidenceRefs = new Set(trace.verification_evidence_refs.map((item) => item.ref));
+  const delegatedRefs = new Set(trace.delegated_result_refs);
+  const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
+  const missingClaimedLineage = trace.claimed_verification_refs.filter((ref) =>
+    !delegatedRefs.has(ref) && !evidenceRefs.has(ref)
+  );
+  const delegatedIndependentPassed = trace.delegated_completion_gate_checks.some((check) =>
+    check.id === delegateAgentCompletionGateCheckId.delegatedIndependentEvidence && check.status === "pass"
+  );
+  const failedDelegationRecovered = trace.delegated_completion_gate_checks.some((check) =>
+    check.id === delegateAgentCompletionGateCheckId.delegatedResults && check.status === "warning"
+  );
+  const independentEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_independent_evidence);
+  const recoveryEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_failed_delegation_recovery);
+  const missingIndependentLineage = delegatedIndependentPassed && independentEvidenceRefs.length === 0;
+  const missingRecoveryLineage = failedDelegationRecovered && recoveryEvidenceRefs.length === 0;
+  const status: HarnessReplayAuditCheckStatus = missingClaimedLineage.length > 0 || missingIndependentLineage || missingRecoveryLineage
+    ? trace.verified ? "fail" : "warning"
+    : "pass";
+  return {
+    id: "verification_evidence_lineage",
+    status,
+    summary: [
+      `claimed_refs=${trace.claimed_verification_refs.length}`,
+      `verification_evidence_refs=${trace.verification_evidence_ref_count}`,
+      `claimed_evidence_refs=${claimedEvidenceRefs.length}`,
+      `independent_evidence_refs=${independentEvidenceRefs.length}`,
+      `failed_delegation_recovery_refs=${recoveryEvidenceRefs.length}`,
+      `missing_claimed_lineage=${missingClaimedLineage.length}`,
+      `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
+      `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`
+    ].join("; "),
+    refs: missingClaimedLineage.length > 0 || missingIndependentLineage || missingRecoveryLineage
+      ? unique([
+        trace.report_ref,
+        ...missingClaimedLineage,
+        ...trace.delegated_completion_gate_checks
+          .filter((check) =>
+            check.id === delegateAgentCompletionGateCheckId.delegatedIndependentEvidence
+            || check.id === delegateAgentCompletionGateCheckId.delegatedResults
+          )
+          .flatMap((check) => check.refs)
+      ])
+      : unique([trace.report_ref, ...claimedEvidenceRefs.map((item) => item.ref)])
   };
 }
 
@@ -674,6 +739,7 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       delegated_completion_gate_skipped: numberField(record.metrics, "delegated_completion_gate_skipped") ?? 0,
       delegated_dispatches: numberField(record.metrics, "delegated_dispatches") ?? 0,
       delegated_dispatches_failed: numberField(record.metrics, "delegated_dispatches_failed") ?? 0,
+      verification_evidence_refs: numberField(record.metrics, "verification_evidence_refs") ?? 0,
       harness_state_actions: numberField(record.metrics, "harness_state_actions") ?? 0,
       model_diagnostics: numberField(record.metrics, "model_diagnostics") ?? 0,
       repo_write_guards: numberField(record.metrics, "repo_write_guards") ?? 0,
@@ -691,6 +757,9 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       : [],
     delegated_dispatches: Array.isArray(record.delegated_dispatches)
       ? record.delegated_dispatches.map(asDelegatedDispatchSummary).filter((item): item is LiveRunDelegatedDispatchSummary => item !== null)
+      : [],
+    verification_evidence_refs: Array.isArray(record.verification_evidence_refs)
+      ? record.verification_evidence_refs.map(asVerificationEvidenceRefSummary).filter((item): item is LiveRunVerificationEvidenceRefSummary => item !== null)
       : [],
     artifact_refs: {
       json_ref: jsonRef,
@@ -755,6 +824,54 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   };
 }
 
+function asVerificationEvidenceRefSummary(value: unknown): LiveRunVerificationEvidenceRefSummary | null {
+  if (!isRecord(value)) return null;
+  const ref = stringField(value, "ref");
+  const source = stringField(value, "source");
+  const toolResultId = stringField(value, "tool_result_id");
+  const artifactRef = stringField(value, "artifact_ref");
+  const eventId = stringField(value, "event_id");
+  const round = numberField(value, "round");
+  const tool = stringField(value, "tool");
+  const sideEffectLevel = stringField(value, "side_effect_level");
+  if (
+    !ref
+    || !isVerificationEvidenceSource(source)
+    || !toolResultId
+    || !artifactRef
+    || !eventId
+    || round === null
+    || !tool
+    || !isSideEffectLevel(sideEffectLevel)
+    || typeof value.ok !== "boolean"
+    || typeof value.is_write_run !== "boolean"
+    || typeof value.claimed !== "boolean"
+    || typeof value.after_latest_delegation !== "boolean"
+    || typeof value.after_latest_failed_delegation !== "boolean"
+    || typeof value.counts_as_independent_evidence !== "boolean"
+    || typeof value.counts_as_failed_delegation_recovery !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    ref,
+    source,
+    tool_result_id: toolResultId,
+    artifact_ref: artifactRef,
+    event_id: eventId,
+    round,
+    tool,
+    ok: value.ok,
+    side_effect_level: sideEffectLevel,
+    is_write_run: value.is_write_run,
+    claimed: value.claimed,
+    after_latest_delegation: value.after_latest_delegation,
+    after_latest_failed_delegation: value.after_latest_failed_delegation,
+    counts_as_independent_evidence: value.counts_as_independent_evidence,
+    counts_as_failed_delegation_recovery: value.counts_as_failed_delegation_recovery
+  };
+}
+
 function asReplayCheck(value: unknown): HarnessReplayAuditCheck | null {
   if (!isRecord(value)) return null;
   const id = stringField(value, "id");
@@ -790,6 +907,14 @@ function isReplayCheckStatus(value: string | null): value is HarnessReplayAuditC
 
 function isCompletionGateCheckStatus(value: string | null): value is LiveRunCompletionCheckSummary["status"] {
   return value === "pass" || value === "fail" || value === "warning" || value === "skipped";
+}
+
+function isVerificationEvidenceSource(value: string | null): value is LiveRunVerificationEvidenceRefSummary["source"] {
+  return value === "tool_result" || value === "tool_artifact";
+}
+
+function isSideEffectLevel(value: string | null): value is LiveRunVerificationEvidenceRefSummary["side_effect_level"] {
+  return value === "none" || value === "local_reversible" || value === "local_write" || value === "external_write";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
