@@ -257,6 +257,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 也可以显示 `after_verify`，给出验证通过后写回 `record-iteration-outcome` 的模板，并保留可重复的 evidence ref、verification command、verification claim 和 next move 占位；
 `evidence_basis` 会给出有界候选 refs，方便 outcome 写回时引用，但它本身不是完成证明；
 `proof_boundary` 会把完成证明要求收紧到 verified outcome、outcome evidence refs、plan ref coverage、implementation contract coverage、outcome verification command coverage、outcome verification claim coverage、runtime attention outcome coverage 和 workspace outcome coverage；
+这些 coverage diagnostic 本身也必须存在；省略 outcome claim、runtime attention 或 workspace coverage 不会被当作 not applicable；
 `plan_ref_coverage` 如果缺 refs，会用 `required_outcome_evidence_refs` 列出必须补进 outcome evidence 的 refs；`record-iteration-outcome` 默认是覆盖式写入，补 refs 时可以用 `--merge-existing-outcome` 保留已有 outcome evidence、commands、claims 和 next moves 后再追加；
 `implementation_contract_coverage` 会比较当前 project-design plan 的 `implementation_contract` 与被审计 iteration record；如果 plan 已推进，则检查被审计 iteration 持久化 contract 的自一致性；缺失、不完整或错配都会阻塞 completion gate；
 `audit_require` 会按每个 completion audit seed 保留 requirement，避免只看到 seed id 却不知道审计目标；

@@ -878,9 +878,9 @@ export function buildIterationAuditCompletionGate(
     ...(planRefCoverage.status !== "covered" ? ["plan_ref_coverage"] : []),
     ...(!implementationContractCoverage || implementationContractCoverage.status !== "covered" ? ["implementation_contract_coverage"] : []),
     ...(outcomeVerificationCommandCoverage.status !== "covered" ? ["outcome_verification_command_coverage"] : []),
-    ...(outcomeVerificationClaimCoverage && outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
-    ...(runtimeAttentionOutcomeCoverage && !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
-    ...(workspaceOutcomeCoverage && !workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status) ? ["workspace_outcome_coverage"] : [])
+    ...(!outcomeVerificationClaimCoverage || outcomeVerificationClaimCoverage.status !== "covered" ? ["outcome_verification_claim_coverage"] : []),
+    ...(!runtimeAttentionOutcomeCoverage || !runtimeAttentionOutcomeCoverageIsSatisfied(runtimeAttentionOutcomeCoverage.status) ? ["runtime_attention_outcome_coverage"] : []),
+    ...(!workspaceOutcomeCoverage || !workspaceOutcomeCoverageIsSatisfied(workspaceOutcomeCoverage.status) ? ["workspace_outcome_coverage"] : [])
   ];
   return {
     status: blockers.length ? "blocked" : "ready_for_manual_review",

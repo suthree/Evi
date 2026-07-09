@@ -1020,7 +1020,10 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
   assert.equal(blocked.status, "blocked");
   assert.deepEqual(blocked.blockers, [
     "outcome_record",
-    "outcome_verification_command_coverage"
+    "outcome_verification_command_coverage",
+    "outcome_verification_claim_coverage",
+    "runtime_attention_outcome_coverage",
+    "workspace_outcome_coverage"
   ]);
   assert.match(blocked.boundary, /does not approve seeds or prove completion/);
 
@@ -1030,8 +1033,8 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { status: "covered" },
     { status: "covered" },
     { status: "missing_claims" },
-    undefined,
-    undefined,
+    { status: "not_required" },
+    { status: "not_required" },
     { status: "covered" }
   );
   assert.equal(missingClaims.status, "blocked");
@@ -1044,7 +1047,7 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { status: "covered" },
     { status: "covered" },
     { status: "missing_classification" },
-    undefined,
+    { status: "not_required" },
     { status: "covered" }
   );
   assert.equal(missingRuntimeAttention.status, "blocked");
@@ -1081,9 +1084,9 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
     { status: "covered" },
-    undefined,
-    undefined,
-    undefined,
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
     { status: "covered" }
   );
   assert.equal(partial.status, "blocked");
@@ -1094,20 +1097,40 @@ test("iteration audit completion gate blocks before outcome evidence and coverag
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
     { status: "covered" },
-    undefined,
-    undefined,
-    undefined,
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" },
     { status: "covered" }
   );
   assert.equal(ready.status, "ready_for_manual_review");
   assert.deepEqual(ready.blockers, []);
   assert.match(ready.boundary, /implementation contract coverage/);
 
+  const missingCoverageArguments = buildIterationAuditCompletionGate(
+    { outcome_status: "verified" },
+    { outcome_evidence_refs: ["tests/cli.test.ts"] },
+    { status: "covered" },
+    { status: "covered" },
+    undefined,
+    undefined,
+    undefined,
+    { status: "covered" }
+  );
+  assert.equal(missingCoverageArguments.status, "blocked");
+  assert.deepEqual(missingCoverageArguments.blockers, [
+    "outcome_verification_claim_coverage",
+    "runtime_attention_outcome_coverage",
+    "workspace_outcome_coverage"
+  ]);
+
   const missingImplementationContractCoverageArgument = buildIterationAuditCompletionGate(
     { outcome_status: "verified" },
     { outcome_evidence_refs: ["tests/cli.test.ts"] },
     { status: "covered" },
-    { status: "covered" }
+    { status: "covered" },
+    { status: "covered" },
+    { status: "not_required" },
+    { status: "not_required" }
   );
   assert.equal(missingImplementationContractCoverageArgument.status, "blocked");
   assert.deepEqual(missingImplementationContractCoverageArgument.blockers, ["implementation_contract_coverage"]);

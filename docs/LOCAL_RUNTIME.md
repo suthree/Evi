@@ -803,7 +803,9 @@ outcome evidence refs, missing plan ref coverage, missing implementation
 contract coverage, missing outcome verification command coverage, missing
 outcome verification claim coverage, missing runtime attention outcome coverage,
 or missing workspace outcome coverage. A partial or failed outcome stays blocked
-by `verified_outcome`. It
+by `verified_outcome`. Missing coverage diagnostics are blockers too; omitted
+claim, runtime-attention, or workspace coverage objects are not treated as not
+applicable. It
 remains read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still

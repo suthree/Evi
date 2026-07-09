@@ -457,7 +457,9 @@ evidence refs, plan ref coverage, implementation contract coverage, outcome
 verification command coverage, outcome verification claim coverage, runtime
 attention outcome coverage, and workspace outcome coverage. A partial or failed
 outcome remains blocked by
-`verified_outcome`. It is a read-only gate and does not approve seeds, execute
+`verified_outcome`. Missing coverage diagnostics are blockers too; omitting a
+claim, runtime-attention, or workspace coverage object must not be interpreted
+as not applicable. It is a read-only gate and does not approve seeds, execute
 checks, or prove completion.
 `governance iterations --iteration <id> --audit-seed all` aggregates every
 project-design completion seed against the same iteration evidence in one
