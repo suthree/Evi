@@ -144,7 +144,7 @@ export function parseDelegatedOutput(
   if (fullOutputBoundaryFailure) return fullOutputBoundaryFailure;
   let parsed: unknown;
   try {
-    parsed = JSON.parse(extractJsonObject(trimmed));
+    parsed = JSON.parse(trimmed);
   } catch (error) {
     return { ok: false, error: `Delegated model output was not valid JSON: ${errorMessage(error)}` };
   }
@@ -1206,16 +1206,6 @@ function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
 
 function normalizeRawEchoText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
-}
-
-function extractJsonObject(text: string): string {
-  if (text.startsWith("{") && text.endsWith("}")) return text;
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error(`Model output did not contain a JSON object: ${text.slice(0, 300)}`);
-  }
-  return text.slice(start, end + 1);
 }
 
 function errorMessage(error: unknown): string {

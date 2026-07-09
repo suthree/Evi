@@ -1306,10 +1306,12 @@ task/context echoes, delegated output authority/source claims, or over-limit
 delegate action counts are recorded as
 `ok=false`; delegated model request failure messages and contract-failure
 previews are sanitized before they are persisted or returned as observations.
-Full delegated outputs are scanned before JSON extraction, and raw
-task/context echo failures plus delegated output authority/source-claim
-failures suppress the raw output preview. Delegated dispatch metadata also
-records the model-action `envelope_ref` that declared the delegated action, and
+Full delegated outputs are scanned before strict full JSON-object parsing;
+wrapper prose or code fences around otherwise valid JSON remain malformed
+delegated output, and raw task/context echo failures plus delegated output
+authority/source-claim failures suppress the raw output preview. Delegated
+dispatch metadata also records the model-action `envelope_ref` that declared
+the delegated action, and
 Live Run Trace exposes the declaring round's safe `delegate_agent` action ids
 plus an `action_id -> sequence` map, so trace and replay can audit lineage from
 the model round, action id, and declared delegate order to the delegated result

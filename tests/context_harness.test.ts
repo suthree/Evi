@@ -4036,7 +4036,7 @@ test("live runner rejects Chinese delegated output authority claims before obser
   }
 });
 
-test("live runner rejects delegated output wrapper authority claims before JSON extraction", async () => {
+test("live runner rejects delegated output wrapper authority claims before strict parsing", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -4144,7 +4144,7 @@ test("live runner rejects delegated output forbidden source claims before observ
   }
 });
 
-test("live runner rejects delegated output wrapper raw context before JSON extraction", async () => {
+test("live runner rejects delegated output wrapper raw context before strict parsing", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {

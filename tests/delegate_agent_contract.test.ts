@@ -78,6 +78,32 @@ test("delegate_agent context still accepts explicit payload and evidence-only bo
   assert.equal(result.ok, true);
 });
 
+test("delegated output accepts only a strict full JSON object", () => {
+  const strict = parseDelegatedOutput(JSON.stringify({
+    summary: "Valid bounded summary.",
+    findings_text: "Valid bounded findings."
+  }), DELEGATED_OUTPUT_SOURCE);
+
+  assert.equal(strict.ok, true);
+
+  const validJson = JSON.stringify({
+    summary: "Wrapped bounded summary.",
+    findings_text: "Wrapped bounded findings."
+  });
+  const wrappedOutputs = [
+    `Here is the delegated JSON:\n${validJson}`,
+    `\`\`\`json\n${validJson}\n\`\`\``
+  ];
+
+  for (const output of wrappedOutputs) {
+    const result = parseDelegatedOutput(output, DELEGATED_OUTPUT_SOURCE);
+    assert.equal(result.ok, false, output);
+    if (!result.ok) {
+      assert.match(result.error, /not valid JSON/);
+    }
+  }
+});
+
 test("delegated output rejects natural-language command and test execution claims", () => {
   const outputs = [
     JSON.stringify({
