@@ -18,6 +18,13 @@ const HARNESS_ACTION_TYPES = new Set([
   "pause_autonomy"
 ]);
 
+const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set([
+  "claimed_refs_bound_to_evidence",
+  "delegated_self_report_refs",
+  "delegated_independent_evidence",
+  "delegated_results"
+]);
+
 export interface LiveRunTraceRound {
   round: number;
   envelope_ref: string;
@@ -69,6 +76,13 @@ export interface LiveRunDelegatedDispatchSummary {
   ok: boolean;
 }
 
+export interface LiveRunCompletionCheckSummary {
+  id: string;
+  status: CompletionVerificationReport["checks"][number]["status"];
+  summary: string;
+  refs: string[];
+}
+
 export interface LiveRunTraceSummary {
   report_ref: string;
   completion_id: string;
@@ -90,6 +104,7 @@ export interface LiveRunTraceSummary {
   delegated_result_count: number;
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
+  delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
   observation_ref_count: number;
@@ -184,6 +199,7 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
   const delegatedResultFailedCount = Math.max(
     delegatedFailureCount(report),
     delegatedDispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length
@@ -198,7 +214,8 @@ async function summarizeLiveRunTrace(
     report.final_response_ref,
     ...rounds.map((round) => round.envelope_ref),
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
-    ...report.observation_refs.slice(0, 12)
+    ...report.observation_refs.slice(0, 12),
+    ...delegatedCompletionGateChecks.flatMap((check) => check.refs.slice(0, 5))
   ]);
 
   return {
@@ -222,6 +239,7 @@ async function summarizeLiveRunTrace(
     delegated_result_count: delegatedResultCount,
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
+    delegated_completion_gate_checks: delegatedCompletionGateChecks,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
     observation_ref_count: report.observation_refs.length,
@@ -234,11 +252,23 @@ async function summarizeLiveRunTrace(
     boundary: [
       "read-only live run trace; reads completion reports, model action envelope metadata,",
       "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch metadata",
+      "plus bounded delegated completion-gate check metadata from the completion report",
       "with event-summary fallback for older delegated events; repo write guard summaries are parsed from bounded tool-result event",
       "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
       "raw delegated previews, final responses, or harness artifact bodies"
     ].join(" ")
   };
+}
+
+function readDelegatedCompletionGateChecks(report: CompletionVerificationReport): LiveRunCompletionCheckSummary[] {
+  return report.checks
+    .filter((check) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(check.id))
+    .map((check) => ({
+      id: check.id,
+      status: check.status,
+      summary: check.summary,
+      refs: [...check.refs]
+    }));
 }
 
 function readDelegatedDispatchSummaries(

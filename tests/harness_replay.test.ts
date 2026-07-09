@@ -130,6 +130,11 @@ test("harness replay audit surfaces delegated completion gate check ids", async 
       summary: "All delegated result(s) passed contract validation; they are not completion proof.",
       refs: ["delegated_result_invalid"]
     }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated self-report refs were not accepted as completion proof.",
+      refs: ["memory/episodes/session_replay_test-delegated_result_invalid.json"]
+    }, {
       id: "delegated_independent_evidence",
       status: "fail",
       summary: "Done claim after delegation lacks bound non-delegated verification refs.",
@@ -143,7 +148,29 @@ test("harness replay audit surfaces delegated completion gate check ids", async 
 
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /failed_checks=delegated_independent_evidence/);
+    assert.deepEqual(report.delegated_completion_gate_checks.map((item) => ({
+      id: item.id,
+      status: item.status
+    })), [{
+      id: "delegated_results",
+      status: "pass"
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass"
+    }, {
+      id: "delegated_independent_evidence",
+      status: "fail"
+    }]);
+    assert.equal(
+      report.delegated_completion_gate_checks[1]?.refs.includes("memory/episodes/session_replay_test-delegated_result_invalid.json"),
+      true
+    );
+    const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
+    assert.match(markdown, /## Delegated Completion Gate/);
+    assert.match(markdown, /delegated_self_report_refs: pass/);
+    assert.match(markdown, /Delegated self-report refs were not accepted as completion proof/);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+    assert.doesNotMatch(markdown, /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1325,8 +1325,11 @@ counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated
 result bodies. Trace and replay audit JSON preserve the complete delegated
-dispatch metadata set for counting and coverage; operator Markdown/context
-views may cap the rendered list and show an omitted count. Failed delegated
+dispatch metadata set for counting and coverage. They also preserve bounded
+delegated completion-gate check metadata from the completion report:
+check id, status, summary, and refs across pass/warning/fail outcomes, without
+treating delegated output as completion proof. Operator Markdown/context
+views may cap the rendered lists and show an omitted count. Failed delegated
 results can only guide a later main-harness model round as sanitized
 observation; recovery still requires later main-harness write/run evidence and
 independent verification evidence. State-only harness/governance actions,
@@ -2521,6 +2524,9 @@ Required policy:
   state-action counts, delegated result pass/fail counts, safe delegated
   dispatch metadata, per-round action counts, action types, model diagnostic
   failure kind/stage/refs, and envelope refs
+- delegated completion-gate check summaries may include check id, status,
+  summary, and refs copied from the completion report; they must not treat
+  delegated output as completion proof
 - per-round action counts and envelope refs must come from the current
   completion turn's `model_action` evidence refs, not from every model-action
   file under the same session id

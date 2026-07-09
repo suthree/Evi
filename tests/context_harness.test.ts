@@ -1861,6 +1861,16 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
         summary: "Done claim has a persisted final response artifact.",
         refs: [`memory/episodes/${priorSession}-final-response.md`]
       }, {
+        id: "delegated_self_report_refs",
+        status: "pass",
+        summary: "Delegated self-report refs were rejected as completion proof.",
+        refs: [`memory/episodes/${priorSession}-delegated_result_invalid.json`]
+      }, {
+        id: "delegated_independent_evidence",
+        status: "fail",
+        summary: "Done claim after delegation lacks later non-delegated verification refs.",
+        refs: []
+      }, {
         id: "delegated_results",
         status: "fail",
         summary: "Failed delegated result(s): 9.",
@@ -1971,6 +1981,26 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_results_passed: 0/);
     assert.match(rendered.markdown, /delegated_results_failed: 1/);
     assert.equal(trace.delegated_result_failed_count, 1);
+    assert.deepEqual(trace.delegated_completion_gate_checks.map((check) => ({
+      id: check.id,
+      status: check.status
+    })), [{
+      id: "delegated_self_report_refs",
+      status: "pass"
+    }, {
+      id: "delegated_independent_evidence",
+      status: "fail"
+    }, {
+      id: "delegated_results",
+      status: "fail"
+    }]);
+    assert.equal(
+      trace.delegated_completion_gate_checks[0]?.refs.includes(`memory/episodes/${priorSession}-delegated_result_invalid.json`),
+      true
+    );
+    assert.match(rendered.markdown, /delegated_completion_gate_check: delegated_self_report_refs=pass/);
+    assert.match(rendered.markdown, /Delegated self-report refs were rejected as completion proof/);
+    assert.match(rendered.markdown, /delegated_completion_gate_check: delegated_independent_evidence=fail/);
     assert.equal(trace.delegated_dispatches.length, 1);
     assert.deepEqual(trace.delegated_dispatches[0], {
       event_id: "evidence_trace_delegated",

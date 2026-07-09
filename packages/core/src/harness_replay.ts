@@ -6,6 +6,7 @@ import {
 import {
   getLiveRunTrace,
   listLiveRunTraces,
+  type LiveRunCompletionCheckSummary,
   type LiveRunDelegatedDispatchSummary,
   type LiveRunTraceSummary
 } from "./live_run_trace.js";
@@ -69,6 +70,7 @@ export interface HarnessReplayAuditReport {
     observation_refs: number;
   };
   checks: HarnessReplayAuditCheck[];
+  delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   artifact_refs: {
     json_ref: string;
@@ -132,6 +134,7 @@ export async function runHarnessReplayAudit(
       observation_refs: trace.observation_ref_count
     },
     checks,
+    delegated_completion_gate_checks: trace.delegated_completion_gate_checks,
     delegated_dispatches: trace.delegated_dispatches,
     artifact_refs: {
       json_ref: jsonRef,
@@ -143,7 +146,8 @@ export async function runHarnessReplayAudit(
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
-      ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+      ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+      ...trace.delegated_completion_gate_checks.flatMap((check) => check.refs)
     ]),
     boundary: REPLAY_BOUNDARY
   };
@@ -230,6 +234,16 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
       `  summary: ${check.summary}`,
       `  refs: ${check.refs.join(", ") || "none"}`
     ].join("\n")),
+    "",
+    "## Delegated Completion Gate",
+    "",
+    ...(report.delegated_completion_gate_checks.length > 0
+      ? report.delegated_completion_gate_checks.map((check) => [
+        `- ${check.id}: ${check.status}`,
+        `  summary: ${check.summary}`,
+        `  refs: ${check.refs.join(", ") || "none"}`
+      ].join("\n"))
+      : ["- none"]),
     "",
     "## Delegated Dispatches",
     "",
@@ -527,6 +541,9 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       observation_refs: numberField(record.metrics, "observation_refs") ?? 0
     },
     checks,
+    delegated_completion_gate_checks: Array.isArray(record.delegated_completion_gate_checks)
+      ? record.delegated_completion_gate_checks.map(asCompletionGateCheck).filter((item): item is LiveRunCompletionCheckSummary => item !== null)
+      : [],
     delegated_dispatches: Array.isArray(record.delegated_dispatches)
       ? record.delegated_dispatches.map(asDelegatedDispatchSummary).filter((item): item is LiveRunDelegatedDispatchSummary => item !== null)
       : [],
@@ -536,6 +553,20 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
     },
     refs: record.refs.filter((item): item is string => typeof item === "string"),
     boundary: record.boundary
+  };
+}
+
+function asCompletionGateCheck(value: unknown): LiveRunCompletionCheckSummary | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, "id");
+  const status = stringField(value, "status");
+  const summary = stringField(value, "summary");
+  if (!id || !isCompletionGateCheckStatus(status) || !summary || !Array.isArray(value.refs)) return null;
+  return {
+    id,
+    status,
+    summary,
+    refs: value.refs.filter((item): item is string => typeof item === "string")
   };
 }
 
@@ -604,6 +635,10 @@ function isReplayStatus(value: unknown): value is HarnessReplayAuditStatus {
 
 function isReplayCheckStatus(value: string | null): value is HarnessReplayAuditCheckStatus {
   return value === "pass" || value === "warning";
+}
+
+function isCompletionGateCheckStatus(value: string | null): value is LiveRunCompletionCheckSummary["status"] {
+  return value === "pass" || value === "fail" || value === "warning" || value === "skipped";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

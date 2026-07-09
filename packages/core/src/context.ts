@@ -934,6 +934,11 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     if (diagnostic.response_ref) lines.push(`  response_ref: ${diagnostic.response_ref}`);
     if (diagnostic.error_preview) lines.push(`  error_preview: ${truncate(diagnostic.error_preview, 220)}`);
   }
+  for (const check of trace.delegated_completion_gate_checks.slice(0, 4)) {
+    lines.push(`- delegated_completion_gate_check: ${check.id}=${check.status}`);
+    lines.push(`  summary: ${truncate(check.summary, 220)}`);
+    if (check.refs.length > 0) lines.push(`  refs: ${check.refs.slice(0, 5).join(", ")}`);
+  }
   for (const dispatch of trace.delegated_dispatches.slice(0, 3)) {
     lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} ref=${dispatch.result_ref}`);
   }
@@ -995,6 +1000,10 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
   ];
   for (const check of replay.checks.slice(0, 9)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
+    lines.push(`  summary: ${truncate(check.summary, 220)}`);
+  }
+  for (const check of replay.delegated_completion_gate_checks.slice(0, 4)) {
+    lines.push(`- delegated_completion_gate_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }
   return lines.join("\n");

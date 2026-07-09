@@ -1183,7 +1183,8 @@ Live context may also render a bounded `Live Run Trace` section for recent
 live harness runs. It summarizes completion report refs, context refs, event
 kind counts, observation counts, delegated result pass/fail counts, per-round
 action counts, safe delegated dispatch metadata from harness-owned event
-summaries, model diagnostic failure kind/stage/refs, repo-write workspace guard
+summaries, bounded delegated completion-gate check metadata from the completion
+report, model diagnostic failure kind/stage/refs, repo-write workspace guard
 summaries, and envelope refs.
 Per-round action counts and envelope refs are scoped to the selected completion
 turn's `model_action` evidence refs, so another turn in the same session cannot
@@ -1218,7 +1219,8 @@ Operators can run a state-only replay audit over one bounded trace with
 `/review replay <ref-or-id>` inspect those reports. Later context bundles,
 aggregate governance status, and Feishu `/governance` may show bounded replay
 counts and refs. Replay reports may carry safe delegated dispatch metadata and
-a dispatch-coverage check from the source trace. They also check bounded
+a dispatch-coverage check from the source trace, plus bounded delegated
+completion-gate check metadata from the completion report. They also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`
