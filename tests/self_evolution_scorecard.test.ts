@@ -102,6 +102,7 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.match(delegation?.summary ?? "", /bounded general-agent subtask path/);
     assert.match(delegation?.summary ?? "", /completion authority in the main harness/);
     assert.match(delegation?.next_moves[0] ?? "", /Harden delegate_agent task, context, result/);
+    assert.equal(delegation?.evidence_refs.includes("packages/core/src/delegate_agent_completion_gate.ts"), true);
     assert.equal(delegation?.evidence_refs.includes("packages/core/src/delegate_agent_contract.ts"), true);
     assert.equal(delegation?.evidence_refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(delegation?.evidence_refs.includes("tests/context_harness.test.ts"), true);
@@ -134,6 +135,7 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     ), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_scorecard.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/ga_project_design.ts"), true);
+    assert.equal(scorecard.refs.includes("packages/core/src/delegate_agent_completion_gate.ts"), true);
     assert.equal(scorecard.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_iterations.ts"), true);
     assert.equal(scorecard.refs.includes("self-evolution/iterations/iteration_contract_scorecard.json"), true);

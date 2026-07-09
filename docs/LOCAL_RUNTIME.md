@@ -2064,8 +2064,10 @@ may contain only `task` and `context` before the submodel is called. The task
 limits, output limits, task/context authoring rules, failure-kind values, and
 delegated completion-gate check ids are sourced from
 `packages/core/src/action_contracts.ts`, with pure task/context and delegated
-output parsing in `packages/core/src/delegate_agent_contract.ts`; schema
-validation, the live runner, Live Run Trace, replay checks, capability
+output parsing in `packages/core/src/delegate_agent_contract.ts` and pure
+delegated completion-gate checks in
+`packages/core/src/delegate_agent_completion_gate.ts`; schema validation, the
+live runner, Live Run Trace, replay checks, capability
 summaries, context read models, and GA project-design packets consume those
 shared contracts to avoid drift. The task
 must explicitly request bounded analysis, critique, review,

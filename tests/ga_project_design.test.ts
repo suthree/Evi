@@ -385,8 +385,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("command/test execution")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("forbidden-source reliance")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("sanitizes successful summary/findings")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedVerificationRefs")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("delegatedIndependentEvidenceCheck")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("completion-gate helper")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("latest delegated result")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.inputs.includes("result_failure_kind"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("main-harness model round")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("independent verification evidence")), true);
@@ -556,6 +556,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_unrelated_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/action_contracts.ts"), true);
+    assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/delegate_agent_completion_gate.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/delegate_agent_contract.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/schemas.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/runtime/src/runner.ts"), true);

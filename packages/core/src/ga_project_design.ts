@@ -556,6 +556,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "docs/LOCAL_RUNTIME.md",
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/capabilities.ts",
+      "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/self_evolution_scorecard.ts",
@@ -738,6 +739,7 @@ function buildNextCoreBasicPlan(
     refs: compactRefs([
       "packages/core/src/ga_project_design.ts",
       "packages/core/src/action_contracts.ts",
+      "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/schemas.ts",
       "packages/runtime/src/runner.ts",
@@ -1200,9 +1202,9 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
       ],
       completion_gate: [
-        "delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence",
-        "delegatedVerificationRefs rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof",
-        "delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
+        "delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence",
+        "delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof",
+        "delegate_agent completion-gate helper fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs"
       ]
     },
     recovery_contract: {
@@ -1276,6 +1278,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     ],
     evidence_refs: [
       "packages/core/src/action_contracts.ts",
+      "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/schemas.ts",
       "packages/core/src/live_run_trace.ts",

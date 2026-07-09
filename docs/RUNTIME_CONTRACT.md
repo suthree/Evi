@@ -1253,7 +1253,9 @@ non-empty `task` and `context` strings before the delegated model is called, and
 `task` is capped at 1000 chars while `context` is capped at 12000 chars. The
 shared literal contract lives in `packages/core/src/action_contracts.ts`; the
 pure contract parser lives in `packages/core/src/delegate_agent_contract.ts`;
-the schemas, live runner, Live Run Trace, harness replay checks, capability
+the pure delegated completion-gate checks live in
+`packages/core/src/delegate_agent_completion_gate.ts`; the schemas, live runner,
+Live Run Trace, harness replay checks, capability
 catalog, context read models, and GA project-design read model derive their
 limits, task/context authoring rules, failure-kind values, and delegated
 completion-gate check ids from those sources instead of redeclaring them.
