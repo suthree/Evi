@@ -578,12 +578,13 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       },
       replay_audit_contract: {
         metadata_source: "harness-owned delegated_result event summaries only",
-        required_metadata: ["action_id", "envelope_ref", "dispatch_failure_kind", "result_failure_kind"],
+        required_metadata: ["action_id", "envelope_ref", "model_invoked", "dispatch_failure_kind", "result_failure_kind"],
         checks: [
           "delegated_completion_gate",
           "delegated_action_coverage",
           "delegated_result_ref_coverage",
           "delegated_dispatch_metadata",
+          "delegated_model_invocation_boundary",
           "delegated_dispatch_lineage",
           "delegated_dispatch_failure_kind",
           "delegated_dispatch_round_limit",
@@ -597,7 +598,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), `action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim without later recovery evidence+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs+delegate_agent completion-gate helper requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate+delegated_action_coverage+delegated_result_ref_coverage+delegated_dispatch_metadata+delegated_dispatch_lineage+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
+  }), `action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim without later recovery evidence+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs+delegate_agent completion-gate helper requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate+delegated_action_coverage+delegated_result_ref_coverage+delegated_dispatch_metadata+delegated_model_invocation_boundary+delegated_dispatch_lineage+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1474,7 +1475,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue general_agent_delegation_hardening_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof\\+delegate_agent completion-gate helper fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate\\+delegated_action_coverage\\+delegated_result_ref_coverage\\+delegated_dispatch_metadata\\+delegated_dispatch_lineage\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
+    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; lifecycle=validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegate_agent completion-gate helper rejects exact delegated result ids or persisted delegated result refs as completion proof without treating substring lookalikes as delegated proof\\+delegate_agent completion-gate helper fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate\\+delegated_action_coverage\\+delegated_result_ref_coverage\\+delegated_dispatch_metadata\\+delegated_model_invocation_boundary\\+delegated_dispatch_lineage\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| plan_target_slice=next_slice_general_agent_delegation/);
@@ -1880,6 +1881,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       sequence: 1,
       task_chars: 44,
       context_chars: 88,
+      model_invoked: true,
       contract_status: "failed",
       task: "RAW_DELEGATED_TASK_SHOULD_NOT_BE_IN_CONTEXT",
       findings_text: "RAW_DELEGATED_FINDINGS_SHOULD_NOT_BE_IN_CONTEXT",
@@ -1995,6 +1997,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
         sequence: 1,
         task_chars: 44,
         context_chars: 88,
+        model_invoked: true,
         contract_status: "failed",
         dispatch_failure_kind: "none",
         result_failure_kind: "delegated_output_contract_failed",
@@ -2087,6 +2090,8 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       sequence: 1,
       task_chars: 44,
       context_chars: 88,
+      model_invoked: true,
+      model_invoked_present: true,
       contract_status: "failed",
       dispatch_failure_kind: null,
       dispatch_failure_kind_present: true,
@@ -2094,7 +2099,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       result_failure_kind_present: true,
       ok: false
     });
-    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false dispatch_failure_kind=none result_failure_kind=delegated_output_contract_failed task_chars=44 context_chars=88 action_id=action_delegate_trace_context envelope_ref=memory\/episodes\/session_live_trace_context-model-action-r1\.json ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
+    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false model_invoked=true dispatch_failure_kind=none result_failure_kind=delegated_output_contract_failed task_chars=44 context_chars=88 action_id=action_delegate_trace_context envelope_ref=memory\/episodes\/session_live_trace_context-model-action-r1\.json ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
     assert.match(rendered.markdown, /harness_state_actions: 1/);
     assert.match(rendered.markdown, /repo_write_guards: 1/);
     assert.match(rendered.markdown, /repo_write_guard: docs\/generated\.md before=dirty after=dirty changed_files=1->2 delta=1 preexisting_dirty=true target_changed=true/);
@@ -3740,6 +3745,7 @@ test("live runner feeds structured delegated results back as bounded observation
       sequence: number;
       task_chars: number;
       context_chars: number;
+      model_invoked: boolean;
       dispatch_failure_kind: string;
       result_failure_kind: string;
     };
@@ -3756,7 +3762,7 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(model.sawStructuredDelegation, true);
     assert.equal(model.sawDelegatedInstructionsBoundary, true);
     assert.equal(model.sawSanitizedDelegationObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
     const delegatedEnvelopeRef = String(delegatedEvent?.delegated_dispatch?.envelope_ref ?? "");
     assert.match(delegatedEnvelopeRef, /^memory\/episodes\/session_.*-model-action-r1\.json$/);
     assert.deepEqual(delegatedEvent?.delegated_dispatch, {
@@ -3766,6 +3772,7 @@ test("live runner feeds structured delegated results back as bounded observation
       sequence: 1,
       task_chars: delegated.task_chars,
       context_chars: delegated.context_chars,
+      model_invoked: true,
       contract_status: "passed",
       dispatch_failure_kind: "none",
       result_failure_kind: "none",
@@ -3786,6 +3793,7 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(delegated.error, null);
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "none");
+    assert.equal(delegated.model_invoked, true);
     assert.match(delegated.action_id, /^action_/);
     assert.equal(delegated.round, 1);
     assert.equal(delegated.sequence, 1);
@@ -3897,7 +3905,7 @@ test("live runner rejects delegated output authority claims before observation",
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedAuthorityFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -3951,7 +3959,7 @@ test("live runner rejects delegated output command execution claims before obser
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedCommandExecutionFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -4005,7 +4013,7 @@ test("live runner rejects Chinese delegated output authority claims before obser
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedChineseAuthorityFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -4059,7 +4067,7 @@ test("live runner rejects delegated output wrapper authority claims before JSON 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedWrappedAuthorityFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -4113,7 +4121,7 @@ test("live runner rejects delegated output forbidden source claims before observ
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedForbiddenSourceFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -4775,7 +4783,7 @@ test("live runner fails done verification when delegated result violates its con
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.sawSanitizedFailedObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -5171,7 +5179,7 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedRequestFailureObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -5228,7 +5236,7 @@ test("live runner fails done verification when delegated output exceeds bounded 
     };
 
     assert.equal(result.verdict, "completion_unverified");
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "none");
@@ -5279,7 +5287,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=0; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=0; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);
@@ -5387,7 +5395,7 @@ test("live runner rejects delegate context without explicit authority boundary",
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedBoundaryObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5502,7 +5510,7 @@ test("live runner rejects delegate context without explicit source boundary", as
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedSourceBoundaryObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5563,7 +5571,7 @@ test("live runner rejects contradictory delegate context authority grants", asyn
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedBoundaryObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5618,7 +5626,7 @@ test("live runner rejects delegate context command/test execution grants", async
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedCommandExecutionObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5677,7 +5685,7 @@ test("live runner rejects delegate context expert scheduling grants", async () =
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedBoundaryObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5730,7 +5738,7 @@ test("live runner rejects delegate context forbidden source expansion", async ()
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawForbiddenSourceObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -5786,7 +5794,7 @@ test("live runner rejects delegate task authority requests without calling the d
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedTaskObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -6063,7 +6071,7 @@ test("live runner rejects delegate task with command execution intent", async ()
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedTaskObservation, true);
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
@@ -6177,7 +6185,7 @@ test("live runner rejects oversized delegate context without calling the delegat
     };
 
     assert.equal(result.verdict, "completion_unverified");
-    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedDelegationObservation, true);
     assert.equal(delegated.ok, false);

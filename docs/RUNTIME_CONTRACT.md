@@ -1319,7 +1319,12 @@ Dispatch-layer rejects also carry a safe
 failures record `dispatch_failure_kind=none` explicitly. This means no
 dispatch-layer failure, not delegated success, so trace/replay read models can
 distinguish a real none value from an older or malformed summary that omitted
-the field. Every failed delegated result also carries a
+the field. Delegated dispatch metadata also records `model_invoked`: input
+contract and per-round-limit rejects must keep `model_invoked=false`, while
+post-dispatch results, including delegated output contract failures and
+delegated model request failures, must keep `model_invoked=true`. Replay warns
+when that boundary is missing or contradicted, without reading delegated artifact
+bodies. Every failed delegated result also carries a
 safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
 delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.
@@ -1436,7 +1441,7 @@ Operators may also inspect the bounded live run trace read model through
 summaries as context: completion report refs, completion ids, session/turn ids,
 context refs, event kind counts, observation counts, per-round action counts,
 harness state-action counts, safe delegated dispatch metadata including
-`dispatch_failure_kind`, model diagnostic
+`model_invoked` and `dispatch_failure_kind`, model diagnostic
 failure kind/stage/refs, repo-write workspace guard summaries from bounded
 tool-result event summaries, and envelope refs. It must not read raw model
 responses, action payloads, tool result bodies, delegated task, context,
@@ -1462,7 +1467,9 @@ fallback, whether delegated result events have matching dispatch metadata and
 action ids declared by their round envelope, and whether
 over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
-omits the field instead of explicitly recording `none`. It also checks
+omits the field instead of explicitly recording `none`. Replay also checks
+`model_invoked` coverage, warning when pre-model rejects claim model invocation
+or post-dispatch results claim no model invocation. It also checks
 `result_failure_kind` coverage for every delegated result summary, including
 passed results that should record `result_failure_kind=none`, and warns when a
 trace carries legal but semantically mismatched dispatch/result failure kinds,

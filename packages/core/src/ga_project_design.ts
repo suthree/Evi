@@ -1168,6 +1168,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
         "record input_contract_failed when payload validation fails before delegated model dispatch",
         "record none when there is no dispatch-layer failure, including delegated output contract or model request failures after dispatch",
+        "record model_invoked=false for input_contract_failed or dispatch_limit_exceeded and model_invoked=true only after dispatch reaches the delegated model call",
         "harness replay checks dispatch_failure_kind coverage and pair consistency with result_failure_kind without reading delegated result bodies"
       ],
       reject_if: [
@@ -1243,6 +1244,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "sequence",
         "task_chars",
         "context_chars",
+        "model_invoked",
         "contract_status",
         "dispatch_failure_kind",
         "result_failure_kind",
@@ -1254,6 +1256,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_action_coverage",
         "delegated_result_ref_coverage",
         "delegated_dispatch_metadata",
+        "delegated_model_invocation_boundary",
         "delegated_dispatch_lineage",
         "delegated_dispatch_failure_kind",
         "delegated_dispatch_round_limit",
@@ -1265,6 +1268,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "completion reports keep delegated_result_refs separate from generic observation_refs so delegated self-reports remain advisory metadata rather than completion proof",
         "replay audit warns when delegated dispatch result refs are only recovered from delegated_result event fallback and missing from completion report delegated_result_refs",
         "trace and replay audit JSON preserve the full delegated dispatch metadata set, including persisted delegated result refs",
+        "replay audit warns when input-contract or per-round-limit rejected dispatches claim model_invoked=true or when a post-dispatch result claims model_invoked=false",
         "replay audit warns when a delegated dispatch lacks a model-action envelope ref, points at a different round envelope, uses an action_id not declared by the round envelope delegate_agent actions, or reports a sequence that does not match the declared delegate action order",
         "replay audit warns when a delegated dispatch lacks a persisted delegated result JSON artifact ref",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",

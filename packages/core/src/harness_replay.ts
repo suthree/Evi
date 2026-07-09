@@ -262,7 +262,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     ...(report.delegated_dispatches.length > 0
       ? [
         ...report.delegated_dispatches.slice(0, DELEGATED_DISPATCH_MARKDOWN_LIMIT).map((dispatch) =>
-          `- action_id=${dispatch.action_id}; envelope_ref=${dispatch.envelope_ref ?? "none"}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+          `- action_id=${dispatch.action_id}; envelope_ref=${dispatch.envelope_ref ?? "none"}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; model_invoked=${dispatch.model_invoked ?? "unknown"}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
         ),
         ...(report.delegated_dispatches.length > DELEGATED_DISPATCH_MARKDOWN_LIMIT
           ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
@@ -315,6 +315,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
     },
     delegatedResultRefCoverageCheck(trace),
     delegatedDispatchMetadataCheck(trace),
+    delegatedModelInvocationBoundaryCheck(trace),
     delegatedActionCoverageCheck(trace),
     delegatedDispatchLineageCheck(trace),
     delegatedDispatchFailureKindCheck(trace),
@@ -392,6 +393,34 @@ function delegatedDispatchMetadataCheck(trace: LiveRunTraceSummary): HarnessRepl
       `dispatches=${trace.delegated_dispatches.length}`,
       `failed_dispatches=${failedDispatches.length}`,
       `missing_result_ref=${missingResultRefs.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  };
+}
+
+function delegatedModelInvocationBoundaryCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const missingModelInvoked = trace.delegated_dispatches.filter((dispatch) => !dispatch.model_invoked_present);
+  const blockedInvoked = trace.delegated_dispatches.filter((dispatch) =>
+    isDispatchBlockedBeforeModel(dispatch) && dispatch.model_invoked === true
+  );
+  const dispatchedNotInvoked = trace.delegated_dispatches.filter((dispatch) =>
+    !isDispatchBlockedBeforeModel(dispatch) && dispatch.model_invoked === false
+  );
+  const problemRefs = unique([
+    ...missingModelInvoked,
+    ...blockedInvoked,
+    ...dispatchedNotInvoked
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_model_invocation_boundary",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `delegated_dispatches=${trace.delegated_dispatches.length}`,
+      `missing_model_invoked=${missingModelInvoked.length}`,
+      `blocked_invoked=${blockedInvoked.length}`,
+      `dispatched_not_invoked=${dispatchedNotInvoked.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs
@@ -585,6 +614,11 @@ function hasFailureKindPairMismatch(dispatch: LiveRunDelegatedDispatchSummary): 
   return dispatch.dispatch_failure_kind !== null;
 }
 
+function isDispatchBlockedBeforeModel(dispatch: LiveRunDelegatedDispatchSummary): boolean {
+  return dispatch.dispatch_failure_kind === "input_contract_failed"
+    || dispatch.dispatch_failure_kind === "dispatch_limit_exceeded";
+}
+
 function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditStatus): string {
   const warnings = [
     trace.verification_status !== "passed" || !trace.verified ? "completion verification attention" : null,
@@ -708,6 +742,10 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     sequence,
     task_chars: taskChars,
     context_chars: contextChars,
+    model_invoked: typeof value.model_invoked === "boolean" ? value.model_invoked : null,
+    model_invoked_present: typeof value.model_invoked_present === "boolean"
+      ? value.model_invoked_present
+      : typeof value.model_invoked === "boolean",
     contract_status: contractStatus,
     dispatch_failure_kind: dispatchFailureKind,
     dispatch_failure_kind_present: Object.hasOwn(value, "dispatch_failure_kind"),

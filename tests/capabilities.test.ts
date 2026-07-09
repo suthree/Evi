@@ -259,6 +259,7 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /done claims after delegation require later harness-known non-delegated verification refs/);
   assert.match(text, /successful write\/run evidence only counts as completion proof when its harness-known ref is cited/);
   assert.match(text, /dispatch_failure_kind/);
+  assert.match(text, /model_invoked/);
   assert.match(text, /dispatch_limit_exceeded/);
   assert.match(text, /input_contract_failed/);
   assert.match(text, /none means no dispatch-layer failure, not delegated success/);

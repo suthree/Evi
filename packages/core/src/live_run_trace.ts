@@ -70,6 +70,8 @@ export interface LiveRunDelegatedDispatchSummary {
   sequence: number;
   task_chars: number;
   context_chars: number;
+  model_invoked: boolean | null;
+  model_invoked_present: boolean;
   contract_status: string;
   dispatch_failure_kind: string | null;
   dispatch_failure_kind_present: boolean;
@@ -333,6 +335,8 @@ function delegatedDispatchFromEventMetadata(
     sequence: metadata.sequence,
     task_chars: metadata.task_chars,
     context_chars: metadata.context_chars,
+    model_invoked: typeof metadata.model_invoked === "boolean" ? metadata.model_invoked : null,
+    model_invoked_present: typeof metadata.model_invoked === "boolean",
     contract_status: metadata.contract_status,
     dispatch_failure_kind: metadata.dispatch_failure_kind === "none" ? null : metadata.dispatch_failure_kind,
     dispatch_failure_kind_present: true,
@@ -343,10 +347,11 @@ function delegatedDispatchFromEventMetadata(
 }
 
 function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
-  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+); contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
+  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+)(?:; model_invoked=(true|false))?; contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
-  const dispatchFailureKind = match[7];
-  const resultFailureKind = match[8];
+  const modelInvoked = match[6];
+  const dispatchFailureKind = match[8];
+  const resultFailureKind = match[9];
   return {
     action_id: match[1].trim(),
     envelope_ref: null,
@@ -354,12 +359,14 @@ function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDi
     sequence: Number.parseInt(match[3], 10),
     task_chars: Number.parseInt(match[4], 10),
     context_chars: Number.parseInt(match[5], 10),
-    contract_status: match[6],
+    model_invoked: modelInvoked === undefined ? null : modelInvoked === "true",
+    model_invoked_present: modelInvoked !== undefined,
+    contract_status: match[7],
     dispatch_failure_kind: dispatchFailureKind && dispatchFailureKind !== "none" ? dispatchFailureKind : null,
     dispatch_failure_kind_present: dispatchFailureKind !== undefined,
     result_failure_kind: resultFailureKind && resultFailureKind !== "none" ? resultFailureKind : null,
     result_failure_kind_present: resultFailureKind !== undefined,
-    ok: match[9] === "true"
+    ok: match[10] === "true"
   };
 }
 
