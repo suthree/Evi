@@ -3736,6 +3736,8 @@ test("live runner feeds structured delegated results back as bounded observation
       verification_status: string;
       verified: boolean;
       claimed_verification_refs: string[];
+      observation_refs: string[];
+      delegated_result_refs: string[];
       checks: Array<{ id: string; status: string; summary: string }>;
     };
 
@@ -3782,6 +3784,8 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.deepEqual(report.claimed_verification_refs, []);
+    assert.deepEqual(report.delegated_result_refs, [delegatedRef]);
+    assert.equal(report.observation_refs.includes(delegatedRef), true);
     for (const checkId of delegateAgentActionContract.completion_gate_check_ids) {
       assert.equal(report.checks.some((check) => check.id === checkId), true);
     }
@@ -3825,6 +3829,7 @@ test("live runner rejects delegated output that echoes raw context before observ
       verification_status: string;
       verified: boolean;
       checks: Array<{ id: string; status: string; summary: string }>;
+      delegated_result_refs: string[];
     };
 
     assert.equal(result.verdict, "completion_unverified");
@@ -5062,10 +5067,13 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
     assert.match(rendered.markdown, /delegated_result_failure_kinds: delegated_output_contract_failed:1/);
     assert.doesNotMatch(rendered.markdown, /BOUNDED_DELEGATE_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /raw_output_preview/);
+    assert.equal(report.delegated_result_refs.length, 1);
     assert.equal(trace.delegated_result_count, 1);
     assert.equal(trace.delegated_result_failed_count, 1);
+    assert.deepEqual(trace.delegated_result_refs, report.delegated_result_refs);
     assert.equal(trace.delegated_dispatches[0]?.result_failure_kind, "delegated_output_contract_failed");
     assert.equal(replay.metrics.delegated_results_failed, 1);
+    assert.deepEqual(replay.delegated_result_refs, report.delegated_result_refs);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {

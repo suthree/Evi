@@ -228,6 +228,7 @@ export const completionVerificationReportSchema = z.object({
   final_response_ref: z.string().nullable().default(null),
   claimed_verification_refs: z.array(z.string()).default([]),
   observation_refs: z.array(z.string()).default([]),
+  delegated_result_refs: z.array(z.string()).default([]),
   delegated_result_failure_kinds: z.array(delegatedResultFailureKindCountSchema).default([]),
   checks: z.array(completionVerificationCheckSchema).default([]),
   boundary: z.string().default("harness-owned completion verification report; read-only context input, not replay authority"),

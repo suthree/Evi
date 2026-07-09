@@ -743,6 +743,7 @@ function buildNextCoreBasicPlan(
       "packages/core/src/delegate_agent_contract.ts",
       "packages/core/src/schemas.ts",
       "packages/runtime/src/runner.ts",
+      "packages/core/src/live_run_trace.ts",
       "packages/core/src/harness_replay.ts",
       iterationRecordStatus.ref,
       ...nextIterationSeed.evidence_refs
@@ -1230,12 +1231,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ]
     },
     replay_audit_contract: {
-      metadata_source: "Live Run Trace delegated dispatch metadata derived from harness-owned delegated_result event summaries plus delegate_agent action ids from model-action envelope metadata only",
+      metadata_source: "Live Run Trace delegated result refs and dispatch metadata derived from completion reports, harness-owned delegated_result event summaries, and delegate_agent action ids from model-action envelope metadata only",
       required_metadata: [
         "action_id",
         "envelope_ref",
         "delegated_action_ids",
         "delegated_action_sequence_by_id",
+        "delegated_result_refs",
         "round",
         "sequence",
         "task_chars",
@@ -1258,6 +1260,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       proof_boundary: [
         "Live Run Trace exposes safe delegated dispatch metadata, model-action envelope refs, delegate_agent action ids and sequence mapping, failure kinds, result refs, and per-round action counts without reading delegated artifact bodies",
+        "completion reports keep delegated_result_refs separate from generic observation_refs so delegated self-reports remain advisory metadata rather than completion proof",
         "trace and replay audit JSON preserve the full delegated dispatch metadata set, including persisted delegated result refs",
         "replay audit warns when a delegated dispatch lacks a model-action envelope ref, points at a different round envelope, uses an action_id not declared by the round envelope delegate_agent actions, or reports a sequence that does not match the declared delegate action order",
         "replay audit warns when a delegated dispatch lacks a persisted delegated result JSON artifact ref",

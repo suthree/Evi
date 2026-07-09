@@ -113,6 +113,7 @@ export interface LiveRunTraceSummary {
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_completion_gate_status_counts: LiveRunCompletionGateStatusCounts;
   delegated_dispatch_missing_result_ref_count: number;
+  delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
   observation_ref_count: number;
@@ -207,6 +208,10 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const delegatedResultRefs = unique([
+    ...report.delegated_result_refs,
+    ...delegatedDispatches.map((dispatch) => dispatch.result_ref)
+  ]);
   const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
   const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
   const delegatedCompletionGateStatusCounts = countCompletionCheckStatuses(delegatedCompletionGateChecks);
@@ -225,6 +230,7 @@ async function summarizeLiveRunTrace(
     ...rounds.map((round) => round.envelope_ref),
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...report.observation_refs.slice(0, 12),
+    ...delegatedResultRefs.slice(0, 12),
     ...delegatedCompletionGateChecks.flatMap((check) => check.refs.slice(0, 5))
   ]);
 
@@ -252,6 +258,7 @@ async function summarizeLiveRunTrace(
     delegated_completion_gate_checks: delegatedCompletionGateChecks,
     delegated_completion_gate_status_counts: delegatedCompletionGateStatusCounts,
     delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
+    delegated_result_refs: delegatedResultRefs,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
     observation_ref_count: report.observation_refs.length,

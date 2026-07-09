@@ -68,6 +68,7 @@ export interface HarnessReplayAuditReport {
   };
   checks: HarnessReplayAuditCheck[];
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
+  delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   artifact_refs: {
     json_ref: string;
@@ -136,6 +137,7 @@ export async function runHarnessReplayAudit(
     },
     checks,
     delegated_completion_gate_checks: trace.delegated_completion_gate_checks,
+    delegated_result_refs: trace.delegated_result_refs,
     delegated_dispatches: trace.delegated_dispatches,
     artifact_refs: {
       json_ref: jsonRef,
@@ -147,6 +149,7 @@ export async function runHarnessReplayAudit(
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
+      ...trace.delegated_result_refs,
       ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
       ...trace.delegated_completion_gate_checks.flatMap((check) => check.refs)
     ]),
@@ -225,6 +228,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `delegated_completion_gate_warning: ${report.metrics.delegated_completion_gate_warning}`,
     `delegated_completion_gate_failed: ${report.metrics.delegated_completion_gate_failed}`,
     `delegated_completion_gate_skipped: ${report.metrics.delegated_completion_gate_skipped}`,
+    `delegated_result_refs: ${report.delegated_result_refs.length}`,
     `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
     `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
     `harness_state_actions: ${report.metrics.harness_state_actions}`,
@@ -616,6 +620,9 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
     checks,
     delegated_completion_gate_checks: Array.isArray(record.delegated_completion_gate_checks)
       ? record.delegated_completion_gate_checks.map(asCompletionGateCheck).filter((item): item is LiveRunCompletionCheckSummary => item !== null)
+      : [],
+    delegated_result_refs: Array.isArray(record.delegated_result_refs)
+      ? record.delegated_result_refs.filter((item): item is string => typeof item === "string")
       : [],
     delegated_dispatches: Array.isArray(record.delegated_dispatches)
       ? record.delegated_dispatches.map(asDelegatedDispatchSummary).filter((item): item is LiveRunDelegatedDispatchSummary => item !== null)

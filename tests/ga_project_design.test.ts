@@ -394,13 +394,14 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("main-harness model round")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("independent verification evidence")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("automatic retry")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("Live Run Trace delegated dispatch metadata"), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("Live Run Trace delegated result refs and dispatch metadata"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("delegated_result event summaries"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("dispatch_failure_kind"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_failure_kind"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("envelope_ref"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_action_ids"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_action_sequence_by_id"), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_result_refs"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_ref"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_completion_gate"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_action_coverage"), true);
@@ -562,6 +563,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/delegate_agent_completion_gate.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/delegate_agent_contract.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/schemas.ts"), true);
+    assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/live_run_trace.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.match(readModel.boundary, /does not write state/);
     assert.match(readModel.boundary, /planning packet/);
@@ -654,11 +656,13 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("envelope_ref"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_action_ids"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_action_sequence_by_id"), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_result_refs"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_ref"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_completion_gate"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_action_coverage"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_dispatch_lineage"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("raw delegated task/context/output")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("observation_refs")), true);
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.proposed_slice, "general_agent_delegation_hardening_after_verified");
     assert.equal(packet.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.phase_gates.some((gate) => gate.phase_id === "capability_layering" && gate.forbidden_shortcuts.some((shortcut) => shortcut.includes("one adapter into core identity"))), true);
@@ -691,6 +695,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
     assert.equal(packet.next_core_basic_plan?.refs.includes(verifiedIteration.ref), true);
+    assert.equal(packet.next_core_basic_plan?.refs.includes("packages/core/src/live_run_trace.ts"), true);
     assert.match(packet.next_core_basic_plan?.boundary ?? "", /read-only GA project design planning packet/);
     assert.match(packet.next_core_basic_plan?.next_command ?? "", /record-iteration/);
     assert.equal(packet.refs.includes(verifiedIteration.ref), true);

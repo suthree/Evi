@@ -39,6 +39,9 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.metrics.delegated_completion_gate_skipped, 0);
     assert.equal(report.metrics.delegated_dispatches, 1);
     assert.equal(report.metrics.delegated_dispatches_failed, 1);
+    assert.deepEqual(report.delegated_result_refs, [
+      `memory/episodes/session_replay_test-delegated_result_invalid.json`
+    ]);
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
@@ -114,6 +117,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.markdown_ref)), true);
+    const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
+    assert.match(markdown, /delegated_result_refs: 1/);
     assert.equal(report.refs.some((ref) => ref.includes("model-response")), false);
     assert.equal(report.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
@@ -688,6 +693,9 @@ async function writeReplayTraceFixture(
     claimed_verification_refs: [],
     observation_refs: [
       `memory/episodes/${sessionId}-tool_result_write.json`,
+      `memory/episodes/${sessionId}-delegated_result_invalid.json`
+    ],
+    delegated_result_refs: [
       `memory/episodes/${sessionId}-delegated_result_invalid.json`
     ],
     checks: delegatedResultChecks,

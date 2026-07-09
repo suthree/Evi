@@ -578,6 +578,7 @@ export class LiveAgentRunner {
       final_response_ref: finalResponseRef,
       claimed_verification_refs: envelope.completion_claim.verification_refs,
       observation_refs: compactRefs([...modelDiagnosticRefs, ...toolArtifactRefs, ...delegatedArtifactRefs, ...harnessArtifactRefs]),
+      delegated_result_refs: compactRefs(delegatedArtifactRefs),
       delegated_result_failure_kinds: delegatedResultFailureKinds,
       checks: completionVerification.checks
     });
@@ -2169,6 +2170,10 @@ function renderCompletionVerificationMarkdown(report: CompletionVerificationRepo
     "## Observation Refs",
     "",
     ...(report.observation_refs.length > 0 ? report.observation_refs.map((ref) => `- ${ref}`) : ["- none"]),
+    "",
+    "## Delegated Result Refs",
+    "",
+    ...(report.delegated_result_refs.length > 0 ? report.delegated_result_refs.map((ref) => `- ${ref}`) : ["- none"]),
     "",
     "## Delegated Result Failure Kinds",
     "",
