@@ -1893,7 +1893,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       `acceptance: ${compactAcceptanceCriteria.join(" | ")}`,
       `next_command: ${plan.next_command}`
     ].join("\n"),
-    refs: plan.refs.slice(0, 6),
+    refs: plan.refs.slice(0, 7),
     item_count: 1
   };
 }

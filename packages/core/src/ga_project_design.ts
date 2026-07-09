@@ -1,15 +1,9 @@
 import type { CapabilityLayer } from "./capabilities.js";
+import { delegateAgentActionContract } from "./action_contracts.js";
 import {
   listSelfEvolutionIterations,
   type SelfEvolutionIterationContract
 } from "./self_evolution_iterations.js";
-import {
-  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
-  DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
-  DELEGATE_AGENT_TASK_MAX_CHARS,
-  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
-  DELEGATED_AGENT_SUMMARY_MAX_CHARS
-} from "./schemas.js";
 import type { AgentStore } from "./store.js";
 
 export type GaProjectDesignPhaseId =
@@ -741,6 +735,7 @@ function buildNextCoreBasicPlan(
     non_goals: buildSuccessorNonGoals(source, contract, ["does not execute the next slice"]),
     refs: compactRefs([
       "packages/core/src/ga_project_design.ts",
+      "packages/core/src/action_contracts.ts",
       "packages/core/src/schemas.ts",
       "packages/runtime/src/runner.ts",
       "packages/core/src/harness_replay.ts",
@@ -1130,9 +1125,9 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     action: "delegate_agent",
     layer: "core_runtime",
     stage: "active",
-    max_actions_per_round: DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
+    max_actions_per_round: delegateAgentActionContract.max_actions_per_round,
     task_contract: {
-      max_chars: DELEGATE_AGENT_TASK_MAX_CHARS,
+      max_chars: delegateAgentActionContract.task_max_chars,
       required: [
         "explicit bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task",
         "one concrete question for the delegated subagent",
@@ -1151,7 +1146,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ]
     },
     context_contract: {
-      max_chars: DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+      max_chars: delegateAgentActionContract.context_max_chars,
       required: [
         "all relevant constraints and evidence refs needed for the bounded task",
         "current core/basic boundary and deferred expert scope",
@@ -1168,8 +1163,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ]
     },
     result_contract: {
-      summary_max_chars: DELEGATED_AGENT_SUMMARY_MAX_CHARS,
-      findings_max_chars: DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+      summary_max_chars: delegateAgentActionContract.summary_max_chars,
+      findings_max_chars: delegateAgentActionContract.findings_max_chars,
       required: [
         "structured summary",
         "bounded findings_text",
@@ -1186,11 +1181,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     },
     dispatch_failure_kind_contract: {
       field: "dispatch_failure_kind",
-      values: [
-        "dispatch_limit_exceeded",
-        "input_contract_failed",
-        "none"
-      ],
+      values: [...delegateAgentActionContract.dispatch_kinds],
       required: [
         "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
         "record input_contract_failed when payload validation fails before delegated model dispatch",
@@ -1204,13 +1195,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     },
     result_failure_kind_contract: {
       field: "result_failure_kind",
-      values: [
-        "dispatch_limit_exceeded",
-        "input_contract_failed",
-        "delegated_output_contract_failed",
-        "delegated_model_request_failed",
-        "none"
-      ],
+      values: [...delegateAgentActionContract.result_kinds],
       required: [
         "record dispatch_limit_exceeded when the per-round delegate limit creates the failed result",
         "record input_contract_failed when payload or authority validation creates the failed result",
@@ -1309,6 +1294,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       "no tool access or external write authority for delegated self-reports"
     ],
     evidence_refs: [
+      "packages/core/src/action_contracts.ts",
       "packages/core/src/schemas.ts",
       "packages/core/src/live_run_trace.ts",
       "packages/runtime/src/runner.ts",

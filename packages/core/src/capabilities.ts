@@ -1,4 +1,4 @@
-import { allowedActions, type AllowedAction } from "./action_contracts.js";
+import { allowedActions, delegateAgentActionContract, type AllowedAction } from "./action_contracts.js";
 import { getExpertOrchestrationContract } from "./expert_orchestration.js";
 import { getGaProjectDesignContract } from "./ga_project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
@@ -178,6 +178,11 @@ function normalizeCapabilityCategory(category: CapabilityCategoryDraft): Capabil
       effective_layer: capability.layer ?? category.layer
     }))
   };
+}
+
+function readableList(values: readonly string[]): string {
+  if (values.length <= 1) return values[0] ?? "";
+  return `${values.slice(0, -1).join(", ")}, or ${values[values.length - 1]}`;
 }
 
 export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
@@ -523,6 +528,13 @@ function coreToolsCategory(): CapabilityCategoryDraft {
 }
 
 function harnessActionsCategory(): CapabilityCategoryDraft {
+  const delegatePayloadKeys = delegateAgentActionContract.payload_keys.join("/");
+  const delegateOutputKeys = delegateAgentActionContract.output_keys.join("/");
+  const delegateDispatchKinds = readableList(delegateAgentActionContract.dispatch_kinds);
+  const delegateResultKinds = readableList(delegateAgentActionContract.result_kinds);
+  const delegateMaxActions = delegateAgentActionContract.max_actions_per_round === 1
+    ? "one"
+    : String(delegateAgentActionContract.max_actions_per_round);
   return {
     id: "harness_actions",
     title: "Harness actions",
@@ -540,11 +552,11 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
         "state-only governance actions cannot prove a done claim by themselves",
         ...(action === "delegate_agent"
           ? [
-              "payload is strict task/context only and the live runner accepts at most one delegate_agent action per model round",
+              `payload is strict ${delegatePayloadKeys} only and the live runner accepts at most ${delegateMaxActions} delegate_agent action per model round`,
               "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
-              "delegated context must state the expected summary/findings_text output shape before delegated model dispatch",
+              `delegated context must state the expected ${delegateOutputKeys} output shape before delegated model dispatch`,
               "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run recovery evidence exists and the done claim binds a non-delegated verification ref",
@@ -552,8 +564,8 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
               "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot follow skipped, blocked, or failed-delegation-warning completion reports",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",
-              "dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none; none means no dispatch-layer failure, not delegated success",
-              "result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none; persisted delegated results and model observations use explicit none instead of null",
+              `dispatch_failure_kind values are ${delegateDispatchKinds}; none means no dispatch-layer failure, not delegated success`,
+              `result_failure_kind values are ${delegateResultKinds}; persisted delegated results and model observations use explicit none instead of null`,
               "harness replay warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",
               "successful delegated summary/findings are sanitized; raw task/context echoes and delegated output authority or command/test execution claims fail the delegated output contract",

@@ -1446,7 +1446,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /review_gate: blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage; required=project-design,scorecard,iterations,service-health,check; required_coverage=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage; outcome_status=not_recorded/);
     assert.match(rendered.markdown, /audit_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --audit-seed all --state-root <state-root>/);
     assert.match(rendered.markdown, /after_verify: pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_context_open --outcome-status verified --summary "\.\.\." --evidence-ref <ref\.\.\.> --verification-command "<command\.\.\.>" --verification-claim "<entrypoint>: <claim>" --next-move "\.\.\." --state-root <state-root>/);
-    assert.match(rendered.markdown, /evidence_basis: packages\/core\/src\/ga_project_design\.ts \| packages\/core\/src\/schemas\.ts \| packages\/runtime\/src\/runner\.ts \| packages\/core\/src\/harness_replay\.ts/);
+    assert.match(rendered.markdown, /evidence_basis: packages\/core\/src\/ga_project_design\.ts \| packages\/core\/src\/action_contracts\.ts \| packages\/core\/src\/schemas\.ts \| packages\/runtime\/src\/runner\.ts/);
     assert.match(rendered.markdown, /proof_boundary: evidence_basis=candidate_refs_only; require=verified_outcome,outcome_evidence_refs,plan_ref_coverage,implementation_contract_coverage,outcome_verification_command_coverage,outcome_verification_claim_coverage,runtime_attention_outcome_coverage,workspace_outcome_coverage/);
     assert.match(rendered.markdown, /audit: goal_scope,current_state,verification_scope,learning_persistence/);
     assert.match(rendered.markdown, /audit_require: goal_scope=Preserve the latest operator objective and do not redefine success around completed work.; current_state=Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.; verification_scope=Match verification evidence to the scope of the completion claim.; learning_persistence=Record the verified outcome before reusing the slice as future GA design evidence./);
@@ -1457,6 +1457,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.doesNotMatch(rendered.markdown, /bounded outcome record/);
     assert.equal(section?.item_count, 1);
     assert.equal(section?.refs.includes("packages/core/src/ga_project_design.ts"), true);
+    assert.equal(section?.refs.includes("packages/core/src/action_contracts.ts"), true);
     assert.equal(section?.refs.includes("packages/core/src/schemas.ts"), true);
     assert.equal(section?.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(section?.refs.includes("packages/core/src/harness_replay.ts"), true);

@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { allowedActions } from "./action_contracts.js";
+import {
+  allowedActions,
+  delegateAgentActionContract,
+  delegateAgentDispatchFailureKindValues,
+  delegateAgentDispatchKindValues,
+  delegateAgentResultFailureKindValues,
+  delegateAgentResultKindValues
+} from "./action_contracts.js";
 import { newId, utcNow } from "./ids.js";
 
 export const sideEffectLevelSchema = z.enum(["none", "local_reversible", "local_write", "external_write"]);
@@ -83,11 +90,11 @@ export const actionProposalSchema = z.object({
   payload: z.record(z.string(), z.unknown()).default({})
 });
 
-export const DELEGATE_AGENT_TASK_MAX_CHARS = 1000;
-export const DELEGATE_AGENT_CONTEXT_MAX_CHARS = 12000;
-export const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = 1;
-export const DELEGATED_AGENT_SUMMARY_MAX_CHARS = 240;
-export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = 2000;
+export const DELEGATE_AGENT_TASK_MAX_CHARS = delegateAgentActionContract.task_max_chars;
+export const DELEGATE_AGENT_CONTEXT_MAX_CHARS = delegateAgentActionContract.context_max_chars;
+export const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = delegateAgentActionContract.max_actions_per_round;
+export const DELEGATED_AGENT_SUMMARY_MAX_CHARS = delegateAgentActionContract.summary_max_chars;
+export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = delegateAgentActionContract.findings_max_chars;
 
 export const delegateAgentPayloadSchema = z.object({
   task: z.string().trim().min(1).max(DELEGATE_AGENT_TASK_MAX_CHARS),
@@ -99,21 +106,10 @@ export const delegatedAgentOutputSchema = z.object({
   findings_text: z.string().trim().min(1).max(DELEGATED_AGENT_FINDINGS_MAX_CHARS)
 }).strict();
 
-export const delegatedDispatchFailureKindSchema = z.enum(["dispatch_limit_exceeded", "input_contract_failed"]);
-export const delegatedDispatchKindSchema = z.enum(["dispatch_limit_exceeded", "input_contract_failed", "none"]);
-export const delegatedResultFailureKindSchema = z.enum([
-  "dispatch_limit_exceeded",
-  "input_contract_failed",
-  "delegated_output_contract_failed",
-  "delegated_model_request_failed"
-]);
-export const delegatedResultKindSchema = z.enum([
-  "dispatch_limit_exceeded",
-  "input_contract_failed",
-  "delegated_output_contract_failed",
-  "delegated_model_request_failed",
-  "none"
-]);
+export const delegatedDispatchFailureKindSchema = z.enum(delegateAgentDispatchFailureKindValues);
+export const delegatedDispatchKindSchema = z.enum(delegateAgentDispatchKindValues);
+export const delegatedResultFailureKindSchema = z.enum(delegateAgentResultFailureKindValues);
+export const delegatedResultKindSchema = z.enum(delegateAgentResultKindValues);
 
 export const delegatedResultSchema = z.object({
   id: z.string(),

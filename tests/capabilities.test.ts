@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allowedActions } from "../packages/core/src/action_contracts.js";
+import { allowedActions, delegateAgentActionContract } from "../packages/core/src/action_contracts.js";
 import { getCapabilityAcceptanceAudit, getCapabilityCatalog, resolveCapabilityLayer } from "../packages/core/src/capabilities.js";
-import { modelActionEnvelopeSchema } from "../packages/core/src/schemas.js";
+import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS,
+  delegatedDispatchKindSchema,
+  delegatedResultKindSchema,
+  modelActionEnvelopeSchema
+} from "../packages/core/src/schemas.js";
 import { coreToolContracts } from "../packages/core/src/tool_contracts.js";
 
 test("capability catalog mirrors core tool and harness action contracts", () => {
@@ -203,6 +212,16 @@ test("model action schema accepts the shared allowed action catalog", () => {
       }]
     }).success, true);
   }
+});
+
+test("delegate_agent schemas mirror the shared action contract", () => {
+  assert.equal(DELEGATE_AGENT_TASK_MAX_CHARS, delegateAgentActionContract.task_max_chars);
+  assert.equal(DELEGATE_AGENT_CONTEXT_MAX_CHARS, delegateAgentActionContract.context_max_chars);
+  assert.equal(DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND, delegateAgentActionContract.max_actions_per_round);
+  assert.equal(DELEGATED_AGENT_SUMMARY_MAX_CHARS, delegateAgentActionContract.summary_max_chars);
+  assert.equal(DELEGATED_AGENT_FINDINGS_MAX_CHARS, delegateAgentActionContract.findings_max_chars);
+  assert.deepEqual(delegatedDispatchKindSchema.options, [...delegateAgentActionContract.dispatch_kinds]);
+  assert.deepEqual(delegatedResultKindSchema.options, [...delegateAgentActionContract.result_kinds]);
 });
 
 test("capability catalog exposes delegate_agent failure boundaries", () => {

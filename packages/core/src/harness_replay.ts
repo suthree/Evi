@@ -1,5 +1,11 @@
 import { basename } from "node:path";
 import {
+  delegateAgentCompletionGateCheckIds,
+  delegateAgentDispatchFailureKindValues,
+  delegateAgentResultFailureKindsFromDispatch,
+  delegateAgentResultFailureKindValues
+} from "./action_contracts.js";
+import {
   DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
   evidenceEventSchema
 } from "./schemas.js";
@@ -14,23 +20,10 @@ import { newId, utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const REPLAY_ROOT = "governance/replays";
-const DISPATCH_FAILURE_KINDS = new Set(["dispatch_limit_exceeded", "input_contract_failed"]);
-const RESULT_FAILURE_KINDS = new Set([
-  "dispatch_limit_exceeded",
-  "input_contract_failed",
-  "delegated_output_contract_failed",
-  "delegated_model_request_failed"
-]);
-const RESULT_FAILURE_KINDS_FROM_DISPATCH = new Set([
-  "dispatch_limit_exceeded",
-  "input_contract_failed"
-]);
-const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set([
-  "claimed_refs_bound_to_evidence",
-  "delegated_self_report_refs",
-  "delegated_independent_evidence",
-  "delegated_results"
-]);
+const DISPATCH_FAILURE_KINDS = new Set<string>(delegateAgentDispatchFailureKindValues);
+const RESULT_FAILURE_KINDS = new Set<string>(delegateAgentResultFailureKindValues);
+const RESULT_FAILURE_KINDS_FROM_DISPATCH = new Set<string>(delegateAgentResultFailureKindsFromDispatch);
+const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set<string>(delegateAgentCompletionGateCheckIds);
 const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";

@@ -2052,6 +2052,10 @@ result when that contract is missing, malformed, or over-limit. Delegation
 payloads share the core schema contract: `task` must be non-empty and at most
 1000 chars, `context` must be non-empty and at most 12000 chars, and the payload
 may contain only `task` and `context` before the submodel is called. The task
+limits, output limits, and failure-kind values are sourced from
+`packages/core/src/action_contracts.ts`; schema validation, replay checks,
+capability summaries, and GA project-design packets consume that shared
+contract to avoid drift.
 must explicitly request bounded analysis, critique, review, inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or
 combine analysis with direct fix/repair/update/edit/patch/commit intent, and it
