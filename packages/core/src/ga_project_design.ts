@@ -876,16 +876,32 @@ function buildImplementationContract(
     improvement_type: "reusable_ga_design_contract",
     implementation_scope: [
       "change one reusable GA project-design contract or read-model surface",
+      ...(target.target_dimension_id === "general_agent_delegation"
+        ? [
+          "for general_agent_delegation, constrain delegate_agent task, context, result, trace/replay, or completion-verification boundaries only",
+          "for general_agent_delegation, sync implementation with the runner-enforced task/context/result contract and main-harness completion gate"
+        ]
+        : []),
       "carry the change through audit guidance or context only when it improves output standardization",
       "cover the change with targeted tests, docs, outcome evidence, and runtime health"
     ],
     deferred_scope: [
       "no external adapter or tool integration unless it names a reusable runtime contract",
       "no SOP, skill, memory, or dream promotion before verified reuse evidence exists",
-      "no expert-agent scheduling or delegation automation"
+      "no expert-agent scheduling or delegation automation",
+      ...(target.target_dimension_id === "general_agent_delegation"
+        ? [
+          "no delegated tool/write/mutation authority, delegated completion authority, model fan-out, autonomous scheduler, or expert persona"
+        ]
+        : [])
     ],
     delivery_standard: [
       "future iterations can inspect the contract without inferring intent from the opaque slice id",
+      ...(target.target_dimension_id === "general_agent_delegation"
+        ? [
+          "future delegation iterations can see the allowed task/context/result/completion-verification surface from implementation_contract alone"
+        ]
+        : []),
       "verification maps to project-design, scorecard, iterations, service-health, and check entrypoints",
       "a verified outcome is recorded before the contract is reused as future GA design evidence"
     ],

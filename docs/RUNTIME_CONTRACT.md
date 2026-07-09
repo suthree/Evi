@@ -684,6 +684,11 @@ review; it does not execute commands, satisfy claims, or prove completion.
 The plan may also expose `implementation_contract`, which constrains the next
 slice to one reusable GA project-design contract/read-model improvement and
 names deferred external-tool, local-learning, and expert-orchestration scopes.
+For `general_agent_delegation`, the same contract must name the allowed
+`delegate_agent` task, context, result, trace/replay, or completion-verification
+surface and keep delegated tool/write/mutation authority, delegated completion
+authority, model fan-out, autonomous scheduling, and expert personas out of
+scope.
 It is pre-execution boundary guidance, not an executor, scheduler, learning
 promotion, or completion proof.
 Completion-audit seeds may require the outcome to show that the delivered

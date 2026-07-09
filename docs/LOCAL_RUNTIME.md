@@ -839,7 +839,11 @@ adapters remain application slices unless a reusable runtime contract is named.
 It also carries `implementation_contract`, so the next slice states the one
 allowed reusable GA design contract/read-model improvement, the deferred
 external-tool/local-learning/expert scopes, and the delivery standard before
-implementation begins.
+implementation begins. For `general_agent_delegation`, that contract also
+names the allowed `delegate_agent` task/context/result/trace/replay/completion
+verification surface and excludes delegated tool/write/mutation authority,
+delegated completion authority, model fan-out, autonomous scheduling, and
+expert personas.
 The same guidance can audit that contract through `current_state`: outcome
 claims must preserve the implementation contract's selected layer, allowed
 scope, deferred scope, and delivery standard instead of treating the contract as

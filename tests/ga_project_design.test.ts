@@ -267,8 +267,12 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.proposed_slice, "general_agent_delegation_hardening_after_verified");
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.selected_layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("runner-enforced task/context/result contract and main-harness completion gate")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no delegated tool/write/mutation authority")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("task/context/result/completion-verification surface")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /Clarify the next core\/basic GA design improvement/);
     assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified GA design evidence/);
@@ -585,7 +589,10 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.implementation_contract.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
     assert.equal(packet.next_core_basic_plan?.implementation_contract.source_proposed_slice, "verified_iteration_to_design_artifact");
     assert.equal(packet.next_core_basic_plan?.implementation_contract.improvement_type, "reusable_ga_design_contract");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
     assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no expert-agent scheduling")), true);
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("delegated completion authority")), true);
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("task/context/result/completion-verification surface")), true);
     assert.match(packet.next_core_basic_plan?.implementation_contract.boundary ?? "", /does not execute commands/);
     assert.equal(packet.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.equal(packet.next_core_basic_plan?.capability_stage_plan.core_capabilities.some((capability) => capability.id === "contract_design" && capability.stage === "hardening"), true);
