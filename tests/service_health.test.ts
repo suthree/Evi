@@ -111,6 +111,7 @@ test("service health derives fresh resident runtime status from local state and 
     assert.deepEqual(health.layers.runtime_substrate.reason_codes, []);
     assert.equal(health.layers.application_slices.status, "healthy");
     assert.deepEqual(health.layers.application_slices.reason_codes, []);
+    assert.deepEqual(health.state_parse_errors, []);
     assert.equal(health.service.state, "running");
     assert.equal(health.service.heartbeat_freshness, "fresh");
     assert.equal(health.service.heartbeat_age_ms, 30_000);
@@ -791,6 +792,50 @@ test("service health reports missing heartbeat as unknown", async () => {
       command: "pnpm run runtime -- service status --target runtime"
     }]);
     assert.deepEqual(health.refs, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service health reports malformed state records", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("services/runtime/heartbeat.json", {
+      service: "runtime",
+      state: "running",
+      updated_at: "2026-06-30T00:00:30.000Z"
+    });
+    await store.writeText("services/runtime/review_tick.json", "[]\n");
+    await store.writeText("services/runtime/content_daily.json", "{ bad json\n");
+
+    const health = await getServiceHealth(store, {
+      now: "2026-06-30T00:01:00.000Z"
+    });
+
+    assert.equal(health.status, "attention");
+    assert.deepEqual(health.state_parse_errors, [
+      {
+        ref: "services/runtime/review_tick.json",
+        reason: "non_object_json"
+      },
+      {
+        ref: "services/runtime/content_daily.json",
+        reason: "invalid_json"
+      }
+    ]);
+    assert.deepEqual(health.status_reasons, ["state_parse_error"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "state_parse_error",
+      summary: "local runtime state could not be parsed; inspect or repair the listed state refs before trusting service health",
+      command: "pnpm run runtime -- service health --target runtime"
+    }]);
+    assert.equal(health.content_daily.state, "unknown");
+    assert.deepEqual(health.refs, [
+      "services/runtime/heartbeat.json",
+      "services/runtime/review_tick.json",
+      "services/runtime/content_daily.json"
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

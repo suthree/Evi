@@ -12,7 +12,7 @@ const SERVICE_LIFECYCLE_REASON_CODES = new Set([
   "heartbeat_stale",
   "runtime_not_running"
 ]);
-const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
+const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, state parse diagnostics, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
 const SUPPRESSING_MANUAL_ACTION_SLICES = new Set([
   "external_publish_preflight_contract",
   "post_publish_feedback_capture_contract",
@@ -52,6 +52,13 @@ export interface ServiceHealthAttentionFollowup {
   reason_code: string;
   summary: string;
   command?: string;
+}
+
+export type ServiceStateParseErrorReason = "invalid_json" | "non_object_json";
+
+export interface ServiceStateParseError {
+  ref: string;
+  reason: ServiceStateParseErrorReason;
 }
 
 export interface ServiceRuntimeBuildSummary {
@@ -130,6 +137,7 @@ export interface ServiceHealthResult {
   };
   boundary: string;
   refs: string[];
+  state_parse_errors: ServiceStateParseError[];
   service: ServiceHealthServiceSummary;
   review_tick: {
     state: string;
@@ -339,6 +347,15 @@ export async function getServiceHealth(
     scenarioId
   });
   const contentDailyEffective = await summarizeContentDailyEffectiveStatus(store, contentDaily.record);
+  const stateParseErrors = compactStateParseErrors([
+    heartbeat.parse_error,
+    reviewTick.parse_error,
+    contentDaily.parse_error,
+    contentFeedbackRefresh.parse_error,
+    contentCreatorMetrics.parse_error,
+    pauseSignal.parse_error,
+    ...contentDailyEffective.state_parse_errors
+  ]);
   const parsedReviewTickFocus = reviewTickFocus(recordField(reviewTick.record, "last_focus"));
   const storedFocusCurrentStatus = stringField(reviewTick.record, "last_focus_current_status") ?? undefined;
   const manualFocusCoverage = await readManualFocusCoverage(store, {
@@ -385,6 +402,7 @@ export async function getServiceHealth(
       ...(contentCreatorMetrics.exists ? [serviceRefs.contentCreatorMetrics] : []),
       ...(pauseSignal.exists ? [PAUSE_REF] : [])
     ],
+    state_parse_errors: stateParseErrors,
     service,
     review_tick: {
       state: stringField(reviewTick.record, "state") ?? "unknown",
@@ -550,6 +568,7 @@ export interface ContentDailyEffectiveStatusSummary {
   count: number;
   job_refs: string[];
   run_refs: string[];
+  state_parse_errors: ServiceStateParseError[];
 }
 
 export async function summarizeContentDailyEffectiveStatus(
@@ -561,20 +580,24 @@ export async function summarizeContentDailyEffectiveStatus(
     return {
       count: 0,
       job_refs: [],
-      run_refs: []
+      run_refs: [],
+      state_parse_errors: []
     };
   }
 
   const statuses: ContentDailyEffectiveJobStatus[] = [];
   const runRefs: string[] = [];
+  const stateParseErrors: ServiceStateParseError[] = [];
   for (const jobRef of jobRefs) {
     const job = await readStateRecord(store, jobRef);
+    if (job.parse_error) stateParseErrors.push(job.parse_error);
     const jobStatus = contentDailyJobStatus(stringField(job.record, "status")) ?? "missing";
     const runRef = stringField(job.record, "run_ref") ?? contentRunRefFromId(stringField(job.record, "run_id"));
     let effectiveStatus = jobStatus;
     if (runRef) {
       runRefs.push(runRef);
       const run = await readStateRecord(store, runRef);
+      if (run.parse_error) stateParseErrors.push(run.parse_error);
       if (contentRunHasPublishedProof(run.record)) effectiveStatus = "published";
     }
     statuses.push(effectiveStatus);
@@ -584,7 +607,8 @@ export async function summarizeContentDailyEffectiveStatus(
     status: summarizeContentDailyEffectiveStatuses(statuses),
     count: statuses.length,
     job_refs: jobRefs,
-    run_refs: compactUnique(runRefs)
+    run_refs: compactUnique(runRefs),
+    state_parse_errors: compactStateParseErrors(stateParseErrors)
   };
 }
 
@@ -677,6 +701,7 @@ function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
     result.service.heartbeat_freshness === "stale" ? "heartbeat_stale" : undefined,
     result.service.deployment.status === "stale" ? "deployment_stale" : undefined,
     result.service.runtime_build?.source_is_dirty === true ? "runtime_build_dirty" : undefined,
+    result.state_parse_errors.length > 0 ? "state_parse_error" : undefined,
     result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
   ]);
 }
@@ -717,6 +742,13 @@ function serviceHealthAttentionFollowup(
       reason_code: reason,
       summary: "autonomy is paused; resume only after the operator confirms the pause reason is resolved",
       command: "pnpm run runtime -- governance resume-autonomy --reason \"...\""
+    };
+  }
+  if (reason === "state_parse_error") {
+    return {
+      reason_code: reason,
+      summary: "local runtime state could not be parsed; inspect or repair the listed state refs before trusting service health",
+      command: `pnpm run runtime -- service health --target ${result.target}`
     };
   }
   if (SERVICE_LIFECYCLE_REASON_CODES.has(reason)) {
@@ -979,6 +1011,7 @@ function isWithin(root: string, child: string): boolean {
 interface StateRecordRead {
   exists: boolean;
   record: Record<string, unknown> | null;
+  parse_error?: ServiceStateParseError;
 }
 
 async function readStateRecord(store: AgentStore, ref: string): Promise<StateRecordRead> {
@@ -986,9 +1019,20 @@ async function readStateRecord(store: AgentStore, ref: string): Promise<StateRec
   if (!text) return { exists: false, record: null };
   try {
     const value = JSON.parse(text) as unknown;
-    return { exists: true, record: isRecord(value) ? value : null };
+    if (!isRecord(value)) {
+      return {
+        exists: true,
+        record: null,
+        parse_error: { ref, reason: "non_object_json" }
+      };
+    }
+    return { exists: true, record: value };
   } catch {
-    return { exists: true, record: null };
+    return {
+      exists: true,
+      record: null,
+      parse_error: { ref, reason: "invalid_json" }
+    };
   }
 }
 
@@ -1115,6 +1159,19 @@ function numberRecordField(record: Record<string, unknown> | null, key: string):
 
 function compactUnique(values: Array<string | null | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0)));
+}
+
+function compactStateParseErrors(values: Array<ServiceStateParseError | undefined>): ServiceStateParseError[] {
+  const seen = new Set<string>();
+  const errors: ServiceStateParseError[] = [];
+  for (const value of values) {
+    if (!value) continue;
+    const key = `${value.ref}:${value.reason}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    errors.push(value);
+  }
+  return errors;
 }
 
 function normalizeRuntimeBuild(value: Record<string, unknown> | null): ServiceRuntimeBuildSummary | null {
