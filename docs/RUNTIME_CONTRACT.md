@@ -1317,9 +1317,10 @@ main-harness write/run recovery evidence exists. Even when later main-harness
 recovery evidence exists, the failed delegated result remains a warning and the
 done claim still needs a bound non-delegated verification ref as independent
 completion proof. A passed delegated result
-remains an advisory self-report: it can inform the next model round, but its id,
-state ref, or event ref must not be used as
-`completion_claim.verification_refs` proof. If a `done` claim follows any
+remains an advisory self-report: it can inform the next model round, but its
+exact result id or persisted delegated result state ref must not be used as
+`completion_claim.verification_refs` proof. Substring lookalikes are treated as
+unbound claimed refs, not delegated proof. If a `done` claim follows any
 delegated result, completion verification also requires later independent
 evidence recorded after the latest delegated result: at least one harness-known
 non-delegated verification ref bound through `completion_claim.verification_refs`;

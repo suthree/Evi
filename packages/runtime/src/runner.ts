@@ -550,6 +550,7 @@ export class LiveAgentRunner {
       finalResponseRef,
       toolResults,
       delegatedResults,
+      delegatedArtifactRefs,
       modelDiagnosticRefs,
       availableVerificationRefs: compactRefs([
         ...successfulToolResults.map((result) => result.id),
@@ -2686,6 +2687,7 @@ function verifyCompletionClaim(args: {
   finalResponseRef: string | null;
   toolResults: ToolResult[];
   delegatedResults: DelegatedResult[];
+  delegatedArtifactRefs: string[];
   modelDiagnosticRefs: string[];
   availableVerificationRefs: string[];
   verificationEvidenceRounds: Map<string, number>;
@@ -2758,7 +2760,7 @@ function verifyCompletionClaim(args: {
     refs: writeOrRunResults.map((result) => result.id)
   });
 
-  const delegatedProofRefs = delegatedVerificationRefs(claimedRefs, args.delegatedResults);
+  const delegatedProofRefs = delegatedVerificationRefs(claimedRefs, args.delegatedResults, args.delegatedArtifactRefs);
   const nonDelegatedClaimedRefs = claimedRefs.filter((ref) => !delegatedProofRefs.includes(ref));
   const availableVerificationRefSet = new Set(args.availableVerificationRefs);
   const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => availableVerificationRefSet.has(ref));
@@ -2939,13 +2941,17 @@ function mainHarnessIndependentEvidenceAfterLatestDelegation(args: {
   });
 }
 
-function delegatedVerificationRefs(claimedRefs: string[], delegatedResults: DelegatedResult[]): string[] {
+function delegatedVerificationRefs(
+  claimedRefs: string[],
+  delegatedResults: DelegatedResult[],
+  delegatedArtifactRefs: string[]
+): string[] {
   if (claimedRefs.length === 0 || delegatedResults.length === 0) return [];
-  const delegatedIds = delegatedResults.map((result) => result.id);
-  return claimedRefs.filter((ref) =>
-    delegatedIds.includes(ref)
-    || delegatedIds.some((id) => ref.includes(id))
-  );
+  const delegatedProofRefSet = new Set([
+    ...delegatedResults.map((result) => result.id),
+    ...delegatedArtifactRefs
+  ]);
+  return claimedRefs.filter((ref) => delegatedProofRefSet.has(ref));
 }
 
 function compactRefs(refs: Array<string | null | undefined>): string[] {
