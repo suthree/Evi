@@ -1253,7 +1253,9 @@ tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected
-delegated output shape is `summary` plus `findings_text`. Tasks or contexts
+delegated output shape is `summary` plus `findings_text`. It must also state
+that delegated analysis may use only explicit payload context or named evidence
+refs. Tasks or contexts
 that omit, violate, or contradict those authority and output-shape boundaries
 are rejected before any delegated model call; a context that says no delegated
 authority and also grants tool/write/mutation, completion, expert scheduling,

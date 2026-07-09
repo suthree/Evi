@@ -221,6 +221,7 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /must not combine analysis with direct fix, repair, update, edit, patch, or commit intent/);
   assert.match(text, /run commands, tests, builds, or package-manager scripts/);
   assert.match(text, /expected summary\/findings_text output shape/);
+  assert.match(text, /only explicit payload context or named evidence refs/);
   assert.match(text, /expert scheduling, multi-agent orchestration, or model fan-out authority/);
   assert.match(text, /block verified completion until later main-harness write\/run recovery evidence exists and the done claim binds a non-delegated verification ref/);
   assert.match(text, /failed delegated results may only guide a later main-harness model round/);

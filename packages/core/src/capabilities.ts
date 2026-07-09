@@ -545,6 +545,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
               "delegated context must state the expected summary/findings_text output shape before delegated model dispatch",
+              "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
               "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
               "delegated failures stay ok=false and block verified completion until later main-harness write/run recovery evidence exists and the done claim binds a non-delegated verification ref",
               "done claims after delegation require later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts as completion proof when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs",

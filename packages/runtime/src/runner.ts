@@ -1407,7 +1407,7 @@ If the task requires fresh local or external data and no relevant Tool Observati
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
 Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, and the delegated output shape is summary/findings_text. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
+delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is summary/findings_text, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1778,6 +1778,9 @@ function validateDelegationContextBoundary(context: string): string | null {
   if (!namesDelegatedOutputShape(rawText, text)) {
     return "delegate_agent.payload.context must state expected delegated output shape with summary and findings_text.";
   }
+  if (!namesDelegatedSourceBoundary(text)) {
+    return "delegate_agent.payload.context must state delegated analysis may use only explicit payload context or named evidence refs.";
+  }
   if (grantsDelegatedAuthority(text)) {
     return "delegate_agent.payload.context must not grant tool/write/mutation, command/test execution, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
   }
@@ -1789,6 +1792,12 @@ function validateDelegationContextBoundary(context: string): string | null {
 
 function namesDelegatedOutputShape(rawText: string, normalizedText: string): boolean {
   return hasAnyPhrase(normalizedText, ["summary"]) && rawText.includes("findings_text");
+}
+
+function namesDelegatedSourceBoundary(text: string): boolean {
+  return hasAnyPhrase(text, DELEGATE_CONTEXT_SOURCE_LIMIT_TERMS)
+    && hasAnyPhrase(text, DELEGATE_CONTEXT_EXPLICIT_CONTEXT_TERMS)
+    && hasAnyPhrase(text, DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS);
 }
 
 const AUTHORITY_DENIAL_TERMS = [
@@ -1881,6 +1890,43 @@ const DELEGATE_TASK_ANALYSIS_TERMS = [
   "解释",
   "诊断",
   "审计"
+];
+
+const DELEGATE_CONTEXT_SOURCE_LIMIT_TERMS = [
+  "use only",
+  "only use",
+  "may use only",
+  "must use only",
+  "limited to",
+  "restricted to",
+  "bounded to",
+  "只能使用",
+  "仅使用",
+  "只使用"
+];
+
+const DELEGATE_CONTEXT_EXPLICIT_CONTEXT_TERMS = [
+  "explicit payload context",
+  "this explicit payload context",
+  "provided payload context",
+  "provided context",
+  "explicit context",
+  "this context",
+  "显式 payload context",
+  "显式上下文",
+  "提供的上下文"
+];
+
+const DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS = [
+  "named evidence ref",
+  "named evidence refs",
+  "named evidence reference",
+  "named evidence references",
+  "evidence ref",
+  "evidence refs",
+  "evidence reference",
+  "evidence references",
+  "证据引用"
 ];
 
 const DIRECT_TASK_MUTATION_PATTERNS = [

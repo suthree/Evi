@@ -1140,6 +1140,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "all relevant constraints and evidence refs needed for the bounded task",
         "current core/basic boundary and deferred expert scope",
         "explicit no tool/write/mutation authority and main-harness completion boundary",
+        "delegated analysis may use only explicit payload context or named evidence refs",
         "expected summary/findings_text output shape"
       ],
       reject_if: [
@@ -1215,8 +1216,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [
         "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
-        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
+        "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, explicit payload/evidence source boundary, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
       ],
       result_handling: [
         "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
