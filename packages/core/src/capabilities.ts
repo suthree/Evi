@@ -573,7 +573,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "harness replay warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",
               "successful delegated summary/findings are sanitized; raw task/context echoes and delegated output authority or command/test execution claims fail the delegated output contract",
-              "delegated observations exclude raw task, context, output preview, and artifact bodies",
+              "delegated observations exclude raw task, context, output preview, and artifact bodies, and carry proof_boundary so they stay advisory-only or recovery-only",
               "delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority"
             ]
           : [])

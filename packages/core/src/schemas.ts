@@ -147,6 +147,7 @@ export const delegatedObservationSchema = z.object({
   findings_text: z.string().nullable(),
   error: z.string().nullable(),
   recovery_hint: z.string().nullable(),
+  proof_boundary: z.string(),
   boundary: z.string(),
   observation_boundary: z.string()
 });

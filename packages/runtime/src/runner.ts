@@ -1463,6 +1463,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     findings_text: result.findings_text,
     error: delegatedObservationErrorForModelInput(result.error),
     recovery_hint: delegatedObservationRecoveryHint(result),
+    proof_boundary: delegatedObservationProofBoundary(result),
     boundary: result.boundary,
     observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
   });
@@ -1498,6 +1499,12 @@ function delegatedObservationRecoveryHint(result: DelegatedResult): string | nul
     return "Continue with main-harness verification or report blocked; do not treat the delegated request failure as proof.";
   }
   return "Recover through the main harness before claiming done; failed delegated results are not completion proof.";
+}
+
+function delegatedObservationProofBoundary(result: DelegatedResult): string {
+  return result.ok
+    ? "advisory_only; delegated findings may guide the next main-harness action but are not verification_refs or completion proof."
+    : "recovery_only; failed delegated results may guide recovery but are not verification_refs or completion proof.";
 }
 
 function parseEnvelope(outputText: string): ModelActionEnvelope {

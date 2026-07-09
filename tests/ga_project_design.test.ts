@@ -362,6 +362,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.summary_max_chars, delegateAgentActionContract.summary_max_chars);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.findings_max_chars, delegateAgentActionContract.findings_max_chars);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("advisory context, not verification proof")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.required.some((item) => item.includes("proof_boundary")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("completion verification proof")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("hidden memory")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("command/test execution")), true);
@@ -385,9 +386,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("command/test execution")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("forbidden-source reliance")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("sanitizes successful summary/findings")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.result_handling.some((item) => item.includes("proof_boundary")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("completion-gate helper")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("latest delegated result")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.inputs.includes("result_failure_kind"), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.inputs.includes("proof_boundary"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("main-harness model round")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("independent verification evidence")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("automatic retry")), true);

@@ -1149,7 +1149,8 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "structured summary",
         "bounded findings_text",
         "main-thread verification before reuse",
-        "passed delegated self-reports remain advisory context, not verification proof"
+        "passed delegated self-reports remain advisory context, not verification proof",
+        "sanitized delegated observations carry proof_boundary so advisory and recovery-only results cannot be confused with completion evidence"
       ],
       reject_if: [
         "delegated output is not valid structured JSON",
@@ -1199,7 +1200,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       result_handling: [
         "delegate_agent contract helper scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and executeDelegation sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
-        "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies"
+        "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies while adding proof_boundary for advisory-only or recovery-only use"
       ],
       completion_gate: [
         "delegate_agent completion-gate helper fails a done claim when delegated failure lacks later main-harness recovery evidence",
@@ -1210,6 +1211,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     recovery_contract: {
       inputs: [
         "sanitized delegated observation",
+        "proof_boundary",
         "result_failure_kind",
         "dispatch_failure_kind",
         "harness replay check status"

@@ -2089,9 +2089,12 @@ runner allows at most one `delegate_agent` action per model round; extra
 delegate actions are recorded as failed delegated results without calling the
 delegated model. Delegated observations may inform the next model round, but
 they are sanitized and do not include raw delegated task/context, raw output
-preview, or persisted artifact bodies. They do not prove final success, execute
-tools, write state, write the repo, write the active vault, or bypass completion
-verification. A passed delegated result is advisory context only; its exact
+preview, or persisted artifact bodies. They include an explicit
+`proof_boundary` marker so the main model sees successful delegated findings as
+advisory only and failed delegated results as recovery input only. They do not
+prove final success, execute tools, write state, write the repo, write the
+active vault, or bypass completion verification. A passed delegated result is
+advisory context only; its exact
 result id or persisted delegated result state ref must not be used as `completion_claim.verification_refs`
 proof. Substring lookalikes are treated as unbound claimed refs, not delegated
 proof. If a `done` claim follows any delegated result, completion verification

@@ -6960,6 +6960,7 @@ class StructuredDelegationThenDoneModel implements ModelClient {
         && request.input.includes('"contract_status": "passed"')
         && request.input.includes("The delegated critique found one bounded risk");
       this.sawSanitizedDelegationObservation = delegatedSection.includes('"observation_boundary": "sanitized delegated observation')
+        && delegatedSection.includes('"proof_boundary": "advisory_only; delegated findings may guide the next main-harness action but are not verification_refs or completion proof."')
         && delegatedSection.includes("[REDACTED]")
         && delegatedSection.includes("[REDACTED_API_KEY]")
         && !delegatedSection.includes("SECRET_SHOULD_NOT_APPEAR")
