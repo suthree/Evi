@@ -42,6 +42,9 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.deepEqual(report.delegated_result_refs, [
       `memory/episodes/session_replay_test-delegated_result_invalid.json`
     ]);
+    assert.deepEqual(report.delegated_result_report_refs, [
+      `memory/episodes/session_replay_test-delegated_result_invalid.json`
+    ]);
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
@@ -54,6 +57,12 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       check.id === "delegated_dispatch_metadata"
         && check.status === "pass"
         && check.summary.includes("missing_result_ref=0")
+    ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_result_ref_coverage"
+        && check.status === "pass"
+        && check.summary.includes("report_refs=1")
+        && check.summary.includes("missing_dispatch_refs=0")
     ), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_dispatch_lineage"
@@ -118,6 +127,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.markdown_ref)), true);
     const markdown = await readFile(join(stateRoot, report.artifact_refs.markdown_ref), "utf8");
+    assert.match(markdown, /delegated_result_report_refs: 1/);
     assert.match(markdown, /delegated_result_refs: 1/);
     assert.equal(report.refs.some((ref) => ref.includes("model-response")), false);
     assert.equal(report.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
@@ -351,6 +361,39 @@ test("harness replay audit counts failed delegated result from event summary whe
     assert.equal(report.metrics.delegated_results_failed, 1);
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /failed=1/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when completion report omits delegated result refs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-ref-coverage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, undefined, {
+      includeDelegatedResultRefs: false
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_result_ref_coverage");
+
+    assert.equal(report.status, "attention");
+    assert.deepEqual(report.delegated_result_report_refs, []);
+    assert.deepEqual(report.delegated_result_refs, [
+      `memory/episodes/session_replay_test-delegated_result_invalid.json`
+    ]);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /report_refs=0/);
+    assert.match(check?.summary ?? "", /missing_dispatch_refs=1/);
+    assert.match(check?.summary ?? "", /event_fallback_refs=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -608,7 +651,8 @@ async function writeReplayTraceFixture(
     status: "fail",
     summary: "Failed delegated result(s): 1.",
     refs: ["delegated_result_invalid"]
-  }]
+  }],
+  options: { includeDelegatedResultRefs?: boolean } = {}
 ): Promise<void> {
   const sessionId = "session_replay_test";
   const turnId = "turn_replay_test";
@@ -695,9 +739,13 @@ async function writeReplayTraceFixture(
       `memory/episodes/${sessionId}-tool_result_write.json`,
       `memory/episodes/${sessionId}-delegated_result_invalid.json`
     ],
-    delegated_result_refs: [
-      `memory/episodes/${sessionId}-delegated_result_invalid.json`
-    ],
+    ...(options.includeDelegatedResultRefs ?? true
+      ? {
+        delegated_result_refs: [
+          `memory/episodes/${sessionId}-delegated_result_invalid.json`
+        ]
+      }
+      : {}),
     checks: delegatedResultChecks,
     created_at: "2026-06-30T01:01:00.000Z",
     boundary: "harness-owned completion verification report; read-only context input, not replay authority"

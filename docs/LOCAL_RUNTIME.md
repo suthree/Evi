@@ -2131,8 +2131,11 @@ their round, an action id declared by that round's `delegate_agent` actions, and
 a sequence that matches the declared delegate action order. Delegated dispatches
 that lack a persisted delegated result JSON artifact ref are replay warnings;
 replay may cite the bounded event id but must not reconstruct the missing
-delegated artifact body. Live Run Trace also exposes the missing-result-ref
-count as bounded metadata for context and IM output. Dispatch-layer result failures must mirror `dispatch_failure_kind`,
+delegated artifact body. Live Run Trace also keeps completion-report
+`delegated_result_refs` separate from event-fallback delegated refs, and replay
+warns when dispatch result refs are only recovered from fallback. Live Run Trace
+also exposes the missing-result-ref count as bounded metadata for context and IM
+output. Dispatch-layer result failures must mirror `dispatch_failure_kind`,
 delegated output/model failures must keep `dispatch_failure_kind=none`, and
 passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated

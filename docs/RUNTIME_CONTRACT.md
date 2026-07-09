@@ -1452,11 +1452,14 @@ the command chooses the latest bounded live run trace. The command writes
 `audit_result` evidence event that cites the replay report and source trace.
 The audit records only replay metadata: source trace refs, completion/session/
 turn ids, per-round action counts, safe delegated action ids, safe delegated
-dispatch metadata, check statuses, report refs, and the fixed replay boundary.
+dispatch metadata, check statuses, report-declared delegated result refs,
+event-fallback delegated result refs, and the fixed replay boundary.
 It checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
-whether delegated result events have matching dispatch metadata and action ids
-declared by their round envelope, and whether
+whether delegated dispatch result refs are explicitly carried by the completion
+report `delegated_result_refs` field instead of only recovered from event
+fallback, whether delegated result events have matching dispatch metadata and
+action ids declared by their round envelope, and whether
 over-limit delegated dispatches carry bounded `dispatch_failure_kind` coverage such as
 `dispatch_limit_exceeded`; it also warns when a delegated dispatch summary
 omits the field instead of explicitly recording `none`. It also checks

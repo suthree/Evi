@@ -925,6 +925,8 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- delegated_results_passed: ${trace.delegated_result_passed_count}`,
     `- delegated_results_failed: ${trace.delegated_result_failed_count}`,
     `- delegated_completion_gate_statuses: pass=${trace.delegated_completion_gate_status_counts.pass}, warning=${trace.delegated_completion_gate_status_counts.warning}, fail=${trace.delegated_completion_gate_status_counts.fail}, skipped=${trace.delegated_completion_gate_status_counts.skipped}`,
+    `- delegated_result_report_refs: ${trace.delegated_result_report_refs.length}`,
+    `- delegated_result_refs: ${trace.delegated_result_refs.length}`,
     `- delegated_dispatch_missing_result_ref: ${trace.delegated_dispatch_missing_result_ref_count}`,
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
@@ -1002,10 +1004,11 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- summary: ${truncate(replay.summary, 300)}`,
     `- metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, delegated_dispatches=${replay.metrics.delegated_dispatches}, delegated_dispatches_failed=${replay.metrics.delegated_dispatches_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
     `- delegated_completion_gate_statuses: pass=${replay.metrics.delegated_completion_gate_passed}, warning=${replay.metrics.delegated_completion_gate_warning}, fail=${replay.metrics.delegated_completion_gate_failed}, skipped=${replay.metrics.delegated_completion_gate_skipped}`,
+    `- delegated_result_refs: report=${replay.delegated_result_report_refs.length}, trace=${replay.delegated_result_refs.length}`,
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 10)) {
+  for (const check of replay.checks.slice(0, 12)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }

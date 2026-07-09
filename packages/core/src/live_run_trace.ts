@@ -113,6 +113,7 @@ export interface LiveRunTraceSummary {
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_completion_gate_status_counts: LiveRunCompletionGateStatusCounts;
   delegated_dispatch_missing_result_ref_count: number;
+  delegated_result_report_refs: string[];
   delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
@@ -208,8 +209,9 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const delegatedResultReportRefs = unique(report.delegated_result_refs);
   const delegatedResultRefs = unique([
-    ...report.delegated_result_refs,
+    ...delegatedResultReportRefs,
     ...delegatedDispatches.map((dispatch) => dispatch.result_ref)
   ]);
   const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
@@ -258,6 +260,7 @@ async function summarizeLiveRunTrace(
     delegated_completion_gate_checks: delegatedCompletionGateChecks,
     delegated_completion_gate_status_counts: delegatedCompletionGateStatusCounts,
     delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
+    delegated_result_report_refs: delegatedResultReportRefs,
     delegated_result_refs: delegatedResultRefs,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
@@ -271,8 +274,8 @@ async function summarizeLiveRunTrace(
     boundary: [
       "read-only live run trace; reads completion reports, model action envelope metadata,",
       "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch metadata",
-      "plus bounded delegated completion-gate check metadata from the completion report",
-      "with event-summary fallback for older delegated events; repo write guard summaries are parsed from bounded tool-result event",
+      "plus bounded delegated completion-gate check metadata and report-declared delegated_result_refs from the completion report",
+      "with event-summary fallback for older delegated result refs; repo write guard summaries are parsed from bounded tool-result event",
       "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
       "raw delegated previews, final responses, or harness artifact bodies"
     ].join(" ")

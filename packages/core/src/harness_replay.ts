@@ -68,6 +68,7 @@ export interface HarnessReplayAuditReport {
   };
   checks: HarnessReplayAuditCheck[];
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
+  delegated_result_report_refs: string[];
   delegated_result_refs: string[];
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   artifact_refs: {
@@ -137,6 +138,7 @@ export async function runHarnessReplayAudit(
     },
     checks,
     delegated_completion_gate_checks: trace.delegated_completion_gate_checks,
+    delegated_result_report_refs: trace.delegated_result_report_refs,
     delegated_result_refs: trace.delegated_result_refs,
     delegated_dispatches: trace.delegated_dispatches,
     artifact_refs: {
@@ -228,6 +230,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `delegated_completion_gate_warning: ${report.metrics.delegated_completion_gate_warning}`,
     `delegated_completion_gate_failed: ${report.metrics.delegated_completion_gate_failed}`,
     `delegated_completion_gate_skipped: ${report.metrics.delegated_completion_gate_skipped}`,
+    `delegated_result_report_refs: ${report.delegated_result_report_refs.length}`,
     `delegated_result_refs: ${report.delegated_result_refs.length}`,
     `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
     `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
@@ -310,6 +313,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `delegated_results=${trace.delegated_result_count}; failed=${trace.delegated_result_failed_count}`,
       refs: [trace.report_ref]
     },
+    delegatedResultRefCoverageCheck(trace),
     delegatedDispatchMetadataCheck(trace),
     delegatedActionCoverageCheck(trace),
     delegatedDispatchLineageCheck(trace),
@@ -346,6 +350,30 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`
     ].join("; "),
     refs: [trace.report_ref]
+  };
+}
+
+function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const reportRefs = new Set(trace.delegated_result_report_refs);
+  const dispatchesWithResultRef = trace.delegated_dispatches.filter((dispatch) => dispatch.result_ref);
+  const missingReportDispatchRefs = dispatchesWithResultRef.filter((dispatch) => !reportRefs.has(dispatch.result_ref));
+  const eventFallbackRefs = trace.delegated_result_refs.filter((ref) => !reportRefs.has(ref));
+  return {
+    id: "delegated_result_ref_coverage",
+    status: missingReportDispatchRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `report_refs=${trace.delegated_result_report_refs.length}`,
+      `trace_refs=${trace.delegated_result_refs.length}`,
+      `dispatch_refs=${dispatchesWithResultRef.length}`,
+      `missing_dispatch_refs=${missingReportDispatchRefs.length}`,
+      `event_fallback_refs=${eventFallbackRefs.length}`
+    ].join("; "),
+    refs: missingReportDispatchRefs.length > 0
+      ? unique([
+          trace.report_ref,
+          ...missingReportDispatchRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+        ])
+      : unique([trace.report_ref, ...trace.delegated_result_report_refs])
   };
 }
 
@@ -620,6 +648,9 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
     checks,
     delegated_completion_gate_checks: Array.isArray(record.delegated_completion_gate_checks)
       ? record.delegated_completion_gate_checks.map(asCompletionGateCheck).filter((item): item is LiveRunCompletionCheckSummary => item !== null)
+      : [],
+    delegated_result_report_refs: Array.isArray(record.delegated_result_report_refs)
+      ? record.delegated_result_report_refs.filter((item): item is string => typeof item === "string")
       : [],
     delegated_result_refs: Array.isArray(record.delegated_result_refs)
       ? record.delegated_result_refs.filter((item): item is string => typeof item === "string")
