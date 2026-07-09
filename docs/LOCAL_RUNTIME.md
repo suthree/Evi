@@ -1192,6 +1192,9 @@ action counts, safe delegated dispatch metadata from harness-owned event
 summaries, bounded delegated completion-gate check metadata from the completion
 report, model diagnostic failure kind/stage/refs, repo-write workspace guard
 summaries, and envelope refs.
+The same read model exposes delegated completion-gate status counts as bounded
+operator metadata; those counts are copied from completion report checks and do
+not create a second completion decision.
 Per-round action counts and envelope refs are scoped to the selected completion
 turn's `model_action` evidence refs, so another turn in the same session cannot
 pollute the current trace or replay audit.
@@ -1235,6 +1238,9 @@ kinds are semantically mismatched, and warns when the trace shows more than one
 active-looking delegated dispatch in one model round. Delegated
 completion-gate failures stay `fail` in replay checks while the replay report
 stays `attention` for any non-pass check. The replay JSON keeps
+delegated completion-gate status counts beside the copied gate checks so
+operators can see pass/warning/fail/skipped distribution without reading raw
+artifacts. The replay JSON also keeps
 the full delegated dispatch set for audit coverage; Markdown and context
 renderers may show only the first entries plus an omitted count. These surfaces
 do not invoke the model, execute tools, read raw model/tool/delegation/final/

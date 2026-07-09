@@ -2560,6 +2560,9 @@ Required policy:
 - delegated completion-gate check summaries may include check id, status,
   summary, and refs copied from the completion report; they must not treat
   delegated output as completion proof
+- Live Run Trace and Harness Replay may also expose delegated completion-gate
+  status counts for operator inspection; the counts are derived from the same
+  completion report checks and do not create a second completion decision
 - per-round action counts and envelope refs must come from the current
   completion turn's `model_action` evidence refs, not from every model-action
   file under the same session id

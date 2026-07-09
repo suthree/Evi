@@ -2909,12 +2909,14 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[0].text, /repo_write_guards: 1/);
     assert.match(transport.sent[0].text, /delegated_results: 1/);
     assert.match(transport.sent[0].text, /delegated_results_failed: 1/);
+    assert.match(transport.sent[0].text, /delegated_completion_gate_statuses: pass=0, warning=0, fail=1, skipped=0/);
     assert.match(transport.sent[0].text, /rounds: 2/);
     assert.match(transport.sent[1].text, /Live run trace/);
     assert.match(transport.sent[1].text, /completion_id: completion_verification_trace_feishu_new/);
     assert.match(transport.sent[1].text, /context_ref: memory\/episodes\/session_trace_feishu_new-context\.md/);
     assert.match(transport.sent[1].text, /delegated_results: 1/);
     assert.match(transport.sent[1].text, /delegated_results_failed: 1/);
+    assert.match(transport.sent[1].text, /delegated_completion_gate_statuses: pass=0, warning=0, fail=1, skipped=0/);
     assert.match(transport.sent[1].text, /Delegated dispatches:/);
     assert.match(transport.sent[1].text, /action_id: action_delegate_trace_feishu/);
     assert.match(transport.sent[1].text, /round: 1/);
@@ -2948,6 +2950,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(replayDetailText, /trace_ref: memory\/episodes\/session_trace_feishu_new-completion-verification\.json/);
     assert.match(replayDetailText, /replay_result: metadata_replay/);
     assert.match(replayDetailText, /delegated_dispatches=1/);
+    assert.match(replayDetailText, /delegated_completion_gate_statuses: pass=0, warning=0, fail=1, skipped=0/);
     assert.match(replayDetailText, /delegated_dispatch_metadata: pass/);
     assert.match(replayDetailText, /delegated_dispatch_lineage: pass/);
     assert.match(replayDetailText, /delegated_dispatch_failure_kind: pass/);

@@ -1993,8 +1993,15 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_results: 1/);
     assert.match(rendered.markdown, /delegated_results_passed: 0/);
     assert.match(rendered.markdown, /delegated_results_failed: 1/);
+    assert.match(rendered.markdown, /delegated_completion_gate_statuses: pass=1, warning=0, fail=2, skipped=0/);
     assert.match(rendered.markdown, /delegated_dispatch_missing_result_ref: 0/);
     assert.equal(trace.delegated_result_failed_count, 1);
+    assert.deepEqual(trace.delegated_completion_gate_status_counts, {
+      pass: 1,
+      fail: 2,
+      warning: 0,
+      skipped: 0
+    });
     assert.deepEqual(trace.delegated_completion_gate_checks.map((check) => ({
       id: check.id,
       status: check.status

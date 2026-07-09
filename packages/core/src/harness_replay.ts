@@ -55,6 +55,10 @@ export interface HarnessReplayAuditReport {
     tool_results: number;
     delegated_results: number;
     delegated_results_failed: number;
+    delegated_completion_gate_passed: number;
+    delegated_completion_gate_warning: number;
+    delegated_completion_gate_failed: number;
+    delegated_completion_gate_skipped: number;
     delegated_dispatches: number;
     delegated_dispatches_failed: number;
     harness_state_actions: number;
@@ -119,6 +123,10 @@ export async function runHarnessReplayAudit(
       tool_results: trace.tool_result_count,
       delegated_results: trace.delegated_result_count,
       delegated_results_failed: trace.delegated_result_failed_count,
+      delegated_completion_gate_passed: trace.delegated_completion_gate_status_counts.pass,
+      delegated_completion_gate_warning: trace.delegated_completion_gate_status_counts.warning,
+      delegated_completion_gate_failed: trace.delegated_completion_gate_status_counts.fail,
+      delegated_completion_gate_skipped: trace.delegated_completion_gate_status_counts.skipped,
       delegated_dispatches: trace.delegated_dispatches.length,
       delegated_dispatches_failed: trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length,
       harness_state_actions: trace.harness_action_count,
@@ -213,6 +221,10 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     `tool_results: ${report.metrics.tool_results}`,
     `delegated_results: ${report.metrics.delegated_results}`,
     `delegated_results_failed: ${report.metrics.delegated_results_failed}`,
+    `delegated_completion_gate_passed: ${report.metrics.delegated_completion_gate_passed}`,
+    `delegated_completion_gate_warning: ${report.metrics.delegated_completion_gate_warning}`,
+    `delegated_completion_gate_failed: ${report.metrics.delegated_completion_gate_failed}`,
+    `delegated_completion_gate_skipped: ${report.metrics.delegated_completion_gate_skipped}`,
     `delegated_dispatches: ${report.metrics.delegated_dispatches}`,
     `delegated_dispatches_failed: ${report.metrics.delegated_dispatches_failed}`,
     `harness_state_actions: ${report.metrics.harness_state_actions}`,
@@ -590,6 +602,10 @@ function asHarnessReplayAuditReport(value: unknown): HarnessReplayAuditReport | 
       tool_results: numberField(record.metrics, "tool_results") ?? 0,
       delegated_results: numberField(record.metrics, "delegated_results") ?? 0,
       delegated_results_failed: numberField(record.metrics, "delegated_results_failed") ?? 0,
+      delegated_completion_gate_passed: numberField(record.metrics, "delegated_completion_gate_passed") ?? 0,
+      delegated_completion_gate_warning: numberField(record.metrics, "delegated_completion_gate_warning") ?? 0,
+      delegated_completion_gate_failed: numberField(record.metrics, "delegated_completion_gate_failed") ?? 0,
+      delegated_completion_gate_skipped: numberField(record.metrics, "delegated_completion_gate_skipped") ?? 0,
       delegated_dispatches: numberField(record.metrics, "delegated_dispatches") ?? 0,
       delegated_dispatches_failed: numberField(record.metrics, "delegated_dispatches_failed") ?? 0,
       harness_state_actions: numberField(record.metrics, "harness_state_actions") ?? 0,

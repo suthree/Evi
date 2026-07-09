@@ -33,6 +33,10 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.metrics.rounds, 2);
     assert.equal(report.metrics.events, 6);
     assert.equal(report.metrics.delegated_results_failed, 1);
+    assert.equal(report.metrics.delegated_completion_gate_passed, 0);
+    assert.equal(report.metrics.delegated_completion_gate_warning, 0);
+    assert.equal(report.metrics.delegated_completion_gate_failed, 1);
+    assert.equal(report.metrics.delegated_completion_gate_skipped, 0);
     assert.equal(report.metrics.delegated_dispatches, 1);
     assert.equal(report.metrics.delegated_dispatches_failed, 1);
     assert.equal(report.metrics.repo_write_guards, 1);

@@ -85,6 +85,10 @@ export interface LiveRunCompletionCheckSummary {
   refs: string[];
 }
 
+type CompletionCheckStatus = CompletionVerificationReport["checks"][number]["status"];
+
+export type LiveRunCompletionGateStatusCounts = Record<CompletionCheckStatus, number>;
+
 export interface LiveRunTraceSummary {
   report_ref: string;
   completion_id: string;
@@ -107,6 +111,7 @@ export interface LiveRunTraceSummary {
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
+  delegated_completion_gate_status_counts: LiveRunCompletionGateStatusCounts;
   delegated_dispatch_missing_result_ref_count: number;
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
@@ -204,6 +209,7 @@ async function summarizeLiveRunTrace(
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
   const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
   const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
+  const delegatedCompletionGateStatusCounts = countCompletionCheckStatuses(delegatedCompletionGateChecks);
   const delegatedResultFailedCount = Math.max(
     delegatedFailureCount(report),
     delegatedDispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length
@@ -244,6 +250,7 @@ async function summarizeLiveRunTrace(
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
     delegated_completion_gate_checks: delegatedCompletionGateChecks,
+    delegated_completion_gate_status_counts: delegatedCompletionGateStatusCounts,
     delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
@@ -263,6 +270,17 @@ async function summarizeLiveRunTrace(
       "raw delegated previews, final responses, or harness artifact bodies"
     ].join(" ")
   };
+}
+
+function countCompletionCheckStatuses(checks: LiveRunCompletionCheckSummary[]): LiveRunCompletionGateStatusCounts {
+  const counts: LiveRunCompletionGateStatusCounts = {
+    pass: 0,
+    fail: 0,
+    warning: 0,
+    skipped: 0
+  };
+  for (const check of checks) counts[check.status] += 1;
+  return counts;
 }
 
 function readDelegatedCompletionGateChecks(report: CompletionVerificationReport): LiveRunCompletionCheckSummary[] {

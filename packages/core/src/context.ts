@@ -924,6 +924,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- delegated_results: ${trace.delegated_result_count}`,
     `- delegated_results_passed: ${trace.delegated_result_passed_count}`,
     `- delegated_results_failed: ${trace.delegated_result_failed_count}`,
+    `- delegated_completion_gate_statuses: pass=${trace.delegated_completion_gate_status_counts.pass}, warning=${trace.delegated_completion_gate_status_counts.warning}, fail=${trace.delegated_completion_gate_status_counts.fail}, skipped=${trace.delegated_completion_gate_status_counts.skipped}`,
     `- delegated_dispatch_missing_result_ref: ${trace.delegated_dispatch_missing_result_ref_count}`,
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
@@ -1000,6 +1001,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- replay_result: ${replay.replay_result}`,
     `- summary: ${truncate(replay.summary, 300)}`,
     `- metrics: rounds=${replay.metrics.rounds}, events=${replay.metrics.events}, tool_results=${replay.metrics.tool_results}, delegated_failed=${replay.metrics.delegated_results_failed}, delegated_dispatches=${replay.metrics.delegated_dispatches}, delegated_dispatches_failed=${replay.metrics.delegated_dispatches_failed}, repo_write_guards=${replay.metrics.repo_write_guards}`,
+    `- delegated_completion_gate_statuses: pass=${replay.metrics.delegated_completion_gate_passed}, warning=${replay.metrics.delegated_completion_gate_warning}, fail=${replay.metrics.delegated_completion_gate_failed}, skipped=${replay.metrics.delegated_completion_gate_skipped}`,
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
