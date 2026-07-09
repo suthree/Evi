@@ -577,6 +577,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
         metadata_source: "harness-owned delegated_result event summaries only",
         required_metadata: ["action_id", "dispatch_failure_kind", "result_failure_kind"],
         checks: [
+          "delegated_completion_gate",
           "delegated_action_coverage",
           "delegated_dispatch_metadata",
           "delegated_dispatch_failure_kind",
@@ -591,7 +592,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       evidence_refs: ["packages/core/src/schemas.ts"],
       boundary: "read-only test loop"
     }
-  }), `action=delegate_agent; stage=active; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim without later recovery evidence+delegatedVerificationRefs rejects delegated self-report refs+delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage+delegated_dispatch_metadata+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
+  }), `action=delegate_agent; stage=active; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; gate=delegatedResultsCheck fails a done claim without later recovery evidence+delegatedVerificationRefs rejects delegated self-report refs+delegatedIndependentEvidenceCheck requires later harness-known non-delegated verification refs after the latest delegated result, successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate+delegated_action_coverage+delegated_dispatch_metadata+delegated_dispatch_failure_kind+delegated_dispatch_round_limit+delegated_result_failure_kind+delegated_results; authority=main harness verifies delegated results; defer=no expert personas,no autonomous multi-agent scheduling`);
 });
 
 test("context bundle stays bounded to selected local runtime inputs", async () => {
@@ -1427,7 +1428,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /runtime_guard: stage=attention_guard; current=Resident service health is the basic guard that keeps runtime attention visible before a core\/basic outcome is reused.; next=Name runtime attention reasons explicitly instead of hiding them behind application progress.; exit=runtime attention reasons are named in the outcome instead of being treated as application progress/);
     assert.match(rendered.markdown, /stage_exit: core=goal_intake=the next slice cites the latest operator objective, a verified source artifact, or a fresh bootstrap source,capability_layering=core\/basic\/local-learning\/application layer is explicit before implementation,contract_design=one reusable GA design contract improvement is implemented,verification_review=iteration audit reports covered plan refs; basic=execution_plan=targeted project-design and iteration audit checks run before the broad check,runtime_observability=service health is inspected for the resident runtime target/);
     assert.match(rendered.markdown, /stage_next: core_runtime\[goal_scope\]: continue general_agent_delegation_hardening_after_context_plan as a ga_project_design hardening slice/);
-    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegatedVerificationRefs rejects delegated self-report refs as completion proof\\+delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_action_coverage\\+delegated_dispatch_metadata\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
+    assert.match(rendered.markdown, new RegExp(`delegation_loop: action=delegate_agent; stage=active; max_per_round=${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND}; dispatch_kind=dispatch_failure_kind; result_kind=result_failure_kind; task_max=1000; context_max=12000; result=240/2000; runner=parseDelegationRequest validates strict task/context payloads before delegated model dispatch\\+validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; gate=delegatedResultsCheck fails a done claim when delegated failure lacks later main-harness recovery evidence\\+delegatedVerificationRefs rejects delegated self-report refs as completion proof\\+delegatedIndependentEvidenceCheck fails a done claim after delegation without later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs; recovery=failed delegated results may only guide a later main-harness model round as sanitized observation; replay=delegated_completion_gate\\+delegated_action_coverage\\+delegated_dispatch_metadata\\+delegated_dispatch_failure_kind\\+delegated_dispatch_round_limit\\+delegated_result_failure_kind\\+delegated_results; authority=main harness verifies delegated results before they influence a done claim; defer=no expert personas,no autonomous multi-agent scheduling`));
     assert.match(rendered.markdown, /governance_cleanup: superseded_open_iterations=1; iteration_contract_context_stale:partial/);
     assert.match(rendered.markdown, /phase_forbid: goal_intake=do not treat previous intent as current evidence; capability_layering=do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default; contract_design=do not add provider-specific glue when a runtime contract is the real missing piece; execution_plan=do not use a narrow test to support a broader claim; verification_review=do not let model reasoning replace executed verification; learning_persistence=do not promote one-off application behavior to skill or semantic memory/);
     assert.match(rendered.markdown, /scorecard_basis: next_core_basic_slice=next_slice_core_ga_design \| plan_target_slice=next_slice_general_agent_delegation/);
@@ -1848,6 +1849,12 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
         `memory/episodes/${priorSession}-delegated_result_invalid.json`,
         `memory/episodes/${priorSession}-record-evidence-r1-1.md`
       ],
+      delegated_result_failure_kinds: [
+        {
+          result_failure_kind: "delegated_output_contract_failed",
+          count: 1
+        }
+      ],
       checks: [{
         id: "final_response",
         status: "pass",
@@ -1856,7 +1863,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       }, {
         id: "delegated_results",
         status: "fail",
-        summary: "Failed delegated result(s): 1.",
+        summary: "Failed delegated result(s): 9.",
         refs: ["delegated_result_invalid"]
       }],
       created_at: "2026-06-30T00:20:00.000Z"
@@ -1908,8 +1915,19 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       session_id: priorSession,
       turn_id: priorTurn,
       kind: "delegated_result",
-      summary: "Delegated result: action_id=action_delegate_trace_context; round=1; sequence=1; task_chars=44; context_chars=88; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false.",
+      summary: "Delegated result metadata is stored in delegated_dispatch for this fixture.",
       artifact_refs: [`memory/episodes/${priorSession}-delegated_result_invalid.json`],
+      delegated_dispatch: {
+        action_id: "action_delegate_trace_context",
+        round: 1,
+        sequence: 1,
+        task_chars: 44,
+        context_chars: 88,
+        contract_status: "failed",
+        dispatch_failure_kind: "none",
+        result_failure_kind: "delegated_output_contract_failed",
+        ok: false
+      },
       created_at: "2026-06-30T00:19:03.500Z"
     });
     await fixture.store.appendJsonl("memory/episodes/events.jsonl", {
@@ -1952,6 +1970,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_results: 1/);
     assert.match(rendered.markdown, /delegated_results_passed: 0/);
     assert.match(rendered.markdown, /delegated_results_failed: 1/);
+    assert.equal(trace.delegated_result_failed_count, 1);
     assert.equal(trace.delegated_dispatches.length, 1);
     assert.deepEqual(trace.delegated_dispatches[0], {
       event_id: "evidence_trace_delegated",
@@ -1984,6 +2003,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_failed=1/);
     assert.match(rendered.markdown, /delegated_dispatches=1/);
     assert.match(rendered.markdown, /delegated_dispatches_failed=1/);
+    assert.match(rendered.markdown, /replay_check: delegated_completion_gate=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_action_coverage=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_failure_kind=pass/);
@@ -3623,6 +3643,19 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(model.sawStructuredDelegation, true);
     assert.equal(model.sawSanitizedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
+    assert.deepEqual(delegatedEvent?.delegated_dispatch, {
+      action_id: delegated.action_id,
+      round: 1,
+      sequence: 1,
+      task_chars: delegated.task_chars,
+      context_chars: delegated.context_chars,
+      contract_status: "passed",
+      dispatch_failure_kind: "none",
+      result_failure_kind: "none",
+      ok: true
+    });
+    assert.doesNotMatch(JSON.stringify(delegatedEvent), /SECRET_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(JSON.stringify(delegatedEvent), /delegated critique found one bounded risk/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
     assert.equal(delegated.summary, "Structured delegate summary token [REDACTED]");

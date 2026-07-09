@@ -993,7 +993,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 8)) {
+  for (const check of replay.checks.slice(0, 9)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }

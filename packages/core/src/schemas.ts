@@ -171,6 +171,18 @@ export const modelActionEnvelopeSchema = z.object({
   completion_claim: completionClaimSchema.default(defaultCompletionClaim)
 });
 
+export const delegatedDispatchEventMetadataSchema = z.object({
+  action_id: z.string(),
+  round: z.number().int().positive(),
+  sequence: z.number().int().positive(),
+  task_chars: z.number().int().nonnegative(),
+  context_chars: z.number().int().nonnegative(),
+  contract_status: z.enum(["passed", "failed"]),
+  dispatch_failure_kind: delegatedDispatchKindSchema,
+  result_failure_kind: delegatedResultKindSchema,
+  ok: z.boolean()
+});
+
 export const evidenceEventSchema = z.object({
   id: z.string().default(() => newId("evidence")),
   session_id: z.string(),
@@ -190,6 +202,7 @@ export const evidenceEventSchema = z.object({
   ]),
   summary: z.string().min(1),
   artifact_refs: z.array(z.string()).default([]),
+  delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
   created_at: z.string().default(utcNow)
 });
 

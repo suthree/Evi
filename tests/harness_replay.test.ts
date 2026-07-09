@@ -37,6 +37,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_completion_gate"
+        && check.status === "warning"
+        && check.summary.includes("failed_checks=delegated_results")
+    ), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_action_coverage"
@@ -106,6 +111,39 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     const detail = await getHarnessReplayAudit(store, { replayRef: report.id });
     assert.equal(detail.replay.id, report.id);
     assert.doesNotMatch(JSON.stringify({ list, detail }), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit surfaces delegated completion gate check ids", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegated-gate-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated result(s) passed contract validation; they are not completion proof.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_independent_evidence",
+      status: "fail",
+      summary: "Done claim after delegation lacks bound non-delegated verification refs.",
+      refs: []
+    }]);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /failed_checks=delegated_independent_evidence/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1263,6 +1263,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "ok"
       ],
       checks: [
+        "delegated_completion_gate",
         "delegated_action_coverage",
         "delegated_dispatch_metadata",
         "delegated_dispatch_failure_kind",

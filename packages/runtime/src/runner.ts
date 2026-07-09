@@ -29,6 +29,7 @@ import {
   type DelegatedDispatchFailureKind,
   type DelegatedObservation,
   type DelegatedResult,
+  type EvidenceEvent,
   type ModelActionEnvelope,
   type RunResult,
   type SelectedSkillUsageOutcome,
@@ -490,7 +491,8 @@ export class LiveAgentRunner {
           turn_id: snapshot.id,
           kind: "delegated_result",
           summary: delegatedResultEventSummary(delegated),
-          artifact_refs: [delegatedRef]
+          artifact_refs: [delegatedRef],
+          delegated_dispatch: delegatedDispatchEventMetadata(delegated)
         });
         evidenceRefs.push(delegatedEvent.id);
         await this.store.appendJsonl("memory/episodes/events.jsonl", delegatedEvent);
@@ -2905,6 +2907,20 @@ function delegatedResultEventSummary(result: DelegatedResult): string {
     `result_failure_kind=${result.result_failure_kind ?? "none"};`,
     `ok=${result.ok}.`
   ].join(" ");
+}
+
+function delegatedDispatchEventMetadata(result: DelegatedResult): NonNullable<EvidenceEvent["delegated_dispatch"]> {
+  return {
+    action_id: result.action_id,
+    round: result.round,
+    sequence: result.sequence,
+    task_chars: result.task_chars,
+    context_chars: result.context_chars,
+    contract_status: result.contract_status,
+    dispatch_failure_kind: result.dispatch_failure_kind,
+    result_failure_kind: result.result_failure_kind,
+    ok: result.ok
+  };
 }
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {

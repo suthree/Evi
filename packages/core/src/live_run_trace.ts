@@ -4,6 +4,7 @@ import {
   evidenceEventSchema,
   modelActionEnvelopeSchema,
   type CompletionVerificationReport,
+  type EvidenceEvent,
   type ModelActionEnvelope
 } from "./schemas.js";
 import { AgentStore } from "./store.js";
@@ -78,6 +79,8 @@ export interface LiveRunTraceSummary {
   verification_status: CompletionVerificationReport["verification_status"];
   verified: boolean;
   summary: string;
+  completion_failed_check_ids: string[];
+  completion_warning_check_ids: string[];
   context_ref?: string;
   context_manifest_ref?: string;
   final_response_ref: string | null;
@@ -110,15 +113,7 @@ export interface LiveRunTraceDetailResult {
   trace: LiveRunTraceSummary;
 }
 
-interface EpisodeEvent {
-  id: string;
-  session_id: string;
-  turn_id: string;
-  kind: string;
-  summary: string;
-  artifact_refs: string[];
-  created_at: string;
-}
+type EpisodeEvent = EvidenceEvent;
 
 export async function listLiveRunTraces(
   store: AgentStore,
@@ -216,6 +211,8 @@ async function summarizeLiveRunTrace(
     verification_status: report.verification_status,
     verified: report.verified,
     summary: report.summary,
+    completion_failed_check_ids: report.checks.filter((check) => check.status === "fail").map((check) => check.id),
+    completion_warning_check_ids: report.checks.filter((check) => check.status === "warning").map((check) => check.id),
     context_ref: contextRef,
     context_manifest_ref: contextManifestRef,
     final_response_ref: report.final_response_ref,
@@ -236,8 +233,8 @@ async function summarizeLiveRunTrace(
     refs,
     boundary: [
       "read-only live run trace; reads completion reports, model action envelope metadata,",
-      "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch",
-      "event summaries only; repo write guard summaries are parsed from bounded tool-result event",
+      "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch metadata",
+      "with event-summary fallback for older delegated events; repo write guard summaries are parsed from bounded tool-result event",
       "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
       "raw delegated previews, final responses, or harness artifact bodies"
     ].join(" ")
@@ -249,7 +246,7 @@ function readDelegatedDispatchSummaries(
 ): LiveRunDelegatedDispatchSummary[] {
   const summaries: LiveRunDelegatedDispatchSummary[] = [];
   for (const event of events.filter((item) => item.kind === "delegated_result")) {
-    const parsed = parseDelegatedDispatchSummary(event.summary);
+    const parsed = delegatedDispatchFromEventMetadata(event) ?? parseDelegatedDispatchSummary(event.summary);
     if (!parsed) continue;
     summaries.push({
       event_id: event.id,
@@ -259,6 +256,26 @@ function readDelegatedDispatchSummaries(
     });
   }
   return summaries;
+}
+
+function delegatedDispatchFromEventMetadata(
+  event: EpisodeEvent
+): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
+  const metadata = event.delegated_dispatch;
+  if (!metadata) return null;
+  return {
+    action_id: metadata.action_id,
+    round: metadata.round,
+    sequence: metadata.sequence,
+    task_chars: metadata.task_chars,
+    context_chars: metadata.context_chars,
+    contract_status: metadata.contract_status,
+    dispatch_failure_kind: metadata.dispatch_failure_kind === "none" ? null : metadata.dispatch_failure_kind,
+    dispatch_failure_kind_present: true,
+    result_failure_kind: metadata.result_failure_kind === "none" ? null : metadata.result_failure_kind,
+    result_failure_kind_present: true,
+    ok: metadata.ok
+  };
 }
 
 function parseDelegatedDispatchSummary(summary: string): Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> | null {
@@ -331,6 +348,9 @@ function extractRepoWriteGuardSummary(event: EpisodeEvent): LiveRunRepoWriteGuar
 }
 
 function delegatedFailureCount(report: CompletionVerificationReport): number {
+  const typedCount = report.delegated_result_failure_kinds.reduce((sum, item) => sum + item.count, 0);
+  if (typedCount > 0) return typedCount;
+
   const check = report.checks.find((item) => item.id === "delegated_results");
   if (!check || (check.status !== "fail" && check.status !== "warning")) return 0;
   const match = check.summary.match(/Failed delegated result\(s\):\s*(\d+)/);

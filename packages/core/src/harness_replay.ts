@@ -24,6 +24,12 @@ const RESULT_FAILURE_KINDS_FROM_DISPATCH = new Set([
   "dispatch_limit_exceeded",
   "input_contract_failed"
 ]);
+const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set([
+  "claimed_refs_bound_to_evidence",
+  "delegated_self_report_refs",
+  "delegated_independent_evidence",
+  "delegated_results"
+]);
 const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
@@ -274,6 +280,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `completion_status=${trace.completion_status}; verification_status=${trace.verification_status}; verified=${trace.verified}`,
       refs: [trace.report_ref]
     },
+    delegatedCompletionGateCheck(trace),
     {
       id: "delegated_result_contract",
       status: trace.delegated_result_failed_count > 0 ? "warning" : "pass",
@@ -303,6 +310,21 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const delegatedFailedCheckIds = trace.completion_failed_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
+  const delegatedWarningCheckIds = trace.completion_warning_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
+  const hasAttention = delegatedFailedCheckIds.length > 0 || delegatedWarningCheckIds.length > 0;
+  return {
+    id: "delegated_completion_gate",
+    status: hasAttention ? "warning" : "pass",
+    summary: [
+      `failed_checks=${delegatedFailedCheckIds.join(",") || "none"}`,
+      `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`
+    ].join("; "),
+    refs: [trace.report_ref]
+  };
 }
 
 function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
