@@ -2925,6 +2925,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(transport.sent[1].text, /result_failure_kind: delegated_output_contract_failed/);
     assert.match(transport.sent[1].text, /task_chars: 55/);
     assert.match(transport.sent[1].text, /context_chars: 99/);
+    assert.match(transport.sent[1].text, /delegated_dispatch_missing_result_ref: 0/);
     assert.match(transport.sent[1].text, /repo_write_guards: 1/);
     assert.match(transport.sent[1].text, /docs\/feishu-generated\.md/);
     assert.match(transport.sent[1].text, /before: clean \(0 changed\)/);

@@ -294,12 +294,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `delegated_results=${trace.delegated_result_count}; failed=${trace.delegated_result_failed_count}`,
       refs: [trace.report_ref]
     },
-    {
-      id: "delegated_dispatch_metadata",
-      status: trace.delegated_result_count === trace.delegated_dispatches.length ? "pass" : "warning",
-      summary: `delegated_results=${trace.delegated_result_count}; dispatches=${trace.delegated_dispatches.length}; failed_dispatches=${trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length}`,
-      refs: trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
-    },
+    delegatedDispatchMetadataCheck(trace),
     delegatedActionCoverageCheck(trace),
     delegatedDispatchLineageCheck(trace),
     delegatedDispatchFailureKindCheck(trace),
@@ -335,6 +330,28 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`
     ].join("; "),
     refs: [trace.report_ref]
+  };
+}
+
+function delegatedDispatchMetadataCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
+  const missingResultRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.result_ref);
+  const problemRefs = unique([
+    ...(trace.delegated_result_count === trace.delegated_dispatches.length ? [] : trace.delegated_dispatches),
+    ...missingResultRefs
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_dispatch_metadata",
+    status: trace.delegated_result_count === trace.delegated_dispatches.length && missingResultRefs.length === 0 ? "pass" : "warning",
+    summary: [
+      `delegated_results=${trace.delegated_result_count}`,
+      `dispatches=${trace.delegated_dispatches.length}`,
+      `failed_dispatches=${failedDispatches.length}`,
+      `missing_result_ref=${missingResultRefs.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
   };
 }
 

@@ -924,6 +924,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- delegated_results: ${trace.delegated_result_count}`,
     `- delegated_results_passed: ${trace.delegated_result_passed_count}`,
     `- delegated_results_failed: ${trace.delegated_result_failed_count}`,
+    `- delegated_dispatch_missing_result_ref: ${trace.delegated_dispatch_missing_result_ref_count}`,
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
     `- repo_write_guards: ${trace.repo_write_guard_count}`,

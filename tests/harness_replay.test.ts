@@ -9,6 +9,7 @@ import {
   listHarnessReplayAudits,
   runHarnessReplayAudit
 } from "../packages/core/src/harness_replay.js";
+import { getLiveRunTrace } from "../packages/core/src/live_run_trace.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("harness replay audit writes bounded evidence without reading raw run artifacts", async () => {
@@ -42,7 +43,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "fail"
         && check.summary.includes("failed_checks=delegated_results")
     ), true);
-    assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_dispatch_metadata"
+        && check.status === "pass"
+        && check.summary.includes("missing_result_ref=0")
+    ), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_dispatch_lineage"
         && check.status === "pass"
@@ -248,6 +253,38 @@ test("harness replay audit warns when delegated dispatch sequence differs from i
     assert.match(check?.summary ?? "", /mismatched_action_id=0/);
     assert.match(check?.summary ?? "", /mismatched_sequence=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_wrong_sequence")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegated dispatch lacks a persisted result ref", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-result-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendDelegatedDispatchEventWithoutResultRef(store);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+
+    assert.equal(trace.delegated_dispatch_missing_result_ref_count, 1);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /delegated_results=2/);
+    assert.match(check?.summary ?? "", /dispatches=2/);
+    assert.match(check?.summary ?? "", /missing_result_ref=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_missing_result_ref")), true);
+    assert.equal(report.delegated_dispatches.find((dispatch) => dispatch.event_id === "evidence_replay_delegated_missing_result_ref")?.result_ref, "");
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -783,6 +820,32 @@ async function appendDelegatedDispatchEvent(
       ok: args.ok
     },
     created_at: "2026-06-30T01:00:03.875Z"
+  });
+}
+
+async function appendDelegatedDispatchEventWithoutResultRef(store: AgentStore): Promise<void> {
+  const sessionId = "session_replay_test";
+  const turnId = "turn_replay_test";
+  await store.appendJsonl("memory/episodes/events.jsonl", {
+    id: "evidence_replay_delegated_missing_result_ref",
+    session_id: sessionId,
+    turn_id: turnId,
+    kind: "delegated_result",
+    summary: "Delegated result: action_id=action_delegate_replay; round=1; sequence=1; task_chars=33; context_chars=77; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true.",
+    artifact_refs: [],
+    delegated_dispatch: {
+      action_id: "action_delegate_replay",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
+      round: 1,
+      sequence: 1,
+      task_chars: 33,
+      context_chars: 77,
+      contract_status: "passed",
+      dispatch_failure_kind: "none",
+      result_failure_kind: "none",
+      ok: true
+    },
+    created_at: "2026-06-30T01:00:03.925Z"
   });
 }
 

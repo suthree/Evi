@@ -107,6 +107,7 @@ export interface LiveRunTraceSummary {
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
+  delegated_dispatch_missing_result_ref_count: number;
   delegated_dispatches: LiveRunDelegatedDispatchSummary[];
   harness_action_count: number;
   observation_ref_count: number;
@@ -201,6 +202,7 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
   const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
   const delegatedResultFailedCount = Math.max(
     delegatedFailureCount(report),
@@ -242,6 +244,7 @@ async function summarizeLiveRunTrace(
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
     delegated_completion_gate_checks: delegatedCompletionGateChecks,
+    delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
     delegated_dispatches: delegatedDispatches,
     harness_action_count: harnessActionCount,
     observation_ref_count: report.observation_refs.length,

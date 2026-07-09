@@ -1305,7 +1305,12 @@ without reading delegated artifact bodies or granting delegated completion
 authority. Missing or mismatched envelope refs, dispatch action ids not declared
 by the round envelope, or dispatch sequences that do not match the declared
 delegate action order are replay warnings, not permission to infer hidden
-context. Dispatch-layer rejects also carry a safe
+context. A delegated dispatch that lacks a persisted delegated result JSON
+artifact ref is also a replay warning; replay may cite the bounded event id, but
+it must not infer or reconstruct the missing delegated artifact body. Live Run
+Trace exposes the missing-result-ref count as bounded metadata so context and IM
+surfaces can show the evidence gap without reading the artifact body.
+Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no
