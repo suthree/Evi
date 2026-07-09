@@ -422,22 +422,26 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
 function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const reportRefs = new Set(trace.delegated_result_report_refs);
   const dispatchesWithResultRef = trace.delegated_dispatches.filter((dispatch) => dispatch.result_ref);
+  const dispatchRefs = new Set(dispatchesWithResultRef.map((dispatch) => dispatch.result_ref));
   const missingReportDispatchRefs = dispatchesWithResultRef.filter((dispatch) => !reportRefs.has(dispatch.result_ref));
+  const orphanReportRefs = trace.delegated_result_report_refs.filter((ref) => !dispatchRefs.has(ref));
   const eventFallbackRefs = trace.delegated_result_refs.filter((ref) => !reportRefs.has(ref));
   return {
     id: "delegated_result_ref_coverage",
-    status: missingReportDispatchRefs.length > 0 ? "warning" : "pass",
+    status: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0 ? "warning" : "pass",
     summary: [
       `report_refs=${trace.delegated_result_report_refs.length}`,
       `trace_refs=${trace.delegated_result_refs.length}`,
       `dispatch_refs=${dispatchesWithResultRef.length}`,
       `missing_dispatch_refs=${missingReportDispatchRefs.length}`,
+      `orphan_report_refs=${orphanReportRefs.length}`,
       `event_fallback_refs=${eventFallbackRefs.length}`
     ].join("; "),
-    refs: missingReportDispatchRefs.length > 0
+    refs: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0
       ? unique([
           trace.report_ref,
-          ...missingReportDispatchRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+          ...missingReportDispatchRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+          ...orphanReportRefs
         ])
       : unique([trace.report_ref, ...trace.delegated_result_report_refs])
   };

@@ -1397,6 +1397,10 @@ and recovery rules, while `replay_audit_contract` names the safe metadata
 source, required dispatch fields, audit checks, lineage checks, and proof
 boundary. Those fields are read-only planning context; they do not spawn
 subagents, grant tool access, schedule experts, or prove completion.
+Replay ref coverage is bidirectional: dispatch result refs missing from the
+completion report and completion-report `delegated_result_refs` missing from
+delegated dispatch metadata both remain attention items, without opening raw
+delegated artifacts.
 The main-model observation also excludes raw
 delegated task/context, raw output preview, and persisted artifact bodies. They
 are not tool evidence, final success proof, mutation authority,

@@ -1014,7 +1014,7 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     `- report_ref: ${replay.artifact_refs.json_ref}`,
     `- boundary: ${replay.boundary}`
   ];
-  for (const check of replay.checks.slice(0, 13)) {
+  for (const check of prioritizedHarnessReplayChecks(replay.checks)) {
     lines.push(`- replay_check: ${check.id}=${check.status}`);
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }
@@ -1023,6 +1023,12 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
     lines.push(`  summary: ${truncate(check.summary, 220)}`);
   }
   return lines.join("\n");
+}
+
+function prioritizedHarnessReplayChecks(checks: HarnessReplayAuditReport["checks"]): HarnessReplayAuditReport["checks"] {
+  const attention = checks.filter((check) => check.status !== "pass");
+  const pass = checks.filter((check) => check.status === "pass");
+  return [...attention, ...pass].slice(0, 16);
 }
 
 async function backgroundReviewHistorySection(store: AgentStore): Promise<ContextSection> {

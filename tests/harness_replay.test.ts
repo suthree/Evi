@@ -446,6 +446,37 @@ test("harness replay audit warns when completion report omits delegated result r
   }
 });
 
+test("harness replay audit warns when completion report has orphan delegated result refs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-orphan-report-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, undefined, {
+      extraDelegatedResultRefs: [
+        "memory/episodes/session_replay_test-delegated_result_orphan.json"
+      ]
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_result_ref_coverage");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /report_refs=2/);
+    assert.match(check?.summary ?? "", /dispatch_refs=1/);
+    assert.match(check?.summary ?? "", /orphan_report_refs=1/);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-delegated_result_orphan.json"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit scopes model-action rounds to the completion turn", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-turn-scope-"));
   const repoRoot = join(root, "repo");
@@ -698,7 +729,7 @@ async function writeReplayTraceFixture(
     summary: "Failed delegated result(s): 1.",
     refs: ["delegated_result_invalid"]
   }],
-  options: { includeDelegatedResultRefs?: boolean } = {}
+  options: { includeDelegatedResultRefs?: boolean; extraDelegatedResultRefs?: string[] } = {}
 ): Promise<void> {
   const sessionId = "session_replay_test";
   const turnId = "turn_replay_test";
@@ -788,7 +819,8 @@ async function writeReplayTraceFixture(
     ...(options.includeDelegatedResultRefs ?? true
       ? {
         delegated_result_refs: [
-          `memory/episodes/${sessionId}-delegated_result_invalid.json`
+          `memory/episodes/${sessionId}-delegated_result_invalid.json`,
+          ...(options.extraDelegatedResultRefs ?? [])
         ]
       }
       : {}),

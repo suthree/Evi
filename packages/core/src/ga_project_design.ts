@@ -1279,6 +1279,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "completion reports preserve verification_evidence_refs for harness-known tool result ids and artifact refs, including tool, round, event id, side-effect level, claimed flag, and independent/recovery proof flags",
         "replay audit warns when a passed delegated-independent gate lacks matching claimed tool-lineage metadata",
         "replay audit warns when delegated dispatch result refs are only recovered from delegated_result event fallback and missing from completion report delegated_result_refs",
+        "replay audit warns when completion report delegated_result_refs do not match any delegated_result event dispatch result_ref",
         "trace and replay audit JSON preserve the full delegated dispatch metadata set, including persisted delegated result refs",
         "replay audit warns when input-contract or per-round-limit rejected dispatches claim model_invoked=true or when a post-dispatch result claims model_invoked=false",
         "replay audit warns when a delegated dispatch lacks a model-action envelope ref, points at a different round envelope, uses an action_id not declared by the round envelope delegate_agent actions, or reports a sequence that does not match the declared delegate action order",

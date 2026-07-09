@@ -422,6 +422,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("delegate_agent action ids")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("declared delegate action order")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("persisted delegated result JSON artifact ref")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("completion report delegated_result_refs do not match any delegated_result event dispatch result_ref")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.evidence_refs.includes("packages/core/src/live_run_trace.ts"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("must not read delegated result artifact bodies")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.completion_authority.some((item) => item.includes("main harness verifies")), true);
