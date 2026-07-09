@@ -532,6 +532,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
   const delegateOutputKeys = delegateAgentActionContract.output_keys.join("/");
   const delegateDispatchKinds = readableList(delegateAgentActionContract.dispatch_kinds);
   const delegateResultKinds = readableList(delegateAgentActionContract.result_kinds);
+  const delegateLifecycle = delegateAgentActionContract.lifecycle_steps.join(">");
   const delegateMaxActions = delegateAgentActionContract.max_actions_per_round === 1
     ? "one"
     : String(delegateAgentActionContract.max_actions_per_round);
@@ -553,6 +554,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
         ...(action === "delegate_agent"
           ? [
               `payload is strict ${delegatePayloadKeys} only and the live runner accepts at most ${delegateMaxActions} delegate_agent action per model round`,
+              `harness-owned lifecycle is ${delegateLifecycle}; the delegated model only produces the bounded self-report in the middle of that flow`,
               "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
               "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
               "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",

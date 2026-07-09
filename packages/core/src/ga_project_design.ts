@@ -187,6 +187,7 @@ export interface GaProjectDesignGeneralDelegationLoop {
   action: "delegate_agent";
   layer: "core_runtime";
   stage: "active";
+  lifecycle_steps: string[];
   max_actions_per_round: number;
   task_contract: {
     max_chars: number;
@@ -1125,6 +1126,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     action: "delegate_agent",
     layer: "core_runtime",
     stage: "active",
+    lifecycle_steps: [...delegateAgentActionContract.lifecycle_steps],
     max_actions_per_round: delegateAgentActionContract.max_actions_per_round,
     task_contract: {
       max_chars: delegateAgentActionContract.task_max_chars,

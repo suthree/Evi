@@ -1371,7 +1371,9 @@ If a delegated result failed and the run does not reach verified `done`
 completion, any `propose_sop` action remains state-only and must not enter live
 SOP audit, SOP promotion, skill promotion, or active-vault writes.
 The GA project-design read model mirrors this same runner/replay boundary in
-`next_core_basic_plan.general_delegation_loop`: `runner_enforcement_contract`
+`next_core_basic_plan.general_delegation_loop`: `lifecycle_steps` names the
+harness-owned flow from `validate_task_context` through
+`verify_main_harness_completion`, `runner_enforcement_contract`
 names the live runner instruction, input, result, and completion-gate rules,
 `result_failure_kind_contract` and `recovery_contract` name the bounded failure
 and recovery rules, while `replay_audit_contract` names the safe metadata

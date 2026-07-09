@@ -57,6 +57,13 @@ export const delegateAgentActionContract = {
   action: "delegate_agent",
   payload_keys: ["task", "context"],
   output_keys: ["summary", "findings_text"],
+  lifecycle_steps: [
+    "validate_task_context",
+    "dispatch_delegated_model",
+    "persist_delegated_result",
+    "observe_sanitized_result",
+    "verify_main_harness_completion"
+  ],
   max_actions_per_round: 1,
   task_max_chars: 1000,
   context_max_chars: 12000,

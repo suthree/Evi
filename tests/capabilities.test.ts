@@ -222,6 +222,13 @@ test("delegate_agent schemas mirror the shared action contract", () => {
   assert.equal(DELEGATED_AGENT_FINDINGS_MAX_CHARS, delegateAgentActionContract.findings_max_chars);
   assert.deepEqual(delegatedDispatchKindSchema.options, [...delegateAgentActionContract.dispatch_kinds]);
   assert.deepEqual(delegatedResultKindSchema.options, [...delegateAgentActionContract.result_kinds]);
+  assert.deepEqual(delegateAgentActionContract.lifecycle_steps, [
+    "validate_task_context",
+    "dispatch_delegated_model",
+    "persist_delegated_result",
+    "observe_sanitized_result",
+    "verify_main_harness_completion"
+  ]);
 });
 
 test("capability catalog exposes delegate_agent failure boundaries", () => {
@@ -235,6 +242,7 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
 
   assert.match(text, /strict task\/context only/);
   assert.match(text, /at most one delegate_agent action per model round/);
+  assert.match(text, /harness-owned lifecycle is validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion/);
   assert.match(text, /explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation/);
   assert.match(text, /one concrete question/);
   assert.match(text, /must not combine analysis with direct fix, repair, update, edit, patch, or commit intent/);

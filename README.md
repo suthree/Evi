@@ -407,10 +407,14 @@ purpose from the opaque slice id alone.
 Its `implementation_contract` states the allowed reusable contract/read-model
 change, deferred scopes, and delivery standard before implementation. It is
 pre-execution boundary guidance, not an execution plan or completion proof.
-For `general_agent_delegation`, the hard limits, payload/output keys, failure
-kind values, and completion-gate check ids are sourced from
-`packages/core/src/action_contracts.ts` and consumed by schemas, replay checks,
-capability summaries, and project-design read models.
+For `general_agent_delegation`, the shared contract for hard limits,
+payload/output keys, failure kind values, lifecycle steps, and completion-gate
+check ids is sourced from `packages/core/src/action_contracts.ts`.
+Schemas, replay checks, capability summaries, and project-design read models
+consume the relevant fields from that contract.
+The lifecycle names the harness-owned flow from `validate_task_context` through
+`verify_main_harness_completion`; it is planning metadata, not delegated
+scheduling or completion authority.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.
