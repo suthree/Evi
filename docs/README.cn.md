@@ -197,7 +197,7 @@ manual local、external adapter 或 local-learning follow-up 必须显式选择 
 artifacts，用来复用 GA 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
 派生 successor plan 时会折叠历史 completed-source non-goals，避免下一轮 seed 递归膨胀。
 Replay audit 会检查 delegated dispatch metadata、`dispatch_failure_kind`、
-`result_failure_kind`、两层失败类型语义配对和每轮 active delegate 上限；缺少这些失败分类字段、合法枚举但配对错误，都会被标记为 warning，显式 `none` 才表示该层没有失败。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
+`result_failure_kind`、两层失败类型语义配对和每轮 active delegate 上限；缺少这些失败分类字段、合法枚举但配对错误，都会被标记为 warning，显式 `none` 才表示该层没有失败；delegated completion-gate 的失败会在 replay check 中保持为 `fail`，顶层 replay report 仍以 `attention` 表示存在非 pass 检查。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
 历史 iteration evidence refs 也会在 successor planning 中折叠，只保留当前 source artifact 和直接证据。
 其中 `artifact_count` 是可复用 artifact 总数，`listed_artifact_count` 是当前 limit 下实际列出的数量。
 可以用 `pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state`

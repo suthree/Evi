@@ -445,7 +445,8 @@ test("governance act-next replay-audits failed completion verification evidence"
     assert.equal(result.replay_audit?.delegated_results_failed, 1);
     assert.equal(result.replay_audit?.repo_write_guards, 0);
     assert.equal(result.replay_audit?.model_diagnostics, 0);
-    assert.equal(result.replay_audit?.warning_count, 4);
+    assert.equal(result.replay_audit?.fail_count, 1);
+    assert.equal(result.replay_audit?.warning_count, 3);
     assert.equal(existsSync(join(fixture.stateRoot, result.replay_audit?.replay_ref ?? "")), true);
     assert.equal(existsSync(join(fixture.stateRoot, result.replay_audit?.markdown_ref ?? "")), true);
     assert.match(result.next_commands?.[0] ?? "", /review replays --replay harness_replay_/);
@@ -459,13 +460,14 @@ test("governance act-next replay-audits failed completion verification evidence"
     assert.equal(actionRecord.replay_ref, result.replay_audit?.replay_ref);
     assert.equal(actionRecord.replay_markdown_ref, result.replay_audit?.markdown_ref);
     assert.equal(actionRecord.replay_status, "attention");
-    assert.equal(actionRecord.replay_warning_count, 4);
+    assert.equal(actionRecord.replay_fail_count, 1);
+    assert.equal(actionRecord.replay_warning_count, 3);
     assert.equal(actionRecord.result_ref, result.replay_audit?.replay_ref);
     assert.match(actionRecord.boundary as string, /harness replay audits/);
 
     const replayRaw = await readFile(join(fixture.stateRoot, result.replay_audit?.replay_ref ?? ""), "utf8");
     const replayRecord = JSON.parse(replayRaw) as { checks?: Array<{ id?: string; status?: string }> };
-    assert.equal(replayRecord.checks?.some((check) => check.id === "delegated_completion_gate" && check.status === "warning"), true);
+    assert.equal(replayRecord.checks?.some((check) => check.id === "delegated_completion_gate" && check.status === "fail"), true);
     assert.equal(replayRecord.checks?.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "warning"), true);
     assert.doesNotMatch(JSON.stringify(result), /RAW_ACTION_REPLAY_/);
     assert.doesNotMatch(JSON.stringify(actionRecord), /RAW_ACTION_REPLAY_/);

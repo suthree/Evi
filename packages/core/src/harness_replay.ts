@@ -34,7 +34,7 @@ const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set([
 const DELEGATED_DISPATCH_MARKDOWN_LIMIT = 5;
 
 export type HarnessReplayAuditStatus = "clean" | "attention";
-export type HarnessReplayAuditCheckStatus = "pass" | "warning";
+export type HarnessReplayAuditCheckStatus = "pass" | "warning" | "fail";
 
 export interface HarnessReplayAuditCheck {
   id: string;
@@ -106,7 +106,7 @@ export async function runHarnessReplayAudit(
   const jsonRef = `${REPLAY_ROOT}/${id}.json`;
   const markdownRef = `${REPLAY_ROOT}/${id}.md`;
   const checks = replayChecks(trace);
-  const status: HarnessReplayAuditStatus = checks.some((check) => check.status === "warning") ? "attention" : "clean";
+  const status: HarnessReplayAuditStatus = checks.some((check) => check.status !== "pass") ? "attention" : "clean";
   const report: HarnessReplayAuditReport = {
     action: "harness-replay-audit",
     schema_version: 1,
@@ -329,10 +329,13 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
 function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const delegatedFailedCheckIds = trace.completion_failed_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
   const delegatedWarningCheckIds = trace.completion_warning_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
-  const hasAttention = delegatedFailedCheckIds.length > 0 || delegatedWarningCheckIds.length > 0;
   return {
     id: "delegated_completion_gate",
-    status: hasAttention ? "warning" : "pass",
+    status: delegatedFailedCheckIds.length > 0
+      ? "fail"
+      : delegatedWarningCheckIds.length > 0
+        ? "warning"
+        : "pass",
     summary: [
       `failed_checks=${delegatedFailedCheckIds.join(",") || "none"}`,
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`
@@ -634,7 +637,7 @@ function isReplayStatus(value: unknown): value is HarnessReplayAuditStatus {
 }
 
 function isReplayCheckStatus(value: string | null): value is HarnessReplayAuditCheckStatus {
-  return value === "pass" || value === "warning";
+  return value === "pass" || value === "warning" || value === "fail";
 }
 
 function isCompletionGateCheckStatus(value: string | null): value is LiveRunCompletionCheckSummary["status"] {

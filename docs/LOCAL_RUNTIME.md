@@ -1226,7 +1226,9 @@ reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`
 coverage for failed delegated results, warns when legal dispatch/result failure
 kinds are semantically mismatched, and warns when the trace shows more than one
-active-looking delegated dispatch in one model round. The replay JSON keeps
+active-looking delegated dispatch in one model round. Delegated
+completion-gate failures stay `fail` in replay checks while the replay report
+stays `attention` for any non-pass check. The replay JSON keeps
 the full delegated dispatch set for audit coverage; Markdown and context
 renderers may show only the first entries plus an omitted count. These surfaces
 do not invoke the model, execute tools, read raw model/tool/delegation/final/
@@ -2100,10 +2102,12 @@ delegated output/model failures must keep `dispatch_failure_kind=none`, and
 passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated
 results remain visible as warnings in the completion report, Live Run Trace, and
-replay audit. Replay also compares per-round `delegate_agent` action counts
+replay audit, while failed delegated completion-gate checks stay `fail` in
+replay check status. Replay also compares per-round `delegate_agent` action counts
 with delegated result events so missing rejected-dispatch evidence becomes
-visible. Those failures are recovery input only for a later main-harness
-model round. A later `done` claim still fails when a delegated failure has no
+visible. When `governance act-next` records a replay action, it keeps only replay
+refs plus fail/warning check counts, not raw artifact bodies. Those failures are
+recovery input only for a later main-harness model round. A later `done` claim still fails when a delegated failure has no
 later main-harness write/run recovery evidence; with later recovery evidence,
 the delegated failure stays a warning and still requires a bound non-delegated
 verification ref as independent completion proof. State-only harness/governance actions, including

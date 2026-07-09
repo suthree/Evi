@@ -39,7 +39,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_completion_gate"
-        && check.status === "warning"
+        && check.status === "fail"
         && check.summary.includes("failed_checks=delegated_results")
     ), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_dispatch_metadata" && check.status === "pass"), true);
@@ -146,7 +146,8 @@ test("harness replay audit surfaces delegated completion gate check ids", async 
     });
     const check = report.checks.find((item) => item.id === "delegated_completion_gate");
 
-    assert.equal(check?.status, "warning");
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "fail");
     assert.match(check?.summary ?? "", /failed_checks=delegated_independent_evidence/);
     assert.deepEqual(report.delegated_completion_gate_checks.map((item) => ({
       id: item.id,

@@ -135,6 +135,7 @@ export interface OpportunityActionRecord {
   replay_ref?: string;
   replay_markdown_ref?: string;
   replay_status?: HarnessReplayAuditReport["status"];
+  replay_fail_count?: number;
   replay_warning_count?: number;
   evidence_event_id?: string;
   publish_adapter?: string;
@@ -313,6 +314,7 @@ export interface ExecuteNextOpportunityActionResult {
     markdown_ref: string;
     trace_ref: string;
     completion_id: string;
+    fail_count: number;
     warning_count: number;
     repo_write_guards: number;
     delegated_results_failed: number;
@@ -1086,6 +1088,7 @@ async function executeHarnessReplayAction(
     const replay = await runHarnessReplayAudit(store, {
       traceRef
     });
+    const failCount = replay.checks.filter((check) => check.status === "fail").length;
     const warningCount = replay.checks.filter((check) => check.status === "warning").length;
     return writeActionResult(store, {
       createdAt: input.createdAt,
@@ -1097,6 +1100,7 @@ async function executeHarnessReplayAction(
       replay_ref: replay.artifact_refs.json_ref,
       replay_markdown_ref: replay.artifact_refs.markdown_ref,
       replay_status: replay.status,
+      replay_fail_count: failCount,
       replay_warning_count: warningCount,
       result_ref: replay.artifact_refs.json_ref,
       next_commands: [
@@ -1109,6 +1113,7 @@ async function executeHarnessReplayAction(
         markdown_ref: replay.artifact_refs.markdown_ref,
         trace_ref: replay.trace_ref,
         completion_id: replay.completion_id,
+        fail_count: failCount,
         warning_count: warningCount,
         repo_write_guards: replay.metrics.repo_write_guards,
         delegated_results_failed: replay.metrics.delegated_results_failed,
@@ -1830,6 +1835,7 @@ async function writeActionResult(
     replay_ref?: string;
     replay_markdown_ref?: string;
     replay_status?: HarnessReplayAuditReport["status"];
+    replay_fail_count?: number;
     replay_warning_count?: number;
     evidence_event_id?: string;
     result_ref?: string;
@@ -1884,6 +1890,7 @@ async function writeActionResult(
     ...(args.replay_ref ? { replay_ref: args.replay_ref } : {}),
     ...(args.replay_markdown_ref ? { replay_markdown_ref: args.replay_markdown_ref } : {}),
     ...(args.replay_status ? { replay_status: args.replay_status } : {}),
+    ...(args.replay_fail_count !== undefined ? { replay_fail_count: args.replay_fail_count } : {}),
     ...(args.replay_warning_count !== undefined ? { replay_warning_count: args.replay_warning_count } : {}),
     ...(args.evidence_event_id ? { evidence_event_id: args.evidence_event_id } : {}),
     ...(args.publish_adapter ? { publish_adapter: args.publish_adapter } : {}),

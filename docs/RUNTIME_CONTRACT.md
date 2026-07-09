@@ -1430,7 +1430,9 @@ omits the field instead of explicitly recording `none`. It also checks
 passed results that should record `result_failure_kind=none`, and warns when a
 trace carries legal but semantically mismatched dispatch/result failure kinds,
 or shows more than one active-looking delegate dispatch in the same model
-round. It must not invoke the model, execute tools, rerun
+round. Delegated completion-gate checks preserve failed completion checks as
+`fail` in replay audit checks, while the top-level replay report remains
+`attention` for any non-pass check. It must not invoke the model, execute tools, rerun
 actions, read raw model responses, read raw action payloads, read raw
 tool/delegation bodies, read raw final responses, read context Markdown, write
 the repo, write the active vault, manage services, or mutate
@@ -1440,8 +1442,10 @@ Operators may inspect replay audit history with `review replays` and
 `review replays --replay <ref-or-id>`. Feishu mirrors this read-only surface
 through `/review replays` and `/review replay <ref-or-id>`. Context and
 aggregate governance status may render bounded replay summaries and latest refs
-only. These read models must not rerun traces, invoke the model, execute tools,
-write state, write the repo, or write the active vault.
+only. `governance act-next` may record a bounded replay action with replay refs
+plus fail/warning check counts, but not raw artifact bodies. These read models
+must not rerun traces, invoke the model, execute tools, write state, write the
+repo, or write the active vault.
 
 `record_evidence` and `update_working_state` are implemented as state-only
 harness actions. `record_evidence` writes a bounded Markdown note under
