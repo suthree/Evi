@@ -335,6 +335,11 @@ test("self-evolution scorecard surfaces open basic iterations", async () => {
 
     assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_basic/);
     assert.equal(basic?.evidence_refs.includes("self-evolution/iterations/iteration_contract_open_basic.json"), true);
+    assert.deepEqual(basic?.latest_iteration, {
+      id: "iteration_contract_open_basic",
+      ref: "self-evolution/iterations/iteration_contract_open_basic.json",
+      outcome_status: "not_recorded"
+    });
     assert.match(basic?.summary ?? "", /iteration_contract_open_basic/);
     assert.match(basic?.summary ?? "", /not_recorded/);
     assert.match(basic?.next_moves[0] ?? "", /Close the basic iteration outcome for iteration_contract_open_basic/);

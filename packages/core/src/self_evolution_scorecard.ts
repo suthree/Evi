@@ -30,6 +30,11 @@ export interface SelfEvolutionDimension {
   summary: string;
   evidence_refs: string[];
   next_moves: string[];
+  latest_iteration?: {
+    id: string;
+    ref: string;
+    outcome_status: string;
+  };
 }
 
 export interface SelfEvolutionExpertLens {
@@ -154,6 +159,15 @@ export async function getSelfEvolutionScorecard(
         "packages/core/src/memory_layers.ts",
         latestBasicIteration?.ref
       ]),
+      ...(latestBasicIteration
+        ? {
+          latest_iteration: {
+            id: latestBasicIteration.id,
+            ref: latestBasicIteration.ref,
+            outcome_status: latestBasicStatus
+          }
+        }
+        : {}),
       next_moves: [
         latestBasicIteration && !latestBasicIteration.outcome
           ? `Close the basic iteration outcome for ${latestBasicIteration.id} before treating basic substrate progress as verified.`

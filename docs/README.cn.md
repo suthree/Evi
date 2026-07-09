@@ -182,6 +182,8 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
+当 `basic_runtime_substrate` 有最新基础入口迭代时，live context 会显示该迭代的 id、ref 和 outcome status，
+用于提醒未闭环的基础能力切片，不把它当完成证明。
 scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_slices`：
 默认下一步走 core/basic 出口，`next_slices` 只是按阶段、分数和层级给出的全维度只读排序，
 不会写 backlog 或执行推荐，也不能把 SOP/local-learning 跟进误当成核心能力方向。

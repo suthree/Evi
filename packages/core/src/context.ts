@@ -1493,7 +1493,10 @@ async function selfEvolutionScorecardSection(
   return {
     title: "Self-Evolution Scorecard",
     body: [
-      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};general_agent_delegation=${delegation?.stage ?? "unknown"}`
+      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};general_agent_delegation=${delegation?.stage ?? "unknown"}`,
+      ...(basic?.latest_iteration
+        ? [`latest_basic_iteration=${basic.latest_iteration.id};status=${basic.latest_iteration.outcome_status};ref=${basic.latest_iteration.ref}`]
+        : [])
     ].join("\n"),
     refs: scorecard.refs.slice(0, 8),
     item_count: scorecard.dimensions.length

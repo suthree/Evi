@@ -1295,6 +1295,47 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
   }
 });
 
+test("context scorecard exposes latest basic iteration status", async () => {
+  const fixture = await createRepoFixture();
+  try {
+    await writeRepoFile(fixture.repoRoot, "core/soul.md", "Local self boundary.");
+    await writeRepoFile(fixture.repoRoot, "core/memory.md", "Local memory boundary.");
+    await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "Local runtime contract.");
+    await writeRepoFile(fixture.repoRoot, "memory/index.md", "Resident local index.");
+    await fixture.store.writeJson("self-evolution/iterations/iteration_contract_context_basic.json", {
+      schema_version: 1,
+      id: "iteration_contract_context_basic",
+      ref: "self-evolution/iterations/iteration_contract_context_basic.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Keep latest basic runtime substrate closure visible.",
+      layer: "basic_entrypoint",
+      owner_surface: "ga_project_design",
+      proposed_slice: "basic_runtime_context_visibility",
+      evidence_refs: ["packages/core/src/context.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["Do not claim completion before outcome."],
+      advisory_expert_roles: ["runtime_operator", "verification_reviewer"],
+      created_at: "2026-06-30T00:00:01.600Z",
+      boundary: "bounded basic iteration contract only"
+    });
+    const trigger = triggerSchema.parse({
+      type: "external_task",
+      source: "prompt",
+      text: "Check the basic iteration context line."
+    });
+    const opportunity = opportunitySchema.parse({
+      source: "explicit_task",
+      description: "Check the basic iteration context line."
+    });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
+    assert.match(rendered.markdown, /latest_basic_iteration=iteration_contract_context_basic;status=not_recorded;ref=self-evolution\/iterations\/iteration_contract_context_basic\.json/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("context bundle includes bounded GA project design plan", async () => {
   const fixture = await createRepoFixture();
   try {

@@ -449,7 +449,10 @@ until that loop is stable.
 The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
-prioritization context only, not completion proof.
+prioritization context only, not completion proof. When the scorecard exposes a
+latest basic iteration, live context renders that iteration's id, ref, and
+outcome status from structured scorecard metadata instead of parsing the prose
+summary.
 The `basic_runtime_substrate` dimension also carries the latest
 `basic_entrypoint` iteration ref and outcome status when one exists. An open
 core/basic iteration is a closure prompt, not verified progress, until its
