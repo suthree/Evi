@@ -1,5 +1,5 @@
 import type { CapabilityLayer } from "./capabilities.js";
-import { delegateAgentActionContract } from "./action_contracts.js";
+import { delegateAgentActionContract, delegateAgentAuthoringContract } from "./action_contracts.js";
 import {
   listSelfEvolutionIterations,
   type SelfEvolutionIterationContract
@@ -1130,39 +1130,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
     max_actions_per_round: delegateAgentActionContract.max_actions_per_round,
     task_contract: {
       max_chars: delegateAgentActionContract.task_max_chars,
-      required: [
-        "explicit bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task",
-        "one concrete question for the delegated subagent",
-        "at most one delegate_agent action per model round",
-        "no tool, mutation, scheduling, or completion authority"
-      ],
-      reject_if: [
-        "task is empty or over the configured max chars",
-        "task is a vague handoff without explicit analysis, critique, review, inspection, comparison, summarization, or evaluation intent",
-        "task lacks one concrete question for the delegated subagent",
-        "task combines analysis intent with direct fix, repair, update, edit, patch, or commit intent",
-        "task combines analysis intent with command or test execution intent",
-        "more than one delegate_agent action is proposed in the same model round",
-        "task asks the delegated subagent to execute tools, mutate state, or decide completion",
-        "task is expert scheduling or multi-agent orchestration instead of general delegation"
-      ]
+      required: [...delegateAgentAuthoringContract.task.required],
+      reject_if: [...delegateAgentAuthoringContract.task.reject_if]
     },
     context_contract: {
       max_chars: delegateAgentActionContract.context_max_chars,
-      required: [
-        "all relevant constraints and evidence refs needed for the bounded task",
-        "current core/basic boundary and deferred expert scope",
-        "explicit no tool/write/mutation authority and main-harness completion boundary",
-        "delegated analysis may use only explicit payload context or named evidence refs",
-        "expected summary/findings_text output shape"
-      ],
-      reject_if: [
-        "context is empty or over the configured max chars",
-        "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
-        "context omits delegated authority limits or main-harness completion ownership",
-        "context simultaneously denies and grants delegated tool, write, mutation, command/test execution, completion, expert, or multi-agent scheduling authority",
-        "context grants external adapter, SOP/skill promotion, command/test execution, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
-      ]
+      required: [...delegateAgentAuthoringContract.context.required],
+      reject_if: [...delegateAgentAuthoringContract.context.reject_if]
     },
     result_contract: {
       summary_max_chars: delegateAgentActionContract.summary_max_chars,
@@ -1217,11 +1191,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegate_agent is separate from use_tool and does not grant tool/write/mutation/completion authority",
         "delegated tasks cannot schedule expert or autonomous multi-agent work"
       ],
-      input_contract: [
-        "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-        "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for command/test execution, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
-        "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, explicit payload/evidence source boundary, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
-      ],
+      input_contract: [...delegateAgentAuthoringContract.runner_input_contract],
       result_handling: [
         "executeDelegation scans the full delegated output before JSON extraction, validates delegated JSON output, rejects wrapper text, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",

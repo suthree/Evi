@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allowedActions, delegateAgentActionContract } from "../packages/core/src/action_contracts.js";
+import {
+  allowedActions,
+  delegateAgentActionContract,
+  delegateAgentAuthoringContract
+} from "../packages/core/src/action_contracts.js";
 import { getCapabilityAcceptanceAudit, getCapabilityCatalog, resolveCapabilityLayer } from "../packages/core/src/capabilities.js";
 import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
@@ -229,6 +233,9 @@ test("delegate_agent schemas mirror the shared action contract", () => {
     "observe_sanitized_result",
     "verify_main_harness_completion"
   ]);
+  assert.deepEqual(delegateAgentActionContract.authoring.task.required, delegateAgentAuthoringContract.task.required);
+  assert.deepEqual(delegateAgentActionContract.authoring.context.required, delegateAgentAuthoringContract.context.required);
+  assert.deepEqual(delegateAgentActionContract.authoring.runner_input_contract, delegateAgentAuthoringContract.runner_input_contract);
 });
 
 test("capability catalog exposes delegate_agent failure boundaries", () => {
@@ -243,13 +250,10 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
   assert.match(text, /strict task\/context only/);
   assert.match(text, /at most one delegate_agent action per model round/);
   assert.match(text, /harness-owned lifecycle is validate_task_context>dispatch_delegated_model>persist_delegated_result>observe_sanitized_result>verify_main_harness_completion/);
-  assert.match(text, /explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation/);
-  assert.match(text, /one concrete question/);
-  assert.match(text, /must not combine analysis with direct fix, repair, update, edit, patch, or commit intent/);
-  assert.match(text, /run commands, tests, builds, or package-manager scripts/);
+  for (const boundary of delegateAgentAuthoringContract.capability_boundaries) {
+    assert.equal(text.includes(boundary), true);
+  }
   assert.match(text, /expected summary\/findings_text output shape/);
-  assert.match(text, /only explicit payload context or named evidence refs/);
-  assert.match(text, /expert scheduling, multi-agent orchestration, or model fan-out authority/);
   assert.match(text, /block verified completion until later main-harness write\/run recovery evidence exists and the done claim binds a non-delegated verification ref/);
   assert.match(text, /failed delegated results may only guide a later main-harness model round/);
   assert.match(text, /done claims after delegation require later harness-known non-delegated verification refs/);

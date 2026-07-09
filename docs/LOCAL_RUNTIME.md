@@ -2061,11 +2061,12 @@ result when that contract is missing, malformed, or over-limit. Delegation
 payloads share the core schema contract: `task` must be non-empty and at most
 1000 chars, `context` must be non-empty and at most 12000 chars, and the payload
 may contain only `task` and `context` before the submodel is called. The task
-limits, output limits, failure-kind values, and delegated completion-gate check
-ids are sourced from `packages/core/src/action_contracts.ts`; schema
-validation, the live runner, Live Run Trace, replay checks, capability
-summaries, and GA project-design packets consume that shared contract to avoid
-drift. The task must explicitly request bounded analysis, critique, review,
+limits, output limits, task/context authoring rules, failure-kind values, and
+delegated completion-gate check ids are sourced from
+`packages/core/src/action_contracts.ts`; schema validation, the live runner,
+Live Run Trace, replay checks, capability summaries, context read models, and
+GA project-design packets consume that shared contract to avoid drift. The task
+must explicitly request bounded analysis, critique, review,
 inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or
 combine analysis with direct fix/repair/update/edit/patch/commit intent, and it

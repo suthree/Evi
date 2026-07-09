@@ -1,5 +1,11 @@
 import { basename } from "node:path";
-import { delegateAgentCompletionGateCheckId } from "../../core/src/action_contracts.js";
+import {
+  delegateAgentAuthoringContract,
+  delegateAgentCompletionGateCheckId,
+  formatDelegateAgentLiveInstruction,
+  formatDelegateAgentPayloadInstruction,
+  formatDelegateAgentSubagentInstructions
+} from "../../core/src/action_contracts.js";
 import { auditSop } from "../../core/src/audit.js";
 import { buildTurnSnapshot, renderContextBundleWithManifest, type MemoryRecallHit } from "../../core/src/context.js";
 import { listContextPressure } from "../../core/src/context_pressure.js";
@@ -1237,11 +1243,7 @@ export class LiveAgentRunner {
     try {
       const response = await this.model.create({
         instructions: [
-          "You are a bounded local-agent subagent.",
-          "You do not have memory or tools in the current minimal runtime.",
-          "Return a strict json object with keys summary and findings_text.",
-          `summary max ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars; findings_text max ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.`,
-          "Do not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
+          ...formatDelegateAgentSubagentInstructions()
         ].join("\n"),
         input: `Return json only.\n\nTask:\n${task}\n\nContext:\n${context}`
       });
@@ -1408,8 +1410,8 @@ ${disciplineText}
 If the task requires fresh local or external data and no relevant Tool Observations are present, call use_tool first.
 Write operator-facing respond.payload.markdown in Simplified Chinese by default unless the operator explicitly requests another language. Preserve commands, code identifiers, JSON fields, protocol literals, and quoted evidence in their original language.
 Available basic tools are file.read, file.write_state, file.write_repo, repo.search, http.fetch, command.run, and code.execute_node.
-Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.
-delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars, context max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is summary/findings_text, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.
+${formatDelegateAgentLiveInstruction()}
+${formatDelegateAgentPayloadInstruction()}
 Use record_evidence or update_working_state only for state-only notes and working checkpoints; they cannot write repo files, write the active vault, publish externally, or verify a done claim by themselves.
 Use propose_sop with completion_claim.status=not_done only for a state-only SOP draft candidate; the harness records local state draft refs and does not audit, promote, write skills, or write the active vault.
 Use propose_memory only for candidate memory proposals; the harness records the candidate but does not promote it into durable memory.
@@ -1761,7 +1763,7 @@ function validateDelegationTaskBoundary(task: string): string | null {
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
   if (!hasBoundedAnalysisIntent || !hasConcreteQuestion || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksCompletion || asksExpertScheduling) {
-    return "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request direct fix/repair/update/edit/patch/commit, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority.";
+    return delegateAgentAuthoringContract.task.validation_error;
   }
   return null;
 }
@@ -1775,19 +1777,19 @@ function validateDelegationContextBoundary(context: string): string | null {
     hasNearbyBoundary(text, COMPLETION_TERMS, MAIN_HARNESS_TERMS)
     || hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, COMPLETION_AUTHORITY_TERMS);
   if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
-    return "delegate_agent.payload.context must state no tool/write/mutation authority and that completion remains with the main harness.";
+    return delegateAgentAuthoringContract.context.errors.authority;
   }
   if (!namesDelegatedOutputShape(rawText, text)) {
-    return "delegate_agent.payload.context must state expected delegated output shape with summary and findings_text.";
+    return delegateAgentAuthoringContract.context.errors.output_shape;
   }
   if (!namesDelegatedSourceBoundary(text)) {
-    return "delegate_agent.payload.context must state delegated analysis may use only explicit payload context or named evidence refs.";
+    return delegateAgentAuthoringContract.context.errors.source_boundary;
   }
   if (grantsDelegatedAuthority(text)) {
-    return "delegate_agent.payload.context must not grant tool/write/mutation, command/test execution, completion, expert, or multi-agent scheduling authority to the delegated subagent.";
+    return delegateAgentAuthoringContract.context.errors.authority_grant;
   }
   if (reliesOnForbiddenDelegationSource(text)) {
-    return "delegate_agent.payload.context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.";
+    return delegateAgentAuthoringContract.context.errors.forbidden_source;
   }
   return null;
 }

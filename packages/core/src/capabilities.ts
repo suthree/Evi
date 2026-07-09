@@ -1,4 +1,9 @@
-import { allowedActions, delegateAgentActionContract, type AllowedAction } from "./action_contracts.js";
+import {
+  allowedActions,
+  delegateAgentActionContract,
+  delegateAgentAuthoringContract,
+  type AllowedAction
+} from "./action_contracts.js";
 import { getExpertOrchestrationContract } from "./expert_orchestration.js";
 import { getGaProjectDesignContract } from "./ga_project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
@@ -555,12 +560,9 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
           ? [
               `payload is strict ${delegatePayloadKeys} only and the live runner accepts at most ${delegateMaxActions} delegate_agent action per model round`,
               `harness-owned lifecycle is ${delegateLifecycle}; the delegated model only produces the bounded self-report in the middle of that flow`,
-              "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
-              "delegated task must not combine analysis with direct fix, repair, update, edit, patch, or commit intent",
-              "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
+              ...delegateAgentAuthoringContract.capability_boundaries.slice(0, 3),
               `delegated context must state the expected ${delegateOutputKeys} output shape before delegated model dispatch`,
-              "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
-              "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, completion, expert scheduling, multi-agent orchestration, or model fan-out authority",
+              ...delegateAgentAuthoringContract.capability_boundaries.slice(3),
               "delegated failures stay ok=false and block verified completion until later main-harness write/run recovery evidence exists and the done claim binds a non-delegated verification ref",
               "done claims after delegation require later harness-known non-delegated verification refs after the latest delegated result; successful write/run evidence only counts as completion proof when its harness-known ref is cited, and failed delegation still requires later successful write/run recovery evidence plus bound non-delegated verification refs",
               "failed-delegation recovery only counts later successful write/run tool results; state-only actions and read-only tool refs may be independent context but do not recover the failed delegation",
