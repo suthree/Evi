@@ -1526,7 +1526,8 @@ context refs, event kind counts, observation counts, per-round action counts,
 harness state-action counts, safe delegated dispatch metadata including
 `model_invoked` and `dispatch_failure_kind`, model diagnostic
 failure kind/stage/refs, repo-write workspace guard summaries from bounded
-tool-result event summaries, bounded tool-result event ids/rounds/artifact refs,
+tool-result event summaries, bounded tool-result event/result ids, tool,
+success state, side-effect class, write/run flag, round, and artifact refs,
 and envelope refs. It must not read raw model
 responses, action payloads, tool result bodies, delegated task, context,
 findings, output, raw preview, final response Markdown, context Markdown, or
@@ -1562,6 +1563,20 @@ pass; substring lookalikes do not count as delegated identity claims, and
 historical dispatches with missing or duplicate result ids remain unknown/attention. This
 aggregate parity check does not read delegated artifact bodies or trust
 report-owned delegated refs as its identity authority.
+For `done`, replay also derives the expected `claimed_refs_bound_to_evidence`
+status instead of treating the reported per-check status as authority. It
+removes exact event-owned delegated result identities, then accepts a remaining
+claimed ref only when its result/artifact lineage pair has matching bounded
+metadata and uniquely binds the same-run tool-result event, event-owned result
+identity, success state, tool, side-effect class, artifact, and round. Any
+unbound non-delegated claim is an expected failure, a non-empty fully
+bound set passes, and no non-delegated claim is skipped. Missing legacy
+`verification_evidence_refs` metadata, historical tool-result events without
+the bounded identity/success metadata, incomplete delegated identity metadata,
+or duplicate/missing reported checks remain unknown/attention rather than being
+guessed clean. A forged report pass cannot hide an independently expected fail;
+other parity drift remains attention. Replay does not read tool artifact bodies
+or migrate historical reports.
 It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion

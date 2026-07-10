@@ -3918,7 +3918,6 @@ test("live runner rejects delegated output authority claims before observation",
       verified: boolean;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
-
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedAuthorityFailureObservation, true);
@@ -4286,6 +4285,7 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
       verified: boolean;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.delegationCalls, 1);
@@ -4298,6 +4298,10 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     assert.equal(report.verified, true);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
+    const replayGate = replay.checks.find((check) => check.id === "delegated_completion_gate");
+    assert.equal(replayGate?.status, "pass");
+    assert.match(replayGate?.summary ?? "", /expected_claimed_refs_bound_status=pass/);
+    assert.match(replayGate?.summary ?? "", /claimed_refs_bound_status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -4342,6 +4346,7 @@ test("live runner rejects post-delegation write evidence without bound verificat
       }>;
       checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
     };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
@@ -4356,6 +4361,9 @@ test("live runner rejects post-delegation write evidence without bound verificat
     assert.match(independentCheck?.summary ?? "", /no bound non-delegated verification ref/);
     assert.match(independentCheck?.summary ?? "", /verification_refs=0; write_run_results=1/);
     assert.deepEqual(independentCheck?.refs, []);
+    const replayGate = replay.checks.find((check) => check.id === "delegated_completion_gate");
+    assert.match(replayGate?.summary ?? "", /expected_claimed_refs_bound_status=skipped/);
+    assert.match(replayGate?.summary ?? "", /claimed_refs_bound_status_match=true/);
   } finally {
     await fixture.cleanup();
   }

@@ -1263,6 +1263,18 @@ drift remains attention. For `done`, replay derives `delegated_self_report_refs`
 independently from event-owned `result_id` and `result_ref` identities. Exact identity claims
 fail even when the report says pass; substring lookalikes are not delegated
 identity claims, and dispatches with missing or duplicate result ids remain warning/unknown.
+For `done`, replay also recomputes `claimed_refs_bound_to_evidence`: exact
+event-owned delegated identities are excluded, while every remaining claimed
+ref must belong to a complete, metadata-consistent result/artifact lineage pair
+that uniquely binds the same-run tool-result event plus its event-owned result
+identity, success state, tool, side-effect class, artifact, and round. An
+unbound claim is an expected failure, a non-empty fully bound set passes, and an
+empty non-delegated claim set is skipped. Historical reports that omit
+`verification_evidence_refs`, historical tool-result events without bounded
+identity/success metadata, incomplete delegated identity metadata, and
+missing or duplicate reported checks stay unknown/attention. A report cannot
+hide an expected failure with `pass`; other reported/expected drift remains
+attention. This check reads bounded metadata only and performs no migration.
 Replay reports also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of

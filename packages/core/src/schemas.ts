@@ -186,6 +186,14 @@ export const delegatedDispatchEventMetadataSchema = z.object({
   ok: z.boolean()
 });
 
+export const toolResultEventMetadataSchema = z.object({
+  result_id: z.string().min(1),
+  tool: z.string().min(1),
+  ok: z.boolean(),
+  side_effect_level: sideEffectLevelSchema,
+  is_write_run: z.boolean()
+});
+
 export const evidenceEventSchema = z.object({
   id: z.string().default(() => newId("evidence")),
   session_id: z.string(),
@@ -205,6 +213,7 @@ export const evidenceEventSchema = z.object({
   ]),
   summary: z.string().min(1),
   artifact_refs: z.array(z.string()).default([]),
+  tool_result: toolResultEventMetadataSchema.optional(),
   delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
   created_at: z.string().default(utcNow)
 });

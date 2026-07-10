@@ -425,6 +425,13 @@ those event-owned identities rather than trusting completion-report refs:
 exact claims fail, substring lookalikes do not match, duplicate or missing ids
 or refs remain attention, and historical events stay readable without artifact-body
 inspection.
+For `done`, replay also derives `claimed_refs_bound_to_evidence` from exact
+delegated identities plus bounded result/artifact lineage and its unique
+tool-result event-owned identity, success state, artifact, and round binding.
+Unbound claims remain failures
+even if the completion report says pass; valid report downgrades and missing
+legacy lineage remain attention, and no artifact body or historical migration
+is involved.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.

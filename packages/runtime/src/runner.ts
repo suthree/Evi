@@ -473,7 +473,14 @@ export class LiveAgentRunner {
           turn_id: snapshot.id,
           kind: "tool_result",
           summary: toolResult.summary,
-          artifact_refs: [toolRef]
+          artifact_refs: [toolRef],
+          tool_result: {
+            result_id: toolResult.id,
+            tool: toolResult.tool,
+            ok: toolResult.ok,
+            side_effect_level: toolResult.side_effect_level,
+            is_write_run: isWriteOrRunToolResult(toolResult)
+          }
         });
         if (toolResult.ok) {
           verificationEvidenceRefDrafts.push(...toolVerificationEvidenceRefDrafts({

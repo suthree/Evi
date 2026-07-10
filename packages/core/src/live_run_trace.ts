@@ -69,6 +69,12 @@ export interface LiveRunToolResultEventSummary {
   created_at: string;
   round: number;
   artifact_refs: string[];
+  result_id: string | null;
+  tool: string | null;
+  ok: boolean | null;
+  side_effect_level: LiveRunVerificationEvidenceRefSummary["side_effect_level"] | null;
+  is_write_run: boolean | null;
+  metadata_present: boolean;
 }
 
 export interface LiveRunDelegatedDispatchSummary {
@@ -118,6 +124,7 @@ export interface LiveRunTraceSummary {
   completion_failed_check_ids: string[];
   completion_warning_check_ids: string[];
   claimed_verification_refs: string[];
+  verification_evidence_refs_present: boolean;
   verification_evidence_ref_count: number;
   verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
   context_ref?: string;
@@ -197,11 +204,23 @@ export async function getLiveRunTrace(
 
 async function readLiveRunTraceSummaries(store: AgentStore): Promise<LiveRunTraceSummary[]> {
   const events = await readEpisodeEvents(store);
-  const reports: Array<{ ref: string; report: CompletionVerificationReport }> = [];
+  const reports: Array<{
+    ref: string;
+    report: CompletionVerificationReport;
+    verificationEvidenceRefsPresent: boolean;
+  }> = [];
   for (const ref of await completionVerificationRefs(store)) {
     const raw = await store.readStateJson<unknown>(ref);
     const parsed = completionVerificationReportSchema.safeParse(raw);
-    if (parsed.success) reports.push({ ref, report: parsed.data });
+    if (parsed.success) {
+      reports.push({
+        ref,
+        report: parsed.data,
+        verificationEvidenceRefsPresent: typeof raw === "object"
+          && raw !== null
+          && Object.hasOwn(raw, "verification_evidence_refs")
+      });
+    }
   }
   return (await Promise.all(
     reports
@@ -210,7 +229,13 @@ async function readLiveRunTraceSummaries(store: AgentStore): Promise<LiveRunTrac
         || right.report.id.localeCompare(left.report.id)
         || right.ref.localeCompare(left.ref)
       )
-      .map((item) => summarizeLiveRunTrace(store, item.ref, item.report, events))
+      .map((item) => summarizeLiveRunTrace(
+        store,
+        item.ref,
+        item.report,
+        events,
+        item.verificationEvidenceRefsPresent
+      ))
   )).filter((item): item is LiveRunTraceSummary => item !== null);
 }
 
@@ -218,7 +243,8 @@ async function summarizeLiveRunTrace(
   store: AgentStore,
   reportRef: string,
   report: CompletionVerificationReport,
-  events: EpisodeEvent[]
+  events: EpisodeEvent[],
+  verificationEvidenceRefsPresent: boolean
 ): Promise<LiveRunTraceSummary | null> {
   const runEvents = events.filter((event) =>
     event.session_id === report.session_id && event.turn_id === report.turn_id
@@ -278,6 +304,7 @@ async function summarizeLiveRunTrace(
     completion_failed_check_ids: report.checks.filter((check) => check.status === "fail").map((check) => check.id),
     completion_warning_check_ids: report.checks.filter((check) => check.status === "warning").map((check) => check.id),
     claimed_verification_refs: [...report.claimed_verification_refs],
+    verification_evidence_refs_present: verificationEvidenceRefsPresent,
     verification_evidence_ref_count: report.verification_evidence_refs.length,
     verification_evidence_refs: report.verification_evidence_refs.map((item) => ({ ...item })),
     context_ref: contextRef,
@@ -307,13 +334,10 @@ async function summarizeLiveRunTrace(
     rounds,
     refs,
     boundary: [
-      "read-only live run trace; reads completion reports, model action envelope metadata,",
-      "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch metadata",
-      "including bounded tool-result event ids, rounds, and artifact refs",
-      "plus bounded delegated completion-gate check metadata and report-declared delegated_result_refs from the completion report",
-      "with event-summary fallback for older delegated result refs; repo write guard summaries are parsed from bounded tool-result event",
-      "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
-      "raw delegated previews, final responses, or harness artifact bodies"
+      "read-only live run trace; reads bounded completion, envelope, diagnostic, event, delegated dispatch,",
+      "tool-result identity/success/side-effect/write-run/round/artifact, gate, report-delegated-ref, and repo-write-guard metadata;",
+      "legacy delegated refs may use event-summary fallback; never renders raw model, tool, delegated, final-response, context,",
+      "or harness artifact bodies"
     ].join(" ")
   };
 }
@@ -341,7 +365,13 @@ function readToolResultEventSummaries(events: EpisodeEvent[]): LiveRunToolResult
         event_id: event.id,
         created_at: event.created_at,
         round: currentRound,
-        artifact_refs: [...event.artifact_refs]
+        artifact_refs: [...event.artifact_refs],
+        result_id: event.tool_result?.result_id ?? null,
+        tool: event.tool_result?.tool ?? null,
+        ok: event.tool_result?.ok ?? null,
+        side_effect_level: event.tool_result?.side_effect_level ?? null,
+        is_write_run: event.tool_result?.is_write_run ?? null,
+        metadata_present: event.tool_result !== undefined
       });
     }
   }
