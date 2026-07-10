@@ -285,6 +285,104 @@ test("harness replay audit fails verified traces that claim delegated refs as pr
   }
 });
 
+test("harness replay audit rejects inconsistent failed-delegation recovery lineage", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-recovery-lineage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const recoveryEvidence = [{
+      ref: "tool_result_unclaimed",
+      tool: "file.write_state",
+      ok: true,
+      side_effect_level: "local_write",
+      is_write_run: true,
+      claimed: false,
+      after_latest_failed_delegation: true
+    }, {
+      ref: "tool_result_failed",
+      tool: "file.write_state",
+      ok: false,
+      side_effect_level: "local_write",
+      is_write_run: true,
+      claimed: true,
+      after_latest_failed_delegation: true
+    }, {
+      ref: "tool_result_read_only",
+      tool: "file.read",
+      ok: true,
+      side_effect_level: "none",
+      is_write_run: false,
+      claimed: true,
+      after_latest_failed_delegation: true
+    }, {
+      ref: "tool_result_before_failure",
+      tool: "file.write_state",
+      ok: true,
+      side_effect_level: "local_write",
+      is_write_run: true,
+      claimed: true,
+      after_latest_failed_delegation: false
+    }].map((item, index) => ({
+      ...item,
+      source: "tool_result",
+      tool_result_id: item.ref,
+      artifact_ref: `memory/episodes/${sessionId}-${item.ref}.json`,
+      event_id: `evidence_recovery_${index}`,
+      round: 2,
+      after_latest_delegation: true,
+      counts_as_independent_evidence: item.claimed,
+      counts_as_failed_delegation_recovery: true
+    }));
+    const recoveryRefs = recoveryEvidence.map((item) => item.ref);
+    await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
+      id: "completion_verification_replay_test",
+      session_id: sessionId,
+      turn_id: "turn_replay_test",
+      completion_status: "done",
+      verification_status: "passed",
+      verified: true,
+      summary: "Drifted report marked invalid recovery evidence as verified.",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      final_response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      claimed_verification_refs: recoveryRefs.slice(1),
+      observation_refs: recoveryEvidence.map((item) => item.artifact_ref),
+      verification_evidence_refs: recoveryEvidence,
+      delegated_result_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+      checks: [{
+        id: "delegated_results",
+        status: "warning",
+        summary: "Failed delegated result has later recovery evidence.",
+        refs: recoveryRefs
+      }, {
+        id: "delegated_independent_evidence",
+        status: "pass",
+        summary: "Done claim has recovery and independent evidence.",
+        refs: recoveryRefs
+      }],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "fail");
+    assert.match(check?.summary ?? "", /invalid_recovery_lineage=4/);
+    assert.equal(recoveryRefs.every((ref) => check?.refs.includes(ref)), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit distinguishes fallback delegated proof refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-fallback-proof-ref-"));
   const repoRoot = join(root, "repo");

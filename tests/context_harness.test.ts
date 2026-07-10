@@ -5042,6 +5042,8 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
+    assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /invalid_recovery_lineage=0/);
     assert.equal(replay.verification_evidence_refs.find((item) => item.ref === model.claimedWriteArtifactRef)?.counts_as_failed_delegation_recovery, true);
   } finally {
     await fixture.cleanup();

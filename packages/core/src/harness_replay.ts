@@ -376,6 +376,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
 
 function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const evidenceRefs = new Set(trace.verification_evidence_refs.map((item) => item.ref));
+  const claimedRefs = new Set(trace.claimed_verification_refs);
   const delegatedRefs = new Set(trace.delegated_result_refs);
   const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
   const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
@@ -395,12 +396,21 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   );
   const independentEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_independent_evidence);
   const recoveryEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_failed_delegation_recovery);
+  const invalidRecoveryLineageRefs = recoveryEvidenceRefs.filter((item) =>
+    trace.delegated_result_failed_count === 0
+    || !item.claimed
+    || !claimedRefs.has(item.ref)
+    || !item.ok
+    || !item.is_write_run
+    || !item.after_latest_failed_delegation
+  );
   const missingIndependentLineage = delegatedIndependentPassed && independentEvidenceRefs.length === 0;
   const missingRecoveryLineage = failedDelegationRecovered && recoveryEvidenceRefs.length === 0;
   const hasLineageAttention = missingClaimedLineage.length > 0
     || claimedDelegatedRefs.length > 0
     || missingIndependentLineage
-    || missingRecoveryLineage;
+    || missingRecoveryLineage
+    || invalidRecoveryLineageRefs.length > 0;
   const status: HarnessReplayAuditCheckStatus = hasLineageAttention
     ? (trace.verified ? "fail" : "warning")
     : "pass";
@@ -418,9 +428,10 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
-      `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`
+      `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
+      `invalid_recovery_lineage=${invalidRecoveryLineageRefs.length}`
     ].join("; "),
-    refs: missingClaimedLineage.length > 0 || claimedDelegatedRefs.length > 0 || missingIndependentLineage || missingRecoveryLineage
+    refs: hasLineageAttention
       ? unique([
         trace.report_ref,
         ...claimedDelegatedRefs,
@@ -428,6 +439,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
           .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
           .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
+        ...invalidRecoveryLineageRefs.map((item) => item.ref),
         ...trace.delegated_completion_gate_checks
           .filter((check) =>
             check.id === delegateAgentCompletionGateCheckId.delegatedIndependentEvidence

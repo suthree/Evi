@@ -2200,8 +2200,11 @@ delegation; only later successful write/run tool results do. They do not
 count as recovery unless the done claim cites their harness-known tool result
 id or tool artifact ref, and they do not authorize automatic retry, model
 fan-out, expert scheduling, delegated completion, or raw delegated artifact
-reads. If a delegated result failed and
-the run does not reach verified `done` completion, any `propose_sop` action
+reads. Replay also rejects a recovery marker whose bounded lineage is
+unclaimed, absent from the done claim, failed, not write/run, not after the
+latest failed delegation, or present without a failed delegated result. It does
+not open the raw tool or delegated artifact body for this check. If a delegated
+result failed and the run does not reach verified `done` completion, any `propose_sop` action
 stays state-only and cannot enter live SOP audit, SOP promotion, skill
 promotion, or active-vault writes.
 
