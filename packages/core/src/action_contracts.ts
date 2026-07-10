@@ -148,6 +148,13 @@ export function formatDelegateAgentPayloadInstruction(): string {
   return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.`;
 }
 
+export function getDelegateAgentPayloadExample(): { task: string; context: string } {
+  return {
+    task: `one analysis question; no fix/run/complete/schedule; <=${delegateAgentActionContract.task_max_chars}`,
+    context: `payload/named refs only; no tools/writes/mutation; main harness completes; output=summary/findings_text; <=${delegateAgentActionContract.context_max_chars}`
+  };
+}
+
 export function formatDelegateAgentSubagentInstructions(): string[] {
   return [
     "You are a bounded local-agent subagent.",

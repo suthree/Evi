@@ -2071,7 +2071,11 @@ live runner, Live Run Trace, replay checks, capability
 summaries, context read models, and GA project-design packets consume those
 shared contracts to avoid drift. Completion verification report schema accepts
 only the shared harness check ids plus those delegated completion-gate check ids
-so drifted spellings are rejected before they reach read models. The task
+so drifted spellings are rejected before they reach read models.
+The model-facing Output Contract also builds its compact `delegate_agent`
+payload example from the shared action contract and limits instead of using
+generic task/context placeholders or expanding the full contract into context.
+The task
 must explicitly request bounded analysis, critique, review,
 inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or

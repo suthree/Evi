@@ -1259,6 +1259,9 @@ Live Run Trace, harness replay checks, capability
 catalog, context read models, and GA project-design read model derive their
 limits, task/context authoring rules, failure-kind values, and delegated
 completion-gate check ids from those sources instead of redeclaring them.
+The model-facing Output Contract also renders its compact `delegate_agent`
+payload example from the shared action contract and limits, so the example
+cannot silently drift back to an under-specified task or context placeholder.
 Completion verification report schema accepts only the shared harness check ids
 plus those delegated completion-gate check ids, so drifted spellings are rejected
 before they can enter history or trace read models.

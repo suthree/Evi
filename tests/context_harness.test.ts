@@ -4,7 +4,10 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
-import { delegateAgentActionContract } from "../packages/core/src/action_contracts.js";
+import {
+  delegateAgentActionContract,
+  getDelegateAgentPayloadExample
+} from "../packages/core/src/action_contracts.js";
 import {
   buildTurnSnapshot,
   compactGaPlanAfterVerifyCommand,
@@ -1239,6 +1242,11 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     assert.match(bundle, /file\.write_repo/);
     assert.match(bundle, /command\.run must declare side_effect_level/);
     assert.match(bundle, /respond\.payload\.markdown defaults to Simplified Chinese/);
+    assert.equal(bundle.includes(JSON.stringify({
+      type: "delegate_agent",
+      rationale: "review",
+      payload: getDelegateAgentPayloadExample()
+    })), true);
     assert.doesNotMatch(bundle, /LOCAL_LEARNING/);
     assert.equal(bundle.length < 25200, true, `bundle length ${bundle.length}`);
     assert.equal(rendered.manifest.total_chars, bundle.length);

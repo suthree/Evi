@@ -1,5 +1,5 @@
 import type { Opportunity, Trigger, TurnSnapshot } from "./schemas.js";
-import { allowedActions } from "./action_contracts.js";
+import { allowedActions, getDelegateAgentPayloadExample } from "./action_contracts.js";
 export { allowedActions } from "./action_contracts.js";
 import { deriveContextBudget, type ContextBudgetSummary } from "./context_budget.js";
 import {
@@ -63,8 +63,6 @@ import {
   type PipelineHistorySummary
 } from "./pipeline_history.js";
 import {
-  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
-  DELEGATE_AGENT_TASK_MAX_CHARS,
   turnSnapshotSchema,
   workingCheckpointSchema
 } from "./schemas.js";
@@ -2979,6 +2977,12 @@ async function readStopSignal(store: AgentStore): Promise<Record<string, unknown
 }
 
 function outputContract(): string {
+  const delegateAgentExample = JSON.stringify({
+    type: "delegate_agent",
+    rationale: "review",
+    payload: getDelegateAgentPayloadExample()
+  });
+
   return `Return only a JSON object matching ModelActionEnvelope. This is a json-only response contract.
 
 Required top-level shape:
@@ -3008,15 +3012,8 @@ Harness policy:
 - Failed write/run blocks completion; delegated failures need recovery evidence.
 - respond.payload.markdown defaults to Simplified Chinese unless asked otherwise; keep commands, code, JSON fields, protocols, and quotes literal.
 
-Available delegated agent action:
-{
-  "type": "delegate_agent",
-  "rationale": "need a bounded critique or analysis subtask",
-  "payload": {
-    "task": "bounded subtask, max ${DELEGATE_AGENT_TASK_MAX_CHARS} chars",
-    "context": "all relevant constraints and evidence, max ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars"
-  }
-}
+Delegation:
+${delegateAgentExample}
 
 State-only harness actions:
 {

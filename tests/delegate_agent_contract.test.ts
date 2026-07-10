@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatDelegateAgentSubagentInstructions } from "../packages/core/src/action_contracts.js";
+import {
+  delegateAgentActionContract,
+  formatDelegateAgentSubagentInstructions,
+  getDelegateAgentPayloadExample
+} from "../packages/core/src/action_contracts.js";
 import {
   parseDelegatedOutput,
   parseDelegationRequest
@@ -27,6 +31,19 @@ test("delegate_agent subagent instructions constrain source boundary", () => {
   assert.match(instructions, /no Markdown, code fence, wrapper prose, or extra keys/);
   assert.match(instructions, /The only allowed keys are summary and findings_text/);
   assert.match(instructions, /Do not claim tool\/write\/mutation/);
+});
+
+test("delegate_agent payload example carries the shared authoring contract", () => {
+  const example = getDelegateAgentPayloadExample();
+
+  assert.match(example.task, /one analysis question/);
+  assert.match(example.task, /no fix\/run\/complete\/schedule/);
+  assert.match(example.context, /payload\/named refs only/);
+  assert.match(example.context, /no tools\/writes\/mutation/);
+  assert.match(example.context, /main harness completes/);
+  assert.match(example.context, /output=summary\/findings_text/);
+  assert.match(example.task, /<=1000$/);
+  assert.match(example.context, /<=12000$/);
 });
 
 test("delegate_agent context rejects concrete command grants before dispatch", () => {
