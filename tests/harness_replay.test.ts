@@ -61,6 +61,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.summary.includes("failed_checks=delegated_results")
         && check.summary.includes("delegated_results_status=fail")
         && check.summary.includes("expected_delegated_results_status=fail")
+        && check.summary.includes("duplicate_delegated_result_ids=0")
+        && check.summary.includes("missing_delegated_results_gate_ids=0")
         && check.summary.includes("status_match=true")
     ), true);
     assert.equal(report.checks.some((check) =>
@@ -352,6 +354,40 @@ test("harness replay audit surfaces delegated completion gate check ids", async 
   }
 });
 
+test("harness replay audit warns when delegated results gate drops event result ids", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-gate-result-id-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed, but the result id ref was dropped.",
+      refs: []
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated self-report refs were not claimed.",
+      refs: []
+    }]);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(gateCheck?.status, "warning");
+    assert.match(gateCheck?.summary ?? "", /missing_delegated_results_gate_ids=1/);
+    assert.match(gateCheck?.summary ?? "", /delegated_identity_metadata_complete=true/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit fails verified traces that claim delegated refs as proof", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegated-proof-ref-"));
   const repoRoot = join(root, "repo");
@@ -405,6 +441,111 @@ test("harness replay audit fails verified traces that claim delegated refs as pr
       "memory/episodes/session_replay_test-completion-verification.json",
       delegatedRef
     ]);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit derives delegated result id claims from event metadata", async () => {
+  const cases = [{
+    name: "exact result id",
+    claimedRef: "delegated_result_invalid",
+    expectedGateStatus: "fail",
+    expectedIdentityClaims: 1,
+    expectedResultIdClaims: 1
+  }, {
+    name: "substring lookalike",
+    claimedRef: "prefix_delegated_result_invalid_suffix",
+    expectedGateStatus: "pass",
+    expectedIdentityClaims: 0,
+    expectedResultIdClaims: 0
+  }] as const;
+
+  for (const testCase of cases) {
+    const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegated-result-id-"));
+    const repoRoot = join(root, "repo");
+    const stateRoot = join(root, "state");
+    const store = new AgentStore(repoRoot, stateRoot);
+    try {
+      await mkdir(repoRoot, { recursive: true });
+      await mkdir(stateRoot, { recursive: true });
+      await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+        id: "delegated_results",
+        status: "pass",
+        summary: "All delegated results passed.",
+        refs: ["delegated_result_invalid"]
+      }, {
+        id: "delegated_self_report_refs",
+        status: "pass",
+        summary: "Delegated self-report refs were not claimed.",
+        refs: []
+      }]);
+      const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+      const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+      await store.writeJson(reportRef, {
+        ...completion,
+        verification_status: "passed",
+        verified: true,
+        claimed_verification_refs: [testCase.claimedRef]
+      });
+
+      const report = await runHarnessReplayAudit(store, {
+        traceRef: "completion_verification_replay_test"
+      });
+      const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+      const lineageCheck = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+      assert.equal(gateCheck?.status, testCase.expectedGateStatus, testCase.name);
+      assert.match(gateCheck?.summary ?? "", new RegExp(`claimed_delegated_identity_refs=${testCase.expectedIdentityClaims}`));
+      assert.match(lineageCheck?.summary ?? "", new RegExp(`claimed_delegated_result_ids=${testCase.expectedResultIdClaims}`));
+      if (testCase.name === "substring lookalike") {
+        assert.equal(lineageCheck?.status, "fail");
+        assert.match(lineageCheck?.summary ?? "", /missing_claimed_lineage=1/);
+      }
+      assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("harness replay audit does not apply the done-only self-report gate to blocked runs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-blocked-result-id-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }]);
+    const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      completion_status: "blocked",
+      verification_status: "skipped",
+      verified: false,
+      claimed_verification_refs: ["delegated_result_invalid"]
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+    const lineageCheck = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(gateCheck?.status, "pass");
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=skipped/);
+    assert.match(gateCheck?.summary ?? "", /delegated_self_report_gate_applicable=false/);
+    assert.match(gateCheck?.summary ?? "", /claimed_delegated_identity_refs=1/);
+    assert.equal(lineageCheck?.status, "warning");
+    assert.match(lineageCheck?.summary ?? "", /claimed_delegated_result_ids=1/);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1223,14 +1364,114 @@ test("harness replay audit warns when delegated dispatch lacks a persisted resul
       traceRef: "completion_verification_replay_test"
     })).trace;
     const check = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
 
     assert.equal(trace.delegated_dispatch_missing_result_ref_count, 1);
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /delegated_results=2/);
     assert.match(check?.summary ?? "", /dispatches=2/);
     assert.match(check?.summary ?? "", /missing_result_ref=1/);
+    assert.match(gateCheck?.summary ?? "", /delegated_identity_metadata_complete=false/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=unknown/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_missing_result_ref")), true);
     assert.equal(report.delegated_dispatches.find((dispatch) => dispatch.event_id === "evidence_replay_delegated_missing_result_ref")?.result_ref, "");
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegated dispatch result ids are duplicated", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-duplicate-result-id-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated self-report refs were not claimed.",
+      refs: []
+    }]);
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "duplicate_result_id",
+      actionId: "action_delegate_replay",
+      resultId: "delegated_result_invalid",
+      sequence: 2,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      ok: true
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const metadataCheck = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(metadataCheck?.status, "warning");
+    assert.match(metadataCheck?.summary ?? "", /duplicate_result_id=1/);
+    assert.equal(gateCheck?.status, "warning");
+    assert.match(gateCheck?.summary ?? "", /delegated_identity_metadata_complete=false/);
+    assert.match(gateCheck?.summary ?? "", /duplicate_delegated_result_ids=1/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=unknown/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when delegated dispatch result refs are duplicated", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-duplicate-result-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid", "delegated_result_duplicate_ref"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated self-report refs were not claimed.",
+      refs: []
+    }]);
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "duplicate_result_ref",
+      actionId: "action_delegate_replay",
+      resultId: "delegated_result_duplicate_ref",
+      metadataResultRef: "memory/episodes/session_replay_test-delegated_result_invalid.json",
+      sequence: 2,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      ok: true
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const metadataCheck = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(metadataCheck?.status, "warning");
+    assert.match(metadataCheck?.summary ?? "", /duplicate_result_ref=1/);
+    assert.equal(gateCheck?.status, "warning");
+    assert.match(gateCheck?.summary ?? "", /delegated_identity_metadata_complete=false/);
+    assert.match(gateCheck?.summary ?? "", /duplicate_delegated_result_refs=1/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=unknown/);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1452,9 +1693,15 @@ test("harness replay audit distinguishes skipped delegated results status parity
         status: "skipped",
         summary: `Skipped delegated results fixture: ${testCase.name}.`,
         refs: []
+      }, {
+        id: "delegated_self_report_refs",
+        status: "skipped",
+        summary: `Skipped delegated self-report refs fixture: ${testCase.name}.`,
+        refs: []
       }], {
         includeDelegatedEvent: testCase.includeDelegatedEvent,
-        includeDelegatedResultRefs: testCase.includeDelegatedResultRefs
+        includeDelegatedResultRefs: testCase.includeDelegatedResultRefs,
+        includeDelegatedResultId: false
       });
 
       const report = await runHarnessReplayAudit(store, {
@@ -1466,6 +1713,14 @@ test("harness replay audit distinguishes skipped delegated results status parity
       assert.match(gateCheck?.summary ?? "", /delegated_results_status=skipped/);
       assert.match(gateCheck?.summary ?? "", new RegExp(`expected_delegated_results_status=${testCase.expectedDelegatedResultsStatus}`));
       assert.match(gateCheck?.summary ?? "", new RegExp(`status_match=${testCase.expectedReplayStatus === "pass"}`));
+      if (testCase.includeDelegatedEvent) {
+        const metadataCheck = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+        assert.equal(metadataCheck?.status, "warning");
+        assert.match(metadataCheck?.summary ?? "", /missing_result_id=1/);
+        assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=unknown/);
+      } else {
+        assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_status=skipped/);
+      }
       assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -1798,6 +2053,7 @@ async function writeReplayTraceFixture(
   options: {
     includeDelegatedEvent?: boolean;
     includeDelegatedResultRefs?: boolean;
+    includeDelegatedResultId?: boolean;
     extraDelegatedResultRefs?: string[];
   } = {}
 ): Promise<void> {
@@ -1948,10 +2204,11 @@ async function writeReplayTraceFixture(
       kind: "delegated_result",
       summary: delegatedSummary,
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
-      ...(delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY
+      ...(delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY || delegatedSummary === PASSED_REPLAY_DELEGATED_SUMMARY
         ? {
           delegated_dispatch: {
             action_id: "action_delegate_replay",
+            ...(options.includeDelegatedResultId ?? true ? { result_id: "delegated_result_invalid" } : {}),
             result_ref: `memory/episodes/${sessionId}-delegated_result_invalid.json`,
             envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
             round: 1,
@@ -1959,10 +2216,12 @@ async function writeReplayTraceFixture(
             task_chars: 33,
             context_chars: 77,
             model_invoked: true,
-            contract_status: "failed",
+            contract_status: delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY ? "failed" : "passed",
             dispatch_failure_kind: "none",
-            result_failure_kind: "delegated_output_contract_failed",
-            ok: false
+            result_failure_kind: delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY
+              ? "delegated_output_contract_failed"
+              : "none",
+            ok: delegatedSummary === PASSED_REPLAY_DELEGATED_SUMMARY
           }
         }
         : {}),
@@ -2009,6 +2268,7 @@ async function appendDelegatedDispatchEvent(
     round?: number;
     envelopeRef?: string;
     metadataResultRef?: string;
+    resultId?: string;
     ok: boolean;
   }
 ): Promise<void> {
@@ -2032,6 +2292,7 @@ async function appendDelegatedDispatchEvent(
     artifact_refs: [resultRef],
     delegated_dispatch: {
       action_id: args.actionId,
+      result_id: args.resultId ?? `delegated_result_${args.suffix}`,
       result_ref: metadataResultRef,
       envelope_ref: envelopeRef,
       round,
@@ -2089,6 +2350,21 @@ async function appendExtraDelegatedDispatches(store: AgentStore, count: number):
       kind: "delegated_result",
       summary: `Delegated result: action_id=action_delegate_replay_extra_${sequence}; round=1; sequence=${sequence}; task_chars=33; context_chars=77; model_invoked=false; contract_status=failed; dispatch_failure_kind=dispatch_limit_exceeded; result_failure_kind=dispatch_limit_exceeded; ok=false.`,
       artifact_refs: [resultRef],
+      delegated_dispatch: {
+        action_id: `action_delegate_replay_extra_${sequence}`,
+        result_id: `delegated_result_extra_${sequence}`,
+        result_ref: resultRef,
+        envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
+        round: 1,
+        sequence,
+        task_chars: 33,
+        context_chars: 77,
+        model_invoked: false,
+        contract_status: "failed",
+        dispatch_failure_kind: "dispatch_limit_exceeded",
+        result_failure_kind: "dispatch_limit_exceeded",
+        ok: false
+      },
       created_at: `2026-06-30T01:00:0${sequence}.750Z`
     });
   }

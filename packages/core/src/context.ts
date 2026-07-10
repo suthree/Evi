@@ -928,6 +928,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- delegated_result_report_refs: ${trace.delegated_result_report_refs.length}`,
     `- delegated_result_event_fallback_refs: ${trace.delegated_result_event_fallback_refs.length}`,
     `- delegated_result_refs: ${trace.delegated_result_refs.length}`,
+    `- delegated_dispatch_missing_result_id: ${trace.delegated_dispatch_missing_result_id_count}`,
     `- delegated_dispatch_missing_result_ref: ${trace.delegated_dispatch_missing_result_ref_count}`,
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
@@ -948,7 +949,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     lines.push(`- verification_evidence_ref: ref=${evidence.ref} source=${evidence.source} round=${evidence.round} tool=${evidence.tool} side_effect_level=${evidence.side_effect_level} independent=${evidence.counts_as_independent_evidence} recovery=${evidence.counts_as_failed_delegation_recovery}`);
   }
   for (const dispatch of trace.delegated_dispatches.slice(0, 3)) {
-    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} model_invoked=${dispatch.model_invoked ?? "unknown"} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} envelope_ref=${dispatch.envelope_ref ?? "none"} ref=${dispatch.result_ref}`);
+    lines.push(`- delegated_dispatch: round=${dispatch.round} sequence=${dispatch.sequence} status=${dispatch.contract_status} ok=${dispatch.ok} model_invoked=${dispatch.model_invoked ?? "unknown"} dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"} result_failure_kind=${dispatch.result_failure_kind ?? "none"} task_chars=${dispatch.task_chars} context_chars=${dispatch.context_chars} action_id=${dispatch.action_id} result_id=${dispatch.result_id ?? "unknown"} envelope_ref=${dispatch.envelope_ref ?? "none"} ref=${dispatch.result_ref}`);
   }
   for (const guard of trace.repo_write_guards.slice(0, 3)) {
     lines.push(`- repo_write_guard: ${truncate(guard.path, 180)} before=${guard.before_status} after=${guard.after_status} changed_files=${guard.before_changed_file_count}->${guard.after_changed_file_count} delta=${guard.changed_file_count_delta} preexisting_dirty=${guard.preexisting_dirty} target_changed=${guard.target_changed_after_write}`);
@@ -1773,6 +1774,7 @@ export function compactGaPlanGeneralDelegationLoop(
       "verification_evidence_refs",
       "event_id",
       "model_invoked",
+      "result_id",
       "result_ref"
     ].includes(item))
     .join("+") || "bounded metadata";

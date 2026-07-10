@@ -2841,6 +2841,7 @@ test("operator live run trace commands read bounded run metadata without running
       artifact_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
       delegated_dispatch: {
         action_id: "action_delegate_trace_feishu",
+        result_id: "delegated_result_trace_feishu_invalid",
         envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
         round: 1,
         sequence: 1,

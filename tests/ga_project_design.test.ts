@@ -436,6 +436,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("claimed_verification_refs"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("verification_evidence_refs"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("counts_as_independent_evidence"), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_id"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_ref"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_completion_gate"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("verification_evidence_lineage"), true);
@@ -704,6 +705,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("delegated_result_report_refs"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("verification_evidence_refs"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("counts_as_failed_delegation_recovery"), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_id"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("result_ref"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("delegated_completion_gate"), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.checks.includes("verification_evidence_lineage"), true);

@@ -419,6 +419,12 @@ the relevant fields from that contract.
 The lifecycle names the harness-owned flow from `validate_task_context` through
 `verify_main_harness_completion`; it is planning metadata, not delegated
 scheduling or completion authority.
+New delegated dispatch events persist exact `result_id` and `result_ref`
+identities. Replay derives the done-only `delegated_self_report_refs` gate from
+those event-owned identities rather than trusting completion-report refs:
+exact claims fail, substring lookalikes do not match, duplicate or missing ids
+or refs remain attention, and historical events stay readable without artifact-body
+inspection.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.

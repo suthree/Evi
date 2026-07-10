@@ -1342,19 +1342,21 @@ without reading delegated artifact bodies or granting delegated completion
 authority. Missing or mismatched envelope refs, dispatch action ids not declared
 by the round envelope, or dispatch sequences that do not match the declared
 delegate action order are replay warnings, not permission to infer hidden
-context. A delegated dispatch that lacks a persisted delegated result JSON
-artifact ref is also a replay warning; replay may cite the bounded event id, but
+context. A delegated dispatch records the exact delegated result id beside its
+persisted JSON artifact ref. Missing or duplicate result ids or refs
+are replay warnings;
+replay may cite the bounded event id, but
 it must not infer or reconstruct the missing delegated artifact body. Live Run
-Trace exposes the missing-result-ref count as bounded metadata so context and IM
-surfaces can show the evidence gap without reading the artifact body. Replay
+Trace exposes missing-result-id and missing-result-ref counts as bounded metadata
+so context surfaces can show the evidence gap without reading the artifact body. Replay
 also requires `ok=true` to pair with `contract_status=passed` and `ok=false` to
 pair with `contract_status=failed`; either contradictory tuple is a metadata
 warning, while runner-authored failed-delegation recovery semantics remain
-derived from `ok`. Replay
-also compares `claimed_verification_refs` with completion-report
-`delegated_result_refs`; a verified trace that claims a delegated result ref as
-completion proof fails `verification_evidence_lineage` even if the delegated
-completion-gate check was omitted or drifted.
+derived from `ok`. Replay compares `claimed_verification_refs` with event-owned
+delegated result ids and refs; a verified trace that claims either exact
+identity as completion proof fails `verification_evidence_lineage` even if the
+delegated completion-gate check was omitted or drifted. Report-declared refs
+remain coverage metadata, not replay identity authority.
 Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded` or
 `input_contract_failed`; successful dispatches or delegated-model contract
@@ -1402,9 +1404,10 @@ verification into a completed claim. Delegated results are recorded with action 
 counts, dispatch failure kind, and result failure kind so later traces can
 verify bounded dispatch and failure recovery inputs from harness-owned
 delegated event summaries without reading raw delegated context or delegated
-result bodies. New delegated dispatch metadata carries the persisted
-`result_ref` explicitly; trace and replay keep the older delegated-result
-artifact fallback only for historical evidence compatibility. Trace and replay
+result bodies. New delegated dispatch metadata carries the exact `result_id`
+and persisted `result_ref` explicitly; trace and replay keep the older
+delegated-result artifact fallback only for historical evidence compatibility,
+and historical events without `result_id` remain readable with replay attention. Trace and replay
 audit JSON preserve the complete delegated dispatch metadata set for counting
 and coverage. They also preserve bounded delegated completion-gate check
 metadata from the completion report:
@@ -1552,9 +1555,13 @@ status, and later claimed successful write/run evidence uniquely bound to its
 tool-result event, artifact, and round. Incomplete dispatch metadata remains
 attention instead of being guessed as pass. An independently expected failure
 always remains a replay failure; a report-declared pass that hides an expected
-warning also fails, while other status mismatches remain attention. This
-aggregate parity check does not read delegated artifact bodies or require
-delegated result identity to be added to the bounded trace.
+warning also fails, while other status mismatches remain attention. Replay also
+derives the expected done-only `delegated_self_report_refs` status from exact
+event-owned result ids and refs. Exact claims fail even when the completion report says
+pass; substring lookalikes do not count as delegated identity claims, and
+historical dispatches with missing or duplicate result ids remain unknown/attention. This
+aggregate parity check does not read delegated artifact bodies or trust
+report-owned delegated refs as its identity authority.
 It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion

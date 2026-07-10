@@ -1343,6 +1343,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "is_write_run",
         "counts_as_independent_evidence",
         "counts_as_failed_delegation_recovery",
+        "result_id",
         "result_ref",
         "ok"
       ],
@@ -1360,13 +1361,13 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_results"
       ],
       proof_boundary: [
-        "Live Run Trace exposes safe delegated dispatch metadata, model-action envelope refs, delegate_agent action ids and sequence mapping, failure kinds, result refs, and per-round action counts without reading delegated artifact bodies",
+        "Live Run Trace exposes safe delegated dispatch metadata, model-action envelope refs, delegate_agent action ids and sequence mapping, failure kinds, exact result ids and refs, and per-round action counts without reading delegated artifact bodies",
         "completion reports keep delegated_result_refs separate from generic observation_refs so delegated self-reports remain advisory metadata rather than completion proof",
         "completion reports preserve verification_evidence_refs for harness-known tool result ids and artifact refs, including tool, round, event id, side-effect level, claimed flag, and independent/recovery proof flags",
         "replay audit warns when a passed delegated-independent gate lacks matching claimed tool-lineage metadata",
         "replay audit warns when delegated dispatch result refs are only recovered from delegated_result event fallback and missing from completion report delegated_result_refs",
         "replay audit warns when completion report delegated_result_refs do not match any delegated_result event dispatch result_ref",
-        "trace and replay audit JSON preserve the full delegated dispatch metadata set, including explicit persisted delegated result refs with event artifact fallback for older evidence",
+        "trace and replay audit JSON preserve the full delegated dispatch metadata set, including exact delegated result ids and explicit persisted result refs; older evidence without result ids remains readable but receives replay attention",
         "replay audit warns when input-contract or per-round-limit rejected dispatches claim model_invoked=true or when a post-dispatch result claims model_invoked=false",
         "replay audit warns when a delegated dispatch lacks a model-action envelope ref, points at a missing model-action round, points at a round without delegate_agent actions, points at a different round envelope, uses an action_id not declared by the round envelope delegate_agent actions, or reports a sequence that does not match the declared delegate action order",
         "replay audit warns when a delegated dispatch lacks a persisted delegated result JSON artifact ref",

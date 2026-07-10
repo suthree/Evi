@@ -274,7 +274,7 @@ export function renderHarnessReplayAuditMarkdown(report: HarnessReplayAuditRepor
     ...(report.delegated_dispatches.length > 0
       ? [
         ...report.delegated_dispatches.slice(0, DELEGATED_DISPATCH_MARKDOWN_LIMIT).map((dispatch) =>
-          `- action_id=${dispatch.action_id}; envelope_ref=${dispatch.envelope_ref ?? "none"}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; model_invoked=${dispatch.model_invoked ?? "unknown"}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
+          `- action_id=${dispatch.action_id}; result_id=${dispatch.result_id ?? "unknown"}; envelope_ref=${dispatch.envelope_ref ?? "none"}; round=${dispatch.round}; sequence=${dispatch.sequence}; status=${dispatch.contract_status}; ok=${dispatch.ok}; model_invoked=${dispatch.model_invoked ?? "unknown"}; dispatch_failure_kind=${dispatch.dispatch_failure_kind ?? "none"}; result_failure_kind=${dispatch.result_failure_kind ?? "none"}; task_chars=${dispatch.task_chars}; context_chars=${dispatch.context_chars}; ref=${dispatch.result_ref}; event=${dispatch.event_id}`
         ),
         ...(report.delegated_dispatches.length > DELEGATED_DISPATCH_MARKDOWN_LIMIT
           ? [`- omitted_delegated_dispatches=${report.delegated_dispatches.length - DELEGATED_DISPATCH_MARKDOWN_LIMIT}`]
@@ -383,8 +383,11 @@ function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessRe
 function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const delegatedFailedCheckIds = trace.completion_failed_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
   const delegatedWarningCheckIds = trace.completion_warning_check_ids.filter((id) => DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id));
-  const reportedDelegatedResultsStatus = trace.delegated_completion_gate_checks
-    .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedResults)?.status;
+  const reportedDelegatedResultsCheck = trace.delegated_completion_gate_checks
+    .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedResults);
+  const reportedDelegatedResultsStatus = reportedDelegatedResultsCheck?.status;
+  const reportedDelegatedSelfReportStatus = trace.delegated_completion_gate_checks
+    .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedSelfReportRefs)?.status;
   const failedDelegatedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok);
   const failedDispatchRounds = failedDelegatedDispatches.map((dispatch) => dispatch.round);
   const latestFailedDispatchRound = failedDispatchRounds.length > 0
@@ -407,6 +410,27 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     .map((item) => item.event_id));
   const recoveryEvidenceCount = recoveryEventIds.size;
   const dispatchMetadataComplete = trace.delegated_dispatches.length === trace.delegated_result_count;
+  const delegatedResultIds = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_id)
+    .filter((resultId): resultId is string => resultId !== null);
+  const delegatedResultRefs = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_ref)
+    .filter((resultRef) => resultRef.length > 0);
+  const duplicateDelegatedResultIdCount = delegatedResultIds.length - new Set(delegatedResultIds).size;
+  const duplicateDelegatedResultRefCount = delegatedResultRefs.length - new Set(delegatedResultRefs).size;
+  const missingDelegatedResultsGateIds = delegatedResultIds
+    .filter((resultId) => !reportedDelegatedResultsCheck?.refs.includes(resultId));
+  const delegatedIdentityRefs = new Set(trace.delegated_dispatches.flatMap((dispatch) => [
+    dispatch.result_id,
+    dispatch.result_ref
+  ].filter((ref): ref is string => typeof ref === "string" && ref.length > 0)));
+  const claimedDelegatedIdentityRefs = trace.claimed_verification_refs.filter((ref) => delegatedIdentityRefs.has(ref));
+  const delegatedIdentityMetadataComplete = dispatchMetadataComplete
+    && delegatedResultIds.length === trace.delegated_dispatches.length
+    && delegatedResultRefs.length === trace.delegated_dispatches.length
+    && duplicateDelegatedResultIdCount === 0
+    && duplicateDelegatedResultRefCount === 0;
+  const delegatedSelfReportGateApplicable = trace.completion_status === "done";
   let expectedDelegatedResultsStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (!dispatchMetadataComplete) {
     expectedDelegatedResultsStatus = "unknown";
@@ -417,13 +441,31 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   } else if (trace.delegated_result_count > 0) {
     expectedDelegatedResultsStatus = "pass";
   }
-  const statusMatches = reportedDelegatedResultsStatus === expectedDelegatedResultsStatus;
+  let expectedDelegatedSelfReportStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
+  if (delegatedSelfReportGateApplicable && trace.delegated_result_count > 0) {
+    if (claimedDelegatedIdentityRefs.length > 0) {
+      expectedDelegatedSelfReportStatus = "fail";
+    } else if (!delegatedIdentityMetadataComplete) {
+      expectedDelegatedSelfReportStatus = "unknown";
+    } else {
+      expectedDelegatedSelfReportStatus = "pass";
+    }
+  }
+  const delegatedResultsStatusMatches = reportedDelegatedResultsStatus === expectedDelegatedResultsStatus;
+  const delegatedSelfReportStatusMatches = !delegatedSelfReportGateApplicable
+    || reportedDelegatedSelfReportStatus === expectedDelegatedSelfReportStatus;
   let status: HarnessReplayAuditCheckStatus = "pass";
-  if (delegatedFailedCheckIds.length > 0 || expectedDelegatedResultsStatus === "fail") {
+  if (delegatedFailedCheckIds.length > 0
+    || expectedDelegatedResultsStatus === "fail"
+    || expectedDelegatedSelfReportStatus === "fail") {
     status = "fail";
   } else if (expectedDelegatedResultsStatus === "warning" && reportedDelegatedResultsStatus === "pass") {
     status = "fail";
-  } else if (delegatedWarningCheckIds.length > 0 || !statusMatches) {
+  } else if (delegatedWarningCheckIds.length > 0
+    || !delegatedResultsStatusMatches
+    || !delegatedSelfReportStatusMatches
+    || missingDelegatedResultsGateIds.length > 0
+    || expectedDelegatedSelfReportStatus === "unknown") {
     status = "warning";
   }
   return {
@@ -434,10 +476,19 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`,
       `delegated_results_status=${reportedDelegatedResultsStatus ?? "missing"}`,
       `expected_delegated_results_status=${expectedDelegatedResultsStatus}`,
+      `delegated_self_report_status=${reportedDelegatedSelfReportStatus ?? "missing"}`,
+      `expected_delegated_self_report_status=${expectedDelegatedSelfReportStatus}`,
+      `delegated_self_report_gate_applicable=${delegatedSelfReportGateApplicable}`,
       `dispatch_metadata_complete=${dispatchMetadataComplete}`,
+      `delegated_identity_metadata_complete=${delegatedIdentityMetadataComplete}`,
+      `duplicate_delegated_result_ids=${duplicateDelegatedResultIdCount}`,
+      `duplicate_delegated_result_refs=${duplicateDelegatedResultRefCount}`,
+      `missing_delegated_results_gate_ids=${missingDelegatedResultsGateIds.length}`,
+      `claimed_delegated_identity_refs=${claimedDelegatedIdentityRefs.length}`,
       `failed_delegated_dispatches=${failedDelegatedDispatches.length}`,
       `recovery_evidence=${recoveryEvidenceCount}`,
-      `status_match=${statusMatches}`
+      `status_match=${delegatedResultsStatusMatches}`,
+      `delegated_self_report_status_match=${delegatedSelfReportStatusMatches}`
     ].join("; "),
     refs: [trace.report_ref]
   };
@@ -446,7 +497,13 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
 function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const evidenceRefs = new Set(trace.verification_evidence_refs.map((item) => item.ref));
   const claimedRefs = new Set(trace.claimed_verification_refs);
-  const delegatedRefs = new Set(trace.delegated_result_refs);
+  const delegatedResultIds = new Set(trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_id)
+    .filter((ref): ref is string => ref !== null));
+  const delegatedDispatchRefs = new Set(trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_ref)
+    .filter((ref) => ref.length > 0));
+  const delegatedRefs = new Set([...delegatedResultIds, ...delegatedDispatchRefs]);
   const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
   const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
   const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
@@ -513,6 +570,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   );
   const claimedDelegatedRefs = trace.claimed_verification_refs
     .filter((ref) => delegatedRefs.has(ref));
+  const claimedDelegatedResultIds = claimedDelegatedRefs.filter((ref) => delegatedResultIds.has(ref));
   const claimedDelegatedReportRefs = claimedDelegatedRefs.filter((ref) => delegatedReportRefs.has(ref));
   const claimedDelegatedEventFallbackRefs = claimedDelegatedRefs.filter((ref) => delegatedEventFallbackRefs.has(ref));
   const missingClaimedLineage = trace.claimed_verification_refs.filter((ref) =>
@@ -571,6 +629,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `independent_evidence_refs=${independentEvidenceRefs.length}`,
       `failed_delegation_recovery_refs=${recoveryEvidenceRefs.length}`,
       `claimed_delegated_refs=${claimedDelegatedRefs.length}`,
+      `claimed_delegated_result_ids=${claimedDelegatedResultIds.length}`,
       `claimed_delegated_report_refs=${claimedDelegatedReportRefs.length}`,
       `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
@@ -655,16 +714,35 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
 
 function delegatedDispatchMetadataCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
+  const missingResultIds = trace.delegated_dispatches.filter((dispatch) => dispatch.result_id === null);
+  const resultIds = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_id)
+    .filter((resultId): resultId is string => resultId !== null);
+  const resultRefs = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_ref)
+    .filter((resultRef) => resultRef.length > 0);
+  const duplicateResultIdCount = resultIds.length - new Set(resultIds).size;
+  const duplicateResultRefCount = resultRefs.length - new Set(resultRefs).size;
   const missingResultRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.result_ref);
   const contractStatusOkMismatches = trace.delegated_dispatches.filter((dispatch) =>
     dispatch.ok !== (dispatch.contract_status === "passed")
   );
   const countMismatch = trace.delegated_result_count !== trace.delegated_dispatches.length;
   const hasMetadataAttention = countMismatch
+    || missingResultIds.length > 0
+    || duplicateResultIdCount > 0
+    || duplicateResultRefCount > 0
     || missingResultRefs.length > 0
     || contractStatusOkMismatches.length > 0;
   const problemRefs = unique([
     ...(countMismatch ? trace.delegated_dispatches : []),
+    ...missingResultIds,
+    ...(duplicateResultIdCount > 0
+      ? trace.delegated_dispatches.filter((dispatch) => dispatch.result_id !== null)
+      : []),
+    ...(duplicateResultRefCount > 0
+      ? trace.delegated_dispatches.filter((dispatch) => dispatch.result_ref.length > 0)
+      : []),
     ...missingResultRefs,
     ...contractStatusOkMismatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
@@ -677,7 +755,10 @@ function delegatedDispatchMetadataCheck(trace: LiveRunTraceSummary): HarnessRepl
       `delegated_results=${trace.delegated_result_count}`,
       `dispatches=${trace.delegated_dispatches.length}`,
       `failed_dispatches=${failedDispatches.length}`,
+      `missing_result_id=${missingResultIds.length}`,
+      `duplicate_result_id=${duplicateResultIdCount}`,
       `missing_result_ref=${missingResultRefs.length}`,
+      `duplicate_result_ref=${duplicateResultRefCount}`,
       `contract_status_ok_mismatches=${contractStatusOkMismatches.length}`
     ].join("; "),
     refs
@@ -1020,6 +1101,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   const eventId = stringField(value, "event_id");
   const createdAt = stringField(value, "created_at");
   const resultRef = stringField(value, "result_ref");
+  const resultId = stringField(value, "result_id");
   const actionId = stringField(value, "action_id");
   const envelopeRef = stringField(value, "envelope_ref");
   const contractStatus = stringField(value, "contract_status");
@@ -1035,6 +1117,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   return {
     event_id: eventId,
     created_at: createdAt,
+    result_id: resultId,
     result_ref: resultRef,
     action_id: actionId,
     envelope_ref: envelopeRef,

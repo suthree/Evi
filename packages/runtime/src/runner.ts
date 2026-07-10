@@ -2031,6 +2031,7 @@ function delegatedDispatchEventMetadata(
 ): NonNullable<EvidenceEvent["delegated_dispatch"]> {
   return {
     action_id: result.action_id,
+    result_id: result.id,
     result_ref: resultRef,
     envelope_ref: envelopeRef,
     round: result.round,

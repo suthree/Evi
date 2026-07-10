@@ -74,6 +74,7 @@ export interface LiveRunToolResultEventSummary {
 export interface LiveRunDelegatedDispatchSummary {
   event_id: string;
   created_at: string;
+  result_id: string | null;
   result_ref: string;
   action_id: string;
   envelope_ref: string | null;
@@ -131,6 +132,7 @@ export interface LiveRunTraceSummary {
   delegated_result_failed_count: number;
   delegated_completion_gate_checks: LiveRunCompletionCheckSummary[];
   delegated_completion_gate_status_counts: LiveRunCompletionGateStatusCounts;
+  delegated_dispatch_missing_result_id_count: number;
   delegated_dispatch_missing_result_ref_count: number;
   delegated_result_report_refs: string[];
   delegated_result_event_fallback_refs: string[];
@@ -239,6 +241,7 @@ async function summarizeLiveRunTrace(
     ...delegatedResultReportRefs,
     ...delegatedResultEventFallbackRefs
   ]);
+  const delegatedDispatchMissingResultIdCount = delegatedDispatches.filter((dispatch) => dispatch.result_id === null).length;
   const delegatedDispatchMissingResultRefCount = delegatedDispatches.filter((dispatch) => !dispatch.result_ref).length;
   const delegatedCompletionGateChecks = readDelegatedCompletionGateChecks(report);
   const delegatedCompletionGateStatusCounts = countCompletionCheckStatuses(delegatedCompletionGateChecks);
@@ -289,6 +292,7 @@ async function summarizeLiveRunTrace(
     delegated_result_failed_count: delegatedResultFailedCount,
     delegated_completion_gate_checks: delegatedCompletionGateChecks,
     delegated_completion_gate_status_counts: delegatedCompletionGateStatusCounts,
+    delegated_dispatch_missing_result_id_count: delegatedDispatchMissingResultIdCount,
     delegated_dispatch_missing_result_ref_count: delegatedDispatchMissingResultRefCount,
     delegated_result_report_refs: delegatedResultReportRefs,
     delegated_result_event_fallback_refs: delegatedResultEventFallbackRefs,
@@ -382,6 +386,7 @@ function delegatedDispatchFromEventMetadata(
   if (!metadata) return null;
   return {
     action_id: metadata.action_id,
+    result_id: metadata.result_id ?? null,
     ...(typeof metadata.result_ref === "string" && metadata.result_ref.length > 0 ? { result_ref: metadata.result_ref } : {}),
     envelope_ref: metadata.envelope_ref,
     round: metadata.round,
@@ -407,6 +412,7 @@ function parseDelegatedDispatchSummary(summary: string): DelegatedDispatchParsed
   const resultFailureKind = match[9];
   return {
     action_id: match[1].trim(),
+    result_id: null,
     envelope_ref: null,
     round: Number.parseInt(match[2], 10),
     sequence: Number.parseInt(match[3], 10),

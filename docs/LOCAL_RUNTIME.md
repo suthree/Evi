@@ -1259,7 +1259,11 @@ successful write/run evidence that is uniquely bound to its tool-result event,
 artifact, and round. Incomplete dispatch metadata stays attention instead of
 being guessed as pass. An independently expected failure stays a replay
 failure, and a report pass that hides expected warning also fails; other status
-drift remains attention. Replay reports also check bounded
+drift remains attention. For `done`, replay derives `delegated_self_report_refs`
+independently from event-owned `result_id` and `result_ref` identities. Exact identity claims
+fail even when the report says pass; substring lookalikes are not delegated
+identity claims, and dispatches with missing or duplicate result ids remain warning/unknown.
+Replay reports also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`
@@ -2159,7 +2163,8 @@ tool authority claims; they fail the delegated output contract with raw preview
 suppressed. Delegated
 model request failures are recorded as failed delegated results with sanitized
 error text before persistence and observation feedback.
-Each delegated result also records action id, model-action envelope ref, round, sequence,
+Each delegated result also records action id, exact result id, model-action
+envelope ref, round, sequence,
 task/context character counts, `model_invoked`, and safe `dispatch_failure_kind` values such as
 `dispatch_limit_exceeded` or `input_contract_failed`; successful dispatches and
 delegated-model contract failures record `dispatch_failure_kind=none`
@@ -2175,7 +2180,8 @@ delegated context or delegated result bodies. Replay audit also validates the
 lineage tuple: delegated dispatches must name the model-action envelope ref for
 their round, an action id declared by that round's `delegate_agent` actions, and
 a sequence that matches the declared delegate action order. Delegated dispatches
-that lack a persisted delegated result JSON artifact ref are replay warnings;
+that lack or duplicate an exact result id or persisted delegated result JSON artifact ref
+are replay warnings; historical records remain readable;
 replay may cite the bounded event id but must not reconstruct the missing
 delegated artifact body. Replay also requires `ok=true/status=passed` and
 `ok=false/status=failed`; contradictory `ok` and `contract_status` tuples are
@@ -2183,9 +2189,10 @@ warnings, while runner-authored failed-delegation recovery remains derived from
 `ok`. Live Run Trace also keeps completion-report
 `delegated_result_refs` separate from
 `delegated_result_event_fallback_refs`, and replay warns when dispatch result
-refs are only recovered from fallback. Replay also compares
-`claimed_verification_refs` with delegated result refs from the completion
-report plus event fallback, and its lineage summary separates
+refs are only recovered from fallback. Replay compares
+`claimed_verification_refs` with exact event-owned delegated result ids and refs;
+report-declared refs remain coverage metadata rather than identity authority.
+Its lineage summary separates
 `claimed_delegated_report_refs` from
 `claimed_delegated_event_fallback_refs`; a verified trace that claims either
 kind of delegated result ref as completion proof fails
@@ -2193,9 +2200,9 @@ kind of delegated result ref as completion proof fails
 omitted or drifted. Replay also checks the model
 invocation boundary: input contract or round-limit rejects must record
 `model_invoked=false`, and results after delegated model dispatch must record
-`model_invoked=true`. Live Run Trace
-also exposes the missing-result-ref count as bounded metadata for context and IM
-output. Dispatch-layer result failures must mirror `dispatch_failure_kind`,
+`model_invoked=true`. Live Run Trace also exposes missing-result-id and
+missing-result-ref counts as bounded metadata for context output. Dispatch-layer
+result failures must mirror `dispatch_failure_kind`,
 delegated output/model failures must keep `dispatch_failure_kind=none`, and
 passed delegated results must use explicit `none` for both layers. Even
 when the final completion status is `not_done` or `blocked`, failed delegated
