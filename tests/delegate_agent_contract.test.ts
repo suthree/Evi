@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { formatDelegateAgentSubagentInstructions } from "../packages/core/src/action_contracts.js";
 import {
   parseDelegatedOutput,
   parseDelegationRequest
@@ -16,6 +17,15 @@ const DELEGATED_OUTPUT_SOURCE = {
   task: "Critique whether delegated output claims command authority.",
   context: VALID_DELEGATE_CONTEXT
 };
+
+test("delegate_agent subagent instructions constrain source boundary", () => {
+  const instructions = formatDelegateAgentSubagentInstructions().join("\n");
+
+  assert.match(instructions, /Use only the Task and Context text provided/);
+  assert.match(instructions, /named evidence refs already present there/);
+  assert.match(instructions, /strict json object with keys summary and findings_text/);
+  assert.match(instructions, /Do not claim tool\/write\/mutation/);
+});
 
 test("delegate_agent context rejects concrete command grants before dispatch", () => {
   const result = parseDelegationRequest({

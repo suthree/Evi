@@ -376,6 +376,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.required.some((item) => item.includes("delegated_model_request_failed")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.reject_if.some((item) => item.includes("raw delegated artifact bodies")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("model proposes while the harness executes")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("provided Task/Context text and named evidence refs")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("parseDelegationRequest")), true);
     assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract, [...delegateAgentAuthoringContract.runner_input_contract]);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);

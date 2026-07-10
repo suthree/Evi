@@ -1285,7 +1285,9 @@ browsing are rejected as command/tool authority grants even when the same
 context also states a no-tool boundary. The delegated
 model must return a JSON object with non-empty `summary` and `findings_text`;
 `summary` is capped at 240 chars and `findings_text` is
-capped at 2000 chars. The payload is strict: `delegate_agent.payload` may contain only
+capped at 2000 chars. The fixed delegated-model instructions also repeat that
+the subagent may use only the Task and Context text provided in the delegated
+request, including named evidence refs already present there. The payload is strict: `delegate_agent.payload` may contain only
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated

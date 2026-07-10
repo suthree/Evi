@@ -2087,7 +2087,10 @@ use only explicit payload context or named evidence refs. It must not simultaneo
 delegated authorities, expert scheduling, multi-agent orchestration, or model
 fan-out; concrete command or tool-surface grants such as `tsc`, `pnpm`,
 `repo.search`, `command.run`, file reads, repo search, URL fetches, or web
-browsing are rejected as command/tool authority grants.
+browsing are rejected as command/tool authority grants. The fixed delegated
+subagent instructions repeat that source boundary: use only the Task and Context
+text from the delegated request, including named evidence refs already present
+there.
 Otherwise the runner records `input_contract_failed` without calling the
 submodel. The live
 runner allows at most one `delegate_agent` action per model round; extra
