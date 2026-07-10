@@ -1831,6 +1831,7 @@ function verifyCompletionClaim(args: {
   const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => availableVerificationRefSet.has(ref));
   const unboundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => !availableVerificationRefSet.has(ref));
   const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
+  const claimedSuccessfulWriteOrRunRefs = successfulWriteOrRunRefs.filter((ref) => boundClaimedRefs.includes(ref));
   const postDelegationClaimedRefs = mainHarnessIndependentEvidenceAfterLatestDelegation({
     delegatedResults: args.delegatedResults,
     independentEvidenceRefs: boundClaimedRefs,
@@ -1868,7 +1869,7 @@ function verifyCompletionClaim(args: {
   });
   const delegatedRecoveryEvidenceRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
     delegatedResults: args.delegatedResults,
-    independentEvidenceRefs: successfulWriteOrRunRefs,
+    independentEvidenceRefs: claimedSuccessfulWriteOrRunRefs,
     verificationEvidenceRounds: args.verificationEvidenceRounds
   });
   const failedDelegationVerificationRefs = mainHarnessRecoveryEvidenceAfterDelegationFailure({
@@ -1978,6 +1979,7 @@ function annotateCompletionVerificationEvidenceRefs(args: {
       after_latest_failed_delegation: afterLatestFailedDelegation,
       counts_as_independent_evidence: claimed && afterLatestDelegation,
       counts_as_failed_delegation_recovery: latestFailedDelegatedRound !== null
+        && claimed
         && draft.source === "tool_result"
         && draft.is_write_run
         && afterLatestFailedDelegation

@@ -4922,13 +4922,12 @@ test("live runner rejects write-run-only recovery after failed delegation", asyn
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "pass");
     const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
-    assert.equal(delegatedResultsCheck?.status, "warning");
-    assert.match(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
-    assert.match(delegatedResultsCheck?.refs.join("\n") ?? "", /tool_result_/);
+    assert.equal(delegatedResultsCheck?.status, "fail");
+    assert.doesNotMatch(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
+    assert.doesNotMatch(delegatedResultsCheck?.refs.join("\n") ?? "", /tool_result_/);
     const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
     assert.equal(independentCheck?.status, "fail");
-    assert.match(independentCheck?.summary ?? "", /no bound non-delegated verification ref/);
-    assert.match(independentCheck?.summary ?? "", /verification_refs=0; write_run_results=1/);
+    assert.match(independentCheck?.summary ?? "", /no successful write\/run recovery evidence/);
   } finally {
     await fixture.cleanup();
   }
@@ -4990,6 +4989,69 @@ test("live runner accepts failed delegation recovery with write-run and verifica
     assert.equal(independentCheck?.status, "pass");
     assert.match(independentCheck?.summary ?? "", /both later write\/run recovery evidence and bound non-delegated verification refs/);
     assert.match(independentCheck?.summary ?? "", /verification_refs=1; write_run_results=1/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner rejects unclaimed write-run recovery with a claimed read-only ref", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    await writeRepoFile(fixture.repoRoot, "docs/read-only-evidence.md", "Read-only evidence fixture.");
+
+    const model = new InvalidDelegationThenUnclaimedStateWriteThenReadOnlyDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Require the done claim to cite failed-delegation write-run recovery evidence.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      claimed_verification_refs: string[];
+      verification_evidence_refs: Array<{
+        ref: string;
+        claimed: boolean;
+        is_write_run: boolean;
+        counts_as_independent_evidence: boolean;
+        counts_as_failed_delegation_recovery: boolean;
+      }>;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.match(model.unclaimedWriteRef, /^tool_result_/);
+    assert.match(model.claimedReadOnlyRef, /^tool_result_/);
+    assert.notEqual(model.claimedReadOnlyRef, model.unclaimedWriteRef);
+    assert.deepEqual(report.claimed_verification_refs, [model.claimedReadOnlyRef]);
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    const writeLineage = report.verification_evidence_refs.find((item) => item.ref === model.unclaimedWriteRef);
+    assert.ok(writeLineage);
+    assert.equal(writeLineage.claimed, false);
+    assert.equal(writeLineage.is_write_run, true);
+    assert.equal(writeLineage.counts_as_failed_delegation_recovery, false);
+    const readLineage = report.verification_evidence_refs.find((item) => item.ref === model.claimedReadOnlyRef);
+    assert.ok(readLineage);
+    assert.equal(readLineage.claimed, true);
+    assert.equal(readLineage.is_write_run, false);
+    assert.equal(readLineage.counts_as_independent_evidence, true);
+    assert.equal(readLineage.counts_as_failed_delegation_recovery, false);
+    const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
+    assert.equal(delegatedResultsCheck?.status, "fail");
+    assert.doesNotMatch(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
+    const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
+    assert.equal(independentCheck?.status, "fail");
+    assert.match(independentCheck?.summary ?? "", /read-only verification refs do not recover failed delegation/);
+    assert.match(independentCheck?.summary ?? "", /verification_refs=1; write_run_results=0/);
+    assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "fail");
   } finally {
     await fixture.cleanup();
   }
@@ -7969,6 +8031,38 @@ class InvalidDelegationThenStateWriteThenVerifiedDoneModel implements ModelClien
   }
 }
 
+class InvalidDelegationThenUnclaimedStateWriteThenReadOnlyDoneModel implements ModelClient {
+  private mainCalls = 0;
+  unclaimedWriteRef = "";
+  claimedReadOnlyRef = "";
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? "plain text instead of json"
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-unclaimed-write-read-only-done",
+      responseId: `response-invalid-delegation-unclaimed-write-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls === 2) return stateWriteAndFileReadEnvelope();
+    if (this.mainCalls > 2) {
+      this.unclaimedWriteRef = latestToolResultRef(request.input);
+      this.claimedReadOnlyRef = toolResultRefForTool(request.input, "file.read");
+      return doneEnvelopeWithVerificationRefs([this.claimedReadOnlyRef]);
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
 class InvalidDelegationThenStateOnlyThenDoneModel implements ModelClient {
   private mainCalls = 0;
   sawSanitizedFailedObservation = false;
@@ -9686,6 +9780,22 @@ function stateWriteEnvelope(): Record<string, unknown> {
   };
 }
 
+function stateWriteAndFileReadEnvelope(): Record<string, unknown> {
+  const write = stateWriteEnvelope();
+  const read = fileReadEnvelope();
+  return {
+    summary: "Write recovery evidence and read independent evidence in one main-harness round.",
+    actions: [
+      ...(write.actions as unknown[]),
+      ...(read.actions as unknown[])
+    ],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
 function fileReadEnvelope(): Record<string, unknown> {
   return {
     summary: "Read one bounded repo file for a one-off check.",
@@ -9774,6 +9884,11 @@ function doneEnvelope(): Record<string, unknown> {
 
 function latestToolResultRef(input: string): string {
   return input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+}
+
+function toolResultRefForTool(input: string, tool: string): string {
+  const escapedTool = tool.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return [...input.matchAll(new RegExp(`"id": "(tool_result_[^"]+)"[\\s\\S]{0,200}?"tool": "${escapedTool}"`, "g"))].at(-1)?.[1] ?? "";
 }
 
 function blockedEnvelope(): Record<string, unknown> {

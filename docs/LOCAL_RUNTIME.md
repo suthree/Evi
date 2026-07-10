@@ -2197,7 +2197,8 @@ verification ref as independent completion proof. State-only harness/governance 
 failed-delegation recovery evidence. Bound read-only tool refs can be
 independent context for a done claim, but they do not recover the failed
 delegation; only later successful write/run tool results do. They do not
-authorize automatic retry, model fan-out, expert scheduling, delegated
+count as recovery unless the done claim cites their harness-known ref, and they
+do not authorize automatic retry, model fan-out, expert scheduling, delegated
 completion, or raw delegated artifact reads. If a delegated result failed and
 the run does not reach verified `done` completion, any `propose_sop` action
 stays state-only and cannot enter live SOP audit, SOP promotion, skill
