@@ -381,6 +381,9 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
   const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
   const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
+  const claimedFlagMismatchRefs = trace.verification_evidence_refs.filter((item) =>
+    item.claimed !== claimedRefs.has(item.ref)
+  );
   const claimedDelegatedRefs = trace.claimed_verification_refs
     .filter((ref) => delegatedRefs.has(ref));
   const claimedDelegatedReportRefs = claimedDelegatedRefs.filter((ref) => delegatedReportRefs.has(ref));
@@ -414,6 +417,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const missingRecoveryLineage = failedDelegationRecovered && recoveryEvidenceRefs.length === 0;
   const hasLineageAttention = missingClaimedLineage.length > 0
     || claimedDelegatedRefs.length > 0
+    || claimedFlagMismatchRefs.length > 0
     || missingIndependentLineage
     || missingRecoveryLineage
     || invalidIndependentLineageRefs.length > 0
@@ -434,6 +438,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `claimed_delegated_report_refs=${claimedDelegatedReportRefs.length}`,
       `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
+      `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
       `invalid_independent_lineage=${invalidIndependentLineageRefs.length}`,
@@ -447,6 +452,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
           .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
           .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
+        ...claimedFlagMismatchRefs.map((item) => item.ref),
         ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),
         ...trace.delegated_completion_gate_checks
