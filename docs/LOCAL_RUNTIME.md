@@ -2252,16 +2252,17 @@ Each `(tool_result_id, artifact_ref)` pair must contain exactly one entry from
 each source, with matching event, round, tool, result, side-effect, write/run,
 and delegation-relative metadata. The pair's event id must bind exactly one
 same-run bounded `tool_result` event; that event must carry the pair's artifact
-ref, and its model-action round must match the evidence round. Replay recomputes
-both delegation-relative flags from that event-bound evidence round and the
-latest delegated or failed delegated dispatch round. It also requires each
-bounded lineage `claimed` flag to agree
-with exact membership in top-level
-`claimed_verification_refs`. It rejects an independent
-marker whose bounded lineage is unclaimed, absent from the done claim, failed,
-or not after the latest delegation. It also
-rejects a recovery marker that is not write/run, not after the latest failed
-delegation, or present without a failed delegated result. These checks do not
+ref, and its model-action round must match the evidence round. Replay reads
+claim refs from the persisted final model-action envelope and compares the
+completion-report copy against them. It recomputes both expected
+delegation-relative markers from those claim refs, uniquely bound event
+round/write-run metadata, and the latest delegated or failed delegated
+dispatch round. Persisted `claimed` and `counts_as_*` fields are parity
+annotations only. A forged positive marker is definitive drift and fails a
+verified trace; a conservative false marker remains attention. Non-`done`
+reports still receive marker parity checks, but do not require a done-only
+independent gate or recovery. Relevant historical envelopes or tool-result
+events missing bounded metadata remain unknown/attention. These checks do not
 open the raw tool or delegated artifact body. If a delegated
 result failed and the run does not reach verified `done` completion, any `propose_sop` action
 stays state-only and cannot enter live SOP audit, SOP promotion, skill

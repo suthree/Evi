@@ -382,7 +382,7 @@ function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessRe
 
 function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
   validRefs: Set<string>;
-  validEvidenceByRef: Map<string, { round: number; isWriteRun: boolean }>;
+  validEvidenceByRef: Map<string, { eventId: string; round: number; isWriteRun: boolean }>;
   legacyEventMetadataRefs: Set<string>;
 } {
   const evidencePairs = new Map<string, typeof trace.verification_evidence_refs>();
@@ -395,7 +395,7 @@ function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
     toolResultEventsById.set(event.event_id, [...(toolResultEventsById.get(event.event_id) ?? []), event]);
   }
   const validRefs = new Set<string>();
-  const validEvidenceByRef = new Map<string, { round: number; isWriteRun: boolean }>();
+  const validEvidenceByRef = new Map<string, { eventId: string; round: number; isWriteRun: boolean }>();
   const legacyEventMetadataRefs = new Set<string>();
   for (const items of evidencePairs.values()) {
     if (items.length !== 2
@@ -431,12 +431,111 @@ function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
     for (const item of items) {
       validRefs.add(item.ref);
       validEvidenceByRef.set(item.ref, {
+        eventId: event.event_id,
         round: event.round,
         isWriteRun: event.is_write_run === true
       });
     }
   }
   return { validRefs, validEvidenceByRef, legacyEventMetadataRefs };
+}
+
+function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
+  const dispatchMetadataComplete = trace.delegated_dispatches.length === trace.delegated_result_count;
+  const delegatedResultIds = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_id)
+    .filter((resultId): resultId is string => resultId !== null);
+  const delegatedResultRefs = trace.delegated_dispatches
+    .map((dispatch) => dispatch.result_ref)
+    .filter((resultRef) => resultRef.length > 0);
+  const duplicateDelegatedResultIdCount = delegatedResultIds.length - new Set(delegatedResultIds).size;
+  const duplicateDelegatedResultRefCount = delegatedResultRefs.length - new Set(delegatedResultRefs).size;
+  const delegatedIdentityRefs = new Set([...delegatedResultIds, ...delegatedResultRefs]);
+  const claimMetadataComplete = trace.envelope_claimed_verification_refs_present;
+  const authoritativeClaimRefs = claimMetadataComplete
+    ? trace.envelope_claimed_verification_refs
+    : [];
+  const claimedRefs = new Set(authoritativeClaimRefs);
+  const reportedClaimRefs = new Set(trace.claimed_verification_refs);
+  const claimRefsMatch = claimMetadataComplete
+    && claimedRefs.size === reportedClaimRefs.size
+    && [...claimedRefs].every((ref) => reportedClaimRefs.has(ref));
+  const claimedDelegatedIdentityRefs = authoritativeClaimRefs
+    .filter((ref) => delegatedIdentityRefs.has(ref));
+  const delegatedIdentityMetadataComplete = dispatchMetadataComplete
+    && delegatedResultIds.length === trace.delegated_dispatches.length
+    && delegatedResultRefs.length === trace.delegated_dispatches.length
+    && duplicateDelegatedResultIdCount === 0
+    && duplicateDelegatedResultRefCount === 0;
+  const nonDelegatedClaimedRefs = authoritativeClaimRefs
+    .filter((ref) => !delegatedIdentityRefs.has(ref));
+  const evidenceBinding = verificationEvidenceBinding(trace);
+  const boundClaimedRefs = nonDelegatedClaimedRefs
+    .filter((ref) => evidenceBinding.validRefs.has(ref));
+  const unboundClaimedRefs = nonDelegatedClaimedRefs
+    .filter((ref) => !evidenceBinding.validRefs.has(ref));
+  const legacyEventMetadataClaimedRefs = unboundClaimedRefs
+    .filter((ref) => evidenceBinding.legacyEventMetadataRefs.has(ref));
+  const definitivelyUnboundClaimedRefs = unboundClaimedRefs
+    .filter((ref) => !evidenceBinding.legacyEventMetadataRefs.has(ref));
+  const latestDelegatedRound = trace.delegated_dispatches.length > 0
+    ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
+    : null;
+  const failedDelegatedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok);
+  const latestFailedDelegationRound = failedDelegatedDispatches.length > 0
+    ? Math.max(...failedDelegatedDispatches.map((dispatch) => dispatch.round))
+    : null;
+  const postDelegationBoundRefs = latestDelegatedRound === null
+    ? []
+    : boundClaimedRefs.filter((ref) =>
+      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestDelegatedRound
+    );
+  const postFailedDelegationVerificationRefs = latestFailedDelegationRound === null
+    ? []
+    : boundClaimedRefs.filter((ref) =>
+      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestFailedDelegationRound
+    );
+  const postFailedDelegationRecoveryRefs = postFailedDelegationVerificationRefs.filter((ref) =>
+    evidenceBinding.validEvidenceByRef.get(ref)?.isWriteRun === true
+  );
+  const legacyPostDelegationRefs = latestDelegatedRound === null
+    ? []
+    : legacyEventMetadataClaimedRefs.filter((ref) =>
+      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestDelegatedRound)
+    );
+  const legacyPostFailedDelegationRefs = latestFailedDelegationRound === null
+    ? []
+    : legacyEventMetadataClaimedRefs.filter((ref) =>
+      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestFailedDelegationRound)
+    );
+  return {
+    boundClaimedRefs,
+    authoritativeClaimRefs,
+    claimMetadataComplete,
+    claimRefsMatch,
+    claimedDelegatedIdentityRefs,
+    claimedRefs,
+    delegatedIdentityMetadataComplete,
+    delegatedIdentityRefs,
+    delegatedResultIds,
+    delegatedResultRefs,
+    definitivelyUnboundClaimedRefs,
+    dispatchMetadataComplete,
+    duplicateDelegatedResultIdCount,
+    duplicateDelegatedResultRefCount,
+    evidenceBinding,
+    failedDelegatedDispatches,
+    latestDelegatedRound,
+    latestFailedDelegationRound,
+    legacyEventMetadataClaimedRefs,
+    legacyPostDelegationRefs,
+    legacyPostFailedDelegationRefs,
+    nonDelegatedClaimedRefs,
+    postDelegationBoundRefs,
+    postFailedDelegationRecoveryRefs,
+    postFailedDelegationVerificationRefs,
+    unboundClaimedRefs
+  };
 }
 
 function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
@@ -463,61 +562,43 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const reportedDelegatedResultsStatus = reportedDelegatedResultsCheck?.status;
   const reportedDelegatedSelfReportStatus = trace.delegated_completion_gate_checks
     .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedSelfReportRefs)?.status;
-  const failedDelegatedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok);
-  const failedDispatchRounds = failedDelegatedDispatches.map((dispatch) => dispatch.round);
-  const latestFailedDispatchRound = failedDispatchRounds.length > 0
-    ? Math.max(...failedDispatchRounds)
-    : null;
-  const claimedRefs = new Set(trace.claimed_verification_refs);
-  const recoveryEventIds = new Set(trace.verification_evidence_refs
-    .filter((item) => {
-      if (latestFailedDispatchRound === null
-        || !item.claimed
-        || !item.ok
-        || !item.is_write_run
-        || item.round <= latestFailedDispatchRound
-        || !claimedRefs.has(item.ref)) return false;
-      const events = trace.tool_result_events.filter((event) => event.event_id === item.event_id);
-      return events.length === 1
-        && events[0]!.round === item.round
-        && events[0]!.artifact_refs.includes(item.artifact_ref);
-    })
-    .map((item) => item.event_id));
-  const recoveryEvidenceCount = recoveryEventIds.size;
-  const dispatchMetadataComplete = trace.delegated_dispatches.length === trace.delegated_result_count;
-  const delegatedResultIds = trace.delegated_dispatches
-    .map((dispatch) => dispatch.result_id)
-    .filter((resultId): resultId is string => resultId !== null);
-  const delegatedResultRefs = trace.delegated_dispatches
-    .map((dispatch) => dispatch.result_ref)
-    .filter((resultRef) => resultRef.length > 0);
-  const duplicateDelegatedResultIdCount = delegatedResultIds.length - new Set(delegatedResultIds).size;
-  const duplicateDelegatedResultRefCount = delegatedResultRefs.length - new Set(delegatedResultRefs).size;
+  const evidenceTruth = delegatedEvidenceTruth(trace);
+  const {
+    authoritativeClaimRefs,
+    boundClaimedRefs,
+    claimMetadataComplete,
+    claimRefsMatch,
+    claimedDelegatedIdentityRefs,
+    delegatedIdentityMetadataComplete,
+    delegatedResultIds,
+    definitivelyUnboundClaimedRefs,
+    dispatchMetadataComplete,
+    duplicateDelegatedResultIdCount,
+    duplicateDelegatedResultRefCount,
+    evidenceBinding,
+    failedDelegatedDispatches,
+    legacyEventMetadataClaimedRefs,
+    legacyPostDelegationRefs,
+    legacyPostFailedDelegationRefs,
+    nonDelegatedClaimedRefs,
+    postDelegationBoundRefs: modernPostDelegationRefs,
+    postFailedDelegationRecoveryRefs: modernPostFailedDelegationRecoveryRefs,
+    postFailedDelegationVerificationRefs: modernPostFailedDelegationVerificationRefs,
+    unboundClaimedRefs
+  } = evidenceTruth;
+  const claimRefsMismatch = claimMetadataComplete && !claimRefsMatch;
+  const envelopeRefMismatch = claimMetadataComplete && !trace.reported_envelope_ref_matches_final;
+  const recoveryEvidenceCount = new Set(modernPostFailedDelegationRecoveryRefs.map((ref) =>
+    evidenceBinding.validEvidenceByRef.get(ref)?.eventId
+  ).filter((eventId): eventId is string => typeof eventId === "string")).size;
   const missingDelegatedResultsGateIds = delegatedResultIds
     .filter((resultId) => !reportedDelegatedResultsCheck?.refs.includes(resultId));
-  const delegatedIdentityRefs = new Set(trace.delegated_dispatches.flatMap((dispatch) => [
-    dispatch.result_id,
-    dispatch.result_ref
-  ].filter((ref): ref is string => typeof ref === "string" && ref.length > 0)));
-  const claimedDelegatedIdentityRefs = trace.claimed_verification_refs.filter((ref) => delegatedIdentityRefs.has(ref));
-  const delegatedIdentityMetadataComplete = dispatchMetadataComplete
-    && delegatedResultIds.length === trace.delegated_dispatches.length
-    && delegatedResultRefs.length === trace.delegated_dispatches.length
-    && duplicateDelegatedResultIdCount === 0
-    && duplicateDelegatedResultRefCount === 0;
   const claimedRefsBoundGateApplicable = trace.completion_status === "done";
-  const nonDelegatedClaimedRefs = trace.claimed_verification_refs.filter((ref) => !delegatedIdentityRefs.has(ref));
-  const evidenceBinding = verificationEvidenceBinding(trace);
-  const validEvidenceRefs = evidenceBinding.validRefs;
-  const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => validEvidenceRefs.has(ref));
-  const unboundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => !validEvidenceRefs.has(ref));
-  const legacyEventMetadataClaimedRefs = unboundClaimedRefs
-    .filter((ref) => evidenceBinding.legacyEventMetadataRefs.has(ref));
-  const definitivelyUnboundClaimedRefs = unboundClaimedRefs
-    .filter((ref) => !evidenceBinding.legacyEventMetadataRefs.has(ref));
   let expectedClaimedRefsBoundStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (claimedRefsBoundGateApplicable) {
-    if (!delegatedIdentityMetadataComplete && trace.claimed_verification_refs.length > 0) {
+    if (!claimMetadataComplete) {
+      expectedClaimedRefsBoundStatus = "unknown";
+    } else if (!delegatedIdentityMetadataComplete && authoritativeClaimRefs.length > 0) {
       expectedClaimedRefsBoundStatus = "unknown";
     } else if (nonDelegatedClaimedRefs.length === 0) {
       expectedClaimedRefsBoundStatus = "skipped";
@@ -538,32 +619,6 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     && (!claimedRefsBoundGateApplicable
       || reportedClaimedRefsBoundStatus === expectedClaimedRefsBoundStatus);
   const delegatedIndependentGateApplicable = trace.completion_status === "done";
-  const latestDelegatedRound = trace.delegated_dispatches.length > 0
-    ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
-    : null;
-  const modernPostDelegationRefs = latestDelegatedRound === null
-    ? []
-    : boundClaimedRefs.filter((ref) =>
-      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestDelegatedRound
-    );
-  const legacyPostDelegationRefs = latestDelegatedRound === null
-    ? []
-    : legacyEventMetadataClaimedRefs.filter((ref) =>
-      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestDelegatedRound)
-    );
-  const modernPostFailedDelegationVerificationRefs = latestFailedDispatchRound === null
-    ? []
-    : boundClaimedRefs.filter((ref) =>
-      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestFailedDispatchRound
-    );
-  const modernPostFailedDelegationRecoveryRefs = modernPostFailedDelegationVerificationRefs.filter((ref) =>
-    evidenceBinding.validEvidenceByRef.get(ref)?.isWriteRun === true
-  );
-  const legacyPostFailedDelegationRefs = latestFailedDispatchRound === null
-    ? []
-    : legacyEventMetadataClaimedRefs.filter((ref) =>
-      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestFailedDispatchRound)
-    );
   let expectedDelegatedIndependentStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (delegatedIndependentGateApplicable && trace.delegated_result_count > 0) {
     const hasFailedDelegation = failedDelegatedDispatches.length > 0;
@@ -580,7 +635,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       || (hasFailedDelegation
         && (!hasModernFailedDelegationVerification || !hasModernFailedDelegationRecovery)
         && hasLegacyPostFailedDelegationEvidence);
-    if (!delegatedIdentityMetadataComplete) {
+    if (!claimMetadataComplete || !delegatedIdentityMetadataComplete) {
       expectedDelegatedIndependentStatus = "unknown";
     } else if (modernEvidencePasses) {
       expectedDelegatedIndependentStatus = "pass";
@@ -612,7 +667,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   if (delegatedSelfReportGateApplicable && trace.delegated_result_count > 0) {
     if (claimedDelegatedIdentityRefs.length > 0) {
       expectedDelegatedSelfReportStatus = "fail";
-    } else if (!delegatedIdentityMetadataComplete) {
+    } else if (!claimMetadataComplete || !delegatedIdentityMetadataComplete) {
       expectedDelegatedSelfReportStatus = "unknown";
     } else {
       expectedDelegatedSelfReportStatus = "pass";
@@ -622,7 +677,8 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const delegatedSelfReportStatusMatches = !delegatedSelfReportGateApplicable
     || reportedDelegatedSelfReportStatus === expectedDelegatedSelfReportStatus;
   let status: HarnessReplayAuditCheckStatus = "pass";
-  if (delegatedFailedCheckIds.length > 0
+  if (((claimRefsMismatch || envelopeRefMismatch) && trace.verified)
+    || delegatedFailedCheckIds.length > 0
     || expectedDelegatedResultsStatus === "fail"
     || expectedDelegatedSelfReportStatus === "fail"
     || expectedClaimedRefsBoundStatus === "fail"
@@ -630,7 +686,9 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     status = "fail";
   } else if (expectedDelegatedResultsStatus === "warning" && reportedDelegatedResultsStatus === "pass") {
     status = "fail";
-  } else if (delegatedWarningCheckIds.length > 0
+  } else if (claimRefsMismatch
+    || envelopeRefMismatch
+    || delegatedWarningCheckIds.length > 0
     || !delegatedResultsStatusMatches
     || !delegatedSelfReportStatusMatches
     || !claimedRefsBoundStatusMatches
@@ -657,6 +715,12 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `claimed_refs_bound_gate_applicable=${claimedRefsBoundGateApplicable}`,
       `claimed_refs_bound_check_count=${reportedClaimedRefsBoundChecks.length}`,
       `verification_evidence_refs_present=${trace.verification_evidence_refs_present}`,
+      `envelope_claimed_verification_refs_present=${claimMetadataComplete}`,
+      `reported_envelope_ref_matches_final=${trace.reported_envelope_ref_matches_final}`,
+      `envelope_claimed_verification_refs=${authoritativeClaimRefs.length}`,
+      `report_claimed_verification_refs=${trace.claimed_verification_refs.length}`,
+      `claimed_verification_refs_match=${claimRefsMatch}`,
+      `claimed_verification_refs_mismatch=${claimRefsMismatch}`,
       `non_delegated_claimed_refs=${nonDelegatedClaimedRefs.length}`,
       `bound_claimed_refs=${boundClaimedRefs.length}`,
       `unbound_claimed_refs=${unboundClaimedRefs.length}`,
@@ -688,18 +752,23 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
 }
 
 function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const evidenceTruth = delegatedEvidenceTruth(trace);
   const evidenceRefs = new Set(trace.verification_evidence_refs.map((item) => item.ref));
-  const claimedRefs = new Set(trace.claimed_verification_refs);
-  const delegatedResultIds = new Set(trace.delegated_dispatches
-    .map((dispatch) => dispatch.result_id)
-    .filter((ref): ref is string => ref !== null));
-  const delegatedDispatchRefs = new Set(trace.delegated_dispatches
-    .map((dispatch) => dispatch.result_ref)
-    .filter((ref) => ref.length > 0));
-  const delegatedRefs = new Set([...delegatedResultIds, ...delegatedDispatchRefs]);
+  const claimedRefs = evidenceTruth.claimedRefs;
+  const delegatedResultIds = new Set(evidenceTruth.delegatedResultIds);
+  const delegatedDispatchRefs = new Set(evidenceTruth.delegatedResultRefs);
+  const delegatedRefs = evidenceTruth.delegatedIdentityRefs;
   const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
   const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
-  const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
+  const reportedClaimRefs = new Set(trace.claimed_verification_refs);
+  const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => claimedRefs.has(item.ref));
+  const reportedClaimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
+  const topLevelClaimRefMismatches = evidenceTruth.claimMetadataComplete
+    ? unique([
+      ...evidenceTruth.authoritativeClaimRefs.filter((ref) => !reportedClaimRefs.has(ref)),
+      ...trace.claimed_verification_refs.filter((ref) => !claimedRefs.has(ref))
+    ])
+    : [];
   const sourceRefMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.ref !== (item.source === "tool_result" ? item.tool_result_id : item.artifact_ref)
   );
@@ -745,55 +814,68 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     const events = toolResultEventsById.get(items[0]!.event_id);
     return events?.length === 1 && events[0]!.round !== items[0]!.round;
   });
-  const latestDelegatedRound = trace.delegated_dispatches.length > 0
-    ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
-    : null;
-  const failedDelegatedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok);
-  const latestFailedDelegatedRound = failedDelegatedDispatches.length > 0
-    ? Math.max(...failedDelegatedDispatches.map((dispatch) => dispatch.round))
-    : null;
+  const latestDelegatedRound = evidenceTruth.latestDelegatedRound;
+  const latestFailedDelegatedRound = evidenceTruth.latestFailedDelegationRound;
   const afterLatestDelegationMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.after_latest_delegation !== (latestDelegatedRound === null || item.round > latestDelegatedRound)
   );
   const afterLatestFailedDelegationMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.after_latest_failed_delegation !== (latestFailedDelegatedRound === null || item.round > latestFailedDelegatedRound)
   );
-  const claimedFlagMismatchRefs = trace.verification_evidence_refs.filter((item) =>
-    item.claimed !== claimedRefs.has(item.ref)
-  );
-  const claimedDelegatedRefs = trace.claimed_verification_refs
+  const claimedFlagMismatchRefs = evidenceTruth.claimMetadataComplete
+    ? trace.verification_evidence_refs.filter((item) => item.claimed !== claimedRefs.has(item.ref))
+    : [];
+  const claimedDelegatedRefs = evidenceTruth.authoritativeClaimRefs
     .filter((ref) => delegatedRefs.has(ref));
   const claimedDelegatedResultIds = claimedDelegatedRefs.filter((ref) => delegatedResultIds.has(ref));
   const claimedDelegatedReportRefs = claimedDelegatedRefs.filter((ref) => delegatedReportRefs.has(ref));
   const claimedDelegatedEventFallbackRefs = claimedDelegatedRefs.filter((ref) => delegatedEventFallbackRefs.has(ref));
-  const missingClaimedLineage = trace.claimed_verification_refs.filter((ref) =>
-    !delegatedRefs.has(ref) && !evidenceRefs.has(ref)
+  const verificationEvidenceLineageUnknown = !trace.verification_evidence_refs_present
+    && evidenceTruth.authoritativeClaimRefs.some((ref) => !delegatedRefs.has(ref));
+  const missingClaimedLineage = trace.verification_evidence_refs_present
+    ? evidenceTruth.authoritativeClaimRefs.filter((ref) =>
+      !delegatedRefs.has(ref) && !evidenceRefs.has(ref)
+    )
+    : [];
+  const expectedIndependentMarkerRefs = new Set(evidenceTruth.boundClaimedRefs.filter((ref) =>
+    latestDelegatedRound === null
+      || (evidenceTruth.evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestDelegatedRound
+  ));
+  const expectedRecoveryMarkerRefs = new Set(evidenceTruth.postFailedDelegationRecoveryRefs);
+  const legacyIndependentMarkerRefs = new Set(evidenceTruth.legacyEventMetadataClaimedRefs.filter((ref) =>
+    latestDelegatedRound === null
+      || trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestDelegatedRound)
+  ));
+  const legacyRecoveryMarkerRefs = new Set(evidenceTruth.legacyEventMetadataClaimedRefs.filter((ref) =>
+    latestFailedDelegatedRound !== null
+      && trace.verification_evidence_refs.some((item) =>
+        item.ref === ref && item.is_write_run && item.round > latestFailedDelegatedRound
+      )
+  ));
+  const reportedIndependentMarkerRefs = trace.verification_evidence_refs
+    .filter((item) => item.counts_as_independent_evidence);
+  const reportedRecoveryMarkerRefs = trace.verification_evidence_refs
+    .filter((item) => item.counts_as_failed_delegation_recovery);
+  const invalidIndependentLineageRefs = reportedIndependentMarkerRefs.filter((item) =>
+    !expectedIndependentMarkerRefs.has(item.ref) && !legacyIndependentMarkerRefs.has(item.ref)
   );
-  const delegatedIndependentPassed = trace.delegated_completion_gate_checks.some((check) =>
-    check.id === delegateAgentCompletionGateCheckId.delegatedIndependentEvidence && check.status === "pass"
+  const invalidRecoveryLineageRefs = reportedRecoveryMarkerRefs.filter((item) =>
+    !expectedRecoveryMarkerRefs.has(item.ref) && !legacyRecoveryMarkerRefs.has(item.ref)
   );
-  const failedDelegationRecovered = trace.delegated_completion_gate_checks.some((check) =>
-    check.id === delegateAgentCompletionGateCheckId.delegatedResults && check.status === "warning"
+  const missingIndependentMarkerRefs = [...expectedIndependentMarkerRefs].filter((ref) =>
+    !reportedIndependentMarkerRefs.some((item) => item.ref === ref)
   );
-  const independentEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_independent_evidence);
-  const recoveryEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_failed_delegation_recovery);
-  const invalidIndependentLineageRefs = independentEvidenceRefs.filter((item) =>
-    !item.claimed
-    || !claimedRefs.has(item.ref)
-    || !item.ok
-    || !item.after_latest_delegation
+  const missingRecoveryMarkerRefs = [...expectedRecoveryMarkerRefs].filter((ref) =>
+    !reportedRecoveryMarkerRefs.some((item) => item.ref === ref)
   );
-  const invalidRecoveryLineageRefs = recoveryEvidenceRefs.filter((item) =>
-    trace.delegated_result_failed_count === 0
-    || !item.claimed
-    || !claimedRefs.has(item.ref)
-    || !item.ok
-    || !item.is_write_run
-    || !item.after_latest_failed_delegation
-  );
-  const missingIndependentLineage = delegatedIndependentPassed && independentEvidenceRefs.length === 0;
-  const missingRecoveryLineage = failedDelegationRecovered && recoveryEvidenceRefs.length === 0;
-  const hasLineageAttention = missingClaimedLineage.length > 0
+  const legacyMarkerUnknownRefs = unique([
+    ...legacyIndependentMarkerRefs,
+    ...legacyRecoveryMarkerRefs
+  ]);
+  const hasDefinitiveLineageDrift = (evidenceTruth.claimMetadataComplete
+    && !trace.reported_envelope_ref_matches_final)
+    || topLevelClaimRefMismatches.length > 0
+    || missingClaimedLineage.length > 0
     || claimedDelegatedRefs.length > 0
     || sourceRefMismatchRefs.length > 0
     || evidencePairCardinalityMismatchRefs.length > 0
@@ -805,22 +887,33 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     || afterLatestDelegationMismatchRefs.length > 0
     || afterLatestFailedDelegationMismatchRefs.length > 0
     || claimedFlagMismatchRefs.length > 0
-    || missingIndependentLineage
-    || missingRecoveryLineage
     || invalidIndependentLineageRefs.length > 0
     || invalidRecoveryLineageRefs.length > 0;
-  const status: HarnessReplayAuditCheckStatus = hasLineageAttention
-    ? (trace.verified ? "fail" : "warning")
-    : "pass";
+  const hasConservativeLineageDrift = !evidenceTruth.claimMetadataComplete
+    || verificationEvidenceLineageUnknown
+    || missingIndependentMarkerRefs.length > 0
+    || missingRecoveryMarkerRefs.length > 0
+    || legacyMarkerUnknownRefs.length > 0;
+  let status: HarnessReplayAuditCheckStatus = "pass";
+  if (hasDefinitiveLineageDrift && trace.verified) status = "fail";
+  else if (hasDefinitiveLineageDrift || hasConservativeLineageDrift) status = "warning";
   return {
     id: "verification_evidence_lineage",
     status,
     summary: [
-      `claimed_refs=${trace.claimed_verification_refs.length}`,
+      `claimed_refs=${evidenceTruth.authoritativeClaimRefs.length}`,
+      `report_claimed_refs=${trace.claimed_verification_refs.length}`,
+      `envelope_claimed_refs_present=${evidenceTruth.claimMetadataComplete}`,
+      `reported_envelope_ref_matches_final=${trace.reported_envelope_ref_matches_final}`,
+      `top_level_claim_ref_mismatches=${topLevelClaimRefMismatches.length}`,
+      `verification_evidence_lineage_unknown=${verificationEvidenceLineageUnknown}`,
       `verification_evidence_refs=${trace.verification_evidence_ref_count}`,
       `claimed_evidence_refs=${claimedEvidenceRefs.length}`,
-      `independent_evidence_refs=${independentEvidenceRefs.length}`,
-      `failed_delegation_recovery_refs=${recoveryEvidenceRefs.length}`,
+      `reported_claimed_evidence_refs=${reportedClaimedEvidenceRefs.length}`,
+      `independent_evidence_refs=${expectedIndependentMarkerRefs.size}`,
+      `reported_independent_evidence_refs=${reportedIndependentMarkerRefs.length}`,
+      `failed_delegation_recovery_refs=${expectedRecoveryMarkerRefs.size}`,
+      `reported_failed_delegation_recovery_refs=${reportedRecoveryMarkerRefs.length}`,
       `claimed_delegated_refs=${claimedDelegatedRefs.length}`,
       `claimed_delegated_result_ids=${claimedDelegatedResultIds.length}`,
       `claimed_delegated_report_refs=${claimedDelegatedReportRefs.length}`,
@@ -836,14 +929,17 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `after_latest_delegation_mismatches=${afterLatestDelegationMismatchRefs.length}`,
       `after_latest_failed_delegation_mismatches=${afterLatestFailedDelegationMismatchRefs.length}`,
       `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
-      `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
-      `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
+      `missing_independent_lineage=${missingIndependentMarkerRefs.length}`,
+      `missing_recovery_lineage=${missingRecoveryMarkerRefs.length}`,
       `invalid_independent_lineage=${invalidIndependentLineageRefs.length}`,
-      `invalid_recovery_lineage=${invalidRecoveryLineageRefs.length}`
+      `invalid_recovery_lineage=${invalidRecoveryLineageRefs.length}`,
+      `legacy_marker_unknown_refs=${legacyMarkerUnknownRefs.length}`
     ].join("; "),
-    refs: hasLineageAttention
+    refs: hasDefinitiveLineageDrift || hasConservativeLineageDrift
       ? unique([
         trace.report_ref,
+        ...(verificationEvidenceLineageUnknown ? evidenceTruth.authoritativeClaimRefs : []),
+        ...topLevelClaimRefMismatches,
         ...claimedDelegatedRefs,
         ...trace.delegated_dispatches
           .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
@@ -865,14 +961,11 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
         ...afterLatestDelegationMismatchRefs.map((item) => item.ref),
         ...afterLatestFailedDelegationMismatchRefs.map((item) => item.ref),
         ...claimedFlagMismatchRefs.map((item) => item.ref),
+        ...missingIndependentMarkerRefs,
+        ...missingRecoveryMarkerRefs,
         ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),
-        ...trace.delegated_completion_gate_checks
-          .filter((check) =>
-            check.id === delegateAgentCompletionGateCheckId.delegatedIndependentEvidence
-            || check.id === delegateAgentCompletionGateCheckId.delegatedResults
-          )
-          .flatMap((check) => check.refs)
+        ...legacyMarkerUnknownRefs
       ])
       : unique([trace.report_ref, ...claimedEvidenceRefs.map((item) => item.ref)])
   };

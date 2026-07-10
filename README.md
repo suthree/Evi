@@ -439,6 +439,13 @@ delegation additionally requires later claimed write/run recovery plus later
 ordinary verification. Forged report passes cannot hide a failure, report
 downgrades remain attention, relevant legacy metadata stays unknown, and
 non-`done` completion must omit this check.
+Replay takes claimed verification refs from the persisted final model-action
+envelope, then compares the completion report against that source. It derives
+expected independent and recovery markers from those claims plus uniquely
+bound tool-result events; report-owned claim refs, gate statuses, and
+`counts_as_*` flags are parity metadata only. Forged positive markers fail a
+verified trace, conservative marker downgrades remain attention, and relevant
+legacy metadata remains unknown.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.

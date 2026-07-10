@@ -33,6 +33,7 @@ export interface LiveRunTraceRound {
   envelope_ref: string;
   summary: string;
   completion_status: ModelActionEnvelope["completion_claim"]["status"];
+  completion_verification_refs: string[];
   action_counts: Record<string, number>;
   action_types: string[];
   delegated_action_ids: string[];
@@ -124,6 +125,11 @@ export interface LiveRunTraceSummary {
   completion_failed_check_ids: string[];
   completion_warning_check_ids: string[];
   claimed_verification_refs: string[];
+  reported_envelope_ref: string;
+  final_envelope_ref: string | null;
+  reported_envelope_ref_matches_final: boolean;
+  envelope_claimed_verification_refs_present: boolean;
+  envelope_claimed_verification_refs: string[];
   verification_evidence_refs_present: boolean;
   verification_evidence_ref_count: number;
   verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
@@ -253,6 +259,10 @@ async function summarizeLiveRunTrace(
   const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
   const rounds = await readTraceRounds(store, runEvents);
+  const finalEnvelopeRef = runEvents
+    .filter((event) => event.kind === "model_action")
+    .at(-1)?.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
+  const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const toolResultEvents = readToolResultEventSummaries(runEvents);
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
@@ -304,6 +314,13 @@ async function summarizeLiveRunTrace(
     completion_failed_check_ids: report.checks.filter((check) => check.status === "fail").map((check) => check.id),
     completion_warning_check_ids: report.checks.filter((check) => check.status === "warning").map((check) => check.id),
     claimed_verification_refs: [...report.claimed_verification_refs],
+    reported_envelope_ref: report.envelope_ref,
+    final_envelope_ref: finalEnvelopeRef,
+    reported_envelope_ref_matches_final: finalEnvelopeRef === report.envelope_ref,
+    envelope_claimed_verification_refs_present: completionEnvelopeRound !== undefined,
+    envelope_claimed_verification_refs: completionEnvelopeRound
+      ? [...completionEnvelopeRound.completion_verification_refs]
+      : [],
     verification_evidence_refs_present: verificationEvidenceRefsPresent,
     verification_evidence_ref_count: report.verification_evidence_refs.length,
     verification_evidence_refs: report.verification_evidence_refs.map((item) => ({ ...item })),
@@ -335,7 +352,7 @@ async function summarizeLiveRunTrace(
     refs,
     boundary: [
       "read-only live run trace; reads bounded completion, envelope, diagnostic, event, delegated dispatch,",
-      "tool-result identity/success/side-effect/write-run/round/artifact, gate, report-delegated-ref, and repo-write-guard metadata;",
+      "tool-result identity/success/side-effect/write-run/round/artifact, final-envelope claim refs, gate, report-delegated-ref, and repo-write-guard metadata;",
       "legacy delegated refs may use event-summary fallback; never renders raw model, tool, delegated, final-response, context,",
       "or harness artifact bodies"
     ].join(" ")
@@ -548,6 +565,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
       envelope_ref: ref,
       summary: parsed.data.summary,
       completion_status: parsed.data.completion_claim.status,
+      completion_verification_refs: [...parsed.data.completion_claim.verification_refs],
       action_counts: actionCounts,
       action_types: Object.keys(actionCounts).sort(),
       delegated_action_ids: delegateActions

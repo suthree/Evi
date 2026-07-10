@@ -5078,6 +5078,12 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=passed/);
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /envelope_claimed_refs_present=true/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /top_level_claim_ref_mismatches=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /independent_evidence_refs=1/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /reported_independent_evidence_refs=1/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /failed_delegation_recovery_refs=1/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /reported_failed_delegation_recovery_refs=1/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /source_ref_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /evidence_pair_cardinality_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /evidence_pair_metadata_mismatches=0/);
@@ -5254,6 +5260,10 @@ test("live runner rejects read-only tool refs as failed delegation recovery evid
     assert.match(replayGate?.summary ?? "", /post_failed_delegation_verification_refs=1/);
     assert.match(replayGate?.summary ?? "", /post_failed_delegation_recovery_refs=0/);
     assert.match(replayGate?.summary ?? "", /delegated_independent_status_match=true/);
+    const replayLineage = replay.checks.find((check) => check.id === "verification_evidence_lineage");
+    assert.equal(replayLineage?.status, "pass");
+    assert.match(replayLineage?.summary ?? "", /missing_recovery_lineage=0/);
+    assert.match(replayLineage?.summary ?? "", /invalid_recovery_lineage=0/);
   } finally {
     await fixture.cleanup();
   }
@@ -5328,6 +5338,9 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_independent_status=skipped/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_check_count=0/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_status_match=true/);
+    assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /missing_recovery_lineage=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /invalid_recovery_lineage=0/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {

@@ -1591,6 +1591,22 @@ forges `pass`; a report downgrade of a valid expected pass remains attention.
 Relevant legacy traces without the bounded event metadata remain
 unknown/attention, and non-`done` completion must contain no instance of this
 check. This parity check reads bounded metadata only and performs no migration.
+The persisted final model-action envelope, not the completion report, is the
+authority for `completion_claim.verification_refs`. Trace exposes those refs as
+bounded metadata and replay compares the report copy against them. Replay then
+recomputes the expected independent marker for every claimed, event-bound
+successful ref after the latest delegation (or every claimed event-bound ref
+when no delegation exists), and the expected recovery marker for claimed
+event-bound write/run refs after the latest failed delegation. Report-owned
+claim refs, gate statuses, and `counts_as_independent_evidence` /
+`counts_as_failed_delegation_recovery` only participate in parity checks. A
+forged positive marker is definitive drift and fails a verified trace; a
+conservative false marker remains attention. Non-`done` reports still receive
+marker parity checks because marker metadata is written independently of the
+completion gate, but they do not require a done-only independent gate or
+recovery. Missing final-envelope or relevant historical event metadata remains
+unknown/attention. No raw envelope response, tool body, or artifact body is
+rendered, and no historical state is migrated.
 It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion
