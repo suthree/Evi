@@ -377,6 +377,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.reject_if.some((item) => item.includes("raw delegated artifact bodies")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("model proposes while the harness executes")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("provided Task/Context text and named evidence refs")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("exactly one strict JSON object")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("no Markdown, code fence, wrapper prose, or extra keys")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("parseDelegationRequest")), true);
     assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract, [...delegateAgentAuthoringContract.runner_input_contract]);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);
@@ -663,6 +665,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("command/test execution")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("explicit payload/evidence source boundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("expected summary/findings_text output shape")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("exactly one strict JSON object")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.instruction_boundary.some((item) => item.includes("no Markdown, code fence, wrapper prose, or extra keys")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("fails a done claim")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.completion_gate.some((item) => item.includes("harness-known non-delegated verification refs")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.required_metadata.includes("contract_status"), true);

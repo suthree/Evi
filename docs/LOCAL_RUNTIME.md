@@ -2090,7 +2090,8 @@ fan-out; concrete command or tool-surface grants such as `tsc`, `pnpm`,
 browsing are rejected as command/tool authority grants. The fixed delegated
 subagent instructions repeat that source boundary: use only the Task and Context
 text from the delegated request, including named evidence refs already present
-there.
+there, and return exactly one strict JSON object with only `summary` and
+`findings_text`, with no Markdown, code fence, wrapper prose, or extra keys.
 Otherwise the runner records `input_contract_failed` without calling the
 submodel. The live
 runner allows at most one `delegate_agent` action per model round; extra

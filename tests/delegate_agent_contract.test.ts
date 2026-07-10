@@ -23,7 +23,9 @@ test("delegate_agent subagent instructions constrain source boundary", () => {
 
   assert.match(instructions, /Use only the Task and Context text provided/);
   assert.match(instructions, /named evidence refs already present there/);
-  assert.match(instructions, /strict json object with keys summary and findings_text/);
+  assert.match(instructions, /Return exactly one strict JSON object/);
+  assert.match(instructions, /no Markdown, code fence, wrapper prose, or extra keys/);
+  assert.match(instructions, /The only allowed keys are summary and findings_text/);
   assert.match(instructions, /Do not claim tool\/write\/mutation/);
 });
 

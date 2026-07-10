@@ -153,7 +153,8 @@ export function formatDelegateAgentSubagentInstructions(): string[] {
     "You are a bounded local-agent subagent.",
     "You do not have memory or tools in the current minimal runtime.",
     "Use only the Task and Context text provided in this delegated request, including named evidence refs already present there.",
-    `Return a strict json object with keys ${delegateAgentActionContract.output_keys.join(" and ")}.`,
+    "Return exactly one strict JSON object and no Markdown, code fence, wrapper prose, or extra keys.",
+    `The only allowed keys are ${delegateAgentActionContract.output_keys.join(" and ")}.`,
     `summary max ${delegateAgentActionContract.summary_max_chars} chars; findings_text max ${delegateAgentActionContract.findings_max_chars} chars.`,
     delegateAgentAuthoringContract.delegated_model_authority_boundary
   ];

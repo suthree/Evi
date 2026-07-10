@@ -1197,6 +1197,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "liveInstructions states the model proposes while the harness executes, verifies, audits, and promotes",
         "delegate_agent is separate from use_tool and does not grant tool/write/mutation/completion authority",
         "subagent instructions limit delegated analysis to the provided Task/Context text and named evidence refs already present there",
+        "subagent instructions require exactly one strict JSON object with only summary/findings_text and no Markdown, code fence, wrapper prose, or extra keys",
         "delegated tasks cannot schedule expert or autonomous multi-agent work"
       ],
       input_contract: [...delegateAgentAuthoringContract.runner_input_contract],
