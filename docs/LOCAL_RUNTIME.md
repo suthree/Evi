@@ -847,6 +847,12 @@ names the allowed `delegate_agent` task/context/result/trace/replay/completion
 verification surface and excludes delegated tool/write/mutation authority,
 delegated completion authority, model fan-out, autonomous scheduling, and
 expert personas.
+The same implementation contract embeds a structured `delegation_contract`
+derived from the shared GA delegation loop, so its payload/output keys, limits,
+failure kinds, recovery requirements, replay checks, and main-harness
+completion authority remain available without reading a sibling plan field.
+Reusing a matching open plan iteration can backfill this derived field, and
+iteration audit reports missing or mismatched copies.
 The same guidance can audit that contract through `current_state`: outcome
 claims must preserve the implementation contract's selected layer, allowed
 scope, deferred scope, and delivery standard instead of treating the contract as

@@ -148,9 +148,41 @@ export interface GaProjectDesignImplementationContract {
   selected_layer: CapabilityLayer;
   owner_surface: string;
   improvement_type: "reusable_ga_design_contract";
+  delegation_contract?: GaProjectDesignDelegationImplementationContract;
   implementation_scope: string[];
   deferred_scope: string[];
   delivery_standard: string[];
+  boundary: string;
+}
+
+export interface GaProjectDesignDelegationImplementationContract {
+  action: "delegate_agent";
+  lifecycle_steps: string[];
+  task_context: {
+    payload_keys: string[];
+    task_max_chars: number;
+    context_max_chars: number;
+    task_required: string[];
+    context_required: string[];
+  };
+  result: {
+    output_keys: string[];
+    summary_max_chars: number;
+    findings_max_chars: number;
+    dispatch_failure_kinds: string[];
+    result_failure_kinds: string[];
+  };
+  completion_verification: {
+    authority: "main_harness";
+    check_ids: string[];
+    recovery_requires: string[];
+    delegated_refs_are_proof: false;
+  };
+  trace_replay: {
+    required_metadata: string[];
+    checks: string[];
+    reads_delegated_artifact_bodies: false;
+  };
   boundary: string;
 }
 
@@ -875,6 +907,9 @@ function buildImplementationContract(
     selected_layer: target.layer,
     owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
+    ...(target.target_dimension_id === "general_agent_delegation"
+      ? { delegation_contract: buildDelegationImplementationContract(buildGeneralDelegationLoop()) }
+      : {}),
     implementation_scope: [
       "change one reusable GA project-design contract or read-model surface",
       ...(target.target_dimension_id === "general_agent_delegation"
@@ -907,6 +942,41 @@ function buildImplementationContract(
       "a verified outcome is recorded before the contract is reused as future GA design evidence"
     ],
     boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
+  };
+}
+
+function buildDelegationImplementationContract(
+  loop: GaProjectDesignGeneralDelegationLoop
+): GaProjectDesignDelegationImplementationContract {
+  return {
+    action: loop.action,
+    lifecycle_steps: [...loop.lifecycle_steps],
+    task_context: {
+      payload_keys: [...delegateAgentActionContract.payload_keys],
+      task_max_chars: loop.task_contract.max_chars,
+      context_max_chars: loop.context_contract.max_chars,
+      task_required: [...loop.task_contract.required],
+      context_required: [...loop.context_contract.required]
+    },
+    result: {
+      output_keys: [...delegateAgentActionContract.output_keys],
+      summary_max_chars: loop.result_contract.summary_max_chars,
+      findings_max_chars: loop.result_contract.findings_max_chars,
+      dispatch_failure_kinds: [...loop.dispatch_failure_kind_contract.values],
+      result_failure_kinds: [...loop.result_failure_kind_contract.values]
+    },
+    completion_verification: {
+      authority: "main_harness",
+      check_ids: [...delegateAgentActionContract.completion_gate_check_ids],
+      recovery_requires: [...loop.recovery_contract.required],
+      delegated_refs_are_proof: false
+    },
+    trace_replay: {
+      required_metadata: [...loop.replay_audit_contract.required_metadata],
+      checks: [...loop.replay_audit_contract.checks],
+      reads_delegated_artifact_bodies: false
+    },
+    boundary: "read-only delegate_agent implementation boundary copied from the shared GA delegation loop; does not dispatch models, read delegated artifact bodies, grant delegated authority, or prove completion"
   };
 }
 

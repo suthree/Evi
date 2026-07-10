@@ -269,6 +269,26 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("runner-enforced task/context/result contract and main-harness completion gate")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.action, "delegate_agent");
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.lifecycle_steps,
+      readModel.next_core_basic_plan?.general_delegation_loop.lifecycle_steps
+    );
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.task_context.task_required,
+      delegateAgentAuthoringContract.task.required
+    );
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.result.result_failure_kinds,
+      delegateAgentActionContract.result_kinds
+    );
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.check_ids,
+      delegateAgentActionContract.completion_gate_check_ids
+    );
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.authority, "main_harness");
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.delegated_refs_are_proof, false);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.trace_replay.reads_delegated_artifact_bodies, false);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no delegated tool/write/mutation authority")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);

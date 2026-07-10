@@ -30,6 +30,7 @@ import {
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
 import { AgentStore } from "../packages/core/src/store.js";
+import type { GaProjectDesignImplementationContract } from "../packages/core/src/ga_project_design.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -464,6 +465,27 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(covered.status, "covered");
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
+
+  const delegationContract = {
+    action: "delegate_agent"
+  } as NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>;
+  const delegatedPlanContract = { ...planContract, delegation_contract: delegationContract };
+  const missingDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(missingDelegationContract.status, "missing_required_fields");
+  assert.deepEqual(missingDelegationContract.missing_fields, ["delegation_contract"]);
+  const coveredDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: delegatedPlanContract
+  });
+  assert.equal(coveredDelegationContract.status, "covered");
+  assert.equal(coveredDelegationContract.required_tokens.includes("implementation_contract.delegation_contract"), true);
 
   const coveredHistorical = buildIterationAuditImplementationContractCoverage({
     ...planContract,

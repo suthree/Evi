@@ -817,6 +817,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(!contract.proposed_slice ? ["proposed_slice"] : []),
     ...(!contract.selected_layer ? ["selected_layer"] : []),
     ...(!contract.owner_surface ? ["owner_surface"] : []),
+    ...(expectedContract.delegation_contract && !contract.delegation_contract ? ["delegation_contract"] : []),
     ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
     ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
     ...(!contract.delivery_standard?.length ? ["delivery_standard"] : [])
@@ -825,6 +826,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(contract.proposed_slice !== expectedContract.proposed_slice || contract.proposed_slice !== iteration.proposed_slice ? ["proposed_slice"] : []),
     ...(contract.selected_layer !== expectedContract.selected_layer || contract.selected_layer !== iteration.layer ? ["selected_layer"] : []),
     ...(contract.owner_surface !== expectedContract.owner_surface || contract.owner_surface !== iteration.owner_surface ? ["owner_surface"] : []),
+    ...(JSON.stringify(contract.delegation_contract ?? null) !== JSON.stringify(expectedContract.delegation_contract ?? null) ? ["delegation_contract"] : []),
     ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
     ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
     ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : [])
@@ -849,6 +851,7 @@ function implementationContractRequiredTokens(
     `implementation_contract.proposed_slice=${contract.proposed_slice}`,
     `implementation_contract.selected_layer=${contract.selected_layer}`,
     `implementation_contract.owner_surface=${contract.owner_surface}`,
+    ...(contract.delegation_contract ? ["implementation_contract.delegation_contract"] : []),
     "implementation_contract.implementation_scope",
     "implementation_contract.deferred_scope",
     "implementation_contract.delivery_standard"

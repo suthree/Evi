@@ -105,9 +105,13 @@ export async function recordSelfEvolutionIteration(
       && (iteration.source_ref ?? "") === (sourceRef ?? "")
     );
     if (existing) {
-      const iteration = existing.implementation_contract || !args.implementationContract
+      const implementationContract = mergeOpenImplementationContract(
+        existing.implementation_contract,
+        args.implementationContract
+      );
+      const iteration = implementationContract === existing.implementation_contract
         ? existing
-        : { ...existing, implementation_contract: args.implementationContract };
+        : { ...existing, implementation_contract: implementationContract };
       if (iteration !== existing) await store.writeJson(iteration.ref, iteration);
       return {
         action: "record-iteration",
@@ -117,7 +121,7 @@ export async function recordSelfEvolutionIteration(
         inspect_command: `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`,
         boundary: iteration === existing
           ? `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; no new state record was written`
-          : `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; persisted supplied implementation contract on the existing state record`
+          : `${ITERATION_BOUNDARY}; reused existing open iteration matching layer, owner surface, proposed slice, and source ref; persisted supplied implementation contract fields on the existing state record`
       };
     }
   }
@@ -159,6 +163,15 @@ export async function recordSelfEvolutionIteration(
     inspect_command: `pnpm run runtime -- governance iterations --iteration ${id} --state-root <state-root>`,
     boundary: ITERATION_BOUNDARY
   };
+}
+
+function mergeOpenImplementationContract(
+  existing: GaProjectDesignImplementationContract | undefined,
+  supplied: GaProjectDesignImplementationContract | undefined
+): GaProjectDesignImplementationContract | undefined {
+  if (!existing || !supplied) return existing ?? supplied;
+  if (existing.delegation_contract || !supplied.delegation_contract) return existing;
+  return { ...existing, delegation_contract: supplied.delegation_contract };
 }
 
 export async function listSelfEvolutionIterations(

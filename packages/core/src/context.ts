@@ -1630,6 +1630,9 @@ export function compactGaPlanImplementationContract(
   const contract = plan.implementation_contract;
   return [
     `type=${contract.improvement_type}`,
+    ...(contract.delegation_contract
+      ? [`delegation=${contract.delegation_contract.action}:task_context>result>trace_replay>main_harness_completion`]
+      : []),
     `scope=${contract.implementation_scope[0] ?? "unknown"}`,
     `defer=${contract.deferred_scope[0] ?? "unknown"}`,
     `deliver=${contract.delivery_standard[0] ?? "unknown"}`

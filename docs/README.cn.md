@@ -272,8 +272,8 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `goal_scope` 会直接保留 operator objective、owner surface、source of truth 和 success evidence；它只用于目标定向，不执行、不证明完成；
 `goal_scope` audit seed 还会要求 outcome 核对这些结构化证据，并拒绝无法区分 completed source slice 与 successor slice 的 success evidence；
 `implementation_contract` 会在执行前说明本轮只允许一个可复用 GA design contract/read-model 改进、哪些外部工具/local-learning/专家调度范围要递延、以及交付标准是什么；当 slice 是 `general_agent_delegation`，字面合同的 source of truth 是 `packages/core/src/action_contracts.ts`，纯解析边界在 `packages/core/src/delegate_agent_contract.ts`，纯 completion-gate 边界在 `packages/core/src/delegate_agent_completion_gate.ts`，task/context authoring 规则、schema、runner、Live Run Trace、replay audit、context read model、project-design/scorecard 按需消费其中字段做校验、执行和审计对齐；它是边界提示，不执行、不调度、不提升学习资产、不证明完成；
-当 slice 是 `general_agent_delegation`，`implementation_contract` 还必须直接写明允许改动的 `delegate_agent` task/context/result/trace/replay/completion verification surface，并排除 delegated tool/write/mutation authority、delegated completion authority、model fan-out、自主 scheduler 和 expert persona；
-由 project-design plan 打开的 iteration record 会持久化同一份 `implementation_contract`，后续审计可以直接从 state record 读取边界，而不是只回推 source artifact；
+当 slice 是 `general_agent_delegation`，`implementation_contract` 还必须直接写明允许改动的 `delegate_agent` task/context/result/trace/replay/completion verification surface，并排除 delegated tool/write/mutation authority、delegated completion authority、model fan-out、自主 scheduler 和 expert persona；其中结构化 `delegation_contract` 直接派生自共享 GA delegation loop，保留 payload/output keys、限制、failure kinds、recovery 要求、replay checks 和 main-harness 完成权；
+由 project-design plan 打开的 iteration record 会持久化同一份 `implementation_contract`，matching open iteration 可以补齐新派生的 `delegation_contract` 字段；后续审计可以直接从 state record 读取边界，缺失或不一致会阻塞 contract coverage，而不是只回推 source artifact；
 `current_state` audit seed 会要求后续 outcome 说明实际改动如何留在 `implementation_scope` 内、没有进入 `deferred_scope`，并保持 selected layer、owner surface 和 delivery standard 一致；
 `stage_exit` 会按每个 core/basic capability stage 各保留一条退出标准；
 `phase_forbid` 会按每个 phase gate 各保留一条 forbidden shortcut；

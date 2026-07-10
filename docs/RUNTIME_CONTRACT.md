@@ -689,6 +689,13 @@ For `general_agent_delegation`, the same contract must name the allowed
 surface and keep delegated tool/write/mutation authority, delegated completion
 authority, model fan-out, autonomous scheduling, and expert personas out of
 scope.
+The contract carries that surface in a structured `delegation_contract` copied
+from the shared GA delegation loop: payload and output keys, limits, failure
+kinds, completion-gate check ids, recovery requirements, replay metadata/checks,
+and main-harness authority remain inspectable from the implementation contract
+itself. Plan-derived iteration reuse may backfill this newly derived field on a
+matching open record; iteration audit treats a missing or mismatched field as
+incomplete contract coverage.
 It is pre-execution boundary guidance, not an executor, scheduler, learning
 promotion, or completion proof.
 Completion-audit seeds may require the outcome to show that the delivered

@@ -10,7 +10,10 @@ import {
   recordSelfEvolutionIterationOutcome,
   recordSelfEvolutionIteration
 } from "../packages/core/src/self_evolution_iterations.js";
-import { getGaProjectDesignReadModel } from "../packages/core/src/ga_project_design.js";
+import {
+  getGaProjectDesignReadModel,
+  type GaProjectDesignImplementationContract
+} from "../packages/core/src/ga_project_design.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("self-evolution iteration contracts record layer declarations without executing work", async () => {
@@ -207,6 +210,18 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(second.iteration.implementation_contract?.source_artifact_id, "ga_design_artifact_iteration_contract_seed");
     assert.match(second.boundary, /reused existing open iteration/);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
+
+    const delegationContract = {
+      action: "delegate_agent"
+    } as NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>;
+    const backfilled = await recordSelfEvolutionIteration(store, {
+      ...args,
+      implementationContract: { ...implementationContract, delegation_contract: delegationContract }
+    });
+    assert.equal(backfilled.created, false);
+    assert.equal(backfilled.reused_existing, true);
+    assert.equal(backfilled.iteration.implementation_contract?.delegation_contract, delegationContract);
+    assert.match(backfilled.boundary, /persisted supplied implementation contract fields/);
 
     await recordSelfEvolutionIterationOutcome(store, {
       iterationRef: first.iteration.id,
