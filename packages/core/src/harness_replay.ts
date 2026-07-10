@@ -320,12 +320,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `Replayed bounded trace metadata for ${trace.completion_id}.`,
       refs: [trace.report_ref]
     },
-    {
-      id: "completion_verification_state",
-      status: trace.verification_status === "passed" && trace.verified ? "pass" : "warning",
-      summary: `completion_status=${trace.completion_status}; verification_status=${trace.verification_status}; verified=${trace.verified}`,
-      refs: [trace.report_ref]
-    },
+    completionVerificationStateCheck(trace),
     delegatedCompletionGateCheck(trace),
     verificationEvidenceLineageCheck(trace),
     {
@@ -355,6 +350,34 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  let expectedVerificationStatus: LiveRunTraceSummary["verification_status"] = "skipped";
+  if (trace.completion_status === "done") {
+    expectedVerificationStatus = trace.completion_failed_check_ids.length > 0 ? "failed" : "passed";
+  }
+  const expectedVerified = expectedVerificationStatus === "passed";
+  const tupleMatches = trace.verification_status === expectedVerificationStatus
+    && trace.verified === expectedVerified;
+  const claimsPassed = trace.verification_status === "passed" || trace.verified;
+  let status: HarnessReplayAuditCheckStatus = "warning";
+  if (tupleMatches && expectedVerified) status = "pass";
+  if (!tupleMatches && claimsPassed) status = "fail";
+  return {
+    id: "completion_verification_state",
+    status,
+    summary: [
+      `completion_status=${trace.completion_status}`,
+      `verification_status=${trace.verification_status}`,
+      `verified=${trace.verified}`,
+      `expected_verification_status=${expectedVerificationStatus}`,
+      `expected_verified=${expectedVerified}`,
+      `failed_checks=${trace.completion_failed_check_ids.join(",") || "none"}`,
+      `tuple_match=${tupleMatches}`
+    ].join("; "),
+    refs: [trace.report_ref]
+  };
 }
 
 function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {

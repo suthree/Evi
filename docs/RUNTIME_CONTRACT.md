@@ -1540,7 +1540,13 @@ The audit records only replay metadata: source trace refs, completion/session/
 turn ids, per-round action counts, safe delegated action ids, safe delegated
 dispatch metadata, check statuses, report-declared delegated result refs,
 `delegated_result_event_fallback_refs`, and the fixed replay boundary.
-It checks whether
+Replay recomputes the expected `verification_status` and `verified` tuple from
+`completion_status` plus the bounded failed-check ids: non-`done` completion
+must be `skipped/false`, `done` with any failed check must be `failed/false`,
+and `done` without failed checks must be `passed/true`. A report that claims a
+passed or verified completion while contradicting those inputs fails replay;
+consistent failed or skipped completion remains attention rather than clean.
+It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion
 report `delegated_result_refs` field instead of only recovered from event

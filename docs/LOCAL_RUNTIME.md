@@ -1247,7 +1247,12 @@ Operators can run a state-only replay audit over one bounded trace with
 aggregate governance status, and Feishu `/governance` may show bounded replay
 counts and refs. Replay reports may carry safe delegated dispatch metadata and
 a dispatch-coverage check from the source trace, plus bounded delegated
-completion-gate check metadata from the completion report. They also check bounded
+completion-gate check metadata from the completion report. Replay also derives
+the expected completion verification tuple from `completion_status` and the
+bounded failed-check ids: non-`done` is `skipped/false`, failed `done` is
+`failed/false`, and failure-free `done` is `passed/true`. Contradictory passed
+or verified claims fail replay, while consistent failed or skipped completion
+remains attention. Replay reports also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`

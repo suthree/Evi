@@ -5042,6 +5042,9 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
+    assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=passed/);
+    assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /source_ref_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /evidence_pair_cardinality_mismatches=0/);
@@ -5273,6 +5276,9 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
     assert.equal(replay.metrics.delegated_results_failed, 1);
     assert.deepEqual(replay.delegated_result_refs, report.delegated_result_refs);
     assert.deepEqual(replay.delegated_result_event_fallback_refs, []);
+    assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "warning");
+    assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=skipped/);
+    assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {

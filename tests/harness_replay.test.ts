@@ -48,6 +48,12 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.deepEqual(report.delegated_result_event_fallback_refs, []);
     assert.equal(report.metrics.repo_write_guards, 1);
     assert.equal(report.checks.some((check) => check.id === "bounded_replay_boundary" && check.status === "pass"), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "completion_verification_state"
+        && check.status === "warning"
+        && check.summary.includes("expected_verification_status=failed")
+        && check.summary.includes("tuple_match=true")
+    ), true);
     assert.equal(report.checks.some((check) => check.id === "delegated_result_contract" && check.status === "warning"), true);
     assert.equal(report.checks.some((check) =>
       check.id === "delegated_completion_gate"
@@ -160,6 +166,120 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     const detail = await getHarnessReplayAudit(store, { replayRef: report.id });
     assert.equal(detail.replay.id, report.id);
     assert.doesNotMatch(JSON.stringify({ list, detail }), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit rejects optimistic completion state tuple drift", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-completion-state-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const baseReport = {
+      id: "completion_verification_replay_test",
+      session_id: sessionId,
+      turn_id: "turn_replay_test",
+      summary: "Completion state tuple replay fixture.",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      final_response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      claimed_verification_refs: [],
+      observation_refs: [],
+      verification_evidence_refs: [],
+      delegated_result_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    };
+    const cases = [{
+      completionStatus: "done",
+      verificationStatus: "passed",
+      verified: true,
+      checks: [],
+      expectedCheckStatus: "pass",
+      expectedVerificationStatus: "passed",
+      expectedVerified: true,
+      expectedFailedChecks: "none",
+      expectedTupleMatch: true
+    }, {
+      completionStatus: "blocked",
+      verificationStatus: "skipped",
+      verified: false,
+      checks: [],
+      expectedCheckStatus: "warning",
+      expectedVerificationStatus: "skipped",
+      expectedVerified: false,
+      expectedFailedChecks: "none",
+      expectedTupleMatch: true
+    }, {
+      completionStatus: "done",
+      verificationStatus: "passed",
+      verified: true,
+      checks: [{
+        id: "final_response",
+        status: "fail",
+        summary: "Done claim has no final response artifact.",
+        refs: []
+      }],
+      expectedCheckStatus: "fail",
+      expectedVerificationStatus: "failed",
+      expectedVerified: false,
+      expectedFailedChecks: "final_response",
+      expectedTupleMatch: false
+    }, {
+      completionStatus: "done",
+      verificationStatus: "passed",
+      verified: false,
+      checks: [],
+      expectedCheckStatus: "fail",
+      expectedVerificationStatus: "passed",
+      expectedVerified: true,
+      expectedFailedChecks: "none",
+      expectedTupleMatch: false
+    }, {
+      completionStatus: "done",
+      verificationStatus: "failed",
+      verified: true,
+      checks: [{
+        id: "final_response",
+        status: "fail",
+        summary: "Done claim has no final response artifact.",
+        refs: []
+      }],
+      expectedCheckStatus: "fail",
+      expectedVerificationStatus: "failed",
+      expectedVerified: false,
+      expectedFailedChecks: "final_response",
+      expectedTupleMatch: false
+    }] as const;
+
+    for (const testCase of cases) {
+      await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
+        ...baseReport,
+        completion_status: testCase.completionStatus,
+        verification_status: testCase.verificationStatus,
+        verified: testCase.verified,
+        checks: testCase.checks
+      });
+
+      const report = await runHarnessReplayAudit(store, {
+        traceRef: "completion_verification_replay_test"
+      });
+      const check = report.checks.find((item) => item.id === "completion_verification_state");
+
+      assert.equal(report.status, "attention");
+      assert.equal(check?.status, testCase.expectedCheckStatus);
+      assert.match(check?.summary ?? "", new RegExp(`expected_verification_status=${testCase.expectedVerificationStatus}`));
+      assert.match(check?.summary ?? "", new RegExp(`expected_verified=${testCase.expectedVerified}`));
+      assert.match(check?.summary ?? "", new RegExp(`failed_checks=${testCase.expectedFailedChecks}`));
+      assert.match(check?.summary ?? "", new RegExp(`tuple_match=${testCase.expectedTupleMatch}`));
+      assert.deepEqual(check?.refs, ["memory/episodes/session_replay_test-completion-verification.json"]);
+      assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
