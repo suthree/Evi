@@ -384,6 +384,29 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const sourceRefMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.ref !== (item.source === "tool_result" ? item.tool_result_id : item.artifact_ref)
   );
+  const evidencePairs = new Map<string, typeof trace.verification_evidence_refs>();
+  for (const item of trace.verification_evidence_refs) {
+    const key = JSON.stringify([item.tool_result_id, item.artifact_ref]);
+    evidencePairs.set(key, [...(evidencePairs.get(key) ?? []), item]);
+  }
+  const evidencePairCardinalityMismatchRefs = [...evidencePairs.values()].filter((items) =>
+    items.length !== 2
+    || items.filter((item) => item.source === "tool_result").length !== 1
+    || items.filter((item) => item.source === "tool_artifact").length !== 1
+  );
+  const evidencePairMetadataMismatchRefs = [...evidencePairs.values()].filter((items) => {
+    if (items.length !== 2 || new Set(items.map((item) => item.source)).size !== 2) return false;
+    const first = items[0]!;
+    const second = items[1]!;
+    return first.event_id !== second.event_id
+      || first.round !== second.round
+      || first.tool !== second.tool
+      || first.ok !== second.ok
+      || first.side_effect_level !== second.side_effect_level
+      || first.is_write_run !== second.is_write_run
+      || first.after_latest_delegation !== second.after_latest_delegation
+      || first.after_latest_failed_delegation !== second.after_latest_failed_delegation;
+  });
   const claimedFlagMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.claimed !== claimedRefs.has(item.ref)
   );
@@ -421,6 +444,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const hasLineageAttention = missingClaimedLineage.length > 0
     || claimedDelegatedRefs.length > 0
     || sourceRefMismatchRefs.length > 0
+    || evidencePairCardinalityMismatchRefs.length > 0
+    || evidencePairMetadataMismatchRefs.length > 0
     || claimedFlagMismatchRefs.length > 0
     || missingIndependentLineage
     || missingRecoveryLineage
@@ -443,6 +468,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
       `source_ref_mismatches=${sourceRefMismatchRefs.length}`,
+      `evidence_pair_cardinality_mismatches=${evidencePairCardinalityMismatchRefs.length}`,
+      `evidence_pair_metadata_mismatches=${evidencePairMetadataMismatchRefs.length}`,
       `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
@@ -458,6 +485,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
           .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
         ...sourceRefMismatchRefs.map((item) => item.ref),
+        ...evidencePairCardinalityMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
+        ...evidencePairMetadataMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
         ...claimedFlagMismatchRefs.map((item) => item.ref),
         ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),

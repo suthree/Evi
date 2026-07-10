@@ -624,6 +624,82 @@ test("harness replay audit rejects verification evidence source ref mismatches",
   }
 });
 
+test("harness replay audit rejects verification evidence pair integrity drift", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-evidence-pair-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const evidence = (toolResultId: string, source: "tool_result" | "tool_artifact", overrides: Record<string, unknown> = {}) => {
+      const artifactRef = `memory/episodes/${sessionId}-${toolResultId}.json`;
+      return {
+        ref: source === "tool_result" ? toolResultId : artifactRef,
+        source,
+        tool_result_id: toolResultId,
+        artifact_ref: artifactRef,
+        event_id: `evidence_${toolResultId}`,
+        round: 2,
+        tool: "file.read",
+        ok: true,
+        side_effect_level: "none",
+        is_write_run: false,
+        claimed: false,
+        after_latest_delegation: true,
+        after_latest_failed_delegation: true,
+        counts_as_independent_evidence: false,
+        counts_as_failed_delegation_recovery: false,
+        ...overrides
+      };
+    };
+    const verificationEvidence = [
+      evidence("tool_result_missing_artifact", "tool_result"),
+      evidence("tool_result_duplicate_source", "tool_result"),
+      evidence("tool_result_duplicate_source", "tool_result"),
+      evidence("tool_result_duplicate_source", "tool_artifact"),
+      evidence("tool_result_metadata_drift", "tool_result"),
+      evidence("tool_result_metadata_drift", "tool_artifact", { tool: "repo.search" })
+    ];
+    await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
+      id: "completion_verification_replay_test",
+      session_id: sessionId,
+      turn_id: "turn_replay_test",
+      completion_status: "done",
+      verification_status: "passed",
+      verified: true,
+      summary: "Drifted report broke harness evidence pair integrity.",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      final_response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      claimed_verification_refs: [],
+      observation_refs: verificationEvidence.map((item) => item.artifact_ref),
+      verification_evidence_refs: verificationEvidence,
+      delegated_result_refs: [],
+      checks: [],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "fail");
+    assert.match(check?.summary ?? "", /evidence_pair_cardinality_mismatches=2/);
+    assert.match(check?.summary ?? "", /evidence_pair_metadata_mismatches=1/);
+    assert.equal(check?.refs.includes("tool_result_missing_artifact"), true);
+    assert.equal(check?.refs.includes("tool_result_duplicate_source"), true);
+    assert.equal(check?.refs.includes("tool_result_metadata_drift"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit distinguishes fallback delegated proof refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-fallback-proof-ref-"));
   const repoRoot = join(root, "repo");
