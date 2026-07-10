@@ -152,6 +152,7 @@ export function parseDelegatedOutput(
     return { ok: false, error: "Delegated model output was not a JSON object." };
   }
   const record = parsed as Record<string, unknown>;
+  const unsupportedKeys = Object.keys(record).filter((key) => key !== "summary" && key !== "findings_text");
   const contract = delegatedAgentOutputSchema.safeParse(record);
   if (!contract.success) {
     const summary = typeof record.summary === "string" ? record.summary.trim() : "";
@@ -167,6 +168,13 @@ export function parseDelegatedOutput(
     }
     if (findingsText.length > DELEGATED_AGENT_FINDINGS_MAX_CHARS) {
       return { ok: false, error: `Delegated model output.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.` };
+    }
+    if (unsupportedKeys.length > 0) {
+      return {
+        ok: false,
+        error: "Delegated model output may only include summary and findings_text.",
+        safe_raw_output_preview: "Delegated model output included unsupported fields; raw output preview suppressed."
+      };
     }
     return { ok: false, error: "Delegated model output failed schema validation." };
   }

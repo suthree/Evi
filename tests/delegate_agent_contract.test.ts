@@ -134,6 +134,21 @@ test("delegated output rejects natural-language command and test execution claim
   }
 });
 
+test("delegated output rejects unsupported fields with suppressed preview", () => {
+  const result = parseDelegatedOutput(JSON.stringify({
+    summary: "Valid bounded summary.",
+    findings_text: "Valid bounded findings.",
+    notes: "This unsupported field should not be echoed."
+  }), DELEGATED_OUTPUT_SOURCE);
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.match(result.error, /may only include summary and findings_text/);
+    assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
+    assert.doesNotMatch(result.safe_raw_output_preview ?? "", /unsupported field should not be echoed/);
+  }
+});
+
 test("delegated output rejects read, search, fetch, and browse tool claims", () => {
   const outputs = [
     JSON.stringify({

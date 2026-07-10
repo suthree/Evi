@@ -2116,7 +2116,8 @@ extra fields, or structured content that echoes raw delegated task/context or
 claims delegated tool/write/mutation, command/test execution, completion,
 expert, multi-agent, model fan-out, hidden-source, raw-artifact,
 context-expansion, or invented-evidence authority cannot be smuggled around the
-contract. Natural-language delegated output claims that it
+contract. Unsupported output fields are rejected and suppress raw preview
+feedback. Natural-language delegated output claims that it
 ran or executed tests, builds, commands, or checks, or that it read files,
 searched the repo, fetched URLs, or browsed the web, are treated as delegated
 tool authority claims; they fail the delegated output contract with raw preview

@@ -1200,7 +1200,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       input_contract: [...delegateAgentAuthoringContract.runner_input_contract],
       result_handling: [
-        "delegate_agent contract helper scans the full delegated output before strict full JSON-object parsing, rejects wrapper prose, code fences, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, and executeDelegation sanitizes successful summary/findings before persistence or observation",
+        "delegate_agent contract helper scans the full delegated output before strict full JSON-object parsing, rejects wrapper prose, code fences, extra fields, or structured content that echo raw task/context or claim delegated output authority, command/test execution, or forbidden-source reliance, suppresses raw previews for unsupported output fields, and executeDelegation sanitizes successful summary/findings before persistence or observation",
         "rejectedDelegationResult records failed input contracts without calling the delegated model",
         "delegatedObservationForModelInput excludes raw task, context, output preview, and persisted artifact bodies while adding proof_boundary for advisory-only or recovery-only use"
       ],

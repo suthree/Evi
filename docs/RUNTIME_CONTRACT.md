@@ -1308,8 +1308,9 @@ delegate action counts are recorded as
 previews are sanitized before they are persisted or returned as observations.
 Full delegated outputs are scanned before strict full JSON-object parsing;
 wrapper prose or code fences around otherwise valid JSON remain malformed
-delegated output, and raw task/context echo failures plus delegated output
-authority/source-claim failures suppress the raw output preview. Delegated
+delegated output, delegated output may only include `summary` and
+`findings_text`, and raw task/context echo failures, unsupported output fields,
+and delegated output authority/source-claim failures suppress the raw output preview. Delegated
 dispatch metadata also records the model-action `envelope_ref` that declared
 the delegated action, and
 Live Run Trace exposes the declaring round's safe `delegate_agent` action ids
