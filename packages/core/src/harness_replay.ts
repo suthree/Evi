@@ -382,6 +382,7 @@ function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessRe
 
 function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
   validRefs: Set<string>;
+  validEvidenceByRef: Map<string, { round: number; isWriteRun: boolean }>;
   legacyEventMetadataRefs: Set<string>;
 } {
   const evidencePairs = new Map<string, typeof trace.verification_evidence_refs>();
@@ -394,6 +395,7 @@ function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
     toolResultEventsById.set(event.event_id, [...(toolResultEventsById.get(event.event_id) ?? []), event]);
   }
   const validRefs = new Set<string>();
+  const validEvidenceByRef = new Map<string, { round: number; isWriteRun: boolean }>();
   const legacyEventMetadataRefs = new Set<string>();
   for (const items of evidencePairs.values()) {
     if (items.length !== 2
@@ -426,22 +428,36 @@ function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
       || event.side_effect_level !== first.side_effect_level
       || event.is_write_run !== first.is_write_run
       || event.ok !== true) continue;
-    for (const item of items) validRefs.add(item.ref);
+    for (const item of items) {
+      validRefs.add(item.ref);
+      validEvidenceByRef.set(item.ref, {
+        round: event.round,
+        isWriteRun: event.is_write_run === true
+      });
+    }
   }
-  return { validRefs, legacyEventMetadataRefs };
+  return { validRefs, validEvidenceByRef, legacyEventMetadataRefs };
 }
 
 function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const claimedRefsBoundCheckId = delegateAgentCompletionGateCheckId.claimedRefsBoundToEvidence;
+  const delegatedIndependentCheckId = delegateAgentCompletionGateCheckId.delegatedIndependentEvidence;
   const delegatedFailedCheckIds = trace.completion_failed_check_ids.filter((id) =>
-    DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id) && id !== claimedRefsBoundCheckId
+    DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id)
+      && id !== claimedRefsBoundCheckId
+      && id !== delegatedIndependentCheckId
   );
   const delegatedWarningCheckIds = trace.completion_warning_check_ids.filter((id) =>
-    DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id) && id !== claimedRefsBoundCheckId
+    DELEGATED_COMPLETION_GATE_CHECK_IDS.has(id)
+      && id !== claimedRefsBoundCheckId
+      && id !== delegatedIndependentCheckId
   );
   const reportedClaimedRefsBoundChecks = trace.delegated_completion_gate_checks
     .filter((check) => check.id === claimedRefsBoundCheckId);
   const reportedClaimedRefsBoundStatus = reportedClaimedRefsBoundChecks[0]?.status;
+  const reportedDelegatedIndependentChecks = trace.delegated_completion_gate_checks
+    .filter((check) => check.id === delegatedIndependentCheckId);
+  const reportedDelegatedIndependentStatus = reportedDelegatedIndependentChecks[0]?.status;
   const reportedDelegatedResultsCheck = trace.delegated_completion_gate_checks
     .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedResults);
   const reportedDelegatedResultsStatus = reportedDelegatedResultsCheck?.status;
@@ -521,6 +537,66 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const claimedRefsBoundStatusMatches = claimedRefsBoundCheckCardinalityMatches
     && (!claimedRefsBoundGateApplicable
       || reportedClaimedRefsBoundStatus === expectedClaimedRefsBoundStatus);
+  const delegatedIndependentGateApplicable = trace.completion_status === "done";
+  const latestDelegatedRound = trace.delegated_dispatches.length > 0
+    ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
+    : null;
+  const modernPostDelegationRefs = latestDelegatedRound === null
+    ? []
+    : boundClaimedRefs.filter((ref) =>
+      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestDelegatedRound
+    );
+  const legacyPostDelegationRefs = latestDelegatedRound === null
+    ? []
+    : legacyEventMetadataClaimedRefs.filter((ref) =>
+      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestDelegatedRound)
+    );
+  const modernPostFailedDelegationVerificationRefs = latestFailedDispatchRound === null
+    ? []
+    : boundClaimedRefs.filter((ref) =>
+      (evidenceBinding.validEvidenceByRef.get(ref)?.round ?? 0) > latestFailedDispatchRound
+    );
+  const modernPostFailedDelegationRecoveryRefs = modernPostFailedDelegationVerificationRefs.filter((ref) =>
+    evidenceBinding.validEvidenceByRef.get(ref)?.isWriteRun === true
+  );
+  const legacyPostFailedDelegationRefs = latestFailedDispatchRound === null
+    ? []
+    : legacyEventMetadataClaimedRefs.filter((ref) =>
+      trace.verification_evidence_refs.some((item) => item.ref === ref && item.round > latestFailedDispatchRound)
+    );
+  let expectedDelegatedIndependentStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
+  if (delegatedIndependentGateApplicable && trace.delegated_result_count > 0) {
+    const hasFailedDelegation = failedDelegatedDispatches.length > 0;
+    const hasModernPostDelegationEvidence = modernPostDelegationRefs.length > 0;
+    const hasModernFailedDelegationVerification = modernPostFailedDelegationVerificationRefs.length > 0;
+    const hasModernFailedDelegationRecovery = modernPostFailedDelegationRecoveryRefs.length > 0;
+    const hasLegacyPostDelegationEvidence = legacyPostDelegationRefs.length > 0;
+    const hasLegacyPostFailedDelegationEvidence = legacyPostFailedDelegationRefs.length > 0;
+    const modernEvidencePasses = hasModernPostDelegationEvidence
+      && (!hasFailedDelegation
+        || (hasModernFailedDelegationVerification && hasModernFailedDelegationRecovery));
+    const legacyEvidenceCouldSatisfy = (!hasModernPostDelegationEvidence
+      && hasLegacyPostDelegationEvidence)
+      || (hasFailedDelegation
+        && (!hasModernFailedDelegationVerification || !hasModernFailedDelegationRecovery)
+        && hasLegacyPostFailedDelegationEvidence);
+    if (!delegatedIdentityMetadataComplete) {
+      expectedDelegatedIndependentStatus = "unknown";
+    } else if (modernEvidencePasses) {
+      expectedDelegatedIndependentStatus = "pass";
+    } else if ((!trace.verification_evidence_refs_present && nonDelegatedClaimedRefs.length > 0)
+      || legacyEvidenceCouldSatisfy) {
+      expectedDelegatedIndependentStatus = "unknown";
+    } else {
+      expectedDelegatedIndependentStatus = "fail";
+    }
+  }
+  const delegatedIndependentCheckCardinalityMatches = delegatedIndependentGateApplicable
+    ? reportedDelegatedIndependentChecks.length === 1
+    : reportedDelegatedIndependentChecks.length === 0;
+  const delegatedIndependentStatusMatches = delegatedIndependentCheckCardinalityMatches
+    && (!delegatedIndependentGateApplicable
+      || reportedDelegatedIndependentStatus === expectedDelegatedIndependentStatus);
   const delegatedSelfReportGateApplicable = trace.completion_status === "done";
   let expectedDelegatedResultsStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (!dispatchMetadataComplete) {
@@ -549,7 +625,8 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   if (delegatedFailedCheckIds.length > 0
     || expectedDelegatedResultsStatus === "fail"
     || expectedDelegatedSelfReportStatus === "fail"
-    || expectedClaimedRefsBoundStatus === "fail") {
+    || expectedClaimedRefsBoundStatus === "fail"
+    || expectedDelegatedIndependentStatus === "fail") {
     status = "fail";
   } else if (expectedDelegatedResultsStatus === "warning" && reportedDelegatedResultsStatus === "pass") {
     status = "fail";
@@ -557,9 +634,11 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     || !delegatedResultsStatusMatches
     || !delegatedSelfReportStatusMatches
     || !claimedRefsBoundStatusMatches
+    || !delegatedIndependentStatusMatches
     || missingDelegatedResultsGateIds.length > 0
     || expectedDelegatedSelfReportStatus === "unknown"
-    || expectedClaimedRefsBoundStatus === "unknown") {
+    || expectedClaimedRefsBoundStatus === "unknown"
+    || expectedDelegatedIndependentStatus === "unknown") {
     status = "warning";
   }
   return {
@@ -592,7 +671,17 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `recovery_evidence=${recoveryEvidenceCount}`,
       `status_match=${delegatedResultsStatusMatches}`,
       `delegated_self_report_status_match=${delegatedSelfReportStatusMatches}`,
-      `claimed_refs_bound_status_match=${claimedRefsBoundStatusMatches}`
+      `claimed_refs_bound_status_match=${claimedRefsBoundStatusMatches}`,
+      `delegated_independent_status=${reportedDelegatedIndependentStatus ?? "missing"}`,
+      `expected_delegated_independent_status=${expectedDelegatedIndependentStatus}`,
+      `delegated_independent_gate_applicable=${delegatedIndependentGateApplicable}`,
+      `delegated_independent_check_count=${reportedDelegatedIndependentChecks.length}`,
+      `post_delegation_bound_refs=${modernPostDelegationRefs.length}`,
+      `post_failed_delegation_verification_refs=${modernPostFailedDelegationVerificationRefs.length}`,
+      `post_failed_delegation_recovery_refs=${modernPostFailedDelegationRecoveryRefs.length}`,
+      `legacy_post_delegation_refs=${legacyPostDelegationRefs.length}`,
+      `legacy_post_failed_delegation_refs=${legacyPostFailedDelegationRefs.length}`,
+      `delegated_independent_status_match=${delegatedIndependentStatusMatches}`
     ].join("; "),
     refs: [trace.report_ref]
   };

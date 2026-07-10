@@ -432,6 +432,13 @@ Unbound claims remain failures
 even if the completion report says pass; valid report downgrades and missing
 legacy lineage remain attention, and no artifact body or historical migration
 is involved.
+Replay also independently derives `delegated_independent_evidence` for `done`.
+Without delegation it is skipped; a passed delegation requires a claimed,
+event-bound ordinary evidence ref after the latest dispatch, while a failed
+delegation additionally requires later claimed write/run recovery plus later
+ordinary verification. Forged report passes cannot hide a failure, report
+downgrades remain attention, relevant legacy metadata stays unknown, and
+non-`done` completion must omit this check.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.

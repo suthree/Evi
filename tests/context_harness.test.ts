@@ -4302,6 +4302,9 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     assert.equal(replayGate?.status, "pass");
     assert.match(replayGate?.summary ?? "", /expected_claimed_refs_bound_status=pass/);
     assert.match(replayGate?.summary ?? "", /claimed_refs_bound_status_match=true/);
+    assert.match(replayGate?.summary ?? "", /expected_delegated_independent_status=pass/);
+    assert.match(replayGate?.summary ?? "", /post_delegation_bound_refs=1/);
+    assert.match(replayGate?.summary ?? "", /delegated_independent_status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -4364,6 +4367,9 @@ test("live runner rejects post-delegation write evidence without bound verificat
     const replayGate = replay.checks.find((check) => check.id === "delegated_completion_gate");
     assert.match(replayGate?.summary ?? "", /expected_claimed_refs_bound_status=skipped/);
     assert.match(replayGate?.summary ?? "", /claimed_refs_bound_status_match=true/);
+    assert.match(replayGate?.summary ?? "", /expected_delegated_independent_status=fail/);
+    assert.match(replayGate?.summary ?? "", /post_delegation_bound_refs=0/);
+    assert.match(replayGate?.summary ?? "", /delegated_independent_status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -5064,6 +5070,10 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_results_status=warning/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_results_status=warning/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /status_match=true/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_independent_status=pass/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /post_failed_delegation_verification_refs=1/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /post_failed_delegation_recovery_refs=1/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_status_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "pass");
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=passed/);
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
@@ -5218,6 +5228,7 @@ test("live runner rejects read-only tool refs as failed delegation recovery evid
       verified: boolean;
       checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
     };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.sawSanitizedFailedObservation, true);
@@ -5237,6 +5248,12 @@ test("live runner rejects read-only tool refs as failed delegation recovery evid
     assert.equal(delegatedResultsCheck?.status, "fail");
     assert.doesNotMatch(delegatedResultsCheck?.summary ?? "", /later main-harness recovery evidence/);
     assert.doesNotMatch(delegatedResultsCheck?.refs.join("\n") ?? "", /tool_result_/);
+    const replayGate = replay.checks.find((check) => check.id === "delegated_completion_gate");
+    assert.equal(replayGate?.status, "fail");
+    assert.match(replayGate?.summary ?? "", /expected_delegated_independent_status=fail/);
+    assert.match(replayGate?.summary ?? "", /post_failed_delegation_verification_refs=1/);
+    assert.match(replayGate?.summary ?? "", /post_failed_delegation_recovery_refs=0/);
+    assert.match(replayGate?.summary ?? "", /delegated_independent_status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -5308,6 +5325,9 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_results_status=warning/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_results_status=warning/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /status_match=true/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_independent_status=skipped/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_check_count=0/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_status_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {

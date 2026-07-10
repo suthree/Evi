@@ -1577,6 +1577,20 @@ or duplicate/missing reported checks remain unknown/attention rather than being
 guessed clean. A forged report pass cannot hide an independently expected fail;
 other parity drift remains attention. Replay does not read tool artifact bodies
 or migrate historical reports.
+Replay also derives the expected `delegated_independent_evidence` status from
+the same event-bound lineage instead of trusting its reported status or
+report-owned delegation-relative flags. A `done` trace without delegation is
+`skipped`. A passed delegation requires at least one claimed ordinary evidence
+ref whose successful tool-result event round is strictly after the latest
+delegated dispatch. A failed delegation additionally requires both later
+ordinary verification and a claimed successful write/run recovery ref whose
+event round is strictly after the latest failed dispatch. Pre-delegation,
+unclaimed, unbound, failed, or read-only recovery refs cannot satisfy the gate.
+An independently expected failure remains a replay failure even if the report
+forges `pass`; a report downgrade of a valid expected pass remains attention.
+Relevant legacy traces without the bounded event metadata remain
+unknown/attention, and non-`done` completion must contain no instance of this
+check. This parity check reads bounded metadata only and performs no migration.
 It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion

@@ -1275,6 +1275,16 @@ identity/success metadata, incomplete delegated identity metadata, and
 missing or duplicate reported checks stay unknown/attention. A report cannot
 hide an expected failure with `pass`; other reported/expected drift remains
 attention. This check reads bounded metadata only and performs no migration.
+Replay independently recomputes `delegated_independent_evidence` as well. A
+`done` run without delegation expects `skipped`. After a passed delegation, at
+least one claimed ordinary evidence ref must uniquely bind a successful
+tool-result event after the latest dispatch. After a failed delegation, later
+ordinary verification and a later claimed event-owned write/run recovery ref
+are both required. An expected failure remains `fail` even when the report says
+`pass`; a valid expected pass downgraded by the report remains attention.
+Relevant historical traces missing the required bounded event metadata remain
+unknown, and non-`done` completion must not carry this check. The parity check
+reads bounded metadata only and performs no migration.
 Replay reports also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
