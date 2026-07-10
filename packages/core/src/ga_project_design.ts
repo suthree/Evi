@@ -908,7 +908,7 @@ function buildImplementationContract(
     owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
     ...(target.target_dimension_id === "general_agent_delegation"
-      ? { delegation_contract: buildDelegationImplementationContract(buildGeneralDelegationLoop()) }
+      ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
       : {}),
     implementation_scope: [
       "change one reusable GA project-design contract or read-model surface",
@@ -945,9 +945,8 @@ function buildImplementationContract(
   };
 }
 
-function buildDelegationImplementationContract(
-  loop: GaProjectDesignGeneralDelegationLoop
-): GaProjectDesignDelegationImplementationContract {
+export function getGaProjectDesignDelegationImplementationContract(): GaProjectDesignDelegationImplementationContract {
+  const loop = buildGeneralDelegationLoop();
   return {
     action: loop.action,
     lifecycle_steps: [...loop.lifecycle_steps],

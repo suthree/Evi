@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   deriveGaProjectDesignArtifacts,
   getGaProjectDesignArtifactPacket,
+  getGaProjectDesignDelegationImplementationContract,
   getGaProjectDesignContract,
   getGaProjectDesignReadModel,
   selectGaProjectDesignArtifact
@@ -270,6 +271,10 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("runner-enforced task/context/result contract and main-harness completion gate")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.action, "delegate_agent");
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract,
+      getGaProjectDesignDelegationImplementationContract()
+    );
     assert.deepEqual(
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.lifecycle_steps,
       readModel.next_core_basic_plan?.general_delegation_loop.lifecycle_steps

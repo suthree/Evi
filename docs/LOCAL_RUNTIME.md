@@ -852,7 +852,11 @@ derived from the shared GA delegation loop, so its payload/output keys, limits,
 failure kinds, recovery requirements, replay checks, and main-harness
 completion authority remain available without reading a sibling plan field.
 Reusing a matching open plan iteration can backfill this derived field, and
-iteration audit reports missing or mismatched copies.
+iteration audit reports missing or mismatched copies. Coverage also compares an
+adopted structured field with the shared authoritative constructor; agreement
+between a drifted plan and state record is not enough. Older records without
+the structured field remain historical evidence and are not migrated merely by
+inspection.
 The same guidance can audit that contract through `current_state`: outcome
 claims must preserve the implementation contract's selected layer, allowed
 scope, deferred scope, and delivery standard instead of treating the contract as

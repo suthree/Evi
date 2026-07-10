@@ -695,7 +695,11 @@ kinds, completion-gate check ids, recovery requirements, replay metadata/checks,
 and main-harness authority remain inspectable from the implementation contract
 itself. Plan-derived iteration reuse may backfill this newly derived field on a
 matching open record; iteration audit treats a missing or mismatched field as
-incomplete contract coverage.
+incomplete contract coverage. That audit compares the persisted field with the
+shared authoritative constructor as well as the current plan, so matching
+plan/state copies do not hide drift in task, result, completion, or replay
+boundaries. Historical iteration contracts that predate the structured field
+remain inspectable without a retroactive migration.
 It is pre-execution boundary guidance, not an executor, scheduler, learning
 promotion, or completion proof.
 Completion-audit seeds may require the outcome to show that the delivered
