@@ -15,7 +15,7 @@ import {
   mainHarnessRecoveryEvidenceAfterDelegationFailure,
   summarizeDelegatedResultFailureKindCounts
 } from "../../core/src/delegate_agent_completion_gate.js";
-import { parseDelegatedOutput, parseDelegationRequest } from "../../core/src/delegate_agent_contract.js";
+import { delegationInputMetadata, parseDelegatedOutput, parseDelegationRequest } from "../../core/src/delegate_agent_contract.js";
 import { formatSopMarkdown } from "../../core/src/formatters.js";
 import { newId, slugify, utcNow } from "../../core/src/ids.js";
 import { MemoryStore, type EpisodeSearchHit } from "../../core/src/memory_store.js";
@@ -1268,6 +1268,7 @@ export class LiveAgentRunner {
       return this.rejectedDelegationResult(action, request, round, sequence, request.error);
     }
     const { task, context } = request;
+    const inputMetadata = delegationInputMetadata(request);
     try {
       const response = await this.model.create({
         instructions: [
@@ -1286,8 +1287,7 @@ export class LiveAgentRunner {
           action_id: actionId,
           round,
           sequence,
-          task_chars: task.length,
-          context_chars: context.length,
+          ...inputMetadata,
           model_invoked: true,
           contract_status: "failed",
           dispatch_failure_kind: "none",
@@ -1310,8 +1310,7 @@ export class LiveAgentRunner {
         action_id: actionId,
         round,
         sequence,
-        task_chars: task.length,
-        context_chars: context.length,
+        ...inputMetadata,
         model_invoked: true,
         contract_status: "passed",
         dispatch_failure_kind: "none",
@@ -1333,8 +1332,7 @@ export class LiveAgentRunner {
         action_id: actionId,
         round,
         sequence,
-        task_chars: task.length,
-        context_chars: context.length,
+        ...inputMetadata,
         model_invoked: true,
         contract_status: "failed",
         dispatch_failure_kind: "none",
@@ -1368,6 +1366,7 @@ export class LiveAgentRunner {
     error: string,
     dispatchFailureKind: DelegatedDispatchFailureKind = "input_contract_failed"
   ): DelegatedResult {
+    const inputMetadata = delegationInputMetadata(request);
     return delegatedResultSchema.parse({
       id: newId("delegated_result"),
       ok: false,
@@ -1376,8 +1375,7 @@ export class LiveAgentRunner {
       action_id: action.id,
       round,
       sequence,
-      task_chars: request.ok ? request.task.length : request.task_chars,
-      context_chars: request.ok ? request.context.length : request.context_chars,
+      ...inputMetadata,
       model_invoked: false,
       contract_status: "failed",
       dispatch_failure_kind: dispatchFailureKind,
@@ -2045,6 +2043,8 @@ function delegatedDispatchEventMetadata(
     sequence: result.sequence,
     task_chars: result.task_chars,
     context_chars: result.context_chars,
+    ...(typeof result.input_contract_valid === "boolean" ? { input_contract_valid: result.input_contract_valid } : {}),
+    ...(result.input_digest ? { input_digest: result.input_digest } : {}),
     model_invoked: result.model_invoked,
     contract_status: result.contract_status,
     dispatch_failure_kind: result.dispatch_failure_kind,

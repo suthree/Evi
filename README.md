@@ -425,6 +425,12 @@ those event-owned identities rather than trusting completion-report refs:
 exact claims fail, substring lookalikes do not match, duplicate or missing ids
 or refs remain attention, and historical events stay readable without artifact-body
 inspection.
+New dispatches also persist shared parsed input validity, normalized task/context
+character counts, and a SHA-256 input digest. Trace derives the same bounded
+expectation from the declaring envelope; replay warns on missing legacy metadata
+or any action, validity, length, or digest mismatch. It never renders raw
+delegated task/context text, and incomplete input lineage cannot upgrade a
+delegated completion gate to clean.
 For `done`, replay also derives `claimed_refs_bound_to_evidence` from exact
 delegated identities plus bounded result/artifact lineage and its unique
 tool-result event-owned identity, success state, artifact, and round binding.

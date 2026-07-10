@@ -2956,7 +2956,7 @@ test("operator live run trace commands read bounded run metadata without running
     assert.match(replayDetailText, /delegated_completion_gate_statuses: pass=0, warning=0, fail=1, skipped=0/);
     assert.match(replayDetailText, /delegated_dispatch_metadata: pass/);
     assert.match(replayDetailText, /delegated_model_invocation_boundary: pass/);
-    assert.match(replayDetailText, /delegated_dispatch_lineage: pass/);
+    assert.match(replayDetailText, /delegated_dispatch_lineage: warning/);
     assert.match(replayDetailText, /delegated_dispatch_failure_kind: pass/);
     assert.match(replayDetailText, /delegated_dispatch_round_limit: pass/);
     assert.match(replayDetailText, /delegated_result_failure_kind: pass/);

@@ -1219,7 +1219,7 @@ and episode event metadata; repo-write guard summaries are parsed from bounded
 tool-result event summaries. The trace also exposes bounded same-run tool-result
 event ids, model-action rounds, and artifact refs so replay can bind completion
 evidence without opening raw tool bodies. Delegated dispatch summaries may include action
-id, round, sequence, task/context character counts, contract status, ok flag,
+id, round, sequence, parse-derived input validity/digest, task/context character counts, contract status, ok flag,
 event id, and artifact ref. The section does not read delegated result artifact
 bodies or raw ToolResult JSON. It does not render raw model responses, action
 payloads, tool result bodies, delegated task/context/findings/output/raw
@@ -2199,7 +2199,11 @@ delegated results record `result_failure_kind=none`. Persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. Later traces can therefore distinguish real none values from
 older or malformed summaries that omitted the fields, without reading raw
-delegated context or delegated result bodies. Replay audit also validates the
+delegated context or delegated result bodies. New event metadata also persists
+parse-derived input validity and a SHA-256 digest. Replay re-derives the same
+bounded validity, normalized lengths, and digest from the declaring envelope;
+modern mismatches and historical missing input metadata remain warning/unknown
+instead of upgrading a delegated completion gate to clean. Replay audit also validates the
 lineage tuple: delegated dispatches must name the model-action envelope ref for
 their round, an action id declared by that round's `delegate_agent` actions, and
 a sequence that matches the declared delegate action order. Delegated dispatches

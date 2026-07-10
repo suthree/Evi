@@ -1890,6 +1890,11 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       sequence: 1,
       task_chars: 44,
       context_chars: 88,
+      input_contract_valid: null,
+      input_contract_valid_present: false,
+      input_digest: null,
+      input_digest_present: false,
+      metadata_present: true,
       model_invoked: true,
       contract_status: "failed",
       task: "RAW_DELEGATED_TASK_SHOULD_NOT_BE_IN_CONTEXT",
@@ -2107,6 +2112,11 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       sequence: 1,
       task_chars: 44,
       context_chars: 88,
+      input_contract_valid: null,
+      input_contract_valid_present: false,
+      input_digest: null,
+      input_digest_present: false,
+      metadata_present: true,
       model_invoked: true,
       model_invoked_present: true,
       contract_status: "failed",
@@ -2116,7 +2126,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       result_failure_kind_present: true,
       ok: false
     });
-    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false model_invoked=true dispatch_failure_kind=none result_failure_kind=delegated_output_contract_failed task_chars=44 context_chars=88 action_id=action_delegate_trace_context result_id=delegated_result_trace_context_invalid envelope_ref=memory\/episodes\/session_live_trace_context-model-action-r1\.json ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
+    assert.match(rendered.markdown, /delegated_dispatch: round=1 sequence=1 status=failed ok=false model_invoked=true metadata_present=true input_contract_valid=unknown input_digest_present=false dispatch_failure_kind=none result_failure_kind=delegated_output_contract_failed task_chars=44 context_chars=88 action_id=action_delegate_trace_context result_id=delegated_result_trace_context_invalid envelope_ref=memory\/episodes\/session_live_trace_context-model-action-r1\.json ref=memory\/episodes\/session_live_trace_context-delegated_result_invalid\.json/);
     assert.match(rendered.markdown, /harness_state_actions: 1/);
     assert.match(rendered.markdown, /repo_write_guards: 1/);
     assert.match(rendered.markdown, /repo_write_guard: docs\/generated\.md before=dirty after=dirty changed_files=1->2 delta=1 preexisting_dirty=true target_changed=true/);
@@ -2138,7 +2148,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /replay_check: delegated_action_coverage=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_result_ref_coverage=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
-    assert.match(rendered.markdown, /replay_check: delegated_dispatch_lineage=pass/);
+    assert.match(rendered.markdown, /replay_check: delegated_dispatch_lineage=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_failure_kind=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_round_limit=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_result_failure_kind=pass/);
@@ -3764,6 +3774,8 @@ test("live runner feeds structured delegated results back as bounded observation
       sequence: number;
       task_chars: number;
       context_chars: number;
+      input_contract_valid: boolean;
+      input_digest: string;
       model_invoked: boolean;
       dispatch_failure_kind: string;
       result_failure_kind: string;
@@ -3793,6 +3805,8 @@ test("live runner feeds structured delegated results back as bounded observation
       sequence: 1,
       task_chars: delegated.task_chars,
       context_chars: delegated.context_chars,
+      input_contract_valid: delegated.input_contract_valid,
+      input_digest: delegated.input_digest,
       model_invoked: true,
       contract_status: "passed",
       dispatch_failure_kind: "none",
@@ -3820,6 +3834,8 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(delegated.sequence, 1);
     assert.equal(delegated.task_chars > 0, true);
     assert.equal(delegated.context_chars > 0, true);
+    assert.equal(delegated.input_contract_valid, true);
+    assert.match(delegated.input_digest, /^[a-f0-9]{64}$/);
     assert.match(delegated.boundary, /bounded self-report only/);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);

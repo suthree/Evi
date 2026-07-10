@@ -1368,7 +1368,12 @@ contract and per-round-limit rejects must keep `model_invoked=false`, while
 post-dispatch results, including delegated output contract failures and
 delegated model request failures, must keep `model_invoked=true`. Replay warns
 when that boundary is missing or contradicted, without reading delegated artifact
-bodies. Every failed delegated result also carries a
+bodies. New dispatches additionally persist the shared parse-derived input
+validity, normalized task/context character counts, and a SHA-256 input digest.
+Live Run Trace re-derives that bounded tuple from the declaring envelope; replay
+warns when modern event metadata mismatches it and keeps historical missing input
+metadata unknown. It never renders raw task/context text, and incomplete input
+lineage cannot satisfy a delegated completion gate. Every failed delegated result also carries a
 safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
 delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.

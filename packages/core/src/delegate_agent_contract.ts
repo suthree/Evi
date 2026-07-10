@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { delegateAgentAuthoringContract } from "./action_contracts.js";
 import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
@@ -20,10 +21,19 @@ export type ParseDelegationRequestResult = {
 } | {
   ok: false;
   task: string;
+  context: string;
+  input_task?: string;
   task_chars: number;
   context_chars: number;
   error: string;
 };
+
+export interface DelegationInputMetadata {
+  input_contract_valid: boolean;
+  task_chars: number;
+  context_chars: number;
+  input_digest: string;
+}
 
 export interface DelegatedOutputSource {
   task: string;
@@ -47,6 +57,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task: fallbackTask,
+      context: "",
       task_chars: fallbackTask.length,
       context_chars: 0,
       error: "delegate_agent.payload must be an object with non-empty task and context strings."
@@ -62,6 +73,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
       return {
         ok: false,
         task: parsed.data.task,
+        context: parsed.data.context,
         task_chars: parsed.data.task.length,
         context_chars: parsed.data.context.length,
         error: taskBoundaryError
@@ -72,6 +84,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task: parsed.data.task,
+      context: parsed.data.context,
       task_chars: parsed.data.task.length,
       context_chars: parsed.data.context.length,
       error: boundaryError
@@ -81,6 +94,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task: fallbackTask,
+      context,
       task_chars: fallbackTask.length,
       context_chars: context.length,
       error: "delegate_agent.payload.task must be a non-empty string."
@@ -90,6 +104,8 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task: fallbackTask,
+      context,
+      input_task: task,
       task_chars: task.length,
       context_chars: context.length,
       error: `delegate_agent.payload.task must be at most ${DELEGATE_AGENT_TASK_MAX_CHARS} chars.`
@@ -99,6 +115,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task,
+      context: "",
       task_chars: task.length,
       context_chars: 0,
       error: "delegate_agent.payload.context must be a non-empty string."
@@ -108,6 +125,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task,
+      context,
       task_chars: task.length,
       context_chars: context.length,
       error: `delegate_agent.payload.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars.`
@@ -118,6 +136,7 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
     return {
       ok: false,
       task,
+      context,
       task_chars: task.length,
       context_chars: context.length,
       error: "delegate_agent.payload may only include task and context."
@@ -126,9 +145,23 @@ export function parseDelegationRequest(action: DelegateAgentActionInput): ParseD
   return {
     ok: false,
     task,
+    context,
     task_chars: task.length,
     context_chars: context.length,
     error: "delegate_agent.payload failed schema validation."
+  };
+}
+
+export function delegationInputMetadata(request: ParseDelegationRequestResult): DelegationInputMetadata {
+  const task = request.ok ? request.task : request.input_task ?? request.task;
+  const context = request.context;
+  return {
+    input_contract_valid: request.ok,
+    task_chars: request.ok ? task.length : request.task_chars,
+    context_chars: request.ok ? context.length : request.context_chars,
+    input_digest: createHash("sha256")
+      .update(["delegate_agent_input_v1", String(task.length), task, String(context.length), context].join("\u0000"))
+      .digest("hex")
   };
 }
 

@@ -6,6 +6,7 @@ import {
   getDelegateAgentPayloadExample
 } from "../packages/core/src/action_contracts.js";
 import {
+  delegationInputMetadata,
   parseDelegatedOutput,
   parseDelegationRequest
 } from "../packages/core/src/delegate_agent_contract.js";
@@ -105,6 +106,26 @@ test("delegate_agent context still accepts explicit payload and evidence-only bo
   });
 
   assert.equal(result.ok, true);
+});
+
+test("delegation input metadata hashes normalized overlong task instead of fallback rationale", () => {
+  const left = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: { task: "a".repeat(1001), context: VALID_DELEGATE_CONTEXT }
+  });
+  const right = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: { task: "b".repeat(1001), context: VALID_DELEGATE_CONTEXT }
+  });
+
+  assert.equal(left.ok, false);
+  assert.equal(right.ok, false);
+  const leftMetadata = delegationInputMetadata(left);
+  const rightMetadata = delegationInputMetadata(right);
+  assert.equal(leftMetadata.task_chars, 1001);
+  assert.equal(rightMetadata.task_chars, 1001);
+  assert.notEqual(leftMetadata.input_digest, rightMetadata.input_digest);
+  assert.doesNotMatch(JSON.stringify(leftMetadata), /a{20}/);
 });
 
 test("delegated output accepts only a strict full JSON object", () => {

@@ -11,6 +11,7 @@ import {
   type EvidenceEvent,
   type ModelActionEnvelope
 } from "./schemas.js";
+import { delegationInputMetadata, parseDelegationRequest } from "./delegate_agent_contract.js";
 import { AgentStore } from "./store.js";
 
 const HARNESS_ACTION_TYPES = new Set([
@@ -24,7 +25,7 @@ const HARNESS_ACTION_TYPES = new Set([
 
 const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set<string>(delegateAgentCompletionGateCheckIds);
 
-type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "result_ref"> & {
+type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "metadata_present" | "result_ref"> & {
   result_ref?: string;
 };
 
@@ -38,7 +39,17 @@ export interface LiveRunTraceRound {
   action_types: string[];
   delegated_action_ids: string[];
   delegated_action_sequence_by_id: Record<string, number>;
+  delegated_action_inputs: LiveRunDelegatedActionInputExpectation[];
   harness_action_types: string[];
+}
+
+export interface LiveRunDelegatedActionInputExpectation {
+  action_id: string;
+  sequence: number;
+  input_contract_valid: boolean;
+  task_chars: number;
+  context_chars: number;
+  input_digest: string;
 }
 
 export interface LiveRunRepoWriteGuardSummary {
@@ -81,6 +92,7 @@ export interface LiveRunToolResultEventSummary {
 export interface LiveRunDelegatedDispatchSummary {
   event_id: string;
   created_at: string;
+  metadata_present: boolean;
   result_id: string | null;
   result_ref: string;
   action_id: string;
@@ -89,6 +101,10 @@ export interface LiveRunDelegatedDispatchSummary {
   sequence: number;
   task_chars: number;
   context_chars: number;
+  input_contract_valid: boolean | null;
+  input_contract_valid_present: boolean;
+  input_digest: string | null;
+  input_digest_present: boolean;
   model_invoked: boolean | null;
   model_invoked_present: boolean;
   contract_status: string;
@@ -421,12 +437,14 @@ function readDelegatedDispatchSummaries(
 ): LiveRunDelegatedDispatchSummary[] {
   const summaries: LiveRunDelegatedDispatchSummary[] = [];
   for (const event of events.filter((item) => item.kind === "delegated_result")) {
-    const parsed = delegatedDispatchFromEventMetadata(event) ?? parseDelegatedDispatchSummary(event.summary);
+    const metadata = delegatedDispatchFromEventMetadata(event);
+    const parsed = metadata ?? parseDelegatedDispatchSummary(event.summary);
     if (!parsed) continue;
     const { result_ref: parsedResultRef, ...dispatch } = parsed;
     summaries.push({
       event_id: event.id,
       created_at: event.created_at,
+      metadata_present: metadata !== null,
       result_ref: parsedResultRef && parsedResultRef.length > 0
         ? parsedResultRef
         : event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "",
@@ -450,6 +468,10 @@ function delegatedDispatchFromEventMetadata(
     sequence: metadata.sequence,
     task_chars: metadata.task_chars,
     context_chars: metadata.context_chars,
+    input_contract_valid: typeof metadata.input_contract_valid === "boolean" ? metadata.input_contract_valid : null,
+    input_contract_valid_present: typeof metadata.input_contract_valid === "boolean",
+    input_digest: typeof metadata.input_digest === "string" ? metadata.input_digest : null,
+    input_digest_present: typeof metadata.input_digest === "string",
     model_invoked: typeof metadata.model_invoked === "boolean" ? metadata.model_invoked : null,
     model_invoked_present: typeof metadata.model_invoked === "boolean",
     contract_status: metadata.contract_status,
@@ -462,11 +484,13 @@ function delegatedDispatchFromEventMetadata(
 }
 
 function parseDelegatedDispatchSummary(summary: string): DelegatedDispatchParsed | null {
-  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+)(?:; model_invoked=(true|false))?; contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
+  const match = summary.match(/^Delegated result: action_id=([^;]+); round=(\d+); sequence=(\d+); task_chars=(\d+); context_chars=(\d+)(?:; input_contract_valid=(true|false|unknown); input_digest=([a-f0-9]{64}|unknown))?(?:; model_invoked=(true|false))?; contract_status=([a-z_]+)(?:; dispatch_failure_kind=([a-z_]+|none))?(?:; result_failure_kind=([a-z_]+|none))?; ok=(true|false)\.$/);
   if (!match) return null;
-  const modelInvoked = match[6];
-  const dispatchFailureKind = match[8];
-  const resultFailureKind = match[9];
+  const inputContractValid = match[6];
+  const inputDigest = match[7];
+  const modelInvoked = match[8];
+  const dispatchFailureKind = match[10];
+  const resultFailureKind = match[11];
   return {
     action_id: match[1].trim(),
     result_id: null,
@@ -475,15 +499,25 @@ function parseDelegatedDispatchSummary(summary: string): DelegatedDispatchParsed
     sequence: Number.parseInt(match[3], 10),
     task_chars: Number.parseInt(match[4], 10),
     context_chars: Number.parseInt(match[5], 10),
+    input_contract_valid: parsedBooleanOrNull(inputContractValid),
+    input_contract_valid_present: parsedBooleanOrNull(inputContractValid) !== null,
+    input_digest: inputDigest && inputDigest !== "unknown" ? inputDigest : null,
+    input_digest_present: Boolean(inputDigest && inputDigest !== "unknown"),
     model_invoked: modelInvoked === undefined ? null : modelInvoked === "true",
     model_invoked_present: modelInvoked !== undefined,
-    contract_status: match[7],
+    contract_status: match[9],
     dispatch_failure_kind: dispatchFailureKind && dispatchFailureKind !== "none" ? dispatchFailureKind : null,
     dispatch_failure_kind_present: dispatchFailureKind !== undefined,
     result_failure_kind: resultFailureKind && resultFailureKind !== "none" ? resultFailureKind : null,
     result_failure_kind_present: resultFailureKind !== undefined,
-    ok: match[10] === "true"
+    ok: match[12] === "true"
   };
+}
+
+function parsedBooleanOrNull(value: string | undefined): boolean | null {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 async function readModelDiagnostics(
@@ -570,6 +604,11 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
     const actionTypes = parsed.data.actions.map((action) => action.type);
     const actionCounts = countBy(actionTypes);
     const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
+    const delegatedActionInputs = delegateActions.map((action, index) => ({
+      action_id: action.id,
+      sequence: index + 1,
+      ...delegationInputMetadata(parseDelegationRequest(action))
+    }));
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,
@@ -584,6 +623,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
       delegated_action_sequence_by_id: Object.fromEntries(delegateActions
         .map((action, index) => [action.id, index + 1] as const)
         .sort(([left], [right]) => left.localeCompare(right))),
+      delegated_action_inputs: delegatedActionInputs,
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
   }

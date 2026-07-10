@@ -38,6 +38,18 @@ export interface HarnessReplayAuditCheck {
   refs: string[];
 }
 
+interface DelegatedInputLineage {
+  missingInputMetadata: LiveRunDelegatedDispatchSummary[];
+  missingExpectedInput: LiveRunDelegatedDispatchSummary[];
+  mismatchedInputActionIds: LiveRunDelegatedDispatchSummary[];
+  mismatchedInputValidity: LiveRunDelegatedDispatchSummary[];
+  mismatchedInputTaskChars: LiveRunDelegatedDispatchSummary[];
+  mismatchedInputContextChars: LiveRunDelegatedDispatchSummary[];
+  mismatchedInputDigests: LiveRunDelegatedDispatchSummary[];
+  invalidInputOutcomeMismatches: LiveRunDelegatedDispatchSummary[];
+  inputMetadataComplete: boolean;
+}
+
 export interface HarnessReplayAuditReport {
   action: "harness-replay-audit";
   schema_version: 1;
@@ -450,6 +462,77 @@ function verificationEvidenceBinding(trace: LiveRunTraceSummary): {
   return { validRefs, validEvidenceByRef, legacyEventMetadataRefs };
 }
 
+function delegatedInputLineage(trace: LiveRunTraceSummary): DelegatedInputLineage {
+  const expectedByRoundAndSequence = new Map(trace.rounds.flatMap((round) =>
+    round.delegated_action_inputs.map((input) => [delegatedInputKey(round.round, input.sequence), input] as const)
+  ));
+  const missingInputMetadata = trace.delegated_dispatches.filter((dispatch) =>
+    !dispatch.metadata_present || !dispatch.input_contract_valid_present || !dispatch.input_digest_present
+  );
+  const missingExpectedInput = trace.delegated_dispatches.filter((dispatch) =>
+    !missingInputMetadata.includes(dispatch)
+      && !expectedByRoundAndSequence.has(delegatedInputKey(dispatch.round, dispatch.sequence))
+  );
+  const mismatchedInputActionIds = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    return expected !== undefined && dispatch.action_id !== expected.action_id;
+  });
+  const mismatchedInputValidity = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    return expected !== undefined
+      && dispatch.input_contract_valid_present
+      && dispatch.input_contract_valid !== expected.input_contract_valid;
+  });
+  const mismatchedInputTaskChars = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    return expected !== undefined && dispatch.task_chars !== expected.task_chars;
+  });
+  const mismatchedInputContextChars = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    return expected !== undefined && dispatch.context_chars !== expected.context_chars;
+  });
+  const mismatchedInputDigests = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    return expected !== undefined
+      && dispatch.input_digest_present
+      && dispatch.input_digest !== expected.input_digest;
+  });
+  const invalidInputOutcomeMismatches = trace.delegated_dispatches.filter((dispatch) => {
+    const expected = expectedByRoundAndSequence.get(delegatedInputKey(dispatch.round, dispatch.sequence));
+    const expectedFailureKind = dispatch.sequence > DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+      ? "dispatch_limit_exceeded"
+      : "input_contract_failed";
+    return expected?.input_contract_valid === false
+      && (dispatch.model_invoked !== false
+        || dispatch.ok !== false
+        || dispatch.contract_status !== "failed"
+        || dispatch.dispatch_failure_kind !== expectedFailureKind
+        || dispatch.result_failure_kind !== expectedFailureKind);
+  });
+  return {
+    missingInputMetadata,
+    missingExpectedInput,
+    mismatchedInputActionIds,
+    mismatchedInputValidity,
+    mismatchedInputTaskChars,
+    mismatchedInputContextChars,
+    mismatchedInputDigests,
+    invalidInputOutcomeMismatches,
+    inputMetadataComplete: missingInputMetadata.length === 0
+      && missingExpectedInput.length === 0
+      && mismatchedInputActionIds.length === 0
+      && mismatchedInputValidity.length === 0
+      && mismatchedInputTaskChars.length === 0
+      && mismatchedInputContextChars.length === 0
+      && mismatchedInputDigests.length === 0
+      && invalidInputOutcomeMismatches.length === 0
+  };
+}
+
+function delegatedInputKey(round: number, sequence: number): string {
+  return `${round}:${sequence}`;
+}
+
 function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
   const dispatchMetadataComplete = trace.delegated_dispatches.length === trace.delegated_result_count;
   const delegatedResultIds = trace.delegated_dispatches
@@ -460,6 +543,7 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     .filter((resultRef) => resultRef.length > 0);
   const duplicateDelegatedResultIdCount = delegatedResultIds.length - new Set(delegatedResultIds).size;
   const duplicateDelegatedResultRefCount = delegatedResultRefs.length - new Set(delegatedResultRefs).size;
+  const inputLineage = delegatedInputLineage(trace);
   const delegatedIdentityRefs = new Set([...delegatedResultIds, ...delegatedResultRefs]);
   const claimMetadataComplete = trace.envelope_claimed_verification_refs_present;
   const authoritativeClaimRefs = claimMetadataComplete
@@ -476,7 +560,8 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     && delegatedResultIds.length === trace.delegated_dispatches.length
     && delegatedResultRefs.length === trace.delegated_dispatches.length
     && duplicateDelegatedResultIdCount === 0
-    && duplicateDelegatedResultRefCount === 0;
+    && duplicateDelegatedResultRefCount === 0
+    && inputLineage.inputMetadataComplete;
   const nonDelegatedClaimedRefs = authoritativeClaimRefs
     .filter((ref) => !delegatedIdentityRefs.has(ref));
   const evidenceBinding = verificationEvidenceBinding(trace);
@@ -535,6 +620,7 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     duplicateDelegatedResultRefCount,
     evidenceBinding,
     failedDelegatedDispatches,
+    inputLineage,
     latestDelegatedRound,
     latestFailedDelegationRound,
     legacyEventMetadataClaimedRefs,
@@ -587,6 +673,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     duplicateDelegatedResultRefCount,
     evidenceBinding,
     failedDelegatedDispatches,
+    inputLineage,
     legacyEventMetadataClaimedRefs,
     legacyPostDelegationRefs,
     legacyPostFailedDelegationRefs,
@@ -750,6 +837,15 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `legacy_tool_result_metadata_claimed_refs=${legacyEventMetadataClaimedRefs.length}`,
       `dispatch_metadata_complete=${dispatchMetadataComplete}`,
       `delegated_identity_metadata_complete=${delegatedIdentityMetadataComplete}`,
+      `delegated_input_metadata_complete=${inputLineage.inputMetadataComplete}`,
+      `missing_delegated_input_metadata=${inputLineage.missingInputMetadata.length}`,
+      `missing_delegated_input_expectation=${inputLineage.missingExpectedInput.length}`,
+      `mismatched_delegated_input_action_id=${inputLineage.mismatchedInputActionIds.length}`,
+      `mismatched_delegated_input_validity=${inputLineage.mismatchedInputValidity.length}`,
+      `mismatched_delegated_input_task_chars=${inputLineage.mismatchedInputTaskChars.length}`,
+      `mismatched_delegated_input_context_chars=${inputLineage.mismatchedInputContextChars.length}`,
+      `mismatched_delegated_input_digest=${inputLineage.mismatchedInputDigests.length}`,
+      `invalid_delegated_input_outcome_mismatch=${inputLineage.invalidInputOutcomeMismatches.length}`,
       `duplicate_delegated_result_ids=${duplicateDelegatedResultIdCount}`,
       `duplicate_delegated_result_refs=${duplicateDelegatedResultRefCount}`,
       `missing_delegated_results_gate_ids=${missingDelegatedResultsGateIds.length}`,
@@ -1154,13 +1250,22 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     const expectedSequence = delegatedActionSequencesByRound.get(dispatch.round)?.[dispatch.action_id];
     return expectedSequence !== undefined && expectedSequence !== dispatch.sequence;
   });
+  const inputLineage = delegatedInputLineage(trace);
   const problemRefs = unique([
     ...missingEnvelopeRefs,
     ...mismatchedEnvelopeRefs,
     ...missingRounds,
     ...roundsWithoutDelegateAction,
     ...mismatchedActionIds,
-    ...mismatchedSequences
+    ...mismatchedSequences,
+    ...inputLineage.missingInputMetadata,
+    ...inputLineage.missingExpectedInput,
+    ...inputLineage.mismatchedInputActionIds,
+    ...inputLineage.mismatchedInputValidity,
+    ...inputLineage.mismatchedInputTaskChars,
+    ...inputLineage.mismatchedInputContextChars,
+    ...inputLineage.mismatchedInputDigests,
+    ...inputLineage.invalidInputOutcomeMismatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
   return {
     id: "delegated_dispatch_lineage",
@@ -1172,7 +1277,15 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
       `missing_round=${missingRounds.length}`,
       `round_without_delegate_action=${roundsWithoutDelegateAction.length}`,
       `mismatched_action_id=${mismatchedActionIds.length}`,
-      `mismatched_sequence=${mismatchedSequences.length}`
+      `mismatched_sequence=${mismatchedSequences.length}`,
+      `missing_input_metadata=${inputLineage.missingInputMetadata.length}`,
+      `missing_input_expectation=${inputLineage.missingExpectedInput.length}`,
+      `mismatched_input_action_id=${inputLineage.mismatchedInputActionIds.length}`,
+      `mismatched_input_validity=${inputLineage.mismatchedInputValidity.length}`,
+      `mismatched_input_task_chars=${inputLineage.mismatchedInputTaskChars.length}`,
+      `mismatched_input_context_chars=${inputLineage.mismatchedInputContextChars.length}`,
+      `mismatched_input_digest=${inputLineage.mismatchedInputDigests.length}`,
+      `invalid_input_outcome_mismatch=${inputLineage.invalidInputOutcomeMismatches.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs
@@ -1426,6 +1539,7 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   return {
     event_id: eventId,
     created_at: createdAt,
+    metadata_present: value.metadata_present === true,
     result_id: resultId,
     result_ref: resultRef,
     action_id: actionId,
@@ -1434,6 +1548,14 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     sequence,
     task_chars: taskChars,
     context_chars: contextChars,
+    input_contract_valid: typeof value.input_contract_valid === "boolean" ? value.input_contract_valid : null,
+    input_contract_valid_present: typeof value.input_contract_valid_present === "boolean"
+      ? value.input_contract_valid_present
+      : typeof value.input_contract_valid === "boolean",
+    input_digest: stringField(value, "input_digest"),
+    input_digest_present: typeof value.input_digest_present === "boolean"
+      ? value.input_digest_present
+      : typeof value.input_digest === "string",
     model_invoked: typeof value.model_invoked === "boolean" ? value.model_invoked : null,
     model_invoked_present: typeof value.model_invoked_present === "boolean"
       ? value.model_invoked_present
