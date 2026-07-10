@@ -1216,7 +1216,9 @@ turn's `model_action` evidence refs, so another turn in the same session cannot
 pollute the current trace or replay audit.
 Delegated result failure counts are derived from completion verification checks
 and episode event metadata; repo-write guard summaries are parsed from bounded
-tool-result event summaries. Delegated dispatch summaries may include action
+tool-result event summaries. The trace also exposes bounded same-run tool-result
+event ids, model-action rounds, and artifact refs so replay can bind completion
+evidence without opening raw tool bodies. Delegated dispatch summaries may include action
 id, round, sequence, task/context character counts, contract status, ok flag,
 event id, and artifact ref. The section does not read delegated result artifact
 bodies or raw ToolResult JSON. It does not render raw model responses, action
@@ -2204,9 +2206,12 @@ reads. Replay requires a `tool_result` lineage ref to equal its
 `tool_result_id`, and a `tool_artifact` lineage ref to equal its `artifact_ref`.
 Each `(tool_result_id, artifact_ref)` pair must contain exactly one entry from
 each source, with matching event, round, tool, result, side-effect, write/run,
-and delegation-relative metadata. Replay recomputes both delegation-relative
-flags from the evidence round and the latest delegated or failed delegated
-dispatch round. It also requires each bounded lineage `claimed` flag to agree
+and delegation-relative metadata. The pair's event id must bind exactly one
+same-run bounded `tool_result` event; that event must carry the pair's artifact
+ref, and its model-action round must match the evidence round. Replay recomputes
+both delegation-relative flags from that event-bound evidence round and the
+latest delegated or failed delegated dispatch round. It also requires each
+bounded lineage `claimed` flag to agree
 with exact membership in top-level
 `claimed_verification_refs`. It rejects an independent
 marker whose bounded lineage is unclaimed, absent from the done claim, failed,

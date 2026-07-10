@@ -64,6 +64,13 @@ export interface LiveRunModelDiagnosticSummary {
   error_preview: string;
 }
 
+export interface LiveRunToolResultEventSummary {
+  event_id: string;
+  created_at: string;
+  round: number;
+  artifact_refs: string[];
+}
+
 export interface LiveRunDelegatedDispatchSummary {
   event_id: string;
   created_at: string;
@@ -118,6 +125,7 @@ export interface LiveRunTraceSummary {
   event_count: number;
   event_kind_counts: Record<string, number>;
   tool_result_count: number;
+  tool_result_events: LiveRunToolResultEventSummary[];
   delegated_result_count: number;
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
@@ -218,6 +226,7 @@ async function summarizeLiveRunTrace(
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
   const rounds = await readTraceRounds(store, runEvents);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
+  const toolResultEvents = readToolResultEventSummaries(runEvents);
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
@@ -274,6 +283,7 @@ async function summarizeLiveRunTrace(
     event_count: runEvents.length,
     event_kind_counts: eventKindCounts,
     tool_result_count: eventKindCounts.tool_result ?? 0,
+    tool_result_events: toolResultEvents,
     delegated_result_count: delegatedResultCount,
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,
@@ -295,6 +305,7 @@ async function summarizeLiveRunTrace(
     boundary: [
       "read-only live run trace; reads completion reports, model action envelope metadata,",
       "model diagnostic summaries, episode event metadata, and harness-owned delegated dispatch metadata",
+      "including bounded tool-result event ids, rounds, and artifact refs",
       "plus bounded delegated completion-gate check metadata and report-declared delegated_result_refs from the completion report",
       "with event-summary fallback for older delegated result refs; repo write guard summaries are parsed from bounded tool-result event",
       "summaries; does not render raw model responses, tool bodies, delegated task/context/findings/output,",
@@ -312,6 +323,25 @@ function countCompletionCheckStatuses(checks: LiveRunCompletionCheckSummary[]): 
   };
   for (const check of checks) counts[check.status] += 1;
   return counts;
+}
+
+function readToolResultEventSummaries(events: EpisodeEvent[]): LiveRunToolResultEventSummary[] {
+  const summaries: LiveRunToolResultEventSummary[] = [];
+  let currentRound = 0;
+  for (const event of events) {
+    if (event.kind === "model_action") {
+      const envelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref));
+      currentRound = envelopeRef ? roundNumber(envelopeRef) : 0;
+    } else if (event.kind === "tool_result" && currentRound > 0) {
+      summaries.push({
+        event_id: event.id,
+        created_at: event.created_at,
+        round: currentRound,
+        artifact_refs: [...event.artifact_refs]
+      });
+    }
+  }
+  return summaries;
 }
 
 function readDelegatedCompletionGateChecks(report: CompletionVerificationReport): LiveRunCompletionCheckSummary[] {

@@ -1432,9 +1432,14 @@ identity to its declared source: a `tool_result` entry ref must equal
 Each `(tool_result_id, artifact_ref)` pair must contain exactly one entry from
 each source, and both entries must agree on event, round, tool, result status,
 side-effect level, write/run status, and delegation-relative position. Replay
-then recomputes each delegation-relative flag from the evidence round and the
-latest delegated or failed delegated dispatch round rather than trusting the
-persisted booleans. It also requires every lineage `claimed` flag to agree with
+also requires the pair's event id to bind exactly one same-run bounded
+`tool_result` event, requires that event to carry the pair's artifact ref, and
+requires the persisted evidence round to match the event's model-action round.
+The trace exposes only the tool-result event id, derived round, and artifact
+refs for this check, never the raw tool body. Replay then recomputes each
+delegation-relative flag from the event-bound evidence round and the latest
+delegated or failed delegated dispatch round rather than trusting the persisted
+booleans. It also requires every lineage `claimed` flag to agree with
 exact membership in the top-level `claimed_verification_refs` set. It then recomputes the
 independent marker invariant and reports lineage attention when a marked ref is
 unclaimed, absent from the done claim, failed, or not after the latest
@@ -1514,7 +1519,8 @@ context refs, event kind counts, observation counts, per-round action counts,
 harness state-action counts, safe delegated dispatch metadata including
 `model_invoked` and `dispatch_failure_kind`, model diagnostic
 failure kind/stage/refs, repo-write workspace guard summaries from bounded
-tool-result event summaries, and envelope refs. It must not read raw model
+tool-result event summaries, bounded tool-result event ids/rounds/artifact refs,
+and envelope refs. It must not read raw model
 responses, action payloads, tool result bodies, delegated task, context,
 findings, output, raw preview, final response Markdown, context Markdown, or
 harness artifact bodies, and it must not rerun actions, invoke the model,

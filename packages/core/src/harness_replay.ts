@@ -157,6 +157,7 @@ export async function runHarnessReplayAudit(
       trace.report_ref,
       trace.context_manifest_ref,
       ...trace.rounds.map((round) => round.envelope_ref),
+      ...trace.tool_result_events.map((event) => `${trace.report_ref}#${event.event_id}`),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
       ...trace.verification_evidence_refs.map((item) => item.ref),
@@ -389,12 +390,13 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     const key = JSON.stringify([item.tool_result_id, item.artifact_ref]);
     evidencePairs.set(key, [...(evidencePairs.get(key) ?? []), item]);
   }
-  const evidencePairCardinalityMismatchRefs = [...evidencePairs.values()].filter((items) =>
+  const evidencePairGroups = [...evidencePairs.values()];
+  const evidencePairCardinalityMismatchRefs = evidencePairGroups.filter((items) =>
     items.length !== 2
     || items.filter((item) => item.source === "tool_result").length !== 1
     || items.filter((item) => item.source === "tool_artifact").length !== 1
   );
-  const evidencePairMetadataMismatchRefs = [...evidencePairs.values()].filter((items) => {
+  const evidencePairMetadataMismatchRefs = evidencePairGroups.filter((items) => {
     if (items.length !== 2 || new Set(items.map((item) => item.source)).size !== 2) return false;
     const first = items[0]!;
     const second = items[1]!;
@@ -406,6 +408,24 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       || first.is_write_run !== second.is_write_run
       || first.after_latest_delegation !== second.after_latest_delegation
       || first.after_latest_failed_delegation !== second.after_latest_failed_delegation;
+  });
+  const toolResultEventsById = new Map<string, typeof trace.tool_result_events>();
+  for (const event of trace.tool_result_events) {
+    toolResultEventsById.set(event.event_id, [...(toolResultEventsById.get(event.event_id) ?? []), event]);
+  }
+  const missingToolResultEventBindingPairs = evidencePairGroups.filter((items) =>
+    !toolResultEventsById.has(items[0]!.event_id)
+  );
+  const ambiguousToolResultEventBindingPairs = evidencePairGroups.filter((items) =>
+    (toolResultEventsById.get(items[0]!.event_id)?.length ?? 0) > 1
+  );
+  const mismatchedToolResultEventArtifactPairs = evidencePairGroups.filter((items) => {
+    const events = toolResultEventsById.get(items[0]!.event_id);
+    return events?.length === 1 && !events[0]!.artifact_refs.includes(items[0]!.artifact_ref);
+  });
+  const mismatchedToolResultEventRoundPairs = evidencePairGroups.filter((items) => {
+    const events = toolResultEventsById.get(items[0]!.event_id);
+    return events?.length === 1 && events[0]!.round !== items[0]!.round;
   });
   const latestDelegatedRound = trace.delegated_dispatches.length > 0
     ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
@@ -459,6 +479,10 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     || sourceRefMismatchRefs.length > 0
     || evidencePairCardinalityMismatchRefs.length > 0
     || evidencePairMetadataMismatchRefs.length > 0
+    || missingToolResultEventBindingPairs.length > 0
+    || ambiguousToolResultEventBindingPairs.length > 0
+    || mismatchedToolResultEventArtifactPairs.length > 0
+    || mismatchedToolResultEventRoundPairs.length > 0
     || afterLatestDelegationMismatchRefs.length > 0
     || afterLatestFailedDelegationMismatchRefs.length > 0
     || claimedFlagMismatchRefs.length > 0
@@ -485,6 +509,10 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `source_ref_mismatches=${sourceRefMismatchRefs.length}`,
       `evidence_pair_cardinality_mismatches=${evidencePairCardinalityMismatchRefs.length}`,
       `evidence_pair_metadata_mismatches=${evidencePairMetadataMismatchRefs.length}`,
+      `missing_tool_result_event_bindings=${missingToolResultEventBindingPairs.length}`,
+      `ambiguous_tool_result_event_bindings=${ambiguousToolResultEventBindingPairs.length}`,
+      `mismatched_tool_result_event_artifacts=${mismatchedToolResultEventArtifactPairs.length}`,
+      `mismatched_tool_result_event_rounds=${mismatchedToolResultEventRoundPairs.length}`,
       `after_latest_delegation_mismatches=${afterLatestDelegationMismatchRefs.length}`,
       `after_latest_failed_delegation_mismatches=${afterLatestFailedDelegationMismatchRefs.length}`,
       `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
@@ -504,6 +532,16 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
         ...sourceRefMismatchRefs.map((item) => item.ref),
         ...evidencePairCardinalityMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
         ...evidencePairMetadataMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
+        ...missingToolResultEventBindingPairs.flatMap((items) => items.map((item) => item.ref)),
+        ...ambiguousToolResultEventBindingPairs.flatMap((items) => items.map((item) => item.ref)),
+        ...mismatchedToolResultEventArtifactPairs.flatMap((items) => [
+          ...items.map((item) => item.ref),
+          `${trace.report_ref}#${items[0]!.event_id}`
+        ]),
+        ...mismatchedToolResultEventRoundPairs.flatMap((items) => [
+          ...items.map((item) => item.ref),
+          `${trace.report_ref}#${items[0]!.event_id}`
+        ]),
         ...afterLatestDelegationMismatchRefs.map((item) => item.ref),
         ...afterLatestFailedDelegationMismatchRefs.map((item) => item.ref),
         ...claimedFlagMismatchRefs.map((item) => item.ref),

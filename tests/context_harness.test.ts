@@ -5046,6 +5046,10 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /source_ref_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /evidence_pair_cardinality_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /evidence_pair_metadata_mismatches=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /missing_tool_result_event_bindings=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /ambiguous_tool_result_event_bindings=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /mismatched_tool_result_event_artifacts=0/);
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /mismatched_tool_result_event_rounds=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /after_latest_delegation_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /after_latest_failed_delegation_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /claimed_flag_mismatches=0/);

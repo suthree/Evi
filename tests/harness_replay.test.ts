@@ -700,6 +700,88 @@ test("harness replay audit rejects verification evidence pair integrity drift", 
   }
 });
 
+test("harness replay audit rejects verification evidence tool event binding drift", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-evidence-event-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const evidencePair = (args: {
+      toolResultId: string;
+      artifactRef: string;
+      eventId: string;
+    }) => (["tool_result", "tool_artifact"] as const).map((source) => ({
+      ref: source === "tool_result" ? args.toolResultId : args.artifactRef,
+      source,
+      tool_result_id: args.toolResultId,
+      artifact_ref: args.artifactRef,
+      event_id: args.eventId,
+      round: 2,
+      tool: "file.read",
+      ok: true,
+      side_effect_level: "none",
+      is_write_run: false,
+      claimed: false,
+      after_latest_delegation: true,
+      after_latest_failed_delegation: true,
+      counts_as_independent_evidence: false,
+      counts_as_failed_delegation_recovery: false
+    }));
+    const verificationEvidence = [
+      ...evidencePair({
+        toolResultId: "tool_result_missing_event",
+        artifactRef: `memory/episodes/${sessionId}-tool_result_missing_event.json`,
+        eventId: "evidence_missing_tool"
+      }),
+      ...evidencePair({
+        toolResultId: "tool_result_mismatched_event",
+        artifactRef: `memory/episodes/${sessionId}-tool_result_mismatched_event.json`,
+        eventId: "evidence_replay_tool"
+      })
+    ];
+    await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
+      id: "completion_verification_replay_test",
+      session_id: sessionId,
+      turn_id: "turn_replay_test",
+      completion_status: "done",
+      verification_status: "passed",
+      verified: true,
+      summary: "Drifted report detached verification evidence from same-run tool-result events.",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      final_response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      claimed_verification_refs: [],
+      observation_refs: verificationEvidence.map((item) => item.artifact_ref),
+      verification_evidence_refs: verificationEvidence,
+      delegated_result_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+      checks: [],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "fail");
+    assert.match(check?.summary ?? "", /missing_tool_result_event_bindings=1/);
+    assert.match(check?.summary ?? "", /ambiguous_tool_result_event_bindings=0/);
+    assert.match(check?.summary ?? "", /mismatched_tool_result_event_artifacts=1/);
+    assert.match(check?.summary ?? "", /mismatched_tool_result_event_rounds=1/);
+    assert.equal(check?.refs.includes("tool_result_missing_event"), true);
+    assert.equal(check?.refs.includes("tool_result_mismatched_event"), true);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-completion-verification.json#evidence_replay_tool"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit rejects delegation-relative evidence flag drift", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-evidence-round-"));
   const repoRoot = join(root, "repo");
