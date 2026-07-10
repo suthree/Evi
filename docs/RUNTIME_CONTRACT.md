@@ -1386,9 +1386,10 @@ evidence recorded after the latest delegated result: at least one harness-known
 non-delegated verification ref bound through `completion_claim.verification_refs`;
 a successful write/run tool result is completion proof only when the done claim
 cites its harness-known ref. If any delegated result failed, completion requires
-both later successful write/run recovery evidence cited by the done claim and a
-bound non-delegated verification ref after the failed delegated result; an
-uncited write/run result and later read-only refs are context only.
+both later successful write/run recovery evidence cited by the done claim as a
+tool result id or tool artifact ref and a bound non-delegated verification ref
+after the failed delegated result; an uncited write/run result and later
+read-only refs are context only.
 The final response artifact alone is not independent completion proof.
 Non-`done` runs still record a bounded
 `delegated_results` warning when any delegated result failed, so Live Run Trace
@@ -1421,10 +1422,10 @@ for harness-known successful tool result ids and tool artifact refs. Each entry
 records only lineage metadata: source, tool result id, artifact ref, event id,
 round, tool name, side-effect level, write/run flag, claimed flag, and whether
 the ref counted as post-delegation independent evidence or failed-delegation
-recovery evidence. Only a claimed successful write/run result can carry the
-failed-delegation recovery marker. State-only harness actions and delegated
-result refs are not written into this proof lineage. Live Run Trace and harness
-replay can audit this metadata without opening raw tool bodies, delegated
+recovery evidence. Only a claimed successful write/run tool result id or tool
+artifact ref can carry the failed-delegation recovery marker. State-only harness
+actions and delegated result refs are not written into this proof lineage. Live
+Run Trace and harness replay can audit this metadata without opening raw tool bodies, delegated
 artifacts, or final responses.
 If a delegated result failed and the run does not reach verified `done`
 completion, any `propose_sop` action remains state-only and must not enter live

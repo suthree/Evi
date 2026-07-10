@@ -1831,7 +1831,9 @@ function verifyCompletionClaim(args: {
   const boundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => availableVerificationRefSet.has(ref));
   const unboundClaimedRefs = nonDelegatedClaimedRefs.filter((ref) => !availableVerificationRefSet.has(ref));
   const successfulWriteOrRunRefs = writeOrRunResults.filter((result) => result.ok).map((result) => result.id);
-  const claimedSuccessfulWriteOrRunRefs = successfulWriteOrRunRefs.filter((ref) => boundClaimedRefs.includes(ref));
+  const claimedSuccessfulWriteOrRunRefs = args.verificationEvidenceRefDrafts
+    .filter((draft) => draft.is_write_run && boundClaimedRefs.includes(draft.ref))
+    .map((draft) => draft.ref);
   const postDelegationClaimedRefs = mainHarnessIndependentEvidenceAfterLatestDelegation({
     delegatedResults: args.delegatedResults,
     independentEvidenceRefs: boundClaimedRefs,
@@ -1980,7 +1982,6 @@ function annotateCompletionVerificationEvidenceRefs(args: {
       counts_as_independent_evidence: claimed && afterLatestDelegation,
       counts_as_failed_delegation_recovery: latestFailedDelegatedRound !== null
         && claimed
-        && draft.source === "tool_result"
         && draft.is_write_run
         && afterLatestFailedDelegation
     };

@@ -4994,6 +4994,60 @@ test("live runner accepts failed delegation recovery with write-run and verifica
   }
 });
 
+test("live runner accepts claimed write-run artifact refs as failed delegation recovery", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new InvalidDelegationThenStateWriteArtifactVerifiedDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Recover after failed delegation with a bound write-run artifact ref.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      claimed_verification_refs: string[];
+      verification_evidence_refs: Array<{
+        ref: string;
+        source: string;
+        claimed: boolean;
+        is_write_run: boolean;
+        counts_as_independent_evidence: boolean;
+        counts_as_failed_delegation_recovery: boolean;
+      }>;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.equal(result.verdict, "no_sop");
+    assert.match(model.claimedWriteArtifactRef, /^memory\/episodes\/session_.*-tool_result_.*\.json$/);
+    assert.deepEqual(report.claimed_verification_refs, [model.claimedWriteArtifactRef]);
+    assert.equal(report.verification_status, "passed");
+    assert.equal(report.verified, true);
+    const lineage = report.verification_evidence_refs.find((item) => item.ref === model.claimedWriteArtifactRef);
+    assert.ok(lineage);
+    assert.equal(lineage.source, "tool_artifact");
+    assert.equal(lineage.claimed, true);
+    assert.equal(lineage.is_write_run, true);
+    assert.equal(lineage.counts_as_independent_evidence, true);
+    assert.equal(lineage.counts_as_failed_delegation_recovery, true);
+    assert.equal(report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence")?.status, "pass");
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
+    assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
+    assert.equal(replay.verification_evidence_refs.find((item) => item.ref === model.claimedWriteArtifactRef)?.counts_as_failed_delegation_recovery, true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects unclaimed write-run recovery with a claimed read-only ref", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -8031,6 +8085,36 @@ class InvalidDelegationThenStateWriteThenVerifiedDoneModel implements ModelClien
   }
 }
 
+class InvalidDelegationThenStateWriteArtifactVerifiedDoneModel implements ModelClient {
+  private mainCalls = 0;
+  claimedWriteArtifactRef = "";
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    const outputText = isDelegation
+      ? "plain text instead of json"
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-delegation-write-artifact-verified-done",
+      responseId: `response-invalid-delegation-write-artifact-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls === 2) return stateWriteEnvelope();
+    if (this.mainCalls > 2) {
+      this.claimedWriteArtifactRef = latestToolArtifactRef(request.input);
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteArtifactRef]);
+    }
+    return delegateCritiqueEnvelope();
+  }
+}
+
 class InvalidDelegationThenUnclaimedStateWriteThenReadOnlyDoneModel implements ModelClient {
   private mainCalls = 0;
   unclaimedWriteRef = "";
@@ -9884,6 +9968,12 @@ function doneEnvelope(): Record<string, unknown> {
 
 function latestToolResultRef(input: string): string {
   return input.match(/"id": "(tool_result_[^"]+)"/)?.[1] ?? "";
+}
+
+function latestToolArtifactRef(input: string): string {
+  const sessionId = input.match(/"session_id": "(session_[^"]+)"/)?.[1] ?? "";
+  const toolResultId = latestToolResultRef(input);
+  return sessionId && toolResultId ? `memory/episodes/${sessionId}-${toolResultId}.json` : "";
 }
 
 function toolResultRefForTool(input: string, tool: string): string {
