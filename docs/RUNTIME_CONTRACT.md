@@ -1432,8 +1432,10 @@ identity to its declared source: a `tool_result` entry ref must equal
 Each `(tool_result_id, artifact_ref)` pair must contain exactly one entry from
 each source, and both entries must agree on event, round, tool, result status,
 side-effect level, write/run status, and delegation-relative position. Replay
-also requires every lineage `claimed` flag to agree with exact membership in
-the top-level `claimed_verification_refs` set. It then recomputes the
+then recomputes each delegation-relative flag from the evidence round and the
+latest delegated or failed delegated dispatch round rather than trusting the
+persisted booleans. It also requires every lineage `claimed` flag to agree with
+exact membership in the top-level `claimed_verification_refs` set. It then recomputes the
 independent marker invariant and reports lineage attention when a marked ref is
 unclaimed, absent from the done claim, failed, or not after the latest
 delegation. It separately recomputes the recovery marker invariant and reports

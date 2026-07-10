@@ -407,6 +407,19 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       || first.after_latest_delegation !== second.after_latest_delegation
       || first.after_latest_failed_delegation !== second.after_latest_failed_delegation;
   });
+  const latestDelegatedRound = trace.delegated_dispatches.length > 0
+    ? Math.max(...trace.delegated_dispatches.map((dispatch) => dispatch.round))
+    : null;
+  const failedDelegatedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok);
+  const latestFailedDelegatedRound = failedDelegatedDispatches.length > 0
+    ? Math.max(...failedDelegatedDispatches.map((dispatch) => dispatch.round))
+    : null;
+  const afterLatestDelegationMismatchRefs = trace.verification_evidence_refs.filter((item) =>
+    item.after_latest_delegation !== (latestDelegatedRound === null || item.round > latestDelegatedRound)
+  );
+  const afterLatestFailedDelegationMismatchRefs = trace.verification_evidence_refs.filter((item) =>
+    item.after_latest_failed_delegation !== (latestFailedDelegatedRound === null || item.round > latestFailedDelegatedRound)
+  );
   const claimedFlagMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.claimed !== claimedRefs.has(item.ref)
   );
@@ -446,6 +459,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     || sourceRefMismatchRefs.length > 0
     || evidencePairCardinalityMismatchRefs.length > 0
     || evidencePairMetadataMismatchRefs.length > 0
+    || afterLatestDelegationMismatchRefs.length > 0
+    || afterLatestFailedDelegationMismatchRefs.length > 0
     || claimedFlagMismatchRefs.length > 0
     || missingIndependentLineage
     || missingRecoveryLineage
@@ -470,6 +485,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `source_ref_mismatches=${sourceRefMismatchRefs.length}`,
       `evidence_pair_cardinality_mismatches=${evidencePairCardinalityMismatchRefs.length}`,
       `evidence_pair_metadata_mismatches=${evidencePairMetadataMismatchRefs.length}`,
+      `after_latest_delegation_mismatches=${afterLatestDelegationMismatchRefs.length}`,
+      `after_latest_failed_delegation_mismatches=${afterLatestFailedDelegationMismatchRefs.length}`,
       `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
@@ -487,6 +504,8 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
         ...sourceRefMismatchRefs.map((item) => item.ref),
         ...evidencePairCardinalityMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
         ...evidencePairMetadataMismatchRefs.flatMap((items) => items.map((item) => item.ref)),
+        ...afterLatestDelegationMismatchRefs.map((item) => item.ref),
+        ...afterLatestFailedDelegationMismatchRefs.map((item) => item.ref),
         ...claimedFlagMismatchRefs.map((item) => item.ref),
         ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),

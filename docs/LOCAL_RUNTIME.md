@@ -2204,8 +2204,10 @@ reads. Replay requires a `tool_result` lineage ref to equal its
 `tool_result_id`, and a `tool_artifact` lineage ref to equal its `artifact_ref`.
 Each `(tool_result_id, artifact_ref)` pair must contain exactly one entry from
 each source, with matching event, round, tool, result, side-effect, write/run,
-and delegation-relative metadata. Replay also requires each bounded lineage
-`claimed` flag to agree with exact membership in top-level
+and delegation-relative metadata. Replay recomputes both delegation-relative
+flags from the evidence round and the latest delegated or failed delegated
+dispatch round. It also requires each bounded lineage `claimed` flag to agree
+with exact membership in top-level
 `claimed_verification_refs`. It rejects an independent
 marker whose bounded lineage is unclaimed, absent from the done claim, failed,
 or not after the latest delegation. It also
