@@ -254,7 +254,7 @@ iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结
 `anti_drift` 会保留有界的反漂移检查，让外部 adapter 压力、过早提升 SOP/skill/memory/dream、以及未验证就声明完成这三类风险在 handoff 中保持可见；
 `non_goals` 会保留关键边界：不自动提升 SOP/skill/memory/dream，不执行外部工具，不把 application slice 当核心身份，也不把未执行验证当完成证明；
 如果匹配的下一条 iteration 已经打开，`iteration_record_status` 会显示它，`next_command` 也会指向
-现有 iteration 的 inspect 命令，而不是继续提示重复登记；这仍然不会写状态或证明完成。
+现有 iteration 的 inspect 命令，而不是继续提示重复登记；它还会把持久化 implementation contract 与当前权威 plan 对比为 `aligned`、`missing` 或 `drifted`，后两者会让 selection 进入 `needs_attention`，但不会自动修复或覆盖 state；这仍然不会证明完成。
 在 `governance iterations --audit-seed all` 里，open iteration 的 `next_command`
 会保留 evidence ref、verification command、verification claim 和 next move 占位，避免写回一个缺 claim coverage 的 outcome；
 compact context 也可以显示 `review_gate`，用于提示 open iteration 仍缺 outcome record、outcome verification command coverage、outcome verification claim coverage，以及必跑 verification entrypoints 和 required completion coverage；

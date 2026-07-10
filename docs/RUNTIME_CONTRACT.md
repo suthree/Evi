@@ -720,8 +720,12 @@ promotion follows only after core/basic evidence supports reuse.
 exists for the proposed layer, owner surface, slice, and source ref. If it
 exists, `next_command` may point to the existing iteration inspection command
 instead of another record command. This is duplicate-avoidance context only; it
-must not write state or prove completion. When the CLI is invoked with a
-current state root, `next_core_basic_plan.next_command`,
+must not write state or prove completion. A matching open record also reports
+`implementation_contract_status=aligned|missing|drifted` by comparing its
+persisted contract with the current authoritative plan. Missing or drifted
+contracts make plan selection `needs_attention` before implementation; the
+read model does not repair or overwrite the record. When the CLI is invoked with
+a current state root, `next_core_basic_plan.next_command`,
 `iteration_record_status` command fields, `scorecard_basis` command entries,
 and `next_iteration_seed` command fields bind that root so the surfaced
 runtime commands are directly executable; unresolved `<iteration-ref>`

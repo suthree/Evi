@@ -1924,7 +1924,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
       ...(targetLayerCheck ? [`target: ${targetLayerCheck}`] : []),
       ...(verificationEntryPoints ? [`verify: ${verificationEntryPoints}`] : []),
       ...(compactVerificationCommands.length ? [`verify_commands: ${compactVerificationCommands.join(" | ")}`] : []),
-      `iteration_record_status: ${plan.iteration_record_status.status}${plan.iteration_record_status.id ? `; ${plan.iteration_record_status.id}` : ""}`,
+      `iteration_record_status: ${plan.iteration_record_status.status}${plan.iteration_record_status.id ? `; ${plan.iteration_record_status.id}` : ""}${plan.iteration_record_status.implementation_contract_status ? `; contract=${plan.iteration_record_status.implementation_contract_status}` : ""}`,
       ...(reviewGate ? [`review_gate: ${reviewGate}`] : []),
       ...(auditCommand ? [`audit_command: ${auditCommand}`] : []),
       ...(afterVerifyCommand ? [`after_verify: ${afterVerifyCommand}`] : []),

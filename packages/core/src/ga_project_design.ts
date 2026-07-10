@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { CapabilityLayer } from "./capabilities.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "./action_contracts.js";
 import {
@@ -274,6 +275,8 @@ export interface GaProjectDesignGeneralDelegationLoop {
 
 export interface GaProjectDesignIterationRecordStatus {
   status: "not_recorded" | "open_iteration_available";
+  implementation_contract_status?: "aligned" | "missing" | "drifted";
+  implementation_contract_attention?: string[];
   id?: string;
   ref?: string;
   outcome_status?: "not_recorded";
@@ -686,11 +689,16 @@ function buildNextCoreBasicPlan(
     ? BOOTSTRAP_PROPOSED_SLICE
     : nextProposedSlice(source, target);
   const nextIterationSeed = buildNextIterationSeed(contract, source, target, proposedSlice);
-  const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed);
+  const implementationContract = buildImplementationContract(source, target, proposedSlice);
+  const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed, implementationContract);
   const governanceCleanup = buildGovernanceCleanup(iterations, source);
   const isFreshSuccessor = proposedSlice !== source.proposed_slice;
   const isTargetLayerReady = isCoreBasicLayer(target.layer);
-  const selectionStatus = isFreshSuccessor && isTargetLayerReady ? "ready" : "needs_attention";
+  const isOpenIterationContractReady = iterationRecordStatus.status !== "open_iteration_available"
+    || iterationRecordStatus.implementation_contract_status === "aligned";
+  const selectionStatus = isFreshSuccessor && isTargetLayerReady && isOpenIterationContractReady
+    ? "ready"
+    : "needs_attention";
   const sourceArtifactWarnings = [
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
       ? [`source_artifact_warning=thin_evidence_refs; minimum=${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; actual=${source.evidence_refs.length}`]
@@ -707,7 +715,10 @@ function buildNextCoreBasicPlan(
     `fresh_successor_slice=${isFreshSuccessor}`,
     `target_layer=${target.layer}`,
     `owner_surface=${target.owner_surface}`,
-    `iteration_record_status=${iterationRecordStatus.status}`
+    `iteration_record_status=${iterationRecordStatus.status}`,
+    ...(iterationRecordStatus.implementation_contract_status
+      ? [`iteration_contract_status=${iterationRecordStatus.implementation_contract_status}`]
+      : [])
   ];
   const acceptanceTrace = buildAcceptanceTrace();
   return {
@@ -727,7 +738,7 @@ function buildNextCoreBasicPlan(
     source_proposed_slice: source.proposed_slice,
     planning_basis: buildPlanningBasis(source, proposedSlice),
     goal_scope: buildGoalScope(source, target, proposedSlice),
-    implementation_contract: buildImplementationContract(source, target, proposedSlice),
+    implementation_contract: implementationContract,
     source_continuation: buildSourceContinuation(source),
     iteration_focus: buildIterationFocus(source, proposedSlice),
     capability_stage_plan: buildCapabilityStagePlan(source, target, proposedSlice),
@@ -745,6 +756,9 @@ function buildNextCoreBasicPlan(
       `fresh_successor_slice=${isFreshSuccessor}; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
       `target_layer=${target.layer}; owner_surface=${target.owner_surface}`,
       `iteration_record_status=${iterationRecordStatus.status}${iterationRecordStatus.ref ? `; ref=${iterationRecordStatus.ref}` : ""}`,
+      ...(iterationRecordStatus.implementation_contract_status
+        ? [`iteration_contract_status=${iterationRecordStatus.implementation_contract_status}; attention=${iterationRecordStatus.implementation_contract_attention?.join(",") || "none"}`]
+        : []),
       `governance_cleanup_superseded_open_iterations=${governanceCleanup.superseded_open_iterations.length}`,
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
@@ -1434,7 +1448,8 @@ function buildLearningAuthority(): GaProjectDesignLearningAuthority {
 
 function buildIterationRecordStatus(
   iterations: SelfEvolutionIterationContract[],
-  seed: GaProjectDesignIterationSeed
+  seed: GaProjectDesignIterationSeed,
+  expectedContract: GaProjectDesignImplementationContract
 ): GaProjectDesignIterationRecordStatus {
   const openIteration = iterations.find((iteration) =>
     !iteration.outcome
@@ -1444,15 +1459,23 @@ function buildIterationRecordStatus(
     && (iteration.source_ref ?? "") === seed.source_ref
   );
   if (openIteration) {
+    let implementationContractStatus: NonNullable<GaProjectDesignIterationRecordStatus["implementation_contract_status"]> = "aligned";
+    if (!openIteration.implementation_contract) implementationContractStatus = "missing";
+    else if (!isDeepStrictEqual(openIteration.implementation_contract, expectedContract)) implementationContractStatus = "drifted";
+    const implementationContractAttention: string[] = [];
+    if (implementationContractStatus === "missing") implementationContractAttention.push("implementation_contract_missing");
+    else if (implementationContractStatus === "drifted") implementationContractAttention.push("implementation_contract_differs_from_current_plan");
     return {
       status: "open_iteration_available",
+      implementation_contract_status: implementationContractStatus,
+      implementation_contract_attention: implementationContractAttention,
       id: openIteration.id,
       ref: openIteration.ref,
       outcome_status: "not_recorded",
       inspect_command: `pnpm run runtime -- governance iterations --iteration ${openIteration.id} --state-root <state-root>`,
       audit_command: `pnpm run runtime -- governance iterations --iteration ${openIteration.id} --audit-seed all --state-root <state-root>`,
       record_command: seed.record_command,
-      boundary: "read-only GA project design iteration record status; detects a matching open iteration by layer, owner surface, proposed slice, and source ref; does not write state or prove completion"
+      boundary: "read-only GA project design iteration record status; detects a matching open iteration and compares its implementation contract with the current authoritative plan before selection; does not repair state, write outcomes, or prove completion"
     };
   }
   return {

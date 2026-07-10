@@ -1110,16 +1110,31 @@ test("GA project design planning packet surfaces matching open iteration", async
     await store.writeJson(verifiedIteration.ref, verifiedIteration);
     await store.writeJson(openIteration.ref, openIteration);
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    let readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+
+    assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "missing");
+    assert.deepEqual(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, ["implementation_contract_missing"]);
+    assert.equal(readModel.next_core_basic_plan?.selection_status, "needs_attention");
+
+    await store.writeJson(openIteration.ref, {
+      ...openIteration,
+      implementation_contract: readModel.next_core_basic_plan?.implementation_contract
+    });
+    readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.status, "open_iteration_available");
+    assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "aligned");
+    assert.deepEqual(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, []);
+    assert.equal(readModel.next_core_basic_plan?.selection_status, "ready");
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.id, openIteration.id);
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.ref, openIteration.ref);
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.outcome_status, "not_recorded");
     assert.equal(readModel.next_core_basic_plan?.next_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_open_successor --state-root <state-root>");
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.audit_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_open_successor --audit-seed all --state-root <state-root>");
     assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("iteration_record_status=open_iteration_available"), true);
+    assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("iteration_contract_status=aligned"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.some((check) => check.includes(openIteration.ref)), true);
+    assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("iteration_contract_status=aligned; attention=none"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("governance_cleanup_superseded_open_iterations=2"), true);
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === staleOpenIteration.id), true);
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === staleOpenBasicIteration.id), true);
@@ -1151,6 +1166,27 @@ test("GA project design planning packet surfaces matching open iteration", async
     assert.equal(packet.next_core_basic_plan?.iteration_record_status.status, "open_iteration_available");
     assert.equal(packet.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === staleOpenIteration.id), true);
     assert.equal(packet.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === staleOpenBasicIteration.id), true);
+
+    const alignedContract = readModel.next_core_basic_plan?.implementation_contract;
+    assert.ok(alignedContract?.delegation_contract);
+    await store.writeJson(openIteration.ref, {
+      ...openIteration,
+      implementation_contract: {
+        ...alignedContract,
+        delegation_contract: {
+          ...alignedContract.delegation_contract,
+          result: {
+            ...alignedContract.delegation_contract.result,
+            summary_max_chars: alignedContract.delegation_contract.result.summary_max_chars + 1
+          }
+        }
+      }
+    });
+    const driftedReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    assert.equal(driftedReadModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "drifted");
+    assert.deepEqual(driftedReadModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, ["implementation_contract_differs_from_current_plan"]);
+    assert.equal(driftedReadModel.next_core_basic_plan?.selection_status, "needs_attention");
+    assert.equal(driftedReadModel.next_core_basic_plan?.layer_decision.stage, "needs_attention");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
