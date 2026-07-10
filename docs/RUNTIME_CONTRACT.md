@@ -1546,6 +1546,15 @@ must be `skipped/false`, `done` with any failed check must be `failed/false`,
 and `done` without failed checks must be `passed/true`. A report that claims a
 passed or verified completion while contradicting those inputs fails replay;
 consistent failed or skipped completion remains attention rather than clean.
+Replay also independently derives the expected `delegated_results` gate status
+from bounded delegated result counts, `ok=false` dispatch rounds, completion
+status, and later claimed successful write/run evidence uniquely bound to its
+tool-result event, artifact, and round. Incomplete dispatch metadata remains
+attention instead of being guessed as pass. An independently expected failure
+always remains a replay failure; a report-declared pass that hides an expected
+warning also fails, while other status mismatches remain attention. This
+aggregate parity check does not read delegated artifact bodies or require
+delegated result identity to be added to the bounded trace.
 It also checks whether
 per-round `delegate_agent` action counts are covered by delegated result events,
 whether delegated dispatch result refs are explicitly carried by the completion

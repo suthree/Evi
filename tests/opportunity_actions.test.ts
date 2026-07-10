@@ -502,7 +502,7 @@ test("governance act-next replay-audits repo write guard evidence", async () => 
     assert.equal(result.replay_audit?.status, "attention");
     assert.equal(result.replay_audit?.repo_write_guards, 1);
     assert.equal(result.replay_audit?.delegated_results_failed, 0);
-    assert.equal(result.replay_audit?.warning_count, 1);
+    assert.equal(result.replay_audit?.warning_count, 2);
 
     const actionRecord = JSON.parse(await readFile(join(fixture.stateRoot, result.audit_ref), "utf8")) as Record<string, unknown>;
     assert.equal(actionRecord.selected_opportunity_id, "repo_write_guard_completion_verification_repo_guard_action_evidence_repo_guard_action");
@@ -511,9 +511,14 @@ test("governance act-next replay-audits repo write guard evidence", async () => 
     assert.equal(actionRecord.trace_ref, "memory/episodes/session_repo_guard_action-completion-verification.json");
     assert.equal(actionRecord.replay_ref, result.replay_audit?.replay_ref);
     assert.equal(actionRecord.replay_status, "attention");
-    assert.equal(actionRecord.replay_warning_count, 1);
+    assert.equal(actionRecord.replay_warning_count, 2);
 
     const replayRaw = await readFile(join(fixture.stateRoot, result.replay_audit?.replay_ref ?? ""), "utf8");
+    const replayRecord = JSON.parse(replayRaw) as { checks?: Array<{ id?: string; status?: string; summary?: string }> };
+    const gateCheck = replayRecord.checks?.find((check) => check.id === "delegated_completion_gate");
+    assert.equal(gateCheck?.status, "warning");
+    assert.match(gateCheck?.summary ?? "", /delegated_results_status=missing/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_results_status=skipped/);
     assert.match(replayRaw, /repo_write_guards/);
     assert.doesNotMatch(JSON.stringify(result), /RAW_ACTION_REPLAY_/);
     assert.doesNotMatch(replayRaw, /RAW_ACTION_REPLAY_/);

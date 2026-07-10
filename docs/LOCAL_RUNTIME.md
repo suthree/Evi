@@ -1252,7 +1252,14 @@ the expected completion verification tuple from `completion_status` and the
 bounded failed-check ids: non-`done` is `skipped/false`, failed `done` is
 `failed/false`, and failure-free `done` is `passed/true`. Contradictory passed
 or verified claims fail replay, while consistent failed or skipped completion
-remains attention. Replay reports also check bounded
+remains attention. For the delegated `delegated_results` gate, replay derives
+the expected pass/warning/fail/skipped status again from bounded delegated
+result counts, failed dispatch rounds, completion status, and later claimed
+successful write/run evidence that is uniquely bound to its tool-result event,
+artifact, and round. Incomplete dispatch metadata stays attention instead of
+being guessed as pass. An independently expected failure stays a replay
+failure, and a report pass that hides expected warning also fails; other status
+drift remains attention. Replay reports also check bounded
 `dispatch_failure_kind` coverage for over-limit delegated dispatches without
 reading delegated result bodies, and warn when the field is omitted instead of
 explicitly recorded as `none`. Replay also checks `result_failure_kind`

@@ -4386,7 +4386,9 @@ test("live runner accepts read-only delegation that evaluates whether mutation i
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
       verification_status: string;
       verified: boolean;
+      checks: Array<{ id: string; status: string }>;
     };
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.delegationCalls, 1);
@@ -4397,6 +4399,12 @@ test("live runner accepts read-only delegation that evaluates whether mutation i
     assert.equal(delegated.result_failure_kind, "none");
     assert.equal(report.verification_status, "passed");
     assert.equal(report.verified, true);
+    assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "pass");
+    const gateCheck = replay.checks.find((check) => check.id === "delegated_completion_gate");
+    assert.equal(gateCheck?.status, "pass");
+    assert.match(gateCheck?.summary ?? "", /delegated_results_status=pass/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_results_status=pass/);
+    assert.match(gateCheck?.summary ?? "", /status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -5042,6 +5050,9 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "warning");
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_results_status=warning/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_results_status=warning/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /status_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "pass");
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=passed/);
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
@@ -5122,6 +5133,9 @@ test("live runner rejects unclaimed write-run recovery with a claimed read-only 
     assert.match(independentCheck?.summary ?? "", /read-only verification refs do not recover failed delegation/);
     assert.match(independentCheck?.summary ?? "", /verification_refs=1; write_run_results=0/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "fail");
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_results_status=fail/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_results_status=fail/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /status_match=true/);
   } finally {
     await fixture.cleanup();
   }
@@ -5279,6 +5293,10 @@ test("live runner surfaces failed delegation on skipped completion traces", asyn
     assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "warning");
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=skipped/);
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
+    assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_results_status=warning/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /expected_delegated_results_status=warning/);
+    assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /status_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_contract")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {
