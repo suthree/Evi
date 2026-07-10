@@ -381,6 +381,9 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const delegatedReportRefs = new Set(trace.delegated_result_report_refs);
   const delegatedEventFallbackRefs = new Set(trace.delegated_result_event_fallback_refs);
   const claimedEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.claimed);
+  const sourceRefMismatchRefs = trace.verification_evidence_refs.filter((item) =>
+    item.ref !== (item.source === "tool_result" ? item.tool_result_id : item.artifact_ref)
+  );
   const claimedFlagMismatchRefs = trace.verification_evidence_refs.filter((item) =>
     item.claimed !== claimedRefs.has(item.ref)
   );
@@ -417,6 +420,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   const missingRecoveryLineage = failedDelegationRecovered && recoveryEvidenceRefs.length === 0;
   const hasLineageAttention = missingClaimedLineage.length > 0
     || claimedDelegatedRefs.length > 0
+    || sourceRefMismatchRefs.length > 0
     || claimedFlagMismatchRefs.length > 0
     || missingIndependentLineage
     || missingRecoveryLineage
@@ -438,6 +442,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `claimed_delegated_report_refs=${claimedDelegatedReportRefs.length}`,
       `claimed_delegated_event_fallback_refs=${claimedDelegatedEventFallbackRefs.length}`,
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
+      `source_ref_mismatches=${sourceRefMismatchRefs.length}`,
       `claimed_flag_mismatches=${claimedFlagMismatchRefs.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
@@ -452,6 +457,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
           .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
           .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
+        ...sourceRefMismatchRefs.map((item) => item.ref),
         ...claimedFlagMismatchRefs.map((item) => item.ref),
         ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),

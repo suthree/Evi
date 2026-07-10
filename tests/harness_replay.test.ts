@@ -548,6 +548,82 @@ test("harness replay audit rejects claimed flag mismatches", async () => {
   }
 });
 
+test("harness replay audit rejects verification evidence source ref mismatches", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-source-ref-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const toolResultRef = "forged_tool_result_ref";
+    const toolArtifactRef = "forged_tool_artifact_ref";
+    const verificationEvidence = [{
+      ref: toolResultRef,
+      source: "tool_result",
+      tool_result_id: "tool_result_real",
+      artifact_ref: `memory/episodes/${sessionId}-tool_result_real.json`
+    }, {
+      ref: toolArtifactRef,
+      source: "tool_artifact",
+      tool_result_id: "tool_result_real",
+      artifact_ref: `memory/episodes/${sessionId}-tool_result_real.json`
+    }].map((item, index) => ({
+      ...item,
+      event_id: `evidence_source_ref_${index}`,
+      round: 2,
+      tool: "file.read",
+      ok: true,
+      side_effect_level: "none",
+      is_write_run: false,
+      claimed: true,
+      after_latest_delegation: true,
+      after_latest_failed_delegation: true,
+      counts_as_independent_evidence: false,
+      counts_as_failed_delegation_recovery: false
+    }));
+    await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
+      id: "completion_verification_replay_test",
+      session_id: sessionId,
+      turn_id: "turn_replay_test",
+      completion_status: "done",
+      verification_status: "passed",
+      verified: true,
+      summary: "Drifted report attached forged refs to harness evidence identities.",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      final_response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      claimed_verification_refs: [toolResultRef, toolArtifactRef],
+      observation_refs: verificationEvidence.map((item) => item.artifact_ref),
+      verification_evidence_refs: verificationEvidence,
+      delegated_result_refs: [`memory/episodes/${sessionId}-delegated_result_invalid.json`],
+      checks: [{
+        id: "delegated_results",
+        status: "fail",
+        summary: "Failed delegated result has no recovery evidence.",
+        refs: ["delegated_result_invalid"]
+      }],
+      created_at: "2026-06-30T01:01:00.000Z",
+      boundary: "harness-owned completion verification report; read-only context input, not replay authority"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "verification_evidence_lineage");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "fail");
+    assert.match(check?.summary ?? "", /source_ref_mismatches=2/);
+    assert.equal(check?.refs.includes(toolResultRef), true);
+    assert.equal(check?.refs.includes(toolArtifactRef), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit distinguishes fallback delegated proof refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-fallback-proof-ref-"));
   const repoRoot = join(root, "repo");

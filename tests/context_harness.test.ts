@@ -5043,6 +5043,7 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.equal(report.checks.find((check) => check.id === "delegated_independent_evidence")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_completion_gate")?.status, "warning");
     assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /source_ref_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /claimed_flag_mismatches=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /invalid_independent_lineage=0/);
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /invalid_recovery_lineage=0/);

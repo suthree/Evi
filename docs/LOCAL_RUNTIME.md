@@ -2200,7 +2200,9 @@ delegation; only later successful write/run tool results do. They do not
 count as recovery unless the done claim cites their harness-known tool result
 id or tool artifact ref, and they do not authorize automatic retry, model
 fan-out, expert scheduling, delegated completion, or raw delegated artifact
-reads. Replay requires each bounded lineage `claimed` flag to agree with exact
+reads. Replay requires a `tool_result` lineage ref to equal its
+`tool_result_id`, and a `tool_artifact` lineage ref to equal its `artifact_ref`.
+It also requires each bounded lineage `claimed` flag to agree with exact
 membership in top-level `claimed_verification_refs`. It rejects an independent
 marker whose bounded lineage is unclaimed, absent from the done claim, failed,
 or not after the latest delegation. It also

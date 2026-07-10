@@ -1426,8 +1426,10 @@ recovery evidence. Only a claimed successful write/run tool result id or tool
 artifact ref can carry the failed-delegation recovery marker. State-only harness
 actions and delegated result refs are not written into this proof lineage. Live
 Run Trace and harness replay can audit this metadata without opening raw tool
-bodies, delegated artifacts, or final responses. Replay first requires every
-lineage `claimed` flag to agree with exact membership in the top-level
+bodies, delegated artifacts, or final responses. Replay first binds each entry
+identity to its declared source: a `tool_result` entry ref must equal
+`tool_result_id`, and a `tool_artifact` entry ref must equal `artifact_ref`.
+It also requires every lineage `claimed` flag to agree with exact membership in the top-level
 `claimed_verification_refs` set. It then recomputes the
 independent marker invariant and reports lineage attention when a marked ref is
 unclaimed, absent from the done claim, failed, or not after the latest
