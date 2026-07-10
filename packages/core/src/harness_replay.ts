@@ -396,6 +396,12 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
   );
   const independentEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_independent_evidence);
   const recoveryEvidenceRefs = trace.verification_evidence_refs.filter((item) => item.counts_as_failed_delegation_recovery);
+  const invalidIndependentLineageRefs = independentEvidenceRefs.filter((item) =>
+    !item.claimed
+    || !claimedRefs.has(item.ref)
+    || !item.ok
+    || !item.after_latest_delegation
+  );
   const invalidRecoveryLineageRefs = recoveryEvidenceRefs.filter((item) =>
     trace.delegated_result_failed_count === 0
     || !item.claimed
@@ -410,6 +416,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
     || claimedDelegatedRefs.length > 0
     || missingIndependentLineage
     || missingRecoveryLineage
+    || invalidIndependentLineageRefs.length > 0
     || invalidRecoveryLineageRefs.length > 0;
   const status: HarnessReplayAuditCheckStatus = hasLineageAttention
     ? (trace.verified ? "fail" : "warning")
@@ -429,6 +436,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
       `missing_claimed_lineage=${missingClaimedLineage.length}`,
       `missing_independent_lineage=${missingIndependentLineage ? 1 : 0}`,
       `missing_recovery_lineage=${missingRecoveryLineage ? 1 : 0}`,
+      `invalid_independent_lineage=${invalidIndependentLineageRefs.length}`,
       `invalid_recovery_lineage=${invalidRecoveryLineageRefs.length}`
     ].join("; "),
     refs: hasLineageAttention
@@ -439,6 +447,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
           .filter((dispatch) => claimedDelegatedEventFallbackRefs.includes(dispatch.result_ref))
           .map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
         ...missingClaimedLineage,
+        ...invalidIndependentLineageRefs.map((item) => item.ref),
         ...invalidRecoveryLineageRefs.map((item) => item.ref),
         ...trace.delegated_completion_gate_checks
           .filter((check) =>

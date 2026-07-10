@@ -1426,10 +1426,12 @@ recovery evidence. Only a claimed successful write/run tool result id or tool
 artifact ref can carry the failed-delegation recovery marker. State-only harness
 actions and delegated result refs are not written into this proof lineage. Live
 Run Trace and harness replay can audit this metadata without opening raw tool
-bodies, delegated artifacts, or final responses. Replay recomputes the recovery
-marker invariant from bounded metadata and reports lineage attention when a
-marked ref is unclaimed, absent from the done claim, failed, not write/run, not
-after the latest failed delegation, or present without a failed delegated result.
+bodies, delegated artifacts, or final responses. Replay recomputes the
+independent marker invariant and reports lineage attention when a marked ref is
+unclaimed, absent from the done claim, failed, or not after the latest
+delegation. It separately recomputes the recovery marker invariant and reports
+attention when a marked ref also is not write/run, not after the latest failed
+delegation, or is present without a failed delegated result.
 If a delegated result failed and the run does not reach verified `done`
 completion, any `propose_sop` action remains state-only and must not enter live
 SOP audit, SOP promotion, skill promotion, or active-vault writes.
