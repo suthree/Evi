@@ -119,6 +119,10 @@ export interface LiveRunTraceSummary {
   turn_id: string;
   created_at: string;
   completion_status: CompletionVerificationReport["completion_status"];
+  reported_completion_status: CompletionVerificationReport["completion_status"];
+  final_completion_status: ModelActionEnvelope["completion_claim"]["status"] | null;
+  final_completion_status_present: boolean;
+  reported_completion_status_matches_final: boolean | null;
   verification_status: CompletionVerificationReport["verification_status"];
   verified: boolean;
   summary: string;
@@ -308,6 +312,12 @@ async function summarizeLiveRunTrace(
     turn_id: report.turn_id,
     created_at: report.created_at,
     completion_status: report.completion_status,
+    reported_completion_status: report.completion_status,
+    final_completion_status: completionEnvelopeRound?.completion_status ?? null,
+    final_completion_status_present: completionEnvelopeRound !== undefined,
+    reported_completion_status_matches_final: completionEnvelopeRound
+      ? completionEnvelopeRound.completion_status === report.completion_status
+      : null,
     verification_status: report.verification_status,
     verified: report.verified,
     summary: report.summary,

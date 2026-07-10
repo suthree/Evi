@@ -1424,6 +1424,13 @@ independent context for a done claim, but they do not recover the failed
 delegation; only later successful write/run tool results do. Recovery must not
 add automatic retry, model fan-out, expert scheduling, delegated completion, or
 raw delegated artifact reads.
+Replay treats the final model-action envelope's `completion_claim.status` as
+the authority for the completion tuple and every done-only delegated gate.
+Live Run Trace exposes the report status, final envelope status, final-status
+presence, and their match as bounded metadata. A final non-`done` status that
+contradicts a verified report is definitive replay drift; a conservative report
+downgrade remains attention, and a missing final status remains unknown rather
+than falling back to a clean report claim.
 Completion verification reports preserve bounded `verification_evidence_refs`
 for harness-known successful tool result ids and tool artifact refs. Each entry
 records only lineage metadata: source, tool result id, artifact ref, event id,
@@ -1545,15 +1552,16 @@ turn ids, per-round action counts, safe delegated action ids, safe delegated
 dispatch metadata, check statuses, report-declared delegated result refs,
 `delegated_result_event_fallback_refs`, and the fixed replay boundary.
 Replay recomputes the expected `verification_status` and `verified` tuple from
-`completion_status` plus the bounded failed-check ids: non-`done` completion
+the final model-action envelope's `completion_claim.status` plus the bounded
+failed-check ids: non-`done` completion
 must be `skipped/false`, `done` with any failed check must be `failed/false`,
 and `done` without failed checks must be `passed/true`. A report that claims a
 passed or verified completion while contradicting those inputs fails replay;
 consistent failed or skipped completion remains attention rather than clean.
 Replay also independently derives the expected `delegated_results` gate status
-from bounded delegated result counts, `ok=false` dispatch rounds, completion
-status, and later claimed successful write/run evidence uniquely bound to its
-tool-result event, artifact, and round. Incomplete dispatch metadata remains
+from bounded delegated result counts, `ok=false` dispatch rounds, final-envelope
+completion status, and later claimed successful write/run evidence uniquely
+bound to its tool-result event, artifact, and round. Incomplete dispatch metadata remains
 attention instead of being guessed as pass. An independently expected failure
 always remains a replay failure; a report-declared pass that hides an expected
 warning also fails, while other status mismatches remain attention. Replay also

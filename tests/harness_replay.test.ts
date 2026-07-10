@@ -263,6 +263,7 @@ test("harness replay audit rejects optimistic completion state tuple drift", asy
     }] as const;
 
     for (const testCase of cases) {
+      await syncReplayEnvelopeCompletionStatus(store, testCase.completionStatus);
       await store.writeJson(`memory/episodes/${sessionId}-completion-verification.json`, {
         ...baseReport,
         completion_status: testCase.completionStatus,
@@ -540,6 +541,108 @@ test("harness replay audit uses final-envelope claim refs over report claims", a
     assert.match(lineageCheck?.summary ?? "", /reported_envelope_ref_matches_final=false/);
     assert.match(lineageCheck?.summary ?? "", /independent_evidence_refs=1/);
     assert.equal(lineageCheck?.refs.includes(resultId), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit uses final-envelope completion status over report status", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-envelope-status-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, []);
+    const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      checks: []
+    });
+    await syncReplayEnvelopeCompletionStatus(store, "blocked");
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const stateCheck = report.checks.find((item) => item.id === "completion_verification_state");
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(report.status, "attention");
+    assert.equal(stateCheck?.status, "fail");
+    assert.match(stateCheck?.summary ?? "", /reported_completion_status=done/);
+    assert.match(stateCheck?.summary ?? "", /final_completion_status=blocked/);
+    assert.match(stateCheck?.summary ?? "", /final_completion_status_present=true/);
+    assert.match(stateCheck?.summary ?? "", /reported_completion_status_matches_final=false/);
+    assert.match(stateCheck?.summary ?? "", /completion_status_authority=final_envelope/);
+    assert.match(stateCheck?.summary ?? "", /expected_verification_status=skipped/);
+    assert.match(gateCheck?.summary ?? "", /completion_status_authority=blocked/);
+    assert.match(gateCheck?.summary ?? "", /completion_status_known=true/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns on conservative report completion downgrade", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-conservative-status-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, []);
+    const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      completion_status: "blocked",
+      verification_status: "skipped",
+      verified: false,
+      checks: []
+    });
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const stateCheck = report.checks.find((item) => item.id === "completion_verification_state");
+
+    assert.equal(report.status, "attention");
+    assert.equal(stateCheck?.status, "warning");
+    assert.match(stateCheck?.summary ?? "", /reported_completion_status=blocked/);
+    assert.match(stateCheck?.summary ?? "", /final_completion_status=done/);
+    assert.match(stateCheck?.summary ?? "", /reported_completion_status_matches_final=false/);
+    assert.match(stateCheck?.summary ?? "", /expected_verification_status=passed/);
+    assert.match(stateCheck?.summary ?? "", /tuple_match=false/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit keeps missing final completion status unknown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-legacy-status-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, []);
+    await store.writeJson("memory/episodes/session_replay_test-model-action-r2.json", {});
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const stateCheck = report.checks.find((item) => item.id === "completion_verification_state");
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(report.status, "attention");
+    assert.equal(stateCheck?.status, "warning");
+    assert.match(stateCheck?.summary ?? "", /final_completion_status=unknown/);
+    assert.match(stateCheck?.summary ?? "", /final_completion_status_present=false/);
+    assert.match(stateCheck?.summary ?? "", /completion_status_authority=unknown/);
+    assert.match(gateCheck?.summary ?? "", /completion_status_authority=unknown/);
+    assert.match(gateCheck?.summary ?? "", /completion_status_known=false/);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -1158,6 +1261,7 @@ test("harness replay audit warns on done-only claimed-binding checks in blocked 
       claimed_verification_refs: ["delegated_result_invalid"]
     });
     await syncReplayEnvelopeClaimRefs(store, ["delegated_result_invalid"]);
+    await syncReplayEnvelopeCompletionStatus(store, "blocked");
 
     const report = await runHarnessReplayAudit(store, {
       traceRef: "completion_verification_replay_test"
@@ -2280,6 +2384,7 @@ test("harness replay audit rejects delegated results status drift from event tru
       verification_status: "skipped",
       verified: false
     });
+    await syncReplayEnvelopeCompletionStatus(store, "blocked");
     const blockedReplay = await runHarnessReplayAudit(store, {
       traceRef: "completion_verification_replay_test"
     });
@@ -2682,6 +2787,22 @@ async function syncReplayEnvelopeClaimRefs(store: AgentStore, refs: string[]): P
     completion_claim: {
       ...completionClaim,
       verification_refs: refs
+    }
+  });
+}
+
+async function syncReplayEnvelopeCompletionStatus(
+  store: AgentStore,
+  status: "not_done" | "done" | "blocked"
+): Promise<void> {
+  const envelopeRef = "memory/episodes/session_replay_test-model-action-r2.json";
+  const envelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+  const completionClaim = envelope.completion_claim as Record<string, unknown>;
+  await store.writeJson(envelopeRef, {
+    ...envelope,
+    completion_claim: {
+      ...completionClaim,
+      status
     }
   });
 }

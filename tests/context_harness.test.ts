@@ -2049,6 +2049,10 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /## Live Run Trace/);
     assert.match(rendered.markdown, /session_live_trace_context/);
     assert.match(rendered.markdown, /completion_status: done/);
+    assert.match(rendered.markdown, /reported_completion_status: done/);
+    assert.match(rendered.markdown, /final_completion_status: done/);
+    assert.match(rendered.markdown, /final_completion_status_present: true/);
+    assert.match(rendered.markdown, /reported_completion_status_matches_final: true/);
     assert.match(rendered.markdown, /verification_status: failed/);
     assert.match(rendered.markdown, /events: 6 \((?=[^)]*prompt=1)(?=[^)]*model_action=2)(?=[^)]*report=1)(?=[^)]*tool_result=1)(?=[^)]*delegated_result=1)[^)]*\)/);
     assert.match(rendered.markdown, /tool_results: 1/);
@@ -5074,8 +5078,14 @@ test("live runner accepts claimed write-run artifact refs as failed delegation r
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /post_failed_delegation_verification_refs=1/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /post_failed_delegation_recovery_refs=1/);
     assert.match(replay.checks.find((check) => check.id === "delegated_completion_gate")?.summary ?? "", /delegated_independent_status_match=true/);
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    assert.equal(trace.reported_completion_status, "done");
+    assert.equal(trace.final_completion_status, "done");
+    assert.equal(trace.final_completion_status_present, true);
+    assert.equal(trace.reported_completion_status_matches_final, true);
     assert.equal(replay.checks.find((check) => check.id === "completion_verification_state")?.status, "pass");
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /expected_verification_status=passed/);
+    assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /completion_status_authority=final_envelope/);
     assert.match(replay.checks.find((check) => check.id === "completion_verification_state")?.summary ?? "", /tuple_match=true/);
     assert.equal(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.status, "pass");
     assert.match(replay.checks.find((check) => check.id === "verification_evidence_lineage")?.summary ?? "", /envelope_claimed_refs_present=true/);

@@ -1248,14 +1248,15 @@ aggregate governance status, and Feishu `/governance` may show bounded replay
 counts and refs. Replay reports may carry safe delegated dispatch metadata and
 a dispatch-coverage check from the source trace, plus bounded delegated
 completion-gate check metadata from the completion report. Replay also derives
-the expected completion verification tuple from `completion_status` and the
+the expected completion verification tuple from the final model-action
+envelope's `completion_claim.status` and the
 bounded failed-check ids: non-`done` is `skipped/false`, failed `done` is
 `failed/false`, and failure-free `done` is `passed/true`. Contradictory passed
 or verified claims fail replay, while consistent failed or skipped completion
 remains attention. For the delegated `delegated_results` gate, replay derives
 the expected pass/warning/fail/skipped status again from bounded delegated
-result counts, failed dispatch rounds, completion status, and later claimed
-successful write/run evidence that is uniquely bound to its tool-result event,
+result counts, failed dispatch rounds, final-envelope completion status, and
+later claimed successful write/run evidence that is uniquely bound to its tool-result event,
 artifact, and round. Incomplete dispatch metadata stays attention instead of
 being guessed as pass. An independently expected failure stays a replay
 failure, and a report pass that hides expected warning also fails; other status
@@ -2214,6 +2215,12 @@ warnings, while runner-authored failed-delegation recovery remains derived from
 refs are only recovered from fallback. Replay compares
 `claimed_verification_refs` with exact event-owned delegated result ids and refs;
 report-declared refs remain coverage metadata rather than identity authority.
+Completion replay authority stays with the final model-action envelope's
+`completion_claim.status`, not the completion report status. Trace exposes both
+statuses, final-status presence, and their match; a final non-`done` status
+contradicting a verified report fails replay, a conservative report downgrade
+remains attention, and a missing final status remains unknown instead of
+falling back to a clean report claim.
 Its lineage summary separates
 `claimed_delegated_report_refs` from
 `claimed_delegated_event_fallback_refs`; a verified trace that claims either

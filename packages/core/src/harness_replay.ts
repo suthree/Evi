@@ -353,22 +353,32 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
 }
 
 function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
-  let expectedVerificationStatus: LiveRunTraceSummary["verification_status"] = "skipped";
-  if (trace.completion_status === "done") {
+  const finalCompletionStatus = trace.final_completion_status;
+  let expectedVerificationStatus: LiveRunTraceSummary["verification_status"] | "unknown" = "unknown";
+  if (finalCompletionStatus === "done") {
     expectedVerificationStatus = trace.completion_failed_check_ids.length > 0 ? "failed" : "passed";
+  } else if (finalCompletionStatus !== null) {
+    expectedVerificationStatus = "skipped";
   }
   const expectedVerified = expectedVerificationStatus === "passed";
-  const tupleMatches = trace.verification_status === expectedVerificationStatus
+  const tupleMatches = finalCompletionStatus !== null
+    && trace.verification_status === expectedVerificationStatus
     && trace.verified === expectedVerified;
   const claimsPassed = trace.verification_status === "passed" || trace.verified;
   let status: HarnessReplayAuditCheckStatus = "warning";
-  if (tupleMatches && expectedVerified) status = "pass";
-  if (!tupleMatches && claimsPassed) status = "fail";
+  if (trace.final_completion_status_present && tupleMatches && expectedVerified
+    && trace.reported_completion_status_matches_final) status = "pass";
+  if (trace.final_completion_status_present && !tupleMatches && claimsPassed) status = "fail";
   return {
     id: "completion_verification_state",
     status,
     summary: [
       `completion_status=${trace.completion_status}`,
+      `reported_completion_status=${trace.reported_completion_status}`,
+      `final_completion_status=${trace.final_completion_status ?? "unknown"}`,
+      `final_completion_status_present=${trace.final_completion_status_present}`,
+      `reported_completion_status_matches_final=${trace.reported_completion_status_matches_final ?? "unknown"}`,
+      `completion_status_authority=${trace.final_completion_status_present ? "final_envelope" : "unknown"}`,
       `verification_status=${trace.verification_status}`,
       `verified=${trace.verified}`,
       `expected_verification_status=${expectedVerificationStatus}`,
@@ -591,11 +601,16 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const recoveryEvidenceCount = new Set(modernPostFailedDelegationRecoveryRefs.map((ref) =>
     evidenceBinding.validEvidenceByRef.get(ref)?.eventId
   ).filter((eventId): eventId is string => typeof eventId === "string")).size;
+  const authoritativeCompletionStatus = trace.final_completion_status;
+  const completionStatusKnown = authoritativeCompletionStatus !== null;
+  const doneGateApplicable = authoritativeCompletionStatus === "done";
   const missingDelegatedResultsGateIds = delegatedResultIds
     .filter((resultId) => !reportedDelegatedResultsCheck?.refs.includes(resultId));
-  const claimedRefsBoundGateApplicable = trace.completion_status === "done";
+  const claimedRefsBoundGateApplicable = doneGateApplicable;
   let expectedClaimedRefsBoundStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
-  if (claimedRefsBoundGateApplicable) {
+  if (!completionStatusKnown && (trace.delegated_result_count > 0 || reportedClaimedRefsBoundChecks.length > 0)) {
+    expectedClaimedRefsBoundStatus = "unknown";
+  } else if (claimedRefsBoundGateApplicable) {
     if (!claimMetadataComplete) {
       expectedClaimedRefsBoundStatus = "unknown";
     } else if (!delegatedIdentityMetadataComplete && authoritativeClaimRefs.length > 0) {
@@ -618,9 +633,11 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const claimedRefsBoundStatusMatches = claimedRefsBoundCheckCardinalityMatches
     && (!claimedRefsBoundGateApplicable
       || reportedClaimedRefsBoundStatus === expectedClaimedRefsBoundStatus);
-  const delegatedIndependentGateApplicable = trace.completion_status === "done";
+  const delegatedIndependentGateApplicable = doneGateApplicable;
   let expectedDelegatedIndependentStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
-  if (delegatedIndependentGateApplicable && trace.delegated_result_count > 0) {
+  if (!completionStatusKnown && trace.delegated_result_count > 0) {
+    expectedDelegatedIndependentStatus = "unknown";
+  } else if (delegatedIndependentGateApplicable && trace.delegated_result_count > 0) {
     const hasFailedDelegation = failedDelegatedDispatches.length > 0;
     const hasModernPostDelegationEvidence = modernPostDelegationRefs.length > 0;
     const hasModernFailedDelegationVerification = modernPostFailedDelegationVerificationRefs.length > 0;
@@ -652,19 +669,23 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const delegatedIndependentStatusMatches = delegatedIndependentCheckCardinalityMatches
     && (!delegatedIndependentGateApplicable
       || reportedDelegatedIndependentStatus === expectedDelegatedIndependentStatus);
-  const delegatedSelfReportGateApplicable = trace.completion_status === "done";
+  const delegatedSelfReportGateApplicable = doneGateApplicable;
   let expectedDelegatedResultsStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
-  if (!dispatchMetadataComplete) {
+  if (!completionStatusKnown && trace.delegated_result_count > 0) {
+    expectedDelegatedResultsStatus = "unknown";
+  } else if (!dispatchMetadataComplete) {
     expectedDelegatedResultsStatus = "unknown";
   } else if (failedDelegatedDispatches.length > 0) {
-    expectedDelegatedResultsStatus = trace.completion_status === "done" && recoveryEvidenceCount === 0
+    expectedDelegatedResultsStatus = doneGateApplicable && recoveryEvidenceCount === 0
       ? "fail"
       : "warning";
   } else if (trace.delegated_result_count > 0) {
     expectedDelegatedResultsStatus = "pass";
   }
   let expectedDelegatedSelfReportStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
-  if (delegatedSelfReportGateApplicable && trace.delegated_result_count > 0) {
+  if (!completionStatusKnown && trace.delegated_result_count > 0) {
+    expectedDelegatedSelfReportStatus = "unknown";
+  } else if (delegatedSelfReportGateApplicable && trace.delegated_result_count > 0) {
     if (claimedDelegatedIdentityRefs.length > 0) {
       expectedDelegatedSelfReportStatus = "fail";
     } else if (!claimMetadataComplete || !delegatedIdentityMetadataComplete) {
@@ -707,6 +728,8 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`,
       `delegated_results_status=${reportedDelegatedResultsStatus ?? "missing"}`,
       `expected_delegated_results_status=${expectedDelegatedResultsStatus}`,
+      `completion_status_authority=${authoritativeCompletionStatus ?? "unknown"}`,
+      `completion_status_known=${completionStatusKnown}`,
       `delegated_self_report_status=${reportedDelegatedSelfReportStatus ?? "missing"}`,
       `expected_delegated_self_report_status=${expectedDelegatedSelfReportStatus}`,
       `delegated_self_report_gate_applicable=${delegatedSelfReportGateApplicable}`,

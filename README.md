@@ -446,6 +446,13 @@ bound tool-result events; report-owned claim refs, gate statuses, and
 `counts_as_*` flags are parity metadata only. Forged positive markers fail a
 verified trace, conservative marker downgrades remain attention, and relevant
 legacy metadata remains unknown.
+The final model-action envelope's `completion_claim.status` is also the replay
+authority for the completion tuple and every done-only delegated gate. A final
+non-`done` status contradicting a verified report is a definitive replay
+failure; a conservative report downgrade remains attention, and a missing
+final status stays unknown instead of falling back to a clean report claim.
+Trace exposes reported/final status, presence, and match metadata without
+reading raw model artifacts.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.
