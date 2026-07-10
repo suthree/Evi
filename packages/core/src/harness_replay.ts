@@ -588,22 +588,31 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
 function delegatedDispatchMetadataCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
   const missingResultRefs = trace.delegated_dispatches.filter((dispatch) => !dispatch.result_ref);
+  const contractStatusOkMismatches = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.ok !== (dispatch.contract_status === "passed")
+  );
+  const countMismatch = trace.delegated_result_count !== trace.delegated_dispatches.length;
+  const hasMetadataAttention = countMismatch
+    || missingResultRefs.length > 0
+    || contractStatusOkMismatches.length > 0;
   const problemRefs = unique([
-    ...(trace.delegated_result_count === trace.delegated_dispatches.length ? [] : trace.delegated_dispatches),
-    ...missingResultRefs
+    ...(countMismatch ? trace.delegated_dispatches : []),
+    ...missingResultRefs,
+    ...contractStatusOkMismatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  let refs = trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`);
+  if (hasMetadataAttention) refs = problemRefs.length > 0 ? problemRefs : [trace.report_ref];
   return {
     id: "delegated_dispatch_metadata",
-    status: trace.delegated_result_count === trace.delegated_dispatches.length && missingResultRefs.length === 0 ? "pass" : "warning",
+    status: hasMetadataAttention ? "warning" : "pass",
     summary: [
       `delegated_results=${trace.delegated_result_count}`,
       `dispatches=${trace.delegated_dispatches.length}`,
       `failed_dispatches=${failedDispatches.length}`,
-      `missing_result_ref=${missingResultRefs.length}`
+      `missing_result_ref=${missingResultRefs.length}`,
+      `contract_status_ok_mismatches=${contractStatusOkMismatches.length}`
     ].join("; "),
-    refs: problemRefs.length > 0
-      ? problemRefs
-      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+    refs
   };
 }
 

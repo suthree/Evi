@@ -1347,6 +1347,10 @@ artifact ref is also a replay warning; replay may cite the bounded event id, but
 it must not infer or reconstruct the missing delegated artifact body. Live Run
 Trace exposes the missing-result-ref count as bounded metadata so context and IM
 surfaces can show the evidence gap without reading the artifact body. Replay
+also requires `ok=true` to pair with `contract_status=passed` and `ok=false` to
+pair with `contract_status=failed`; either contradictory tuple is a metadata
+warning, while runner-authored failed-delegation recovery semantics remain
+derived from `ok`. Replay
 also compares `claimed_verification_refs` with completion-report
 `delegated_result_refs`; a verified trace that claims a delegated result ref as
 completion proof fails `verification_evidence_lineage` even if the delegated

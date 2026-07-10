@@ -1105,6 +1105,74 @@ test("harness replay audit warns when delegated dispatch lacks a persisted resul
   }
 });
 
+test("harness replay audit warns when delegated dispatch status and ok disagree", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-dispatch-status-ok-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "failed_status_ok",
+      actionId: "action_delegate_replay",
+      sequence: 2,
+      contractStatus: "failed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "delegated_output_contract_failed",
+      ok: true
+    });
+    await appendDelegatedDispatchEvent(store, {
+      suffix: "passed_status_not_ok",
+      actionId: "action_delegate_replay",
+      sequence: 3,
+      contractStatus: "passed",
+      dispatchFailureKind: "none",
+      resultFailureKind: "none",
+      ok: false
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+
+    assert.equal(report.status, "attention");
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /contract_status_ok_mismatches=2/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_failed_status_ok")), true);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_passed_status_not_ok")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit preserves metadata warning when no dispatch summary parses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-dispatch-unparsed-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, "Delegated result metadata unavailable.");
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_metadata");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /delegated_results=1; dispatches=0/);
+    assert.deepEqual(check?.refs, ["memory/episodes/session_replay_test-completion-verification.json"]);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when blocked dispatch claims model invocation", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-model-boundary-"));
   const repoRoot = join(root, "repo");

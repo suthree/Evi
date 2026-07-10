@@ -2165,7 +2165,10 @@ their round, an action id declared by that round's `delegate_agent` actions, and
 a sequence that matches the declared delegate action order. Delegated dispatches
 that lack a persisted delegated result JSON artifact ref are replay warnings;
 replay may cite the bounded event id but must not reconstruct the missing
-delegated artifact body. Live Run Trace also keeps completion-report
+delegated artifact body. Replay also requires `ok=true/status=passed` and
+`ok=false/status=failed`; contradictory `ok` and `contract_status` tuples are
+warnings, while runner-authored failed-delegation recovery remains derived from
+`ok`. Live Run Trace also keeps completion-report
 `delegated_result_refs` separate from
 `delegated_result_event_fallback_refs`, and replay warns when dispatch result
 refs are only recovered from fallback. Replay also compares
