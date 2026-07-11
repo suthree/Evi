@@ -80,6 +80,9 @@ export interface LiveRunToolResultEventSummary {
   event_id: string;
   created_at: string;
   round: number;
+  envelope_ref: string | null;
+  envelope_ref_in_trace_rounds: boolean;
+  envelope_ref_matches_identity: boolean;
   artifact_refs: string[];
   result_artifact_ref: string | null;
   result_artifact_ref_file_present: boolean;
@@ -290,7 +293,7 @@ async function summarizeLiveRunTrace(
   const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
-  const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles);
+  const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles, rounds);
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents, episodeFiles);
@@ -404,15 +407,19 @@ function countCompletionCheckStatuses(checks: LiveRunCompletionCheckSummary[]): 
 
 function readToolResultEventSummaries(
   events: EpisodeEvent[],
-  episodeFiles: Set<string>
+  episodeFiles: Set<string>,
+  rounds: LiveRunTraceRound[]
 ): LiveRunToolResultEventSummary[] {
   const summaries: LiveRunToolResultEventSummary[] = [];
+  const traceEnvelopeRefs = new Set(rounds.map((round) => round.envelope_ref));
   let currentRound = 0;
+  let currentEnvelopeRef: string | null = null;
   for (const event of events) {
     if (event.kind === "model_action") {
       const envelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref));
+      currentEnvelopeRef = envelopeRef ?? null;
       currentRound = envelopeRef ? roundNumber(envelopeRef) : 0;
-    } else if (event.kind === "tool_result" && currentRound > 0) {
+    } else if (event.kind === "tool_result") {
       const resultId = event.tool_result?.result_id ?? null;
       const resultArtifactRef = resultId === null
         ? null
@@ -421,6 +428,11 @@ function readToolResultEventSummaries(
         event_id: event.id,
         created_at: event.created_at,
         round: currentRound,
+        envelope_ref: currentEnvelopeRef,
+        envelope_ref_in_trace_rounds: currentEnvelopeRef !== null
+          && traceEnvelopeRefs.has(currentEnvelopeRef),
+        envelope_ref_matches_identity: currentEnvelopeRef !== null
+          && currentEnvelopeRef === `memory/episodes/${event.session_id}-model-action-r${currentRound}.json`,
         artifact_refs: [...event.artifact_refs],
         result_artifact_ref: resultArtifactRef,
         result_artifact_ref_file_present: resultArtifactRef !== null

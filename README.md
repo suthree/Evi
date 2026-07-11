@@ -443,6 +443,9 @@ The event-owned tool artifact must also exist at the stable
 `memory/episodes/<session_id>-<tool_result_id>.json` identity; jointly swapping
 report metadata and the event artifact list to an unrelated file remains
 attention.
+The tool-result event round must come from a successfully parsed, same-session
+`model-action-rN.json` envelope at its stable identity; inserting a missing or
+foreign round marker and changing report metadata to match cannot replay clean.
 Unbound claims remain failures
 even if the completion report says pass; valid report downgrades and missing
 legacy lineage remain attention, and no artifact body or historical migration

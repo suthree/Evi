@@ -2161,6 +2161,75 @@ test("harness replay audit binds tool evidence to persisted result artifact iden
   }
 });
 
+test("harness replay audit binds tool evidence round to a parsed envelope", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-tool-envelope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const sessionId = "session_replay_test";
+    const resultId = "tool_result_post_envelope";
+    const verificationEvidence = (await appendReplayPostDelegationEvidence(store, { resultId }))
+      .map((item) => ({ ...item, round: 99, claimed: false, counts_as_independent_evidence: false }));
+    const reportRef = `memory/episodes/${sessionId}-completion-verification.json`;
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      claimed_verification_refs: [],
+      verification_evidence_refs: verificationEvidence
+    });
+
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const toolEventId = `evidence_replay_${resultId}`;
+    const toolEvent = events.find((event) => event.id === toolEventId)!;
+    const finalEnvelopeEvent = events.find((event) => event.id === "evidence_replay_model_r2")!;
+    const otherEvents = events.filter((event) => event !== toolEvent && event !== finalEnvelopeEvent);
+    const writeForgedEnvelopeSequence = async (envelopeRef: string): Promise<void> => {
+      await store.writeText("memory/episodes/events.jsonl", `${[
+        ...otherEvents,
+        {
+          id: "evidence_replay_model_forged",
+          session_id: sessionId,
+          turn_id: "turn_replay_test",
+          kind: "model_action",
+          summary: "Injected forged round marker.",
+          artifact_refs: [envelopeRef],
+          created_at: "2026-06-30T01:00:03.750Z"
+        },
+        toolEvent,
+        finalEnvelopeEvent
+      ].map((event) => JSON.stringify(event)).join("\n")}\n`);
+    };
+
+    await writeForgedEnvelopeSequence(`memory/episodes/${sessionId}-model-action-r99.json`);
+    const missingEnvelope = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const missingCheck = missingEnvelope.checks.find((item) => item.id === "verification_evidence_lineage");
+    assert.equal(missingCheck?.status, "fail");
+    assert.match(missingCheck?.summary ?? "", /missing_tool_result_event_envelope_bindings=1/);
+
+    const wrongIdentityRef = "memory/episodes/other-session-model-action-r99.json";
+    const finalEnvelope = await store.readStateJson<Record<string, unknown>>(
+      `memory/episodes/${sessionId}-model-action-r2.json`
+    );
+    await store.writeJson(wrongIdentityRef, finalEnvelope);
+    await writeForgedEnvelopeSequence(wrongIdentityRef);
+    const wrongIdentity = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const identityCheck = wrongIdentity.checks.find((item) => item.id === "verification_evidence_lineage");
+    assert.equal(identityCheck?.status, "fail");
+    assert.match(identityCheck?.summary ?? "", /missing_tool_result_event_envelope_bindings=0/);
+    assert.match(identityCheck?.summary ?? "", /mismatched_tool_result_event_envelope_identities=1/);
+    assert.doesNotMatch(JSON.stringify(wrongIdentity), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit rejects delegation-relative evidence flag drift", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-evidence-round-"));
   const repoRoot = join(root, "repo");
