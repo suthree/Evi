@@ -1512,6 +1512,11 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
     key: delegatedActionKey(round.round, actionId, round.delegated_action_sequence_by_id[actionId]!),
     envelopeRef: round.envelope_ref
   })));
+  const duplicateDeclaredActionCount = trace.rounds.reduce((count, round) =>
+    count + round.delegated_action_ids.length - new Set(round.delegated_action_ids).size, 0);
+  const duplicateDeclaredActionEnvelopeRefs = trace.rounds
+    .filter((round) => round.delegated_action_ids.length !== new Set(round.delegated_action_ids).size)
+    .map((round) => round.envelope_ref);
   const declaredActionKeys = new Set(declaredActions.map((action) => action.key));
   const dispatchesByKey = new Map<string, LiveRunDelegatedDispatchSummary[]>();
   for (const dispatch of trace.delegated_dispatches) {
@@ -1527,6 +1532,7 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
     .flatMap(([, dispatches]) => dispatches.slice(1));
   const problemRefs = unique([
     ...missingActions.map((action) => action.envelopeRef),
+    ...duplicateDeclaredActionEnvelopeRefs,
     ...unexpectedDispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
     ...duplicateDispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
   ]);
@@ -1537,6 +1543,7 @@ function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplay
       `declared_delegate_actions=${declaredActions.length}`,
       `delegated_dispatches=${trace.delegated_dispatches.length}`,
       `missing_delegate_dispatches=${missingActions.length}`,
+      `duplicate_delegate_actions=${duplicateDeclaredActionCount}`,
       `unexpected_delegate_dispatches=${unexpectedDispatches.length}`,
       `duplicate_delegate_dispatches=${duplicateDispatches.length}`
     ].join("; "),

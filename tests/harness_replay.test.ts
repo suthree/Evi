@@ -3614,6 +3614,38 @@ test("harness replay audit warns on duplicate dispatch for one delegate action",
   }
 });
 
+test("harness replay audit warns on duplicate declared delegate action ids", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-duplicate-declaration-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const envelopeRef = "memory/episodes/session_replay_test-model-action-r1.json";
+    const envelope = await store.readStateJson<{ actions: Array<Record<string, unknown>> }>(envelopeRef);
+    assert.ok(envelope);
+    const delegateAction = envelope.actions.find((action) => action.type === "delegate_agent");
+    assert.ok(delegateAction);
+    await store.writeJson(envelopeRef, {
+      ...envelope,
+      actions: [...envelope.actions, { ...delegateAction }]
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const coverage = report.checks.find((item) => item.id === "delegated_action_coverage");
+
+    assert.equal(coverage?.status, "warning");
+    assert.match(coverage?.summary ?? "", /duplicate_delegate_actions=1/);
+    assert.equal(coverage?.refs.includes(envelopeRef), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit keeps all delegated dispatch metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegates-"));
   const repoRoot = join(root, "repo");

@@ -1342,7 +1342,9 @@ exactly one entry for each declared delegated action id and sequence; duplicate
 or unpaired entries remain attention rather than being silently collapsed.
 Replay likewise requires each declared delegated action to have exactly one
 same-round dispatch; missing, unexpected, or duplicate dispatches remain
-attention even when another dispatch check also observes the anomaly.
+attention even when another dispatch check also observes the anomaly. Duplicate
+declared delegated action ids are also attention: they make the persisted
+action-id-to-sequence map ambiguous rather than silently satisfying coverage.
 It never persists the original
 delegated model text. Any delegated output contract failure records a safe suppression marker
 rather than a raw-output fallback. The live runner allows at most one
