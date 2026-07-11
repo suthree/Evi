@@ -804,6 +804,15 @@ function selectNextCoreBasicPlanSource(
 ): GaProjectDesignPlanSource | null {
   const sourceArtifact = artifacts.find((artifact) => isCoreBasicLayer(artifact.layer));
   if (sourceArtifact) return planSourceFromArtifact(sourceArtifact);
+  const freshBootstrap = buildFreshBootstrapSource();
+  const openBootstrapIteration = iterations.find((iteration) =>
+    !iteration.outcome
+    && iteration.layer === NEXT_CORE_GA_DESIGN_TARGET.layer
+    && iteration.owner_surface === NEXT_CORE_GA_DESIGN_TARGET.owner_surface
+    && iteration.proposed_slice === BOOTSTRAP_PROPOSED_SLICE
+    && (iteration.source_ref ?? "") === freshBootstrap.source_iteration_ref
+  );
+  if (openBootstrapIteration) return freshBootstrap;
   if (iterations.length === 0) return buildFreshBootstrapSource();
   return null;
 }

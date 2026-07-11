@@ -276,6 +276,15 @@ test("fresh GA project design bootstrap plan can open the first core iteration",
     assert.equal(second.reused_existing, true);
     assert.equal(second.iteration.id, first.iteration.id);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
+
+    const openPlan = (await getGaProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
+    assert.ok(openPlan);
+    assert.equal(openPlan.source_kind, "fresh_bootstrap");
+    assert.equal(openPlan.iteration_record_status.status, "open_iteration_available");
+    assert.equal(openPlan.iteration_record_status.id, first.iteration.id);
+    assert.equal(openPlan.iteration_record_status.implementation_contract_status, "aligned");
+    assert.equal(openPlan.next_command, `pnpm run runtime -- governance iterations --iteration ${first.iteration.id} --state-root <state-root>`);
+    assert.equal(openPlan.iteration_record_status.audit_command, `pnpm run runtime -- governance iterations --iteration ${first.iteration.id} --audit-seed all --state-root <state-root>`);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

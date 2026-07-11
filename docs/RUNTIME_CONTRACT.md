@@ -722,7 +722,10 @@ promotion follows only after core/basic evidence supports reuse.
 exists for the proposed layer, owner surface, slice, and source ref. If it
 exists, `next_command` may point to the existing iteration inspection command
 instead of another record command. This is duplicate-avoidance context only; it
-must not write state or prove completion. A matching open record also reports
+must not write state or prove completion. An open fresh-bootstrap iteration
+keeps its bootstrap planning packet available for its required audit and outcome
+writeback; it is not treated as a verified source artifact. A matching open
+record also reports
 `implementation_contract_status=aligned|missing|drifted` by comparing its
 persisted contract with the current authoritative plan. Missing or drifted
 contracts make plan selection `needs_attention` before implementation; the

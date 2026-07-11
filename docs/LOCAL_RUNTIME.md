@@ -625,7 +625,9 @@ promotion artifacts.
 `iteration_record_status` shows whether the matching next iteration is already
 open. When it is open, `next_command` points to the existing iteration
 inspection command instead of another record command; this is still read-only
-planning context and does not write state or prove completion. It also reports
+planning context and does not write state or prove completion. An open
+fresh-bootstrap iteration retains its planning packet for audit and outcome
+writeback, without becoming a verified source artifact. It also reports
 whether the persisted implementation contract is `aligned`, `missing`, or
 `drifted` against the current authoritative plan. Missing or drifted open
 contracts move selection to `needs_attention` without repairing state. When the
