@@ -416,7 +416,7 @@ export class StageRunner {
       args.queryRef ? `## Query\n\n${await this.store.readStateText(args.queryRef, 5000)}` : "## Query\n\nNo query.md artifact for this pipeline.",
       args.todoRef ? `## Todo\n\n${await this.store.readStateText(args.todoRef, 5000)}` : "## Todo\n\nNo todo.md artifact for this pipeline.",
       `## Previous Stage Outputs\n\n${previousOutputs || "No previous stage outputs."}`,
-      "## Stage Output Contract\n\nReturn a ModelActionEnvelope json object. Stay inside the current stage objective. Use only allowed tools. Set completion_claim.status to done only after the stage objective is complete; not_done leaves the stage incomplete and it will not advance. If the stage is blocked by a missing tool, return a respond action explaining the blocked condition and set completion_claim.status to blocked."
+      "## Stage Output Contract\n\nReturn a ModelActionEnvelope json object. Stay inside the current stage objective. Use only allowed tools. A done stage requires a non-empty respond.payload.markdown or respond.payload.text artifact. Set completion_claim.status to done only after the stage objective is complete; not_done leaves the stage incomplete and it will not advance. If the stage is blocked by a missing tool, return a respond action explaining the blocked condition and set completion_claim.status to blocked."
     ].join("\n\n");
   }
 
@@ -607,7 +607,7 @@ function stageInstructions(stage: PipelineStageSpec): string {
     `Current stage: ${stage.id} - ${stage.title}`,
     `Objective: ${stage.objective}`,
     `Allowed tools: ${stage.allowed_tools.join(", ") || "none"}`,
-    "If a tool is needed, emit use_tool. If stage output is ready, emit respond with payload.markdown.",
+    "If a tool is needed, emit use_tool. If stage output is ready, emit respond with non-empty payload.markdown.",
     "The harness will persist respond.payload.markdown as this stage artifact; do not require file.write_state just to save the stage response.",
     "If this stage cannot proceed because a tool or permission is missing, emit respond and set completion_claim.status to blocked.",
     "Do not claim external side effects unless a tool observation proves them."
@@ -667,7 +667,8 @@ async function writeStageResponse(
     ? payload.markdown
     : typeof payload.text === "string"
       ? payload.text
-      : JSON.stringify(payload, null, 2);
+      : "";
+  if (!markdown.trim()) return null;
   return store.writeText(`${root}/artifacts/${stageId}.md`, markdown);
 }
 

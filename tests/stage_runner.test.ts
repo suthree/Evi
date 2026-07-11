@@ -256,6 +256,34 @@ test("stage runner blocks a response that still declares not_done", async () => 
   }
 });
 
+test("stage runner blocks a done claim without a stage response body", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model: new EmptyStageResponseModel()
+  });
+  const store = new AgentStore(repoRoot, stateRoot);
+
+  try {
+    const result = await runner.runTask({ task: "Require a real stage response.", stages: ["intake"] });
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${dirname(result.pipeline_ref)}/stages/intake.json`);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blocked_stage_id, "intake");
+    assert.equal(stageRun?.status, "blocked");
+    assert.equal(stageRun?.failure_kind, "stage_incomplete");
+    assert.equal(stageRun?.output_refs.length, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 class DisallowedToolThenDoneModel implements ModelClient {
   readonly requests: ModelRequest[] = [];
 
@@ -370,6 +398,29 @@ class NotDoneStageModel implements ModelClient {
         }],
         completion_claim: {
           status: "not_done",
+          verification_refs: []
+        }
+      })
+    };
+  }
+}
+
+class EmptyStageResponseModel implements ModelClient {
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "empty-stage-response",
+      responseId: "response-empty-stage-response",
+      outputText: JSON.stringify({
+        summary: "Claim completion without producing the stage body.",
+        actions: [{
+          type: "respond",
+          rationale: "This response intentionally omits the required stage body.",
+          payload: {}
+        }],
+        completion_claim: {
+          status: "done",
           verification_refs: []
         }
       })

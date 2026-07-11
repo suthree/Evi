@@ -68,6 +68,8 @@
 
 核心工具结果需要带有有界审计元数据，例如状态、side effect、scope/cwd、输出预算、实际/返回长度、截断状态，以及失败时的 `failure_kind`；StageRunner 合成的 blocked tool observation 也必须带 `failure_kind`，并作为有界 `tool_result` evidence 持久化，但不会执行被拦截的工具。StageRunner 的 provider/model response 与 action envelope 只持久化有界元数据和脱敏投影；只有显式 stage response 会保留在 pipeline artifact 中供后续 stage 使用，模型请求或解析失败也不会持久化 raw 输出或 provider payload。StageRunner 只有在最终 envelope 明确 `completion_claim.status=done` 时才推进 stage；`not_done` 即使已有 response artifact 也保持 blocked（optional stage 才可 skipped）。这些元数据是证据基础，不展示无界 raw output，也不能绕过完成验证。
 
+对 StageRunner，`done` 还必须产生非空 `respond.payload.markdown` 或 `text`；空 payload 或纯结构化 payload 不会伪造成 stage output。
+
 ## 常用命令
 
 安装依赖：

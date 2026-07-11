@@ -2467,6 +2467,9 @@ Required policy:
 - a StageRunner stage advances as `done` only when its final envelope declares
   `completion_claim.status=done`; `not_done` remains blocked (or skipped only
   for an optional stage), even if it produced a response artifact
+- a `done` StageRunner stage also requires a non-empty `respond.payload.markdown`
+  or `respond.payload.text` artifact; an empty or structured-only payload does
+  not satisfy a stage's expected output
 - blocked or failed runs may appear as read-only `pipeline_run` items in the
   Opportunity Backlog, with checkpoint/pipeline refs and stage status metadata
   only
