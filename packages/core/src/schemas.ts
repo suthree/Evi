@@ -192,6 +192,10 @@ export const delegatedDispatchEventMetadataSchema = z.object({
 
 export const toolResultEventMetadataSchema = z.object({
   result_id: z.string().min(1),
+  action_id: z.string().min(1).optional(),
+  envelope_ref: z.string().min(1).optional(),
+  round: z.number().int().positive().optional(),
+  sequence: z.number().int().positive().optional(),
   tool: z.string().min(1),
   ok: z.boolean(),
   side_effect_level: sideEffectLevelSchema,

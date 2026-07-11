@@ -4370,6 +4370,8 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
 
     const result = await runner.runTask("Delegate with an alternate but explicit read-only authority boundary.");
     const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const toolEvent = events.find((event) => event.kind === "tool_result");
+    const toolMetadata = toolEvent?.tool_result as Record<string, unknown> | undefined;
     const delegatedEvent = events.find((event) => event.kind === "delegated_result");
     const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
@@ -4388,6 +4390,10 @@ test("live runner accepts alternate read-only delegate authority phrasing", asyn
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedDelegationObservation, true);
+    assert.equal(typeof toolMetadata?.action_id, "string");
+    assert.match(String(toolMetadata?.envelope_ref), /-model-action-r2\.json$/);
+    assert.equal(toolMetadata?.round, 2);
+    assert.equal(toolMetadata?.sequence, 1);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
     assert.equal(delegated.dispatch_failure_kind, "none");

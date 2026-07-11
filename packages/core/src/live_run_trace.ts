@@ -40,7 +40,14 @@ export interface LiveRunTraceRound {
   delegated_action_ids: string[];
   delegated_action_sequence_by_id: Record<string, number>;
   delegated_action_inputs: LiveRunDelegatedActionInputExpectation[];
+  tool_action_expectations: LiveRunToolActionExpectation[];
   harness_action_types: string[];
+}
+
+export interface LiveRunToolActionExpectation {
+  action_id: string;
+  sequence: number;
+  tool: string;
 }
 
 export interface LiveRunDelegatedActionInputExpectation {
@@ -87,6 +94,12 @@ export interface LiveRunToolResultEventSummary {
   result_artifact_ref: string | null;
   result_artifact_ref_file_present: boolean;
   result_id: string | null;
+  action_id: string | null;
+  reported_envelope_ref: string | null;
+  reported_round: number | null;
+  sequence: number | null;
+  action_lineage_present: boolean;
+  action_lineage_partial: boolean;
   tool: string | null;
   ok: boolean | null;
   side_effect_level: LiveRunVerificationEvidenceRefSummary["side_effect_level"] | null;
@@ -420,6 +433,15 @@ function readToolResultEventSummaries(
       currentEnvelopeRef = envelopeRef ?? null;
       currentRound = envelopeRef ? roundNumber(envelopeRef) : 0;
     } else if (event.kind === "tool_result") {
+      const metadata = event.tool_result;
+      const actionLineageValues = [
+        metadata?.action_id,
+        metadata?.envelope_ref,
+        metadata?.round,
+        metadata?.sequence
+      ];
+      const actionLineageFieldCount = actionLineageValues
+        .filter((value) => value !== undefined).length;
       const resultId = event.tool_result?.result_id ?? null;
       const resultArtifactRef = resultId === null
         ? null
@@ -438,6 +460,13 @@ function readToolResultEventSummaries(
         result_artifact_ref_file_present: resultArtifactRef !== null
           && episodeFiles.has(resultArtifactRef),
         result_id: resultId,
+        action_id: metadata?.action_id ?? null,
+        reported_envelope_ref: metadata?.envelope_ref ?? null,
+        reported_round: metadata?.round ?? null,
+        sequence: metadata?.sequence ?? null,
+        action_lineage_present: actionLineageFieldCount === actionLineageValues.length,
+        action_lineage_partial: actionLineageFieldCount > 0
+          && actionLineageFieldCount < actionLineageValues.length,
         tool: event.tool_result?.tool ?? null,
         ok: event.tool_result?.ok ?? null,
         side_effect_level: event.tool_result?.side_effect_level ?? null,
@@ -638,6 +667,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
     const actionTypes = parsed.data.actions.map((action) => action.type);
     const actionCounts = countBy(actionTypes);
     const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
+    const toolActions = parsed.data.actions.filter((action) => action.type === "use_tool");
     const delegatedActionInputs = delegateActions.map((action, index) => ({
       action_id: action.id,
       sequence: index + 1,
@@ -658,6 +688,11 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
         .map((action, index) => [action.id, index + 1] as const)
         .sort(([left], [right]) => left.localeCompare(right))),
       delegated_action_inputs: delegatedActionInputs,
+      tool_action_expectations: toolActions.map((action, index) => ({
+        action_id: action.id,
+        sequence: index + 1,
+        tool: typeof action.payload.tool === "string" ? action.payload.tool : "unknown"
+      })),
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
   }

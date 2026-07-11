@@ -452,6 +452,10 @@ attention.
 The tool-result event round must come from a successfully parsed, same-session
 `model-action-rN.json` envelope at its stable identity; inserting a missing or
 foreign round marker and changing report metadata to match cannot replay clean.
+Modern tool-result events also persist the declaring action id, envelope ref,
+round, and tool-action sequence. Replay requires one unique matching `use_tool`
+action with the same tool before that result can count as completion or recovery
+evidence; missing legacy lineage remains attention without a state migration.
 Unbound claims remain failures
 even if the completion report says pass; valid report downgrades and missing
 legacy lineage remain attention, and no artifact body or historical migration

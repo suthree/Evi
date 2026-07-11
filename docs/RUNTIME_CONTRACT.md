@@ -1455,7 +1455,15 @@ also requires the pair's event id to bind exactly one same-run bounded
 `tool_result` event, requires that event to carry the pair's artifact ref, and
 requires the persisted evidence round to match the event's model-action round.
 The trace exposes only the tool-result event id, derived round, and artifact
-refs for this check, never the raw tool body. Replay then recomputes each
+refs for this check, never the raw tool body.
+Modern tool-result event metadata also records the declaring action id,
+envelope ref, round, and sequence among `use_tool` actions. The trace derives
+the same bounded expectations from parsed envelopes, and replay requires one
+unique match with the same tool before evidence can satisfy completion or
+failed-delegation recovery. Missing legacy action lineage remains unknown and
+attention; partial, mismatched, or duplicate modern lineage cannot replay
+clean. No payload, result body, or artifact body is read for this check.
+Replay then recomputes each
 delegation-relative flag from the event-bound evidence round and the latest
 delegated or failed delegated dispatch round rather than trusting the persisted
 booleans. It also requires every lineage `claimed` flag to agree with

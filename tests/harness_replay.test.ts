@@ -1169,6 +1169,10 @@ test("harness replay audit warns when a report downgrades valid claimed evidence
       includeDelegatedResultRefs: false,
       toolResultEventMetadata: {
         result_id: resultId,
+        action_id: "action_tool_replay",
+        envelope_ref: "memory/episodes/session_replay_test-model-action-r1.json",
+        round: 1,
+        sequence: 1,
         tool: "file.write_repo",
         ok: true,
         side_effect_level: "local_write",
@@ -2225,6 +2229,133 @@ test("harness replay audit binds tool evidence round to a parsed envelope", asyn
     assert.match(identityCheck?.summary ?? "", /missing_tool_result_event_envelope_bindings=0/);
     assert.match(identityCheck?.summary ?? "", /mismatched_tool_result_event_envelope_identities=1/);
     assert.doesNotMatch(JSON.stringify(wrongIdentity), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit binds tool evidence to one declared tool action", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-tool-action-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    const sessionId = "session_replay_test";
+    const resultId = "tool_result_post_action";
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated identities were not claimed.",
+      refs: []
+    }, {
+      id: "claimed_refs_bound_to_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is bound.",
+      refs: [resultId]
+    }, {
+      id: "delegated_independent_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is independently bound.",
+      refs: [resultId]
+    }]);
+    const verificationEvidence = await appendReplayPostDelegationEvidence(store, { resultId });
+    const reportRef = `memory/episodes/${sessionId}-completion-verification.json`;
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      claimed_verification_refs: [resultId],
+      verification_evidence_refs: verificationEvidence
+    });
+    await syncReplayEnvelopeClaimRefs(store, [resultId]);
+    const envelopeRef = `memory/episodes/${sessionId}-model-action-r2.json`;
+    const modernEnvelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+    const modernEvents = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const eventId = `evidence_replay_${resultId}`;
+    const modernToolEvent = modernEvents.find((event) => event.id === eventId)!;
+    const modernMetadata = modernToolEvent.tool_result as Record<string, unknown>;
+    const writeEvents = async (events: Array<Record<string, unknown>>): Promise<void> => {
+      await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+    };
+    const lineageCheck = async () => {
+      const replay = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+      return replay.checks.find((item) => item.id === "verification_evidence_lineage")!;
+    };
+
+    assert.equal((await lineageCheck()).status, "pass");
+
+    const envelopeActions = modernEnvelope.actions as Array<Record<string, unknown>>;
+    await store.writeJson(envelopeRef, {
+      ...modernEnvelope,
+      actions: envelopeActions.filter((action) => action.id !== `action_${resultId}`)
+    });
+    const missingAction = await lineageCheck();
+    assert.equal(missingAction.status, "fail");
+    assert.match(missingAction.summary, /mismatched_tool_result_action_lineage=1/);
+
+    await store.writeJson(envelopeRef, {
+      ...modernEnvelope,
+      actions: envelopeActions.map((action) => action.id === `action_${resultId}`
+        ? { ...action, payload: { tool: "command.run", arguments: {} } }
+        : action)
+    });
+    const wrongTool = await lineageCheck();
+    assert.equal(wrongTool.status, "fail");
+    assert.match(wrongTool.summary, /mismatched_tool_result_action_lineage=1/);
+
+    await store.writeJson(envelopeRef, modernEnvelope);
+    await writeEvents(modernEvents.map((event) => event.id === eventId
+      ? { ...event, tool_result: { ...modernMetadata, action_id: "action_wrong" } }
+      : event));
+    const wrongAction = await lineageCheck();
+    assert.equal(wrongAction.status, "fail");
+    assert.match(wrongAction.summary, /mismatched_tool_result_action_lineage=1/);
+
+    await writeEvents(modernEvents.map((event) => event.id === eventId
+      ? { ...event, tool_result: { ...modernMetadata, sequence: 2 } }
+      : event));
+    const wrongSequence = await lineageCheck();
+    assert.equal(wrongSequence.status, "fail");
+    assert.match(wrongSequence.summary, /mismatched_tool_result_action_lineage=1/);
+
+    const { sequence: _sequence, ...partialMetadata } = modernMetadata;
+    await writeEvents(modernEvents.map((event) => event.id === eventId
+      ? { ...event, tool_result: partialMetadata }
+      : event));
+    const partial = await lineageCheck();
+    assert.equal(partial.status, "fail");
+    assert.match(partial.summary, /partial_tool_result_action_lineage=1/);
+
+    const {
+      action_id: _actionId,
+      envelope_ref: _envelopeRef,
+      round: _round,
+      sequence: _legacySequence,
+      ...legacyMetadata
+    } = modernMetadata;
+    await writeEvents(modernEvents.map((event) => event.id === eventId
+      ? { ...event, tool_result: legacyMetadata }
+      : event));
+    const legacy = await lineageCheck();
+    assert.equal(legacy.status, "warning");
+    assert.match(legacy.summary, /legacy_tool_result_action_lineage=1/);
+
+    await writeEvents(modernEvents.flatMap((event) => event.id === eventId
+      ? [event, { ...event, id: `${eventId}_duplicate` }]
+      : [event]));
+    const duplicate = await lineageCheck();
+    assert.equal(duplicate.status, "fail");
+    assert.match(duplicate.summary, /duplicate_tool_result_action_lineage=1/);
+    assert.doesNotMatch(JSON.stringify(duplicate), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -3351,6 +3482,20 @@ async function appendReplayPostDelegationEvidence(
   const isWriteRun = args.isWriteRun ?? false;
   const tool = isWriteRun ? "file.write_repo" : "file.read";
   const sideEffectLevel = isWriteRun ? "local_write" : "none";
+  const envelopeRef = `memory/episodes/${sessionId}-model-action-r2.json`;
+  const envelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+  const actions = envelope.actions as Array<Record<string, unknown>>;
+  const sequence = actions.filter((action) => action.type === "use_tool").length + 1;
+  const actionId = `action_${args.resultId}`;
+  await store.writeJson(envelopeRef, {
+    ...envelope,
+    actions: [...actions, {
+      id: actionId,
+      type: "use_tool",
+      rationale: "Collect bounded post-delegation verification evidence.",
+      payload: { tool, arguments: {} }
+    }]
+  });
   await store.writeText(artifactRef, "RAW_REPLAY_POST_DELEGATION_EVIDENCE_SHOULD_NOT_APPEAR");
   await store.appendJsonl("memory/episodes/events.jsonl", {
     id: eventId,
@@ -3363,6 +3508,10 @@ async function appendReplayPostDelegationEvidence(
       ? {
         tool_result: {
           result_id: args.resultId,
+          action_id: actionId,
+          envelope_ref: envelopeRef,
+          round: 2,
+          sequence,
           tool,
           ok: true,
           side_effect_level: sideEffectLevel,
@@ -3454,10 +3603,11 @@ async function writeReplayTraceFixture(
         markdown: "RAW_REPLAY_HARNESS_PAYLOAD_SHOULD_NOT_APPEAR"
       }
     }, {
+      id: "action_tool_replay",
       type: "use_tool",
       rationale: "Read a bounded file.",
       payload: {
-        tool: "file.read",
+        tool: "file.write_repo",
         path: "RAW_REPLAY_TOOL_PAYLOAD_SHOULD_NOT_APPEAR"
       }
     }, {
@@ -3583,6 +3733,10 @@ async function writeReplayTraceFixture(
       ? {
         tool_result: options.toolResultEventMetadata ?? {
           result_id: "tool_result_bound",
+          action_id: "action_tool_replay",
+          envelope_ref: `memory/episodes/${sessionId}-model-action-r1.json`,
+          round: 1,
+          sequence: 1,
           tool: "file.write_repo",
           ok: true,
           side_effect_level: "local_write",

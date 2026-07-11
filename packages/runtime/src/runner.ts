@@ -456,7 +456,7 @@ export class LiveAgentRunner {
         break;
       }
 
-      for (const action of toolActions) {
+      for (const [index, action] of toolActions.entries()) {
         if (discipline) {
           markTodo(discipline, "tools_delegates", "in_progress");
           discipline.iteration_log.push(`Round ${round}: executing tool ${(action.payload as Record<string, unknown>).tool ?? "unknown"}.`);
@@ -476,6 +476,10 @@ export class LiveAgentRunner {
           artifact_refs: [toolRef],
           tool_result: {
             result_id: toolResult.id,
+            action_id: action.id,
+            envelope_ref: envelopeRef,
+            round,
+            sequence: index + 1,
             tool: toolResult.tool,
             ok: toolResult.ok,
             side_effect_level: toolResult.side_effect_level,
