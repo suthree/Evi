@@ -1350,6 +1350,22 @@ test("content publish-preflight CLI auto-probes Xiaohongshu MCP without calling 
       runRef: run.id,
       outputPath: imagePath
     });
+    const configDir = join(root.root, "config");
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: join(root.root, "home") }),
+      JSON.stringify({ type: "state", root: root.stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" })
+    ].join("\n"));
+    await writeFile(join(configDir, "models.jsonl"), JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      api: "responses",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "test-model-auth"
+    }));
 
     process.argv = [
       "node",
@@ -1366,6 +1382,8 @@ test("content publish-preflight CLI auto-probes Xiaohongshu MCP without calling 
       "publish_content",
       "--repo-root",
       root.repoRoot,
+      "--config-dir",
+      configDir,
       "--state-root",
       root.stateRoot
     ];

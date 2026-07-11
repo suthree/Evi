@@ -235,9 +235,25 @@ test("governance project-design CLI keeps display limit out of scorecard target 
   const root = await mkdtemp(join(tmpdir(), "local-runtime-cli-project-design-limit-"));
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
+  const configDir = join(root, "config");
   const store = new AgentStore(repoRoot, stateRoot);
   try {
     await mkdir(repoRoot, { recursive: true });
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: join(root, "home") }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" })
+    ].join("\n"));
+    await writeFile(join(configDir, "models.jsonl"), JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      api: "responses",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "test-model-auth"
+    }));
     await store.writeJson("self-evolution/iterations/iteration_contract_cli_scorecard_target.json", {
       schema_version: 1,
       id: "iteration_contract_cli_scorecard_target",
@@ -287,6 +303,8 @@ test("governance project-design CLI keeps display limit out of scorecard target 
       "0",
       "--repo-root",
       repoRoot,
+      "--config-dir",
+      configDir,
       "--state-root",
       stateRoot
     ], {
@@ -456,6 +474,42 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(mismatched.status, "mismatched_contract");
   assert.deepEqual(mismatched.mismatched_fields, ["deferred_scope"]);
 
+  const mismatchedLineage = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      source_artifact_id: "ga_design_artifact_iteration_contract_other",
+      source_proposed_slice: "different_source",
+      boundary: "unrelated contract boundary"
+    }
+  });
+  assert.equal(mismatchedLineage.status, "mismatched_contract");
+  assert.deepEqual(mismatchedLineage.mismatched_fields, [
+    "source_artifact_id",
+    "source_proposed_slice",
+    "boundary"
+  ]);
+
+  const missingLineage = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      source_artifact_id: "",
+      source_proposed_slice: "",
+      boundary: ""
+    }
+  });
+  assert.equal(missingLineage.status, "missing_required_fields");
+  assert.deepEqual(missingLineage.missing_fields, [
+    "source_artifact_id",
+    "source_proposed_slice",
+    "boundary"
+  ]);
+
   const covered = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: "core_ga_design_next_slice_after_source",
     layer: "core_runtime",
@@ -464,6 +518,8 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(covered.status, "covered");
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
+  assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=ga_design_artifact_iteration_contract_source"), true);
+  assert.equal(covered.required_tokens.includes("implementation_contract.boundary"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
 
   const delegationContract = getGaProjectDesignDelegationImplementationContract();

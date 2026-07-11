@@ -824,21 +824,29 @@ export function buildIterationAuditImplementationContractCoverage(
   );
   const missingFields = [
     ...(!contract.proposed_slice ? ["proposed_slice"] : []),
+    ...(!contract.source_artifact_id ? ["source_artifact_id"] : []),
+    ...(!contract.source_proposed_slice ? ["source_proposed_slice"] : []),
     ...(!contract.selected_layer ? ["selected_layer"] : []),
     ...(!contract.owner_surface ? ["owner_surface"] : []),
+    ...(!contract.improvement_type ? ["improvement_type"] : []),
     ...(authoritativeDelegationContract && !contract.delegation_contract ? ["delegation_contract"] : []),
     ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
     ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
-    ...(!contract.delivery_standard?.length ? ["delivery_standard"] : [])
+    ...(!contract.delivery_standard?.length ? ["delivery_standard"] : []),
+    ...(!contract.boundary ? ["boundary"] : [])
   ];
   const mismatchedFields = [
     ...(contract.proposed_slice !== expectedContract.proposed_slice || contract.proposed_slice !== iteration.proposed_slice ? ["proposed_slice"] : []),
+    ...(contract.source_artifact_id !== expectedContract.source_artifact_id ? ["source_artifact_id"] : []),
+    ...(contract.source_proposed_slice !== expectedContract.source_proposed_slice ? ["source_proposed_slice"] : []),
     ...(contract.selected_layer !== expectedContract.selected_layer || contract.selected_layer !== iteration.layer ? ["selected_layer"] : []),
     ...(contract.owner_surface !== expectedContract.owner_surface || contract.owner_surface !== iteration.owner_surface ? ["owner_surface"] : []),
+    ...(contract.improvement_type !== expectedContract.improvement_type ? ["improvement_type"] : []),
     ...(delegationContractMismatch ? ["delegation_contract"] : []),
     ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
     ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
-    ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : [])
+    ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : []),
+    ...(contract.boundary !== expectedContract.boundary ? ["boundary"] : [])
   ];
   return {
     status: missingFields.length
@@ -858,12 +866,16 @@ function implementationContractRequiredTokens(
 ): string[] {
   return [
     `implementation_contract.proposed_slice=${contract.proposed_slice}`,
+    `implementation_contract.source_artifact_id=${contract.source_artifact_id}`,
+    `implementation_contract.source_proposed_slice=${contract.source_proposed_slice}`,
     `implementation_contract.selected_layer=${contract.selected_layer}`,
     `implementation_contract.owner_surface=${contract.owner_surface}`,
+    `implementation_contract.improvement_type=${contract.improvement_type}`,
     ...(contract.delegation_contract ? ["implementation_contract.delegation_contract=shared_authority"] : []),
     "implementation_contract.implementation_scope",
     "implementation_contract.deferred_scope",
-    "implementation_contract.delivery_standard"
+    "implementation_contract.delivery_standard",
+    "implementation_contract.boundary"
   ];
 }
 

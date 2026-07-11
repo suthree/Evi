@@ -772,9 +772,11 @@ source and outcome evidence refs, so the cited evidence list is not narrower
 than the coverage diagnostic.
 `implementation_contract_coverage` compares the current project-design plan's
 `implementation_contract` with the audited iteration record when the plan still
-targets that iteration; after the plan advances, it checks the audited
-iteration's persisted contract for self-consistency. Missing, incomplete, or
-mismatched contract fields keep completion review blocked. This is read-only
+targets that iteration. It covers source artifact/source slice, selected
+slice/layer/owner, contract type, scope, delivery standard, and safety boundary;
+after the plan advances, it checks the audited iteration's persisted contract
+for self-consistency. Missing, incomplete, or mismatched contract fields keep
+completion review blocked. This is read-only
 coverage; it does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs. It only

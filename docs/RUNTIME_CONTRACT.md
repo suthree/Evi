@@ -418,9 +418,11 @@ Its top-level `refs` list should cite the same audited surfaces: iteration ref,
 source ref, iteration evidence refs, outcome evidence refs, and plan refs.
 `implementation_contract_coverage` compares the GA project-design plan
 `implementation_contract` with the audited iteration state record when the plan
-still targets that iteration; after the plan advances, it checks the audited
-iteration's persisted contract for self-consistency. Missing, incomplete, or
-mismatched contract fields keep the completion gate blocked; the diagnostic is
+still targets that iteration; it covers the source artifact and source slice,
+selected slice/layer/owner, contract type, scope, delivery standard, and safety
+boundary. After the plan advances, it checks the audited iteration's persisted
+contract for self-consistency. Missing, incomplete, or mismatched contract
+fields keep the completion gate blocked; the diagnostic is
 read-only and does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
