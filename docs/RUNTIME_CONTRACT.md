@@ -1446,6 +1446,8 @@ tells the main model these exact recovery prerequisites or to report blocked;
 no failure kind may imply that read-only verification alone recovers it. The
 shared `delegate_agent` payload instruction states the same prerequisites
 before the main model proposes a delegated action.
+The reusable GA project-design delegation contract projects that same shared
+requirement unchanged for later core-runtime planning.
 The final response artifact alone is not independent completion proof. The live
 runner rejects model envelopes with more than one `respond` action, so
 new final-response evidence events bind that artifact to the only `respond`

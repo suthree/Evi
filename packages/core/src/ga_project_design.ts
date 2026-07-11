@@ -1314,7 +1314,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       ],
       required: [
         "failed delegated results may only guide a later main-harness model round as sanitized observation",
-        "recovery requires subsequent main-harness write/run evidence plus independent verification evidence",
+        delegateAgentAuthoringContract.recovery.failure_hint,
         "state-only harness actions and read-only tool refs can preserve context but cannot recover a failed delegated result",
         "a recovered claim must not cite the delegated result id or ref as completion proof"
       ],

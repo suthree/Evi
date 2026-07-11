@@ -421,7 +421,14 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.inputs.includes("result_failure_kind"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.inputs.includes("proof_boundary"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("main-harness model round")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.some((item) => item.includes("independent verification evidence")), true);
+    assert.equal(
+      readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.required.includes(delegateAgentAuthoringContract.recovery.failure_hint),
+      true
+    );
+    assert.equal(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.recovery_requires.includes(delegateAgentAuthoringContract.recovery.failure_hint),
+      true
+    );
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("automatic retry")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("Live Run Trace delegated result refs and dispatch metadata"), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("delegated_result event summaries"), true);
