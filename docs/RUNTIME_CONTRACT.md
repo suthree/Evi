@@ -261,9 +261,12 @@ provider-neutral scenario.
 The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` renders the
 heartbeat-carried gateway summary, but it must not read provider logs, provider
-secrets, or provider SDK state. If an adapter fails during daemon startup, the
-daemon must write an `error` heartbeat with the failed MessageGateway channel
-before the foreground process or resident service exits.
+secrets, or provider SDK state. The Feishu adapter may project its non-sensitive
+inbound connection lifecycle into that heartbeat; a `failed` lifecycle makes the
+channel `error`, while `connecting`, `connected`, and `reconnecting` remain
+running. If an adapter fails during daemon startup, the daemon must write an
+`error` heartbeat with the failed MessageGateway channel before the foreground
+process or resident service exits.
 
 Runtime channel messages use a provider-neutral source envelope before they are
 bound to sessions. The stable source shape is channel kind, configured channel

@@ -298,11 +298,19 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   }
 
   health(): RuntimeChannelHealth {
+    const transportHealth = this.transport.health?.();
+    const inboundState = transportHealth?.inbound_state;
     return {
       kind: this.kind,
       channel_id: this.channelId,
-      state: this.running ? "running" : "stopped",
-      detail: `${this.config.domain}:${this.config.channelId ?? this.channelId}`
+      state: this.running && inboundState === "failed" ? "error" : this.running ? "running" : "stopped",
+      detail: [
+        `${this.config.domain}:${this.config.channelId ?? this.channelId}`,
+        ...(inboundState ? [`inbound=${inboundState}`] : []),
+        ...(transportHealth && transportHealth.reconnect_attempts > 0
+          ? [`reconnect_attempts=${transportHealth.reconnect_attempts}`]
+          : [])
+      ].join("; ")
     };
   }
 

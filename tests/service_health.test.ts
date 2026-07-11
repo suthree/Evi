@@ -168,6 +168,52 @@ test("service health derives fresh resident runtime status from local state and 
   }
 });
 
+test("service health flags a failed message gateway channel for operator attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
+    await store.writeJson("services/runtime/heartbeat.json", {
+      service: "runtime",
+      state: "running",
+      pid: 1234,
+      channel_id: "feishu-main",
+      scenario_id: "im-default",
+      updated_at: "2026-06-30T00:00:30.000Z",
+      gateway: {
+        state: "error",
+        channels: [{
+          kind: "feishu",
+          channel_id: "feishu-main",
+          state: "error",
+          detail: "feishu:feishu-main; inbound=failed; reconnect_attempts=2"
+        }]
+      },
+      runtime_build: {
+        source_commit: "abcdef0123456789abcdef0123456789abcdef01",
+        source_commit_short: "abcdef012345",
+        source_branch: "develop",
+        source_is_dirty: false
+      }
+    });
+
+    const health = await getServiceHealth(store, {
+      now: "2026-06-30T00:01:00.000Z"
+    });
+
+    assert.equal(health.status, "attention");
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["gateway_error"]);
+    assert.deepEqual(health.status_reasons, ["gateway_error"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "gateway_error",
+      summary: "a message gateway channel reported an error; inspect the bounded channel health and repair its configured inbound transport before treating IM as reachable",
+      command: "pnpm run runtime -- service health --target runtime"
+    }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service health marks stale review tick focus as covered by a later manual act-next action", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

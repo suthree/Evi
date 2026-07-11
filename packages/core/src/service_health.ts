@@ -701,6 +701,9 @@ function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
     result.service.heartbeat_freshness === "stale" ? "heartbeat_stale" : undefined,
     result.service.deployment.status === "stale" ? "deployment_stale" : undefined,
     result.service.runtime_build?.source_is_dirty === true ? "runtime_build_dirty" : undefined,
+    result.service.gateway?.state === "error" || result.service.gateway?.channels.some((channel) => channel.state === "error")
+      ? "gateway_error"
+      : undefined,
     result.state_parse_errors.length > 0 ? "state_parse_error" : undefined,
     result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
   ]);
@@ -748,6 +751,13 @@ function serviceHealthAttentionFollowup(
     return {
       reason_code: reason,
       summary: "local runtime state could not be parsed; inspect or repair the listed state refs before trusting service health",
+      command: `pnpm run runtime -- service health --target ${result.target}`
+    };
+  }
+  if (reason === "gateway_error") {
+    return {
+      reason_code: reason,
+      summary: "a message gateway channel reported an error; inspect the bounded channel health and repair its configured inbound transport before treating IM as reachable",
       command: `pnpm run runtime -- service health --target ${result.target}`
     };
   }

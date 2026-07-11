@@ -63,11 +63,19 @@ export interface FeishuSendResult {
   raw?: unknown;
 }
 
+export type FeishuInboundConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "failed";
+
+export interface FeishuTransportHealth {
+  inbound_state: FeishuInboundConnectionState;
+  reconnect_attempts: number;
+}
+
 export interface FeishuTransport {
   start(onMessage: (event: FeishuInboundEvent) => void | Promise<void>): Promise<void>;
   stop(): Promise<void>;
   sendText(openId: string, text: string): Promise<FeishuSendResult>;
   sendTextToChat?(chatId: string, text: string): Promise<FeishuSendResult>;
+  health?(): FeishuTransportHealth;
 }
 
 export interface TaskRunner {

@@ -23,6 +23,7 @@ import type {
   FeishuChannelConfig,
   FeishuInboundEvent,
   FeishuSendResult,
+  FeishuTransportHealth,
   FeishuTransport
 } from "../packages/runtime/src/channels/feishu/types.js";
 import { queueOperatorNotification } from "../packages/runtime/src/operator_notifications.js";
@@ -70,6 +71,52 @@ test("Feishu text chunks prefer line boundaries", () => {
   assert.equal(chunks.length > 1, true);
   assert.equal(chunks.some((chunk) => chunk.includes(command)), true);
   assert.equal(chunks.every((chunk) => chunk.length <= 95), true);
+});
+
+test("Feishu adapter exposes a failed inbound connection without SDK details", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockFeishuTransport();
+    transport.connectionHealth = { inbound_state: "failed", reconnect_attempts: 2 };
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport,
+      runner: new StubRunner(fixture.store, "unused"),
+      store: fixture.store
+    });
+
+    await adapter.start();
+    assert.deepEqual(adapter.health(), {
+      kind: "feishu",
+      channel_id: "feishu-test",
+      state: "error",
+      detail: "feishu:feishu-test; inbound=failed; reconnect_attempts=2"
+    });
+    await adapter.stop();
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu adapter keeps a connecting inbound connection running", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockFeishuTransport();
+    transport.connectionHealth = { inbound_state: "connecting", reconnect_attempts: 0 };
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport,
+      runner: new StubRunner(fixture.store, "unused"),
+      store: fixture.store
+    });
+
+    await adapter.start();
+    assert.equal(adapter.health().state, "running");
+    assert.equal(adapter.health().detail, "feishu:feishu-test; inbound=connecting");
+    await adapter.stop();
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 test("private text message runs the agent and sends final response", async () => {
@@ -4998,10 +5045,15 @@ test("Feishu app_secret auth can be overridden from state auth jsonl", async () 
 class MockFeishuTransport implements FeishuTransport {
   readonly sent: Array<{ openId: string; text: string }> = [];
   readonly chatSent: Array<{ chatId: string; text: string }> = [];
+  connectionHealth: FeishuTransportHealth | undefined;
 
   async start(): Promise<void> {}
 
   async stop(): Promise<void> {}
+
+  health(): FeishuTransportHealth | undefined {
+    return this.connectionHealth;
+  }
 
   async sendText(openId: string, text: string): Promise<FeishuSendResult> {
     this.sent.push({ openId, text });

@@ -6,7 +6,8 @@ import type {
   FeishuDomain,
   FeishuInboundEvent,
   FeishuSendResult,
-  FeishuTransport
+  FeishuTransport,
+  FeishuTransportHealth
 } from "./types.js";
 
 type LarkClient = InstanceType<typeof Lark.Client>;
@@ -52,6 +53,14 @@ export class LarkSdkFeishuTransport implements FeishuTransport {
   async stop(): Promise<void> {
     this.wsClient?.close();
     this.wsClient = null;
+  }
+
+  health(): FeishuTransportHealth {
+    const status = this.wsClient?.getConnectionStatus();
+    return {
+      inbound_state: status?.state ?? "idle",
+      reconnect_attempts: status?.reconnectAttempts ?? 0
+    };
   }
 
   async sendText(openId: string, text: string): Promise<FeishuSendResult> {
