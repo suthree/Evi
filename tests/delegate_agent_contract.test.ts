@@ -219,14 +219,18 @@ test("delegated output rejects natural-language command and test execution claim
   }
 });
 
-test("delegated output rejects destructive execution claims with suppressed previews", () => {
+test("delegated output rejects destructive execution claims in every supported voice", () => {
   const claims = [
     "I deleted stale state records.",
     "I removed stale state records.",
     "I erased stale state records.",
     "I unlinked stale state records.",
     "I dropped stale state records.",
-    "I destroyed stale state records."
+    "I destroyed stale state records.",
+    "The delegated agent removed stale state records.",
+    "Stale state records were deleted.",
+    "Removed stale state records.",
+    "陈旧状态记录已被删除。"
   ];
 
   for (const claim of claims) {
@@ -239,6 +243,14 @@ test("delegated output rejects destructive execution claims with suppressed prev
       assert.match(result.error, /must not claim tool\/write\/mutation/);
       assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
     }
+  }
+
+  for (const recommendation of ["Stale state records should be removed.", "陈旧状态记录应被移除。"]) {
+    const result = parseDelegatedOutput(JSON.stringify({
+      summary: recommendation,
+      findings_text: "Bounded recommendation only."
+    }), DELEGATED_OUTPUT_SOURCE);
+    assert.equal(result.ok, true, recommendation);
   }
 });
 

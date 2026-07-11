@@ -1087,8 +1087,12 @@ function delegatedTextClaimsAuthority(value: string): boolean {
 }
 
 function delegatedTextClaimsDestructiveMutation(text: string): boolean {
-  return /\b(?:i|delegated subagent|subagent)\s+(?:have\s+|has\s+)?(?:delete(?:d)?|remove(?:d)?|eras(?:e|ed)|unlink(?:ed)?|drop(?:ped)?|destroy(?:ed)?)\b/.test(text)
-    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:删除|移除|清除)/u.test(text);
+  return /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:delete(?:d)?|remove(?:d)?|eras(?:e|ed)|unlink(?:ed)?|drop(?:ped)?|destroy(?:ed)?)\b/.test(text)
+    || /\b(?:[a-z0-9][a-z0-9_-]*\s+){1,10}(?:was|were|has been|have been)\s+(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
+    || /^(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
+    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:删除|移除|清除)/u.test(text)
+    || /(?:已经|已)被(?:删除|移除|清除)/u.test(text)
+    || /^(?:已经|已)(?:删除|移除|清除)/u.test(text);
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
