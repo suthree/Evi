@@ -1422,9 +1422,10 @@ both later successful write/run recovery evidence cited by the done claim as a
 tool result id or tool artifact ref and a bound non-delegated verification ref
 after the failed delegated result; an uncited write/run result and later
 read-only refs are context only.
-The final response artifact alone is not independent completion proof.
-New final-response evidence events bind that artifact to the first `respond`
-action selected by the runner through optional structured metadata: stable
+The final response artifact alone is not independent completion proof. The live
+runner rejects model envelopes with more than one `respond` action, so
+new final-response evidence events bind that artifact to the only `respond`
+action through optional structured metadata: stable
 `response_ref`, action id, final envelope ref, round, and sequence among
 `respond` actions. For a final `done` envelope, Live Run Trace derives the same
 respond-action expectation from the parsed envelope and exposes only identity,

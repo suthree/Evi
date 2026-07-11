@@ -1480,6 +1480,7 @@ Use propose_memory only for candidate memory proposals; the harness records the 
 Use request_audit only for state-only audit requests; the harness records the request but does not execute confirmations, promote skills, or mutate SOP state through that action.
 Use pause_autonomy only to request a state-only stop signal for future autonomous exploration; it does not stop the resident service or interrupt the current explicit task.
 After Tool or Harness State Observations are present, produce a respond action with the concrete result and one useful propose_sop action if the task can teach a reusable procedure.
+Use at most one respond action per ModelActionEnvelope.
 If the context contains Selected Skills, follow the selected skill as the preferred procedure before drafting a new SOP.
 The SOP candidate must be audit-ready: trigger >= 40 chars, verification >= 30 chars, failure_modes is non-empty, and one failure mode explicitly says when to revise, retire, archive, or rollback the SOP.
 Do not invent evidence ids. Use only concrete harness-known non-delegated ids from Tool Observations or other prompt-provided evidence in verification_refs; leave verification_refs empty when no concrete refs are present.`;
@@ -1572,6 +1573,10 @@ function parseEnvelope(outputText: string): ModelActionEnvelope {
   }
   const parsed = JSON.parse(extractJsonObject(trimmed));
   const envelope = modelActionEnvelopeSchema.parse(parsed);
+  const respondActionCount = envelope.actions.filter((action) => action.type === "respond").length;
+  if (respondActionCount > 1) {
+    throw new Error("Model returned multiple respond actions; use at most one respond action per ModelActionEnvelope.");
+  }
   return {
     ...envelope,
     actions: envelope.actions.map((action) => ({ ...action, id: newId("action") }))

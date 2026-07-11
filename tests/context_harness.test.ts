@@ -3841,6 +3841,44 @@ test("live runner persists bounded response metadata when model envelope parsing
   }
 });
 
+test("live runner rejects multiple respond actions before persistence", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new MultipleRespondEnvelopeModel()
+    });
+
+    const result = await runner.runTask("Reject ambiguous final responses.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const diagnosticEvent = events.find((event) => event.kind === "model_diagnostic");
+    const diagnosticRef = (diagnosticEvent?.artifact_refs as string[] | undefined)
+      ?.find((ref) => ref.endsWith("-model-diagnostic-r1.json")) ?? "";
+    const diagnostic = JSON.parse(await readFile(join(fixture.stateRoot, diagnosticRef), "utf8")) as {
+      stage: string;
+      error_preview: string;
+    };
+    const persistedEnvelope = JSON.parse(await readFile(join(fixture.stateRoot, result.envelope_ref), "utf8")) as {
+      actions: Array<{ type: string }>;
+    };
+    const finalResponse = await readFile(join(fixture.stateRoot, result.final_response_ref ?? ""), "utf8");
+
+    assert.equal(result.verdict, "blocked_model_error");
+    assert.equal(diagnostic.stage, "envelope_parse");
+    assert.match(diagnostic.error_preview, /could not be parsed as ModelActionEnvelope/);
+    assert.equal(persistedEnvelope.actions.filter((action) => action.type === "respond").length, 1);
+    assert.doesNotMatch(JSON.stringify([diagnostic, persistedEnvelope, finalResponse]), /MULTI_RESPOND_OUTPUT_SHOULD_NOT_PERSIST/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner feeds structured delegated results back as bounded observations", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -7452,6 +7490,36 @@ class InvalidEnvelopeModel implements ModelClient {
       responseId: "response-invalid-envelope",
       outputText: "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR",
       raw: { outputText: "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR" }
+    };
+  }
+}
+
+class MultipleRespondEnvelopeModel implements ModelClient {
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "multiple-respond-envelope",
+      responseId: "response-multiple-respond-envelope",
+      outputText: JSON.stringify({
+        summary: "MULTI_RESPOND_OUTPUT_SHOULD_NOT_PERSIST",
+        actions: [
+          {
+            type: "respond",
+            rationale: "Return the first ambiguous answer.",
+            payload: { markdown: "MULTI_RESPOND_OUTPUT_SHOULD_NOT_PERSIST" }
+          },
+          {
+            type: "respond",
+            rationale: "Return the second ambiguous answer.",
+            payload: { markdown: "MULTI_RESPOND_OUTPUT_SHOULD_NOT_PERSIST" }
+          }
+        ],
+        completion_claim: {
+          status: "done",
+          verification_refs: []
+        }
+      })
     };
   }
 }
