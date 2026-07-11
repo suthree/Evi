@@ -997,7 +997,7 @@ test("iteration audit runtime attention coverage requires structured service-hea
   assert.equal(healthy.status, "not_required");
 });
 
-test("iteration audit service-health snapshot reads resident runtime state root", async () => {
+test("iteration audit service-health snapshot reads the audited iteration state root", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-cli-health-"));
   const repoRoot = join(root, "repo");
   const configDir = join(root, "config");
@@ -1018,9 +1018,8 @@ test("iteration audit service-health snapshot reads resident runtime state root"
     });
 
     assert.equal(snapshot.inspected_state_root, inspectedStateRoot);
-    assert.equal(snapshot.service_health_state_root, join(homeRoot, "state/runtime"));
-    assert.equal(snapshot.warnings.length, 1);
-    assert.match(snapshot.warnings[0] ?? "", /differs from resident runtime service state_root/);
+    assert.equal(snapshot.service_health_state_root, inspectedStateRoot);
+    assert.deepEqual(snapshot.warnings, []);
     assert.match(snapshot.boundary, /does not mutate state/);
   } finally {
     await rm(root, { recursive: true, force: true });

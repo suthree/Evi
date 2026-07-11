@@ -446,7 +446,9 @@ verification claim must include `status=<status>`, the current reason codes,
 `classification=acceptable|repair_needed|verification_blocker`, and
 `handling=<policy>`; `repair_needed` claims must also include `follow_up=...`,
 `follow-up=...`, `followup=...`, or `no_follow_up=...`. This is read-only claim
-coverage, not a service repair or proof of health.
+coverage, not a service repair or proof of health. The health snapshot uses the
+same selected state root as the audited iteration; it does not substitute a
+home-scoped fallback runtime state.
 `workspace_outcome_coverage` reads the bounded fixed `git status` workspace
 diagnostic during the iteration audit. When the worktree is dirty, the
 `workspace:` outcome verification claim must include `status=dirty` and each

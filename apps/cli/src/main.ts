@@ -776,21 +776,23 @@ export async function getIterationAuditServiceHealthSnapshot(args: {
   configDir: string;
   inspectedStateRoot: string;
 }): Promise<IterationAuditServiceHealthSnapshot> {
+  const inspectedStateRoot = resolve(args.inspectedStateRoot);
   const selectors = await resolveServiceConfigSelectors({
     target: "runtime",
-    configDir: args.configDir
+    configDir: args.configDir,
+    stateRoot: inspectedStateRoot
   });
   const serviceStore = new AgentStore(resolve(args.repoRoot), selectors.stateRoot);
   const serviceHealth = await getServiceHealth(serviceStore, { target: "runtime" });
-  const warnings = selectors.stateRoot === args.inspectedStateRoot
+  const warnings = selectors.stateRoot === inspectedStateRoot
     ? []
-    : [`inspected state_root ${args.inspectedStateRoot} differs from resident runtime service state_root ${selectors.stateRoot}`];
+    : [`inspected state_root ${inspectedStateRoot} differs from resident runtime service state_root ${selectors.stateRoot}`];
   return {
     service_health: serviceHealth,
-    inspected_state_root: args.inspectedStateRoot,
+    inspected_state_root: inspectedStateRoot,
     service_health_state_root: selectors.stateRoot,
     warnings,
-    boundary: "read-only iteration audit service-health snapshot; reads resident runtime service health through service config selectors and does not mutate state, control services, record outcomes, or prove completion"
+    boundary: "read-only iteration audit service-health snapshot; reads the audited iteration's selected runtime state root through service config selectors and does not mutate state, control services, record outcomes, or prove completion"
   };
 }
 

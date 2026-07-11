@@ -787,6 +787,8 @@ passed. Matching open-iteration audits use the current GA project-design plan as
 the selected command source; source or historical iteration audits use the
 audited iteration's own runtime-bound verification commands, so newer plans do
 not move the audit target.
+The audit's service-health snapshot uses the same selected state root as the
+audited iteration, rather than a home-scoped fallback runtime state.
 `outcome_verification_command_coverage` checks that same selected command set
 against outcome verification command refs only. It helps distinguish "the
 iteration declared these checks" from "the recorded outcome cited these checks";
