@@ -266,7 +266,7 @@ test("stage runner blocks a done claim without a stage response body", async () 
     repoRoot,
     stateRoot,
     config: testConfig({ stateRoot, activeVault }),
-    model: new EmptyStageResponseModel()
+    model: new StageResponseModel({})
   });
   const store = new AgentStore(repoRoot, stateRoot);
 
@@ -279,6 +279,32 @@ test("stage runner blocks a done claim without a stage response body", async () 
     assert.equal(stageRun?.status, "blocked");
     assert.equal(stageRun?.failure_kind, "stage_incomplete");
     assert.equal(stageRun?.output_refs.length, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("stage runner accepts non-empty text after blank markdown", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model: new StageResponseModel({ markdown: " ", text: "Stage text fallback response." })
+  });
+  const store = new AgentStore(repoRoot, stateRoot);
+
+  try {
+    const result = await runner.runTask({ task: "Accept a text stage response.", stages: ["intake"] });
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${dirname(result.pipeline_ref)}/stages/intake.json`);
+
+    assert.equal(result.status, "done");
+    assert.equal(stageRun?.status, "done");
+    assert.equal(await store.readStateText(stageRun?.output_refs[0] ?? ""), "Stage text fallback response.");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -405,19 +431,21 @@ class NotDoneStageModel implements ModelClient {
   }
 }
 
-class EmptyStageResponseModel implements ModelClient {
+class StageResponseModel implements ModelClient {
+  constructor(private readonly payload: Record<string, unknown>) {}
+
   async create(_request: ModelRequest): Promise<ModelResponse> {
     return {
       provider: "test",
       api: "responses",
-      model: "empty-stage-response",
-      responseId: "response-empty-stage-response",
+      model: "stage-response",
+      responseId: "response-stage-response",
       outputText: JSON.stringify({
         summary: "Claim completion without producing the stage body.",
         actions: [{
           type: "respond",
           rationale: "This response intentionally omits the required stage body.",
-          payload: {}
+          payload: this.payload
         }],
         completion_claim: {
           status: "done",

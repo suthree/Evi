@@ -3879,6 +3879,66 @@ test("live runner rejects multiple respond actions before persistence", async ()
   }
 });
 
+test("live runner rejects a done claim without a final response body", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    for (const payload of [{}, { markdown: "   " }, { text: "\n" }]) {
+      const runner = new LiveAgentRunner({
+        repoRoot: fixture.repoRoot,
+        stateRoot: fixture.stateRoot,
+        config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+        model: new FinalResponseModel(payload)
+      });
+      const result = await runner.runTask("Reject an empty final response body.");
+      const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+        verification_status: string;
+        verified: boolean;
+        final_response_ref: string | null;
+        checks: Array<{ id: string; status: string; summary: string }>;
+      };
+
+      assert.equal(result.verdict, "completion_unverified");
+      assert.equal(result.final_response_ref, null);
+      assert.equal(report.verification_status, "failed");
+      assert.equal(report.verified, false);
+      assert.equal(report.final_response_ref, null);
+      assert.equal(report.checks.find((check) => check.id === "final_response")?.status, "fail");
+    }
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+
+    assert.equal(events.some((event) => event.summary === "Saved final response from model action envelope."), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner accepts non-empty text after blank markdown", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new FinalResponseModel({ markdown: " ", text: "Text fallback response." })
+    });
+
+    const result = await runner.runTask("Accept a text final response.");
+    const finalResponse = await readFile(join(fixture.stateRoot, result.final_response_ref ?? ""), "utf8");
+
+    assert.equal(result.verdict, "no_sop");
+    assert.equal(finalResponse, "Text fallback response.");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner feeds structured delegated results back as bounded observations", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -7515,6 +7575,31 @@ class MultipleRespondEnvelopeModel implements ModelClient {
             payload: { markdown: "MULTI_RESPOND_OUTPUT_SHOULD_NOT_PERSIST" }
           }
         ],
+        completion_claim: {
+          status: "done",
+          verification_refs: []
+        }
+      })
+    };
+  }
+}
+
+class FinalResponseModel implements ModelClient {
+  constructor(private readonly payload: Record<string, unknown>) {}
+
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "final-response",
+      responseId: "response-final-response",
+      outputText: JSON.stringify({
+        summary: "Reject this empty response body.",
+        actions: [{
+          type: "respond",
+          rationale: "Return a final response.",
+          payload: this.payload
+        }],
         completion_claim: {
           status: "done",
           verification_refs: []

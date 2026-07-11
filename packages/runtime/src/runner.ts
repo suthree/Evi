@@ -597,7 +597,7 @@ export class LiveAgentRunner {
       await this.store.appendJsonl("memory/episodes/events.jsonl", responseEvent);
     } else if (discipline) {
       markTodo(discipline, "final_response", "blocked");
-      discipline.iteration_log.push("No final response action was present in the last model envelope.");
+      discipline.iteration_log.push("No non-empty final response body was present in the last model envelope.");
       await this.writeDisciplineTodo(discipline);
     }
 
@@ -1857,11 +1857,10 @@ async function writeFinalResponse(store: AgentStore, sessionId: string, envelope
   const action = envelope.actions.find((item) => item.type === "respond");
   if (!action) return null;
   const payload = action.payload as Record<string, unknown>;
-  const markdown = typeof payload.markdown === "string"
-    ? payload.markdown
-    : typeof payload.text === "string"
-      ? payload.text
-      : JSON.stringify(payload, null, 2);
+  const markdown = [payload.markdown, payload.text].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+  if (!markdown) return null;
   return store.writeText(`memory/episodes/${sessionId}-final-response.md`, markdown);
 }
 

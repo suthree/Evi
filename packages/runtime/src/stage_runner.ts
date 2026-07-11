@@ -663,12 +663,10 @@ async function writeStageResponse(
   const action = envelope.actions.find((item) => item.type === "respond");
   if (!action) return null;
   const payload = action.payload as Record<string, unknown>;
-  const markdown = typeof payload.markdown === "string"
-    ? payload.markdown
-    : typeof payload.text === "string"
-      ? payload.text
-      : "";
-  if (!markdown.trim()) return null;
+  const markdown = [payload.markdown, payload.text].find(
+    (value): value is string => typeof value === "string" && value.trim().length > 0
+  );
+  if (!markdown) return null;
   return store.writeText(`${root}/artifacts/${stageId}.md`, markdown);
 }
 

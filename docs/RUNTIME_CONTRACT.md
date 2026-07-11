@@ -1540,8 +1540,11 @@ memory/episodes/<session>-completion-verification.md
 
 The report records the model `completion_claim`, final response ref, claimed
 verification refs, selected observation refs, structured verification evidence
-lineage, and per-check pass/fail/warning status. A `done` claim fails
-verification when required final response or
+lineage, and per-check pass/fail/warning status. A final response artifact is
+written only from a non-empty `respond.payload.markdown` or
+`respond.payload.text`; an empty, whitespace-only, or structured-only payload
+does not become a fake response artifact. A `done` claim fails verification
+when required final response or
 write/run/delegation evidence is missing or failed, or when delegated self-report
 refs are used as verification proof. A `done` claim also fails when claimed refs
 are not bound to harness-known tool result ids or tool artifact refs from the
