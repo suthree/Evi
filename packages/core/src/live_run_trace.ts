@@ -25,7 +25,7 @@ const HARNESS_ACTION_TYPES = new Set([
 
 const DELEGATED_COMPLETION_GATE_CHECK_IDS = new Set<string>(delegateAgentCompletionGateCheckIds);
 
-type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "metadata_present" | "result_ref"> & {
+type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" | "created_at" | "metadata_present" | "result_ref" | "result_ref_in_event_artifacts" | "result_ref_file_present" | "result_ref_matches_result_identity"> & {
   result_ref?: string;
 };
 
@@ -95,6 +95,9 @@ export interface LiveRunDelegatedDispatchSummary {
   metadata_present: boolean;
   result_id: string | null;
   result_ref: string;
+  result_ref_in_event_artifacts: boolean;
+  result_ref_file_present: boolean;
+  result_ref_matches_result_identity: boolean;
   action_id: string;
   envelope_ref: string | null;
   round: number;
@@ -287,7 +290,8 @@ async function summarizeLiveRunTrace(
   const toolResultEvents = readToolResultEventSummaries(runEvents);
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
-  const delegatedDispatches = readDelegatedDispatchSummaries(runEvents);
+  const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
+  const delegatedDispatches = readDelegatedDispatchSummaries(runEvents, episodeFiles);
   const delegatedResultReportRefs = unique(report.delegated_result_refs);
   const delegatedResultReportRefSet = new Set(delegatedResultReportRefs);
   const delegatedResultEventFallbackRefs = unique(delegatedDispatches
@@ -433,7 +437,8 @@ function readDelegatedCompletionGateChecks(report: CompletionVerificationReport)
 }
 
 function readDelegatedDispatchSummaries(
-  events: EpisodeEvent[]
+  events: EpisodeEvent[],
+  episodeFiles: Set<string>
 ): LiveRunDelegatedDispatchSummary[] {
   const summaries: LiveRunDelegatedDispatchSummary[] = [];
   for (const event of events.filter((item) => item.kind === "delegated_result")) {
@@ -441,13 +446,18 @@ function readDelegatedDispatchSummaries(
     const parsed = metadata ?? parseDelegatedDispatchSummary(event.summary);
     if (!parsed) continue;
     const { result_ref: parsedResultRef, ...dispatch } = parsed;
+    const resultRef = parsedResultRef && parsedResultRef.length > 0
+      ? parsedResultRef
+      : event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "";
     summaries.push({
       event_id: event.id,
       created_at: event.created_at,
       metadata_present: metadata !== null,
-      result_ref: parsedResultRef && parsedResultRef.length > 0
-        ? parsedResultRef
-        : event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "",
+      result_ref: resultRef,
+      result_ref_in_event_artifacts: resultRef.length > 0 && event.artifact_refs.includes(resultRef),
+      result_ref_file_present: resultRef.length > 0 && episodeFiles.has(resultRef),
+      result_ref_matches_result_identity: dispatch.result_id !== null
+        && resultRef === `memory/episodes/${event.session_id}-${dispatch.result_id}.json`,
       ...dispatch
     });
   }

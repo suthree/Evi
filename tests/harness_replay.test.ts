@@ -129,6 +129,9 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       event_id: dispatch.event_id,
       metadata_present: dispatch.metadata_present,
       result_ref: dispatch.result_ref,
+      result_ref_in_event_artifacts: dispatch.result_ref_in_event_artifacts,
+      result_ref_file_present: dispatch.result_ref_file_present,
+      result_ref_matches_result_identity: dispatch.result_ref_matches_result_identity,
       action_id: dispatch.action_id,
       envelope_ref: dispatch.envelope_ref,
       round: dispatch.round,
@@ -151,6 +154,9 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       event_id: "evidence_replay_delegated",
       metadata_present: true,
       result_ref: `memory/episodes/session_replay_test-delegated_result_invalid.json`,
+      result_ref_in_event_artifacts: true,
+      result_ref_file_present: true,
+      result_ref_matches_result_identity: true,
       action_id: "action_delegate_replay",
       envelope_ref: "memory/episodes/session_replay_test-model-action-r1.json",
       round: 1,
@@ -2154,7 +2160,100 @@ test("live run trace prefers delegated dispatch metadata result ref over artifac
 
     assert.equal(dispatch?.result_ref, metadataResultRef);
     assert.notEqual(dispatch?.result_ref, "memory/episodes/session_replay_test-delegated_result_metadata_result_ref.json");
+    assert.equal(dispatch?.result_ref_in_event_artifacts, false);
+    assert.equal(dispatch?.result_ref_file_present, true);
+    assert.equal(dispatch?.result_ref_matches_result_identity, false);
     assert.doesNotMatch(JSON.stringify(trace), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when metadata and report swap a delegated result ref", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegated-ref-binding-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    const resultId = "tool_result_delegated_ref_binding";
+    const completionChecks = [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated identities were not claimed.",
+      refs: []
+    }, {
+      id: "claimed_refs_bound_to_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is bound.",
+      refs: [resultId]
+    }, {
+      id: "delegated_independent_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is independent.",
+      refs: [resultId]
+    }];
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, completionChecks);
+    const verificationEvidence = await appendReplayPostDelegationEvidence(store, { resultId });
+    const swappedRef = "memory/episodes/session_replay_test-model-action-r1.json";
+    const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      claimed_verification_refs: [resultId],
+      verification_evidence_refs: verificationEvidence
+    });
+    await syncReplayEnvelopeClaimRefs(store, [resultId]);
+    const baseline = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    assert.equal(baseline.checks.find((check) => check.id === "delegated_result_ref_coverage")?.status, "pass");
+
+    const baselineCompletion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, { ...baselineCompletion, delegated_result_refs: [swappedRef] });
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => event.id === "evidence_replay_delegated"
+      ? JSON.stringify({
+          ...event,
+          delegated_dispatch: {
+            ...(event.delegated_dispatch as Record<string, unknown>),
+            result_ref: swappedRef
+          }
+        })
+      : JSON.stringify(event)).join("\n")}\n`);
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const coverage = report.checks.find((check) => check.id === "delegated_result_ref_coverage");
+    const gate = report.checks.find((check) => check.id === "delegated_completion_gate");
+
+    assert.equal(report.status, "attention");
+    assert.equal(coverage?.status, "warning");
+    assert.match(coverage?.summary ?? "", /refs_outside_event_artifacts=1/);
+    assert.match(coverage?.summary ?? "", /missing_result_artifact_files=0/);
+    assert.match(coverage?.summary ?? "", /mismatched_result_identity_refs=1/);
+    assert.match(gate?.summary ?? "", /delegated_result_refs_bound_to_events=false/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+
+    const artifactSwappedEvents = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${artifactSwappedEvents.map((event) => event.id === "evidence_replay_delegated"
+      ? JSON.stringify({ ...event, artifact_refs: [swappedRef] })
+      : JSON.stringify(event)).join("\n")}\n`);
+    const artifactSwapped = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const artifactCoverage = artifactSwapped.checks.find((check) => check.id === "delegated_result_ref_coverage");
+
+    assert.equal(artifactCoverage?.status, "warning");
+    assert.match(artifactCoverage?.summary ?? "", /refs_outside_event_artifacts=0/);
+    assert.match(artifactCoverage?.summary ?? "", /missing_result_artifact_files=0/);
+    assert.match(artifactCoverage?.summary ?? "", /mismatched_result_identity_refs=1/);
+    assert.doesNotMatch(JSON.stringify(artifactSwapped), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -2106,6 +2106,9 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       created_at: "2026-06-30T00:19:03.500Z",
       result_id: "delegated_result_trace_context_invalid",
       result_ref: `memory/episodes/${priorSession}-delegated_result_invalid.json`,
+      result_ref_in_event_artifacts: true,
+      result_ref_file_present: true,
+      result_ref_matches_result_identity: false,
       action_id: "action_delegate_trace_context",
       envelope_ref: `memory/episodes/${priorSession}-model-action-r1.json`,
       round: 1,
@@ -2146,7 +2149,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_result_refs: report=1, fallback=0, trace=1/);
     assert.match(rendered.markdown, /replay_check: delegated_completion_gate=fail/);
     assert.match(rendered.markdown, /replay_check: delegated_action_coverage=pass/);
-    assert.match(rendered.markdown, /replay_check: delegated_result_ref_coverage=pass/);
+    assert.match(rendered.markdown, /replay_check: delegated_result_ref_coverage=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_lineage=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_failure_kind=pass/);

@@ -543,6 +543,11 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     .filter((resultRef) => resultRef.length > 0);
   const duplicateDelegatedResultIdCount = delegatedResultIds.length - new Set(delegatedResultIds).size;
   const duplicateDelegatedResultRefCount = delegatedResultRefs.length - new Set(delegatedResultRefs).size;
+  const resultRefsBoundToEvents = trace.delegated_dispatches.every((dispatch) =>
+    dispatch.result_ref_in_event_artifacts
+      && dispatch.result_ref_file_present
+      && dispatch.result_ref_matches_result_identity
+  );
   const inputLineage = delegatedInputLineage(trace);
   const delegatedIdentityRefs = new Set([...delegatedResultIds, ...delegatedResultRefs]);
   const claimMetadataComplete = trace.envelope_claimed_verification_refs_present;
@@ -561,6 +566,7 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     && delegatedResultRefs.length === trace.delegated_dispatches.length
     && duplicateDelegatedResultIdCount === 0
     && duplicateDelegatedResultRefCount === 0
+    && resultRefsBoundToEvents
     && inputLineage.inputMetadataComplete;
   const nonDelegatedClaimedRefs = authoritativeClaimRefs
     .filter((ref) => !delegatedIdentityRefs.has(ref));
@@ -618,6 +624,7 @@ function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
     dispatchMetadataComplete,
     duplicateDelegatedResultIdCount,
     duplicateDelegatedResultRefCount,
+    resultRefsBoundToEvents,
     evidenceBinding,
     failedDelegatedDispatches,
     inputLineage,
@@ -671,6 +678,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     dispatchMetadataComplete,
     duplicateDelegatedResultIdCount,
     duplicateDelegatedResultRefCount,
+    resultRefsBoundToEvents,
     evidenceBinding,
     failedDelegatedDispatches,
     inputLineage,
@@ -837,6 +845,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `legacy_tool_result_metadata_claimed_refs=${legacyEventMetadataClaimedRefs.length}`,
       `dispatch_metadata_complete=${dispatchMetadataComplete}`,
       `delegated_identity_metadata_complete=${delegatedIdentityMetadataComplete}`,
+      `delegated_result_refs_bound_to_events=${resultRefsBoundToEvents}`,
       `delegated_input_metadata_complete=${inputLineage.inputMetadataComplete}`,
       `missing_delegated_input_metadata=${inputLineage.missingInputMetadata.length}`,
       `missing_delegated_input_expectation=${inputLineage.missingExpectedInput.length}`,
@@ -1096,22 +1105,36 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
   const dispatchRefs = new Set(dispatchesWithResultRef.map((dispatch) => dispatch.result_ref));
   const missingReportDispatchRefs = dispatchesWithResultRef.filter((dispatch) => !reportRefs.has(dispatch.result_ref));
   const orphanReportRefs = trace.delegated_result_report_refs.filter((ref) => !dispatchRefs.has(ref));
+  const refsOutsideEventArtifacts = dispatchesWithResultRef.filter((dispatch) => !dispatch.result_ref_in_event_artifacts);
+  const missingResultArtifactFiles = dispatchesWithResultRef.filter((dispatch) => !dispatch.result_ref_file_present);
+  const mismatchedResultIdentityRefs = dispatchesWithResultRef.filter((dispatch) => !dispatch.result_ref_matches_result_identity);
+  const hasAttention = missingReportDispatchRefs.length > 0
+    || orphanReportRefs.length > 0
+    || refsOutsideEventArtifacts.length > 0
+    || missingResultArtifactFiles.length > 0
+    || mismatchedResultIdentityRefs.length > 0;
   return {
     id: "delegated_result_ref_coverage",
-    status: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0 ? "warning" : "pass",
+    status: hasAttention ? "warning" : "pass",
     summary: [
       `report_refs=${trace.delegated_result_report_refs.length}`,
       `trace_refs=${trace.delegated_result_refs.length}`,
       `dispatch_refs=${dispatchesWithResultRef.length}`,
       `missing_dispatch_refs=${missingReportDispatchRefs.length}`,
       `orphan_report_refs=${orphanReportRefs.length}`,
+      `refs_outside_event_artifacts=${refsOutsideEventArtifacts.length}`,
+      `missing_result_artifact_files=${missingResultArtifactFiles.length}`,
+      `mismatched_result_identity_refs=${mismatchedResultIdentityRefs.length}`,
       `event_fallback_refs=${trace.delegated_result_event_fallback_refs.length}`
     ].join("; "),
-    refs: missingReportDispatchRefs.length > 0 || orphanReportRefs.length > 0
+    refs: hasAttention
       ? unique([
           trace.report_ref,
           ...missingReportDispatchRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
-          ...orphanReportRefs
+          ...orphanReportRefs,
+          ...refsOutsideEventArtifacts.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+          ...missingResultArtifactFiles.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+          ...mismatchedResultIdentityRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
         ])
       : unique([trace.report_ref, ...trace.delegated_result_report_refs])
   };
@@ -1542,6 +1565,9 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     metadata_present: value.metadata_present === true,
     result_id: resultId,
     result_ref: resultRef,
+    result_ref_in_event_artifacts: value.result_ref_in_event_artifacts === true,
+    result_ref_file_present: value.result_ref_file_present === true,
+    result_ref_matches_result_identity: value.result_ref_matches_result_identity === true,
     action_id: actionId,
     envelope_ref: envelopeRef,
     round,

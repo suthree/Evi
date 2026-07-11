@@ -425,6 +425,11 @@ those event-owned identities rather than trusting completion-report refs:
 exact claims fail, substring lookalikes do not match, duplicate or missing ids
 or refs remain attention, and historical events stay readable without artifact-body
 inspection.
+Each `result_ref` must also name the persisted JSON artifact attached to that
+same delegated event and its `session_id`/`result_id` identity. A completion
+report or event metadata that points at a missing or unrelated artifact remains
+attention; replay checks only identity, artifact membership, and file presence,
+never delegated artifact contents.
 New dispatches also persist shared parsed input validity, normalized task/context
 character counts, and a SHA-256 input digest. Trace derives the same bounded
 expectation from the declaring envelope; replay warns on missing legacy metadata
