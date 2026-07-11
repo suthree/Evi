@@ -65,22 +65,20 @@ test("review tick loop writes service status after a bounded tick", async () => 
     assert.deepEqual(status.last_inactive_tick_inbox_refs, []);
     assert.equal(status.last_focus?.source, "opportunity_backlog");
     assert.equal(status.last_focus?.opportunity?.kind, "archive_health");
-    assert.equal(status.last_focus_current_status, "resolved");
-    assert.match(status.last_focus_current_reason ?? "", /no longer present/);
-    assert.equal(status.last_auto_action_status, "executed");
-    assert.equal(status.last_auto_action_opportunity_kind, "archive_health");
-    assert.match(status.last_auto_action_summary ?? "", /archive_refresh: healthy/);
+    assert.equal(status.last_focus_current_status, "active");
+    assert.match(status.last_focus_current_reason ?? "", /still present/);
+    assert.equal(status.last_auto_action_status, "none");
+    assert.equal(status.last_auto_action_opportunity_kind, undefined);
 
     const persisted = JSON.parse(await readFile(join(fixture.stateRoot, loop.statusRef), "utf8")) as typeof status;
     assert.equal(persisted.state, "ok");
     assert.equal(persisted.last_tick_ref, status.last_tick_ref);
     assert.equal(persisted.last_focus?.source, "opportunity_backlog");
     assert.equal(persisted.last_focus?.opportunity?.kind, "archive_health");
-    assert.equal(persisted.last_focus_current_status, "resolved");
+    assert.equal(persisted.last_focus_current_status, "active");
     assert.equal(existsSync(join(fixture.stateRoot, status.last_tick_ref ?? "")), true);
-    assert.equal(existsSync(join(fixture.stateRoot, status.last_auto_action_ref ?? "")), true);
     const health = await getArchiveHealth(store);
-    assert.equal(health.missing_archive_count, 0);
+    assert.equal(health.missing_archive_count, 1);
     assert.equal(health.stale_archive_count, 0);
   } finally {
     await fixture.cleanup();

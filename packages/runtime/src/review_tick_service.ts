@@ -225,7 +225,7 @@ async function runSafeAutoAction(
   limit: number
 ): Promise<ExecuteNextOpportunityActionResult | null> {
   const backlog = await getOpportunityBacklog(store, { limit: Math.max(limit, 20) });
-  const autoKindPriority: Array<"review_inbox" | "archive_health"> = ["review_inbox", "archive_health"];
+  const autoKindPriority: Array<"review_inbox"> = ["review_inbox"];
   const item = autoKindPriority
     .map((kind) => backlog.items.find((candidate) =>
       candidate.kind === kind && isAutoExecutableOpportunityAction(candidate)

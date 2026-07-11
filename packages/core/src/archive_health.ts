@@ -1,5 +1,4 @@
 import type { EpisodeArchiveRecord } from "./memory_store.js";
-import { utcNow } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const EPISODE_EVENTS_REF = "memory/episodes/events.jsonl";
@@ -51,6 +50,12 @@ export interface ArchiveHealthResult {
   missing_archive_count: number;
   stale_archive_count: number;
   orphan_archive_count: number;
+  open_day: {
+    date: string;
+    source_event_count: number;
+    archive_event_count: number | null;
+    archive_status: "missing" | "current" | "stale";
+  } | null;
   count: number;
   issue_refs: string[];
   issues: ArchiveHealthIssue[];
@@ -83,9 +88,12 @@ const BOUNDARY = "read-only archive health diagnostics; reads episode event JSON
 
 export async function getArchiveHealth(
   store: AgentStore,
-  args: { limit?: number; archiveRef?: string } = {}
+  args: { limit?: number; archiveRef?: string; now?: Date | string } = {}
 ): Promise<ArchiveHealthResult> {
   await store.ensureLayout();
+  const now = args.now instanceof Date ? args.now : new Date(args.now ?? Date.now());
+  const checkedAt = now.toISOString();
+  const openDayDate = checkedAt.slice(0, 10);
   const eventsText = await store.readStateText(EPISODE_EVENTS_REF);
   const parsedEvents = parseEpisodeEvents(eventsText);
   const daySummaries = summarizeEventDays(parsedEvents.events);
@@ -110,6 +118,7 @@ export async function getArchiveHealth(
   const archiveByDate = new Map(archives.map((row) => [row.archive.date, row]));
   for (const day of daySummaries) {
     const archiveRow = archiveByDate.get(day.date);
+    if (day.date === openDayDate) continue;
     if (!archiveRow) {
       issues.push(missingArchiveIssue(day));
       continue;
@@ -135,6 +144,8 @@ export async function getArchiveHealth(
   const missingArchiveCount = issues.filter((issue) => issue.kind === "missing_archive").length;
   const staleArchiveCount = issues.filter((issue) => issue.kind === "stale_archive").length;
   const orphanArchiveCount = issues.filter((issue) => issue.kind === "orphan_archive").length;
+  const openDay = dayByDate.get(openDayDate);
+  const openDayArchive = archiveByDate.get(openDayDate)?.archive;
 
   return {
     action: "archive-health",
@@ -143,7 +154,7 @@ export async function getArchiveHealth(
       : issues.length > 0
         ? "degraded"
         : "healthy",
-    checked_at: utcNow(),
+    checked_at: checkedAt,
     source_ref: EPISODE_EVENTS_REF,
     source_event_count: parsedEvents.events.length,
     source_day_count: daySummaries.length,
@@ -154,11 +165,27 @@ export async function getArchiveHealth(
     missing_archive_count: missingArchiveCount,
     stale_archive_count: staleArchiveCount,
     orphan_archive_count: orphanArchiveCount,
+    open_day: openDay
+      ? {
+          date: openDayDate,
+          source_event_count: openDay.event_count,
+          archive_event_count: openDayArchive?.event_count ?? null,
+          archive_status: openDayArchiveStatus(openDay, openDayArchive)
+        }
+      : null,
     count: selected.length,
     issue_refs: selected.map((issue) => issue.ref),
     issues: selected,
     boundary: BOUNDARY
   };
+}
+
+function openDayArchiveStatus(
+  day: EventDaySummary,
+  archive: EpisodeArchiveRecord | undefined
+): "missing" | "current" | "stale" {
+  if (!archive) return "missing";
+  return archiveIsStale(day, archive) ? "stale" : "current";
 }
 
 function parseEpisodeEvents(raw: string): {
@@ -187,15 +214,29 @@ function parseEpisodeEvents(raw: string): {
       invalidRows.push({ row_index: index + 1, reason: "episode event row has no usable summary" });
       continue;
     }
+    const createdAt = parsed.created_at;
+    if (createdAt !== undefined && createdAt !== null && !isUtcTimestamp(createdAt)) {
+      invalidRows.push({ row_index: index + 1, reason: "episode event created_at is not a valid UTC timestamp" });
+      continue;
+    }
     events.push({
       id: getString(parsed.id) ?? `row_${index + 1}`,
       session_id: getString(parsed.session_id) ?? "unknown_session",
       kind: getString(parsed.kind) ?? "unknown",
-      created_at: getString(parsed.created_at),
+      created_at: typeof createdAt === "string" ? createdAt : null,
       row_index: index + 1
     });
   }
   return { events, invalid_rows: invalidRows };
+}
+
+function isUtcTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return false;
+  return parsed.toISOString().replace(".000Z", "Z") === value.replace(".000Z", "Z");
 }
 
 function summarizeEventDays(events: EpisodeEventMeta[]): EventDaySummary[] {

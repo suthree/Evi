@@ -101,7 +101,8 @@ drafts. Audit, promotion, and skill creation remain explicit later gates.
 Episode memory also has a deterministic daily archive layer. `memory archive`
 writes bounded summaries, while `memory archives`, `memory archive-health`, and
 the matching Feishu operator commands are read-only views over archive metadata
-and freshness.
+and freshness. Archive health reports the current UTC date as an open day, then
+enforces missing or stale daily summaries after UTC rollover.
 
 This layer is useful, but first-version local runtime does not solve skill sync,
 shared vaults, public skill repositories, multi-user provenance, or cross-node

@@ -128,6 +128,106 @@ test("archive health reports archive freshness issues without reading raw artifa
   }
 });
 
+test("archive health defers missing and stale issues until the current UTC day closes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-archive-open-day-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await store.writeText("memory/episodes/events.jsonl", [
+      JSON.stringify({
+        id: "event_open_a",
+        session_id: "session_open",
+        kind: "report",
+        summary: "First open-day event.",
+        artifact_refs: [],
+        created_at: "2026-07-11T00:00:00.000Z"
+      }),
+      JSON.stringify({
+        id: "event_open_b",
+        session_id: "session_open",
+        kind: "evidence",
+        summary: "Second open-day event.",
+        artifact_refs: [],
+        created_at: "2026-07-11T12:00:00.000Z"
+      })
+    ].join("\n"));
+
+    const missingWhileOpen = await getArchiveHealth(store, { now: "2026-07-11T23:59:59.000Z" });
+    assert.equal(missingWhileOpen.status, "healthy");
+    assert.equal(missingWhileOpen.missing_archive_count, 0);
+    assert.deepEqual(missingWhileOpen.open_day, {
+      date: "2026-07-11",
+      source_event_count: 2,
+      archive_event_count: null,
+      archive_status: "missing"
+    });
+    const selectedOpenDay = await getArchiveHealth(store, {
+      now: "2026-07-11T23:59:59.000Z",
+      archiveRef: "2026-07-11"
+    });
+    assert.equal(selectedOpenDay.count, 0);
+    assert.equal(selectedOpenDay.open_day?.date, "2026-07-11");
+
+    const missingAfterRollover = await getArchiveHealth(store, { now: "2026-07-12T00:00:00.000Z" });
+    assert.equal(missingAfterRollover.status, "unhealthy");
+    assert.equal(missingAfterRollover.missing_archive_count, 1);
+
+    await store.writeJson("memory/archives/2026-07-11.json", archiveRecord({
+      date: "2026-07-11",
+      eventCount: 1,
+      sessionCount: 1,
+      kindCounts: { report: 1 },
+      firstEventAt: "2026-07-11T00:00:00.000Z",
+      lastEventAt: "2026-07-11T00:00:00.000Z"
+    }));
+
+    const staleWhileOpen = await getArchiveHealth(store, { now: "2026-07-11T23:59:59.000Z" });
+    assert.equal(staleWhileOpen.status, "healthy");
+    assert.equal(staleWhileOpen.stale_archive_count, 0);
+    assert.equal(staleWhileOpen.open_day?.archive_status, "stale");
+
+    const afterRollover = await getArchiveHealth(store, { now: "2026-07-12T00:00:00.000Z" });
+    assert.equal(afterRollover.status, "unhealthy");
+    assert.equal(afterRollover.stale_archive_count, 1);
+    assert.equal(afterRollover.open_day, null);
+    assert.equal(afterRollover.issues[0]?.date, "2026-07-11");
+
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "event_invalid_open",
+      session_id: "session_invalid_open",
+      kind: "report",
+      summary: "Invalid timestamp must not hide behind the open day.",
+      artifact_refs: [],
+      created_at: "2026-07-11-invalid"
+    });
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "event_invalid_leap_day",
+      session_id: "session_invalid_open",
+      kind: "report",
+      summary: "A normalized non-leap date is still invalid metadata.",
+      artifact_refs: [],
+      created_at: "2026-02-29T12:00:00Z"
+    });
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "event_invalid_hour",
+      session_id: "session_invalid_open",
+      kind: "report",
+      summary: "A normalized hour 24 is still invalid metadata.",
+      artifact_refs: [],
+      created_at: "2026-07-11T24:00:00Z"
+    });
+    const invalidOpenDay = await getArchiveHealth(store, { now: "2026-07-11T23:59:59.000Z" });
+    assert.equal(invalidOpenDay.status, "unhealthy");
+    assert.equal(invalidOpenDay.invalid_event_row_count, 3);
+    assert.equal(invalidOpenDay.issues[0]?.kind, "invalid_event_row");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function archiveRecord(args: {
   date: string;
   eventCount: number;

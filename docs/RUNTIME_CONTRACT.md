@@ -1748,7 +1748,10 @@ scans `memory/episodes/events.jsonl` and writes daily archive summaries.
 `memory archive-health` is a read-only archive readiness view. It may compare
 `memory/episodes/events.jsonl` row metadata with `memory/archives/*.json`
 summary metadata and report missing, stale, invalid, or orphan summaries. It
-must not read raw episode artifacts, generate archive files, rebuild
+reports the current UTC date as an open day: missing or lagging derived archive
+metadata stays visible through `open_day`, but does not become a freshness issue
+until that UTC day closes. Invalid event or archive metadata remains an error.
+It must not read raw episode artifacts, generate archive files, rebuild
 MemoryStore indexes, write state, write the active vault, or invoke the model.
 Any repair remains an explicit operator action through `memory archive` or an
 external state correction.
@@ -2033,7 +2036,10 @@ recursively, or treat an archive summary as durable semantic memory.
 Archive freshness diagnostics are separate from archive generation.
 `memory archive-health`, Feishu `/memory archive health`, context, governance
 status, and Opportunity Backlog may expose bounded archive-health issues, but
-they only read event/archive metadata and render next-step commands. They must
+the current UTC day remains an explicitly reported open day so resident writes
+cannot make a same-day snapshot permanently unhealthy. After UTC rollover, the
+same missing or stale metadata becomes an actionable historical issue. These
+views only read event/archive metadata and render next-step commands. They must
 not refresh archives automatically or treat a health issue as proof that raw
 episode evidence has been inspected. `governance decide-opportunity` may append
 decisions for `archive_health` backlog items after an operator handles, defers,

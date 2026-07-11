@@ -184,6 +184,8 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 只读检查当前 checkout 里是否还有不受支持的 runtime 目录。
 可以用 `pnpm run runtime -- memory layers --state-root .runtime/state`
 只读查看哪些记忆和本地学习层会进入上下文、按需召回、影响技能选择或仅作诊断。
+`memory archive-health` 会把当前 UTC 日期单独标记为仍在写入的 `open_day`；
+当天缺失或落后的派生归档不会误报为历史故障，UTC 日切后仍会严格进入缺失/陈旧检查。
 可以用 `pnpm run runtime -- memory dream --state-root .runtime/state`
 记录长期能力方向快照，再用 `pnpm run runtime -- memory dreams --state-root .runtime/state`
 查看。dream 快照会吸收已接受语义记忆、近期自我迭代契约、最新已验证 outcome、能力目录和 backlog 压力，

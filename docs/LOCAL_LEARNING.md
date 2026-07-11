@@ -193,7 +193,9 @@ externally, or prove that a goal is complete.
 Daily episode archives are deterministic bounded summaries generated from the
 append-only episode JSONL. `memory archive-health` compares event metadata with
 archive metadata and can surface missing or stale archive summaries in the
-Opportunity Backlog. It does not read raw episode artifacts, generate archives,
+Opportunity Backlog. The current UTC day is reported separately as `open_day`:
+its archive may be missing or lagging while events are still arriving, and only
+becomes a missing/stale issue after UTC rollover. It does not read raw episode artifacts, generate archives,
 or invoke the model; refreshing archives remains the explicit `memory archive`
 operator action.
 
