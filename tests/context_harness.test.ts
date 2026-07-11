@@ -2105,6 +2105,16 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
       artifact_refs: [`memory/episodes/${priorSession}-model-action-r2.json`],
       created_at: "2026-06-30T00:19:04.000Z"
     });
+    const unreadableDiagnosticRef = `memory/episodes/${priorSession}-model-diagnostic-r1.json`;
+    await fixture.store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_trace_diagnostic_missing",
+      session_id: priorSession,
+      turn_id: priorTurn,
+      kind: "model_diagnostic",
+      summary: "Recorded bounded model failure diagnostic.",
+      artifact_refs: [unreadableDiagnosticRef],
+      created_at: "2026-06-30T00:19:05.000Z"
+    });
 
     const trigger = triggerSchema.parse({
       type: "external_task",
@@ -2135,7 +2145,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /final_completion_status_present: true/);
     assert.match(rendered.markdown, /reported_completion_status_matches_final: true/);
     assert.match(rendered.markdown, /verification_status: failed/);
-    assert.match(rendered.markdown, /events: 6 \((?=[^)]*prompt=1)(?=[^)]*model_action=2)(?=[^)]*report=1)(?=[^)]*tool_result=1)(?=[^)]*delegated_result=1)[^)]*\)/);
+    assert.match(rendered.markdown, /events: 7 \((?=[^)]*prompt=1)(?=[^)]*model_action=2)(?=[^)]*report=1)(?=[^)]*tool_result=1)(?=[^)]*delegated_result=1)(?=[^)]*model_diagnostic=1)[^)]*\)/);
     assert.match(rendered.markdown, /tool_results: 1/);
     assert.match(rendered.markdown, /delegated_results: 1/);
     assert.match(rendered.markdown, /delegated_results_passed: 0/);
@@ -2145,6 +2155,9 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_result_event_fallback_refs: 0/);
     assert.match(rendered.markdown, /delegated_result_refs: 1/);
     assert.match(rendered.markdown, /delegated_dispatch_missing_result_ref: 0/);
+    assert.deepEqual(trace.unreadable_model_diagnostic_refs, [unreadableDiagnosticRef]);
+    assert.match(rendered.markdown, /unreadable_model_diagnostics: 1/);
+    assert.match(rendered.markdown, new RegExp(`unreadable_model_diagnostic_ref: ${unreadableDiagnosticRef}`));
     assert.equal(trace.delegated_result_failed_count, 1);
     assert.deepEqual(trace.delegated_result_report_refs, [
       `memory/episodes/${priorSession}-delegated_result_invalid.json`
@@ -2232,6 +2245,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_round_limit=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_result_failure_kind=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_result_contract=warning/);
+    assert.match(rendered.markdown, /replay_check: model_diagnostic_integrity=warning/);
     assert.match(rendered.markdown, /replay_check: repo_write_guard=warning/);
     assert.match(rendered.markdown, /replay_check: bounded_replay_boundary=pass/);
     assert.doesNotMatch(rendered.markdown, /RAW_PRIOR_CONTEXT_SHOULD_NOT_BE_IN_CONTEXT/);
@@ -2243,6 +2257,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_RESULT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_TASK_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_FINDINGS_SHOULD_NOT_BE_IN_CONTEXT/);
+    assert.doesNotMatch(rendered.markdown, /ENOENT/);
     assert.doesNotMatch(rendered.markdown, /RAW_DELEGATED_OUTPUT_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_RESPOND_PAYLOAD_SHOULD_NOT_BE_IN_CONTEXT/);
     assert.doesNotMatch(rendered.markdown, /RAW_FINAL_RESPONSE_SHOULD_NOT_BE_IN_CONTEXT/);

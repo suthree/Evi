@@ -182,6 +182,7 @@ export async function runHarnessReplayAudit(
       trace.context_manifest_ref,
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.invalid_model_action_envelope_refs,
+      ...trace.unreadable_model_diagnostic_refs,
       ...trace.tool_result_events.map((event) => `${trace.report_ref}#${event.event_id}`),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
@@ -346,6 +347,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: [trace.report_ref]
     },
     modelActionEnvelopeIntegrityCheck(trace),
+    modelDiagnosticIntegrityCheck(trace),
     completionVerificationStateCheck(trace),
     finalResponseEvidenceBindingCheck(trace),
     delegatedCompletionGateCheck(trace),
@@ -388,6 +390,18 @@ function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessR
     refs: invalidRefs.length > 0
       ? unique([trace.report_ref, ...invalidRefs])
       : unique([trace.report_ref, ...trace.rounds.map((round) => round.envelope_ref)])
+  };
+}
+
+function modelDiagnosticIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const unreadableRefs = trace.unreadable_model_diagnostic_refs;
+  return {
+    id: "model_diagnostic_integrity",
+    status: unreadableRefs.length > 0 ? "warning" : "pass",
+    summary: `unreadable_model_diagnostics=${unreadableRefs.length}`,
+    refs: unreadableRefs.length > 0
+      ? unique([trace.report_ref, ...unreadableRefs])
+      : unique([trace.report_ref, ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref)])
   };
 }
 
@@ -1771,7 +1785,8 @@ function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditSta
     trace.delegated_result_failed_count > 0 ? "delegated result failure" : null,
     trace.delegated_result_count !== trace.delegated_dispatches.length ? "delegated dispatch metadata gap" : null,
     trace.repo_write_guard_count > 0 ? "repo write guard evidence" : null,
-    trace.model_diagnostic_count > 0 ? "model diagnostic evidence" : null
+    trace.model_diagnostic_count > 0 ? "model diagnostic evidence" : null,
+    trace.unreadable_model_diagnostic_refs.length > 0 ? "unreadable model diagnostic" : null
   ].filter((item): item is string => Boolean(item));
   if (status === "clean") {
     return `Replay-audited ${trace.completion_id} from bounded metadata with no attention checks.`;

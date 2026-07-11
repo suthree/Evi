@@ -225,6 +225,7 @@ export interface LiveRunTraceSummary {
   observation_ref_count: number;
   model_diagnostic_count: number;
   model_diagnostics: LiveRunModelDiagnosticSummary[];
+  unreadable_model_diagnostic_refs: string[];
   invalid_model_action_envelope_refs: string[];
   repo_write_guard_count: number;
   repo_write_guards: LiveRunRepoWriteGuardSummary[];
@@ -363,7 +364,8 @@ async function summarizeLiveRunTrace(
     delegatedFailureCount(report),
     delegatedDispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length
   );
-  const modelDiagnostics = await readModelDiagnostics(store, runEvents);
+  const modelDiagnosticTrace = await readModelDiagnostics(store, runEvents);
+  const { diagnostics: modelDiagnostics, unreadableRefs: unreadableModelDiagnosticRefs } = modelDiagnosticTrace;
   const repoWriteGuards = runEvents.map(extractRepoWriteGuardSummary).filter((item): item is LiveRunRepoWriteGuardSummary => item !== null);
   const refs = unique([
     reportRef,
@@ -374,6 +376,7 @@ async function summarizeLiveRunTrace(
     ...rounds.map((round) => round.envelope_ref),
     ...invalidEnvelopeRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
+    ...unreadableModelDiagnosticRefs,
     ...report.observation_refs.slice(0, 12),
     ...report.verification_evidence_refs.map((item) => item.ref).slice(0, 12),
     ...delegatedResultRefs.slice(0, 12),
@@ -436,6 +439,7 @@ async function summarizeLiveRunTrace(
     observation_ref_count: report.observation_refs.length,
     model_diagnostic_count: modelDiagnostics.length,
     model_diagnostics: modelDiagnostics.slice(0, 5),
+    unreadable_model_diagnostic_refs: unreadableModelDiagnosticRefs,
     invalid_model_action_envelope_refs: invalidEnvelopeRefs,
     repo_write_guard_count: repoWriteGuards.length,
     repo_write_guards: repoWriteGuards.slice(0, 5),
@@ -678,8 +682,9 @@ function parsedBooleanOrNull(value: string | undefined): boolean | null {
 async function readModelDiagnostics(
   store: AgentStore,
   events: EpisodeEvent[]
-): Promise<LiveRunModelDiagnosticSummary[]> {
+): Promise<{ diagnostics: LiveRunModelDiagnosticSummary[]; unreadableRefs: string[] }> {
   const diagnostics: LiveRunModelDiagnosticSummary[] = [];
+  const unreadableRefs: string[] = [];
   for (const event of events.filter((item) => item.kind === "model_diagnostic")) {
     const diagnosticRef = event.artifact_refs.find((ref) => ref.includes("-model-diagnostic-r") && ref.endsWith(".json"))
       ?? event.artifact_refs.find((ref) => ref.endsWith(".json"))
@@ -689,7 +694,12 @@ async function readModelDiagnostics(
     try {
       raw = await store.readStateJson<unknown>(diagnosticRef);
     } catch {
-      raw = {};
+      unreadableRefs.push(diagnosticRef);
+      continue;
+    }
+    if (raw === null) {
+      unreadableRefs.push(diagnosticRef);
+      continue;
     }
     const record = asRecord(raw);
     diagnostics.push({
@@ -703,7 +713,7 @@ async function readModelDiagnostics(
       error_preview: stringOrDefault(record.error_preview, "")
     });
   }
-  return diagnostics;
+  return { diagnostics, unreadableRefs };
 }
 
 function extractRepoWriteGuardSummary(event: EpisodeEvent): LiveRunRepoWriteGuardSummary | null {

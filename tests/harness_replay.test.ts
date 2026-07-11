@@ -3700,6 +3700,46 @@ test("harness replay audit warns when a model-action envelope is missing", async
   }
 });
 
+test("harness replay audit warns when a model diagnostic is unreadable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-unreadable-diagnostic-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const diagnosticRef = "memory/episodes/session_replay_test-model-diagnostic-r1.json";
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_replay_diagnostic_missing",
+      session_id: "session_replay_test",
+      turn_id: "turn_replay_test",
+      kind: "model_diagnostic",
+      summary: "Recorded bounded model failure diagnostic.",
+      artifact_refs: [diagnosticRef],
+      created_at: "2026-06-30T01:00:00.000Z"
+    });
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_diagnostic_integrity");
+
+    assert.deepEqual(trace.unreadable_model_diagnostic_refs, [diagnosticRef]);
+    assert.equal(trace.model_diagnostic_count, 0);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /unreadable_model_diagnostics=1/);
+    assert.equal(integrity?.refs.includes(diagnosticRef), true);
+    assert.equal(report.refs.includes(diagnosticRef), true);
+    assert.doesNotMatch(JSON.stringify({ trace, report }), /ENOENT|RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit keeps all delegated dispatch metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegates-"));
   const repoRoot = join(root, "repo");

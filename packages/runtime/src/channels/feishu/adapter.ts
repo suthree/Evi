@@ -4885,6 +4885,7 @@ function renderLiveRunTraceSummary(
     `   tool_results: ${trace.tool_result_count}`,
     `   verification_evidence_refs: ${trace.verification_evidence_ref_count}`,
     `   model_diagnostics: ${trace.model_diagnostic_count}`,
+    `   unreadable_model_diagnostics: ${trace.unreadable_model_diagnostic_refs.length}`,
     `   invalid_model_action_envelopes: ${trace.invalid_model_action_envelope_refs.length}`,
     `   repo_write_guards: ${trace.repo_write_guard_count}`,
     `   delegated_results: ${trace.delegated_result_count}`,

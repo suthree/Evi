@@ -1269,7 +1269,9 @@ After parsing, the harness assigns every action id; model-provided ids are not
 persisted or used for dispatch lineage. If a model-action artifact later cannot
 be read or no longer satisfies the envelope schema, Live Run Trace preserves
 only its ref and replay marks it attention; it does not render the body or
-parser details.
+parser details. The same rule applies to unreadable model-diagnostic artifacts:
+trace and replay retain only their refs and explicit attention, never the
+diagnostic body or read error.
 `completion_claim.verification_refs` may cite only harness-known tool result ids
 or tool artifact refs from the current run. Unknown or model-invented refs fail
 completion verification and do not count as independent proof. When a run has
@@ -1615,6 +1617,8 @@ dispatch metadata, check statuses, report-declared delegated result refs,
 Unreadable or schema-invalid model-action artifacts remain visible through their
 refs as replay attention rather than being silently treated as absent rounds;
 their raw bodies and parser details remain out of the read model.
+Unreadable model-diagnostic artifacts follow the same safe-ref rule and are not
+silently rendered as an `unknown` diagnostic.
 Replay recomputes the expected `verification_status` and `verified` tuple from
 the final model-action envelope's `completion_claim.status` plus the bounded
 failed-check ids: non-`done` completion
