@@ -416,7 +416,7 @@ export class StageRunner {
       args.queryRef ? `## Query\n\n${await this.store.readStateText(args.queryRef, 5000)}` : "## Query\n\nNo query.md artifact for this pipeline.",
       args.todoRef ? `## Todo\n\n${await this.store.readStateText(args.todoRef, 5000)}` : "## Todo\n\nNo todo.md artifact for this pipeline.",
       `## Previous Stage Outputs\n\n${previousOutputs || "No previous stage outputs."}`,
-      "## Stage Output Contract\n\nReturn a ModelActionEnvelope json object. Stay inside the current stage objective. Use only allowed tools. If the stage is blocked by a missing tool, return a respond action explaining the blocked condition and set completion_claim.status to blocked."
+      "## Stage Output Contract\n\nReturn a ModelActionEnvelope json object. Stay inside the current stage objective. Use only allowed tools. Set completion_claim.status to done only after the stage objective is complete; not_done leaves the stage incomplete and it will not advance. If the stage is blocked by a missing tool, return a respond action explaining the blocked condition and set completion_claim.status to blocked."
     ].join("\n\n");
   }
 
@@ -639,6 +639,7 @@ function finalizeStageRun(
   const status = (() => {
     if (result.model_failed) return stage.on_failure === "skip_if_optional" && stage.optional ? "skipped" : "failed";
     if (result.completion_status === "blocked") return stage.optional ? "skipped" : "blocked";
+    if (result.completion_status === "not_done") return stage.optional ? "skipped" : "blocked";
     if (!result.has_output && stage.expected_outputs.length > 0) return stage.optional ? "skipped" : "blocked";
     return "done";
   })();

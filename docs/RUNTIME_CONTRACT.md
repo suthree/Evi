@@ -2464,6 +2464,9 @@ Required policy:
   the only model-authored stage body retained for downstream stages
 - StageRunner model request or parse failures persist generic bounded failure
   metadata, never raw model output or provider payloads
+- a StageRunner stage advances as `done` only when its final envelope declares
+  `completion_claim.status=done`; `not_done` remains blocked (or skipped only
+  for an optional stage), even if it produced a response artifact
 - blocked or failed runs may appear as read-only `pipeline_run` items in the
   Opportunity Backlog, with checkpoint/pipeline refs and stage status metadata
   only

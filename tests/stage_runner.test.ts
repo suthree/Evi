@@ -228,6 +228,34 @@ test("stage runner rejects ambiguous responses without persisting raw model outp
   }
 });
 
+test("stage runner blocks a response that still declares not_done", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model: new NotDoneStageModel()
+  });
+  const store = new AgentStore(repoRoot, stateRoot);
+
+  try {
+    const result = await runner.runTask({ task: "Do not advance an incomplete stage.", stages: ["intake"] });
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${dirname(result.pipeline_ref)}/stages/intake.json`);
+
+    assert.equal(result.status, "blocked");
+    assert.equal(result.blocked_stage_id, "intake");
+    assert.equal(stageRun?.status, "blocked");
+    assert.equal(stageRun?.failure_kind, "stage_incomplete");
+    assert.equal(stageRun?.output_refs.length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 class DisallowedToolThenDoneModel implements ModelClient {
   readonly requests: ModelRequest[] = [];
 
@@ -322,6 +350,29 @@ class AmbiguousStageEnvelopeModel implements ModelClient {
       responseId: "response-ambiguous-stage-envelope",
       outputText: this.outputText,
       raw: { provider_payload: "STAGE_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST" }
+    };
+  }
+}
+
+class NotDoneStageModel implements ModelClient {
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "not-done-stage",
+      responseId: "response-not-done-stage",
+      outputText: JSON.stringify({
+        summary: "The stage has an intermediate response but is not complete.",
+        actions: [{
+          type: "respond",
+          rationale: "Explain the incomplete state without advancing the pipeline.",
+          payload: { markdown: "Intermediate stage response." }
+        }],
+        completion_claim: {
+          status: "not_done",
+          verification_refs: []
+        }
+      })
     };
   }
 }
