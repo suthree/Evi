@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
+import { delegateAgentAuthoringContract } from "../packages/core/src/action_contracts.js";
 import type { ContextBundleManifest } from "../packages/core/src/context.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
@@ -1184,7 +1185,7 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /Content planning and evidence \[application_slice\]/);
     assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
     assert.match(fullText, /delegate_agent/);
-    assert.match(fullText, /block verified completion until later main-harness write\/run recovery evidence exists and the done claim binds a non-delegated verification ref/);
+    assert.equal(fullText.includes(delegateAgentAuthoringContract.recovery.failure_hint), true);
     assert.match(fullText, /successful write\/run evidence only counts as completion proof/);
     assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none/);
     assert.match(fullText, /none means no dispatch-layer failure, not delegated success/);

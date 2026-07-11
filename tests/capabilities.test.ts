@@ -254,7 +254,8 @@ test("capability catalog exposes delegate_agent failure boundaries", () => {
     assert.equal(text.includes(boundary), true);
   }
   assert.match(text, /expected summary\/findings_text output shape/);
-  assert.match(text, /block verified completion until later main-harness write\/run recovery evidence exists and the done claim binds a non-delegated verification ref/);
+  assert.match(text, /delegated failures stay ok=false and are not completion proof/);
+  assert.equal(delegateAgent.boundaries?.includes(delegateAgentAuthoringContract.recovery.failure_hint), true);
   assert.match(text, /failed delegated results may only guide a later main-harness model round/);
   assert.match(text, /done claims after delegation require later harness-known non-delegated verification refs/);
   assert.match(text, /successful write\/run evidence only counts as completion proof when its harness-known ref is cited/);
