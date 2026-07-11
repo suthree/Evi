@@ -52,8 +52,6 @@ import { loadRuntimeConfigSummary, type RuntimeConfig } from "./config.js";
 import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
 
-const DELEGATED_TASK_AUDIT_MARKER = "Delegated task retained through task_chars and input_digest metadata only.";
-
 interface HarnessActionResult {
   id: string;
   action_type: "record_evidence" | "update_working_state" | "propose_sop" | "propose_memory" | "request_audit" | "pause_autonomy";
@@ -1300,7 +1298,6 @@ export class LiveAgentRunner {
           id: newId("delegated_result"),
           ok: false,
           summary: "Delegated task failed contract validation.",
-          task: DELEGATED_TASK_AUDIT_MARKER,
           action_id: actionId,
           round,
           sequence,
@@ -1323,7 +1320,6 @@ export class LiveAgentRunner {
         id: newId("delegated_result"),
         ok: true,
         summary,
-        task: DELEGATED_TASK_AUDIT_MARKER,
         action_id: actionId,
         round,
         sequence,
@@ -1345,7 +1341,6 @@ export class LiveAgentRunner {
         id: newId("delegated_result"),
         ok: false,
         summary: "Delegated task failed model request.",
-        task: DELEGATED_TASK_AUDIT_MARKER,
         action_id: actionId,
         round,
         sequence,
@@ -1388,7 +1383,6 @@ export class LiveAgentRunner {
       id: newId("delegated_result"),
       ok: false,
       summary: `Delegated task failed input contract: ${error}`,
-      task: DELEGATED_TASK_AUDIT_MARKER,
       action_id: action.id,
       round,
       sequence,

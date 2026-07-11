@@ -115,7 +115,6 @@ export const delegatedResultSchema = z.object({
   id: z.string(),
   ok: z.boolean(),
   summary: z.string(),
-  task: z.string(),
   action_id: z.string(),
   round: z.number().int().positive(),
   sequence: z.number().int().positive(),

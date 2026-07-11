@@ -43,6 +43,7 @@ import {
   DELEGATE_AGENT_TASK_MAX_CHARS,
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS,
+  delegatedResultSchema,
   opportunitySchema,
   triggerSchema
 } from "../packages/core/src/schemas.js";
@@ -3854,7 +3855,6 @@ test("live runner feeds structured delegated results back as bounded observation
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      task: string;
       summary: string;
       findings_text: string | null;
       output_text: string;
@@ -3909,8 +3909,12 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.doesNotMatch(JSON.stringify(delegatedEvent), /delegated critique found one bounded risk/);
     assert.equal(delegated.ok, true);
     assert.equal(delegated.contract_status, "passed");
-    assert.equal(delegated.task, "Delegated task retained through task_chars and input_digest metadata only.");
+    assert.equal(Object.hasOwn(delegated, "task"), false);
     assert.doesNotMatch(JSON.stringify(delegated), /Critique whether the answer needs more evidence\./);
+    assert.equal(Object.hasOwn(delegatedResultSchema.parse({
+      ...delegated,
+      task: "legacy delegated task body"
+    }), "task"), false);
     assert.equal(delegated.summary, "Structured delegate summary token [REDACTED]");
     assert.equal(delegated.findings_text, "The delegated critique found one bounded risk. Bearer [REDACTED] and [REDACTED_API_KEY] should not leak.");
     assert.equal(delegated.output_text, delegated.findings_text);
@@ -3974,7 +3978,6 @@ test("live runner rejects delegated output that echoes raw context before observ
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      task: string;
       output_text: string;
       raw_output_preview: string;
       error: string | null;
@@ -4043,7 +4046,7 @@ test("live runner rejects delegated output authority claims before observation",
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_output_contract_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
-    assert.equal(delegated.task, "Delegated task retained through task_chars and input_digest metadata only.");
+    assert.equal(Object.hasOwn(delegated, "task"), false);
     assert.doesNotMatch(JSON.stringify(delegated), /Critique whether the answer needs more evidence\./);
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
@@ -5545,7 +5548,6 @@ test("live runner sanitizes delegated model request failures before observation"
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
       contract_status: string;
-      task: string;
       output_text: string;
       raw_output_preview: string;
       error: string | null;
@@ -5565,7 +5567,7 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
-    assert.equal(delegated.task, "Delegated task retained through task_chars and input_digest metadata only.");
+    assert.equal(Object.hasOwn(delegated, "task"), false);
     assert.doesNotMatch(JSON.stringify(delegated), /Critique whether the answer needs more evidence\./);
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_model_request_failed");
@@ -5680,7 +5682,7 @@ test("live runner rejects malformed delegate payload without calling the delegat
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
     assert.equal(delegated.result_failure_kind, "input_contract_failed");
-    assert.equal(delegated.task, "Delegated task retained through task_chars and input_digest metadata only.");
+    assert.equal(Object.hasOwn(delegated, "task"), false);
     assert.doesNotMatch(JSON.stringify(delegated), /Critique whether the answer needs more evidence\./);
     assert.equal(delegated.context_chars, 0);
     assert.match(delegated.error ?? "", /payload\.context must be a non-empty string/);
@@ -6620,7 +6622,7 @@ test("live runner records actual oversized delegate task length without persisti
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 0);
     assert.equal(delegated.ok, false);
-    assert.equal(delegated.task, "Delegated task retained through task_chars and input_digest metadata only.");
+    assert.equal(Object.hasOwn(delegated, "task"), false);
     assert.doesNotMatch(JSON.stringify(delegated), /Use a bounded subagent self-report for critique before final answer\./);
     assert.equal(delegated.task_chars, DELEGATE_AGENT_TASK_MAX_CHARS + 1);
     assert.match(delegated.error ?? "", new RegExp(`payload\\.task must be at most ${DELEGATE_AGENT_TASK_MAX_CHARS} chars`));
