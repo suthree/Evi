@@ -146,8 +146,8 @@ export class DiscordGatewayTransport implements DiscordTransport {
         intents: this.config.intents,
         properties: {
           os: process.platform,
-          browser: "xingzhe-runtime",
-          device: "xingzhe-runtime"
+          browser: "local-runtime",
+          device: "local-runtime"
         }
       }
     });

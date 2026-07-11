@@ -230,7 +230,7 @@ async function createFixture(args: {
   stateRoot: string;
   cleanup: () => Promise<void>;
 }> {
-  const root = join(tmpdir(), `xingzhe-im-config-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const root = join(tmpdir(), `local-runtime-im-config-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const configDir = join(root, "config");
   const stateRoot = join(root, "state");
   await mkdir(configDir, { recursive: true });
@@ -258,7 +258,7 @@ async function createMultiProviderFixture(): Promise<{
   stateRoot: string;
   cleanup: () => Promise<void>;
 }> {
-  const root = join(tmpdir(), `xingzhe-im-config-multi-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const root = join(tmpdir(), `local-runtime-im-config-multi-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const configDir = join(root, "config");
   const stateRoot = join(root, "state");
   await mkdir(configDir, { recursive: true });

@@ -2473,7 +2473,7 @@ summaries and refs as evidence only.
 
 GA/avatar and Hermes both reduce model distraction by making the active task,
 summary state, and context pressure explicit before the next model step.
-XingZhe should borrow that attention-routing pattern without adopting Hermes
+The local runtime should borrow that attention-routing pattern without adopting Hermes
 automatic compaction in the first-version local runtime.
 
 Live context may therefore render an optional bounded `Attention Plan` section

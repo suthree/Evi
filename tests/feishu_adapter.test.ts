@@ -567,6 +567,43 @@ test("bound Feishu group run command executes and records a runtime task run", a
   }
 });
 
+test("bound Feishu group Evi mention executes without leaking the display name into the task", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new StubRunner(fixture.store, "Mention final answer.");
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport: new MockFeishuTransport(),
+      runner,
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_mention_bind",
+      chatType: "group",
+      chatId: "oc_group_mention",
+      openId: "ou_operator",
+      text: "/session use ops"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_mention",
+      chatType: "group",
+      chatId: "oc_group_mention",
+      openId: "ou_member",
+      text: "@evi check service status"
+    }));
+
+    assert.equal(runner.tasks.length, 1);
+    assert.match(runner.tasks[0], /check service status/);
+    assert.doesNotMatch(runner.tasks[0], /@evi/i);
+    const session = (await listRuntimeSessions(fixture.store))[0]!;
+    const inbox = await listRuntimeInbox(fixture.store, session.id);
+    assert.equal(inbox.at(-1)?.trigger_kind, "mention");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Feishu adapter drains queued provider-neutral outbox replies", async () => {
   const fixture = await createFixture();
   try {

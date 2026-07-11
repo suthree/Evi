@@ -7,7 +7,7 @@ Status: implemented
 The runtime had context usage and pressure diagnostics, but live context did not
 surface a compact attention-routing hint for the next model call. GA/avatar
 folds old turns and forces working summaries, while Hermes uses context budget,
-tail protection, and compaction summaries. XingZhe should borrow the attention
+tail protection, and compaction summaries. The local runtime should borrow the attention
 focus pattern without adding automatic compaction or broad prompt tax.
 
 ## Scope

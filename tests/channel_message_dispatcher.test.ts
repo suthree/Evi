@@ -130,7 +130,7 @@ async function createFixture(): Promise<{
   store: AgentStore;
   cleanup: () => Promise<void>;
 }> {
-  const root = join(tmpdir(), `xingzhe-channel-dispatcher-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  const root = join(tmpdir(), `local-runtime-channel-dispatcher-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   await mkdir(repoRoot, { recursive: true });

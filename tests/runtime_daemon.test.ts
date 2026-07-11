@@ -11,7 +11,7 @@ import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import { startRuntimeDaemon } from "../packages/runtime/src/runtime_daemon.js";
 
 test("runtime daemon starts the Web channel and writes a running gateway heartbeat", async () => {
-  const root = await mkdtemp(join(tmpdir(), "xingzhe-runtime-daemon-web-"));
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-daemon-web-"));
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   const homeRoot = join(root, "home");
@@ -62,7 +62,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
 });
 
 test("runtime daemon writes gateway error heartbeat when channel startup fails", async () => {
-  const root = await mkdtemp(join(tmpdir(), "xingzhe-runtime-daemon-"));
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-daemon-"));
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   const homeRoot = join(root, "home");

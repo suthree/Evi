@@ -127,7 +127,7 @@ export async function createDreamSnapshot(
     status: "active",
     title: "Core self-evolution long-horizon plan",
     summary: [
-      "Keep XingZhe focused on recurring GA project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded general-agent delegation.",
+      "Keep the local runtime focused on recurring GA project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded general-agent delegation.",
       "Treat external tools as application slices unless they become reusable runtime contracts."
     ].join(" "),
     created_at: utcNow(),

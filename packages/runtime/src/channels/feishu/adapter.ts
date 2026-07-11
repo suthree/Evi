@@ -2806,12 +2806,12 @@ function renderAgentTask(
 }
 
 function isFeishuMention(text: string): boolean {
-  return /@(?:bot|xingzhe|行者)/i.test(text) || text.includes("@_user_");
+  return /@(?:bot|evi)/i.test(text) || text.includes("@_user_");
 }
 
 function stripFeishuMention(text: string): string {
   return text
-    .replace(/@(?:bot|xingzhe|行者)/gi, "")
+    .replace(/@(?:bot|evi)/gi, "")
     .replace(/@_user_[a-zA-Z0-9_-]+/g, "")
     .trim() || text;
 }

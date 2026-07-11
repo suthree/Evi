@@ -95,16 +95,16 @@ Current local reference takeaways:
 
 - Hermes demonstrates an end-to-end engineering shell around the model:
   model-agnostic provider selection, gateway entrypoints, toolsets, skills,
-  memory, cron/webhook triggers, and delivery channels. XingZhe should borrow
+  memory, cron/webhook triggers, and delivery channels. Evi should borrow
   the closed-loop shape only when the same loop is bounded by local evidence and
   verification gates.
 - pi demonstrates harness engineering: turn snapshots, explicit phases,
   queued safe-point mutations, durable session logs, recovery boundaries, and
-  structured observability events. XingZhe should borrow these as reference
+  structured observability events. Evi should borrow these as reference
   patterns for output stabilization and runtime control only when they
   strengthen the local contract before adding broad tool authority.
 - GenericAgent demonstrates a small general-agent baseline: a minimal loop,
-  atomic tools, and task-derived skills. XingZhe should borrow the progression
+  atomic tools, and task-derived skills. Evi should borrow the progression
   from minimal general capability to specialized skills, while keeping skill
   crystallization behind explicit audit and promotion gates.
 
@@ -1774,7 +1774,7 @@ Its design goal is to compress verified runtime evidence into traceable,
 comparable, and rejectable long-horizon direction candidates: what capability
 to deepen, what risk to hold, and what work to defer. Codex, Hermes, GA, and
 other open implementations may inform mechanisms, but they are references, not
-the acceptance standard. XingZhe accepts a dream direction only by local
+the acceptance standard. Evi accepts a dream direction only by local
 evidence lineage, measurable core/basic capability value, reversibility, and
 operator-owned authority boundaries. Dream therefore proposes future focus; it
 does not acquire background execution, permission expansion, publication,

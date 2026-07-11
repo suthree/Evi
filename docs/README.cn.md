@@ -1,4 +1,4 @@
-# 本地运行时
+# Evi（本地运行时）
 
 这是根目录 `README.md` 链接进入的简体中文快速入口。`README.md` 保持英文，适合作为模型和外部工具的默认入口；本文档面向本机操作者，用来快速理解仓库边界、常用命令和文档位置。
 
@@ -194,7 +194,7 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 它输出能力轴、时间跨度、非目标、下一步候选和来源 lineage；只有当同一 state root 中内嵌的 verified outcome
 与当前最新 verified outcome 完全一致时才是 current，否则必须显示 stale/missing，并由操作者显式刷新。
 设计目标是把运行证据压缩为可追溯、可比较、可否决的长期方向候选，帮助下一轮选择“强化什么、暂缓什么”，
-而不是赋予后台代理新的行动权。Codex、Hermes、GA 等只作为机制参考；XingZhe 的判断标准仍是本地证据、
+而不是赋予后台代理新的行动权。Codex、Hermes、GA 等只作为机制参考；Evi 的判断标准仍是本地证据、
 核心/基础能力增益、可逆性和操作者边界。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
