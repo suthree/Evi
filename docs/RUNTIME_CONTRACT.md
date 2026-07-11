@@ -1325,8 +1325,10 @@ delegated output claims that it ran or executed tests, builds, commands, or
 checks, or that it read files, searched the repo, fetched URLs, or browsed the
 web, are treated as delegated tool authority claims. The harness sanitizes
 successful delegated `summary` and `findings_text`, then persists only their
-canonical JSON preview; it never persists the original delegated model text.
-Any delegated output contract failure records a safe suppression marker
+canonical JSON preview. Delegated task text is likewise omitted from result
+artifacts: the `task` field is a fixed audit marker while `task_chars` and
+`input_digest` preserve bounded lineage. It never persists the original
+delegated model text. Any delegated output contract failure records a safe suppression marker
 rather than a raw-output fallback. The live runner allows at most one
 `delegate_agent` action per model
 round; extra delegate actions are recorded as failed delegated results without

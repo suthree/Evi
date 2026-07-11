@@ -2179,7 +2179,9 @@ or model-invented refs fail verification and do not count as proof. The final
 response artifact alone is not independent completion proof. Successful
 delegated `summary` and `findings_text` are sanitized before persistence and
 observation feedback; their stored preview is a canonical JSON rendering of
-those fields, never the original delegated model text. A delegated output
+those fields, never the original delegated model text. Result artifacts also
+replace raw delegated task text with a fixed marker while retaining
+`task_chars` and `input_digest` for audit lineage. A delegated output
 contract failure stores only a safe suppression marker. The full
 delegated model output is scanned before strict full JSON-object parsing so wrapper text, code fences,
 extra fields, or structured content that echoes raw delegated task/context or
