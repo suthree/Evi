@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import {
+  delegateAgentAuthoringContract,
   delegateAgentCompletionGateCheckId,
   formatDelegateAgentLiveInstruction,
   formatDelegateAgentPayloadInstruction,
@@ -1546,21 +1547,19 @@ function delegatedObservationErrorForModelInput(error: string | null): string | 
 function delegatedObservationRecoveryHint(result: DelegatedResult): string | null {
   if (result.ok) return null;
   if (result.result_failure_kind === "dispatch_limit_exceeded") {
-    return `Use at most one bounded delegated subtask in a later model round; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
+    return `Use at most one bounded delegated subtask in a later model round; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
   if (result.result_failure_kind === "input_contract_failed") {
-    return `Revise the delegated task/context boundary; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
+    return `Revise the delegated task/context boundary; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
   if (result.result_failure_kind === "delegated_output_contract_failed") {
-    return `Treat the delegated output as unusable; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
+    return `Treat the delegated output as unusable; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
   if (result.result_failure_kind === "delegated_model_request_failed") {
-    return `Treat the delegated request failure as unusable; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
+    return `Treat the delegated request failure as unusable; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
-  return `Failed delegated results are not completion proof; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
+  return `Failed delegated results are not completion proof; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
 }
-
-const FAILED_DELEGATION_RECOVERY_REQUIREMENT = "recover with main-harness evidence: later successful write/run evidence plus a bound non-delegated verification ref are required before claiming done; otherwise report blocked.";
 
 function delegatedObservationProofBoundary(result: DelegatedResult): string {
   return result.ok

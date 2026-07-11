@@ -5805,6 +5805,7 @@ test("live runner sanitizes delegated model request failures before observation"
 
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
+    assert.equal(model.sawAuthoringRecoveryRequirement, true);
     assert.equal(model.sawSanitizedRequestFailureObservation, true);
     assert.equal(model.sawCompletionGateRecoveryHint, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
@@ -8855,6 +8856,7 @@ class InvalidDelegationThenBlockedSopModel implements ModelClient {
 class DelegationRequestFailureThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
+  sawAuthoringRecoveryRequirement = false;
   sawSanitizedRequestFailureObservation = false;
   sawCompletionGateRecoveryHint = false;
 
@@ -8863,6 +8865,10 @@ class DelegationRequestFailureThenDoneModel implements ModelClient {
     if (isDelegation) {
       this.delegationCalls += 1;
       throw new Error("Model request failed (429 Too Many Requests): api_key SECRET_SHOULD_NOT_APPEAR token SECRET_SHOULD_NOT_APPEAR");
+    }
+    if (this.mainCalls === 0) {
+      this.sawAuthoringRecoveryRequirement = request.instructions.includes("later successful write/run evidence plus a bound non-delegated verification ref")
+        && request.instructions.includes("otherwise report blocked");
     }
     const outputText = JSON.stringify(this.nextMainEnvelope(request));
     return {

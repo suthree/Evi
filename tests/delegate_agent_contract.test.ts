@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   delegateAgentActionContract,
+  delegateAgentAuthoringContract,
+  formatDelegateAgentPayloadInstruction,
   formatDelegateAgentSubagentInstructions,
   getDelegateAgentPayloadExample
 } from "../packages/core/src/action_contracts.js";
@@ -45,6 +47,14 @@ test("delegate_agent payload example carries the shared authoring contract", () 
   assert.match(example.context, /output=summary\/findings_text/);
   assert.match(example.task, /<=1000$/);
   assert.match(example.context, /<=12000$/);
+});
+
+test("delegate_agent payload instruction states the shared failed recovery contract", () => {
+  const instruction = formatDelegateAgentPayloadInstruction();
+
+  assert.equal(instruction.includes(delegateAgentAuthoringContract.recovery.failure_hint), true);
+  assert.match(instruction, /later successful write\/run evidence plus a bound non-delegated verification ref/);
+  assert.match(instruction, /otherwise report blocked/);
 });
 
 test("delegate_agent context rejects concrete command grants before dispatch", () => {

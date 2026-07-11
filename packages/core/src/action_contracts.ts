@@ -108,7 +108,10 @@ export const delegateAgentAuthoringContract = {
     "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
     "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
   ],
-  delegated_model_authority_boundary: "Do not claim tool/write/mutation or destructive delete/remove/erase/unlink/drop/destroy execution, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
+  delegated_model_authority_boundary: "Do not claim tool/write/mutation or destructive delete/remove/erase/unlink/drop/destroy execution, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority.",
+  recovery: {
+    failure_hint: "recover with main-harness evidence: later successful write/run evidence plus a bound non-delegated verification ref are required before claiming done; otherwise report blocked."
+  }
 } as const;
 
 export const delegateAgentActionContract = {
@@ -145,7 +148,7 @@ export function formatDelegateAgentLiveInstruction(): string {
 
 export function formatDelegateAgentPayloadInstruction(): string {
   const outputShape = delegateAgentActionContract.output_keys.join("/");
-  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, the done claim also needs later main-harness write/run recovery evidence.`;
+  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, ${delegateAgentAuthoringContract.recovery.failure_hint}`;
 }
 
 export function getDelegateAgentPayloadExample(): { task: string; context: string } {
