@@ -66,7 +66,7 @@
 - delegated model 的原始输出必须是 trim 后的完整 JSON object，且只能包含 `summary/findings_text`；包装文案、Markdown 代码块或额外字段都会作为 malformed delegated output 拒绝。成功结果只持久化已脱敏 `summary/findings_text` 的规范 JSON preview，绝不持久化原始 delegated model text；任何 delegated output contract failure 都只写安全抑制标记，不回退保存原始输出。delegated result 的 `summary/findings_text` 也不能自称已经调用工具、写入/突变状态、证明完成、调度专家/多 agent、执行 model fan-out、使用 hidden memory、读取 raw delegated artifact、依赖未声明 repo 状态、扩展 context 或自造 evidence ref；这类输出会作为 delegated output contract failure 后再回灌。
 - live `propose_sop` audit/promotion 只在 verified `done` completion 后发生；blocked/skipped/unverified completion，包含 failed delegated result warning 的运行，都不能进入 SOP audit、SOP promotion、skill promotion 或 active-vault 写入。
 
-核心工具结果需要带有有界审计元数据，例如状态、side effect、scope/cwd、输出预算、实际/返回长度、截断状态，以及失败时的 `failure_kind`；StageRunner 合成的 blocked tool observation 也必须带 `failure_kind`，并作为有界 `tool_result` evidence 持久化，但不会执行被拦截的工具。这些元数据是证据基础，不展示无界 raw output，也不能绕过完成验证。
+核心工具结果需要带有有界审计元数据，例如状态、side effect、scope/cwd、输出预算、实际/返回长度、截断状态，以及失败时的 `failure_kind`；StageRunner 合成的 blocked tool observation 也必须带 `failure_kind`，并作为有界 `tool_result` evidence 持久化，但不会执行被拦截的工具。StageRunner 的 provider/model response 与 action envelope 只持久化有界元数据和脱敏投影；只有显式 stage response 会保留在 pipeline artifact 中供后续 stage 使用，模型请求或解析失败也不会持久化 raw 输出或 provider payload。这些元数据是证据基础，不展示无界 raw output，也不能绕过完成验证。
 
 ## 常用命令
 

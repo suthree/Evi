@@ -154,6 +154,80 @@ test("stage runner resumes a blocked pipeline without overwriting the failed att
   }
 });
 
+test("stage runner persists bounded model metadata while retaining explicit stage output", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const model = new SensitiveStageEnvelopeModel();
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model
+  });
+  const store = new AgentStore(repoRoot, stateRoot);
+
+  try {
+    const result = await runner.runTask({ task: "Persist a bounded stage envelope.", stages: ["intake"] });
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${dirname(result.pipeline_ref)}/stages/intake.json`);
+    const response = await store.readStateJson<Record<string, unknown>>(stageRun?.model_response_refs[0] ?? "");
+    const envelope = await store.readStateJson<{
+      summary: string;
+      actions: Array<{ id: string; rationale: string; payload: Record<string, unknown> }>;
+      completion_claim: { verification_refs: string[] };
+    }>(stageRun?.envelope_refs[0] ?? "");
+    const finalResponse = await store.readStateText(stageRun?.output_refs[0] ?? "");
+
+    assert.equal(result.status, "done");
+    assert.equal(response?.output_chars, model.outputText.length);
+    assert.equal(Object.hasOwn(response ?? {}, "outputText"), false);
+    assert.equal(Object.hasOwn(response ?? {}, "raw"), false);
+    assert.equal(envelope?.summary, "Stage model action envelope persisted.");
+    assert.match(envelope?.actions[0]?.id ?? "", /^action_/);
+    assert.notEqual(envelope?.actions[0]?.id, "MODEL_STAGE_ACTION_ID_SHOULD_NOT_PERSIST");
+    assert.equal(envelope?.actions[0]?.rationale, "Sanitized stage model action metadata.");
+    assert.deepEqual(envelope?.actions[0]?.payload, {});
+    assert.deepEqual(envelope?.completion_claim.verification_refs, []);
+    assert.doesNotMatch(JSON.stringify([response, envelope]), /STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST|STAGE_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST|MODEL_STAGE_ACTION_ID_SHOULD_NOT_PERSIST/);
+    assert.match(finalResponse, /STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("stage runner rejects ambiguous responses without persisting raw model output", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-stage-runner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "vault");
+  await mkdir(repoRoot, { recursive: true });
+  const model = new AmbiguousStageEnvelopeModel();
+  const runner = new StageRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model
+  });
+  const store = new AgentStore(repoRoot, stateRoot);
+
+  try {
+    const result = await runner.runTask({ task: "Reject invalid stage output.", stages: ["intake"] });
+    const stageRun = await store.readStateJson<PipelineStageRun>(`${dirname(result.pipeline_ref)}/stages/intake.json`);
+    const response = await store.readStateJson<Record<string, unknown>>(stageRun?.model_response_refs[0] ?? "");
+    const error = await store.readStateJson<Record<string, unknown>>(stageRun?.model_response_refs[1] ?? "");
+
+    assert.equal(result.status, "failed");
+    assert.equal(response?.output_chars, model.outputText.length);
+    assert.equal(Object.hasOwn(response ?? {}, "outputText"), false);
+    assert.match(String(error?.error), /raw model output and provider details were not persisted/);
+    assert.doesNotMatch(JSON.stringify([response, error]), /STAGE_INVALID_MODEL_OUTPUT_SHOULD_NOT_PERSIST|STAGE_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 class DisallowedToolThenDoneModel implements ModelClient {
   readonly requests: ModelRequest[] = [];
 
@@ -188,6 +262,66 @@ class DisallowedToolThenDoneModel implements ModelClient {
       responseId: `response-${this.requests.length}`,
       outputText,
       raw: { outputText }
+    };
+  }
+}
+
+class SensitiveStageEnvelopeModel implements ModelClient {
+  readonly outputText = JSON.stringify({
+    summary: "STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST",
+    actions: [{
+      id: "MODEL_STAGE_ACTION_ID_SHOULD_NOT_PERSIST",
+      type: "respond",
+      rationale: "STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST",
+      payload: { markdown: "STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST" }
+    }],
+    completion_claim: {
+      status: "done",
+      verification_refs: ["STAGE_RAW_MODEL_CONTENT_SHOULD_NOT_PERSIST"]
+    }
+  });
+
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "sensitive-stage-envelope",
+      responseId: "response-sensitive-stage-envelope",
+      outputText: this.outputText,
+      raw: { provider_payload: "STAGE_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST" }
+    };
+  }
+}
+
+class AmbiguousStageEnvelopeModel implements ModelClient {
+  readonly outputText = JSON.stringify({
+    summary: "STAGE_INVALID_MODEL_OUTPUT_SHOULD_NOT_PERSIST",
+    actions: [
+      {
+        type: "respond",
+        rationale: "Return an ambiguous first response.",
+        payload: { markdown: "STAGE_INVALID_MODEL_OUTPUT_SHOULD_NOT_PERSIST" }
+      },
+      {
+        type: "respond",
+        rationale: "Return an ambiguous second response.",
+        payload: { markdown: "STAGE_INVALID_MODEL_OUTPUT_SHOULD_NOT_PERSIST" }
+      }
+    ],
+    completion_claim: {
+      status: "done",
+      verification_refs: []
+    }
+  });
+
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    return {
+      provider: "test",
+      api: "responses",
+      model: "ambiguous-stage-envelope",
+      responseId: "response-ambiguous-stage-envelope",
+      outputText: this.outputText,
+      raw: { provider_payload: "STAGE_PROVIDER_PAYLOAD_SHOULD_NOT_PERSIST" }
     };
   }
 }

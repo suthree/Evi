@@ -2459,6 +2459,11 @@ Required policy:
   query/todo refs, bounded blocked-tool diagnostic metadata, and update time
 - bounded blocked-tool diagnostic metadata is limited to `tool`,
   `failure_kind`, `evidence_ref`, and a bounded `summary`
+- StageRunner persists bounded response metadata and sanitized action-envelope
+  metadata; the explicit stage response under `pipelines/*/artifacts/*.md` is
+  the only model-authored stage body retained for downstream stages
+- StageRunner model request or parse failures persist generic bounded failure
+  metadata, never raw model output or provider payloads
 - blocked or failed runs may appear as read-only `pipeline_run` items in the
   Opportunity Backlog, with checkpoint/pipeline refs and stage status metadata
   only

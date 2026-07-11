@@ -314,26 +314,27 @@ export class StageRunner {
         });
         const modelResponseRef = await this.store.writeJson(
           `${args.root}/responses/${args.artifactKey}-model-response-r${round}.json`,
-          modelResponse
+          persistedStageModelResponseMetadata(modelResponse)
         );
         stageRun.model_response_refs.push(modelResponseRef);
         envelope = parseEnvelope(modelResponse.outputText);
         const envelopeRef = await this.store.writeJson(
           `${args.root}/responses/${args.artifactKey}-model-action-r${round}.json`,
-          envelope
+          persistedStageActionEnvelope(envelope)
         );
         stageRun.envelope_refs.push(envelopeRef);
-        const actionEvent = await this.appendStageEvent(args.runId, "model_action", envelope.summary, [
+        const actionEvent = await this.appendStageEvent(args.runId, "model_action", "Stage model action envelope persisted.", [
           modelResponseRef,
           envelopeRef
         ]);
         stageEvidenceRefs.push(actionEvent.id);
-      } catch (error) {
+      } catch {
         modelFailed = true;
-        const message = errorMessage(error);
+        const message = "Stage model invocation failed; raw model output and provider details were not persisted.";
         const errorRef = await this.store.writeJson(`${args.root}/responses/${args.artifactKey}-model-error.json`, {
           stage_id: args.stage.id,
           error: message,
+          boundary: "bounded stage model failure metadata; raw model output and provider details are not persisted",
           created_at: utcNow()
         });
         stageRun.model_response_refs.push(errorRef);
@@ -769,7 +770,47 @@ function parseEnvelope(outputText: string): ModelActionEnvelope {
   if (!trimmed) {
     throw new Error("Model returned empty output; no ModelActionEnvelope to parse.");
   }
-  return modelActionEnvelopeSchema.parse(JSON.parse(extractJsonObject(trimmed)));
+  const envelope = modelActionEnvelopeSchema.parse(JSON.parse(extractJsonObject(trimmed)));
+  const respondActionCount = envelope.actions.filter((action) => action.type === "respond").length;
+  if (respondActionCount > 1) {
+    throw new Error("Model returned multiple respond actions; use at most one respond action per ModelActionEnvelope.");
+  }
+  return {
+    ...envelope,
+    actions: envelope.actions.map((action) => ({ ...action, id: newId("action") }))
+  };
+}
+
+function persistedStageModelResponseMetadata(response: Awaited<ReturnType<ModelClient["create"]>>): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    provider: response.provider,
+    api: response.api,
+    model: response.model,
+    response_id: response.responseId,
+    output_chars: response.outputText.length,
+    boundary: "bounded stage model response metadata; raw model output and provider payload are not persisted",
+    created_at: utcNow()
+  };
+}
+
+function persistedStageActionEnvelope(envelope: ModelActionEnvelope): ModelActionEnvelope {
+  return modelActionEnvelopeSchema.parse({
+    ...envelope,
+    summary: "Stage model action envelope persisted.",
+    actions: envelope.actions.map((action) => ({
+      ...action,
+      rationale: "Sanitized stage model action metadata.",
+      payload: action.type === "use_tool" && typeof action.payload.tool === "string"
+        ? { tool: action.payload.tool }
+        : {}
+    })),
+    completion_claim: {
+      ...envelope.completion_claim,
+      verification_refs: []
+    },
+    delegated_action_inputs: undefined
+  });
 }
 
 function extractJsonObject(text: string): string {
@@ -784,9 +825,4 @@ function extractJsonObject(text: string): string {
 
 function titleCase(text: string): string {
   return text.split(/[_-]+/).filter(Boolean).map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`).join(" ") || "Stage";
-}
-
-function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.length > 1200 ? `${message.slice(0, 1200).trimEnd()}...` : message;
 }
