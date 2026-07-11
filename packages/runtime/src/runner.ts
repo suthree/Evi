@@ -1309,7 +1309,7 @@ export class LiveAgentRunner {
           result_failure_kind: "delegated_output_contract_failed",
           findings_text: null,
           output_text: sanitizedError,
-          raw_output_preview: parsed.safe_raw_output_preview ?? sanitizeModelDiagnosticText(response.outputText, 1200),
+          raw_output_preview: parsed.safe_raw_output_preview ?? delegatedOutputPreviewSuppressed(),
           error: sanitizedError,
           boundary: delegatedResultBoundary(),
           created_at: utcNow()
@@ -1332,7 +1332,7 @@ export class LiveAgentRunner {
         result_failure_kind: "none",
         findings_text: findingsText,
         output_text: findingsText,
-        raw_output_preview: sanitizeModelDiagnosticText(response.outputText, 1200),
+        raw_output_preview: delegatedOutputPreview(summary, findingsText),
         error: null,
         boundary: delegatedResultBoundary(),
         created_at: utcNow()
@@ -1690,6 +1690,14 @@ function sanitizeModelDiagnosticText(value: string, maxChars: number): string {
     .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[REDACTED_API_KEY]")
     .replace(/\b(api[_-]?key|authorization|token|secret|app[_-]?secret)(["'`\s:=]+)([^"'`\s,;})\]]+)/gi, "$1$2[REDACTED]")
     .replace(/[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g, "[REDACTED_TOKEN]"), maxChars);
+}
+
+function delegatedOutputPreview(summary: string, findingsText: string): string {
+  return JSON.stringify({ summary, findings_text: findingsText });
+}
+
+function delegatedOutputPreviewSuppressed(): string {
+  return "Delegated model output failed contract validation; raw output preview suppressed.";
 }
 
 function modelFailureDiagnosticBoundary(): string {

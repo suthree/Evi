@@ -2177,9 +2177,11 @@ tool result id or tool artifact ref bound through
 completion proof only when the done claim cites its harness-known ref. Unknown
 or model-invented refs fail verification and do not count as proof. The final
 response artifact alone is not independent completion proof. Successful
-delegated `summary`, `findings_text`, and raw preview text are sanitized before
-persistence and observation feedback, and the full delegated model output is
-scanned before strict full JSON-object parsing so wrapper text, code fences,
+delegated `summary` and `findings_text` are sanitized before persistence and
+observation feedback; their stored preview is a canonical JSON rendering of
+those fields, never the original delegated model text. A delegated output
+contract failure stores only a safe suppression marker. The full
+delegated model output is scanned before strict full JSON-object parsing so wrapper text, code fences,
 extra fields, or structured content that echoes raw delegated task/context or
 claims delegated tool/write/mutation, command/test execution, completion,
 expert, multi-agent, model fan-out, hidden-source, raw-artifact,

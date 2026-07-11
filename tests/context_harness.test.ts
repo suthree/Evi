@@ -3911,6 +3911,10 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.equal(delegated.summary, "Structured delegate summary token [REDACTED]");
     assert.equal(delegated.findings_text, "The delegated critique found one bounded risk. Bearer [REDACTED] and [REDACTED_API_KEY] should not leak.");
     assert.equal(delegated.output_text, delegated.findings_text);
+    assert.equal(delegated.raw_output_preview, JSON.stringify({
+      summary: delegated.summary,
+      findings_text: delegated.findings_text
+    }));
     assert.match(delegated.raw_output_preview, /\[REDACTED\]/);
     assert.doesNotMatch(delegated.raw_output_preview, /SECRET_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(delegated.summary, /SECRET_SHOULD_NOT_APPEAR/);
@@ -4963,7 +4967,8 @@ test("live runner fails done verification when delegated result violates its con
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
     assert.match(delegated.output_text, /not valid JSON/);
-    assert.match(delegated.raw_output_preview, /plain text instead of json/);
+    assert.match(delegated.raw_output_preview, /raw output preview suppressed/);
+    assert.doesNotMatch(delegated.raw_output_preview, /plain text instead of json/);
     assert.match(delegated.error ?? "", /not valid JSON/);
     assert.match(delegated.boundary, /bounded self-report only/);
     assert.equal(report.verification_status, "failed");
@@ -5613,7 +5618,8 @@ test("live runner fails done verification when delegated output exceeds bounded 
     assert.equal(delegated.dispatch_failure_kind, "none");
     assert.equal(delegated.result_failure_kind, "delegated_output_contract_failed");
     assert.match(delegated.error ?? "", new RegExp(`output\\.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars`));
-    assert.match(delegated.raw_output_preview, /Oversized delegated summary/);
+    assert.match(delegated.raw_output_preview, /raw output preview suppressed/);
+    assert.doesNotMatch(delegated.raw_output_preview, /Oversized delegated summary/);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     assert.equal(report.checks.find((check) => check.id === "delegated_results")?.status, "fail");

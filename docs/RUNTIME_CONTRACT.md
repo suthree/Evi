@@ -1323,10 +1323,11 @@ multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
 state, context expansion, or invented evidence-ref authority. Natural-language
 delegated output claims that it ran or executed tests, builds, commands, or
 checks, or that it read files, searched the repo, fetched URLs, or browsed the
-web, are treated as delegated tool authority claims. The harness
-sanitizes successful delegated `summary`, `findings_text`, and raw preview
-before persisting the result or returning it as a sanitized `Delegated
-Observations` item. The live runner allows at most one
+web, are treated as delegated tool authority claims. The harness sanitizes
+successful delegated `summary` and `findings_text`, then persists only their
+canonical JSON preview; it never persists the original delegated model text.
+Any delegated output contract failure records a safe suppression marker
+rather than a raw-output fallback. The live runner allows at most one
 `delegate_agent` action per model
 round; extra delegate actions are recorded as failed delegated results without
 calling the delegated model. Invalid payloads, delegated model request
@@ -1338,8 +1339,8 @@ previews are sanitized before they are persisted or returned as observations.
 Full delegated outputs are scanned before strict full JSON-object parsing;
 wrapper prose or code fences around otherwise valid JSON remain malformed
 delegated output, delegated output may only include `summary` and
-`findings_text`, and raw task/context echo failures, unsupported output fields,
-and delegated output authority/source-claim failures suppress the raw output preview. Delegated
+`findings_text`, and every delegated output contract failure records a safe
+suppression marker rather than raw delegated model text. Delegated
 dispatch metadata also records the model-action `envelope_ref` that declared
 the delegated action, and
 Live Run Trace exposes the declaring round's safe `delegate_agent` action ids
