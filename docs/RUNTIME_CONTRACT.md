@@ -1738,6 +1738,17 @@ inspects those snapshots. Dream snapshots are planning context only: their
 not execute backlog work, call models, publish externally, promote SOPs, write
 skills, write the active vault, or prove completion.
 
+The runtime meaning of dream is a versioned, same-state-root direction
+projection. It converts accepted facts and verified iteration outcomes into
+bounded axes, horizons, non-goals, source refs, and next-move candidates. It is
+not raw recall, durable identity, procedural memory, a hidden reasoning trace,
+or an execution scheduler. The newest dream is current only when its embedded
+verified outcome ref, status, and `recorded_at` match the latest verified
+iteration outcome available in the same state root. Otherwise read models must
+report stale or missing lineage and render the explicit `memory dream` refresh
+command; they must not silently refresh, reconcile state roots, or claim the
+snapshot contains the latest verified direction.
+
 `memory archives` is a read-only view over `memory/archives/*.json`. It may
 list daily episode archive summaries or inspect one archive by date or state
 ref. It must not generate archive files, rebuild MemoryStore indexes, read raw

@@ -8,7 +8,7 @@ import {
   type CapabilityCategory,
   type CapabilitySummary
 } from "./capabilities.js";
-import { listLatestDreamSnapshots } from "./dreams.js";
+import { getDreamFreshness, listLatestDreamSnapshots } from "./dreams.js";
 import {
   getGaProjectDesignReadModel,
   type GaProjectDesignPlanPacket
@@ -1482,21 +1482,30 @@ async function semanticMemorySection(store: AgentStore): Promise<ContextSection>
 }
 
 async function dreamSection(store: AgentStore): Promise<ContextSection> {
-  const dreams = await listLatestDreamSnapshots(store, 3);
+  const [dreams, freshness] = await Promise.all([
+    listLatestDreamSnapshots(store, 3),
+    getDreamFreshness(store)
+  ]);
   if (dreams.length === 0) {
     return {
       title: "Dreams",
-      body: "No dream snapshots selected for this turn.",
+      body: "No dream snapshots selected for this turn; lineage: missing.",
       refs: [],
       item_count: 0
     };
   }
+  const lineage = freshness.status === "current"
+    ? []
+    : [`- lineage: ${freshness.status}`];
   return {
     title: "Dreams",
-    body: dreams.map((dream, index) => [
-      `### ${index + 1}. ${dream.id}`,
-      ...dream.axes.slice(0, 1).map((axis) => `- axis: ${axis.title} ${axis.status}`)
-    ].join("\n")).join("\n\n"),
+    body: [
+      ...lineage,
+      dreams.map((dream, index) => [
+        `### ${index + 1}. ${dream.id}`,
+        ...dream.axes.slice(0, 1).map((axis) => `- axis: ${axis.title} ${axis.status}`)
+      ].join("\n")).join("\n\n")
+    ].filter(Boolean).join("\n"),
     refs: dreams.map((dream) => dream.ref),
     item_count: dreams.length
   };

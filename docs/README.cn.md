@@ -190,6 +190,9 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 记录长期能力方向快照，再用 `pnpm run runtime -- memory dreams --state-root .runtime/state`
 查看。dream 快照会吸收已接受语义记忆、近期自我迭代契约、最新已验证 outcome、能力目录和 backlog 压力，
 用于保持核心 GA 设计、基础 runtime、通用 delegation、SOP/skill/memory 和 dream 的方向一致；专家和多 agent 调度保持后置。
+这里的 dream 是“带来源版本的长期方向投影”，不是自由反思、原始会话摘要、隐藏推理、持久身份或自动执行计划。
+它输出能力轴、时间跨度、非目标、下一步候选和来源 lineage；只有当同一 state root 中内嵌的 verified outcome
+与当前最新 verified outcome 完全一致时才是 current，否则必须显示 stale/missing，并由操作者显式刷新。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；

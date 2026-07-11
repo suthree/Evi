@@ -104,6 +104,11 @@ the matching Feishu operator commands are read-only views over archive metadata
 and freshness. Archive health reports the current UTC date as an open day, then
 enforces missing or stale daily summaries after UTC rollover.
 
+Dream snapshots are explicit, versioned long-horizon direction projections over
+accepted memory and verified iteration outcomes. They preserve axes, horizons,
+non-goals, and source lineage across sessions, but never execute work or prove
+completion; stale lineage remains visible until an operator refreshes it.
+
 This layer is useful, but first-version local runtime does not solve skill sync,
 shared vaults, public skill repositories, multi-user provenance, or cross-node
 conflict resolution.

@@ -80,6 +80,19 @@ export interface DreamSnapshotListResult {
   dreams: DreamSnapshotSummary[];
 }
 
+export type DreamLatestOutcomeFreshness = "current" | "stale" | "missing";
+
+export interface DreamFreshnessResult {
+  status: DreamLatestOutcomeFreshness;
+  latest_dream_ref: string | null;
+  dream_iteration_ref: string | null;
+  dream_outcome_recorded_at: string | null;
+  latest_verified_iteration_ref: string | null;
+  latest_verified_outcome_recorded_at: string | null;
+  refresh_command: string;
+  boundary: string;
+}
+
 export async function createDreamSnapshot(
   store: AgentStore,
   args: { limit?: number } = {}
@@ -89,7 +102,7 @@ export async function createDreamSnapshot(
     listAcceptedSemanticMemoryRefs(store),
     getOpportunityBacklog(store, { limit: args.limit ?? 5 }),
     Promise.resolve(getCapabilityCatalog()),
-    listSelfEvolutionIterations(store, { limit: args.limit ?? 5 })
+    listSelfEvolutionIterations(store)
   ]);
   const delegationRefs = [
     "packages/core/src/action_contracts.ts",
@@ -159,7 +172,7 @@ export async function createDreamSnapshot(
 function latestIterationOutcomeContext(
   iterations: SelfEvolutionIterationContract[]
 ): DreamIterationOutcomeContext | undefined {
-  const iteration = iterations.find((candidate) => candidate.outcome?.status === "verified");
+  const iteration = latestVerifiedIteration(iterations);
   if (!iteration?.outcome) return undefined;
   return {
     iteration_ref: iteration.ref,
@@ -169,6 +182,50 @@ function latestIterationOutcomeContext(
     next_moves: iteration.outcome.next_moves,
     recorded_at: iteration.outcome.recorded_at
   };
+}
+
+export async function getDreamFreshness(store: AgentStore): Promise<DreamFreshnessResult> {
+  const [dreams, iterations] = await Promise.all([
+    listLatestDreamSnapshots(store, 1),
+    listSelfEvolutionIterations(store)
+  ]);
+  const dream = dreams[0];
+  const latestVerified = latestVerifiedIteration(iterations.iterations);
+  const dreamOutcome = dream?.latest_iteration_outcome;
+  return {
+    status: dreamFreshnessStatus(dream, latestVerified),
+    latest_dream_ref: dream?.ref ?? null,
+    dream_iteration_ref: dreamOutcome?.iteration_ref ?? null,
+    dream_outcome_recorded_at: dreamOutcome?.recorded_at ?? null,
+    latest_verified_iteration_ref: latestVerified?.ref ?? null,
+    latest_verified_outcome_recorded_at: latestVerified?.outcome?.recorded_at ?? null,
+    refresh_command: "pnpm run runtime -- memory dream --state-root <state-root>",
+    boundary: "read-only same-state-root dream freshness; compares bounded dream and iteration outcome metadata only; does not generate dreams, invoke models, reconcile state roots, or mutate state"
+  };
+}
+
+function dreamFreshnessStatus(
+  dream: (DreamSnapshot & { ref: string }) | undefined,
+  latestVerified: SelfEvolutionIterationContract | undefined
+): DreamLatestOutcomeFreshness {
+  if (!dream) return "missing";
+  const latestOutcome = latestVerified?.outcome;
+  if (!latestOutcome) return dream.latest_iteration_outcome ? "stale" : "current";
+  const dreamOutcome = dream.latest_iteration_outcome;
+  if (!dreamOutcome) return "stale";
+  return dreamOutcome.iteration_ref === latestVerified.ref
+    && dreamOutcome.status === latestOutcome.status
+    && dreamOutcome.recorded_at === latestOutcome.recorded_at
+    ? "current"
+    : "stale";
+}
+
+function latestVerifiedIteration(
+  iterations: SelfEvolutionIterationContract[]
+): SelfEvolutionIterationContract | undefined {
+  return iterations
+    .filter((iteration) => iteration.outcome?.status === "verified")
+    .sort((left, right) => (right.outcome?.recorded_at ?? "").localeCompare(left.outcome?.recorded_at ?? ""))[0];
 }
 
 export async function listDreamSnapshots(

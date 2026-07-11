@@ -1349,6 +1349,81 @@ test("context scorecard exposes latest basic iteration status", async () => {
   }
 });
 
+test("context marks dream lineage stale when a newer verified outcome exists", async () => {
+  const fixture = await createRepoFixture();
+  try {
+    await writeRepoFile(fixture.repoRoot, "core/soul.md", "Local self boundary.");
+    await writeRepoFile(fixture.repoRoot, "core/memory.md", "Local memory boundary.");
+    await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "Local runtime contract.");
+    await writeRepoFile(fixture.repoRoot, "memory/index.md", "Resident local index.");
+    await fixture.store.writeJson("memory/dreams/dream_stale_context.json", {
+      schema_version: 1,
+      id: "dream_stale_context",
+      action_type: "dream_snapshot",
+      status: "active",
+      title: "Stale direction",
+      summary: "This direction predates the latest verified outcome.",
+      created_at: "2026-06-30T00:00:01.000Z",
+      source_refs: [],
+      semantic_memory_refs: [],
+      backlog_refs: [],
+      axes: [{
+        id: "core_ga_design",
+        title: "Core GA project design",
+        status: "active",
+        summary: "Keep the core direction bounded.",
+        evidence_refs: [],
+        next_moves: []
+      }],
+      horizons: [],
+      non_goals: [],
+      boundary: "bounded stale dream fixture"
+    });
+    await fixture.store.writeJson("self-evolution/iterations/iteration_contract_newer_verified.json", {
+      schema_version: 1,
+      id: "iteration_contract_newer_verified",
+      ref: "self-evolution/iterations/iteration_contract_newer_verified.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "A verified outcome newer than the dream.",
+      layer: "local_learning",
+      owner_surface: "dream_snapshots",
+      proposed_slice: "dream_freshness",
+      evidence_refs: [],
+      verification_commands: ["pnpm run check"],
+      non_goals: [],
+      advisory_expert_roles: ["learning_curator", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "The newer direction source is verified.",
+        evidence_refs: [],
+        verification_commands: ["pnpm run check"],
+        next_moves: ["Refresh the dream explicitly."],
+        recorded_at: "2026-06-30T00:00:03.000Z",
+        boundary: "bounded outcome"
+      },
+      created_at: "2026-06-30T00:00:02.000Z",
+      boundary: "bounded iteration"
+    });
+    const trigger = triggerSchema.parse({
+      type: "external_task",
+      source: "prompt",
+      text: "Inspect dream freshness."
+    });
+    const opportunity = opportunitySchema.parse({
+      source: "explicit_task",
+      description: "Inspect dream freshness."
+    });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
+
+    assert.match(rendered.markdown, /dream_stale_context/);
+    assert.match(rendered.markdown, /lineage: stale/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("context bundle includes bounded GA project design plan", async () => {
   const fixture = await createRepoFixture();
   try {

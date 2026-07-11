@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   createDreamSnapshot,
+  getDreamFreshness,
   getDreamSnapshot,
   listDreamSnapshots
 } from "../packages/core/src/dreams.js";
@@ -58,8 +59,27 @@ test("dream snapshot records long-horizon direction without executing work", asy
       created_at: "2026-07-06T00:00:02Z",
       boundary: "bounded iteration contract"
     });
+    for (let index = 0; index < 3; index += 1) {
+      await store.writeJson(`self-evolution/iterations/iteration_contract_open_${index}.json`, {
+        schema_version: 1,
+        id: `iteration_contract_open_${index}`,
+        ref: `self-evolution/iterations/iteration_contract_open_${index}.json`,
+        kind: "self_evolution_iteration_contract",
+        status: "recorded",
+        summary: "A newer open iteration must not hide the latest verified outcome.",
+        layer: "core_runtime",
+        owner_surface: "runtime_contract",
+        proposed_slice: `open_slice_${index}`,
+        evidence_refs: [],
+        verification_commands: ["pnpm run check"],
+        non_goals: [],
+        advisory_expert_roles: ["architect", "verification_reviewer", "orchestration_planner"],
+        created_at: `2026-07-06T00:01:0${index}Z`,
+        boundary: "bounded open iteration"
+      });
+    }
 
-    const result = await createDreamSnapshot(store, { limit: 3 });
+    const result = await createDreamSnapshot(store, { limit: 1 });
 
     assert.equal(result.dream.action_type, "dream_snapshot");
     assert.equal(result.dream.status, "active");
@@ -83,6 +103,9 @@ test("dream snapshot records long-horizon direction without executing work", asy
     assert.match(result.dream.boundary, /no model call/);
     assert.equal(existsSync(join(stateRoot, result.dream_ref)), true);
     assert.equal(existsSync(join(stateRoot, result.dream_markdown_ref)), true);
+    const freshness = await getDreamFreshness(store);
+    assert.equal(freshness.status, "current");
+    assert.equal(freshness.latest_verified_iteration_ref, "self-evolution/iterations/iteration_contract_core.json");
 
     const list = await listDreamSnapshots(store, { limit: 10 });
     assert.equal(list.count, 1);

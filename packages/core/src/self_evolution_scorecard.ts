@@ -95,7 +95,9 @@ export async function getSelfEvolutionScorecard(
   const hasSopDrafts = sopLedger.counts.sop_drafts.total > 0;
   const hasSkillEvents = sopLedger.counts.skill_events.total > 0;
   const validDreams = countLayer(memoryLayers, "dreams", "dream_valid");
-  const dreamHasVerifiedOutcome = dreams.some((dream) => dream.latest_iteration_outcome?.status === "verified");
+  const dreamOutcomeFreshness = textLayer(memoryLayers, "dreams", "latest_outcome_freshness");
+  const dreamHasVerifiedOutcome = dreamOutcomeFreshness === "current"
+    && dreams[0]?.latest_iteration_outcome?.status === "verified";
   const attentionLayers = memoryLayers.context_entry.attention_layer_ids;
   const delegated = catalog.categories
     .flatMap((category) => category.capabilities)
@@ -197,12 +199,10 @@ export async function getSelfEvolutionScorecard(
     {
       id: "memory_dream_direction",
       title: "Memory and dream direction",
-      stage: acceptedSemantic > 0 && validDreams > 0 ? "active" : acceptedSemantic > 0 || validDreams > 0 ? "emerging" : "planned",
+      stage: memoryDreamStage(acceptedSemantic, validDreams, dreamOutcomeFreshness),
       layer: "local_learning",
       score: clampScore(1 + Math.min(2, acceptedSemantic) + Math.min(2, validDreams) + (dreamHasVerifiedOutcome ? 2 : 0)),
-      summary: dreamHasVerifiedOutcome
-        ? "Accepted memory and dreams preserve durable self-recognition, long-horizon direction, and the latest verified iteration outcome across turns."
-        : "Accepted memory and dreams preserve durable self-recognition and long-horizon direction across turns.",
+      summary: memoryDreamSummary(validDreams, dreamHasVerifiedOutcome, dreamOutcomeFreshness),
       evidence_refs: compactRefs([
         "packages/core/src/memory_layers.ts",
         "packages/core/src/dreams.ts",
@@ -517,6 +517,38 @@ function countLayer(
 ): number {
   const value = diagnostics.layers.find((layer) => layer.id === layerId)?.counts[countKey];
   return typeof value === "number" ? value : 0;
+}
+
+function textLayer(
+  diagnostics: Awaited<ReturnType<typeof getMemoryLayerDiagnostics>>,
+  layerId: string,
+  countKey: string
+): string | null {
+  const value = diagnostics.layers.find((layer) => layer.id === layerId)?.counts[countKey];
+  return typeof value === "string" ? value : null;
+}
+
+function memoryDreamStage(
+  acceptedSemantic: number,
+  validDreams: number,
+  freshness: string | null
+): SelfEvolutionDimension["stage"] {
+  if (acceptedSemantic > 0 && validDreams > 0 && freshness === "current") return "active";
+  if (acceptedSemantic > 0 || validDreams > 0) return "emerging";
+  return "planned";
+}
+
+function memoryDreamSummary(validDreams: number, hasVerifiedOutcome: boolean, freshness: string | null): string {
+  if (validDreams === 0) {
+    return "No dream snapshot exists in this state root; create one explicitly before treating long-horizon direction as available.";
+  }
+  if (hasVerifiedOutcome) {
+    return "Accepted memory and dreams preserve durable self-recognition, long-horizon direction, and the latest verified iteration outcome across turns.";
+  }
+  if (freshness === "stale" || freshness === "missing") {
+    return "Dream direction exists but does not match the latest verified iteration outcome in this state root; refresh it explicitly before treating it as current.";
+  }
+  return "Accepted memory and dreams preserve durable self-recognition and long-horizon direction across turns.";
 }
 
 function refsFor(dimensions: SelfEvolutionDimension[], id: string): string[] {

@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createDreamSnapshot } from "../packages/core/src/dreams.js";
 import { getMemoryLayerDiagnostics, type MemoryLayerSummary } from "../packages/core/src/memory_layers.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
@@ -142,7 +143,46 @@ test("memory layer diagnostic summarizes context entrypoints without leaking raw
     const dreams = layer(result.layers, "dreams");
     assert.equal(dreams.status, "active");
     assert.equal(dreams.counts.dream_valid, 1);
+    assert.equal(dreams.counts.latest_outcome_freshness, "current");
     assert.equal(dreams.selected_for_context, true);
+
+    await store.writeJson("self-evolution/iterations/iteration_contract_dream_freshness.json", {
+      schema_version: 1,
+      id: "iteration_contract_dream_freshness",
+      ref: "self-evolution/iterations/iteration_contract_dream_freshness.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "A newer verified iteration should make the old dream stale.",
+      layer: "local_learning",
+      owner_surface: "dream_snapshots",
+      proposed_slice: "dream_freshness",
+      evidence_refs: [],
+      verification_commands: ["pnpm run check"],
+      non_goals: [],
+      advisory_expert_roles: ["learning_curator", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Dream freshness verification passed.",
+        evidence_refs: [],
+        verification_commands: ["pnpm run check"],
+        verification_claims: ["check: passed"],
+        next_moves: ["Refresh the dream explicitly."],
+        recorded_at: "2026-07-03T00:00:10Z",
+        boundary: "bounded outcome"
+      },
+      created_at: "2026-07-03T00:00:09Z",
+      boundary: "bounded iteration"
+    });
+    const stale = await getMemoryLayerDiagnostics(store);
+    const staleDreams = layer(stale.layers, "dreams");
+    assert.equal(staleDreams.status, "needs_attention");
+    assert.equal(staleDreams.counts.latest_outcome_freshness, "stale");
+    assert.deepEqual(staleDreams.recommendations, ["pnpm run runtime -- memory dream --state-root <state-root>"]);
+
+    await createDreamSnapshot(store);
+    const refreshed = layer((await getMemoryLayerDiagnostics(store)).layers, "dreams");
+    assert.equal(refreshed.status, "active");
+    assert.equal(refreshed.counts.latest_outcome_freshness, "current");
 
     const skills = layer(result.layers, "selected_skill_outcomes");
     assert.equal(skills.context_role, "recall_quality_signal");

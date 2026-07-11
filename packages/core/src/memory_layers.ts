@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { getDreamFreshness } from "./dreams.js";
 import {
   selectedSkillUsageOutcomeSchema,
   workingCheckpointSchema
@@ -255,6 +256,7 @@ async function readWorkingCheckpointLayer(store: AgentStore): Promise<MemoryLaye
 }
 
 async function readDreamLayer(store: AgentStore): Promise<MemoryLayerSummary> {
+  const freshness = await getDreamFreshness(store);
   const refs = await jsonRefs(store, "memory/dreams");
   let valid = 0;
   let latestCreatedAt: string | null = null;
@@ -267,7 +269,7 @@ async function readDreamLayer(store: AgentStore): Promise<MemoryLayerSummary> {
   return {
     id: "dreams",
     title: "Dream snapshots",
-    status: valid > 0 ? "active" : "empty",
+    status: dreamLayerStatus(valid, freshness.status),
     context_role: "selected_context",
     selected_for_context: valid > 0,
     state_refs: ["memory/dreams"],
@@ -278,11 +280,21 @@ async function readDreamLayer(store: AgentStore): Promise<MemoryLayerSummary> {
     counts: {
       dream_files: refs.length,
       dream_valid: valid,
-      latest_created_at: latestCreatedAt
+      latest_created_at: latestCreatedAt,
+      latest_outcome_freshness: freshness.status,
+      latest_dream_ref: freshness.latest_dream_ref,
+      dream_iteration_ref: freshness.dream_iteration_ref,
+      latest_verified_iteration_ref: freshness.latest_verified_iteration_ref,
+      latest_verified_outcome_recorded_at: freshness.latest_verified_outcome_recorded_at
     },
     context_policy: "The turn context may select the newest dream snapshots as long-horizon direction; dreams are not execution plans or completion evidence.",
-    recommendations: valid === 0 ? ["pnpm run runtime -- memory dream --state-root <state-root>"] : []
+    recommendations: freshness.status === "current" ? [] : [freshness.refresh_command]
   };
+}
+
+function dreamLayerStatus(valid: number, freshness: "current" | "stale" | "missing"): LayerStatus {
+  if (valid === 0) return "empty";
+  return freshness === "current" ? "active" : "needs_attention";
 }
 
 async function readArchiveLayer(store: AgentStore): Promise<MemoryLayerSummary> {

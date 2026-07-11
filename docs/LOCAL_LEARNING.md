@@ -190,6 +190,43 @@ inspects those snapshots. Dreams are planning context only; their
 execute backlog items, call models, promote SOPs, write skills, publish
 externally, or prove that a goal is complete.
 
+### Dream concept and design goal
+
+A XingZhe dream is a versioned, state-root-local projection of long-horizon
+direction. It is not a transcript, free-form reflection, hidden chain of
+thought, durable identity, scheduler, or autonomous execution plan. Its
+authoritative inputs are accepted semantic memory, the latest verified
+iteration outcome in the same state root, stable capability boundaries, and
+bounded backlog pressure. Its output is a compact set of capability axes,
+horizons, non-goals, next-move candidates, source refs, and source-lineage
+freshness.
+
+The design goal is continuity without authority drift:
+
+- preserve why the runtime is evolving across sessions and compaction;
+- keep core/basic direction ahead of application-specific pressure;
+- make every claimed direction traceable to durable or verified sources;
+- expose `current`, `stale`, or `missing` lineage instead of silently trusting
+  an old active snapshot;
+- keep refresh explicit, append-only, and local to one state root.
+
+Dream consumes facts and verified outcomes; semantic memory remains the
+durable fact layer, episode/session archives remain recall evidence, SOPs and
+skills remain procedural memory, and iteration outcomes remain completion
+evidence. Dream may recommend which layer deserves attention next, but cannot
+promote, execute, reconcile state roots, or prove completion.
+
+Reference projects inform this separation but do not define compatibility:
+
+- [OpenAI Codex](https://github.com/openai/codex) contributes scoped durable
+  instruction and inspectable-session patterns.
+- [Hermes Agent](https://github.com/NousResearch/hermes-agent) separates compact
+  persistent memory, on-demand session recall, procedural skills, and scheduled
+  execution.
+- [GenericAgent](https://github.com/lsdefine/GenericAgent) contributes layered
+  L0-L4 memory, on-demand context density, and verified-trajectory-to-skill
+  evolution.
+
 Daily episode archives are deterministic bounded summaries generated from the
 append-only episode JSONL. `memory archive-health` compares event metadata with
 archive metadata and can surface missing or stale archive summaries in the

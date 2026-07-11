@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { createDreamSnapshot } from "../packages/core/src/dreams.js";
 import { getSelfEvolutionScorecard } from "../packages/core/src/self_evolution_scorecard.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
@@ -143,6 +144,46 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.match(scorecard.boundary, /read-only self-evolution scorecard/);
     assert.match(scorecard.boundary, /does not invoke models/);
     assert.match(scorecard.boundary, /does not .*prove completion/);
+
+    await store.writeJson("self-evolution/iterations/iteration_contract_newer_dream_source.json", {
+      schema_version: 1,
+      id: "iteration_contract_newer_dream_source",
+      ref: "self-evolution/iterations/iteration_contract_newer_dream_source.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "A newer verified outcome makes the existing dream stale.",
+      layer: "local_learning",
+      owner_surface: "dream_snapshots",
+      proposed_slice: "dream_freshness",
+      evidence_refs: [],
+      verification_commands: ["pnpm run check"],
+      non_goals: [],
+      advisory_expert_roles: ["learning_curator", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "The newer dream source is verified.",
+        evidence_refs: [],
+        verification_commands: ["pnpm run check"],
+        verification_claims: ["check: passed"],
+        next_moves: ["Refresh the dream explicitly."],
+        recorded_at: "2026-07-06T00:00:05Z",
+        boundary: "bounded outcome"
+      },
+      created_at: "2026-07-06T00:00:04Z",
+      boundary: "bounded iteration"
+    });
+    const staleDream = (await getSelfEvolutionScorecard(store, { limit: 3 })).dimensions
+      .find((dimension) => dimension.id === "memory_dream_direction");
+    assert.equal(staleDream?.stage, "emerging");
+    assert.equal(staleDream?.score, 3);
+    assert.match(staleDream?.summary ?? "", /does not match the latest verified iteration outcome/);
+
+    await createDreamSnapshot(store);
+    const refreshedDream = (await getSelfEvolutionScorecard(store, { limit: 3 })).dimensions
+      .find((dimension) => dimension.id === "memory_dream_direction");
+    assert.equal(refreshedDream?.stage, "active");
+    assert.equal(refreshedDream?.score, 5);
+    assert.match(refreshedDream?.summary ?? "", /latest verified iteration outcome/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -202,6 +243,9 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
     assert.match(core?.summary ?? "", /derived project-design artifact/);
     assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga.json"), true);
     assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_ga/);
+    const missingDream = scorecard.dimensions.find((dimension) => dimension.id === "memory_dream_direction");
+    assert.equal(missingDream?.stage, "planned");
+    assert.match(missingDream?.summary ?? "", /No dream snapshot exists/);
     assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
     assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
   } finally {
