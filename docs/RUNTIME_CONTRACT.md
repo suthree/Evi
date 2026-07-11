@@ -1441,7 +1441,9 @@ cites its harness-known ref. If any delegated result failed, completion requires
 both later successful write/run recovery evidence cited by the done claim as a
 tool result id or tool artifact ref and a bound non-delegated verification ref
 after the failed delegated result; an uncited write/run result and later
-read-only refs are context only.
+read-only refs are context only. Every sanitized failed-delegation observation
+tells the main model these exact recovery prerequisites or to report blocked;
+no failure kind may imply that read-only verification alone recovers it.
 The final response artifact alone is not independent completion proof. The live
 runner rejects model envelopes with more than one `respond` action, so
 new final-response evidence events bind that artifact to the only `respond`

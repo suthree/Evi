@@ -1546,19 +1546,21 @@ function delegatedObservationErrorForModelInput(error: string | null): string | 
 function delegatedObservationRecoveryHint(result: DelegatedResult): string | null {
   if (result.ok) return null;
   if (result.result_failure_kind === "dispatch_limit_exceeded") {
-    return "Use at most one bounded delegated subtask in a later model round; recover with main-harness evidence before claiming done.";
+    return `Use at most one bounded delegated subtask in a later model round; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
   }
   if (result.result_failure_kind === "input_contract_failed") {
-    return "Revise the delegated task/context boundary or proceed with main-harness evidence before claiming done.";
+    return `Revise the delegated task/context boundary; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
   }
   if (result.result_failure_kind === "delegated_output_contract_failed") {
-    return "Treat the delegated output as unusable; recover with main-harness evidence, including later write/run evidence plus bound verification refs, before claiming done.";
+    return `Treat the delegated output as unusable; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
   }
   if (result.result_failure_kind === "delegated_model_request_failed") {
-    return "Continue with main-harness verification or report blocked; do not treat the delegated request failure as proof.";
+    return `Treat the delegated request failure as unusable; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
   }
-  return "Recover through the main harness before claiming done; failed delegated results are not completion proof.";
+  return `Failed delegated results are not completion proof; ${FAILED_DELEGATION_RECOVERY_REQUIREMENT}`;
 }
+
+const FAILED_DELEGATION_RECOVERY_REQUIREMENT = "recover with main-harness evidence: later successful write/run evidence plus a bound non-delegated verification ref are required before claiming done; otherwise report blocked.";
 
 function delegatedObservationProofBoundary(result: DelegatedResult): string {
   return result.ok

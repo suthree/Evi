@@ -5806,6 +5806,7 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.equal(result.verdict, "completion_unverified");
     assert.equal(model.delegationCalls, 1);
     assert.equal(model.sawSanitizedRequestFailureObservation, true);
+    assert.equal(model.sawCompletionGateRecoveryHint, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");
@@ -8514,7 +8515,8 @@ class InvalidDelegationThenValidDelegationThenDoneModel implements ModelClient {
     const delegatedSection = delegatedObservationsSection(request.input);
     if (this.mainCalls === 2) {
       this.sawMainHarnessRecoveryHint = delegatedSection.includes('"recovery_hint"')
-        && delegatedSection.includes("later write/run evidence plus bound verification refs")
+        && delegatedSection.includes("later successful write/run evidence plus a bound non-delegated verification ref")
+        && delegatedSection.includes("otherwise report blocked")
         && !delegatedSection.includes("later valid bounded delegation");
       return secondRoundDelegateCritiqueEnvelope();
     }
@@ -8854,6 +8856,7 @@ class DelegationRequestFailureThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
   sawSanitizedRequestFailureObservation = false;
+  sawCompletionGateRecoveryHint = false;
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -8885,6 +8888,9 @@ class DelegationRequestFailureThenDoneModel implements ModelClient {
         && !delegatedSection.includes('"output_text"')
         && !delegatedSection.includes("Critique whether the answer needs more evidence.")
         && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
+      this.sawCompletionGateRecoveryHint = delegatedSection.includes('"recovery_hint"')
+        && delegatedSection.includes("later successful write/run evidence plus a bound non-delegated verification ref")
+        && delegatedSection.includes("otherwise report blocked");
     }
     return this.mainCalls > 1 ? doneEnvelope() : delegateCritiqueEnvelope();
   }
