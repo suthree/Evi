@@ -439,6 +439,10 @@ delegated completion gate to clean.
 For `done`, replay also derives `claimed_refs_bound_to_evidence` from exact
 delegated identities plus bounded result/artifact lineage and its unique
 tool-result event-owned identity, success state, artifact, and round binding.
+The event-owned tool artifact must also exist at the stable
+`memory/episodes/<session_id>-<tool_result_id>.json` identity; jointly swapping
+report metadata and the event artifact list to an unrelated file remains
+attention.
 Unbound claims remain failures
 even if the completion report says pass; valid report downgrades and missing
 legacy lineage remain attention, and no artifact body or historical migration

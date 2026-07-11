@@ -81,6 +81,8 @@ export interface LiveRunToolResultEventSummary {
   created_at: string;
   round: number;
   artifact_refs: string[];
+  result_artifact_ref: string | null;
+  result_artifact_ref_file_present: boolean;
   result_id: string | null;
   tool: string | null;
   ok: boolean | null;
@@ -287,10 +289,10 @@ async function summarizeLiveRunTrace(
     .at(-1)?.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
   const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
-  const toolResultEvents = readToolResultEventSummaries(runEvents);
+  const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
+  const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles);
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
-  const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents, episodeFiles);
   const delegatedResultReportRefs = unique(report.delegated_result_refs);
   const delegatedResultReportRefSet = new Set(delegatedResultReportRefs);
@@ -400,7 +402,10 @@ function countCompletionCheckStatuses(checks: LiveRunCompletionCheckSummary[]): 
   return counts;
 }
 
-function readToolResultEventSummaries(events: EpisodeEvent[]): LiveRunToolResultEventSummary[] {
+function readToolResultEventSummaries(
+  events: EpisodeEvent[],
+  episodeFiles: Set<string>
+): LiveRunToolResultEventSummary[] {
   const summaries: LiveRunToolResultEventSummary[] = [];
   let currentRound = 0;
   for (const event of events) {
@@ -408,12 +413,19 @@ function readToolResultEventSummaries(events: EpisodeEvent[]): LiveRunToolResult
       const envelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref));
       currentRound = envelopeRef ? roundNumber(envelopeRef) : 0;
     } else if (event.kind === "tool_result" && currentRound > 0) {
+      const resultId = event.tool_result?.result_id ?? null;
+      const resultArtifactRef = resultId === null
+        ? null
+        : `memory/episodes/${event.session_id}-${resultId}.json`;
       summaries.push({
         event_id: event.id,
         created_at: event.created_at,
         round: currentRound,
         artifact_refs: [...event.artifact_refs],
-        result_id: event.tool_result?.result_id ?? null,
+        result_artifact_ref: resultArtifactRef,
+        result_artifact_ref_file_present: resultArtifactRef !== null
+          && episodeFiles.has(resultArtifactRef),
+        result_id: resultId,
         tool: event.tool_result?.tool ?? null,
         ok: event.tool_result?.ok ?? null,
         side_effect_level: event.tool_result?.side_effect_level ?? null,

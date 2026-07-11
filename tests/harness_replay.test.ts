@@ -1126,7 +1126,7 @@ test("harness replay audit warns when a report downgrades valid claimed evidence
   const stateRoot = join(root, "state");
   const store = new AgentStore(repoRoot, stateRoot);
   const artifactRef = "memory/episodes/session_replay_test-tool_result_write.json";
-  const resultId = "tool_result_bound";
+  const resultId = "tool_result_write";
   const evidenceBase = {
     tool_result_id: resultId,
     artifact_ref: artifactRef,
@@ -1167,6 +1167,13 @@ test("harness replay audit warns when a report downgrades valid claimed evidence
     }], {
       includeDelegatedEvent: false,
       includeDelegatedResultRefs: false,
+      toolResultEventMetadata: {
+        result_id: resultId,
+        tool: "file.write_repo",
+        ok: true,
+        side_effect_level: "local_write",
+        is_write_run: true
+      },
       verificationEvidenceRefs: [{
         ...evidenceBase,
         ref: resultId,
@@ -2061,6 +2068,94 @@ test("harness replay audit rejects verification evidence tool event binding drif
     assert.equal(check?.refs.includes("tool_result_mismatched_event"), true);
     assert.equal(check?.refs.includes("memory/episodes/session_replay_test-completion-verification.json#evidence_replay_tool"), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit binds tool evidence to persisted result artifact identity", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-tool-artifact-identity-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    const sessionId = "session_replay_test";
+    const resultId = "tool_result_post_identity";
+    const artifactRef = `memory/episodes/${sessionId}-${resultId}.json`;
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Delegated identities were not claimed.",
+      refs: []
+    }, {
+      id: "claimed_refs_bound_to_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is bound.",
+      refs: [resultId]
+    }, {
+      id: "delegated_independent_evidence",
+      status: "pass",
+      summary: "Post-delegation evidence is independently bound.",
+      refs: [resultId]
+    }]);
+    const verificationEvidence = await appendReplayPostDelegationEvidence(store, { resultId });
+    const reportRef = `memory/episodes/${sessionId}-completion-verification.json`;
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      claimed_verification_refs: [resultId],
+      verification_evidence_refs: verificationEvidence
+    });
+    await syncReplayEnvelopeClaimRefs(store, [resultId]);
+
+    const baseline = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    assert.equal(
+      baseline.checks.find((item) => item.id === "verification_evidence_lineage")?.status,
+      "pass"
+    );
+
+    await rm(join(stateRoot, artifactRef));
+    const missingFile = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const missingFileCheck = missingFile.checks.find((item) => item.id === "verification_evidence_lineage");
+    assert.equal(missingFile.status, "attention");
+    assert.equal(missingFileCheck?.status, "fail");
+    assert.match(missingFileCheck?.summary ?? "", /missing_tool_result_event_artifact_files=1/);
+
+    await store.writeText(artifactRef, "RAW_REPLAY_TOOL_ARTIFACT_SHOULD_NOT_APPEAR");
+    const unrelatedRef = `memory/episodes/${sessionId}-unrelated.json`;
+    await store.writeText(unrelatedRef, "RAW_REPLAY_UNRELATED_ARTIFACT_SHOULD_NOT_APPEAR");
+    await store.writeJson(reportRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      claimed_verification_refs: [resultId],
+      verification_evidence_refs: verificationEvidence.map((item) => ({
+        ...item,
+        ref: item.source === "tool_artifact" ? unrelatedRef : item.ref,
+        artifact_ref: unrelatedRef
+      }))
+    });
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => event.id === `evidence_replay_${resultId}`
+      ? JSON.stringify({ ...event, artifact_refs: [unrelatedRef] })
+      : JSON.stringify(event)).join("\n")}\n`);
+
+    const identitySwap = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const identityCheck = identitySwap.checks.find((item) => item.id === "verification_evidence_lineage");
+    assert.equal(identitySwap.status, "attention");
+    assert.equal(identityCheck?.status, "fail");
+    assert.match(identityCheck?.summary ?? "", /mismatched_tool_result_event_artifact_identities=1/);
+    assert.doesNotMatch(JSON.stringify(identitySwap), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
