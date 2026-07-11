@@ -1571,7 +1571,11 @@ function parseEnvelope(outputText: string): ModelActionEnvelope {
     throw new Error("Model returned empty output; no ModelActionEnvelope to parse.");
   }
   const parsed = JSON.parse(extractJsonObject(trimmed));
-  return modelActionEnvelopeSchema.parse(parsed);
+  const envelope = modelActionEnvelopeSchema.parse(parsed);
+  return {
+    ...envelope,
+    actions: envelope.actions.map((action) => ({ ...action, id: newId("action") }))
+  };
 }
 
 function persistedModelResponseMetadata(response: ModelResponse): Record<string, unknown> {

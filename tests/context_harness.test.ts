@@ -4050,6 +4050,41 @@ test("live runner redacts unbound delegated completion claim refs", async () => 
   }
 });
 
+test("live runner assigns harness action ids for delegated actions", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new StructuredDelegationThenDoneModel(false, true)
+    });
+
+    const result = await runner.runTask("Do not persist delegated model action ids.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as { action_id: string };
+    const envelopeRef = String(delegatedEvent?.delegated_dispatch?.envelope_ref ?? "");
+    const envelope = JSON.parse(await readFile(join(fixture.stateRoot, envelopeRef), "utf8")) as {
+      actions: Array<{ id: string; type: string }>;
+    };
+    const actionId = envelope.actions.find((action) => action.type === "delegate_agent")?.id ?? "";
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.match(actionId, /^action_/);
+    assert.equal(delegated.action_id, actionId);
+    assert.equal(delegatedEvent?.delegated_dispatch?.action_id, actionId);
+    assert.doesNotMatch(JSON.stringify([envelope, delegated, delegatedEvent]), /MODEL_DELEGATED_ACTION_ID_SHOULD_NOT_PERSIST/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects delegated output that echoes raw context before observation", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -7432,7 +7467,10 @@ class StructuredDelegationThenDoneModel implements ModelClient {
   sawDelegatedInstructionsBoundary = false;
   sawSanitizedDelegationObservation = false;
 
-  constructor(private readonly rawDelegatedClaimRefs = false) {}
+  constructor(
+    private readonly rawDelegatedClaimRefs = false,
+    private readonly rawDelegatedActionId = false
+  ) {}
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -7494,7 +7532,9 @@ class StructuredDelegationThenDoneModel implements ModelClient {
         }
         : noSopDoneEnvelope();
     }
-    return delegateCritiqueEnvelope();
+    return delegateCritiqueEnvelope(this.rawDelegatedActionId
+      ? "MODEL_DELEGATED_ACTION_ID_SHOULD_NOT_PERSIST"
+      : undefined);
   }
 }
 
@@ -9619,10 +9659,11 @@ const BOUNDED_DELEGATE_CONTEXT = "No tool, write, or mutation authority is avail
 const DELEGATE_CONTEXT_WITH_GENERIC_OUTPUT_SHAPE = "No tool, write, or mutation authority is available; completion remains with the main harness. Delegated analysis may use only this explicit payload context and named evidence refs. Return JSON with summary and findings.";
 const DELEGATE_CONTEXT_WITHOUT_SOURCE_BOUNDARY = "No tool, write, or mutation authority is available; completion remains with the main harness. Return JSON with summary and findings_text.";
 
-function delegateCritiqueEnvelope(): Record<string, unknown> {
+function delegateCritiqueEnvelope(actionId?: string): Record<string, unknown> {
   return {
     summary: "Delegate bounded critique before answering.",
     actions: [{
+      id: actionId,
       type: "delegate_agent",
       rationale: "Use a bounded subagent self-report for critique before final answer.",
       payload: {

@@ -1265,6 +1265,8 @@ completion_claim:
 ```
 
 The model proposes. The harness decides what runs and what counts as complete.
+After parsing, the harness assigns every action id; model-provided ids are not
+persisted or used for dispatch lineage.
 `completion_claim.verification_refs` may cite only harness-known tool result ids
 or tool artifact refs from the current run. Unknown or model-invented refs fail
 completion verification and do not count as independent proof. When a run has

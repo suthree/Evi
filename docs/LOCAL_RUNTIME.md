@@ -2182,7 +2182,9 @@ untrusted claim text. The final
 response artifact alone is not independent completion proof. Successful
 delegated `summary` and `findings_text` are sanitized before persistence and
 observation feedback; their stored preview is a canonical JSON rendering of
-those fields, never the original delegated model text. Result artifacts omit
+those fields, never the original delegated model text. After parsing any model
+envelope, the harness assigns action ids itself; model-provided ids are not
+persisted or used for dispatch lineage. Result artifacts omit
 the `task` field entirely while retaining `task_chars` and `input_digest` for
 audit lineage; legacy artifacts remain readable. Model-response artifacts retain
 only bounded response metadata. Every model-action envelope in a delegated run
