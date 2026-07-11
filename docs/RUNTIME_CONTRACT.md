@@ -1402,6 +1402,19 @@ tool result id or tool artifact ref and a bound non-delegated verification ref
 after the failed delegated result; an uncited write/run result and later
 read-only refs are context only.
 The final response artifact alone is not independent completion proof.
+New final-response evidence events bind that artifact to the first `respond`
+action selected by the runner through optional structured metadata: stable
+`response_ref`, action id, final envelope ref, round, and sequence among
+`respond` actions. For a final `done` envelope, Live Run Trace derives the same
+respond-action expectation from the parsed envelope and exposes only identity,
+event ordering, artifact membership, file presence, and completion-check
+metadata. Replay is clean only when exactly one modern event matches the final
+envelope/action, the stable `memory/episodes/<session_id>-final-response.md`
+file exists, and exactly one passing `final_response` check cites that ref.
+Legacy response events without structured metadata remain attention; partial,
+duplicate, missing, or mismatched modern lineage fails a verified done claim.
+No final-response body, payload, or content hash is read, and no historical
+migration or response regeneration is implied.
 Non-`done` runs still record a bounded
 `delegated_results` warning when any delegated result failed, so Live Run Trace
 and replay audit can show the failure without changing skipped completion
@@ -1756,6 +1769,16 @@ iteration outcome available in the same state root. Otherwise read models must
 report stale or missing lineage and render the explicit `memory dream` refresh
 command; they must not silently refresh, reconcile state roots, or claim the
 snapshot contains the latest verified direction.
+
+Its design goal is to compress verified runtime evidence into traceable,
+comparable, and rejectable long-horizon direction candidates: what capability
+to deepen, what risk to hold, and what work to defer. Codex, Hermes, GA, and
+other open implementations may inform mechanisms, but they are references, not
+the acceptance standard. XingZhe accepts a dream direction only by local
+evidence lineage, measurable core/basic capability value, reversibility, and
+operator-owned authority boundaries. Dream therefore proposes future focus; it
+does not acquire background execution, permission expansion, publication,
+identity mutation, or promotion authority.
 
 `memory archives` is a read-only view over `memory/archives/*.json`. It may
 list daily episode archive summaries or inspect one archive by date or state

@@ -456,6 +456,13 @@ Modern tool-result events also persist the declaring action id, envelope ref,
 round, and tool-action sequence. Replay requires one unique matching `use_tool`
 action with the same tool before that result can count as completion or recovery
 evidence; missing legacy lineage remains attention without a state migration.
+Modern final-response events likewise persist the stable response ref, declaring
+`respond` action id, final envelope ref, round, and respond-action sequence.
+For `done`, replay requires exactly one such event after the final envelope, one
+matching `respond` action, the stable session-owned response file, and exactly
+one passing `final_response` completion check with the same ref. Missing legacy
+metadata remains attention; missing files or mismatched modern lineage cannot
+replay a verified completion clean. Response bodies are never opened.
 Unbound claims remain failures
 even if the completion report says pass; valid report downgrades and missing
 legacy lineage remain attention, and no artifact body or historical migration

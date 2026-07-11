@@ -42,7 +42,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     assert.equal(report.replay_result, "metadata_replay");
     assert.equal(report.completion_id, "completion_verification_replay_test");
     assert.equal(report.metrics.rounds, 2);
-    assert.equal(report.metrics.events, 6);
+    assert.equal(report.metrics.events, 7);
     assert.equal(report.metrics.delegated_results_failed, 1);
     assert.equal(report.metrics.delegated_completion_gate_passed, 0);
     assert.equal(report.metrics.delegated_completion_gate_warning, 0);
@@ -198,6 +198,143 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     const detail = await getHarnessReplayAudit(store, { replayRef: report.id });
     assert.equal(detail.replay.id, report.id);
     assert.doesNotMatch(JSON.stringify({ list, detail }), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit rejects a verified done trace whose final response file is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-final-response-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, []);
+    await markReplayCompletionVerified(store);
+    await rm(join(stateRoot, "memory/episodes/session_replay_test-final-response.md"));
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const check = report.checks.find((item) => item.id === "final_response_evidence_binding");
+
+    assert.equal(check?.status, "fail");
+    assert.match(check?.summary ?? "", /file_present=false/);
+    assert.match(check?.summary ?? "", /modern_events=1/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit rejects modern final response lineage forgery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-response-forgery-"));
+  const cases: Array<{
+    name: string;
+    mutate: (store: AgentStore, stateRoot: string) => Promise<void>;
+  }> = [{
+    name: "joint-ref-swap",
+    mutate: async (store) => {
+      const swappedRef = "memory/episodes/unrelated-final-response.md";
+      await store.writeText(swappedRef, "RAW_SWAPPED_RESPONSE_SHOULD_NOT_APPEAR");
+      const completionRef = "memory/episodes/session_replay_test-completion-verification.json";
+      const completion = await store.readStateJson<Record<string, unknown>>(completionRef);
+      assert.ok(completion);
+      await store.writeJson(completionRef, {
+        ...completion,
+        final_response_ref: swappedRef,
+        checks: (completion.checks as Array<Record<string, unknown>>).map((check) =>
+          check.id === "final_response" ? { ...check, refs: [swappedRef] } : check)
+      });
+      await mutateReplayFinalResponseEvents(store, (event) => ({
+        ...event,
+        artifact_refs: [swappedRef],
+        final_response: { ...(event.final_response as Record<string, unknown>), response_ref: swappedRef }
+      }));
+    }
+  }, {
+    name: "wrong-action",
+    mutate: async (store) => mutateReplayFinalResponseEvents(store, (event) => ({
+      ...event,
+      final_response: { ...(event.final_response as Record<string, unknown>), action_id: "action_forged" }
+    }))
+  }, {
+    name: "partial-metadata",
+    mutate: async (store) => mutateReplayFinalResponseEvents(store, (event) => {
+      const metadata = { ...(event.final_response as Record<string, unknown>) };
+      delete metadata.sequence;
+      return { ...event, final_response: metadata };
+    })
+  }, {
+    name: "event-before-final-envelope",
+    mutate: async (store) => mutateReplayFinalResponseEvents(store, (event, events) => {
+      events.splice(events.findIndex((item) => item.id === "evidence_replay_model_r2"), 0, event);
+      return null;
+    })
+  }, {
+    name: "duplicate-event",
+    mutate: async (store) => mutateReplayFinalResponseEvents(store, (event, events) => {
+      events.push({ ...event, id: "evidence_replay_final_response_duplicate" });
+      return event;
+    })
+  }, {
+    name: "duplicate-check",
+    mutate: async (store) => {
+      const ref = "memory/episodes/session_replay_test-completion-verification.json";
+      const completion = await store.readStateJson<Record<string, unknown>>(ref);
+      assert.ok(completion);
+      const checks = completion.checks as Array<Record<string, unknown>>;
+      await store.writeJson(ref, {
+        ...completion,
+        checks: [...checks, { ...checks.find((check) => check.id === "final_response") }]
+      });
+    }
+  }];
+  try {
+    for (const testCase of cases) {
+      const caseRoot = join(root, testCase.name);
+      const repoRoot = join(caseRoot, "repo");
+      const stateRoot = join(caseRoot, "state");
+      const store = new AgentStore(repoRoot, stateRoot);
+      await mkdir(repoRoot, { recursive: true });
+      await mkdir(stateRoot, { recursive: true });
+      await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, []);
+      await markReplayCompletionVerified(store);
+      await testCase.mutate(store, stateRoot);
+
+      const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+      const check = report.checks.find((item) => item.id === "final_response_evidence_binding");
+      assert.equal(check?.status, "fail", testCase.name);
+      assert.doesNotMatch(JSON.stringify(report), /RAW_(?:REPLAY|SWAPPED)_/, testCase.name);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit keeps legacy final response events at attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-legacy-response-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) =>
+      event.id === "evidence_replay_final_response"
+        ? JSON.stringify({ ...event, final_response: undefined })
+        : JSON.stringify(event)
+    ).join("\n")}\n`);
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const check = report.checks.find((item) => item.id === "final_response_evidence_binding");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /modern_events=0/);
+    assert.match(check?.summary ?? "", /legacy_events=1/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -3627,6 +3764,7 @@ async function writeReplayTraceFixture(
   await store.writeJson(`memory/episodes/${sessionId}-model-action-r2.json`, {
     summary: "Second round responds.",
     actions: [{
+      id: "action_respond_replay",
       type: "respond",
       rationale: "Return result.",
       payload: {
@@ -3642,6 +3780,14 @@ async function writeReplayTraceFixture(
   await store.writeText(`memory/episodes/${sessionId}-delegated_result_invalid.json`, "RAW_REPLAY_DELEGATED_RESULT_SHOULD_NOT_APPEAR");
   await store.writeText(`memory/episodes/${sessionId}-final-response.md`, "RAW_REPLAY_FINAL_RESPONSE_SHOULD_NOT_APPEAR");
   const completionChecks = [...delegatedResultChecks];
+  if (!completionChecks.some((check) => check.id === "final_response")) {
+    completionChecks.push({
+      id: "final_response",
+      status: "pass",
+      summary: "Final response artifact was persisted.",
+      refs: [`memory/episodes/${sessionId}-final-response.md`]
+    });
+  }
   if (!completionChecks.some((check) => check.id === "claimed_refs_bound_to_evidence")) {
     completionChecks.push({
       id: "claimed_refs_bound_to_evidence",
@@ -3789,6 +3935,54 @@ async function writeReplayTraceFixture(
     artifact_refs: [`memory/episodes/${sessionId}-model-action-r2.json`],
     created_at: "2026-06-30T01:00:04.000Z"
   });
+  await store.appendJsonl("memory/episodes/events.jsonl", {
+    id: "evidence_replay_final_response",
+    session_id: sessionId,
+    turn_id: turnId,
+    kind: "report",
+    summary: "Saved final response from model action envelope.",
+    artifact_refs: [`memory/episodes/${sessionId}-final-response.md`],
+    final_response: {
+      response_ref: `memory/episodes/${sessionId}-final-response.md`,
+      action_id: "action_respond_replay",
+      envelope_ref: `memory/episodes/${sessionId}-model-action-r2.json`,
+      round: 2,
+      sequence: 1
+    },
+    created_at: "2026-06-30T01:00:04.500Z"
+  });
+}
+
+async function markReplayCompletionVerified(store: AgentStore): Promise<void> {
+  const ref = "memory/episodes/session_replay_test-completion-verification.json";
+  const completion = await store.readStateJson<Record<string, unknown>>(ref);
+  assert.ok(completion);
+  await store.writeJson(ref, {
+    ...completion,
+    verification_status: "passed",
+    verified: true,
+    checks: (completion.checks as Array<Record<string, unknown>>).map((check) => ({
+      ...check,
+      status: "pass"
+    }))
+  });
+}
+
+async function mutateReplayFinalResponseEvents(
+  store: AgentStore,
+  mutate: (
+    event: Record<string, unknown>,
+    remainingEvents: Array<Record<string, unknown>>
+  ) => Record<string, unknown> | null
+): Promise<void> {
+  const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  const index = events.findIndex((event) => event.id === "evidence_replay_final_response");
+  assert.notEqual(index, -1);
+  const [event] = events.splice(index, 1);
+  const replacement = mutate(event!, events);
+  if (replacement) events.push(replacement);
+  await store.writeText("memory/episodes/events.jsonl", `${events.map((item) => JSON.stringify(item)).join("\n")}\n`);
 }
 
 async function appendDelegatedDispatchSummary(store: AgentStore, suffix: string, summary: string): Promise<void> {

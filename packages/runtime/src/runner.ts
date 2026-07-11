@@ -289,6 +289,7 @@ export class LiveAgentRunner {
 
     let modelResponseRef = "";
     let envelopeRef = "";
+    let finalEnvelopeRound = 0;
     let envelope: ModelActionEnvelope | null = null;
     const toolResults: ToolResult[] = [];
     const delegatedResults: DelegatedResult[] = [];
@@ -406,6 +407,7 @@ export class LiveAgentRunner {
         }
       }
       envelopeRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-model-action-r${round}.json`, envelope);
+      finalEnvelopeRound = round;
       const actionEvent = evidenceEventSchema.parse({
         session_id: snapshot.session_id,
         turn_id: snapshot.id,
@@ -557,6 +559,8 @@ export class LiveAgentRunner {
 
     const finalResponseRef = await writeFinalResponse(this.store, snapshot.session_id, envelope);
     if (finalResponseRef) {
+      const respondActions = envelope.actions.filter((item) => item.type === "respond");
+      const responseAction = respondActions[0]!;
       if (discipline) {
         markTodo(discipline, "final_response", "done");
         discipline.iteration_log.push(`Saved final response to ${finalResponseRef}.`);
@@ -567,7 +571,14 @@ export class LiveAgentRunner {
         turn_id: snapshot.id,
         kind: "report",
         summary: "Saved final response from model action envelope.",
-        artifact_refs: [finalResponseRef]
+        artifact_refs: [finalResponseRef],
+        final_response: {
+          response_ref: finalResponseRef,
+          action_id: responseAction.id,
+          envelope_ref: envelopeRef,
+          round: finalEnvelopeRound,
+          sequence: 1
+        }
       });
       evidenceRefs.push(responseEvent.id);
       await this.store.appendJsonl("memory/episodes/events.jsonl", responseEvent);

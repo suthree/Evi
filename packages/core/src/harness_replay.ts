@@ -342,6 +342,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: [trace.report_ref]
     },
     completionVerificationStateCheck(trace),
+    finalResponseEvidenceBindingCheck(trace),
     delegatedCompletionGateCheck(trace),
     verificationEvidenceLineageCheck(trace),
     {
@@ -371,6 +372,83 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function finalResponseEvidenceBindingCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  if (trace.final_completion_status !== "done") {
+    return {
+      id: "final_response_evidence_binding",
+      status: "pass",
+      summary: "applicable=false; final_completion_status is not done; no final response is required.",
+      refs: [trace.report_ref]
+    };
+  }
+  const modernEvents = trace.final_response_events.filter((event) => event.metadata_present);
+  const legacyEvents = trace.final_response_events.filter((event) => !event.metadata_present);
+  const event = modernEvents.length === 1 ? modernEvents[0]! : null;
+  const finalRound = trace.rounds.find((round) => round.envelope_ref === trace.final_envelope_ref);
+  const matchingRespondActions = event && finalRound
+    ? finalRound.respond_action_expectations.filter((action) =>
+      action.action_id === event.action_id && action.sequence === event.sequence)
+    : [];
+  const eventMatches = event !== null
+    && event.lineage_present
+    && !event.lineage_partial
+    && event.response_ref === trace.expected_final_response_ref
+    && event.artifact_refs.length === 1
+    && event.artifact_refs[0] === trace.expected_final_response_ref
+    && event.envelope_ref === trace.final_envelope_ref
+    && event.reported_envelope_ref === trace.final_envelope_ref
+    && event.reported_round === event.round
+    && event.envelope_ref_in_trace_rounds
+    && event.envelope_ref_matches_identity
+    && matchingRespondActions.length === 1;
+  const reportCheck = trace.final_response_checks.length === 1
+    ? trace.final_response_checks[0]!
+    : null;
+  const reportCheckMatches = reportCheck?.status === "pass"
+    && reportCheck.refs.length === 1
+    && reportCheck.refs[0] === trace.expected_final_response_ref;
+  const definitiveMatch = modernEvents.length === 1
+    && legacyEvents.length === 0
+    && trace.final_response_events.length === 1
+    && trace.final_response_ref_matches_identity
+    && trace.final_response_file_present
+    && finalRound !== undefined
+    && finalRound.respond_action_expectations.length > 0
+    && eventMatches
+    && reportCheckMatches;
+  const claimsPassed = trace.verification_status === "passed" || trace.verified;
+  const status: HarnessReplayAuditCheckStatus = definitiveMatch
+    ? "pass"
+    : modernEvents.length === 0
+      ? "warning"
+      : claimsPassed
+        ? "fail"
+        : "warning";
+  return {
+    id: "final_response_evidence_binding",
+    status,
+    summary: [
+      "applicable=true",
+      `expected_ref=${trace.expected_final_response_ref}`,
+      `report_ref_matches_identity=${trace.final_response_ref_matches_identity}`,
+      `file_present=${trace.final_response_file_present}`,
+      `events=${trace.final_response_events.length}`,
+      `modern_events=${modernEvents.length}`,
+      `legacy_events=${legacyEvents.length}`,
+      `partial_metadata=${modernEvents.filter((item) => item.lineage_partial).length}`,
+      `final_respond_actions=${finalRound?.respond_action_expectations.length ?? 0}`,
+      `event_lineage_match=${eventMatches}`,
+      `report_check_count=${trace.final_response_checks.length}`,
+      `report_check_match=${reportCheckMatches}`
+    ].join("; "),
+    refs: unique([
+      trace.report_ref,
+      trace.final_envelope_ref,
+      ...trace.final_response_events.map((item) => `${trace.report_ref}#${item.event_id}`)
+    ])
+  };
 }
 
 function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {

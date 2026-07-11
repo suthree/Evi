@@ -202,6 +202,14 @@ export const toolResultEventMetadataSchema = z.object({
   is_write_run: z.boolean()
 });
 
+export const finalResponseEventMetadataSchema = z.object({
+  response_ref: z.string().min(1).optional(),
+  action_id: z.string().min(1).optional(),
+  envelope_ref: z.string().min(1).optional(),
+  round: z.number().int().positive().optional(),
+  sequence: z.number().int().positive().optional()
+});
+
 export const evidenceEventSchema = z.object({
   id: z.string().default(() => newId("evidence")),
   session_id: z.string(),
@@ -223,6 +231,7 @@ export const evidenceEventSchema = z.object({
   artifact_refs: z.array(z.string()).default([]),
   tool_result: toolResultEventMetadataSchema.optional(),
   delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
+  final_response: finalResponseEventMetadataSchema.optional(),
   created_at: z.string().default(utcNow)
 });
 

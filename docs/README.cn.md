@@ -193,6 +193,9 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 这里的 dream 是“带来源版本的长期方向投影”，不是自由反思、原始会话摘要、隐藏推理、持久身份或自动执行计划。
 它输出能力轴、时间跨度、非目标、下一步候选和来源 lineage；只有当同一 state root 中内嵌的 verified outcome
 与当前最新 verified outcome 完全一致时才是 current，否则必须显示 stale/missing，并由操作者显式刷新。
+设计目标是把运行证据压缩为可追溯、可比较、可否决的长期方向候选，帮助下一轮选择“强化什么、暂缓什么”，
+而不是赋予后台代理新的行动权。Codex、Hermes、GA 等只作为机制参考；XingZhe 的判断标准仍是本地证据、
+核心/基础能力增益、可逆性和操作者边界。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
@@ -213,6 +216,7 @@ manual local、external adapter 或 local-learning follow-up 必须显式选择 
 artifacts，用来复用 GA 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
 派生 successor plan 时会折叠历史 completed-source non-goals，避免下一轮 seed 递归膨胀。
 Replay audit 会根据 `completion_status` 和有界 failed-check ids 重算完成验证 tuple：非 `done` 必须是 `skipped/false`，存在失败检查的 `done` 必须是 `failed/false`，没有失败检查的 `done` 才能是 `passed/true`；与这些输入矛盾却自称 passed 或 verified 的报告会 replay fail，语义一致的 failed/skipped 仍保持 attention。对 delegated `delegated_results` gate，replay 还会根据 delegated result 数量、`ok=false` dispatch round、completion status，以及能唯一绑定 tool-result event、artifact 和 round 的后续 claimed 成功 write/run 证据独立重算 pass/warning/fail/skipped；dispatch metadata 不完整时保持 attention，不猜测为 pass；独立推导出的 fail 不会被 report 降级，report 用 pass 掩盖预期 warning 也会 replay fail，其他状态漂移保持 attention。Replay 还会检查 delegated dispatch metadata、`model_invoked`、`dispatch_failure_kind`、`result_failure_kind`、两层失败类型语义配对和每轮 active delegate 上限；`ok=true` 必须对应 `contract_status=passed`，`ok=false` 必须对应 `contract_status=failed`，任一矛盾 tuple 都会成为 warning，而 runner 写入的 failed-delegation recovery 语义仍以 `ok` 为准；缺少失败分类字段、合法枚举但配对错误，或 input-contract / round-limit 拒绝却记录 `model_invoked=true`，也会被标记为 warning，显式 `none` 才表示该层没有失败；delegated completion-gate 的失败会在 replay check 中保持为 `fail`，顶层 replay report 仍以 `attention` 表示存在非 pass 检查。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
+现代 final-response 事件还会记录稳定 response ref、最终 `respond` action id、envelope ref、round 和 respond sequence。对 `done`，replay 要求最终 envelope 中存在唯一匹配 action、同次运行只有一个现代回复事件、session-owned 文件存在，并且 completion report 恰有一个同 ref 的 passing `final_response` check；旧事件缺少结构化元数据保持 attention，现代血缘或文件不匹配不能让 verified completion replay clean，检查全程不读取回复正文。
 delegated 的 `result_ref` 还必须同时匹配该 delegated event 的 `session_id/result_id`、属于该 event 的 persisted JSON artifact，且该文件存在；只修改 metadata、completion report 或 event artifact 列表指向幽灵路径或其他既存 artifact 也只能得到 attention。该核对只看身份、artifact 成员关系和文件存在性，不读取 delegated artifact 内容。
 历史 iteration evidence refs 也会在 successor planning 中折叠，只保留当前 source artifact 和直接证据。
 其中 `artifact_count` 是可复用 artifact 总数，`listed_artifact_count` 是当前 limit 下实际列出的数量。

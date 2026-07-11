@@ -3657,10 +3657,12 @@ test("live runner marks done claim unverified when a write or run tool failed", 
       completion_status: string;
       verification_status: string;
       verified: boolean;
+      envelope_ref: string;
       checks: Array<{ id: string; status: string; summary: string }>;
     };
     const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
     const verificationEvent = events.find((event) => String(event.summary).includes("Completion verification failed"));
+    const responseEvent = events.find((event) => event.summary === "Saved final response from model action envelope.");
     const trigger = triggerSchema.parse({
       type: "external_task",
       source: "prompt",
@@ -3682,6 +3684,17 @@ test("live runner marks done claim unverified when a write or run tool failed", 
     assert.equal(Array.isArray(verificationEvent.artifact_refs), true);
     assert.equal((verificationEvent.artifact_refs as string[]).includes(result.completion_report_ref), true);
     assert.equal((verificationEvent.artifact_refs as string[]).some((ref) => ref.includes("tool_result")), true);
+    assert.ok(responseEvent?.final_response);
+    const responseMetadata = responseEvent.final_response as Record<string, unknown>;
+    assert.deepEqual(responseEvent?.artifact_refs, [result.final_response_ref]);
+    assert.deepEqual(responseEvent?.final_response, {
+      response_ref: result.final_response_ref,
+      action_id: responseMetadata.action_id,
+      envelope_ref: report.envelope_ref,
+      round: 2,
+      sequence: 1
+    });
+    assert.equal(typeof responseMetadata.action_id, "string");
     assert.match(rendered.markdown, /Completion Verification/);
     assert.match(rendered.markdown, /verification_status: failed/);
     assert.match(rendered.markdown, /write_run_tool_results: fail/);

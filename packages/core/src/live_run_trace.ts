@@ -41,7 +41,13 @@ export interface LiveRunTraceRound {
   delegated_action_sequence_by_id: Record<string, number>;
   delegated_action_inputs: LiveRunDelegatedActionInputExpectation[];
   tool_action_expectations: LiveRunToolActionExpectation[];
+  respond_action_expectations: LiveRunRespondActionExpectation[];
   harness_action_types: string[];
+}
+
+export interface LiveRunRespondActionExpectation {
+  action_id: string;
+  sequence: number;
 }
 
 export interface LiveRunToolActionExpectation {
@@ -104,6 +110,24 @@ export interface LiveRunToolResultEventSummary {
   ok: boolean | null;
   side_effect_level: LiveRunVerificationEvidenceRefSummary["side_effect_level"] | null;
   is_write_run: boolean | null;
+  metadata_present: boolean;
+}
+
+export interface LiveRunFinalResponseEventSummary {
+  event_id: string;
+  created_at: string;
+  round: number;
+  envelope_ref: string | null;
+  envelope_ref_in_trace_rounds: boolean;
+  envelope_ref_matches_identity: boolean;
+  artifact_refs: string[];
+  response_ref: string | null;
+  action_id: string | null;
+  reported_envelope_ref: string | null;
+  reported_round: number | null;
+  sequence: number | null;
+  lineage_present: boolean;
+  lineage_partial: boolean;
   metadata_present: boolean;
 }
 
@@ -177,6 +201,11 @@ export interface LiveRunTraceSummary {
   context_ref?: string;
   context_manifest_ref?: string;
   final_response_ref: string | null;
+  expected_final_response_ref: string;
+  final_response_ref_matches_identity: boolean;
+  final_response_file_present: boolean;
+  final_response_events: LiveRunFinalResponseEventSummary[];
+  final_response_checks: LiveRunCompletionCheckSummary[];
   event_count: number;
   event_kind_counts: Record<string, number>;
   tool_result_count: number;
@@ -307,6 +336,11 @@ async function summarizeLiveRunTrace(
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
   const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles, rounds);
+  const finalResponseEvents = readFinalResponseEventSummaries(runEvents, rounds);
+  const expectedFinalResponseRef = `memory/episodes/${report.session_id}-final-response.md`;
+  const finalResponseChecks = report.checks
+    .filter((check) => check.id === "final_response")
+    .map((check) => ({ ...check, refs: [...check.refs] }));
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents, episodeFiles);
@@ -375,6 +409,11 @@ async function summarizeLiveRunTrace(
     context_ref: contextRef,
     context_manifest_ref: contextManifestRef,
     final_response_ref: report.final_response_ref,
+    expected_final_response_ref: expectedFinalResponseRef,
+    final_response_ref_matches_identity: report.final_response_ref === expectedFinalResponseRef,
+    final_response_file_present: episodeFiles.has(expectedFinalResponseRef),
+    final_response_events: finalResponseEvents,
+    final_response_checks: finalResponseChecks,
     event_count: runEvents.length,
     event_kind_counts: eventKindCounts,
     tool_result_count: eventKindCounts.tool_result ?? 0,
@@ -474,6 +513,55 @@ function readToolResultEventSummaries(
         metadata_present: event.tool_result !== undefined
       });
     }
+  }
+  return summaries;
+}
+
+function readFinalResponseEventSummaries(
+  events: EpisodeEvent[],
+  rounds: LiveRunTraceRound[]
+): LiveRunFinalResponseEventSummary[] {
+  const summaries: LiveRunFinalResponseEventSummary[] = [];
+  const traceEnvelopeRefs = new Set(rounds.map((round) => round.envelope_ref));
+  let currentRound = 0;
+  let currentEnvelopeRef: string | null = null;
+  for (const event of events) {
+    if (event.kind === "model_action") {
+      currentEnvelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
+      currentRound = currentEnvelopeRef ? roundNumber(currentEnvelopeRef) : 0;
+      continue;
+    }
+    if (event.kind !== "report" || (
+      event.final_response === undefined
+      && event.summary !== "Saved final response from model action envelope."
+    )) continue;
+    const metadata = event.final_response;
+    const lineageValues = [
+      metadata?.response_ref,
+      metadata?.action_id,
+      metadata?.envelope_ref,
+      metadata?.round,
+      metadata?.sequence
+    ];
+    const lineageFieldCount = lineageValues.filter((value) => value !== undefined).length;
+    summaries.push({
+      event_id: event.id,
+      created_at: event.created_at,
+      round: currentRound,
+      envelope_ref: currentEnvelopeRef,
+      envelope_ref_in_trace_rounds: currentEnvelopeRef !== null && traceEnvelopeRefs.has(currentEnvelopeRef),
+      envelope_ref_matches_identity: currentEnvelopeRef !== null
+        && currentEnvelopeRef === `memory/episodes/${event.session_id}-model-action-r${currentRound}.json`,
+      artifact_refs: [...event.artifact_refs],
+      response_ref: metadata?.response_ref ?? null,
+      action_id: metadata?.action_id ?? null,
+      reported_envelope_ref: metadata?.envelope_ref ?? null,
+      reported_round: metadata?.round ?? null,
+      sequence: metadata?.sequence ?? null,
+      lineage_present: lineageFieldCount === lineageValues.length,
+      lineage_partial: lineageFieldCount > 0 && lineageFieldCount < lineageValues.length,
+      metadata_present: metadata !== undefined
+    });
   }
   return summaries;
 }
@@ -668,6 +756,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
     const actionCounts = countBy(actionTypes);
     const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
     const toolActions = parsed.data.actions.filter((action) => action.type === "use_tool");
+    const respondActions = parsed.data.actions.filter((action) => action.type === "respond");
     const delegatedActionInputs = delegateActions.map((action, index) => ({
       action_id: action.id,
       sequence: index + 1,
@@ -692,6 +781,10 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
         action_id: action.id,
         sequence: index + 1,
         tool: typeof action.payload.tool === "string" ? action.payload.tool : "unknown"
+      })),
+      respond_action_expectations: respondActions.map((action, index) => ({
+        action_id: action.id,
+        sequence: index + 1
       })),
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
