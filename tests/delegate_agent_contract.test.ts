@@ -219,6 +219,29 @@ test("delegated output rejects natural-language command and test execution claim
   }
 });
 
+test("delegated output rejects destructive execution claims with suppressed previews", () => {
+  const claims = [
+    "I deleted stale state records.",
+    "I removed stale state records.",
+    "I erased stale state records.",
+    "I unlinked stale state records.",
+    "I dropped stale state records.",
+    "I destroyed stale state records."
+  ];
+
+  for (const claim of claims) {
+    const result = parseDelegatedOutput(JSON.stringify({
+      summary: claim,
+      findings_text: "No issue."
+    }), DELEGATED_OUTPUT_SOURCE);
+    assert.equal(result.ok, false, claim);
+    if (!result.ok) {
+      assert.match(result.error, /must not claim tool\/write\/mutation/);
+      assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
+    }
+  }
+});
+
 test("delegated output rejects unsupported fields with suppressed preview", () => {
   const result = parseDelegatedOutput(JSON.stringify({
     summary: "Valid bounded summary.",

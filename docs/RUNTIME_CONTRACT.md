@@ -1332,11 +1332,13 @@ Markdown, code fence, wrapper prose, or extra keys. The payload is strict: `dele
 `task` and `context`, so expert persona, model, tool, schedule, or authority
 fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated
-`task`/`context` or claim delegated tool/write/mutation, completion, expert,
+`task`/`context` or claim delegated tool/write/mutation or destructive
+delete/remove/erase/unlink/drop/destroy execution, completion, expert,
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
 state, context expansion, or invented evidence-ref authority. Natural-language
-delegated output claims that it ran or executed tests, builds, commands, or
-checks, or that it read files, searched the repo, fetched URLs, or browsed the
+delegated output claims that it deleted, removed, erased, unlinked, dropped, or
+destroyed state, ran or executed tests, builds, commands, or checks, or read
+files, searched the repo, fetched URLs, or browsed the
 web, are treated as delegated tool authority claims. The harness sanitizes
 successful delegated `summary` and `findings_text`, then persists only their
 canonical JSON preview. Delegated task text is likewise omitted from result

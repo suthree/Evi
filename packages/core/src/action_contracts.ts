@@ -108,7 +108,7 @@ export const delegateAgentAuthoringContract = {
     "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
     "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
   ],
-  delegated_model_authority_boundary: "Do not claim tool/write/mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
+  delegated_model_authority_boundary: "Do not claim tool/write/mutation or destructive delete/remove/erase/unlink/drop/destroy execution, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority."
 } as const;
 
 export const delegateAgentActionContract = {

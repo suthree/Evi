@@ -1071,6 +1071,7 @@ function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: str
 function delegatedTextClaimsAuthority(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
+    || delegatedTextClaimsDestructiveMutation(text)
     || hasNearbyBoundary(
       text,
       DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES,
@@ -1083,6 +1084,11 @@ function delegatedTextClaimsAuthority(value: string): boolean {
       DELEGATED_READ_TOOL_SURFACE_TERMS,
       80
     );
+}
+
+function delegatedTextClaimsDestructiveMutation(text: string): boolean {
+  return /\b(?:i|delegated subagent|subagent)\s+(?:have\s+|has\s+)?(?:delete(?:d)?|remove(?:d)?|eras(?:e|ed)|unlink(?:ed)?|drop(?:ped)?|destroy(?:ed)?)\b/.test(text)
+    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:删除|移除|清除)/u.test(text);
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
