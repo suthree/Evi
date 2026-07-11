@@ -541,6 +541,25 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(coveredDelegationContract.status, "covered");
   assert.equal(coveredDelegationContract.required_tokens.includes("implementation_contract.delegation_contract=shared_authority"), true);
 
+  const preDiagnosticIntegrityContract = {
+    ...delegationContract,
+    trace_replay: {
+      ...delegationContract.trace_replay,
+      checks: delegationContract.trace_replay.checks.filter((check) => check !== "model_diagnostic_integrity")
+    }
+  };
+  const safelyAdvancedDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: {
+      ...planContract,
+      delegation_contract: preDiagnosticIntegrityContract
+    }
+  });
+  assert.equal(safelyAdvancedDelegationContract.status, "covered");
+  assert.deepEqual(safelyAdvancedDelegationContract.advanced_fields, ["delegation_contract"]);
+
   const driftedDelegationContract = {
     ...delegationContract,
     result: {

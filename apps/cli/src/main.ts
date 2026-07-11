@@ -428,6 +428,7 @@ type IterationAuditImplementationContractCoverageStatus =
   | "mismatched_contract";
 
 const RUNTIME_ATTENTION_CLASSIFICATIONS = ["acceptable", "repair_needed", "verification_blocker"] as const;
+const SAFE_ADDITIVE_DELEGATION_REPLAY_CHECK = "model_diagnostic_integrity";
 
 export function buildIterationAuditSeedEvidenceStatus(
   seed: GaProjectDesignCompletionAuditSeed,
@@ -803,6 +804,7 @@ export function buildIterationAuditImplementationContractCoverage(
   status: IterationAuditImplementationContractCoverageStatus;
   missing_fields: string[];
   mismatched_fields: string[];
+  advanced_fields: string[];
   required_tokens: string[];
   boundary: string;
 } {
@@ -812,6 +814,7 @@ export function buildIterationAuditImplementationContractCoverage(
       status: "missing_contract",
       missing_fields: ["implementation_contract"],
       mismatched_fields: [],
+      advanced_fields: [],
       required_tokens: implementationContractRequiredTokens(planContract),
       boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record; does not mutate state or prove completion"
     };
@@ -820,10 +823,17 @@ export function buildIterationAuditImplementationContractCoverage(
   const authoritativeDelegationContract = contract.delegation_contract || expectedContract.delegation_contract
     ? getGaProjectDesignDelegationImplementationContract()
     : undefined;
+  const safelyAdvancedDelegationContract = Boolean(
+    contract.delegation_contract
+    && authoritativeDelegationContract
+    && isSafeAdditiveDelegationReplayContract(contract.delegation_contract, authoritativeDelegationContract)
+    && (planContract.proposed_slice !== iteration.proposed_slice
+      || isDeepStrictEqual(expectedContract.delegation_contract, authoritativeDelegationContract))
+  );
   const delegationContractMismatch = Boolean(contract.delegation_contract) && (
     !isDeepStrictEqual(contract.delegation_contract, expectedContract.delegation_contract)
     || !isDeepStrictEqual(contract.delegation_contract, authoritativeDelegationContract)
-  );
+  ) && !safelyAdvancedDelegationContract;
   const missingFields = [
     ...(!contract.proposed_slice ? ["proposed_slice"] : []),
     ...(!contract.source_artifact_id ? ["source_artifact_id"] : []),
@@ -858,9 +868,35 @@ export function buildIterationAuditImplementationContractCoverage(
         : "covered",
     missing_fields: missingFields,
     mismatched_fields: mismatchedFields,
+    advanced_fields: safelyAdvancedDelegationContract ? ["delegation_contract"] : [],
     required_tokens: implementationContractRequiredTokens(expectedContract),
-    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, otherwise checks the audited iteration's persisted contract self-consistency; does not mutate state or prove completion"
+    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, accepts only the fixed safe additive model-diagnostic replay refinement, otherwise checks persisted contract self-consistency; does not mutate state or prove completion"
   };
+}
+
+function isSafeAdditiveDelegationReplayContract(
+  previous: NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>,
+  current: NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>
+): boolean {
+  const { trace_replay: previousTrace, ...previousWithoutTrace } = previous;
+  const { trace_replay: currentTrace, ...currentWithoutTrace } = current;
+  if (!isDeepStrictEqual(previousWithoutTrace, currentWithoutTrace)) return false;
+  if (!isDeepStrictEqual(previousTrace.required_metadata, currentTrace.required_metadata)
+    || previousTrace.reads_delegated_artifact_bodies !== currentTrace.reads_delegated_artifact_bodies
+    || !isOrderedSubset(previousTrace.checks, currentTrace.checks)) {
+    return false;
+  }
+  const addedChecks = currentTrace.checks.filter((item) => !previousTrace.checks.includes(item));
+  return addedChecks.length === 1
+    && addedChecks[0] === SAFE_ADDITIVE_DELEGATION_REPLAY_CHECK;
+}
+
+function isOrderedSubset(previous: string[], current: string[]): boolean {
+  let index = 0;
+  for (const item of current) {
+    if (item === previous[index]) index += 1;
+  }
+  return index === previous.length;
 }
 
 function implementationContractRequiredTokens(
