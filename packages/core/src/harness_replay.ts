@@ -660,11 +660,13 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const reportedDelegatedIndependentChecks = trace.delegated_completion_gate_checks
     .filter((check) => check.id === delegatedIndependentCheckId);
   const reportedDelegatedIndependentStatus = reportedDelegatedIndependentChecks[0]?.status;
-  const reportedDelegatedResultsCheck = trace.delegated_completion_gate_checks
-    .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedResults);
+  const reportedDelegatedResultsChecks = trace.delegated_completion_gate_checks
+    .filter((check) => check.id === delegateAgentCompletionGateCheckId.delegatedResults);
+  const reportedDelegatedResultsCheck = reportedDelegatedResultsChecks[0];
   const reportedDelegatedResultsStatus = reportedDelegatedResultsCheck?.status;
-  const reportedDelegatedSelfReportStatus = trace.delegated_completion_gate_checks
-    .find((check) => check.id === delegateAgentCompletionGateCheckId.delegatedSelfReportRefs)?.status;
+  const reportedDelegatedSelfReportChecks = trace.delegated_completion_gate_checks
+    .filter((check) => check.id === delegateAgentCompletionGateCheckId.delegatedSelfReportRefs);
+  const reportedDelegatedSelfReportStatus = reportedDelegatedSelfReportChecks[0]?.status;
   const evidenceTruth = delegatedEvidenceTruth(trace);
   const {
     authoritativeClaimRefs,
@@ -765,6 +767,10 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     && (!delegatedIndependentGateApplicable
       || reportedDelegatedIndependentStatus === expectedDelegatedIndependentStatus);
   const delegatedSelfReportGateApplicable = doneGateApplicable;
+  const delegatedResultsCheckCardinalityMatches = completionStatusKnown
+    && reportedDelegatedResultsChecks.length === 1;
+  const delegatedSelfReportCheckCardinalityMatches = completionStatusKnown
+    && reportedDelegatedSelfReportChecks.length === (delegatedSelfReportGateApplicable ? 1 : 0);
   let expectedDelegatedResultsStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (!completionStatusKnown && trace.delegated_result_count > 0) {
     expectedDelegatedResultsStatus = "unknown";
@@ -789,9 +795,11 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       expectedDelegatedSelfReportStatus = "pass";
     }
   }
-  const delegatedResultsStatusMatches = reportedDelegatedResultsStatus === expectedDelegatedResultsStatus;
-  const delegatedSelfReportStatusMatches = !delegatedSelfReportGateApplicable
-    || reportedDelegatedSelfReportStatus === expectedDelegatedSelfReportStatus;
+  const delegatedResultsStatusMatches = delegatedResultsCheckCardinalityMatches
+    && reportedDelegatedResultsStatus === expectedDelegatedResultsStatus;
+  const delegatedSelfReportStatusMatches = delegatedSelfReportCheckCardinalityMatches
+    && (!delegatedSelfReportGateApplicable
+      || reportedDelegatedSelfReportStatus === expectedDelegatedSelfReportStatus);
   let status: HarnessReplayAuditCheckStatus = "pass";
   if (((claimRefsMismatch || envelopeRefMismatch) && trace.verified)
     || delegatedFailedCheckIds.length > 0
@@ -823,15 +831,23 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `warning_checks=${delegatedWarningCheckIds.join(",") || "none"}`,
       `delegated_results_status=${reportedDelegatedResultsStatus ?? "missing"}`,
       `expected_delegated_results_status=${expectedDelegatedResultsStatus}`,
+      `delegated_results_check_count=${reportedDelegatedResultsChecks.length}`,
+      `expected_delegated_results_check_count=${completionStatusKnown ? 1 : "unknown"}`,
+      `delegated_results_check_cardinality_match=${delegatedResultsCheckCardinalityMatches}`,
       `completion_status_authority=${authoritativeCompletionStatus ?? "unknown"}`,
       `completion_status_known=${completionStatusKnown}`,
       `delegated_self_report_status=${reportedDelegatedSelfReportStatus ?? "missing"}`,
       `expected_delegated_self_report_status=${expectedDelegatedSelfReportStatus}`,
       `delegated_self_report_gate_applicable=${delegatedSelfReportGateApplicable}`,
+      `delegated_self_report_check_count=${reportedDelegatedSelfReportChecks.length}`,
+      `expected_delegated_self_report_check_count=${completionStatusKnown ? (delegatedSelfReportGateApplicable ? 1 : 0) : "unknown"}`,
+      `delegated_self_report_check_cardinality_match=${delegatedSelfReportCheckCardinalityMatches}`,
       `claimed_refs_bound_status=${reportedClaimedRefsBoundStatus ?? "missing"}`,
       `expected_claimed_refs_bound_status=${expectedClaimedRefsBoundStatus}`,
       `claimed_refs_bound_gate_applicable=${claimedRefsBoundGateApplicable}`,
       `claimed_refs_bound_check_count=${reportedClaimedRefsBoundChecks.length}`,
+      `expected_claimed_refs_bound_check_count=${completionStatusKnown ? (claimedRefsBoundGateApplicable ? 1 : 0) : "unknown"}`,
+      `claimed_refs_bound_check_cardinality_match=${claimedRefsBoundCheckCardinalityMatches}`,
       `verification_evidence_refs_present=${trace.verification_evidence_refs_present}`,
       `envelope_claimed_verification_refs_present=${claimMetadataComplete}`,
       `reported_envelope_ref_matches_final=${trace.reported_envelope_ref_matches_final}`,
@@ -868,6 +884,8 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `expected_delegated_independent_status=${expectedDelegatedIndependentStatus}`,
       `delegated_independent_gate_applicable=${delegatedIndependentGateApplicable}`,
       `delegated_independent_check_count=${reportedDelegatedIndependentChecks.length}`,
+      `expected_delegated_independent_check_count=${completionStatusKnown ? (delegatedIndependentGateApplicable ? 1 : 0) : "unknown"}`,
+      `delegated_independent_check_cardinality_match=${delegatedIndependentCheckCardinalityMatches}`,
       `post_delegation_bound_refs=${modernPostDelegationRefs.length}`,
       `post_failed_delegation_verification_refs=${modernPostFailedDelegationVerificationRefs.length}`,
       `post_failed_delegation_recovery_refs=${modernPostFailedDelegationRecoveryRefs.length}`,

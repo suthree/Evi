@@ -464,6 +464,12 @@ failure; a conservative report downgrade remains attention, and a missing
 final status stays unknown instead of falling back to a clean report claim.
 Trace exposes reported/final status, presence, and match metadata without
 reading raw model artifacts.
+Replay also enforces exact delegated completion-gate cardinality: modern
+reports contain one `delegated_results` check; `done` reports contain exactly
+one self-report, claimed-binding, and independent-evidence check, while
+non-`done` reports contain none of those done-only checks. Missing, duplicate,
+or unexpected checks remain attention, and a missing historical final status
+stays unknown rather than being inferred clean.
 Completion audit seeds and acceptance trace require the later outcome to show
 that the delivered change stayed inside that contract and did not enter
 deferred tool, learning, expert-specialization, or multi-agent scheduling scope.

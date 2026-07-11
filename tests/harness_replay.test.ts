@@ -493,6 +493,150 @@ test("harness replay audit surfaces delegated completion gate check ids", async 
   }
 });
 
+test("harness replay audit rejects duplicate delegated completion gate checks", async () => {
+  const cases = [{
+    name: "duplicate pass",
+    duplicate: {
+      id: "delegated_results",
+      status: "pass",
+      summary: "Copied delegated result gate.",
+      refs: ["delegated_result_invalid"]
+    },
+    expectedGateStatus: "warning",
+    countField: "delegated_results_check_count=2",
+    cardinalityField: "delegated_results_check_cardinality_match=false"
+  }, {
+    name: "conflicting duplicate",
+    duplicate: {
+      id: "delegated_self_report_refs",
+      status: "fail",
+      summary: "Conflicting copied self-report gate.",
+      refs: []
+    },
+    expectedGateStatus: "fail",
+    countField: "delegated_self_report_check_count=2",
+    cardinalityField: "delegated_self_report_check_cardinality_match=false"
+  }, {
+    name: "duplicate claimed binding",
+    duplicate: {
+      id: "claimed_refs_bound_to_evidence",
+      status: "pass",
+      summary: "Copied claimed-binding gate.",
+      refs: ["tool_result_post_cardinality"]
+    },
+    expectedGateStatus: "warning",
+    countField: "claimed_refs_bound_check_count=2",
+    cardinalityField: "claimed_refs_bound_check_cardinality_match=false"
+  }, {
+    name: "duplicate independent evidence",
+    duplicate: {
+      id: "delegated_independent_evidence",
+      status: "pass",
+      summary: "Copied independent-evidence gate.",
+      refs: ["tool_result_post_cardinality"]
+    },
+    expectedGateStatus: "warning",
+    countField: "delegated_independent_check_count=2",
+    cardinalityField: "delegated_independent_check_cardinality_match=false"
+  }] as const;
+
+  for (const testCase of cases) {
+    const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-gate-cardinality-"));
+    const repoRoot = join(root, "repo");
+    const stateRoot = join(root, "state");
+    const store = new AgentStore(repoRoot, stateRoot);
+    try {
+      await mkdir(repoRoot, { recursive: true });
+      await mkdir(stateRoot, { recursive: true });
+      const resultId = "tool_result_post_cardinality";
+      await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+        id: "delegated_results",
+        status: "pass",
+        summary: "All delegated results passed.",
+        refs: ["delegated_result_invalid"]
+      }, {
+        id: "delegated_self_report_refs",
+        status: "pass",
+        summary: "Delegated identities were not claimed.",
+        refs: []
+      }, {
+        id: "claimed_refs_bound_to_evidence",
+        status: "pass",
+        summary: "Post-delegation evidence is bound.",
+        refs: [resultId]
+      }, {
+        id: "delegated_independent_evidence",
+        status: "pass",
+        summary: "Post-delegation evidence is independently bound.",
+        refs: [resultId]
+      }, testCase.duplicate]);
+      const verificationEvidence = await appendReplayPostDelegationEvidence(store, { resultId });
+      const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+      const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+      await store.writeJson(reportRef, {
+        ...completion,
+        claimed_verification_refs: [resultId],
+        verification_evidence_refs: verificationEvidence
+      });
+      await syncReplayEnvelopeClaimRefs(store, [resultId]);
+
+      const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+      const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+      assert.equal(report.status, "attention", testCase.name);
+      assert.equal(gateCheck?.status, testCase.expectedGateStatus, testCase.name);
+      assert.match(gateCheck?.summary ?? "", new RegExp(testCase.countField));
+      assert.match(gateCheck?.summary ?? "", new RegExp(testCase.cardinalityField));
+      assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("harness replay audit rejects done-only delegated gates in blocked reports", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-blocked-gate-cardinality-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY, [{
+      id: "delegated_results",
+      status: "pass",
+      summary: "All delegated results passed.",
+      refs: ["delegated_result_invalid"]
+    }, {
+      id: "delegated_self_report_refs",
+      status: "pass",
+      summary: "Unexpected done-only self-report gate.",
+      refs: []
+    }]);
+    const reportRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(reportRef);
+    await store.writeJson(reportRef, {
+      ...completion,
+      completion_status: "blocked",
+      verification_status: "skipped",
+      verified: false
+    });
+    await syncReplayEnvelopeCompletionStatus(store, "blocked");
+
+    const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+    const gateCheck = report.checks.find((item) => item.id === "delegated_completion_gate");
+
+    assert.equal(report.status, "attention");
+    assert.equal(gateCheck?.status, "warning");
+    assert.match(gateCheck?.summary ?? "", /delegated_self_report_check_count=1/);
+    assert.match(gateCheck?.summary ?? "", /expected_delegated_self_report_check_count=0/);
+    assert.match(gateCheck?.summary ?? "", /delegated_self_report_check_cardinality_match=false/);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when a report downgrades valid delegated independent evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-independent-downgrade-"));
   const repoRoot = join(root, "repo");
