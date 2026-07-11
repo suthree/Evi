@@ -1337,7 +1337,9 @@ envelope in a delegated run replaces action rationale and payload with fixed
 markers, retaining only a `use_tool` name for trace matching, while
 `delegated_action_inputs` records input validity, lengths, digest, action id,
 and sequence. Live trace prefers that metadata and falls back to legacy payload
-parsing only for historical envelopes.
+parsing only for historical envelopes. For modern metadata, replay requires
+exactly one entry for each declared delegated action id and sequence; duplicate
+or unpaired entries remain attention rather than being silently collapsed.
 It never persists the original
 delegated model text. Any delegated output contract failure records a safe suppression marker
 rather than a raw-output fallback. The live runner allows at most one

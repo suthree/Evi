@@ -757,15 +757,15 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
     const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
     const toolActions = parsed.data.actions.filter((action) => action.type === "use_tool");
     const respondActions = parsed.data.actions.filter((action) => action.type === "respond");
-    const delegatedActionInputs = delegateActions.map((action, index) => {
-      const sequence = index + 1;
-      return parsed.data.delegated_action_inputs?.find((item) => item.action_id === action.id && item.sequence === sequence)
-        ?? {
+    const delegatedActionInputs = parsed.data.delegated_action_inputs
+      ?? delegateActions.map((action, index) => {
+        const sequence = index + 1;
+        return {
           action_id: action.id,
           sequence,
           ...delegationInputMetadata(parseDelegationRequest(action))
         };
-    });
+      });
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,

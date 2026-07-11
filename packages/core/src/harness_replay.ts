@@ -42,6 +42,9 @@ export interface HarnessReplayAuditCheck {
 interface DelegatedInputLineage {
   missingInputMetadata: LiveRunDelegatedDispatchSummary[];
   missingExpectedInput: LiveRunDelegatedDispatchSummary[];
+  duplicateInputMetadataKeys: string[];
+  unexpectedInputMetadataKeys: string[];
+  metadataIssueEnvelopeRefs: string[];
   mismatchedInputActionIds: LiveRunDelegatedDispatchSummary[];
   mismatchedInputValidity: LiveRunDelegatedDispatchSummary[];
   mismatchedInputTaskChars: LiveRunDelegatedDispatchSummary[];
@@ -614,6 +617,32 @@ function toolActionKey(envelopeRef: string, round: number, actionId: string, seq
 }
 
 function delegatedInputLineage(trace: LiveRunTraceSummary): DelegatedInputLineage {
+  const declaredInputMetadataKeys = new Set(trace.rounds.flatMap((round) =>
+    round.delegated_action_ids.map((actionId) => delegatedInputMetadataKey(
+      round.round,
+      actionId,
+      round.delegated_action_sequence_by_id[actionId]!
+    ))
+  ));
+  const inputMetadataEntries = trace.rounds.flatMap((round) =>
+    round.delegated_action_inputs.map((input) => ({ round, input }))
+  );
+  const inputMetadataCounts = new Map<string, number>();
+  for (const { round, input } of inputMetadataEntries) {
+    const key = delegatedInputMetadataKey(round.round, input.action_id, input.sequence);
+    inputMetadataCounts.set(key, (inputMetadataCounts.get(key) ?? 0) + 1);
+  }
+  const duplicateInputMetadataKeys = [...inputMetadataCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key]) => key);
+  const unexpectedInputMetadataKeys = [...inputMetadataCounts.keys()]
+    .filter((key) => !declaredInputMetadataKeys.has(key));
+  const metadataIssueKeys = new Set([...duplicateInputMetadataKeys, ...unexpectedInputMetadataKeys]);
+  const metadataIssueEnvelopeRefs = unique(trace.rounds
+    .filter((round) => round.delegated_action_inputs.some((input) =>
+      metadataIssueKeys.has(delegatedInputMetadataKey(round.round, input.action_id, input.sequence))
+    ))
+    .map((round) => round.envelope_ref));
   const expectedByRoundAndSequence = new Map(trace.rounds.flatMap((round) =>
     round.delegated_action_inputs.map((input) => [delegatedInputKey(round.round, input.sequence), input] as const)
   ));
@@ -663,6 +692,9 @@ function delegatedInputLineage(trace: LiveRunTraceSummary): DelegatedInputLineag
   return {
     missingInputMetadata,
     missingExpectedInput,
+    duplicateInputMetadataKeys,
+    unexpectedInputMetadataKeys,
+    metadataIssueEnvelopeRefs,
     mismatchedInputActionIds,
     mismatchedInputValidity,
     mismatchedInputTaskChars,
@@ -671,6 +703,8 @@ function delegatedInputLineage(trace: LiveRunTraceSummary): DelegatedInputLineag
     invalidInputOutcomeMismatches,
     inputMetadataComplete: missingInputMetadata.length === 0
       && missingExpectedInput.length === 0
+      && duplicateInputMetadataKeys.length === 0
+      && unexpectedInputMetadataKeys.length === 0
       && mismatchedInputActionIds.length === 0
       && mismatchedInputValidity.length === 0
       && mismatchedInputTaskChars.length === 0
@@ -682,6 +716,10 @@ function delegatedInputLineage(trace: LiveRunTraceSummary): DelegatedInputLineag
 
 function delegatedInputKey(round: number, sequence: number): string {
   return `${round}:${sequence}`;
+}
+
+function delegatedInputMetadataKey(round: number, actionId: string, sequence: number): string {
+  return `${round}:${actionId}:${sequence}`;
 }
 
 function delegatedEvidenceTruth(trace: LiveRunTraceSummary) {
@@ -1016,6 +1054,8 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `delegated_input_metadata_complete=${inputLineage.inputMetadataComplete}`,
       `missing_delegated_input_metadata=${inputLineage.missingInputMetadata.length}`,
       `missing_delegated_input_expectation=${inputLineage.missingExpectedInput.length}`,
+      `duplicate_delegated_input_metadata=${inputLineage.duplicateInputMetadataKeys.length}`,
+      `unexpected_delegated_input_metadata=${inputLineage.unexpectedInputMetadataKeys.length}`,
       `mismatched_delegated_input_action_id=${inputLineage.mismatchedInputActionIds.length}`,
       `mismatched_delegated_input_validity=${inputLineage.mismatchedInputValidity.length}`,
       `mismatched_delegated_input_task_chars=${inputLineage.mismatchedInputTaskChars.length}`,
@@ -1520,7 +1560,7 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     return expectedSequence !== undefined && expectedSequence !== dispatch.sequence;
   });
   const inputLineage = delegatedInputLineage(trace);
-  const problemRefs = unique([
+  const problemDispatchRefs = [
     ...missingEnvelopeRefs,
     ...mismatchedEnvelopeRefs,
     ...missingRounds,
@@ -1535,7 +1575,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
     ...inputLineage.mismatchedInputContextChars,
     ...inputLineage.mismatchedInputDigests,
     ...inputLineage.invalidInputOutcomeMismatches
-  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`);
+  const problemRefs = unique([...problemDispatchRefs, ...inputLineage.metadataIssueEnvelopeRefs]);
   return {
     id: "delegated_dispatch_lineage",
     status: problemRefs.length > 0 ? "warning" : "pass",
@@ -1549,6 +1590,8 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
       `mismatched_sequence=${mismatchedSequences.length}`,
       `missing_input_metadata=${inputLineage.missingInputMetadata.length}`,
       `missing_input_expectation=${inputLineage.missingExpectedInput.length}`,
+      `duplicate_input_metadata=${inputLineage.duplicateInputMetadataKeys.length}`,
+      `unexpected_input_metadata=${inputLineage.unexpectedInputMetadataKeys.length}`,
       `mismatched_input_action_id=${inputLineage.mismatchedInputActionIds.length}`,
       `mismatched_input_validity=${inputLineage.mismatchedInputValidity.length}`,
       `mismatched_input_task_chars=${inputLineage.mismatchedInputTaskChars.length}`,

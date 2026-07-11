@@ -374,6 +374,49 @@ test("harness replay audit warns on equal-length delegated input digest drift", 
   }
 });
 
+test("harness replay audit warns on duplicate or unexpected delegated input metadata", async () => {
+  for (const testCase of [{
+    name: "duplicate",
+    inputs: (input: Record<string, unknown>) => [input, input],
+    expected: /duplicate_input_metadata=1/
+  }, {
+    name: "unexpected",
+    inputs: (input: Record<string, unknown>) => [input, { ...input, action_id: "action_delegate_unexpected", sequence: 2 }],
+    expected: /unexpected_input_metadata=1/
+  }]) {
+    const root = await mkdtemp(join(tmpdir(), `agent-harness-replay-input-${testCase.name}-`));
+    const repoRoot = join(root, "repo");
+    const stateRoot = join(root, "state");
+    const store = new AgentStore(repoRoot, stateRoot);
+    try {
+      await mkdir(repoRoot, { recursive: true });
+      await mkdir(stateRoot, { recursive: true });
+      await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+      const envelopeRef = "memory/episodes/session_replay_test-model-action-r1.json";
+      const envelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+      const input = {
+        action_id: "action_delegate_replay",
+        sequence: 1,
+        ...REPLAY_DELEGATION_INPUT
+      };
+      await store.writeJson(envelopeRef, {
+        ...envelope,
+        delegated_action_inputs: testCase.inputs(input)
+      });
+
+      const report = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
+      const lineage = report.checks.find((check) => check.id === "delegated_dispatch_lineage");
+      const gate = report.checks.find((check) => check.id === "delegated_completion_gate");
+
+      assert.equal(lineage?.status, "warning", testCase.name);
+      assert.match(lineage?.summary ?? "", testCase.expected, testCase.name);
+      assert.match(gate?.summary ?? "", /delegated_input_metadata_complete=false/, testCase.name);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+});
+
 test("harness replay audit warns when a passed dispatch contradicts invalid envelope input", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-input-validity-"));
   const repoRoot = join(root, "repo");
