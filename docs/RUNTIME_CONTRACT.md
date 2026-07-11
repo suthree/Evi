@@ -1302,7 +1302,8 @@ before they can enter history or trace read models.
 `task` itself must explicitly request bounded analysis, critique, review,
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct
-fix/repair/update/edit/patch/commit intent, and it cannot ask the delegated
+fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy
+intent, and it cannot ask the delegated
 subagent to run commands, tests, builds, or package-manager scripts, execute
 tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. The context must also
@@ -1313,7 +1314,8 @@ that delegated analysis may use only explicit payload context or named evidence
 refs. Tasks or contexts
 that omit, violate, or contradict those authority and output-shape boundaries
 are rejected before any delegated model call; a context that says no delegated
-authority and also grants tool/write/mutation, completion, expert scheduling,
+authority and also grants destructive delete/remove/erase/unlink/drop/destroy,
+tool/write/mutation, completion, expert scheduling,
 multi-agent orchestration, model fan-out, hidden memory, raw delegated artifact,
 unstated repo state, context expansion, or invented evidence-ref authority is
 invalid. Concrete command or tool-surface grants such as `tsc`, `pnpm`,

@@ -96,6 +96,41 @@ test("delegate_agent context rejects read, search, fetch, and browse grants befo
   }
 });
 
+test("delegate_agent rejects direct destructive work but keeps deletion review read-only", () => {
+  const verbs = ["delete", "remove", "erase", "unlink", "drop", "destroy"];
+  const directTasks = verbs.map((verb) => parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: `Review stale state records and ${verb} obsolete entries. What was changed?`,
+      context: VALID_DELEGATE_CONTEXT
+    }
+  }));
+  const destructiveGrants = verbs.map((verb) => parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Critique whether the answer needs more evidence.",
+      context: `${VALID_DELEGATE_CONTEXT} The delegated subagent may ${verb} state files before returning findings.`
+    }
+  }));
+  const reviewOnly = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Review whether stale state records should be deleted?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  });
+
+  assert.equal(directTasks.every((result) => !result.ok), true);
+  assert.equal(destructiveGrants.every((result) => !result.ok), true);
+  assert.equal(reviewOnly.ok, true);
+  for (const result of directTasks) {
+    if (!result.ok) assert.match(result.error, /must explicitly request bounded analysis/);
+  }
+  for (const result of destructiveGrants) {
+    if (!result.ok) assert.match(result.error, /must not grant tool\/write\/mutation/);
+  }
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",

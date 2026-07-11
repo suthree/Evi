@@ -428,11 +428,11 @@ const DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS = [
 ];
 
 const DIRECT_TASK_MUTATION_PATTERNS = [
-  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise)\b/,
+  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/,
   /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
-  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise)\b/,
+  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/,
   /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
-  /(?:并|然后|和|以及|并且|同时|，|、)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件)/u
+  /(?:并|然后|和|以及|并且|同时|，|、)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除)/u
 ];
 
 const DIRECT_TASK_MUTATION_PHRASES = [
@@ -453,7 +453,13 @@ const DIRECT_TASK_MUTATION_PHRASES = [
   "并改文件",
   "然后改文件",
   "并提交",
-  "然后提交"
+  "然后提交",
+  "并删除",
+  "然后删除",
+  "并移除",
+  "然后移除",
+  "并清除",
+  "然后清除"
 ];
 
 const DIRECT_TASK_MUTATION_PREFIXES = [
@@ -465,7 +471,10 @@ const DIRECT_TASK_MUTATION_PREFIXES = [
   "修补",
   "打补丁",
   "改代码",
-  "改文件"
+  "改文件",
+  "删除",
+  "移除",
+  "清除"
 ];
 
 const TOOL_AUTHORITY_TERMS = [
@@ -654,7 +663,8 @@ function grantsDelegatedAuthority(text: string): boolean {
   return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES)
     || hasNearbyBoundary(text, AUTHORITY_COMMAND_GRANT_PREFIXES, TASK_COMMAND_EXECUTION_TERMS, 80)
     || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80)
-    || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80);
+    || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80)
+    || hasNearbyBoundary(text, AUTHORITY_MUTATION_GRANT_PREFIXES, DESTRUCTIVE_MUTATION_TERMS, 80);
 }
 
 function reliesOnForbiddenDelegationSource(text: string): boolean {
@@ -818,6 +828,29 @@ const AUTHORITY_COMMAND_GRANT_PREFIXES = [
   "允许执行",
   "可以调用",
   "允许调用"
+];
+
+const AUTHORITY_MUTATION_GRANT_PREFIXES = [
+  "can",
+  "may",
+  "allowed to",
+  "permission to",
+  "authority to",
+  "可以",
+  "允许",
+  "授权"
+];
+
+const DESTRUCTIVE_MUTATION_TERMS = [
+  "delete",
+  "remove",
+  "erase",
+  "unlink",
+  "drop",
+  "destroy",
+  "删除",
+  "移除",
+  "清除"
 ];
 
 const AUTHORITY_TOOL_GRANT_PREFIXES = [
