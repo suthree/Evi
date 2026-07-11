@@ -3575,12 +3575,40 @@ test("harness replay audit warns when a trace shows two active delegates in one 
       traceRef: "completion_verification_replay_test"
     });
     const check = report.checks.find((item) => item.id === "delegated_dispatch_round_limit");
+    const coverage = report.checks.find((item) => item.id === "delegated_action_coverage");
 
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /over_limit_active_dispatches=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_active_extra")), true);
+    assert.equal(coverage?.status, "warning");
+    assert.match(coverage?.summary ?? "", /unexpected_delegate_dispatches=1/);
+    assert.equal(coverage?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_active_extra")), true);
     assert.equal(report.delegated_dispatches.length, 2);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns on duplicate dispatch for one delegate action", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-duplicate-dispatch-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    await appendDelegatedDispatchEventWithoutResultRef(store);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const coverage = report.checks.find((item) => item.id === "delegated_action_coverage");
+
+    assert.equal(coverage?.status, "warning");
+    assert.match(coverage?.summary ?? "", /duplicate_delegate_dispatches=1/);
+    assert.equal(coverage?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated_missing_result_ref")), true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

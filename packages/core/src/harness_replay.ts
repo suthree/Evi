@@ -1508,32 +1508,49 @@ function delegatedModelInvocationBoundaryCheck(trace: LiveRunTraceSummary): Harn
 }
 
 function delegatedActionCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
-  const declaredDelegateActions = trace.rounds.reduce((sum, round) => sum + (round.action_counts.delegate_agent ?? 0), 0);
-  const dispatchesByRound = new Map<number, number>();
+  const declaredActions = trace.rounds.flatMap((round) => round.delegated_action_ids.map((actionId) => ({
+    key: delegatedActionKey(round.round, actionId, round.delegated_action_sequence_by_id[actionId]!),
+    envelopeRef: round.envelope_ref
+  })));
+  const declaredActionKeys = new Set(declaredActions.map((action) => action.key));
+  const dispatchesByKey = new Map<string, LiveRunDelegatedDispatchSummary[]>();
   for (const dispatch of trace.delegated_dispatches) {
-    dispatchesByRound.set(dispatch.round, (dispatchesByRound.get(dispatch.round) ?? 0) + 1);
+    const key = delegatedActionKey(dispatch.round, dispatch.action_id, dispatch.sequence);
+    dispatchesByKey.set(key, [...(dispatchesByKey.get(key) ?? []), dispatch]);
   }
-  const missingRounds = trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > (dispatchesByRound.get(round.round) ?? 0));
-  const missingDelegateDispatches = missingRounds.reduce((sum, round) => {
-    const declared = round.action_counts.delegate_agent ?? 0;
-    const recorded = dispatchesByRound.get(round.round) ?? 0;
-    return sum + Math.max(0, declared - recorded);
-  }, 0);
+  const missingActions = declaredActions.filter((action) => !dispatchesByKey.has(action.key));
+  const unexpectedDispatches = trace.delegated_dispatches.filter((dispatch) =>
+    !declaredActionKeys.has(delegatedActionKey(dispatch.round, dispatch.action_id, dispatch.sequence))
+  );
+  const duplicateDispatches = [...dispatchesByKey.entries()]
+    .filter(([key, dispatches]) => declaredActionKeys.has(key) && dispatches.length > 1)
+    .flatMap(([, dispatches]) => dispatches.slice(1));
+  const problemRefs = unique([
+    ...missingActions.map((action) => action.envelopeRef),
+    ...unexpectedDispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+    ...duplicateDispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  ]);
   return {
     id: "delegated_action_coverage",
-    status: missingDelegateDispatches > 0 ? "warning" : "pass",
+    status: problemRefs.length > 0 ? "warning" : "pass",
     summary: [
-      `declared_delegate_actions=${declaredDelegateActions}`,
+      `declared_delegate_actions=${declaredActions.length}`,
       `delegated_dispatches=${trace.delegated_dispatches.length}`,
-      `missing_delegate_dispatches=${missingDelegateDispatches}`
+      `missing_delegate_dispatches=${missingActions.length}`,
+      `unexpected_delegate_dispatches=${unexpectedDispatches.length}`,
+      `duplicate_delegate_dispatches=${duplicateDispatches.length}`
     ].join("; "),
-    refs: missingRounds.length > 0
-      ? missingRounds.map((round) => round.envelope_ref)
+    refs: problemRefs.length > 0
+      ? problemRefs
       : unique([
           ...trace.rounds.filter((round) => (round.action_counts.delegate_agent ?? 0) > 0).map((round) => round.envelope_ref),
           ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
         ])
   };
+}
+
+function delegatedActionKey(round: number, actionId: string, sequence: number): string {
+  return `${round}:${actionId}:${sequence}`;
 }
 
 function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
