@@ -225,6 +225,7 @@ export interface LiveRunTraceSummary {
   observation_ref_count: number;
   model_diagnostic_count: number;
   model_diagnostics: LiveRunModelDiagnosticSummary[];
+  invalid_model_action_envelope_refs: string[];
   repo_write_guard_count: number;
   repo_write_guards: LiveRunRepoWriteGuardSummary[];
   rounds: LiveRunTraceRound[];
@@ -328,7 +329,8 @@ async function summarizeLiveRunTrace(
   const promptEvent = runEvents.find((event) => event.kind === "prompt");
   const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
-  const rounds = await readTraceRounds(store, runEvents);
+  const traceRounds = await readTraceRounds(store, runEvents);
+  const { rounds, invalidEnvelopeRefs } = traceRounds;
   const finalEnvelopeRef = runEvents
     .filter((event) => event.kind === "model_action")
     .at(-1)?.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
@@ -370,6 +372,7 @@ async function summarizeLiveRunTrace(
     report.envelope_ref,
     report.final_response_ref,
     ...rounds.map((round) => round.envelope_ref),
+    ...invalidEnvelopeRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...report.observation_refs.slice(0, 12),
     ...report.verification_evidence_refs.map((item) => item.ref).slice(0, 12),
@@ -433,6 +436,7 @@ async function summarizeLiveRunTrace(
     observation_ref_count: report.observation_refs.length,
     model_diagnostic_count: modelDiagnostics.length,
     model_diagnostics: modelDiagnostics.slice(0, 5),
+    invalid_model_action_envelope_refs: invalidEnvelopeRefs,
     repo_write_guard_count: repoWriteGuards.length,
     repo_write_guards: repoWriteGuards.slice(0, 5),
     rounds,
@@ -741,17 +745,30 @@ function matchesTraceRef(trace: LiveRunTraceSummary, requested: string): boolean
     || reportBaseWithoutExt === requested;
 }
 
-async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promise<LiveRunTraceRound[]> {
+async function readTraceRounds(
+  store: AgentStore,
+  events: EpisodeEvent[]
+): Promise<{ rounds: LiveRunTraceRound[]; invalidEnvelopeRefs: string[] }> {
   const refs = unique(events
     .filter((event) => event.kind === "model_action")
     .flatMap((event) => event.artifact_refs)
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref)))
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
   const rounds: LiveRunTraceRound[] = [];
+  const invalidEnvelopeRefs: string[] = [];
   for (const ref of refs) {
-    const raw = await store.readStateJson<unknown>(ref);
+    let raw: unknown;
+    try {
+      raw = await store.readStateJson<unknown>(ref);
+    } catch {
+      invalidEnvelopeRefs.push(ref);
+      continue;
+    }
     const parsed = modelActionEnvelopeSchema.safeParse(raw);
-    if (!parsed.success) continue;
+    if (!parsed.success) {
+      invalidEnvelopeRefs.push(ref);
+      continue;
+    }
     const actionTypes = parsed.data.actions.map((action) => action.type);
     const actionCounts = countBy(actionTypes);
     const delegateActions = parsed.data.actions.filter((action) => action.type === "delegate_agent");
@@ -793,7 +810,7 @@ async function readTraceRounds(store: AgentStore, events: EpisodeEvent[]): Promi
       harness_action_types: Object.keys(actionCounts).filter((type) => HARNESS_ACTION_TYPES.has(type)).sort()
     });
   }
-  return rounds;
+  return { rounds, invalidEnvelopeRefs };
 }
 
 async function completionVerificationRefs(store: AgentStore): Promise<string[]> {

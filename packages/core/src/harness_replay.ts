@@ -181,6 +181,7 @@ export async function runHarnessReplayAudit(
       trace.report_ref,
       trace.context_manifest_ref,
       ...trace.rounds.map((round) => round.envelope_ref),
+      ...trace.invalid_model_action_envelope_refs,
       ...trace.tool_result_events.map((event) => `${trace.report_ref}#${event.event_id}`),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
@@ -344,6 +345,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       summary: `Replayed bounded trace metadata for ${trace.completion_id}.`,
       refs: [trace.report_ref]
     },
+    modelActionEnvelopeIntegrityCheck(trace),
     completionVerificationStateCheck(trace),
     finalResponseEvidenceBindingCheck(trace),
     delegatedCompletionGateCheck(trace),
@@ -375,6 +377,18 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: unique([trace.report_ref, trace.context_manifest_ref, ...trace.rounds.map((round) => round.envelope_ref)])
     }
   ];
+}
+
+function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const invalidRefs = trace.invalid_model_action_envelope_refs;
+  return {
+    id: "model_action_envelope_integrity",
+    status: invalidRefs.length > 0 ? "warning" : "pass",
+    summary: `invalid_model_action_envelopes=${invalidRefs.length}`,
+    refs: invalidRefs.length > 0
+      ? unique([trace.report_ref, ...invalidRefs])
+      : unique([trace.report_ref, ...trace.rounds.map((round) => round.envelope_ref)])
+  };
 }
 
 function finalResponseEvidenceBindingCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {

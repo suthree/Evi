@@ -1266,7 +1266,10 @@ completion_claim:
 
 The model proposes. The harness decides what runs and what counts as complete.
 After parsing, the harness assigns every action id; model-provided ids are not
-persisted or used for dispatch lineage.
+persisted or used for dispatch lineage. If a model-action artifact later cannot
+be read or no longer satisfies the envelope schema, Live Run Trace preserves
+only its ref and replay marks it attention; it does not render the body or
+parser details.
 `completion_claim.verification_refs` may cite only harness-known tool result ids
 or tool artifact refs from the current run. Unknown or model-invented refs fail
 completion verification and do not count as independent proof. When a run has
@@ -1609,6 +1612,9 @@ The audit records only replay metadata: source trace refs, completion/session/
 turn ids, per-round action counts, safe delegated action ids, safe delegated
 dispatch metadata, check statuses, report-declared delegated result refs,
 `delegated_result_event_fallback_refs`, and the fixed replay boundary.
+Unreadable or schema-invalid model-action artifacts remain visible through their
+refs as replay attention rather than being silently treated as absent rounds;
+their raw bodies and parser details remain out of the read model.
 Replay recomputes the expected `verification_status` and `verified` tuple from
 the final model-action envelope's `completion_claim.status` plus the bounded
 failed-check ids: non-`done` completion

@@ -3646,6 +3646,33 @@ test("harness replay audit warns on duplicate declared delegate action ids", asy
   }
 });
 
+test("harness replay audit warns when a model-action envelope is invalid", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-invalid-envelope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const envelopeRef = "memory/episodes/session_replay_test-model-action-r1.json";
+    await store.writeJson(envelopeRef, { actions: [] });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_action_envelope_integrity");
+
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /invalid_model_action_envelopes=1/);
+    assert.equal(integrity?.refs.includes(envelopeRef), true);
+    assert.equal(report.refs.includes(envelopeRef), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit keeps all delegated dispatch metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegates-"));
   const repoRoot = join(root, "repo");

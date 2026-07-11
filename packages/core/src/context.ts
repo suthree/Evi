@@ -936,6 +936,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- delegated_dispatch_missing_result_ref: ${trace.delegated_dispatch_missing_result_ref_count}`,
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
+    `- invalid_model_action_envelopes: ${trace.invalid_model_action_envelope_refs.length}`,
     `- repo_write_guards: ${trace.repo_write_guard_count}`,
     `- boundary: ${trace.boundary}`
   ];
@@ -943,6 +944,9 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     lines.push(`- model_diagnostic: round=${diagnostic.round} stage=${diagnostic.stage} kind=${diagnostic.failure_kind} ref=${diagnostic.diagnostic_ref}`);
     if (diagnostic.response_ref) lines.push(`  response_ref: ${diagnostic.response_ref}`);
     if (diagnostic.error_preview) lines.push(`  error_preview: ${truncate(diagnostic.error_preview, 220)}`);
+  }
+  for (const ref of trace.invalid_model_action_envelope_refs.slice(0, 3)) {
+    lines.push(`- invalid_model_action_envelope_ref: ${ref}`);
   }
   for (const check of trace.delegated_completion_gate_checks.slice(0, 4)) {
     lines.push(`- delegated_completion_gate_check: ${check.id}=${check.status}`);
@@ -1033,7 +1037,12 @@ function renderHarnessReplayAuditItem(replay: HarnessReplayAuditReport, index: n
 function prioritizedHarnessReplayChecks(checks: HarnessReplayAuditReport["checks"]): HarnessReplayAuditReport["checks"] {
   const attention = checks.filter((check) => check.status !== "pass");
   const pass = checks.filter((check) => check.status === "pass");
-  return [...attention, ...pass].slice(0, 16);
+  const boundary = checks.find((check) => check.id === "bounded_replay_boundary");
+  if (!boundary) return [...attention, ...pass].slice(0, 17);
+  return [
+    ...[...attention, ...pass].filter((check) => check.id !== boundary.id).slice(0, 16),
+    boundary
+  ];
 }
 
 async function backgroundReviewHistorySection(store: AgentStore): Promise<ContextSection> {
