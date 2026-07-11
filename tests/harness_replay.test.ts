@@ -125,6 +125,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "pass"
         && check.summary.includes("missing_result_kind=0")
     ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_recovery_guidance"
+        && check.status === "pass"
+        && check.summary.includes("missing_recovery_guidance=0")
+    ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
       metadata_present: dispatch.metadata_present,
@@ -149,6 +154,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       dispatch_failure_kind_present: dispatch.dispatch_failure_kind_present,
       result_failure_kind: dispatch.result_failure_kind,
       result_failure_kind_present: dispatch.result_failure_kind_present,
+      recovery_guidance: dispatch.recovery_guidance,
+      recovery_guidance_present: dispatch.recovery_guidance_present,
       ok: dispatch.ok
     })), [{
       event_id: "evidence_replay_delegated",
@@ -174,6 +181,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       dispatch_failure_kind_present: true,
       result_failure_kind: "delegated_output_contract_failed",
       result_failure_kind_present: true,
+      recovery_guidance: "main_harness_recovery",
+      recovery_guidance_present: true,
       ok: false
     }]);
     assert.equal(existsSync(join(stateRoot, report.artifact_refs.json_ref)), true);
@@ -198,6 +207,32 @@ test("harness replay audit writes bounded evidence without reading raw run artif
     const detail = await getHarnessReplayAudit(store, { replayRef: report.id });
     assert.equal(detail.replay.id, report.id);
     assert.doesNotMatch(JSON.stringify({ list, detail }), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when failed delegation recovery guidance is inconsistent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-recovery-guidance-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, undefined, {
+      recoveryGuidance: "none"
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_recovery_guidance");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /invalid_recovery_guidance=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -3902,6 +3937,7 @@ async function writeReplayTraceFixture(
     includeToolResultEventMetadata?: boolean;
     toolResultEventMetadata?: Record<string, unknown>;
     extraDelegatedResultRefs?: string[];
+    recoveryGuidance?: "none" | "main_harness_recovery";
   } = {}
 ): Promise<void> {
   const sessionId = "session_replay_test";
@@ -4116,6 +4152,9 @@ async function writeReplayTraceFixture(
             result_failure_kind: delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY
               ? "delegated_output_contract_failed"
               : "none",
+            recovery_guidance: options.recoveryGuidance ?? (delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY
+              ? "main_harness_recovery"
+              : "none"),
             ok: delegatedSummary === PASSED_REPLAY_DELEGATED_SUMMARY
           }
         }

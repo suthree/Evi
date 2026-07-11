@@ -366,6 +366,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
     delegatedDispatchFailureKindCheck(trace),
     delegatedDispatchRoundLimitCheck(trace),
     delegatedResultFailureKindCheck(trace),
+    delegatedRecoveryGuidanceCheck(trace),
     {
       id: "repo_write_guard",
       status: trace.repo_write_guards.some((guard) => guard.preexisting_dirty || guard.target_changed_after_write) ? "warning" : "pass",
@@ -1774,6 +1775,38 @@ function hasFailureKindPairMismatch(dispatch: LiveRunDelegatedDispatchSummary): 
   return dispatch.dispatch_failure_kind !== null;
 }
 
+function delegatedRecoveryGuidanceCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
+  const missingRecoveryGuidance = failedDispatches.filter((dispatch) => !dispatch.recovery_guidance_present);
+  const invalidRecoveryGuidance = failedDispatches.filter((dispatch) =>
+    dispatch.recovery_guidance_present && dispatch.recovery_guidance !== "main_harness_recovery"
+  );
+  const unexpectedRecoveryGuidance = trace.delegated_dispatches.filter((dispatch) =>
+    dispatch.recovery_guidance_present
+      && dispatch.ok
+      && dispatch.contract_status === "passed"
+      && dispatch.recovery_guidance !== "none"
+  );
+  const problemRefs = unique([
+    ...missingRecoveryGuidance,
+    ...invalidRecoveryGuidance,
+    ...unexpectedRecoveryGuidance
+  ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
+  return {
+    id: "delegated_recovery_guidance",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `failed_dispatches=${failedDispatches.length}`,
+      `missing_recovery_guidance=${missingRecoveryGuidance.length}`,
+      `invalid_recovery_guidance=${invalidRecoveryGuidance.length}`,
+      `unexpected_recovery_guidance=${unexpectedRecoveryGuidance.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+  };
+}
+
 function isDispatchBlockedBeforeModel(dispatch: LiveRunDelegatedDispatchSummary): boolean {
   return dispatch.dispatch_failure_kind === "input_contract_failed"
     || dispatch.dispatch_failure_kind === "dispatch_limit_exceeded";
@@ -1894,6 +1927,9 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
   const contractStatus = stringField(value, "contract_status");
   const dispatchFailureKind = stringField(value, "dispatch_failure_kind");
   const resultFailureKind = stringField(value, "result_failure_kind");
+  const recoveryGuidance = value.recovery_guidance === "none" || value.recovery_guidance === "main_harness_recovery"
+    ? value.recovery_guidance
+    : null;
   const round = numberField(value, "round");
   const sequence = numberField(value, "sequence");
   const taskChars = numberField(value, "task_chars");
@@ -1933,6 +1969,8 @@ function asDelegatedDispatchSummary(value: unknown): LiveRunDelegatedDispatchSum
     dispatch_failure_kind_present: Object.hasOwn(value, "dispatch_failure_kind"),
     result_failure_kind: resultFailureKind,
     result_failure_kind_present: Object.hasOwn(value, "result_failure_kind"),
+    recovery_guidance: recoveryGuidance,
+    recovery_guidance_present: Object.hasOwn(value, "recovery_guidance"),
     ok: value.ok
   };
 }

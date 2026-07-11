@@ -110,6 +110,7 @@ export const delegatedDispatchFailureKindSchema = z.enum(delegateAgentDispatchFa
 export const delegatedDispatchKindSchema = z.enum(delegateAgentDispatchKindValues);
 export const delegatedResultFailureKindSchema = z.enum(delegateAgentResultFailureKindValues);
 export const delegatedResultKindSchema = z.enum(delegateAgentResultKindValues);
+export const delegatedRecoveryGuidanceSchema = z.enum(["none", "main_harness_recovery"]);
 
 export const delegatedResultSchema = z.object({
   id: z.string(),
@@ -196,6 +197,7 @@ export const delegatedDispatchEventMetadataSchema = z.object({
   contract_status: z.enum(["passed", "failed"]),
   dispatch_failure_kind: delegatedDispatchKindSchema,
   result_failure_kind: delegatedResultKindSchema,
+  recovery_guidance: delegatedRecoveryGuidanceSchema.optional(),
   ok: z.boolean()
 });
 
@@ -491,6 +493,7 @@ export type DelegatedDispatchFailureKind = z.infer<typeof delegatedDispatchFailu
 export type DelegatedDispatchKind = z.infer<typeof delegatedDispatchKindSchema>;
 export type DelegatedResultFailureKind = z.infer<typeof delegatedResultFailureKindSchema>;
 export type DelegatedResultKind = z.infer<typeof delegatedResultKindSchema>;
+export type DelegatedRecoveryGuidance = z.infer<typeof delegatedRecoveryGuidanceSchema>;
 export type DelegatedResult = z.infer<typeof delegatedResultSchema>;
 export type DelegatedObservation = z.infer<typeof delegatedObservationSchema>;
 export type ModelActionEnvelope = z.infer<typeof modelActionEnvelopeSchema>;

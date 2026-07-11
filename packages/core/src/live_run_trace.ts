@@ -8,6 +8,7 @@ import {
   evidenceEventSchema,
   modelActionEnvelopeSchema,
   type CompletionVerificationReport,
+  type DelegatedRecoveryGuidance,
   type EvidenceEvent,
   type ModelActionEnvelope
 } from "./schemas.js";
@@ -157,6 +158,8 @@ export interface LiveRunDelegatedDispatchSummary {
   dispatch_failure_kind_present: boolean;
   result_failure_kind: string | null;
   result_failure_kind_present: boolean;
+  recovery_guidance: DelegatedRecoveryGuidance | null;
+  recovery_guidance_present: boolean;
   ok: boolean;
 }
 
@@ -638,6 +641,8 @@ function delegatedDispatchFromEventMetadata(
     dispatch_failure_kind_present: true,
     result_failure_kind: metadata.result_failure_kind === "none" ? null : metadata.result_failure_kind,
     result_failure_kind_present: true,
+    recovery_guidance: metadata.recovery_guidance ?? null,
+    recovery_guidance_present: metadata.recovery_guidance !== undefined,
     ok: metadata.ok
   };
 }
@@ -669,6 +674,8 @@ function parseDelegatedDispatchSummary(summary: string): DelegatedDispatchParsed
     dispatch_failure_kind_present: dispatchFailureKind !== undefined,
     result_failure_kind: resultFailureKind && resultFailureKind !== "none" ? resultFailureKind : null,
     result_failure_kind_present: resultFailureKind !== undefined,
+    recovery_guidance: null,
+    recovery_guidance_present: false,
     ok: match[12] === "true"
   };
 }

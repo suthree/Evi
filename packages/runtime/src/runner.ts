@@ -2165,8 +2165,13 @@ function delegatedDispatchEventMetadata(
     contract_status: result.contract_status,
     dispatch_failure_kind: result.dispatch_failure_kind,
     result_failure_kind: result.result_failure_kind,
+    recovery_guidance: delegatedRecoveryGuidance(result),
     ok: result.ok
   };
+}
+
+function delegatedRecoveryGuidance(result: DelegatedResult): "none" | "main_harness_recovery" {
+  return delegatedObservationRecoveryHint(result) === null ? "none" : "main_harness_recovery";
 }
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {

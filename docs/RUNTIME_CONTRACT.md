@@ -1446,6 +1446,10 @@ tells the main model these exact recovery prerequisites or to report blocked;
 no failure kind may imply that read-only verification alone recovers it. The
 shared `delegate_agent` payload instruction states the same prerequisites
 before the main model proposes a delegated action.
+Delegated dispatch metadata records only
+`recovery_guidance=main_harness_recovery` for a failed result (or `none` for a
+passed result), never the recovery-hint text; replay warns when a failed
+dispatch lacks that safe marker or records an inconsistent value.
 The reusable GA project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.

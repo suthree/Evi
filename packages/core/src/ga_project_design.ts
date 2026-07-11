@@ -1348,6 +1348,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "contract_status",
         "dispatch_failure_kind",
         "result_failure_kind",
+        "recovery_guidance",
         "side_effect_level",
         "is_write_run",
         "counts_as_independent_evidence",
@@ -1367,6 +1368,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_dispatch_failure_kind",
         "delegated_dispatch_round_limit",
         "delegated_result_failure_kind",
+        "delegated_recovery_guidance",
         "model_action_envelope_integrity",
         "model_diagnostic_integrity",
         "delegated_results"
@@ -1386,6 +1388,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "replay audit warns when a delegated dispatch lacks a persisted delegated result JSON artifact ref",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
         "replay audit warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
+        "replay audit records only recovery_guidance=main_harness_recovery for failed delegated dispatches and warns when it is missing or inconsistent without persisting recovery hint text",
         "replay audit must not read delegated result artifact bodies or raw delegated task/context/output"
       ]
     },
