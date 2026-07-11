@@ -1267,7 +1267,9 @@ completion_claim:
 The model proposes. The harness decides what runs and what counts as complete.
 `completion_claim.verification_refs` may cite only harness-known tool result ids
 or tool artifact refs from the current run. Unknown or model-invented refs fail
-completion verification and do not count as independent proof.
+completion verification and do not count as independent proof. When a run has
+delegated context, unknown refs are persisted only as ordered `unbound_claim_ref_N`
+markers, so the same failure remains replayable without retaining untrusted text.
 
 `delegate_agent` is a bounded structured self-report path. The delegated model
 has no tools or memory in the current runtime. The action payload must provide
@@ -1328,11 +1330,12 @@ successful delegated `summary` and `findings_text`, then persists only their
 canonical JSON preview. Delegated task text is likewise omitted from result
 artifacts: no `task` field is persisted, while `task_chars` and `input_digest`
 preserve bounded lineage. Legacy artifacts with that field remain readable.
-Model-response artifacts retain only bounded response metadata; delegated model-action
-envelopes replace the raw delegated rationale and payload with fixed markers while
-recording input validity, lengths, digest, action id, and sequence in
-`delegated_action_inputs`. Live trace prefers that metadata and falls back to
-legacy payload parsing only for historical envelopes.
+Model-response artifacts retain only bounded response metadata. Any model-action
+envelope in a delegated run replaces action rationale and payload with fixed
+markers, retaining only a `use_tool` name for trace matching, while
+`delegated_action_inputs` records input validity, lengths, digest, action id,
+and sequence. Live trace prefers that metadata and falls back to legacy payload
+parsing only for historical envelopes.
 It never persists the original
 delegated model text. Any delegated output contract failure records a safe suppression marker
 rather than a raw-output fallback. The live runner allows at most one

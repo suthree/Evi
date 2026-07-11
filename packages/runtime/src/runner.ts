@@ -406,23 +406,33 @@ export class LiveAgentRunner {
           await this.writeDisciplineTodo(discipline);
         }
       }
+      const persistedEnvelope = persistedModelActionEnvelope(
+        boundedDelegatedCompletionClaimEnvelope(envelope, {
+          availableVerificationRefs: compactRefs(toolResults.flatMap((result, index) => result.ok
+            ? [result.id, toolArtifactRefs[index]]
+            : [])),
+          delegatedResults,
+          delegatedArtifactRefs
+        }),
+        delegatedResults.length > 0
+      );
       envelopeRef = await this.store.writeJson(
         `memory/episodes/${snapshot.session_id}-model-action-r${round}.json`,
-        persistedModelActionEnvelope(envelope)
+        persistedEnvelope
       );
       finalEnvelopeRound = round;
       const actionEvent = evidenceEventSchema.parse({
         session_id: snapshot.session_id,
         turn_id: snapshot.id,
         kind: "model_action",
-        summary: envelope.summary,
+        summary: persistedEnvelope.summary,
         artifact_refs: uniqueRefs([...modelActionArtifactRefs, modelResponseRef, envelopeRef])
       });
       evidenceRefs.push(actionEvent.id);
       await this.store.appendJsonl("memory/episodes/events.jsonl", actionEvent);
       if (discipline) {
         markTodo(discipline, "model_actions", roundModelFailed ? "blocked" : "done");
-        discipline.iteration_log.push(`Round ${round}: model action envelope saved to ${envelopeRef}; ${envelope.summary}`);
+        discipline.iteration_log.push(`Round ${round}: model action envelope saved to ${envelopeRef}; ${persistedEnvelope.summary}`);
         await this.writeDisciplineTodo(discipline);
       }
 
@@ -593,31 +603,37 @@ export class LiveAgentRunner {
 
     const successfulToolResults = toolResults.filter((result) => result.ok);
     const successfulToolArtifactRefs = toolArtifactRefs.filter((_, index) => toolResults[index]?.ok);
+    const availableVerificationRefs = compactRefs([
+      ...successfulToolResults.map((result) => result.id),
+      ...successfulToolArtifactRefs
+    ]);
+    const completionEnvelope = boundedDelegatedCompletionClaimEnvelope(envelope, {
+      availableVerificationRefs,
+      delegatedResults,
+      delegatedArtifactRefs
+    });
     const delegatedResultFailureKinds = summarizeDelegatedResultFailureKindCounts(delegatedResults.filter((result) => !result.ok));
     const completionVerification = verifyCompletionClaim({
-      envelope,
+      envelope: completionEnvelope,
       finalResponseRef,
       toolResults,
       delegatedResults,
       delegatedArtifactRefs,
       modelDiagnosticRefs,
-      availableVerificationRefs: compactRefs([
-        ...successfulToolResults.map((result) => result.id),
-        ...successfulToolArtifactRefs
-      ]),
+      availableVerificationRefs,
       verificationEvidenceRounds,
       verificationEvidenceRefDrafts
     });
     const completionReport = completionVerificationReportSchema.parse({
       session_id: snapshot.session_id,
       turn_id: snapshot.id,
-      completion_status: envelope.completion_claim.status,
+      completion_status: completionEnvelope.completion_claim.status,
       verification_status: completionVerification.verification_status,
       verified: completionVerification.verified,
       summary: completionVerification.summary,
       envelope_ref: envelopeRef,
       final_response_ref: finalResponseRef,
-      claimed_verification_refs: envelope.completion_claim.verification_refs,
+      claimed_verification_refs: completionEnvelope.completion_claim.verification_refs,
       observation_refs: compactRefs([...modelDiagnosticRefs, ...toolArtifactRefs, ...delegatedArtifactRefs, ...harnessArtifactRefs]),
       verification_evidence_refs: completionVerification.verification_evidence_refs,
       delegated_result_refs: compactRefs(delegatedArtifactRefs),
@@ -1571,7 +1587,7 @@ function persistedModelResponseMetadata(response: ModelResponse): Record<string,
   };
 }
 
-function persistedModelActionEnvelope(envelope: ModelActionEnvelope): ModelActionEnvelope {
+function persistedModelActionEnvelope(envelope: ModelActionEnvelope, hasPriorDelegation = false): ModelActionEnvelope {
   const delegatedActionInputs = envelope.actions
     .filter((action) => action.type === "delegate_agent")
     .map((action, index) => ({
@@ -1579,14 +1595,49 @@ function persistedModelActionEnvelope(envelope: ModelActionEnvelope): ModelActio
       sequence: index + 1,
       ...delegationInputMetadata(parseDelegationRequest(action))
     }));
-  if (delegatedActionInputs.length === 0) return envelope;
+  if (delegatedActionInputs.length === 0 && !hasPriorDelegation) return envelope;
   return modelActionEnvelopeSchema.parse({
     ...envelope,
-    summary: "Model action envelope includes bounded delegated request.",
-    actions: envelope.actions.map((action) => action.type === "delegate_agent"
-      ? { ...action, rationale: "Bounded delegated analysis request.", payload: {} }
-      : action),
-    delegated_action_inputs: delegatedActionInputs
+    summary: "Model action envelope includes bounded delegated context.",
+    actions: envelope.actions.map((action) => ({
+      ...action,
+      rationale: "Sanitized model action metadata.",
+      payload: action.type === "use_tool" && typeof action.payload.tool === "string"
+        ? { tool: action.payload.tool }
+        : {}
+    })),
+    delegated_action_inputs: delegatedActionInputs.length > 0 ? delegatedActionInputs : undefined
+  });
+}
+
+function boundedDelegatedCompletionClaimEnvelope(
+  envelope: ModelActionEnvelope,
+  args: {
+    availableVerificationRefs: string[];
+    delegatedResults: DelegatedResult[];
+    delegatedArtifactRefs: string[];
+  }
+): ModelActionEnvelope {
+  const hasDelegatedContext = args.delegatedResults.length > 0
+    || envelope.actions.some((action) => action.type === "delegate_agent");
+  if (!hasDelegatedContext) return envelope;
+  const knownRefs = new Set([
+    ...args.availableVerificationRefs,
+    ...args.delegatedResults.map((result) => result.id),
+    ...args.delegatedArtifactRefs
+  ]);
+  const verificationRefs = envelope.completion_claim.verification_refs.map((ref, index) =>
+    knownRefs.has(ref) ? ref : `unbound_claim_ref_${index + 1}`
+  );
+  if (verificationRefs.every((ref, index) => ref === envelope.completion_claim.verification_refs[index])) {
+    return envelope;
+  }
+  return modelActionEnvelopeSchema.parse({
+    ...envelope,
+    completion_claim: {
+      ...envelope.completion_claim,
+      verification_refs: verificationRefs
+    }
   });
 }
 

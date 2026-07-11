@@ -3911,11 +3911,11 @@ test("live runner feeds structured delegated results back as bounded observation
     const persistedResponseRef = delegatedEnvelopeRef.replace("-model-action-r1.json", "-model-response-r1.json");
     const persistedResponse = JSON.parse(await readFile(join(fixture.stateRoot, persistedResponseRef), "utf8")) as Record<string, unknown>;
     const persistedDelegateAction = persistedEnvelope.actions.find((action) => action.type === "delegate_agent");
-    assert.equal(persistedEnvelope.summary, "Model action envelope includes bounded delegated request.");
+    assert.equal(persistedEnvelope.summary, "Model action envelope includes bounded delegated context.");
     assert.deepEqual(persistedDelegateAction, {
       type: "delegate_agent",
       id: delegated.action_id,
-      rationale: "Bounded delegated analysis request.",
+      rationale: "Sanitized model action metadata.",
       payload: {}
     });
     assert.deepEqual(persistedEnvelope.delegated_action_inputs, [{
@@ -3995,6 +3995,56 @@ test("live runner feeds structured delegated results back as bounded observation
     const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
     assert.equal(independentCheck?.status, "fail");
     assert.match(independentCheck?.summary ?? "", /independent verification refs/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner redacts unbound delegated completion claim refs", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new StructuredDelegationThenDoneModel(true)
+    });
+
+    const result = await runner.runTask("Do not persist raw delegated claim text.");
+    const envelope = JSON.parse(await readFile(join(fixture.stateRoot, result.envelope_ref), "utf8")) as {
+      summary: string;
+      actions: Array<{ id: string; rationale: string; payload: Record<string, unknown> }>;
+      completion_claim: { verification_refs: string[] };
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      claimed_verification_refs: string[];
+      checks: Array<{ id: string; status: string; refs: string[] }>;
+    };
+    const reportMarkdown = await readFile(join(fixture.stateRoot, (result.completion_report_ref ?? "").replace(/\.json$/, ".md")), "utf8");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const persistedText = JSON.stringify([
+      envelope,
+      report,
+      reportMarkdown,
+      events.filter((event) => event.kind === "model_action")
+    ]);
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(envelope.summary, "Model action envelope includes bounded delegated context.");
+    assert.deepEqual(envelope.actions, [{
+      type: "respond",
+      id: envelope.actions[0]?.id,
+      rationale: "Sanitized model action metadata.",
+      payload: {}
+    }]);
+    assert.deepEqual(envelope.completion_claim.verification_refs, ["unbound_claim_ref_1", "unbound_claim_ref_2"]);
+    assert.deepEqual(report.claimed_verification_refs, ["unbound_claim_ref_1", "unbound_claim_ref_2"]);
+    assert.equal(report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence")?.status, "fail");
+    assert.doesNotMatch(persistedText, /Critique whether the answer needs more evidence\.|raw_context|No tool, write, or mutation authority is available/);
   } finally {
     await fixture.cleanup();
   }
@@ -4713,7 +4763,7 @@ test("live runner rejects arbitrary verification refs after delegation", async (
     const boundCheck = report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence");
     assert.equal(boundCheck?.status, "fail");
     assert.match(boundCheck?.summary ?? "", /not bound to harness-known/);
-    assert.deepEqual(boundCheck?.refs, [model.claimedRef]);
+    assert.deepEqual(boundCheck?.refs, ["unbound_claim_ref_1"]);
     const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
     assert.equal(independentCheck?.status, "fail");
     assert.match(independentCheck?.summary ?? "", /harness-known/);
@@ -4755,7 +4805,7 @@ test("live runner rejects failed read-only tool refs as independent proof after 
     const boundCheck = report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence");
     assert.equal(boundCheck?.status, "fail");
     assert.match(boundCheck?.summary ?? "", /not bound to harness-known/);
-    assert.deepEqual(boundCheck?.refs, [model.claimedFailedReadOnlyRef]);
+    assert.deepEqual(boundCheck?.refs, ["unbound_claim_ref_1"]);
     const independentCheck = report.checks.find((check) => check.id === "delegated_independent_evidence");
     assert.equal(independentCheck?.status, "fail");
     assert.match(independentCheck?.summary ?? "", /harness-known independent verification refs/);
@@ -4832,7 +4882,7 @@ test("live runner does not reject refs that only contain delegated self-report i
     assert.deepEqual(delegatedProofCheck?.refs, []);
     const boundCheck = report.checks.find((check) => check.id === "claimed_refs_bound_to_evidence");
     assert.equal(boundCheck?.status, "fail");
-    assert.deepEqual(boundCheck?.refs, [model.claimedRef]);
+    assert.deepEqual(boundCheck?.refs, ["unbound_claim_ref_1"]);
   } finally {
     await fixture.cleanup();
   }
@@ -7382,6 +7432,8 @@ class StructuredDelegationThenDoneModel implements ModelClient {
   sawDelegatedInstructionsBoundary = false;
   sawSanitizedDelegationObservation = false;
 
+  constructor(private readonly rawDelegatedClaimRefs = false) {}
+
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
     if (isDelegation) {
@@ -7429,7 +7481,18 @@ class StructuredDelegationThenDoneModel implements ModelClient {
         && !delegatedSection.includes('"output_text"')
         && !delegatedSection.includes("Critique whether the answer needs more evidence.")
         && !delegatedSection.includes(BOUNDED_DELEGATE_CONTEXT);
-      return noSopDoneEnvelope();
+      return this.rawDelegatedClaimRefs
+        ? {
+          ...noSopDoneEnvelope(),
+          completion_claim: {
+            status: "done",
+            verification_refs: [
+              "Critique whether the answer needs more evidence.",
+              BOUNDED_DELEGATE_CONTEXT
+            ]
+          }
+        }
+        : noSopDoneEnvelope();
     }
     return delegateCritiqueEnvelope();
   }
