@@ -2181,8 +2181,13 @@ delegated `summary` and `findings_text` are sanitized before persistence and
 observation feedback; their stored preview is a canonical JSON rendering of
 those fields, never the original delegated model text. Result artifacts omit
 the `task` field entirely while retaining `task_chars` and `input_digest` for
-audit lineage; legacy artifacts remain readable. A delegated output
-contract failure stores only a safe suppression marker. The full
+audit lineage; legacy artifacts remain readable. Model-response artifacts retain
+only bounded response metadata; delegated model-action envelopes replace raw
+delegated rationale and payload with fixed markers while `delegated_action_inputs`
+retains input validity, lengths, digest, action id, and sequence. Live trace
+prefers that metadata and falls back to raw payload parsing only for legacy
+envelopes. A delegated output contract failure stores only a safe suppression
+marker. The full
 delegated model output is scanned before strict full JSON-object parsing so wrapper text, code fences,
 extra fields, or structured content that echoes raw delegated task/context or
 claims delegated tool/write/mutation, command/test execution, completion,

@@ -3774,7 +3774,7 @@ test("live runner records structured model diagnostics for request failures", as
   }
 });
 
-test("live runner preserves raw response refs when model envelope parsing fails", async () => {
+test("live runner persists bounded response metadata when model envelope parsing fails", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -3801,7 +3801,10 @@ test("live runner preserves raw response refs when model envelope parsing fails"
       response_ref: string | null;
     };
     const response = JSON.parse(await readFile(join(fixture.stateRoot, result.model_response_ref), "utf8")) as {
-      outputText: string;
+      output_chars: number;
+      outputText?: string;
+      raw?: unknown;
+      boundary: string;
     };
     const trigger = triggerSchema.parse({
       type: "external_task",
@@ -3818,12 +3821,17 @@ test("live runner preserves raw response refs when model envelope parsing fails"
 
     assert.equal(result.verdict, "blocked_model_error");
     assert.match(result.model_response_ref, /-model-response-r1\.json$/);
-    assert.equal(response.outputText, "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR");
+    assert.equal(response.output_chars, "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR".length);
+    assert.equal(Object.hasOwn(response, "outputText"), false);
+    assert.equal(Object.hasOwn(response, "raw"), false);
+    assert.match(response.boundary, /raw model output and provider payload are not persisted/);
+    assert.doesNotMatch(JSON.stringify(response), /RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR/);
     assert.equal(diagnostic.stage, "envelope_parse");
     assert.equal(diagnostic.failure_kind, "format");
     assert.equal(diagnostic.response_ref, result.model_response_ref);
     assert.match(diagnostic.error_preview, /could not be parsed as ModelActionEnvelope/);
-    assert.equal(diagnostic.output_preview, "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR");
+    assert.equal(diagnostic.output_preview, "Model output could not be parsed; raw output was not persisted.");
+    assert.doesNotMatch(JSON.stringify(diagnostic), /RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR/);
     assert.equal(trace.model_diagnostics[0]?.response_ref, result.model_response_ref);
     assert.match(rendered.markdown, /model_diagnostics: 1/);
     assert.match(rendered.markdown, /model_diagnostic: round=1 stage=envelope_parse kind=format/);
@@ -3888,6 +3896,42 @@ test("live runner feeds structured delegated results back as bounded observation
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=passed; dispatch_failure_kind=none; result_failure_kind=none; ok=true\.$/);
     const delegatedEnvelopeRef = String(delegatedEvent?.delegated_dispatch?.envelope_ref ?? "");
     assert.match(delegatedEnvelopeRef, /^memory\/episodes\/session_.*-model-action-r1\.json$/);
+    const persistedEnvelope = JSON.parse(await readFile(join(fixture.stateRoot, delegatedEnvelopeRef), "utf8")) as {
+      summary: string;
+      actions: Array<{ type: string; rationale: string; payload: Record<string, unknown> }>;
+      delegated_action_inputs?: Array<{
+        action_id: string;
+        sequence: number;
+        input_contract_valid: boolean;
+        task_chars: number;
+        context_chars: number;
+        input_digest: string;
+      }>;
+    };
+    const persistedResponseRef = delegatedEnvelopeRef.replace("-model-action-r1.json", "-model-response-r1.json");
+    const persistedResponse = JSON.parse(await readFile(join(fixture.stateRoot, persistedResponseRef), "utf8")) as Record<string, unknown>;
+    const persistedDelegateAction = persistedEnvelope.actions.find((action) => action.type === "delegate_agent");
+    assert.equal(persistedEnvelope.summary, "Model action envelope includes bounded delegated request.");
+    assert.deepEqual(persistedDelegateAction, {
+      type: "delegate_agent",
+      id: delegated.action_id,
+      rationale: "Bounded delegated analysis request.",
+      payload: {}
+    });
+    assert.deepEqual(persistedEnvelope.delegated_action_inputs, [{
+      action_id: delegated.action_id,
+      sequence: delegated.sequence,
+      input_contract_valid: delegated.input_contract_valid,
+      task_chars: delegated.task_chars,
+      context_chars: delegated.context_chars,
+      input_digest: delegated.input_digest
+    }]);
+    assert.equal(Object.hasOwn(persistedResponse, "outputText"), false);
+    assert.equal(Object.hasOwn(persistedResponse, "raw"), false);
+    assert.doesNotMatch(JSON.stringify([persistedEnvelope, persistedResponse]), /Critique whether the answer needs more evidence\.|SECRET_SHOULD_NOT_APPEAR|raw_context/);
+    assert.doesNotMatch(JSON.stringify(persistedEnvelope), new RegExp(BOUNDED_DELEGATE_CONTEXT));
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    assert.deepEqual(trace.rounds.find((round) => round.envelope_ref === delegatedEnvelopeRef)?.delegated_action_inputs, persistedEnvelope.delegated_action_inputs);
     assert.deepEqual(delegatedEvent?.delegated_dispatch, {
       action_id: delegated.action_id,
       result_id: delegated.id,

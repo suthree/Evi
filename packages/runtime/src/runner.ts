@@ -318,7 +318,7 @@ export class LiveAgentRunner {
         const modelResponse = await this.model.create({ instructions, input });
         modelResponseRef = await this.store.writeJson(
           `memory/episodes/${snapshot.session_id}-model-response-r${round}.json`,
-          modelResponse
+          persistedModelResponseMetadata(modelResponse)
         );
         modelActionArtifactRefs.push(modelResponseRef);
         try {
@@ -406,7 +406,10 @@ export class LiveAgentRunner {
           await this.writeDisciplineTodo(discipline);
         }
       }
-      envelopeRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-model-action-r${round}.json`, envelope);
+      envelopeRef = await this.store.writeJson(
+        `memory/episodes/${snapshot.session_id}-model-action-r${round}.json`,
+        persistedModelActionEnvelope(envelope)
+      );
       finalEnvelopeRound = round;
       const actionEvent = evidenceEventSchema.parse({
         session_id: snapshot.session_id,
@@ -1555,6 +1558,38 @@ function parseEnvelope(outputText: string): ModelActionEnvelope {
   return modelActionEnvelopeSchema.parse(parsed);
 }
 
+function persistedModelResponseMetadata(response: ModelResponse): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    provider: response.provider,
+    api: response.api,
+    model: response.model,
+    response_id: response.responseId,
+    output_chars: response.outputText.length,
+    boundary: "bounded model response metadata; raw model output and provider payload are not persisted",
+    created_at: utcNow()
+  };
+}
+
+function persistedModelActionEnvelope(envelope: ModelActionEnvelope): ModelActionEnvelope {
+  const delegatedActionInputs = envelope.actions
+    .filter((action) => action.type === "delegate_agent")
+    .map((action, index) => ({
+      action_id: action.id,
+      sequence: index + 1,
+      ...delegationInputMetadata(parseDelegationRequest(action))
+    }));
+  if (delegatedActionInputs.length === 0) return envelope;
+  return modelActionEnvelopeSchema.parse({
+    ...envelope,
+    summary: "Model action envelope includes bounded delegated request.",
+    actions: envelope.actions.map((action) => action.type === "delegate_agent"
+      ? { ...action, rationale: "Bounded delegated analysis request.", payload: {} }
+      : action),
+    delegated_action_inputs: delegatedActionInputs
+  });
+}
+
 function extractJsonObject(text: string): string {
   if (text.startsWith("{") && text.endsWith("}")) return text;
   const start = text.indexOf("{");
@@ -1582,7 +1617,9 @@ function buildModelFailureDiagnostic(args: {
   input: string;
 }): ModelFailureDiagnostic {
   const errorPreview = modelFailureErrorPreview(args.error, args.stage);
-  const outputPreview = args.outputText === null ? null : sanitizeModelDiagnosticText(args.outputText, 1200);
+  const outputPreview = args.outputText === null
+    ? null
+    : "Model output could not be parsed; raw output was not persisted.";
   return {
     schema_version: 1,
     id: newId("model_diagnostic"),

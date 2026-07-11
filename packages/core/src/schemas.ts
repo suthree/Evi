@@ -160,6 +160,15 @@ export const completionClaimSchema = z.object({
   verification_refs: z.array(z.string()).default([])
 });
 
+export const delegatedActionInputMetadataSchema = z.object({
+  action_id: z.string(),
+  sequence: z.number().int().positive(),
+  input_contract_valid: z.boolean(),
+  task_chars: z.number().int().nonnegative(),
+  context_chars: z.number().int().nonnegative(),
+  input_digest: z.string().regex(/^[a-f0-9]{64}$/)
+});
+
 const defaultCompletionClaim = {
   status: "not_done" as const,
   verification_refs: []
@@ -168,7 +177,8 @@ const defaultCompletionClaim = {
 export const modelActionEnvelopeSchema = z.object({
   summary: z.string().min(1),
   actions: z.array(actionProposalSchema).default([]),
-  completion_claim: completionClaimSchema.default(defaultCompletionClaim)
+  completion_claim: completionClaimSchema.default(defaultCompletionClaim),
+  delegated_action_inputs: z.array(delegatedActionInputMetadataSchema).optional()
 });
 
 export const delegatedDispatchEventMetadataSchema = z.object({

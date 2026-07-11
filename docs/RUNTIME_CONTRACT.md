@@ -1328,6 +1328,11 @@ successful delegated `summary` and `findings_text`, then persists only their
 canonical JSON preview. Delegated task text is likewise omitted from result
 artifacts: no `task` field is persisted, while `task_chars` and `input_digest`
 preserve bounded lineage. Legacy artifacts with that field remain readable.
+Model-response artifacts retain only bounded response metadata; delegated model-action
+envelopes replace the raw delegated rationale and payload with fixed markers while
+recording input validity, lengths, digest, action id, and sequence in
+`delegated_action_inputs`. Live trace prefers that metadata and falls back to
+legacy payload parsing only for historical envelopes.
 It never persists the original
 delegated model text. Any delegated output contract failure records a safe suppression marker
 rather than a raw-output fallback. The live runner allows at most one
