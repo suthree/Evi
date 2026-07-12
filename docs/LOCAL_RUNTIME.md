@@ -2225,7 +2225,10 @@ extra fields, or structured content that echoes raw delegated task/context or
 claims delegated tool/write/mutation, command/test execution, completion,
 expert, multi-agent, model fan-out, hidden-source, raw-artifact,
 context-expansion, or invented-evidence authority cannot be smuggled around the
-contract. Unsupported output fields are rejected and suppress raw preview
+contract. Control-plane instruction overrides and role changes are rejected in
+the same scan before they can become observations; ordinary analysis that says
+the main model should follow the operator task remains valid. Unsupported
+output fields are rejected and suppress raw preview
 feedback. Natural-language delegated output claims in active, third-person,
 passive, or terse form that Git commands, tests, builds, commands, or checks
 ran or executed, or that it read files, searched the repo, fetched URLs, or

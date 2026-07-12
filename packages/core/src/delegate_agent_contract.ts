@@ -1142,6 +1142,13 @@ function delegatedOutputBoundaryFailure(
       safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
     };
   }
+  if (delegatedTextAttemptsInstructionOverride(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not contain control-plane instruction overrides or role changes.",
+      safe_raw_output_preview: "Delegated model output contained a control-plane instruction override or role change; raw output preview suppressed."
+    };
+  }
   const rawEcho = delegatedOutputRawEcho(text, "", source);
   if (rawEcho) {
     return {
@@ -1212,6 +1219,11 @@ function delegatedTextClaimsGenericCommandOrTestExecution(text: string): boolean
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return reliesOnForbiddenDelegationSource(text);
+}
+
+function delegatedTextAttemptsInstructionOverride(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return DELEGATED_OUTPUT_INSTRUCTION_OVERRIDE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
@@ -1384,6 +1396,15 @@ const DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS = [
   /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/,
   /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:ran|executed)\b/,
   /(?:^|[。！？；：\n]\s*)(?:测试|检查|命令|构建|编译|脚本|pnpm|npm|yarn)(?:\s+[\p{L}\p{N}_.-]+){0,6}(?:已经|已)?(?:被)?(?:运行|执行)(?:完成|通过)?/u
+];
+
+const DELEGATED_OUTPUT_INSTRUCTION_OVERRIDE_PATTERNS = [
+  /\b(?:ignore|disregard|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions?|rules?|prompts?|messages?)\b/,
+  /\b(?:act as|roleplay as|you are now)\s+(?:the\s+)?(?:system|developer|administrator|root)\b/,
+  /\b(?:switch|change)\s+(?:to|into)\s+(?:the\s+)?(?:system|developer|administrator|root)\s+(?:role|mode)\b/,
+  /忽略(?:先前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
+  /(?:覆盖|绕过)(?:系统|开发者|上文|以上)?(?:指令|规则|提示|消息)/u,
+  /(?:你现在是|扮演|作为)(?:系统|开发者|管理员|根用户|root)(?:角色|身份)?/u
 ];
 
 function delegatedOutputRawEcho(
