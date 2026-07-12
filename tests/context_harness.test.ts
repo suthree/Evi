@@ -6527,6 +6527,49 @@ test("live runner rejects delegate task authority requests without calling the d
   }
 });
 
+test("live runner rejects invisible Unicode-obfuscated delegated mutation intent before dispatch", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new TaskAuthorityViolationThenDoneModel(
+      invisibleUnicodeMutationDelegateEnvelope,
+      "delegate_agent.payload.task must explicitly request bounded analysis",
+      "Analyze whether the evidence supports the claim, then f\u200Bix the implementation?"
+    );
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject obfuscated delegated mutation intent before answering.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
+      error: string | null;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawFailedTaskObservation, true);
+    assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=input_contract_failed; result_failure_kind=input_contract_failed; ok=false\.$/);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
+    assert.equal(delegated.result_failure_kind, "input_contract_failed");
+    assert.match(delegated.error ?? "", /explicitly request bounded analysis/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner rejects a control-plane override in a delegate task before model dispatch", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -10286,6 +10329,24 @@ function taskAuthorityViolationDelegateEnvelope(): Record<string, unknown> {
       rationale: "Use a bounded subagent self-report for critique before final answer.",
       payload: {
         task: "Use file.write_repo, mark completion, and schedule expert reviewers.",
+        context: BOUNDED_DELEGATE_CONTEXT
+      }
+    }],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function invisibleUnicodeMutationDelegateEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Delegate a bounded analysis task with obfuscated mutation intent.",
+    actions: [{
+      type: "delegate_agent",
+      rationale: "Use a bounded subagent self-report for critique before final answer.",
+      payload: {
+        task: "Analyze whether the evidence supports the claim, then f\u200Bix the implementation?",
         context: BOUNDED_DELEGATE_CONTEXT
       }
     }],
