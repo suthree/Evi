@@ -609,6 +609,12 @@ After a verified `core_ga_design_next_slice_after_*` successor that is newer
 than the delegation baseline, the default returns to bounded delegation
 hardening so a historical successor cannot trap planning in repeated delegation
 slices. Attention and open iteration guards still take precedence.
+
+Each new project-design implementation contract also carries a concise
+target-specific `intent`. It makes the planned work inspectable without
+decoding an opaque slice id; a current-plan audit treats a missing or changed
+intent as contract coverage failure. Historical contracts without the field
+remain readable.
 When a project-design reader has no recognized scorecard target, it likewise
 defaults to core GA design rather than reopening delegation; a matching open
 iteration still takes precedence.

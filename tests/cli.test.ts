@@ -450,6 +450,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
     selected_layer: "core_runtime" as const,
     owner_surface: "ga_project_design",
     improvement_type: "reusable_ga_design_contract" as const,
+    intent: "Make the bounded core-GA successor self-describing and keep its planning and completion evidence reusable.",
     implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
     deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
     delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
@@ -521,6 +522,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(covered.status, "covered");
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=ga_design_artifact_iteration_contract_source"), true);
+  assert.equal(covered.required_tokens.some((token) => token.startsWith("implementation_contract.intent=")), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.boundary"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
 
@@ -653,6 +655,24 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(missingHistoricalFields.status, "missing_required_fields");
   assert.deepEqual(missingHistoricalFields.missing_fields, ["implementation_scope"]);
+
+  const missingIntent = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, intent: "" }
+  });
+  assert.equal(missingIntent.status, "missing_required_fields");
+  assert.deepEqual(missingIntent.missing_fields, ["intent"]);
+
+  const mismatchedIntent = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, intent: "A different project goal." }
+  });
+  assert.equal(mismatchedIntent.status, "mismatched_contract");
+  assert.deepEqual(mismatchedIntent.mismatched_fields, ["intent"]);
 });
 
 test("iteration audit outcome evidence scope rejects missing and foreign evidence refs", () => {

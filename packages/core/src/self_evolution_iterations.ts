@@ -170,13 +170,17 @@ function mergeOpenImplementationContract(
   supplied: GaProjectDesignImplementationContract | undefined
 ): GaProjectDesignImplementationContract | undefined {
   if (!existing || !supplied) return existing ?? supplied;
+  const intent = existing.intent ?? supplied.intent;
   const delegationContract = existing.delegation_contract ?? supplied.delegation_contract;
   const outcomeEvidenceScope = existing.outcome_evidence_scope ?? supplied.outcome_evidence_scope;
-  if (delegationContract === existing.delegation_contract && outcomeEvidenceScope === existing.outcome_evidence_scope) {
+  if (intent === existing.intent
+    && delegationContract === existing.delegation_contract
+    && outcomeEvidenceScope === existing.outcome_evidence_scope) {
     return existing;
   }
   return {
     ...existing,
+    ...(intent ? { intent } : {}),
     ...(delegationContract ? { delegation_contract: delegationContract } : {}),
     ...(outcomeEvidenceScope ? { outcome_evidence_scope: outcomeEvidenceScope } : {})
   };

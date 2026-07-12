@@ -214,10 +214,15 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     const delegationContract = getGaProjectDesignDelegationImplementationContract();
     const backfilled = await recordSelfEvolutionIteration(store, {
       ...args,
-      implementationContract: { ...implementationContract, delegation_contract: delegationContract }
+      implementationContract: {
+        ...implementationContract,
+        intent: "Harden one bounded delegation contract without expanding delegated authority or completion ownership.",
+        delegation_contract: delegationContract
+      }
     });
     assert.equal(backfilled.created, false);
     assert.equal(backfilled.reused_existing, true);
+    assert.equal(backfilled.iteration.implementation_contract?.intent, "Harden one bounded delegation contract without expanding delegated authority or completion ownership.");
     assert.equal(backfilled.iteration.implementation_contract?.delegation_contract, delegationContract);
     assert.match(backfilled.boundary, /persisted supplied implementation contract fields/);
 

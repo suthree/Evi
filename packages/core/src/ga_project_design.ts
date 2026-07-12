@@ -151,6 +151,7 @@ export interface GaProjectDesignImplementationContract {
   selected_layer: CapabilityLayer;
   owner_surface: string;
   improvement_type: "reusable_ga_design_contract";
+  intent?: string;
   delegation_contract?: GaProjectDesignDelegationImplementationContract;
   outcome_evidence_scope?: GaProjectDesignOutcomeEvidenceScope;
   implementation_scope: string[];
@@ -965,6 +966,7 @@ function buildImplementationContract(
     selected_layer: target.layer,
     owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
+    intent: buildImplementationContractIntent(target),
     ...(target.target_dimension_id === "general_agent_delegation"
       ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
       : {}),
@@ -1002,6 +1004,17 @@ function buildImplementationContract(
     ],
     boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
   };
+}
+
+function buildImplementationContractIntent(target: GaProjectDesignPlanTarget): string {
+  switch (target.target_dimension_id) {
+    case "core_ga_design":
+      return "Make the bounded core-GA successor self-describing and keep its planning and completion evidence reusable.";
+    case "basic_runtime_substrate":
+      return "Improve one bounded runtime entrypoint or observability contract while keeping resident health inspectable.";
+    case "general_agent_delegation":
+      return "Harden one bounded delegation contract without expanding delegated authority or completion ownership.";
+  }
 }
 
 function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProjectDesignOutcomeEvidenceScope {

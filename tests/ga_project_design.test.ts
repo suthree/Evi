@@ -82,6 +82,7 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(plan.proposed_slice, "core_ga_design_fresh_bootstrap");
     assert.equal(plan.next_iteration_seed.proposed_slice, "core_ga_design_fresh_bootstrap");
     assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.match(plan.implementation_contract.intent ?? "", /core-GA successor self-describing/);
     assert.equal(plan.next_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>");
     assert.equal(plan.selection_reasons.includes("source_kind=fresh_bootstrap"), true);
     assert.equal(plan.selection_reasons.includes("source_status=bootstrap"), true);
