@@ -536,15 +536,26 @@ export class LiveAgentRunner {
             : `Round ${round}: rejecting extra delegated subtask.`);
           await this.writeDisciplineTodo(discipline);
         }
-        const delegated = index < DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
-          ? await this.executeDelegation(action, round, index + 1)
-          : this.rejectDelegation(
+        let delegated: DelegatedResult;
+        if (index >= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND) {
+          delegated = this.rejectDelegation(
             action,
             round,
             index + 1,
             `delegate_agent supports at most ${DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND} action per model round.`,
             "dispatch_limit_exceeded"
           );
+        } else if (currentEnvelope.completion_claim.status !== "not_done") {
+          delegated = this.rejectDelegation(
+            action,
+            round,
+            index + 1,
+            delegateAgentAuthoringContract.terminal_completion_boundary,
+            "terminal_completion_claim"
+          );
+        } else {
+          delegated = await this.executeDelegation(action, round, index + 1);
+        }
         delegatedResults.push(delegated);
         const delegatedRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${delegated.id}.json`, delegated);
         delegatedArtifactRefs.push(delegatedRef);
@@ -1569,6 +1580,9 @@ function delegatedObservationRecoveryHint(result: DelegatedResult): string | nul
   }
   if (result.result_failure_kind === "input_contract_failed") {
     return `Revise the delegated task/context boundary; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
+  }
+  if (result.result_failure_kind === "terminal_completion_claim") {
+    return `Use delegation only from a non-terminal main-harness round; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
   if (result.result_failure_kind === "delegated_output_contract_failed") {
     return `Treat the delegated output as unusable; ${delegateAgentAuthoringContract.recovery.failure_hint}`;

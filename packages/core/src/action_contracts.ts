@@ -14,7 +14,8 @@ export type AllowedAction = typeof allowedActions[number];
 
 export const delegateAgentDispatchFailureKindValues = [
   "dispatch_limit_exceeded",
-  "input_contract_failed"
+  "input_contract_failed",
+  "terminal_completion_claim"
 ] as const;
 
 export const delegateAgentDispatchKindValues = [
@@ -25,6 +26,7 @@ export const delegateAgentDispatchKindValues = [
 export const delegateAgentResultFailureKindValues = [
   "dispatch_limit_exceeded",
   "input_contract_failed",
+  "terminal_completion_claim",
   "delegated_output_contract_failed",
   "delegated_model_request_failed"
 ] as const;
@@ -36,7 +38,8 @@ export const delegateAgentResultKindValues = [
 
 export const delegateAgentResultFailureKindsFromDispatch = [
   "dispatch_limit_exceeded",
-  "input_contract_failed"
+  "input_contract_failed",
+  "terminal_completion_claim"
 ] as const;
 
 export const delegateAgentCompletionGateCheckId = {
@@ -111,6 +114,7 @@ export const delegateAgentAuthoringContract = {
     "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
   ],
   delegated_model_authority_boundary: "Do not claim tool/write/mutation, destructive delete/remove/erase/unlink/drop/destroy execution, Git push/merge/rebase/cherry-pick/reset/tag, pull-request creation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert, multi-agent, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or final success authority.",
+  terminal_completion_boundary: "delegate_agent requires completion_claim.status=not_done; terminal done or blocked claims are rejected before delegated model dispatch.",
   recovery: {
     failure_hint: "recover with main-harness evidence: later successful write/run evidence plus a bound non-delegated verification ref are required before claiming done; otherwise report blocked."
   }
@@ -144,7 +148,8 @@ export const delegateAgentActionContract = {
 
 export function formatDelegateAgentLiveInstruction(): string {
   return [
-    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, run Git commands, create a pull request, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success."
+    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, run Git commands, create a pull request, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.",
+    delegateAgentAuthoringContract.terminal_completion_boundary
   ].join("\n");
 }
 

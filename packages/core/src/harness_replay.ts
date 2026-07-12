@@ -1998,8 +1998,8 @@ function sameStringSet(left: string[], right: string[]): boolean {
 }
 
 function isDispatchBlockedBeforeModel(dispatch: LiveRunDelegatedDispatchSummary): boolean {
-  return dispatch.dispatch_failure_kind === "input_contract_failed"
-    || dispatch.dispatch_failure_kind === "dispatch_limit_exceeded";
+  return dispatch.dispatch_failure_kind !== null
+    && DISPATCH_FAILURE_KINDS.has(dispatch.dispatch_failure_kind);
 }
 
 function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditStatus): string {

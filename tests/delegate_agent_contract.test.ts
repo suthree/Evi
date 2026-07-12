@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   delegateAgentActionContract,
   delegateAgentAuthoringContract,
+  formatDelegateAgentLiveInstruction,
   formatDelegateAgentPayloadInstruction,
   formatDelegateAgentSubagentInstructions,
   getDelegateAgentPayloadExample
@@ -64,6 +65,17 @@ test("delegated result and observation schemas reject inconsistent failure tuple
     result_failure_kind: "input_contract_failed",
     model_invoked: true
   }).success, false);
+  assert.equal(delegatedResultSchema.safeParse({
+    ...VALID_DELEGATED_RESULT,
+    ok: false,
+    summary: "Delegation was rejected in a terminal completion round.",
+    model_invoked: false,
+    contract_status: "failed",
+    dispatch_failure_kind: "terminal_completion_claim",
+    result_failure_kind: "terminal_completion_claim",
+    findings_text: null,
+    error: "terminal completion boundary"
+  }).success, true);
   assert.equal(delegatedObservationSchema.safeParse({
     id: VALID_DELEGATED_RESULT.id,
     action_id: VALID_DELEGATED_RESULT.action_id,
@@ -102,6 +114,7 @@ test("delegate_agent subagent instructions constrain source boundary", () => {
 
 test("delegate_agent payload example carries the shared authoring contract", () => {
   const example = getDelegateAgentPayloadExample();
+  const liveInstruction = formatDelegateAgentLiveInstruction();
 
   assert.match(example.task, /one analysis question/);
   assert.match(example.task, /no fix\/run\/complete\/schedule/);
@@ -109,6 +122,8 @@ test("delegate_agent payload example carries the shared authoring contract", () 
   assert.match(example.context, /no tools\/writes\/mutation/);
   assert.match(example.context, /main harness completes/);
   assert.match(example.context, /output=summary\/findings_text/);
+  assert.match(liveInstruction, /completion_claim\.status=not_done/);
+  assert.match(liveInstruction, /terminal done or blocked claims are rejected/);
   assert.match(example.task, /<=1000$/);
   assert.match(example.context, /<=12000$/);
 });

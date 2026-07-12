@@ -549,7 +549,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       },
       dispatch_failure_kind_contract: {
         field: "dispatch_failure_kind",
-        values: ["dispatch_limit_exceeded", "input_contract_failed", "none"],
+        values: ["dispatch_limit_exceeded", "input_contract_failed", "terminal_completion_claim", "none"],
         required: ["record bounded dispatch failure kind"],
         reject_if: ["free-form error text only"]
       },
@@ -558,6 +558,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
         values: [
           "dispatch_limit_exceeded",
           "input_contract_failed",
+          "terminal_completion_claim",
           "delegated_output_contract_failed",
           "delegated_model_request_failed",
           "none"
@@ -5213,6 +5214,63 @@ test("live runner rejects extra delegate actions without calling the delegated m
   }
 });
 
+test("live runner rejects terminal delegation before submodel dispatch", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new TerminalDelegationThenBlockedModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject terminal delegation before it reaches the submodel.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      model_invoked: boolean;
+      contract_status: string;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
+      error: string | null;
+    };
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      completion_status: string;
+      verification_status: string;
+      delegated_result_failure_kinds: Array<{ result_failure_kind: string; count: number }>;
+    };
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawTerminalDelegationObservation, true);
+    assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=terminal_completion_claim; result_failure_kind=terminal_completion_claim; ok=false\.$/);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.model_invoked, false);
+    assert.equal(delegated.contract_status, "failed");
+    assert.equal(delegated.dispatch_failure_kind, "terminal_completion_claim");
+    assert.equal(delegated.result_failure_kind, "terminal_completion_claim");
+    assert.match(delegated.error ?? "", /completion_claim\.status=not_done/);
+    assert.equal(report.completion_status, "blocked");
+    assert.equal(report.verification_status, "skipped");
+    assert.deepEqual(report.delegated_result_failure_kinds, [{ result_failure_kind: "terminal_completion_claim", count: 1 }]);
+    assert.equal(trace.delegated_dispatches[0]?.model_invoked, false);
+    assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind, "terminal_completion_claim");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_model_invocation_boundary")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner records one delegate action in separate model rounds", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -8649,6 +8707,45 @@ class MultiDelegationThenDoneModel implements ModelClient {
   }
 }
 
+class TerminalDelegationThenBlockedModel implements ModelClient {
+  private mainCalls = 0;
+  delegationCalls = 0;
+  sawTerminalDelegationObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const isDelegation = request.instructions.includes("bounded local-agent subagent");
+    if (isDelegation) this.delegationCalls += 1;
+    const outputText = isDelegation
+      ? JSON.stringify({
+        summary: "This delegated response should not be requested.",
+        findings_text: "The terminal completion boundary did not short-circuit."
+      })
+      : JSON.stringify(this.nextMainEnvelope(request));
+    return {
+      provider: "test",
+      api: "responses",
+      model: "terminal-delegation-then-blocked",
+      responseId: `response-terminal-delegation-${this.mainCalls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+
+  private nextMainEnvelope(request: ModelRequest): Record<string, unknown> {
+    this.mainCalls += 1;
+    if (this.mainCalls > 1) {
+      const delegatedSection = delegatedObservationsSection(request.input);
+      this.sawTerminalDelegationObservation = delegatedSection.includes('"model_invoked": false')
+        && delegatedSection.includes('"dispatch_failure_kind": "terminal_completion_claim"')
+        && delegatedSection.includes('"result_failure_kind": "terminal_completion_claim"')
+        && delegatedSection.includes("completion_claim.status=not_done")
+        && !delegatedSection.includes("This delegated response should not be requested.");
+      return blockedEnvelope();
+    }
+    return terminalDelegateCritiqueEnvelope();
+  }
+}
+
 class TwoRoundDelegationThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
@@ -10105,6 +10202,24 @@ function delegateCritiqueEnvelope(actionId?: string): Record<string, unknown> {
     }],
     completion_claim: {
       status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function terminalDelegateCritiqueEnvelope(): Record<string, unknown> {
+  const delegateEnvelope = delegateCritiqueEnvelope();
+  return {
+    ...delegateEnvelope,
+    actions: [{
+      type: "respond",
+      rationale: "Return a terminal claim while incorrectly requesting delegation.",
+      payload: {
+        markdown: "This terminal claim must not dispatch a delegated model."
+      }
+    }, ...(delegateEnvelope.actions as unknown[])],
+    completion_claim: {
+      status: "done",
       verification_refs: []
     }
   };

@@ -1225,9 +1225,9 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /delegate_agent/);
     assert.equal(fullText.includes(delegateAgentAuthoringContract.recovery.failure_hint), true);
     assert.match(fullText, /successful write\/run evidence only counts as completion proof/);
-    assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, or none/);
+    assert.match(fullText, /dispatch_failure_kind values are dispatch_limit_exceeded, input_contract_failed, terminal_completion_claim, or none/);
     assert.match(fullText, /none means no dispatch-layer failure, not delegated success/);
-    assert.match(fullText, /result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, delegated_output_contract_failed, delegated_model_request_failed, or none/);
+    assert.match(fullText, /result_failure_kind values are dispatch_limit_exceeded, input_contract_failed, terminal_completion_claim, delegated_output_contract_failed, delegated_model_request_failed, or none/);
     assert.match(fullText, /raw task\/context echoes and delegated output authority or command\/test execution claims fail the delegated output contract/);
     assert.match(fullText, /observations exclude raw task, context, output preview, and artifact bodies/);
     assert.match(fullText, /delegation grants no retry, fallback, tool, mutation, expert-scheduling, or completion authority/);

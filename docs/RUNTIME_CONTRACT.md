@@ -1463,13 +1463,13 @@ identity as completion proof fails `verification_evidence_lineage` even if the
 delegated completion-gate check was omitted or drifted. Report-declared refs
 remain coverage metadata, not replay identity authority.
 Dispatch-layer rejects also carry a safe
-`dispatch_failure_kind` such as `dispatch_limit_exceeded` or
-`input_contract_failed`; successful dispatches or delegated-model contract
+`dispatch_failure_kind` such as `dispatch_limit_exceeded`,
+`input_contract_failed`, or `terminal_completion_claim`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no
 dispatch-layer failure, not delegated success, so trace/replay read models can
 distinguish a real none value from an older or malformed summary that omitted
 the field. Delegated dispatch metadata also records `model_invoked`: input
-contract and per-round-limit rejects must keep `model_invoked=false`, while
+contract, terminal-completion, and per-round-limit rejects must keep `model_invoked=false`, while
 post-dispatch results, including delegated output contract failures and
 delegated model request failures, must keep `model_invoked=true`. Replay warns
 when that boundary is missing or contradicted, without reading delegated artifact
