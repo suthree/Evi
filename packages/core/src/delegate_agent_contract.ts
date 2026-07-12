@@ -1145,6 +1145,7 @@ function delegatedTextClaimsAuthority(value: string): boolean {
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
     || delegatedTextClaimsDestructiveMutation(text)
     || delegatedTextClaimsGitCommandExecution(text)
+    || delegatedTextClaimsGenericCommandOrTestExecution(text)
     || hasPrefixedGitCommand(text, DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES)
     || hasNearbyBoundary(
       text,
@@ -1181,6 +1182,10 @@ function delegatedTextClaimsGitCommandExecution(text: string): boolean {
   return /\bgit\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/.test(text)
     || /^(?:ran|executed)\s+git\s+[a-z][a-z0-9-]*/.test(text)
     || /git\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:已经|已)(?:被)?(?:运行|执行)/u.test(text);
+}
+
+function delegatedTextClaimsGenericCommandOrTestExecution(text: string): boolean {
+  return DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
@@ -1352,6 +1357,12 @@ const DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS = [
   "suites",
   "测试",
   "检查"
+];
+
+const DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS = [
+  /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/,
+  /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:ran|executed)\b/,
+  /(?:^|[。！？；：\n]\s*)(?:测试|检查|命令|构建|编译|脚本|pnpm|npm|yarn)(?:\s+[\p{L}\p{N}_.-]+){0,6}(?:已经|已)?(?:被)?(?:运行|执行)(?:完成|通过)?/u
 ];
 
 function delegatedOutputRawEcho(

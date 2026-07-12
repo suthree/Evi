@@ -362,6 +362,22 @@ test("delegated output rejects natural-language command and test execution claim
       summary: "git status 已执行，没有发现问题。",
       findings_text: "无问题。"
     }),
+    JSON.stringify({
+      summary: "The test suite was executed and passed.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "Checks ran without errors.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "pnpm run check was run and passed.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "测试执行通过。",
+      findings_text: "无问题。"
+    }),
     `I ran the test suite.\n${JSON.stringify({
       summary: "Delegated output wrapper should be scanned.",
       findings_text: "No issue."
@@ -377,11 +393,18 @@ test("delegated output rejects natural-language command and test execution claim
     }
   }
 
-  const recommendation = parseDelegatedOutput(JSON.stringify({
-    summary: "Git status should be run before release.",
-    findings_text: "Recommendation only."
-  }), DELEGATED_OUTPUT_SOURCE);
-  assert.equal(recommendation.ok, true);
+  for (const summary of [
+    "Git status should be run before release.",
+    "The test suite should be run before release.",
+    "No evidence shows the test suite was executed.",
+    "测试应该在发布前执行。"
+  ]) {
+    const recommendation = parseDelegatedOutput(JSON.stringify({
+      summary,
+      findings_text: "Recommendation only."
+    }), DELEGATED_OUTPUT_SOURCE);
+    assert.equal(recommendation.ok, true, summary);
+  }
 });
 
 test("delegated output rejects destructive and repository execution claims in every supported voice", () => {
