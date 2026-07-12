@@ -2145,7 +2145,9 @@ pull-request creation intent, and it
 must not ask the delegated subagent to run commands (including `git status`,
 `git log`, or `git diff`), tests, builds, or
 package-manager scripts, execute tools, write or mutate state,
-decide completion, or schedule expert/multi-agent work. The context must
+decide completion, or schedule expert/multi-agent work. A task may analyze
+whether explicit payload context or named evidence shows a command, test,
+build, or script was already run; only a direct request to run it is rejected. The context must
 explicitly state that the delegated subagent has no tool/write/mutation
 authority and that completion remains with
 the main harness, and it must name the expected delegated output shape as

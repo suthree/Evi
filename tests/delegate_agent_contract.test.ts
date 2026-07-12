@@ -262,6 +262,37 @@ test("delegate_agent rejects Git command execution but keeps Git review read-onl
   assert.equal(readOnlyReview.ok, true);
 });
 
+test("delegate_agent distinguishes execution-evidence analysis from command requests", () => {
+  const evidenceAnalysisTasks = [
+    "Critique whether the test suite was run before release?",
+    "Review whether pnpm run check was executed before release?",
+    "分析测试是否已经执行？",
+    "评审 pnpm run check 是否已执行？"
+  ];
+  const executionTasks = [
+    "Run the test suite, then critique failures?",
+    "Could you execute pnpm run check and summarize?",
+    "评审发布状态，然后执行测试并说明结果？",
+    "请运行 pnpm run check 并评审？"
+  ];
+
+  for (const task of evidenceAnalysisTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, true, task);
+  }
+  for (const task of executionTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+    if (!result.ok) assert.match(result.error, /must explicitly request bounded analysis/);
+  }
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",

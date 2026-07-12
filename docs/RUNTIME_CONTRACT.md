@@ -1309,7 +1309,9 @@ intent even across sentence boundaries, and it cannot ask the delegated
 subagent to run commands (including `git status`, `git log`, or `git diff`),
 tests, builds, or package-manager scripts, execute
 tools, write or mutate state, decide completion, or schedule
-expert/multi-agent work. The context must also
+expert/multi-agent work. A task may analyze whether explicit payload context or named
+evidence shows a command, test, build, or script was already run; only a direct
+request to run it is rejected. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected
 delegated output shape is `summary` plus `findings_text`. It must also state

@@ -252,7 +252,7 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksCompletion =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
-  const asksCommandOrTestExecution = hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_COMMAND_EXECUTION_TERMS)
+  const asksCommandOrTestExecution = hasDirectTaskCommandExecutionIntent(task)
     || hasPrefixedGitCommand(text, DELEGATE_TASK_REQUEST_TERMS)
     || hasDirectGitCommandIntent(task);
   const asksExpertScheduling =
@@ -439,6 +439,11 @@ const DIRECT_TASK_MUTATION_PATTERNS = [
 
 const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
   /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i
+];
+
+const DIRECT_TASK_COMMAND_EXECUTION_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:run|execute|call|invoke|use)\s+(?:(?:the|a)\s+)?(?:test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|lint|build|commands?|shell|terminal|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|调用|使用)\s*(?:命令|终端|测试|单测|集成测试|检查|构建|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/iu
 ];
 
 const DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS = [
@@ -737,6 +742,10 @@ function grantsGitCommandAuthority(text: string): boolean {
 function hasDirectGitCommandIntent(task: string): boolean {
   return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:run|execute|use)\s+)?git\s+[a-z][a-z0-9-]*/iu.test(task)
     || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:(?:执行|运行|使用)\s*)?git\s+[a-z][a-z0-9-]*/iu.test(task);
+}
+
+function hasDirectTaskCommandExecutionIntent(task: string): boolean {
+  return DIRECT_TASK_COMMAND_EXECUTION_PATTERNS.some((pattern) => pattern.test(task));
 }
 
 function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {
