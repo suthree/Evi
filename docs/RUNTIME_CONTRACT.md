@@ -596,6 +596,9 @@ prove completion.
 That outcome makes the delegation dimension `stable` and lets the default
 core/basic selection return to GA design unless an open iteration or attention
 state takes priority; it does not grant expert, tool, or completion authority.
+When a project-design reader has no recognized scorecard target, it likewise
+defaults to core GA design rather than reopening delegation; a matching open
+iteration still takes precedence.
 
 `governance project-design` exposes the core GA project design contract from
 `packages/core/src/ga_project_design.ts`. The contract defines the reusable

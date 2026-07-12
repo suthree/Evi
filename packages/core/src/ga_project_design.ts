@@ -1824,7 +1824,7 @@ function selectNextCoreBasicPlanTarget(
     return NEXT_CORE_GA_DESIGN_TARGET;
   }
   if (scorecardNextCoreBasicSliceId) return NEXT_CORE_GA_DESIGN_TARGET;
-  return NEXT_GENERAL_DELEGATION_TARGET;
+  return NEXT_CORE_GA_DESIGN_TARGET;
 }
 
 function describeScorecardTargetStatus(scorecardNextCoreBasicSliceId?: string | null): "not_provided" | "recognized" | "unrecognized" {

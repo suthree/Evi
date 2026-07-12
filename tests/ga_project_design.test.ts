@@ -225,7 +225,15 @@ test("GA project design read model derives reusable artifacts from verified iter
     await store.writeJson(partialIteration.ref, partialIteration);
     await store.writeJson(weakVerifiedIteration.ref, weakVerifiedIteration);
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const fallbackReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    assert.equal(fallbackReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
+    assert.equal(fallbackReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
+    assert.equal(fallbackReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
+
+    const readModel = await getGaProjectDesignReadModel(store, {
+      limit: 10,
+      scorecardNextCoreBasicSliceId: "next_slice_general_agent_delegation"
+    });
     const derived = deriveGaProjectDesignArtifacts([
       weakVerifiedIteration,
       partialIteration,
@@ -644,7 +652,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(selectGaProjectDesignArtifact(derived, verifiedIteration.ref)?.id, "ga_design_artifact_iteration_contract_verified");
 
     const packet = await getGaProjectDesignArtifactPacket(store, {
-      artifactRef: "iteration_contract_verified"
+      artifactRef: "iteration_contract_verified",
+      scorecardNextCoreBasicSliceId: "next_slice_general_agent_delegation"
     });
 
     assert.equal(packet.action, "project-design-artifact");
