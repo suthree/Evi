@@ -248,6 +248,7 @@ export interface LiveRunTraceSummary {
   model_diagnostic_count: number;
   model_diagnostics: LiveRunModelDiagnosticSummary[];
   unreadable_model_diagnostic_refs: string[];
+  foreign_model_diagnostic_refs: string[];
   invalid_model_action_envelope_refs: string[];
   foreign_model_action_envelope_refs: string[];
   foreign_delegated_result_refs: string[];
@@ -402,7 +403,11 @@ async function summarizeLiveRunTrace(
     delegatedDispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed").length
   );
   const modelDiagnosticTrace = await readModelDiagnostics(store, runEvents);
-  const { diagnostics: modelDiagnostics, unreadableRefs: unreadableModelDiagnosticRefs } = modelDiagnosticTrace;
+  const {
+    diagnostics: modelDiagnostics,
+    unreadableRefs: unreadableModelDiagnosticRefs,
+    foreignRefs: foreignModelDiagnosticRefs
+  } = modelDiagnosticTrace;
   const repoWriteGuards = runEvents.map(extractRepoWriteGuardSummary).filter((item): item is LiveRunRepoWriteGuardSummary => item !== null);
   const refs = unique([
     reportRef,
@@ -415,6 +420,7 @@ async function summarizeLiveRunTrace(
     ...foreignModelActionEnvelopeRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...unreadableModelDiagnosticRefs,
+    ...foreignModelDiagnosticRefs,
     ...foreignDelegatedResultRefs,
     ...report.observation_refs.slice(0, 12),
     ...report.verification_evidence_refs.map((item) => item.ref).slice(0, 12),
@@ -479,6 +485,7 @@ async function summarizeLiveRunTrace(
     model_diagnostic_count: modelDiagnostics.length,
     model_diagnostics: modelDiagnostics.slice(0, 5),
     unreadable_model_diagnostic_refs: unreadableModelDiagnosticRefs,
+    foreign_model_diagnostic_refs: foreignModelDiagnosticRefs,
     invalid_model_action_envelope_refs: invalidEnvelopeRefs,
     foreign_model_action_envelope_refs: foreignModelActionEnvelopeRefs,
     foreign_delegated_result_refs: foreignDelegatedResultRefs,
@@ -731,13 +738,18 @@ function parsedBooleanOrNull(value: string | undefined): boolean | null {
 async function readModelDiagnostics(
   store: AgentStore,
   events: EpisodeEvent[]
-): Promise<{ diagnostics: LiveRunModelDiagnosticSummary[]; unreadableRefs: string[] }> {
+): Promise<{ diagnostics: LiveRunModelDiagnosticSummary[]; unreadableRefs: string[]; foreignRefs: string[] }> {
   const diagnostics: LiveRunModelDiagnosticSummary[] = [];
   const unreadableRefs: string[] = [];
+  const foreignRefs: string[] = [];
   for (const event of events.filter((item) => item.kind === "model_diagnostic")) {
-    const diagnosticRef = event.artifact_refs.find((ref) => ref.includes("-model-diagnostic-r") && ref.endsWith(".json"))
-      ?? event.artifact_refs.find((ref) => ref.endsWith(".json"))
-      ?? "";
+    const diagnosticRefs = event.artifact_refs
+      .filter((ref) => ref.includes("-model-diagnostic-r") && ref.endsWith(".json"));
+    const sessionDiagnosticPrefix = `memory/episodes/${event.session_id}-model-diagnostic-r`;
+    const currentSessionDiagnosticRef = diagnosticRefs.find((ref) => ref.startsWith(sessionDiagnosticPrefix));
+    foreignRefs.push(...diagnosticRefs.filter((ref) => !ref.startsWith(sessionDiagnosticPrefix)));
+    const diagnosticRef = currentSessionDiagnosticRef
+      ?? (diagnosticRefs.length === 0 ? event.artifact_refs.find((ref) => ref.endsWith(".json")) ?? "" : "");
     if (!diagnosticRef) continue;
     let text: string;
     let raw: unknown;
@@ -771,7 +783,7 @@ async function readModelDiagnostics(
         : null
     });
   }
-  return { diagnostics, unreadableRefs };
+  return { diagnostics, unreadableRefs, foreignRefs: unique(foreignRefs) };
 }
 
 function extractRepoWriteGuardSummary(event: EpisodeEvent): LiveRunRepoWriteGuardSummary | null {

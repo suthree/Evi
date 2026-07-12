@@ -183,6 +183,7 @@ export async function runHarnessReplayAudit(
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.invalid_model_action_envelope_refs,
       ...trace.unreadable_model_diagnostic_refs,
+      ...trace.foreign_model_diagnostic_refs,
       ...trace.tool_result_events.map((event) => `${trace.report_ref}#${event.event_id}`),
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
@@ -446,12 +447,14 @@ function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplay
 
 function modelDiagnosticIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const unreadableRefs = trace.unreadable_model_diagnostic_refs;
+  const foreignRefs = trace.foreign_model_diagnostic_refs;
   const missingMetadata = trace.model_diagnostics.filter((diagnostic) => !diagnostic.metadata_present);
   const metadataCoverageIsPartial = missingMetadata.length > 0 && missingMetadata.length < trace.model_diagnostics.length;
   const mismatchedRefs = trace.model_diagnostics.filter((diagnostic) => diagnostic.diagnostic_ref_matches_artifact === false);
   const mismatchedDigests = trace.model_diagnostics.filter((diagnostic) => diagnostic.diagnostic_digest_matches === false);
   const problemRefs = unique([
     ...unreadableRefs,
+    ...foreignRefs,
     ...(metadataCoverageIsPartial ? missingMetadata : []).map((diagnostic) => diagnostic.diagnostic_ref),
     ...mismatchedRefs.map((diagnostic) => diagnostic.diagnostic_ref),
     ...mismatchedDigests.map((diagnostic) => diagnostic.diagnostic_ref)
@@ -462,6 +465,7 @@ function modelDiagnosticIntegrityCheck(trace: LiveRunTraceSummary): HarnessRepla
     summary: [
       `model_diagnostics=${trace.model_diagnostics.length}`,
       `unreadable_model_diagnostics=${unreadableRefs.length}`,
+      `cross_session_model_diagnostics=${foreignRefs.length}`,
       `missing_model_diagnostic_metadata=${missingMetadata.length}`,
       `partial_model_diagnostic_metadata=${metadataCoverageIsPartial}`,
       `mismatched_model_diagnostic_ref=${mismatchedRefs.length}`,
@@ -1934,7 +1938,8 @@ function replaySummary(trace: LiveRunTraceSummary, status: HarnessReplayAuditSta
     trace.delegated_result_count !== trace.delegated_dispatches.length ? "delegated dispatch metadata gap" : null,
     trace.repo_write_guard_count > 0 ? "repo write guard evidence" : null,
     trace.model_diagnostic_count > 0 ? "model diagnostic evidence" : null,
-    trace.unreadable_model_diagnostic_refs.length > 0 ? "unreadable model diagnostic" : null
+    trace.unreadable_model_diagnostic_refs.length > 0 ? "unreadable model diagnostic" : null,
+    trace.foreign_model_diagnostic_refs.length > 0 ? "cross-session model diagnostic" : null
   ].filter((item): item is string => Boolean(item));
   if (status === "clean") {
     return `Replay-audited ${trace.completion_id} from bounded metadata with no attention checks.`;

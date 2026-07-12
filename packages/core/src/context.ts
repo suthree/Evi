@@ -937,6 +937,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- harness_state_actions: ${trace.harness_action_count}`,
     `- model_diagnostics: ${trace.model_diagnostic_count}`,
     `- unreadable_model_diagnostics: ${trace.unreadable_model_diagnostic_refs.length}`,
+    `- foreign_model_diagnostics: ${trace.foreign_model_diagnostic_refs.length}`,
     `- invalid_model_action_envelopes: ${trace.invalid_model_action_envelope_refs.length}`,
     `- repo_write_guards: ${trace.repo_write_guard_count}`,
     `- boundary: ${trace.boundary}`
@@ -948,6 +949,9 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
   }
   for (const ref of trace.unreadable_model_diagnostic_refs.slice(0, 3)) {
     lines.push(`- unreadable_model_diagnostic_ref: ${ref}`);
+  }
+  for (const ref of trace.foreign_model_diagnostic_refs.slice(0, 3)) {
+    lines.push(`- foreign_model_diagnostic_ref: ${ref}`);
   }
   for (const ref of trace.invalid_model_action_envelope_refs.slice(0, 3)) {
     lines.push(`- invalid_model_action_envelope_ref: ${ref}`);

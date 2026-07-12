@@ -4120,6 +4120,53 @@ test("harness replay audit warns when a model diagnostic is unreadable", async (
   }
 });
 
+test("harness replay excludes cross-session model diagnostics", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-foreign-diagnostic-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const foreignRef = "memory/episodes/session_other-model-diagnostic-r1.json";
+    await store.writeJson(foreignRef, {
+      round: 1,
+      stage: "request",
+      failure_kind: "network",
+      error_preview: "RAW_FOREIGN_DIAGNOSTIC_SHOULD_NOT_APPEAR"
+    });
+    await store.appendJsonl("memory/episodes/events.jsonl", {
+      id: "evidence_replay_diagnostic_foreign",
+      session_id: "session_replay_test",
+      turn_id: "turn_replay_test",
+      kind: "model_diagnostic",
+      summary: "Recorded bounded foreign model diagnostic ref.",
+      artifact_refs: [foreignRef],
+      created_at: "2026-06-30T01:00:00.000Z"
+    });
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_diagnostic_integrity");
+
+    assert.deepEqual(trace.foreign_model_diagnostic_refs, [foreignRef]);
+    assert.equal(trace.model_diagnostic_count, 0);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /cross_session_model_diagnostics=1/);
+    assert.equal(integrity?.refs.includes(foreignRef), true);
+    assert.equal(report.refs.includes(foreignRef), true);
+    assert.match(report.summary, /cross-session model diagnostic/);
+    assert.doesNotMatch(JSON.stringify({ trace, report }), /RAW_FOREIGN_DIAGNOSTIC_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay detects model-diagnostic content drift from bounded event metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-diagnostic-drift-"));
   const repoRoot = join(root, "repo");

@@ -1646,6 +1646,9 @@ digest of its persisted JSON. Live Run Trace and replay compare those values
 without rendering the diagnostic body; a partial modern migration or a ref/hash
 mismatch remains attention, while fully historical events without this metadata
 remain unknown rather than becoming a new warning.
+Diagnostic refs from another session are excluded from the current trace and
+reported as bounded replay attention; their bodies are never read as current
+run evidence.
 Failed or skipped reports also appear as read-only `completion_verification`
 items in the Opportunity Backlog. Passed reports are suppressed. The backlog
 item and any review tick focus may include only structured report fields such
