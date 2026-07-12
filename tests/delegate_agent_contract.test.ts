@@ -167,17 +167,26 @@ test("delegate_agent rejects sentence-separated direct mutation work before disp
   assert.equal(readOnlyReview.ok, true);
 });
 
-test("delegate_agent rejects release and repository mutation work but keeps its review read-only", () => {
+test("delegate_agent rejects repository mutation task and context bypasses but keeps review read-only", () => {
   const directTasks = [
     "Analyze release status. Push the branch to remote. What changed?",
     "Review the change. Merge it into main. What succeeded?",
     "Critique the rollout. Deploy it now. What happened?",
-    "评估发布状态。推送分支到远端后汇报什么变化？"
+    "Review release readiness. Then git push origin main. What changed?",
+    "Review integration. Run git merge --ff-only feature. What changed?",
+    "Review history. Then git rebase main. What changed?",
+    "Review the release. Then git cherry-pick abc123. What changed?",
+    "Review the checkpoint. Then git reset --hard HEAD~1. What changed?",
+    "Review the release. Then git tag v1.0. What changed?",
+    "Analyze the repository. Please create a pull request. What changed?",
+    "评估发布状态。推送分支到远端后汇报什么变化？",
+    "评审发布状态。执行 git push origin main 后汇报什么变化？",
+    "评审发布状态。创建拉取请求后汇报什么变化？"
   ];
   const readOnlyReview = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",
     payload: {
-      task: "Analyze whether this branch should be merged before release?",
+      task: "Analyze whether git merge --ff-only or a pull request would be appropriate before release?",
       context: VALID_DELEGATE_CONTEXT
     }
   });
@@ -185,7 +194,11 @@ test("delegate_agent rejects release and repository mutation work but keeps its 
     "The delegated subagent may push the branch to remote.",
     "The delegated subagent may merge the change into main.",
     "The delegated subagent may deploy the release.",
-    "允许 delegated subagent 发布到生产环境。"
+    "The delegated subagent may run git rebase before returning findings.",
+    "The delegated subagent may run git cherry-pick before returning findings.",
+    "The delegated subagent may create a pull request before returning findings.",
+    "允许 delegated subagent 发布到生产环境。",
+    "允许 delegated subagent 创建拉取请求。"
   ];
 
   for (const task of directTasks) {
@@ -297,7 +310,7 @@ test("delegated output rejects natural-language command and test execution claim
   }
 });
 
-test("delegated output rejects destructive execution claims in every supported voice", () => {
+test("delegated output rejects destructive and repository execution claims in every supported voice", () => {
   const claims = [
     "I deleted stale state records.",
     "I removed stale state records.",
@@ -308,7 +321,19 @@ test("delegated output rejects destructive execution claims in every supported v
     "The delegated agent removed stale state records.",
     "Stale state records were deleted.",
     "Removed stale state records.",
-    "陈旧状态记录已被删除。"
+    "陈旧状态记录已被删除。",
+    "I pushed the branch to remote.",
+    "I merged the change into main.",
+    "I rebased the feature branch.",
+    "I cherry-picked the release commit.",
+    "I reset the branch.",
+    "I tagged the release.",
+    "I created a pull request.",
+    "A pull request was opened.",
+    "Pushed the branch to remote.",
+    "我已推送分支到远端。",
+    "我已创建拉取请求。",
+    "拉取请求已创建。"
   ];
 
   for (const claim of claims) {
@@ -323,7 +348,7 @@ test("delegated output rejects destructive execution claims in every supported v
     }
   }
 
-  for (const recommendation of ["Stale state records should be removed.", "陈旧状态记录应被移除。"]) {
+  for (const recommendation of ["Stale state records should be removed.", "A pull request should be created.", "陈旧状态记录应被移除。", "应创建拉取请求。"]) {
     const result = parseDelegatedOutput(JSON.stringify({
       summary: recommendation,
       findings_text: "Bounded recommendation only."

@@ -2140,7 +2140,8 @@ must explicitly request bounded analysis, critique, review,
 inspection,
 comparison, summarization, or evaluation; it cannot be a vague handoff or
 combine analysis with direct fix/repair/update/edit/patch/commit/push/merge/
-deploy/publish/release intent, and it
+deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, or
+pull-request creation intent, and it
 must not ask the delegated subagent to run commands, tests, builds, or
 package-manager scripts, execute tools, write or mutate state,
 decide completion, or schedule expert/multi-agent work. The context must

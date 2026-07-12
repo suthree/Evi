@@ -439,6 +439,13 @@ const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
   /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i
 ];
 
+const DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:run|execute|use)\s+)?git\s+(?:push|merge|rebase|cherry(?:-|\s+)pick|reset|tag)\b/i,
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:create|open|submit|raise)\s+(?:a\s+)?pull request\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:(?:执行|运行|使用)\s*)?git\s+(?:push|merge|rebase|cherry(?:-|\s+)pick|reset|tag)\b/iu,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:创建|新建|打开|提交)\s*(?:pull request\b|拉取请求)/iu
+];
+
 const DIRECT_TASK_MUTATION_PHRASES = [
   "并修复",
   "然后修复",
@@ -676,7 +683,8 @@ function hasDirectTaskMutationIntent(task: string, text: string): boolean {
   if (DIRECT_TASK_MUTATION_PATTERNS.some((pattern) => pattern.test(taskCommand))) return true;
   if (DIRECT_TASK_MUTATION_PHRASES.some((phrase) => taskCommand.includes(phrase))) return true;
   return DIRECT_TASK_MUTATION_PREFIXES.some((term) => taskCommand.startsWith(term))
-    || DIRECT_TASK_MUTATION_SENTENCE_PATTERNS.some((pattern) => pattern.test(task));
+    || DIRECT_TASK_MUTATION_SENTENCE_PATTERNS.some((pattern) => pattern.test(task))
+    || DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS.some((pattern) => pattern.test(task));
 }
 
 function grantsDelegatedAuthority(text: string): boolean {
@@ -873,6 +881,11 @@ const DESTRUCTIVE_MUTATION_TERMS = [
   "deploy",
   "publish",
   "release",
+  "rebase",
+  "cherry pick",
+  "reset",
+  "tag",
+  "pull request",
   "删除",
   "移除",
   "清除",
@@ -880,7 +893,12 @@ const DESTRUCTIVE_MUTATION_TERMS = [
   "合并",
   "部署",
   "发布",
-  "上线"
+  "上线",
+  "变基",
+  "拣选",
+  "重置",
+  "标签",
+  "拉取请求"
 ];
 
 const AUTHORITY_TOOL_GRANT_PREFIXES = [
@@ -1120,9 +1138,17 @@ function delegatedTextClaimsDestructiveMutation(text: string): boolean {
   return /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:delete(?:d)?|remove(?:d)?|eras(?:e|ed)|unlink(?:ed)?|drop(?:ped)?|destroy(?:ed)?)\b/.test(text)
     || /\b(?:[a-z0-9][a-z0-9_-]*\s+){1,10}(?:was|were|has been|have been)\s+(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
     || /^(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
+    || /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:push(?:ed)?|merge(?:d)?|rebas(?:e|ed)|cherry picked|reset|tag(?:ged)?)\b/.test(text)
+    || /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:created|opened|submitted|raised)\s+(?:a\s+)?pull request\b/.test(text)
+    || /\b(?:[a-z0-9][a-z0-9_-]*\s+){1,10}(?:was|were|has been|have been)\s+(?:pushed|merged|rebased|cherry picked|reset|tagged)\b/.test(text)
+    || /\b(?:a\s+)?pull request\s+(?:was|were|has been|have been)\s+(?:created|opened|submitted|raised)\b/.test(text)
+    || /^(?:pushed|merged|rebased|cherry picked|reset|tagged|created|opened|submitted|raised)\b/.test(text)
     || /(?:我|子代理|委托子代理)(?:已经|已)?(?:删除|移除|清除)/u.test(text)
     || /(?:已经|已)被(?:删除|移除|清除)/u.test(text)
-    || /^(?:已经|已)(?:删除|移除|清除)/u.test(text);
+    || /^(?:已经|已)(?:删除|移除|清除)/u.test(text)
+    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text)
+    || /(?:拉取请求)(?:已经|已)?(?:被)?(?:创建|打开|提交)/u.test(text)
+    || /^(?:已经|已)(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text);
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
