@@ -628,16 +628,19 @@ function toolResultOutcomeCompletionGateCheck(trace: LiveRunTraceSummary): Harne
   const reportedFailure = trace.completion_failed_check_ids.includes("tool_result_outcomes");
   const doneClaim = trace.final_completion_status === "done";
   const claimsVerified = trace.verification_status === "passed" || trace.verified;
-  const refs = failedToolEvents.map((event) => `${trace.report_ref}#${event.event_id}`);
-  if (!doneClaim || (failedToolEvents.length === 0 && !reportedFailure)) {
+  const attentionToolEvents = [...failedToolEvents, ...unknownToolOutcomeEvents];
+  const refs = attentionToolEvents.map((event) => `${trace.report_ref}#${event.event_id}`);
+  if (!doneClaim || (attentionToolEvents.length === 0 && !reportedFailure)) {
     return null;
   }
   let status: HarnessReplayAuditCheckStatus = "pass";
 
   if (failedToolEvents.length > 0) {
     status = reportedFailure && !claimsVerified ? "pass" : claimsVerified ? "fail" : "warning";
-  } else {
+  } else if (reportedFailure) {
     status = "fail";
+  } else {
+    status = "warning";
   }
 
   return {

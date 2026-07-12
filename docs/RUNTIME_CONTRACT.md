@@ -1312,7 +1312,8 @@ markers, so the same failure remains replayable without retaining untrusted text
 For a `done` claim, every harness tool result must also be successful: a failed
 read-only, reversible, write, or run result is a failed `tool_result_outcomes`
 check even when the model omits its ref. Replay recomputes this gate from bounded
-tool-result event metadata; it does not open tool-result artifact bodies.
+tool-result event metadata; an event with unknown `ok` remains replay attention
+rather than silently passing. Replay does not open tool-result artifact bodies.
 
 `delegate_agent` is a bounded structured self-report path. The delegated model
 has no tools or memory in the current runtime. The action payload must provide

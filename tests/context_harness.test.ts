@@ -2242,7 +2242,7 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /delegated_dispatches_failed=1/);
     assert.match(rendered.markdown, /delegated_result_refs: report=1, fallback=0, trace=1/);
     assert.match(rendered.markdown, /replay_check: delegated_completion_gate=fail/);
-    assert.match(rendered.markdown, /replay_check: delegated_action_coverage=pass/);
+    assert.match(rendered.markdown, /replay_check: tool_result_outcome_completion_gate=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_result_ref_coverage=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_lineage=warning/);
