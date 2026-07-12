@@ -253,6 +253,56 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
   }
 });
 
+test("self-evolution scorecard graduates a verified delegation baseline to core GA design", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-verified-delegation-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_delegation.json", {
+      schema_version: 1,
+      id: "iteration_contract_verified_delegation",
+      ref: "self-evolution/iterations/iteration_contract_verified_delegation.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified bounded general delegation baseline.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "general_agent_delegation_hardening_after_verified",
+      evidence_refs: ["packages/core/src/delegate_agent_contract.ts", "packages/runtime/src/runner.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no expert scheduling"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Delegation contract and runner verification passed.",
+        evidence_refs: ["tests/context_harness.test.ts"],
+        verification_commands: ["pnpm run check"],
+        next_moves: ["Select the next core/basic slice."],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    });
+
+    const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
+    const delegation = scorecard.dimensions.find((dimension) => dimension.id === "general_agent_delegation");
+
+    assert.equal(delegation?.stage, "stable");
+    assert.deepEqual(delegation?.latest_iteration, {
+      id: "iteration_contract_verified_delegation",
+      ref: "self-evolution/iterations/iteration_contract_verified_delegation.json",
+      outcome_status: "verified"
+    });
+    assert.match(delegation?.summary ?? "", /verified bounded delegation baseline/);
+    assert.equal(delegation?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_delegation.json"), true);
+    assert.match(delegation?.next_moves[0] ?? "", /verified delegation baseline/);
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("self-evolution scorecard keeps core GA design as the core/basic outlet until the latest outcome is verified", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-partial-ga-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

@@ -102,6 +102,16 @@ export async function getSelfEvolutionScorecard(
   const delegated = catalog.categories
     .flatMap((category) => category.capabilities)
     .some((capability) => capability.id === "delegate_agent");
+  const latestVerifiedDelegationIteration = iterations.iterations.find((iteration) =>
+    iteration.layer === "core_runtime"
+    && iteration.proposed_slice.startsWith("general_agent_delegation_hardening_after_")
+    && iteration.outcome?.status === "verified"
+  );
+  const delegationStage: SelfEvolutionStage = !delegated
+    ? "planned"
+    : latestVerifiedDelegationIteration
+      ? "stable"
+      : "active";
   const projectDesignContract = getGaProjectDesignContract();
   const projectDesignArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
   const latestCoreBasicProjectDesignArtifactIteration = latestCoreBasicProjectDesignArtifactSource(iterations.iterations, projectDesignArtifacts);
@@ -216,24 +226,41 @@ export async function getSelfEvolutionScorecard(
     {
       id: "general_agent_delegation",
       title: "General agent delegation loop",
-      stage: delegated ? "active" : "planned",
+      stage: delegationStage,
       layer: "core_runtime",
       score: delegated ? 5 : 1,
-      summary: delegated
-        ? "delegate_agent is a bounded general-agent subtask path: the main thread delegates explicit read-only analysis, review, inspection, comparison, summarization, or evaluation to a tool-less, memory-less subagent, records structured output, feeds it back as observation, and keeps completion authority in the main harness."
-        : "The runtime still needs a bounded general-agent delegation action before expert specialization or multi-agent scheduling can be considered.",
+      summary: !delegated
+        ? "The runtime still needs a bounded general-agent delegation action before expert specialization or multi-agent scheduling can be considered."
+        : latestVerifiedDelegationIteration
+          ? `delegate_agent has a verified bounded delegation baseline through ${latestVerifiedDelegationIteration.id}; the main harness retains completion authority and the next core/basic slice may move beyond repeated delegation hardening.`
+          : "delegate_agent is a bounded general-agent subtask path: the main thread delegates explicit read-only analysis, review, inspection, comparison, summarization, or evaluation to a tool-less, memory-less subagent, records structured output, feeds it back as observation, and keeps completion authority in the main harness.",
       evidence_refs: compactRefs([
         "packages/core/src/action_contracts.ts",
         "packages/core/src/delegate_agent_completion_gate.ts",
         "packages/core/src/delegate_agent_contract.ts",
         "packages/runtime/src/runner.ts",
         "tests/context_harness.test.ts",
-        "docs/RUNTIME_CONTRACT.md"
+        "docs/RUNTIME_CONTRACT.md",
+        latestVerifiedDelegationIteration?.ref
       ]),
-      next_moves: [
-        "Harden delegate_agent task, context, result, and completion-verification boundaries before widening subagent authority.",
-        "Keep expert personas and multi-agent scheduling deferred until the general delegation loop is stable."
-      ]
+      ...(latestVerifiedDelegationIteration
+        ? {
+          latest_iteration: {
+            id: latestVerifiedDelegationIteration.id,
+            ref: latestVerifiedDelegationIteration.ref,
+            outcome_status: "verified"
+          }
+        }
+        : {}),
+      next_moves: latestVerifiedDelegationIteration
+        ? [
+          "Keep the verified delegation baseline bounded while selecting the next GA core/basic slice.",
+          "Keep expert personas and multi-agent scheduling deferred until a later explicit authority decision."
+        ]
+        : [
+          "Harden delegate_agent task, context, result, and completion-verification boundaries before widening subagent authority.",
+          "Keep expert personas and multi-agent scheduling deferred until the general delegation loop is stable."
+        ]
     }
   ];
   const nextSlices = buildNextSlices(dimensions);

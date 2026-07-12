@@ -591,6 +591,11 @@ Live context must keep the core GA design stage and the basic runtime substrate
 stage visible together, so future core/basic slices are chosen from both design
 progress and local runtime health. This summary is context only; it does not
 prove completion.
+`delegate_agent` remains an active baseline until a matching
+`general_agent_delegation_hardening_after_*` iteration has a verified outcome.
+That outcome makes the delegation dimension `stable` and lets the default
+core/basic selection return to GA design unless an open iteration or attention
+state takes priority; it does not grant expert, tool, or completion authority.
 
 `governance project-design` exposes the core GA project design contract from
 `packages/core/src/ga_project_design.ts`. The contract defines the reusable
