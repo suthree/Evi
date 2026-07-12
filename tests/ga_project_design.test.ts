@@ -243,6 +243,15 @@ test("GA project design read model derives reusable artifacts from verified iter
       unrelatedOpenIteration,
       verifiedIteration
     ]);
+    const boundedSummaryArtifact = deriveGaProjectDesignArtifacts([{
+      ...verifiedIteration,
+      id: "iteration_contract_long_summary",
+      ref: "self-evolution/iterations/iteration_contract_long_summary.json",
+      outcome: {
+        ...verifiedIteration.outcome!,
+        summary: "Long outcome summary ".repeat(30)
+      }
+    }])[0];
 
     assert.equal(readModel.action, "project-design");
     assert.equal(readModel.artifact_count, 1);
@@ -250,6 +259,9 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.artifacts[0]?.id, "ga_design_artifact_iteration_contract_verified");
     assert.equal(readModel.artifacts[0]?.source_iteration_ref, "self-evolution/iterations/iteration_contract_verified.json");
     assert.equal(readModel.artifacts[0]?.source_outcome_status, "verified");
+    assert.equal(readModel.artifacts[0]?.outcome_summary, "Project-design artifact derivation passed targeted verification.");
+    assert.equal(boundedSummaryArtifact?.outcome_summary.length, 243);
+    assert.match(boundedSummaryArtifact?.outcome_summary ?? "", /\.\.\.$/);
     assert.equal(readModel.artifacts[0]?.owner_surface, "ga_project_design");
     assert.match(readModel.artifacts[0]?.reusable_pattern ?? "", /explicit non-goals/);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("memory/dreams/dream_core.json"), true);
@@ -310,7 +322,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delivery_standard.some((item) => item.includes("task/context/result/completion-verification surface")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
-    assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /Clarify the next core\/basic GA design improvement/);
+    assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /after verified outcome: Project-design artifact derivation passed targeted verification\./);
+    assert.doesNotMatch(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /general_agent_delegation_hardening_after_verified/);
     assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified GA design evidence/);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);

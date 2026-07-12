@@ -48,6 +48,7 @@ export interface GaProjectDesignArtifact {
   title: string;
   source_iteration_ref: string;
   source_outcome_status: "verified";
+  outcome_summary: string;
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
@@ -68,6 +69,7 @@ interface GaProjectDesignPlanSource {
   id: string;
   source_iteration_ref: string;
   source_status: "verified" | "bootstrap";
+  outcome_summary: string;
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
@@ -387,6 +389,7 @@ const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from
 const COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX = "does not repeat completed source slice ";
 const MIN_SOURCE_ARTIFACT_EVIDENCE_REFS = 2;
 const MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS = 2;
+const OUTCOME_SUMMARY_MAX_CHARS = 240;
 const SOURCE_COMPLETION_NEXT_MOVE_PATTERNS = [
   /\bcommit\b.*\b(after this slice|slice|implementation|outcome|health|runtime|repo|file)\b/i,
   /\brestart(?: resident)? runtime\b.*\b(onto commit|after this slice|post-commit)\b/i,
@@ -758,7 +761,7 @@ function buildNextCoreBasicPlan(
     goal_scope: buildGoalScope(source, target, proposedSlice),
     implementation_contract: implementationContract,
     source_continuation: buildSourceContinuation(source),
-    iteration_focus: buildIterationFocus(source, proposedSlice),
+    iteration_focus: buildIterationFocus(source, target),
     capability_stage_plan: buildCapabilityStagePlan(source, target, proposedSlice),
     general_delegation_loop: buildGeneralDelegationLoop(),
     scorecard_basis: buildScorecardBasis(target, scorecardNextCoreBasicSliceId),
@@ -843,6 +846,7 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
     id: artifact.id,
     source_iteration_ref: artifact.source_iteration_ref,
     source_status: artifact.source_outcome_status,
+    outcome_summary: artifact.outcome_summary,
     layer: artifact.layer,
     owner_surface: artifact.owner_surface,
     proposed_slice: artifact.proposed_slice,
@@ -882,6 +886,7 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
     id: BOOTSTRAP_SOURCE_ID,
     source_iteration_ref: BOOTSTRAP_SOURCE_REF,
     source_status: "bootstrap",
+    outcome_summary: "No verified iteration outcome exists; use the GA project design contract as the bounded bootstrap source.",
     layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
     owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
     proposed_slice: BOOTSTRAP_SOURCE_SLICE,
@@ -1108,14 +1113,16 @@ function buildGoalScope(
 
 function buildIterationFocus(
   source: GaProjectDesignPlanSource,
-  proposedSlice: string
+  target: GaProjectDesignPlanTarget
 ): GaProjectDesignIterationFocus {
   return {
     direction_id: "core_basic_plan_clarity",
-    direction: "Clarify the next core/basic GA design improvement before implementation.",
+    direction: source.kind === "fresh_bootstrap"
+      ? `Open one bounded ${target.layer}/${target.owner_surface} improvement from the bootstrap source: ${source.outcome_summary}`
+      : `Choose one new bounded ${target.layer}/${target.owner_surface} contract or read-model improvement after verified outcome: ${source.outcome_summary}`,
     rationale: source.kind === "fresh_bootstrap"
-      ? `The bootstrap successor ${proposedSlice} should be opened from the GA project design contract because no verified source iteration exists yet.`
-      : `The successor ${proposedSlice} should be chosen from verified GA design evidence, while ${source.proposed_slice} remains completed source context only.`,
+      ? "No verified source iteration exists, so the GA project design contract supplies the bounded bootstrap direction."
+      : `Choose a fresh successor from verified GA design evidence at ${source.layer}/${source.owner_surface} while the source remains completed context only.`,
     next_steps: [
       "inspect the current project-design plan and matching open iteration",
       "pick one small reusable GA design contract improvement",
@@ -1725,6 +1732,7 @@ export function deriveGaProjectDesignArtifacts(
         title: `Reusable GA project design: ${iteration.proposed_slice}`,
         source_iteration_ref: iteration.ref,
         source_outcome_status: "verified",
+        outcome_summary: compactOutcomeSummary(outcome.summary),
         layer: iteration.layer,
         owner_surface: iteration.owner_surface,
         proposed_slice: iteration.proposed_slice,
@@ -1745,6 +1753,13 @@ export function deriveGaProjectDesignArtifacts(
         boundary: ARTIFACT_BOUNDARY
       };
     });
+}
+
+function compactOutcomeSummary(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  return normalized.length > OUTCOME_SUMMARY_MAX_CHARS
+    ? `${normalized.slice(0, OUTCOME_SUMMARY_MAX_CHARS).trimEnd()}...`
+    : normalized;
 }
 
 function sourcePlanningNextMoves(nextMoves: string[]): string[] {

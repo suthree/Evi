@@ -591,6 +591,9 @@ completion.
 The same packet includes read-only `iteration_focus` with the human-readable
 core/basic direction, next steps, and anti-drift checks, so future turns do not
 infer purpose from the opaque successor slice id alone.
+For a verified source, that direction includes a bounded outcome summary, so
+the source capability remains visible without treating the prior outcome as
+proof that the successor is complete.
 Compact context renders a bounded `anti_drift` line from that focus, keeping
 external-adapter pressure, premature SOP/skill/memory/dream promotion, and
 unverified completion claims visible during handoff.
