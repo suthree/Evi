@@ -1477,10 +1477,12 @@ contract, terminal-completion, terminal-response, and per-round-limit rejects mu
 post-dispatch results, including delegated output contract failures and
 delegated model request failures, must keep `model_invoked=true`. Replay warns
 when that boundary is missing or contradicted. It also requires
-`terminal_response_action` to refer to a non-terminal round containing
-`respond`, and requires a valid in-limit delegated action in that same kind of
-round to carry that failure kind, without reading delegated artifact
-bodies. New dispatches additionally persist the shared parse-derived input
+`terminal_completion_claim` to refer to a terminal round and a valid in-limit
+delegated action in that round to carry that failure kind. Likewise,
+`terminal_response_action` must refer to a non-terminal round containing
+`respond`, and a valid in-limit delegated action in that round must carry that
+failure kind, without reading delegated artifact bodies. New dispatches
+additionally persist the shared parse-derived input
 validity, normalized task/context character counts, and a SHA-256 input digest.
 Live Run Trace re-derives that bounded tuple from the declaring envelope; replay
 warns when modern event metadata mismatches it and keeps historical missing input

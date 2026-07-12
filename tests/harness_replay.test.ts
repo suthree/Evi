@@ -3938,6 +3938,37 @@ test("harness replay audit requires terminal response failure kinds for response
   }
 });
 
+test("harness replay audit requires terminal completion failure kinds for terminal rounds", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-terminal-completion-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const envelopeRef = "memory/episodes/session_replay_test-model-action-r1.json";
+    const envelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+    const completionClaim = envelope.completion_claim as Record<string, unknown>;
+    await store.writeJson(envelopeRef, {
+      ...envelope,
+      completion_claim: { ...completionClaim, status: "blocked" }
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_dispatch_failure_kind");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /missed_terminal_completion_kind=1/);
+    assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when failed delegated result lacks result failure kind", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-result-kind-"));
   const repoRoot = join(root, "repo");

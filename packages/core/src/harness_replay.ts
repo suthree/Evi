@@ -1822,6 +1822,18 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
     dispatch.dispatch_failure_kind === "dispatch_limit_exceeded"
       && dispatch.sequence <= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
   );
+  const unexpectedTerminalCompletionKindDispatches = trace.delegated_dispatches.filter((dispatch) => {
+    if (dispatch.dispatch_failure_kind !== "terminal_completion_claim") return false;
+    return roundsByNumber.get(dispatch.round)?.completion_status === "not_done";
+  });
+  const missedTerminalCompletionKindDispatches = trace.delegated_dispatches.filter((dispatch) => {
+    const round = roundsByNumber.get(dispatch.round);
+    return round !== undefined
+      && round.completion_status !== "not_done"
+      && dispatch.input_contract_valid === true
+      && dispatch.sequence <= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+      && dispatch.dispatch_failure_kind !== "terminal_completion_claim";
+  });
   const unexpectedTerminalResponseKindDispatches = trace.delegated_dispatches.filter((dispatch) => {
     if (dispatch.dispatch_failure_kind !== "terminal_response_action") return false;
     const round = roundsByNumber.get(dispatch.round);
@@ -1840,6 +1852,8 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
     ...invalidKindDispatches,
     ...missingLimitKindDispatches,
     ...unexpectedLimitKindDispatches,
+    ...unexpectedTerminalCompletionKindDispatches,
+    ...missedTerminalCompletionKindDispatches,
     ...unexpectedTerminalResponseKindDispatches,
     ...missedTerminalResponseKindDispatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
@@ -1852,6 +1866,8 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
       `invalid_kind=${invalidKindDispatches.length}`,
       `missing_limit_kind=${missingLimitKindDispatches.length}`,
       `unexpected_limit_kind=${unexpectedLimitKindDispatches.length}`,
+      `unexpected_terminal_completion_kind=${unexpectedTerminalCompletionKindDispatches.length}`,
+      `missed_terminal_completion_kind=${missedTerminalCompletionKindDispatches.length}`,
       `unexpected_terminal_response_kind=${unexpectedTerminalResponseKindDispatches.length}`,
       `missed_terminal_response_kind=${missedTerminalResponseKindDispatches.length}`
     ].join("; "),

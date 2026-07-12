@@ -5266,6 +5266,7 @@ test("live runner rejects terminal delegation before submodel dispatch", async (
     assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind, "terminal_completion_claim");
     assert.equal(replay.checks.find((check) => check.id === "delegated_model_invocation_boundary")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.status, "pass");
+    assert.match(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.summary ?? "", /missed_terminal_completion_kind=0/);
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
   } finally {
     await fixture.cleanup();
