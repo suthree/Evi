@@ -8,6 +8,7 @@ import {
   delegateAgentActionContract,
   getDelegateAgentPayloadExample
 } from "../packages/core/src/action_contracts.js";
+import { parseDelegatedOutput } from "../packages/core/src/delegate_agent_contract.js";
 import {
   buildTurnSnapshot,
   compactGaPlanAfterVerifyCommand,
@@ -4352,6 +4353,44 @@ test("live runner rejects delegated output authority claims before observation",
   } finally {
     await fixture.cleanup();
   }
+});
+
+test("delegated output rejects imperative execution directives while allowing conditional recommendations", () => {
+  const directive = parseDelegatedOutput(JSON.stringify({
+    summary: "Bounded review found a branch concern.",
+    findings_text: "Run git push origin main now."
+  }), {
+    task: "Review whether the branch needs a follow-up?",
+    context: BOUNDED_DELEGATE_CONTEXT
+  });
+  assert.equal(directive.ok, false);
+  if (!directive.ok) {
+    assert.match(directive.error, /must not issue .* directives/);
+    assert.match(directive.safe_raw_output_preview ?? "", /raw output preview suppressed/);
+    assert.doesNotMatch(directive.safe_raw_output_preview ?? "", /git push/);
+  }
+
+  const wrappedDirective = parseDelegatedOutput(`Run git push origin main now.\n${JSON.stringify({
+    summary: "Bounded review found a branch concern.",
+    findings_text: "No additional finding."
+  })}`, {
+    task: "Review whether the branch needs a follow-up?",
+    context: BOUNDED_DELEGATE_CONTEXT
+  });
+  assert.equal(wrappedDirective.ok, false);
+  if (!wrappedDirective.ok) {
+    assert.match(wrappedDirective.error, /must not issue .* directives/);
+    assert.doesNotMatch(wrappedDirective.safe_raw_output_preview ?? "", /git push/);
+  }
+
+  const recommendation = parseDelegatedOutput(JSON.stringify({
+    summary: "Bounded review found a branch concern.",
+    findings_text: "The main harness should review whether a Git push is justified."
+  }), {
+    task: "Review whether the branch needs a follow-up?",
+    context: BOUNDED_DELEGATE_CONTEXT
+  });
+  assert.equal(recommendation.ok, true);
 });
 
 test("live runner rejects delegated output command execution claims before observation", async () => {

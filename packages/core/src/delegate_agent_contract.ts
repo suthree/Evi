@@ -219,6 +219,13 @@ export function parseDelegatedOutput(
       safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
+  if (delegatedTextIssuesExecutionDirective(`${summary}\n${findingsText}`)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not issue tool, mutation, command/test, or read directives.",
+      safe_raw_output_preview: "Delegated model output issued an execution directive; raw output preview suppressed."
+    };
+  }
   if (delegatedOutputClaimsForbiddenSource(summary, findingsText)) {
     return {
       ok: false,
@@ -1141,6 +1148,13 @@ function delegatedOutputBoundaryFailure(
       safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
     };
   }
+  if (delegatedTextIssuesExecutionDirective(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not issue tool, mutation, command/test, or read directives.",
+      safe_raw_output_preview: "Delegated model output issued an execution directive; raw output preview suppressed."
+    };
+  }
   if (delegatedTextClaimsForbiddenSource(text)) {
     return {
       ok: false,
@@ -1225,6 +1239,19 @@ function delegatedTextClaimsGenericCommandOrTestExecution(text: string): boolean
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return reliesOnForbiddenDelegationSource(text);
+}
+
+function delegatedTextIssuesExecutionDirective(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return hasDirectTaskMutationIntent(value, text)
+    || hasDirectTaskCommandExecutionIntent(value)
+    || hasDirectTaskReadToolIntent(value)
+    || hasDirectGitCommandDirective(value);
+}
+
+function hasDirectGitCommandDirective(value: string): boolean {
+  return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:run|execute|use)\s+git\s+[a-z][a-z0-9-]*/iu.test(value)
+    || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|使用)\s*git\s+[a-z][a-z0-9-]*/iu.test(value);
 }
 
 function delegationTextAttemptsControlPlaneOverride(value: string): boolean {
