@@ -6689,14 +6689,14 @@ test("live runner rejects delegate task with analysis plus patch application int
   }
 });
 
-test("live runner rejects delegate task with command execution intent", async () => {
+test("live runner rejects delegate task with direct read tool intent", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
     await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
     await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
 
-    const model = new AnalysisThenCommandExecutionTaskThenDoneModel();
+    const model = new AnalysisThenDirectReadTaskThenDoneModel();
     const runner = new LiveAgentRunner({
       repoRoot: fixture.repoRoot,
       stateRoot: fixture.stateRoot,
@@ -6704,7 +6704,7 @@ test("live runner rejects delegate task with command execution intent", async ()
       model
     });
 
-    const result = await runner.runTask("Reject delegated task that asks the subagent to run commands.");
+    const result = await runner.runTask("Reject delegated task that asks the subagent to read files.");
     const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
     const delegatedEvent = events.find((event) => event.kind === "delegated_result");
     const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
@@ -9453,7 +9453,7 @@ class AnalysisThenPatchTaskThenDoneModel implements ModelClient {
   }
 }
 
-class AnalysisThenCommandExecutionTaskThenDoneModel implements ModelClient {
+class AnalysisThenDirectReadTaskThenDoneModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
   sawFailedTaskObservation = false;
@@ -9470,8 +9470,8 @@ class AnalysisThenCommandExecutionTaskThenDoneModel implements ModelClient {
     return {
       provider: "test",
       api: "responses",
-      model: "analysis-command-execution-task-then-done",
-      responseId: `response-analysis-command-execution-task-${this.mainCalls}`,
+      model: "analysis-direct-read-task-then-done",
+      responseId: `response-analysis-direct-read-task-${this.mainCalls}`,
       outputText,
       raw: { outputText }
     };
@@ -9485,9 +9485,9 @@ class AnalysisThenCommandExecutionTaskThenDoneModel implements ModelClient {
         && delegatedSection.includes('"dispatch_failure_kind": "input_contract_failed"')
         && delegatedSection.includes('"result_failure_kind": "input_contract_failed"')
         && delegatedSection.includes("command/test execution")
-        && !delegatedSection.includes("Test the project");
+        && !delegatedSection.includes("Read files under docs");
     }
-    return this.mainCalls > 1 ? doneEnvelope() : analysisThenCommandExecutionDelegateEnvelope();
+    return this.mainCalls > 1 ? doneEnvelope() : analysisThenDirectReadDelegateEnvelope();
   }
 }
 
@@ -10238,14 +10238,14 @@ function analysisThenPatchDelegateEnvelope(): Record<string, unknown> {
   };
 }
 
-function analysisThenCommandExecutionDelegateEnvelope(): Record<string, unknown> {
+function analysisThenDirectReadDelegateEnvelope(): Record<string, unknown> {
   return {
-    summary: "Delegate a task that incorrectly requests command execution.",
+    summary: "Delegate a task that incorrectly requests direct file reading.",
     actions: [{
       type: "delegate_agent",
       rationale: "Use a bounded subagent self-report before final answer.",
       payload: {
-        task: "Test the project and analyze whether the failing check blocks completion.",
+        task: "Read files under docs and analyze whether the evidence is sufficient.",
         context: BOUNDED_DELEGATE_CONTEXT
       }
     }],

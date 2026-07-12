@@ -106,6 +106,38 @@ test("delegate_agent context rejects read, search, fetch, and browse grants befo
   }
 });
 
+test("delegate_agent rejects direct read, search, fetch, and browse tasks but keeps evidence review read-only", () => {
+  const directTasks = [
+    "Review the docs; read files and summarize?",
+    "Analyze the repository; search the repo and report findings?",
+    "Critique the endpoint; fetch the URL and summarize?",
+    "Review release readiness; browse the web and report?",
+    "评审文档；读取文件并总结？",
+    "分析仓库；搜索代码库并报告发现？",
+    "评审端点；抓取 URL 并总结？",
+    "评审发布状态；浏览网页并报告？"
+  ];
+  const evidenceReviews = [
+    "Review whether named evidence shows files were read?",
+    "评审证据是否显示已读取文件？"
+  ];
+
+  for (const task of directTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+  }
+  for (const task of evidenceReviews) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, true, task);
+  }
+});
+
 test("delegate_agent rejects direct destructive work but keeps deletion review read-only", () => {
   const verbs = ["delete", "remove", "erase", "unlink", "drop", "destroy"];
   const directTasks = verbs.map((verb) => parseDelegationRequest({

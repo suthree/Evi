@@ -255,10 +255,11 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksCommandOrTestExecution = hasDirectTaskCommandExecutionIntent(task)
     || hasPrefixedGitCommand(text, DELEGATE_TASK_REQUEST_TERMS)
     || hasDirectGitCommandIntent(task);
+  const asksDirectReadTool = hasDirectTaskReadToolIntent(task);
   const asksExpertScheduling =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
-  if (!hasBoundedAnalysisIntent || !hasConcreteQuestion || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksCompletion || asksExpertScheduling) {
+  if (!hasBoundedAnalysisIntent || !hasConcreteQuestion || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksDirectReadTool || asksCompletion || asksExpertScheduling) {
     return delegateAgentAuthoringContract.task.validation_error;
   }
   return null;
@@ -446,6 +447,11 @@ const DIRECT_TASK_COMMAND_EXECUTION_PATTERNS = [
   /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:test|check|lint|build|verify)\s+(?:(?:the|a)\s+)?(?:project|repo(?:sitory)?|codebase|test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|build|package)\b/i,
   /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|调用|使用)\s*(?:命令|终端|测试|单测|集成测试|检查|构建|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/iu,
   /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:测试|检查|构建|校验|验证)\s*(?:项目|仓库|代码库|测试|单测|集成测试|检查|构建)/u
+];
+
+const DIRECT_TASK_READ_TOOL_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:read|inspect|search|fetch|browse)\s+(?:(?:the|a)\s+)?(?:files?|raw files?|source files?|repo(?:sitory)?|workspace|state|urls?|web|website|pages?|browser)\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:读取|检查|搜索|抓取|浏览)\s*(?:文件|原始文件|源码文件|仓库|代码库|工作区|状态|网址|url\b|网页|浏览器)/iu
 ];
 
 const DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS = [
@@ -748,6 +754,10 @@ function hasDirectGitCommandIntent(task: string): boolean {
 
 function hasDirectTaskCommandExecutionIntent(task: string): boolean {
   return DIRECT_TASK_COMMAND_EXECUTION_PATTERNS.some((pattern) => pattern.test(task));
+}
+
+function hasDirectTaskReadToolIntent(task: string): boolean {
+  return DIRECT_TASK_READ_TOOL_PATTERNS.some((pattern) => pattern.test(task));
 }
 
 function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {

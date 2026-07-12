@@ -2147,13 +2147,14 @@ combine analysis with direct fix/repair/update/edit/patch/commit/push/merge/
 deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, or
 pull-request creation intent, and it
 must not ask the delegated subagent to run commands (including `git status`,
-`git log`, or `git diff`), tests, builds, or
-package-manager scripts, execute tools, write or mutate state,
+`git log`, or `git diff`), tests, builds, package-manager scripts, read files,
+search the repo, fetch URLs, browse the web, execute tools, write or mutate state,
 decide completion, or schedule expert/multi-agent work. A task may analyze
 whether explicit payload context or named evidence shows a command, test,
 build, or script was already run; direct requests also include bare execution verbs
-such as `test the project`, `check the build`, `lint the repository`, or
-`验证测试`; these are rejected before dispatch. The context must
+such as `test the project`, `check the build`, `lint the repository`,
+`read files`, `search the repo`, or `验证测试`; these are rejected before
+dispatch. The context must
 explicitly state that the delegated subagent has no tool/write/mutation
 authority and that completion remains with
 the main harness, and it must name the expected delegated output shape as

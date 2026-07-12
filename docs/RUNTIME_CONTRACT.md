@@ -1312,12 +1312,14 @@ push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
 or pull-request creation
 intent even across sentence boundaries, and it cannot ask the delegated
 subagent to run commands (including `git status`, `git log`, or `git diff`),
-tests, builds, or package-manager scripts, execute
+tests, builds, package-manager scripts, read files, search the repo, fetch
+URLs, browse the web, or execute
 tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. A task may analyze whether explicit payload context or named
 evidence shows a command, test, build, or script was already run; direct
 requests include bare execution verbs such as `test the project`, `check the
-build`, `lint the repository`, or `验证测试`, and are rejected before dispatch.
+build`, `lint the repository`, `read files`, `search the repo`, or `验证测试`,
+and are rejected before dispatch.
 The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected
