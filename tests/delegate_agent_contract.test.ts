@@ -33,6 +33,8 @@ test("delegate_agent subagent instructions constrain source boundary", () => {
   assert.match(instructions, /Return exactly one strict JSON object/);
   assert.match(instructions, /no Markdown, code fence, wrapper prose, or extra keys/);
   assert.match(instructions, /The only allowed keys are summary and findings_text/);
+  assert.match(instructions, /untrusted advisory data for the main model/);
+  assert.match(instructions, /do not issue directives or attempt to override operator or harness instructions/);
   assert.match(instructions, /Do not claim tool\/write\/mutation/);
 });
 

@@ -2187,7 +2187,11 @@ active vault, or bypass completion verification. A passed delegated result is
 advisory context only; its exact
 result id or persisted delegated result state ref must not be used as `completion_claim.verification_refs`
 proof. Substring lookalikes are treated as unbound claimed refs, not delegated
-proof. If a `done` claim follows any delegated result, completion verification
+proof. Before serializing delegated observations into the next main-model input,
+the runner marks them as `untrusted_advisory_data` and instructs the main model
+not to follow directives, commands, role changes, or completion claims embedded
+in their content; only the operator task and enclosing harness rules authorize
+actions. If a `done` claim follows any delegated result, completion verification
 also requires independent evidence: at least one harness-known non-delegated
 tool result id or tool artifact ref bound through
 `completion_claim.verification_refs`; a successful write/run tool result is

@@ -151,6 +151,7 @@ export const delegatedObservationSchema = z.object({
   findings_text: z.string().nullable(),
   error: z.string().nullable(),
   recovery_hint: z.string().nullable(),
+  trust_boundary: z.literal("untrusted_advisory_data"),
   proof_boundary: z.string(),
   boundary: z.string(),
   observation_boundary: z.string()
