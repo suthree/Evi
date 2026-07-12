@@ -27,6 +27,7 @@ import {
   buildManualIterationImplementationContract,
   getIterationAuditServiceHealthSnapshot,
   parseArgs,
+  selectIterationAuditExpectedImplementationContract,
   selectIterationAuditPlanRefs,
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
@@ -622,6 +623,21 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(coveredHistorical.status, "covered");
   assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
+
+  const persistedScopeContract = {
+    ...planContract,
+    outcome_evidence_scope: outcomeEvidenceScope
+  };
+  const selectedPersistedScopeContract = selectIterationAuditExpectedImplementationContract({
+    ...planContract,
+    proposed_slice: "general_agent_delegation_hardening_after_source"
+  }, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: persistedScopeContract
+  });
+  assert.deepEqual(selectedPersistedScopeContract, persistedScopeContract);
 
   const missingHistoricalFields = buildIterationAuditImplementationContractCoverage({
     ...planContract,

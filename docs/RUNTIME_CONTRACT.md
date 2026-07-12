@@ -433,7 +433,9 @@ or prove completion.
 refs: every ref must use one allowed prefix and every required evidence group
 must have a matching ref. It is a bounded path-prefix check only; it does not
 read file bodies or infer that an evidence ref proves the change. Historical
-contracts without this optional scope remain `not_required`.
+contracts without this optional scope remain `not_required`. It uses the
+audited iteration's persisted contract after a plan advances, rather than
+applying a successor slice's scope to historical evidence.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
 declaration coverage only and must not imply execution success. For the matching

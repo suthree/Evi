@@ -809,6 +809,15 @@ export async function getIterationAuditServiceHealthSnapshot(args: {
   };
 }
 
+export function selectIterationAuditExpectedImplementationContract(
+  planContract: GaProjectDesignPlanPacket["implementation_contract"],
+  iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice">
+): GaProjectDesignImplementationContract {
+  return planContract.proposed_slice === iteration.proposed_slice || !iteration.implementation_contract
+    ? planContract
+    : iteration.implementation_contract;
+}
+
 export function buildIterationAuditImplementationContractCoverage(
   planContract: GaProjectDesignPlanPacket["implementation_contract"],
   iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice" | "layer" | "owner_surface">
@@ -831,7 +840,7 @@ export function buildIterationAuditImplementationContractCoverage(
       boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record; does not mutate state or prove completion"
     };
   }
-  const expectedContract = planContract.proposed_slice === iteration.proposed_slice ? planContract : contract;
+  const expectedContract = selectIterationAuditExpectedImplementationContract(planContract, iteration);
   const authoritativeDelegationContract = contract.delegation_contract || expectedContract.delegation_contract
     ? getGaProjectDesignDelegationImplementationContract()
     : undefined;
@@ -2292,7 +2301,8 @@ export async function main(): Promise<number> {
         const runtimeAttentionOutcomeCoverage = buildIterationAuditRuntimeAttentionOutcomeCoverage(auditGuidance.verification_entrypoints, evidenceAvailable, serviceHealthSnapshot.service_health);
         const workspaceStatus = await getWorkspaceStatus(store, { limit: 200 });
         const workspaceOutcomeCoverage = buildIterationAuditWorkspaceOutcomeCoverage(evidenceAvailable, workspaceStatus);
-        const outcomeEvidenceScopeCoverage = buildIterationAuditOutcomeEvidenceScopeCoverage(plan.implementation_contract, evidenceAvailable);
+        const expectedImplementationContract = selectIterationAuditExpectedImplementationContract(plan.implementation_contract, detail.iteration);
+        const outcomeEvidenceScopeCoverage = buildIterationAuditOutcomeEvidenceScopeCoverage(expectedImplementationContract, evidenceAvailable);
         const seedEvidenceStatuses = plan.completion_audit_seeds.map((seed) =>
           buildIterationAuditSeedEvidenceStatus(seed, iteration, evidenceAvailable, outcomeVerificationClaimCoverage, runtimeAttentionOutcomeCoverage, workspaceOutcomeCoverage, implementationContractCoverage, outcomeEvidenceScopeCoverage)
         );
