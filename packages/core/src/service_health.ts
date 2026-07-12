@@ -6,13 +6,15 @@ const DEFAULT_SERVICE_HEALTH_TARGET = "runtime";
 const PAUSE_REF = "autonomy/runs/pause_signal.json";
 const DEFAULT_HEARTBEAT_STALE_AFTER_MS = 90_000;
 const DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS = 10 * 60_000;
+const OPERATOR_NOTIFICATION_OUTBOX_DIR = "operator/notifications/outbox";
+const OPERATOR_NOTIFICATION_HEALTH_LIMIT = 50;
 const SERVICE_LIFECYCLE_REASON_CODES = new Set([
   "heartbeat_missing",
   "heartbeat_invalid",
   "heartbeat_stale",
   "runtime_not_running"
 ]);
-const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, state parse diagnostics, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
+const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, bounded operator notification status/timestamp metadata, state parse diagnostics, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
 const SUPPRESSING_MANUAL_ACTION_SLICES = new Set([
   "external_publish_preflight_contract",
   "post_publish_feedback_capture_contract",
@@ -30,6 +32,7 @@ export type ServiceDeploymentStatus = "current" | "stale" | "unknown";
 export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_generated" | "preflight_ok" | "published" | "blocked";
 export type ServiceGatewayState = "running" | "stopped" | "error";
 export type ServiceHealthTarget = "runtime";
+export type ServiceOperatorNotificationState = "empty" | "queued" | "settled";
 
 export interface ServiceGatewayInboundSummary {
   state: "observed" | "not_observed";
@@ -47,6 +50,16 @@ export interface ServiceGatewayChannelSummary {
 export interface ServiceGatewaySummary {
   state: ServiceGatewayState;
   channels: ServiceGatewayChannelSummary[];
+}
+
+export interface ServiceOperatorNotificationSummary {
+  state: ServiceOperatorNotificationState;
+  inspection_limit: number;
+  inspected_count: number;
+  queued_count: number;
+  sent_count: number;
+  failed_count: number;
+  latest_updated_at?: string;
 }
 
 export interface ServiceHealthLayerSummary {
@@ -145,6 +158,7 @@ export interface ServiceHealthResult {
   refs: string[];
   state_parse_errors: ServiceStateParseError[];
   service: ServiceHealthServiceSummary;
+  operator_notifications: ServiceOperatorNotificationSummary;
   review_tick: {
     state: string;
     enabled: boolean;
@@ -333,14 +347,15 @@ export async function getServiceHealth(
   const now = args.now instanceof Date ? args.now : new Date(args.now ?? Date.now());
   const staleAfterMs = args.heartbeatStaleAfterMs ?? DEFAULT_HEARTBEAT_STALE_AFTER_MS;
   const contentDailyStepStaleAfterMs = args.contentDailyStepStaleAfterMs ?? DEFAULT_CONTENT_DAILY_STEP_STALE_AFTER_MS;
-  const [heartbeat, reviewTick, contentDaily, contentFeedbackRefresh, contentCreatorMetrics, pauseSignal, repoHead] = await Promise.all([
+  const [heartbeat, reviewTick, contentDaily, contentFeedbackRefresh, contentCreatorMetrics, pauseSignal, repoHead, operatorNotifications] = await Promise.all([
     readStateRecord(store, serviceRefs.heartbeat),
     readStateRecord(store, serviceRefs.reviewTick),
     readStateRecord(store, serviceRefs.contentDaily),
     readStateRecord(store, serviceRefs.contentFeedbackRefresh),
     readStateRecord(store, serviceRefs.contentCreatorMetrics),
     readStateRecord(store, PAUSE_REF),
-    readRepoHead(store.repoRoot)
+    readRepoHead(store.repoRoot),
+    summarizeOperatorNotifications(store)
   ]);
   const heartbeatFreshness = serviceHeartbeatFreshness(heartbeat, now, staleAfterMs);
   const activePause = stringField(pauseSignal.record, "status") === "active";
@@ -406,10 +421,12 @@ export async function getServiceHealth(
       ...(contentDaily.exists ? [serviceRefs.contentDaily] : []),
       ...(contentFeedbackRefresh.exists ? [serviceRefs.contentFeedbackRefresh] : []),
       ...(contentCreatorMetrics.exists ? [serviceRefs.contentCreatorMetrics] : []),
-      ...(pauseSignal.exists ? [PAUSE_REF] : [])
+      ...(pauseSignal.exists ? [PAUSE_REF] : []),
+      ...operatorNotifications.refs
     ],
     state_parse_errors: stateParseErrors,
     service,
+    operator_notifications: operatorNotifications.summary,
     review_tick: {
       state: stringField(reviewTick.record, "state") ?? "unknown",
       enabled: booleanField(reviewTick.record, "enabled") ?? false,
@@ -615,6 +632,48 @@ export async function summarizeContentDailyEffectiveStatus(
     job_refs: jobRefs,
     run_refs: compactUnique(runRefs),
     state_parse_errors: compactStateParseErrors(stateParseErrors)
+  };
+}
+
+interface OperatorNotificationSummaryRead {
+  summary: ServiceOperatorNotificationSummary;
+  refs: string[];
+}
+
+async function summarizeOperatorNotifications(store: AgentStore): Promise<OperatorNotificationSummaryRead> {
+  const refs = (await store.listStateFiles(OPERATOR_NOTIFICATION_OUTBOX_DIR))
+    .filter((ref) => ref.endsWith(".json"))
+    .slice(-OPERATOR_NOTIFICATION_HEALTH_LIMIT);
+  let queuedCount = 0;
+  let sentCount = 0;
+  let failedCount = 0;
+  let latestUpdatedAt: string | undefined;
+
+  for (const ref of refs) {
+    const entry = await readStateRecord(store, ref);
+    const status = stringField(entry.record, "status");
+    if (status === "queued") queuedCount += 1;
+    if (status === "sent") sentCount += 1;
+    if (status === "failed") failedCount += 1;
+    const updatedAt = stringField(entry.record, "updated_at");
+    if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
+  }
+
+  let state: ServiceOperatorNotificationState = "settled";
+  if (refs.length === 0) state = "empty";
+  else if (queuedCount > 0) state = "queued";
+
+  return {
+    refs,
+    summary: {
+      state,
+      inspection_limit: OPERATOR_NOTIFICATION_HEALTH_LIMIT,
+      inspected_count: refs.length,
+      queued_count: queuedCount,
+      sent_count: sentCount,
+      failed_count: failedCount,
+      latest_updated_at: latestUpdatedAt
+    }
   };
 }
 

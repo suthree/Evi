@@ -1628,11 +1628,15 @@ selected target's `services/<target>/heartbeat.json`,
 `services/<target>/content_creator_metrics.json`,
 `autonomy/runs/pause_signal.json`, and latest local
 `autonomy/opportunity-actions/*.json` coverage metadata under the selected state
-root, plus bounded repo git identity from `.git/HEAD`, loose refs, and
-`packed-refs`. It returns heartbeat freshness, MessageGateway channel health
+root, plus status and update-time metadata from at most 50 latest
+`operator/notifications/outbox/*.json` records and bounded repo git identity
+from `.git/HEAD`, loose refs, and `packed-refs`. It returns heartbeat freshness,
+MessageGateway channel health
 copied from the heartbeat, runtime-build metadata copied from the heartbeat,
 repo HEAD summary, resident deployment status, review tick status/focus,
-content daily status, feedback refresh status, and pause status.
+content daily status, feedback refresh status, pause status, and bounded
+operator-notification delivery counts. It never returns notification text,
+targets, sources, errors, or send payloads.
 It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice
@@ -1748,8 +1752,9 @@ commands, detailed reasons, raw review Markdown, SOP bodies, skill bodies, model
 responses, or tool artifacts.
 
 The `/health` and `/service health` commands read only heartbeat, resident loop
-status, latest local opportunity action coverage metadata, autonomy pause state,
-and bounded repo git identity. They derive
+status, bounded operator-notification delivery metadata, latest local
+opportunity action coverage metadata, autonomy pause state, and bounded repo
+git identity. They derive
 heartbeat freshness, resident deployment status, content daily status, feedback
 refresh status, and service-health attention status, but they do not inspect
 launchd, read logs, invoke the model, restart services, read source file bodies,

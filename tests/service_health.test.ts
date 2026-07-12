@@ -222,6 +222,46 @@ test("service health flags a failed message gateway channel for operator attenti
   }
 });
 
+test("service health summarizes a bounded notification outbox without leaking delivery payloads", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    for (let index = 0; index <= 50; index += 1) {
+      const second = String(index).padStart(2, "0");
+      await store.writeJson(`operator/notifications/outbox/operator_notification_202607010000${second}_a.json`, {
+        status: index === 1 ? "queued" : index === 2 ? "failed" : "sent",
+        updated_at: `2026-07-01T00:00:${second}.000Z`,
+        target: { open_id: "ou_sensitive_operator" },
+        text: "private operator message",
+        source: "private source",
+        error: "private delivery error"
+      });
+    }
+
+    const health = await getServiceHealth(store, {
+      now: "2026-07-01T00:01:00.000Z"
+    });
+
+    assert.deepEqual(health.operator_notifications, {
+      state: "queued",
+      inspection_limit: 50,
+      inspected_count: 50,
+      queued_count: 1,
+      sent_count: 48,
+      failed_count: 1,
+      latest_updated_at: "2026-07-01T00:00:50.000Z"
+    });
+    assert.equal(health.refs.filter((ref) => ref.startsWith("operator/notifications/outbox/")).length, 50);
+    const serialized = JSON.stringify(health);
+    assert.equal(serialized.includes("ou_sensitive_operator"), false);
+    assert.equal(serialized.includes("private operator message"), false);
+    assert.equal(serialized.includes("private source"), false);
+    assert.equal(serialized.includes("private delivery error"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service health marks stale review tick focus as covered by a later manual act-next action", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
