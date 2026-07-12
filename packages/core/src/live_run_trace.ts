@@ -35,6 +35,7 @@ export interface LiveRunTraceRound {
   envelope_ref: string;
   model_action_event_count: number;
   model_action_event_ids: string[];
+  model_action_event_bindings: LiveRunModelActionEventBindingSummary[];
   model_input_present: boolean;
   delegated_observation_result_ids: string[];
   recovery_guidance_result_ids: string[];
@@ -49,6 +50,11 @@ export interface LiveRunTraceRound {
   tool_action_expectations: LiveRunToolActionExpectation[];
   respond_action_expectations: LiveRunRespondActionExpectation[];
   harness_action_types: string[];
+}
+
+export interface LiveRunModelActionEventBindingSummary {
+  event_id: string;
+  envelope_ref_count: number;
 }
 
 export interface LiveRunRespondActionExpectation {
@@ -771,14 +777,15 @@ async function readTraceRounds(
   store: AgentStore,
   events: EpisodeEvent[]
 ): Promise<{ rounds: LiveRunTraceRound[]; invalidEnvelopeRefs: string[] }> {
+  const modelActionEnvelopeRefs = (event: EpisodeEvent) => event.artifact_refs
+    .filter((ref) => /-model-action-r\d+\.json$/.test(ref));
   const refs = unique(events
     .filter((event) => event.kind === "model_action")
-    .flatMap((event) => event.artifact_refs)
-    .filter((ref) => /-model-action-r\d+\.json$/.test(ref)))
+    .flatMap(modelActionEnvelopeRefs))
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
   const actionEventsByEnvelopeRef = new Map<string, EpisodeEvent[]>();
   for (const event of events.filter((item) => item.kind === "model_action")) {
-    for (const ref of event.artifact_refs.filter((item) => /-model-action-r\d+\.json$/.test(item))) {
+    for (const ref of modelActionEnvelopeRefs(event)) {
       actionEventsByEnvelopeRef.set(ref, [...(actionEventsByEnvelopeRef.get(ref) ?? []), event]);
     }
   }
@@ -812,12 +819,18 @@ async function readTraceRounds(
         };
       });
     const actionEvents = actionEventsByEnvelopeRef.get(ref) ?? [];
-    const modelInput = actionEvents.length === 1 ? actionEvents[0]!.model_input : undefined;
+    const modelInput = actionEvents.length === 1 && modelActionEnvelopeRefs(actionEvents[0]!).length === 1
+      ? actionEvents[0]!.model_input
+      : undefined;
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,
       model_action_event_count: actionEvents.length,
       model_action_event_ids: actionEvents.map((event) => event.id),
+      model_action_event_bindings: actionEvents.map((event) => ({
+        event_id: event.id,
+        envelope_ref_count: modelActionEnvelopeRefs(event).length
+      })),
       model_input_present: modelInput !== undefined,
       delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],
       recovery_guidance_result_ids: modelInput?.recovery_guidance_result_ids ?? [],

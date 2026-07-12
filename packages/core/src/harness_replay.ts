@@ -399,9 +399,16 @@ function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessR
 function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const missingModelActionEvents = trace.rounds.filter((round) => round.model_action_event_count === 0);
   const duplicateModelActionEvents = trace.rounds.filter((round) => round.model_action_event_count > 1);
+  const multiEnvelopeModelActionEvents = unique(trace.rounds
+    .flatMap((round) => round.model_action_event_bindings)
+    .filter((binding) => binding.envelope_ref_count > 1)
+    .map((binding) => binding.event_id));
+  const multiEnvelopeRounds = trace.rounds.filter((round) =>
+    round.model_action_event_bindings.some((binding) => binding.envelope_ref_count > 1));
   const problemRefs = unique([
     ...missingModelActionEvents,
-    ...duplicateModelActionEvents
+    ...duplicateModelActionEvents,
+    ...multiEnvelopeRounds
   ].map((round) => round.envelope_ref));
   return {
     id: "model_action_event_binding",
@@ -409,7 +416,8 @@ function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplay
     summary: [
       `model_action_rounds=${trace.rounds.length}`,
       `missing_model_action_events=${missingModelActionEvents.length}`,
-      `duplicate_model_action_events=${duplicateModelActionEvents.length}`
+      `duplicate_model_action_events=${duplicateModelActionEvents.length}`,
+      `multi_envelope_model_action_events=${multiEnvelopeModelActionEvents.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

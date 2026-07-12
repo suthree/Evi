@@ -139,6 +139,7 @@ test("harness replay audit writes bounded evidence without reading raw run artif
       check.id === "model_action_event_binding"
         && check.status === "pass"
         && check.summary.includes("duplicate_model_action_events=0")
+        && check.summary.includes("multi_envelope_model_action_events=0")
     ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
@@ -304,6 +305,50 @@ test("harness replay audit warns when a model-action envelope has duplicate even
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /duplicate_model_action_events=1/);
     assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r2.json"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit rejects model input metadata from a multi-envelope event", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-model-event-refs-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const roundTwoRef = "memory/episodes/session_replay_test-model-action-r2.json";
+    const roundThreeRef = "memory/episodes/session_replay_test-model-action-r3.json";
+    await store.writeText(roundThreeRef, await store.readStateText(roundTwoRef));
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(
+      event.id === "evidence_replay_model_r2"
+        ? { ...event, artifact_refs: [...(event.artifact_refs as string[]), roundThreeRef] }
+        : event
+    )).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "model_action_event_binding");
+
+    assert.equal(trace.rounds[1]?.model_action_event_count, 1);
+    assert.equal(trace.rounds[1]?.model_action_event_bindings[0]?.envelope_ref_count, 2);
+    assert.equal(trace.rounds[1]?.model_input_present, false);
+    assert.equal(trace.rounds[2]?.model_action_event_count, 1);
+    assert.equal(trace.rounds[2]?.model_action_event_bindings[0]?.envelope_ref_count, 2);
+    assert.equal(trace.rounds[2]?.model_input_present, false);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /multi_envelope_model_action_events=1/);
+    assert.equal(check?.refs.includes(roundTwoRef), true);
+    assert.equal(check?.refs.includes(roundThreeRef), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
