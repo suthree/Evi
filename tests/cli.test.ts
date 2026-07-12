@@ -1663,6 +1663,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ref: "self-evolution/iterations/iteration_contract_open.json",
       source_ref: "self-evolution/iterations/iteration_contract_source.json",
       implementation_contract: plan.implementation_contract,
+      verification_commands: ["pnpm run matching-frozen-check --state-root <state-root>"],
       proposed_slice: "core_ga_design_next_slice_after_source",
       outcome_status: "not_recorded"
     },
@@ -1674,6 +1675,13 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(matchingGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
   assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_open");
   assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.deepEqual(matchingGuidance.verification_commands, [
+    "pnpm run runtime -- governance project-design --state-root .runtime/state",
+    "pnpm run runtime -- governance scorecard --state-root .runtime/state",
+    "pnpm run runtime -- governance iterations --state-root .runtime/state",
+    "pnpm run runtime -- service health --target runtime",
+    "pnpm run check"
+  ]);
 
   const frozenEntrypointGuidance = buildIterationAuditGuidance(plan, {
     id: "iteration_contract_historical",
@@ -1707,6 +1715,10 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ref: "self-evolution/iterations/iteration_contract_source.json",
       source_ref: "self-evolution/iterations/iteration_contract_parent.json",
       implementation_contract: plan.implementation_contract,
+      verification_commands: [
+        "pnpm run runtime -- governance project-design --artifact source_artifact --state-root <state-root>",
+        "pnpm run source-frozen-check"
+      ],
       proposed_slice: "completed_source_slice",
       outcome_status: "verified"
     },
@@ -1740,6 +1752,10 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.notEqual(sourceGuidance.iteration_record_status.id, "iteration_contract_open");
   assert.notEqual(sourceGuidance.iteration_record_status.ref, plan.iteration_record_status.ref);
   assert.equal(sourceGuidance.audited_iteration?.id, sourceGuidance.iteration_record_status.id);
+  assert.deepEqual(sourceGuidance.verification_commands, [
+    "pnpm run runtime -- governance project-design --artifact source_artifact --state-root .runtime/state",
+    "pnpm run source-frozen-check"
+  ]);
 });
 
 test("iteration audit next command binds current state root", () => {

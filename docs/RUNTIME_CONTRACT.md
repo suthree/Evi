@@ -442,7 +442,9 @@ declaration coverage only and must not imply execution success. For the matching
 open iteration, selected commands come from the current GA project-design plan.
 For a source or historical iteration, selected commands come from that audited
 iteration's own runtime-bound verification commands, so later successor plans do
-not move the completion-audit target.
+not move the completion-audit target. `audit_guidance.verification_commands`
+renders that same selected set: the matching open iteration shows current-plan
+commands, while any other audited iteration shows its frozen commands.
 `outcome_verification_command_coverage` compares that same selected command set
 with outcome verification command refs only, so a completion audit can show
 when an outcome has not recorded the commands required for the audited

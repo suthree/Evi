@@ -381,6 +381,7 @@ interface IterationAuditGuidanceSubject {
   ref: string;
   source_ref?: string;
   implementation_contract?: GaProjectDesignPlanPacket["implementation_contract"];
+  verification_commands?: string[];
   proposed_slice: string;
   outcome_status: string;
 }
@@ -1151,6 +1152,9 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     : isSourceIteration
       ? "source_iteration_for_current_plan"
       : "current_plan_context";
+  const selectedVerificationCommands = !matchesOpenIteration && subject?.verification_commands?.length
+    ? subject.verification_commands
+    : plan.verification_commands;
   const iterationRecordStatus = !subject || matchesOpenIteration
     ? plan.iteration_record_status
     : {
@@ -1192,11 +1196,11 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     completion_seed_scope: buildIterationAuditCompletionSeedScope(plan, guidanceScope, subject),
     verification_entrypoints: entrypoints,
     required_before_outcome: boundRequiredBeforeOutcome,
-    verification_commands: bindCommandPlaceholders(plan.verification_commands, subject, stateRoot),
+    verification_commands: bindCommandPlaceholders(selectedVerificationCommands, subject, stateRoot),
     application_boundaries: plan.layer_decision.application_boundaries,
     learning_authority: plan.learning_authority,
     iteration_record_status: boundIterationRecordStatus,
-    boundary: "read-only iteration audit guidance; restates core/basic verification entrypoints and commands from the GA project-design plan only; does not execute checks, write outcomes, or prove completion"
+    boundary: "read-only iteration audit guidance; uses GA project-design commands for the matching open iteration and the audited iteration's frozen commands otherwise; does not execute checks, write outcomes, or prove completion"
   };
 }
 
@@ -2290,6 +2294,7 @@ export async function main(): Promise<number> {
           ref: detail.iteration.ref,
           source_ref: detail.iteration.source_ref,
           implementation_contract: detail.iteration.implementation_contract,
+          verification_commands: detail.iteration.verification_commands,
           layer: detail.iteration.layer,
           owner_surface: detail.iteration.owner_surface,
           proposed_slice: detail.iteration.proposed_slice,

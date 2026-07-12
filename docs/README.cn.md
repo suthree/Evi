@@ -332,6 +332,7 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 输出里的 `seed_evidence_status` 只说明声明证据、outcome 证据和验证命令引用是否存在，不证明种子已满足。
 对 `verification_scope`，`seed_evidence_status` 也会看 outcome verification claim coverage；如果 claim refs 漏掉 required entrypoint，它仍不会进入 ready 状态。
 也可以把 `verification_scope` 换成 `all`，一次查看所有完成审计种子、证据状态和同一组迭代证据；这仍然只是完成前审计视图。
+审计输出中的 `audit_guidance.verification_commands` 与 command coverage 使用同一命令集：matching open iteration 展示当前 plan，其他被审计 iteration 展示自身冻结并绑定当前 state root 的命令，因此 successor plan 不会改写历史审计目标。
 可以用 `pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified --summary "..." --state-root .runtime/state`
 给已有迭代契约补充验证结果、证据和下一步，让自我迭代形成“声明 -> 验证 -> 复盘”的闭环。
 如果是在修复已有 outcome 的缺失 evidence、commands、claims 或 next moves，可以显式加
