@@ -696,7 +696,7 @@ const SCHEDULING_TERMS = [
 ];
 
 function normalizeBoundaryText(value: string): string {
-  return value.toLowerCase().replace(/\p{Cf}/gu, "").replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").toLowerCase().replace(/\p{Cf}/gu, "").replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function hasDirectTaskMutationIntent(task: string, text: string): boolean {
