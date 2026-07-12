@@ -3742,6 +3742,10 @@ test("live runner records structured model diagnostics for request failures", as
     const result = await runner.runTask("Surface model request diagnostics.");
     const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
     const diagnosticEvent = events.find((event) => event.kind === "model_diagnostic");
+    const diagnosticMetadata = diagnosticEvent?.model_diagnostic as {
+      diagnostic_ref: string;
+      diagnostic_sha256: string;
+    } | undefined;
     const diagnosticRef = (diagnosticEvent?.artifact_refs as string[] | undefined)
       ?.find((ref) => ref.endsWith("-model-diagnostic-r1.json")) ?? "";
     const diagnostic = JSON.parse(await readFile(join(fixture.stateRoot, diagnosticRef), "utf8")) as {
@@ -3765,6 +3769,8 @@ test("live runner records structured model diagnostics for request failures", as
 
     assert.equal(result.verdict, "blocked_model_error");
     assert.ok(diagnosticEvent);
+    assert.equal(diagnosticMetadata?.diagnostic_ref, diagnosticRef);
+    assert.match(diagnosticMetadata?.diagnostic_sha256 ?? "", /^[a-f0-9]{64}$/);
     assert.equal(diagnostic.stage, "request");
     assert.equal(diagnostic.failure_kind, "rate_limit");
     assert.equal(diagnostic.output_preview, null);
@@ -3788,6 +3794,9 @@ test("live runner records structured model diagnostics for request failures", as
     assert.equal(trace.model_diagnostic_count, 1);
     assert.equal(trace.model_diagnostics[0]?.failure_kind, "rate_limit");
     assert.equal(trace.model_diagnostics[0]?.diagnostic_ref, diagnosticRef);
+    assert.equal(trace.model_diagnostics[0]?.metadata_present, true);
+    assert.equal(trace.model_diagnostics[0]?.diagnostic_ref_matches_artifact, true);
+    assert.equal(trace.model_diagnostics[0]?.diagnostic_digest_matches, true);
   } finally {
     await fixture.cleanup();
   }

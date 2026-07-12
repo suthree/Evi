@@ -4120,6 +4120,71 @@ test("harness replay audit warns when a model diagnostic is unreadable", async (
   }
 });
 
+test("harness replay detects model-diagnostic content drift from bounded event metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-diagnostic-drift-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const diagnosticRef = await writeReplayDiagnostic(store, "r1", true);
+    await store.writeJson(diagnosticRef, {
+      round: 1,
+      stage: "request",
+      failure_kind: "network",
+      error_preview: "Changed bounded diagnostic preview.",
+      private_details: "RAW_REPLAY_DIAGNOSTIC_DRIFT_SHOULD_NOT_APPEAR"
+    });
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const diagnostic = trace.model_diagnostics[0];
+    const integrity = report.checks.find((item) => item.id === "model_diagnostic_integrity");
+
+    assert.equal(diagnostic?.metadata_present, true);
+    assert.equal(diagnostic?.diagnostic_ref_matches_artifact, true);
+    assert.equal(diagnostic?.diagnostic_digest_matches, false);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /mismatched_model_diagnostic_digest=1/);
+    assert.equal(integrity?.refs.includes(diagnosticRef), true);
+    assert.doesNotMatch(JSON.stringify({ trace, report }), /RAW_REPLAY_DIAGNOSTIC_DRIFT_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay treats partial model-diagnostic metadata as attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-diagnostic-metadata-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    await writeReplayDiagnostic(store, "r1", true);
+    const legacyRef = await writeReplayDiagnostic(store, "r2", false);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_diagnostic_integrity");
+
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /missing_model_diagnostic_metadata=1/);
+    assert.match(integrity?.summary ?? "", /partial_model_diagnostic_metadata=true/);
+    assert.equal(integrity?.refs.includes(legacyRef), true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit keeps all delegated dispatch metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-delegates-"));
   const repoRoot = join(root, "repo");
@@ -4563,6 +4628,41 @@ async function modelActionEventMetadata(store: AgentStore, ref: string): Promise
     envelope_ref: ref,
     envelope_sha256: createHash("sha256").update(text).digest("hex")
   };
+}
+
+async function writeReplayDiagnostic(
+  store: AgentStore,
+  suffix: string,
+  withMetadata: boolean
+): Promise<string> {
+  const sessionId = "session_replay_test";
+  const diagnosticRef = `memory/episodes/${sessionId}-model-diagnostic-${suffix}.json`;
+  await store.writeJson(diagnosticRef, {
+    round: 1,
+    stage: "request",
+    failure_kind: "network",
+    error_preview: "RAW_REPLAY_DIAGNOSTIC_SHOULD_NOT_APPEAR"
+  });
+  const text = await store.readStateText(diagnosticRef);
+  assert.ok(text);
+  await store.appendJsonl("memory/episodes/events.jsonl", {
+    id: `evidence_replay_diagnostic_${suffix}`,
+    session_id: sessionId,
+    turn_id: "turn_replay_test",
+    kind: "model_diagnostic",
+    summary: "Recorded bounded model failure diagnostic.",
+    artifact_refs: [diagnosticRef],
+    ...(withMetadata
+      ? {
+        model_diagnostic: {
+          diagnostic_ref: diagnosticRef,
+          diagnostic_sha256: createHash("sha256").update(text).digest("hex")
+        }
+      }
+      : {}),
+    created_at: "2026-06-30T01:00:00.000Z"
+  });
+  return diagnosticRef;
 }
 
 async function markReplayCompletionVerified(store: AgentStore): Promise<void> {

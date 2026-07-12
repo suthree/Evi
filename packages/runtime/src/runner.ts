@@ -353,7 +353,8 @@ export class LiveAgentRunner {
             turn_id: snapshot.id,
             kind: "model_diagnostic",
             summary: modelDiagnosticEventSummary(diagnostic),
-            artifact_refs: compactRefs([diagnosticRef, modelResponseRef, contextManifestRef])
+            artifact_refs: compactRefs([diagnosticRef, modelResponseRef, contextManifestRef]),
+            model_diagnostic: modelDiagnosticEventMetadata(diagnostic, diagnosticRef)
           });
           evidenceRefs.push(diagnosticEvent.id);
           await this.store.appendJsonl("memory/episodes/events.jsonl", diagnosticEvent);
@@ -395,7 +396,8 @@ export class LiveAgentRunner {
           turn_id: snapshot.id,
           kind: "model_diagnostic",
           summary: modelDiagnosticEventSummary(diagnostic),
-          artifact_refs: compactRefs([diagnosticRef, contextManifestRef])
+          artifact_refs: compactRefs([diagnosticRef, contextManifestRef]),
+          model_diagnostic: modelDiagnosticEventMetadata(diagnostic, diagnosticRef)
         });
         evidenceRefs.push(diagnosticEvent.id);
         await this.store.appendJsonl("memory/episodes/events.jsonl", diagnosticEvent);
@@ -1777,6 +1779,18 @@ function modelDiagnosticEventSummary(diagnostic: ModelFailureDiagnostic): string
     `stage=${diagnostic.stage};`,
     `kind=${diagnostic.failure_kind}.`
   ].join(" ");
+}
+
+function modelDiagnosticEventMetadata(
+  diagnostic: ModelFailureDiagnostic,
+  diagnosticRef: string
+): { diagnostic_ref: string; diagnostic_sha256: string } {
+  return {
+    diagnostic_ref: diagnosticRef,
+    diagnostic_sha256: createHash("sha256")
+      .update(`${JSON.stringify(diagnostic, null, 2)}\n`)
+      .digest("hex")
+  };
 }
 
 function classifyModelFailure(errorPreview: string, stage: ModelFailureStage): ModelFailureKind {

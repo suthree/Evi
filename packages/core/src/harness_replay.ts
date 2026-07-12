@@ -446,12 +446,29 @@ function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplay
 
 function modelDiagnosticIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const unreadableRefs = trace.unreadable_model_diagnostic_refs;
+  const missingMetadata = trace.model_diagnostics.filter((diagnostic) => !diagnostic.metadata_present);
+  const metadataCoverageIsPartial = missingMetadata.length > 0 && missingMetadata.length < trace.model_diagnostics.length;
+  const mismatchedRefs = trace.model_diagnostics.filter((diagnostic) => diagnostic.diagnostic_ref_matches_artifact === false);
+  const mismatchedDigests = trace.model_diagnostics.filter((diagnostic) => diagnostic.diagnostic_digest_matches === false);
+  const problemRefs = unique([
+    ...unreadableRefs,
+    ...(metadataCoverageIsPartial ? missingMetadata : []).map((diagnostic) => diagnostic.diagnostic_ref),
+    ...mismatchedRefs.map((diagnostic) => diagnostic.diagnostic_ref),
+    ...mismatchedDigests.map((diagnostic) => diagnostic.diagnostic_ref)
+  ]);
   return {
     id: "model_diagnostic_integrity",
-    status: unreadableRefs.length > 0 ? "warning" : "pass",
-    summary: `unreadable_model_diagnostics=${unreadableRefs.length}`,
-    refs: unreadableRefs.length > 0
-      ? unique([trace.report_ref, ...unreadableRefs])
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `model_diagnostics=${trace.model_diagnostics.length}`,
+      `unreadable_model_diagnostics=${unreadableRefs.length}`,
+      `missing_model_diagnostic_metadata=${missingMetadata.length}`,
+      `partial_model_diagnostic_metadata=${metadataCoverageIsPartial}`,
+      `mismatched_model_diagnostic_ref=${mismatchedRefs.length}`,
+      `mismatched_model_diagnostic_digest=${mismatchedDigests.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? unique([trace.report_ref, ...problemRefs])
       : unique([trace.report_ref, ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref)])
   };
 }

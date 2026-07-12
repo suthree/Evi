@@ -225,6 +225,11 @@ export const modelActionEventMetadataSchema = z.object({
   envelope_sha256: z.string().regex(/^[a-f0-9]{64}$/)
 });
 
+export const modelDiagnosticEventMetadataSchema = z.object({
+  diagnostic_ref: z.string().min(1),
+  diagnostic_sha256: z.string().regex(/^[a-f0-9]{64}$/)
+});
+
 export const finalResponseEventMetadataSchema = z.object({
   response_ref: z.string().min(1).optional(),
   action_id: z.string().min(1).optional(),
@@ -254,6 +259,7 @@ export const evidenceEventSchema = z.object({
   artifact_refs: z.array(z.string()).default([]),
   model_input: modelActionInputEventMetadataSchema.optional(),
   model_action: modelActionEventMetadataSchema.optional(),
+  model_diagnostic: modelDiagnosticEventMetadataSchema.optional(),
   tool_result: toolResultEventMetadataSchema.optional(),
   delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
   final_response: finalResponseEventMetadataSchema.optional(),

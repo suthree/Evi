@@ -1640,6 +1640,12 @@ failure kind, sanitized previews, model/config metadata, context refs, response
 ref when one exists, and input size metadata. It is observability for operators
 and later SOP/backlog work; it is not retry authority, failover policy, or
 completion proof.
+
+New `model_diagnostic` events retain only the diagnostic ref and a SHA-256
+digest of its persisted JSON. Live Run Trace and replay compare those values
+without rendering the diagnostic body; a partial modern migration or a ref/hash
+mismatch remains attention, while fully historical events without this metadata
+remain unknown rather than becoming a new warning.
 Failed or skipped reports also appear as read-only `completion_verification`
 items in the Opportunity Backlog. Passed reports are suppressed. The backlog
 item and any review tick focus may include only structured report fields such

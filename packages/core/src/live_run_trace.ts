@@ -104,6 +104,9 @@ export interface LiveRunModelDiagnosticSummary {
   diagnostic_ref: string;
   response_ref: string | null;
   error_preview: string;
+  metadata_present: boolean;
+  diagnostic_ref_matches_artifact: boolean | null;
+  diagnostic_digest_matches: boolean | null;
 }
 
 export interface LiveRunToolResultEventSummary {
@@ -736,14 +739,16 @@ async function readModelDiagnostics(
       ?? event.artifact_refs.find((ref) => ref.endsWith(".json"))
       ?? "";
     if (!diagnosticRef) continue;
+    let text: string;
     let raw: unknown;
     try {
-      raw = await store.readStateJson<unknown>(diagnosticRef);
+      text = await store.readStateText(diagnosticRef);
+      raw = JSON.parse(text) as unknown;
     } catch {
       unreadableRefs.push(diagnosticRef);
       continue;
     }
-    if (raw === null) {
+    if (!text || raw === null) {
       unreadableRefs.push(diagnosticRef);
       continue;
     }
@@ -756,7 +761,14 @@ async function readModelDiagnostics(
       failure_kind: stringOrDefault(record.failure_kind, "unknown"),
       diagnostic_ref: diagnosticRef,
       response_ref: stringOrNull(record.response_ref),
-      error_preview: stringOrDefault(record.error_preview, "")
+      error_preview: stringOrDefault(record.error_preview, ""),
+      metadata_present: event.model_diagnostic !== undefined,
+      diagnostic_ref_matches_artifact: event.model_diagnostic
+        ? event.model_diagnostic.diagnostic_ref === diagnosticRef
+        : null,
+      diagnostic_digest_matches: event.model_diagnostic
+        ? event.model_diagnostic.diagnostic_sha256 === createHash("sha256").update(text).digest("hex")
+        : null
     });
   }
   return { diagnostics, unreadableRefs };

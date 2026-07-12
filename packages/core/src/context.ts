@@ -942,7 +942,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- boundary: ${trace.boundary}`
   ];
   for (const diagnostic of trace.model_diagnostics.slice(0, 3)) {
-    lines.push(`- model_diagnostic: round=${diagnostic.round} stage=${diagnostic.stage} kind=${diagnostic.failure_kind} ref=${diagnostic.diagnostic_ref}`);
+    lines.push(`- model_diagnostic: round=${diagnostic.round} stage=${diagnostic.stage} kind=${diagnostic.failure_kind} ref=${diagnostic.diagnostic_ref} metadata=${diagnostic.metadata_present} ref_matches=${diagnostic.diagnostic_ref_matches_artifact} digest_matches=${diagnostic.diagnostic_digest_matches}`);
     if (diagnostic.response_ref) lines.push(`  response_ref: ${diagnostic.response_ref}`);
     if (diagnostic.error_preview) lines.push(`  error_preview: ${truncate(diagnostic.error_preview, 220)}`);
   }
