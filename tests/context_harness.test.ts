@@ -5232,7 +5232,7 @@ test("live runner fails done verification when delegated result violates its con
   }
 });
 
-test("live runner rejects later valid delegation as failed delegation recovery", async () => {
+test("live runner rejects generic execution claims and later delegated recovery", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -5257,6 +5257,8 @@ test("live runner rejects later valid delegation as failed delegation recovery",
         round: number;
         contract_status: string;
         result_failure_kind: string;
+        raw_output_preview: string;
+        error: string | null;
       };
     }));
     const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
@@ -5278,6 +5280,9 @@ test("live runner rejects later valid delegation as failed delegation recovery",
       { ok: false, round: 1, contract_status: "failed", result_failure_kind: "delegated_output_contract_failed" },
       { ok: true, round: 2, contract_status: "passed", result_failure_kind: "none" }
     ]);
+    assert.match(delegated[0]?.error ?? "", /must not claim .* command\/test execution/);
+    assert.match(delegated[0]?.raw_output_preview ?? "", /raw output preview suppressed/);
+    assert.doesNotMatch(delegated[0]?.raw_output_preview ?? "", /test suite was executed/i);
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
     const delegatedResultsCheck = report.checks.find((check) => check.id === "delegated_results");
@@ -8513,7 +8518,10 @@ class InvalidDelegationThenValidDelegationThenDoneModel implements ModelClient {
     if (isDelegation) this.delegationCalls += 1;
     const outputText = isDelegation
       ? this.delegationCalls === 1
-        ? "plain text instead of json"
+        ? JSON.stringify({
+          summary: "The test suite was executed and passed.",
+          findings_text: "No issue."
+        })
         : JSON.stringify({
           summary: "Later valid delegated summary",
           findings_text: "The later delegated critique is valid but still not main-harness recovery evidence."
@@ -8536,6 +8544,7 @@ class InvalidDelegationThenValidDelegationThenDoneModel implements ModelClient {
       this.sawMainHarnessRecoveryHint = delegatedSection.includes('"recovery_hint"')
         && delegatedSection.includes("later successful write/run evidence plus a bound non-delegated verification ref")
         && delegatedSection.includes("otherwise report blocked")
+        && !delegatedSection.includes("test suite was executed")
         && !delegatedSection.includes("later valid bounded delegation");
       return secondRoundDelegateCritiqueEnvelope();
     }
