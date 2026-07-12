@@ -1309,8 +1309,11 @@ inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct
 fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
 push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
-or pull-request creation
-intent even across sentence boundaries, and it cannot ask the delegated
+or pull-request creation intent even across sentence boundaries. Neither
+`task` nor `context` may contain a control-plane instruction override or role
+change such as ignoring prior instructions or acting as the system/developer
+role; this is rejected before dispatch even when the surrounding payload names
+the normal bounded-analysis and no-authority constraints. A task cannot ask the delegated
 subagent to run commands (including `git status`, `git log`, or `git diff`),
 tests, builds, package-manager scripts, read files, search the repo, fetch
 URLs, browse the web, or execute

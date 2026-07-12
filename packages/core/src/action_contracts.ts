@@ -67,6 +67,7 @@ export const delegateAgentAuthoringContract = {
       "task lacks one concrete question for the delegated subagent",
       "task combines analysis intent with direct fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, Git push/merge/rebase/cherry-pick/reset/tag, or pull-request creation intent",
       "task combines analysis intent with command or test execution, including Git command execution intent",
+      "task contains control-plane instruction overrides or role changes",
       "more than one delegate_agent action is proposed in the same model round",
       "task asks the delegated subagent to execute tools, mutate state, or decide completion",
       "task is expert scheduling or multi-agent orchestration instead of general delegation"
@@ -85,6 +86,7 @@ export const delegateAgentAuthoringContract = {
       "context is empty or over the configured max chars",
       "context relies on hidden memory, raw delegated artifacts, or unstated repo state",
       "context omits delegated authority limits or main-harness completion ownership",
+      "context contains control-plane instruction overrides or role changes",
       "context simultaneously denies and grants delegated tool, write, mutation, command/test execution (including Git), completion, expert, or multi-agent scheduling authority",
       "context grants external adapter, SOP/skill promotion, command/test execution (including Git), file read, repo search, URL fetch, web browsing, expert scheduling, multi-agent orchestration, model fan-out, or completion authority"
     ],
@@ -97,7 +99,7 @@ export const delegateAgentAuthoringContract = {
     }
   },
   runner_input_contract: [
-    "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
+    "parseDelegationRequest validates strict task/context payloads and rejects control-plane instruction overrides or role changes before delegated model dispatch",
     "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, pull-request creation, command/test execution (including Git), file read, repo search, URL fetch, web browsing, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for destructive delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, pull-request creation, command/test execution (including Git), file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
     "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, explicit payload/evidence source boundary, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
   ],

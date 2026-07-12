@@ -242,6 +242,9 @@ export function parseDelegatedOutput(
 }
 
 function validateDelegationTaskBoundary(task: string): string | null {
+  if (delegationTextAttemptsControlPlaneOverride(task)) {
+    return "delegate_agent.payload.task must not contain control-plane instruction overrides or role changes.";
+  }
   const text = normalizeBoundaryText(task);
   const hasBoundedAnalysisIntent = hasAnyPhrase(text, DELEGATE_TASK_ANALYSIS_TERMS);
   const hasConcreteQuestion = hasConcreteDelegationQuestion(task, text);
@@ -266,6 +269,9 @@ function validateDelegationTaskBoundary(task: string): string | null {
 }
 
 function validateDelegationContextBoundary(context: string): string | null {
+  if (delegationTextAttemptsControlPlaneOverride(context)) {
+    return "delegate_agent.payload.context must not contain control-plane instruction overrides or role changes.";
+  }
   const text = normalizeBoundaryText(context);
   const rawText = context.toLowerCase();
   const deniesToolAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, TOOL_AUTHORITY_TERMS);
@@ -1142,7 +1148,7 @@ function delegatedOutputBoundaryFailure(
       safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
     };
   }
-  if (delegatedTextAttemptsInstructionOverride(text)) {
+  if (delegationTextAttemptsControlPlaneOverride(text)) {
     return {
       ok: false,
       error: "Delegated model output must not contain control-plane instruction overrides or role changes.",
@@ -1221,9 +1227,9 @@ function delegatedTextClaimsForbiddenSource(value: string): boolean {
   return reliesOnForbiddenDelegationSource(text);
 }
 
-function delegatedTextAttemptsInstructionOverride(value: string): boolean {
+function delegationTextAttemptsControlPlaneOverride(value: string): boolean {
   const text = normalizeBoundaryText(value);
-  return DELEGATED_OUTPUT_INSTRUCTION_OVERRIDE_PATTERNS.some((pattern) => pattern.test(text));
+  return CONTROL_PLANE_INSTRUCTION_OVERRIDE_PATTERNS.some((pattern) => pattern.test(text));
 }
 
 const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
@@ -1398,7 +1404,7 @@ const DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS = [
   /(?:^|[。！？；：\n]\s*)(?:测试|检查|命令|构建|编译|脚本|pnpm|npm|yarn)(?:\s+[\p{L}\p{N}_.-]+){0,6}(?:已经|已)?(?:被)?(?:运行|执行)(?:完成|通过)?/u
 ];
 
-const DELEGATED_OUTPUT_INSTRUCTION_OVERRIDE_PATTERNS = [
+const CONTROL_PLANE_INSTRUCTION_OVERRIDE_PATTERNS = [
   /\b(?:ignore|disregard|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions?|rules?|prompts?|messages?)\b/,
   /\b(?:act as|roleplay as|you are now)\s+(?:the\s+)?(?:system|developer|administrator|root)\b/,
   /\b(?:switch|change)\s+(?:to|into)\s+(?:the\s+)?(?:system|developer|administrator|root)\s+(?:role|mode)\b/,
