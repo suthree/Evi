@@ -1393,8 +1393,8 @@ form that state was deleted, removed, erased, unlinked, dropped, or destroyed,
 tests, builds, commands, or checks were run or executed, or files were read,
 the repo was searched, URLs were fetched, or the web was browsed, are treated
 as delegated tool authority claims. Imperative execution, mutation, or read
-directives such as `Run git push origin main now` are also rejected before they
-reach the main-model observation; a conditional analysis recommendation that
+directives such as `Run git push origin main now` or `Use repo.search now` are
+also rejected before they reach the main-model observation; a conditional analysis recommendation that
 leaves the decision with the main harness remains advisory. The harness sanitizes
 successful delegated `summary` and `findings_text`, then persists only their
 canonical JSON preview. Delegated task text is likewise omitted from result

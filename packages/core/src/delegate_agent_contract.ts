@@ -1246,12 +1246,21 @@ function delegatedTextIssuesExecutionDirective(value: string): boolean {
   return hasDirectTaskMutationIntent(value, text)
     || hasDirectTaskCommandExecutionIntent(value)
     || hasDirectTaskReadToolIntent(value)
-    || hasDirectGitCommandDirective(value);
+    || hasDirectGitCommandDirective(value)
+    || hasDirectHarnessToolDirective(value);
 }
 
 function hasDirectGitCommandDirective(value: string): boolean {
   return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:run|execute|use)\s+git\s+[a-z][a-z0-9-]*/iu.test(value)
     || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|使用)\s*git\s+[a-z][a-z0-9-]*/iu.test(value);
+}
+
+function hasDirectHarnessToolDirective(value: string): boolean {
+  return value.split(/[\n!?;:]+/u).some((sentence) => {
+    const text = normalizeBoundaryText(sentence);
+    return DELEGATE_TASK_REQUEST_TERMS.some((term) => text.startsWith(`${term} `))
+      && DELEGATED_TOOL_SURFACE_TERMS.some((term) => text.includes(term));
+  });
 }
 
 function delegationTextAttemptsControlPlaneOverride(value: string): boolean {
