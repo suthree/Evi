@@ -344,14 +344,14 @@ async function summarizeLiveRunTrace(
   const promptEvent = runEvents.find((event) => event.kind === "prompt");
   const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
-  const traceRounds = await readTraceRounds(store, runEvents);
+  const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
+  const traceRounds = await readTraceRounds(store, runEvents, events, report.session_id, episodeFiles);
   const { rounds, invalidEnvelopeRefs } = traceRounds;
   const finalEnvelopeRef = runEvents
     .filter((event) => event.kind === "model_action")
     .at(-1)?.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
   const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
-  const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
   const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles, rounds);
   const finalResponseEvents = readFinalResponseEventSummaries(runEvents, rounds);
   const expectedFinalResponseRef = `memory/episodes/${report.session_id}-final-response.md`;
@@ -775,13 +775,25 @@ function matchesTraceRef(trace: LiveRunTraceSummary, requested: string): boolean
 
 async function readTraceRounds(
   store: AgentStore,
-  events: EpisodeEvent[]
+  events: EpisodeEvent[],
+  allEvents: EpisodeEvent[],
+  sessionId: string,
+  episodeFiles: Set<string>
 ): Promise<{ rounds: LiveRunTraceRound[]; invalidEnvelopeRefs: string[] }> {
   const modelActionEnvelopeRefs = (event: EpisodeEvent) => event.artifact_refs
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref));
-  const refs = unique(events
+  const sessionModelActionPrefix = `memory/episodes/${sessionId}-model-action-r`;
+  const eventBoundRefs = new Set(allEvents
     .filter((event) => event.kind === "model_action")
-    .flatMap(modelActionEnvelopeRefs))
+    .flatMap(modelActionEnvelopeRefs));
+  const persistedRefs = [...episodeFiles]
+    .filter((ref) => ref.startsWith(sessionModelActionPrefix)
+      && /-model-action-r\d+\.json$/.test(ref)
+      && !eventBoundRefs.has(ref));
+  const refs = unique([
+    ...events.filter((event) => event.kind === "model_action").flatMap(modelActionEnvelopeRefs),
+    ...persistedRefs
+  ])
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
   const actionEventsByEnvelopeRef = new Map<string, EpisodeEvent[]>();
   for (const event of events.filter((item) => item.kind === "model_action")) {

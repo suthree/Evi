@@ -3852,6 +3852,45 @@ test("harness replay audit warns when a model-action envelope is missing", async
   }
 });
 
+test("harness replay audit inventories a persisted current-session envelope without an event", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-orphan-envelope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const roundTwoRef = "memory/episodes/session_replay_test-model-action-r2.json";
+    const orphanRef = "memory/episodes/session_replay_test-model-action-r3.json";
+    const otherSessionRef = "memory/episodes/session_other-model-action-r1.json";
+    const envelope = await store.readStateText(roundTwoRef);
+    await store.writeText(orphanRef, envelope);
+    await store.writeText(otherSessionRef, envelope);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const binding = report.checks.find((item) => item.id === "model_action_event_binding");
+    const integrity = report.checks.find((item) => item.id === "model_action_envelope_integrity");
+    const orphanRound = trace.rounds.find((round) => round.envelope_ref === orphanRef);
+
+    assert.equal(orphanRound?.model_action_event_count, 0);
+    assert.equal(orphanRound?.model_input_present, false);
+    assert.equal(trace.rounds.some((round) => round.envelope_ref === otherSessionRef), false);
+    assert.equal(binding?.status, "warning");
+    assert.match(binding?.summary ?? "", /missing_model_action_events=1/);
+    assert.equal(binding?.refs.includes(orphanRef), true);
+    assert.equal(integrity?.status, "pass");
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when a model diagnostic is unreadable", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-unreadable-diagnostic-"));
   const repoRoot = join(root, "repo");

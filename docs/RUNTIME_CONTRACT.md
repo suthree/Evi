@@ -1458,6 +1458,9 @@ Each model-action envelope must have exactly one model-action event, and that
 event may reference only that envelope, before its input metadata is trusted;
 replay warns on duplicate or multi-envelope bindings rather than silently
 selecting one event.
+The trace inventories persisted envelopes for the current session as well as
+event refs, so an interrupted write-to-event handoff remains visible as a
+zero-event round instead of being omitted from replay.
 The reusable GA project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.
