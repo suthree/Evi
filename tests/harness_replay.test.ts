@@ -226,6 +226,54 @@ test("harness replay audit writes bounded evidence without reading raw run artif
   }
 });
 
+test("harness replay rejects a verified done claim that omits a failed tool outcome", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-tool-outcome-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, DEFAULT_REPLAY_DELEGATED_SUMMARY, [], {
+      includeDelegatedEvent: false,
+      toolResultEventMetadata: {
+        result_id: "tool_result_bound",
+        action_id: "action_tool_replay",
+        envelope_ref: "memory/episodes/session_replay_test-model-action-r1.json",
+        round: 1,
+        sequence: 1,
+        tool: "file.write_repo",
+        ok: false,
+        side_effect_level: "local_write",
+        is_write_run: true
+      }
+    });
+    const completionRef = "memory/episodes/session_replay_test-completion-verification.json";
+    const completion = await store.readStateJson<Record<string, unknown>>(completionRef);
+    assert.ok(completion);
+    await store.writeJson(completionRef, {
+      ...completion,
+      verification_status: "passed",
+      verified: true,
+      summary: "Completion verification passed despite a failed tool result."
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const gate = report.checks.find((check) => check.id === "tool_result_outcome_completion_gate");
+
+    assert.equal(gate?.status, "fail");
+    assert.match(gate?.summary ?? "", /failed_tool_results=1/);
+    assert.match(gate?.summary ?? "", /reported_failure=false/);
+    assert.deepEqual(gate?.refs, [
+      "memory/episodes/session_replay_test-completion-verification.json#evidence_replay_tool"
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when failed delegation recovery guidance is inconsistent", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-recovery-guidance-"));
   const repoRoot = join(root, "repo");

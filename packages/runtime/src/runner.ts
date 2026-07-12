@@ -1963,6 +1963,23 @@ function verifyCompletionClaim(args: {
     refs: claimedRefs
   });
 
+  const failedToolResults = args.toolResults.filter((result) => !result.ok);
+  let toolResultOutcomeStatus: "pass" | "fail" | "skipped" = "skipped";
+  let toolResultOutcomeSummary = "No tool result was required for this completion claim.";
+  if (failedToolResults.length > 0) {
+    toolResultOutcomeStatus = "fail";
+    toolResultOutcomeSummary = `Failed tool result(s): ${failedToolResults.map((result) => result.tool).join(", ")}.`;
+  } else if (args.toolResults.length > 0) {
+    toolResultOutcomeStatus = "pass";
+    toolResultOutcomeSummary = `All ${args.toolResults.length} tool result(s) succeeded.`;
+  }
+  checks.push({
+    id: "tool_result_outcomes",
+    status: toolResultOutcomeStatus,
+    summary: toolResultOutcomeSummary,
+    refs: args.toolResults.map((result) => result.id)
+  });
+
   const writeOrRunResults = args.toolResults.filter(isWriteOrRunToolResult);
   const failedWriteOrRun = writeOrRunResults.filter((result) => !result.ok);
   checks.push({
@@ -2074,13 +2091,18 @@ function verifyCompletionClaim(args: {
     };
   }
 
+  let passedSummary = "Completion verification passed with final response.";
+  if (writeOrRunResults.length > 0) {
+    passedSummary = "Completion verification passed with final response and successful write/run evidence.";
+  } else if (args.toolResults.length > 0) {
+    passedSummary = "Completion verification passed with final response and successful tool evidence.";
+  }
+
   return {
     ok: true,
     verified: true,
     verification_status: "passed",
-    summary: writeOrRunResults.length > 0
-      ? "Completion verification passed with final response and successful write/run evidence."
-      : "Completion verification passed with final response.",
+    summary: passedSummary,
     checks,
     verification_evidence_refs: verificationEvidenceRefs
   };

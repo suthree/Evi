@@ -3699,6 +3699,7 @@ test("live runner marks done claim unverified when a write or run tool failed", 
     assert.equal(report.completion_status, "done");
     assert.equal(report.verification_status, "failed");
     assert.equal(report.verified, false);
+    assert.equal(report.checks.find((check) => check.id === "tool_result_outcomes")?.status, "fail");
     assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "fail");
     assert.ok(verificationEvent);
     assert.equal(Array.isArray(verificationEvent.artifact_refs), true);
@@ -3720,6 +3721,40 @@ test("live runner marks done claim unverified when a write or run tool failed", 
     assert.match(rendered.markdown, /write_run_tool_results: fail/);
     assert.equal(completionSection?.item_count, 1);
     assert.equal(completionSection?.refs.includes(result.completion_report_ref), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner marks done claim unverified when a read-only tool failed without a claimed ref", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new FailedReadOnlyThenDoneModel()
+    });
+
+    const result = await runner.runTask("Read one local file and report completion.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    };
+
+    assert.equal(result.verdict, "completion_unverified");
+    assert.equal(report.verification_status, "failed");
+    assert.equal(report.verified, false);
+    const outcomeCheck = report.checks.find((check) => check.id === "tool_result_outcomes");
+    assert.equal(outcomeCheck?.status, "fail");
+    assert.match(outcomeCheck?.summary ?? "", /Failed tool result\(s\): file\.read/);
+    assert.equal(outcomeCheck?.refs.length, 1);
+    assert.equal(report.checks.find((check) => check.id === "write_run_tool_results")?.status, "skipped");
   } finally {
     await fixture.cleanup();
   }
@@ -7639,6 +7674,23 @@ class FailedCommandThenDoneModel implements ModelClient {
       api: "responses",
       model: "failed-command-then-done",
       responseId: `response-${this.calls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
+
+class FailedReadOnlyThenDoneModel implements ModelClient {
+  private calls = 0;
+
+  async create(_request: ModelRequest): Promise<ModelResponse> {
+    this.calls += 1;
+    const outputText = JSON.stringify(this.calls === 1 ? failedFileReadEnvelope() : doneEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "failed-read-only-then-done",
+      responseId: `response-read-only-${this.calls}`,
       outputText,
       raw: { outputText }
     };

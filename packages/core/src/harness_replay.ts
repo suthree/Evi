@@ -342,6 +342,7 @@ async function readHarnessReplayReports(store: AgentStore): Promise<HarnessRepla
 }
 
 function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
+  const toolResultOutcomeGate = toolResultOutcomeCompletionGateCheck(trace);
   return [
     {
       id: "source_trace_available",
@@ -353,6 +354,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
     modelActionEventBindingCheck(trace),
     modelDiagnosticIntegrityCheck(trace),
     completionVerificationStateCheck(trace),
+    ...(toolResultOutcomeGate ? [toolResultOutcomeGate] : []),
     finalResponseEvidenceBindingCheck(trace),
     delegatedCompletionGateCheck(trace),
     verificationEvidenceLineageCheck(trace),
@@ -617,6 +619,40 @@ function completionVerificationStateCheck(trace: LiveRunTraceSummary): HarnessRe
       `tuple_match=${tupleMatches}`
     ].join("; "),
     refs: [trace.report_ref]
+  };
+}
+
+function toolResultOutcomeCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck | null {
+  const failedToolEvents = trace.tool_result_events.filter((event) => event.ok === false);
+  const unknownToolOutcomeEvents = trace.tool_result_events.filter((event) => event.ok === null);
+  const reportedFailure = trace.completion_failed_check_ids.includes("tool_result_outcomes");
+  const doneClaim = trace.final_completion_status === "done";
+  const claimsVerified = trace.verification_status === "passed" || trace.verified;
+  const refs = failedToolEvents.map((event) => `${trace.report_ref}#${event.event_id}`);
+  if (!doneClaim || (failedToolEvents.length === 0 && !reportedFailure)) {
+    return null;
+  }
+  let status: HarnessReplayAuditCheckStatus = "pass";
+
+  if (failedToolEvents.length > 0) {
+    status = reportedFailure && !claimsVerified ? "pass" : claimsVerified ? "fail" : "warning";
+  } else {
+    status = "fail";
+  }
+
+  return {
+    id: "tool_result_outcome_completion_gate",
+    status,
+    summary: [
+      `applicable=${doneClaim}`,
+      `tool_results=${trace.tool_result_events.length}`,
+      `failed_tool_results=${failedToolEvents.length}`,
+      `unknown_tool_outcomes=${unknownToolOutcomeEvents.length}`,
+      `reported_failure=${reportedFailure}`,
+      `verification_status=${trace.verification_status}`,
+      `verified=${trace.verified}`
+    ].join("; "),
+    refs: refs.length > 0 ? refs : [trace.report_ref]
   };
 }
 

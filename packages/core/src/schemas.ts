@@ -271,6 +271,7 @@ export const completionVerificationCheckIds = [
   "model_diagnostics",
   "final_response",
   "claimed_verification_refs",
+  "tool_result_outcomes",
   "write_run_tool_results",
   ...delegateAgentActionContract.completion_gate_check_ids
 ] as const;

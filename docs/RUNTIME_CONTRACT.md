@@ -1296,6 +1296,10 @@ or tool artifact refs from the current run. Unknown or model-invented refs fail
 completion verification and do not count as independent proof. When a run has
 delegated context, unknown refs are persisted only as ordered `unbound_claim_ref_N`
 markers, so the same failure remains replayable without retaining untrusted text.
+For a `done` claim, every harness tool result must also be successful: a failed
+read-only, reversible, write, or run result is a failed `tool_result_outcomes`
+check even when the model omits its ref. Replay recomputes this gate from bounded
+tool-result event metadata; it does not open tool-result artifact bodies.
 
 `delegate_agent` is a bounded structured self-report path. The delegated model
 has no tools or memory in the current runtime. The action payload must provide
