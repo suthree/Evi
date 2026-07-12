@@ -1548,6 +1548,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /GA Project Design Plan/);
     assert.match(rendered.markdown, /plan: ga_design_plan_ga_design_artifact_iteration_contract_context_plan/);
     assert.match(rendered.markdown, /layer: core_runtime; owner: ga_project_design; slice: general_agent_delegation_hardening_after_context_plan/);
+    assert.match(rendered.markdown, /selection_origin: matching_open_iteration/);
     assert.match(rendered.markdown, /source_truth: source_kind=verified_artifact; artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; source_slice=context_ga_project_design_plan; target_slice=general_agent_delegation_hardening_after_context_plan; status=verified; quality=attention; fresh_successor=true/);
     assert.match(rendered.markdown, /source_continuation: source=core_runtime\/ga_project_design; completed=context_ga_project_design_plan; contract=core_runtime\/ga_project_design\/context_ga_project_design_plan; candidates=3; candidate=Continue context source candidate/);
     assert.doesNotMatch(rendered.markdown, /Commit and restart runtime/);

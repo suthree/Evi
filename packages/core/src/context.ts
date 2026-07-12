@@ -1927,6 +1927,7 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
     body: [
       `plan: ${plan.id}`,
       `layer: ${plan.layer}; owner: ${plan.owner_surface}; slice: ${plan.proposed_slice}`,
+      `selection_origin: ${plan.target_selection_origin}`,
       `source_artifact: ${plan.source_artifact_id}`,
       `source_truth: ${sourceTruth}`,
       `source_continuation: ${compactSourceContinuation}`,

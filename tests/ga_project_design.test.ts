@@ -75,6 +75,7 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(plan.source_kind, "fresh_bootstrap");
     assert.equal(plan.target_dimension_id, "core_ga_design");
     assert.equal(plan.target_slice_id, "next_slice_core_ga_design");
+    assert.equal(plan.target_selection_origin, "fresh_bootstrap");
     assert.equal(plan.source_artifact_id, "ga_design_bootstrap_contract_source");
     assert.equal(plan.source_iteration_ref, "docs/RUNTIME_CONTRACT.md");
     assert.equal(plan.source_proposed_slice, "fresh_state_no_verified_iteration");
@@ -229,6 +230,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(fallbackReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
     assert.equal(fallbackReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
     assert.equal(fallbackReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
+    assert.equal(fallbackReadModel.next_core_basic_plan?.target_selection_origin, "no_scorecard_default");
 
     const readModel = await getGaProjectDesignReadModel(store, {
       limit: 10,
@@ -261,6 +263,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.status, "advisory");
     assert.equal(readModel.next_core_basic_plan?.target_dimension_id, "general_agent_delegation");
     assert.equal(readModel.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
+    assert.equal(readModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
     assert.equal(readModel.next_core_basic_plan?.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
     assert.equal(readModel.next_core_basic_plan?.layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.owner_surface, "ga_project_design");
@@ -572,6 +575,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     });
     assert.equal(coreTargetReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
     const basicTargetReadModel = await getGaProjectDesignReadModel(store, {
       limit: 10,
@@ -581,11 +585,13 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(basicTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_basic_runtime_substrate");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.layer, "basic_entrypoint");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.proposed_slice, "basic_runtime_substrate_hardening_after_verified");
+    assert.equal(basicTargetReadModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
     const unknownScorecardTargetReadModel = await getGaProjectDesignReadModel(store, {
       limit: 10,
       scorecardNextCoreBasicSliceId: "next_slice_unknown_future_dimension"
     });
     assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_status, "needs_attention");
+    assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.target_selection_origin, "unrecognized_scorecard_fallback");
     assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_reasons.includes("scorecard_target_status=unrecognized"), true);
     assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_checks.includes("scorecard_target_status=unrecognized"), true);
     assert.equal(
@@ -1193,6 +1199,7 @@ test("GA project design planning packet surfaces matching open iteration", async
       scorecardNextCoreBasicSliceId: "next_slice_core_ga_design"
     });
     assert.equal(scorecardGuardReadModel.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
+    assert.equal(scorecardGuardReadModel.next_core_basic_plan?.target_selection_origin, "matching_open_iteration");
     assert.deepEqual(
       scorecardGuardReadModel.next_core_basic_plan?.scorecard_basis.slice(0, 3),
       [

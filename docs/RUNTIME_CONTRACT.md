@@ -599,6 +599,9 @@ state takes priority; it does not grant expert, tool, or completion authority.
 When a project-design reader has no recognized scorecard target, it likewise
 defaults to core GA design rather than reopening delegation; a matching open
 iteration still takes precedence.
+Each project-design plan exposes `target_selection_origin` so an operator can
+distinguish bootstrap, matching-open-iteration, recognized-scorecard, unknown
+scorecard fallback, and no-scorecard default selection without inferring it.
 
 `governance project-design` exposes the core GA project design contract from
 `packages/core/src/ga_project_design.ts`. The contract defines the reusable

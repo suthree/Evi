@@ -325,6 +325,7 @@ export interface GaProjectDesignPlanPacket {
   title: string;
   target_dimension_id: GaProjectDesignTargetDimensionId;
   target_slice_id: GaProjectDesignTargetSliceId;
+  target_selection_origin: GaProjectDesignPlanTargetSelectionOrigin;
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
@@ -407,6 +408,16 @@ interface GaProjectDesignPlanTarget {
   target_slice_id: GaProjectDesignTargetSliceId;
   layer: CapabilityLayer;
   owner_surface: string;
+}
+export type GaProjectDesignPlanTargetSelectionOrigin =
+  | "fresh_bootstrap"
+  | "matching_open_iteration"
+  | "scorecard_target"
+  | "unrecognized_scorecard_fallback"
+  | "no_scorecard_default";
+interface GaProjectDesignPlanTargetSelection {
+  target: GaProjectDesignPlanTarget;
+  origin: GaProjectDesignPlanTargetSelectionOrigin;
 }
 const NEXT_CORE_GA_DESIGN_TARGET = {
   target_dimension_id: "core_ga_design",
@@ -684,7 +695,8 @@ function buildNextCoreBasicPlan(
 ): GaProjectDesignPlanPacket | null {
   const source = selectNextCoreBasicPlanSource(artifacts, iterations);
   if (!source) return null;
-  const target = selectNextCoreBasicPlanTarget(source, iterations, scorecardNextCoreBasicSliceId);
+  const targetSelection = selectNextCoreBasicPlanTarget(source, iterations, scorecardNextCoreBasicSliceId);
+  const target = targetSelection.target;
   const proposedSlice = source.kind === "fresh_bootstrap"
     ? BOOTSTRAP_PROPOSED_SLICE
     : nextProposedSlice(source, target);
@@ -734,6 +746,7 @@ function buildNextCoreBasicPlan(
     title: `Next core/basic GA planning packet: ${proposedSlice}`,
     target_dimension_id: target.target_dimension_id,
     target_slice_id: target.target_slice_id,
+    target_selection_origin: targetSelection.origin,
     layer: target.layer,
     owner_surface: target.owner_surface,
     proposed_slice: proposedSlice,
@@ -759,6 +772,7 @@ function buildNextCoreBasicPlan(
       `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}`,
       ...sourceArtifactWarnings,
       `scorecard_target_status=${scorecardTargetStatus}`,
+      `target_selection_origin=${targetSelection.origin}`,
       `fresh_successor_slice=${isFreshSuccessor}; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
       `target_layer=${target.layer}; owner_surface=${target.owner_surface}`,
       `iteration_record_status=${iterationRecordStatus.status}${iterationRecordStatus.ref ? `; ref=${iterationRecordStatus.ref}` : ""}`,
@@ -1810,21 +1824,27 @@ function selectNextCoreBasicPlanTarget(
   source: GaProjectDesignPlanSource,
   iterations: SelfEvolutionIterationContract[],
   scorecardNextCoreBasicSliceId?: string | null
-): GaProjectDesignPlanTarget {
-  if (source.kind === "fresh_bootstrap") return NEXT_CORE_GA_DESIGN_TARGET;
+): GaProjectDesignPlanTargetSelection {
+  if (source.kind === "fresh_bootstrap") {
+    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "fresh_bootstrap" };
+  }
   const openIterationTarget = selectOpenIterationPlanTarget(source, iterations);
-  if (openIterationTarget) return openIterationTarget;
+  if (openIterationTarget) {
+    return { target: openIterationTarget, origin: "matching_open_iteration" };
+  }
   if (scorecardNextCoreBasicSliceId === NEXT_GENERAL_DELEGATION_TARGET.target_slice_id) {
-    return NEXT_GENERAL_DELEGATION_TARGET;
+    return { target: NEXT_GENERAL_DELEGATION_TARGET, origin: "scorecard_target" };
   }
   if (scorecardNextCoreBasicSliceId === NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET.target_slice_id) {
-    return NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET;
+    return { target: NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET, origin: "scorecard_target" };
   }
   if (scorecardNextCoreBasicSliceId === NEXT_CORE_GA_DESIGN_TARGET.target_slice_id) {
-    return NEXT_CORE_GA_DESIGN_TARGET;
+    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "scorecard_target" };
   }
-  if (scorecardNextCoreBasicSliceId) return NEXT_CORE_GA_DESIGN_TARGET;
-  return NEXT_CORE_GA_DESIGN_TARGET;
+  if (scorecardNextCoreBasicSliceId) {
+    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "unrecognized_scorecard_fallback" };
+  }
+  return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "no_scorecard_default" };
 }
 
 function describeScorecardTargetStatus(scorecardNextCoreBasicSliceId?: string | null): "not_provided" | "recognized" | "unrecognized" {
