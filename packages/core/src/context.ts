@@ -1554,7 +1554,8 @@ const COMPACT_GA_PLAN_CHECK_PREFIXES = [
 const COMPACT_GA_PLAN_REASON_PREFIXES = [
   "source_kind=",
   "source_status=",
-  "source_artifact_quality="
+  "source_artifact_quality=",
+  "scorecard_target_status="
 ];
 
 const COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES = [

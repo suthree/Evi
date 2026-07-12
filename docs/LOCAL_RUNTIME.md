@@ -477,6 +477,10 @@ plan-derived iteration stays authoritative for that source so
 switches into an open-iteration closure guard. In that case
 `scorecard_basis` keeps the current `next_core_basic_slice` and adds
 `plan_target_slice` so the plan does not hide the guard/target difference.
+If a non-empty scorecard target is not one of the supported core/basic slice
+ids, the plan keeps `scorecard_target_status=unrecognized` in its bounded
+selection metadata and returns `needs_attention`; any fallback target is
+diagnostic only and cannot be treated as ready for execution.
 `governance project-design` is the core GA project design contract. It defines
 the reusable loop for goal intake, capability layering, contract design,
 execution planning, verification review, and learning persistence. It is
@@ -579,8 +583,8 @@ application slices are not mistaken for core GA design work during handoff.
 `selection_reasons` also include
 `source_artifact_quality=ok|attention` as a short advisory summary derived from
 those warnings. The compact context preserves `source_kind`, `source_status`,
-and `source_artifact_quality` using stable reason-prefix priority rather than
-raw array position. `selection_status` and `selection_reasons` summarize the
+`source_artifact_quality`, and `scorecard_target_status` using stable
+reason-prefix priority rather than raw array position. `selection_status` and `selection_reasons` summarize the
 same planning readiness for context handoff. These fields help inspect plan quality;
 they do not execute verification, block the plan by themselves, or prove
 completion.

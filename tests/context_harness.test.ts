@@ -58,11 +58,13 @@ test("compact GA plan reasons keep source status and quality by prefix", () => {
     "iteration_record_status=open_iteration_available",
     "source_kind=verified_artifact",
     "source_artifact_quality=ok",
+    "scorecard_target_status=recognized",
     "source_status=verified"
   ]), [
     "source_kind=verified_artifact",
     "source_status=verified",
-    "source_artifact_quality=ok"
+    "source_artifact_quality=ok",
+    "scorecard_target_status=recognized"
   ]);
 });
 

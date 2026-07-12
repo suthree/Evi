@@ -668,8 +668,10 @@ Core/basic plan verification commands must include bounded resident service
 health, so basic runtime state stays visible before a core design outcome is
 claimed.
 `selection_status` and `selection_reasons` summarize the same planning readiness
-for context handoff. These fields are planning quality hints, not completion
-proof.
+for context handoff. An unknown non-empty scorecard target is retained as
+`scorecard_target_status=unrecognized` and forces `needs_attention`; the
+fallback target is diagnostic only, not an executable-ready plan. These fields
+are planning quality hints, not completion proof.
 `iteration_focus` must keep the next core/basic direction, immediate next
 steps, and anti-drift checks explicit, so the runtime does not infer purpose
 from an opaque successor slice id or application-tool pressure.
@@ -805,6 +807,9 @@ Required policy:
 - `governance project-design` must bind the scorecard target before deriving the
   plan seed, keep display limits separate from target selection, and preserve an
   already-open matching plan-derived iteration for the same source artifact
+- an unknown non-empty scorecard target must remain visible as
+  `scorecard_target_status=unrecognized` and move plan selection to
+  `needs_attention`; it must not silently make the fallback core target ready
 - `next_core_basic_plan.selection_checks` must remain bounded strings derived
   from the same read-only metadata, including source artifact evidence and
   verification-command counts, and must not execute verification

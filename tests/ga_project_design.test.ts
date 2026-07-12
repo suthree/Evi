@@ -573,6 +573,13 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(basicTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_basic_runtime_substrate");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.layer, "basic_entrypoint");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.proposed_slice, "basic_runtime_substrate_hardening_after_verified");
+    const unknownScorecardTargetReadModel = await getGaProjectDesignReadModel(store, {
+      limit: 10,
+      scorecardNextCoreBasicSliceId: "next_slice_unknown_future_dimension"
+    });
+    assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_status, "needs_attention");
+    assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_reasons.includes("scorecard_target_status=unrecognized"), true);
+    assert.equal(unknownScorecardTargetReadModel.next_core_basic_plan?.selection_checks.includes("scorecard_target_status=unrecognized"), true);
     assert.equal(
       readModel.next_core_basic_plan?.completion_audit_seeds.some((seed) =>
         seed.reject_if.includes("a narrow command is used to prove a broader capability claim")

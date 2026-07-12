@@ -692,11 +692,15 @@ function buildNextCoreBasicPlan(
   const implementationContract = buildImplementationContract(source, target, proposedSlice);
   const iterationRecordStatus = buildIterationRecordStatus(iterations, nextIterationSeed, implementationContract);
   const governanceCleanup = buildGovernanceCleanup(iterations, source);
+  const scorecardTargetStatus = describeScorecardTargetStatus(scorecardNextCoreBasicSliceId);
   const isFreshSuccessor = proposedSlice !== source.proposed_slice;
   const isTargetLayerReady = isCoreBasicLayer(target.layer);
   const isOpenIterationContractReady = iterationRecordStatus.status !== "open_iteration_available"
     || iterationRecordStatus.implementation_contract_status === "aligned";
-  const selectionStatus = isFreshSuccessor && isTargetLayerReady && isOpenIterationContractReady
+  const selectionStatus = isFreshSuccessor
+    && isTargetLayerReady
+    && isOpenIterationContractReady
+    && scorecardTargetStatus !== "unrecognized"
     ? "ready"
     : "needs_attention";
   const sourceArtifactWarnings = [
@@ -712,6 +716,7 @@ function buildNextCoreBasicPlan(
     `source_kind=${source.kind}`,
     `source_status=${source.source_status}`,
     `source_artifact_quality=${sourceArtifactQuality}`,
+    `scorecard_target_status=${scorecardTargetStatus}`,
     `fresh_successor_slice=${isFreshSuccessor}`,
     `target_layer=${target.layer}`,
     `owner_surface=${target.owner_surface}`,
@@ -753,6 +758,7 @@ function buildNextCoreBasicPlan(
       `source_artifact_evidence=evidence_refs:${source.evidence_refs.length}; verification_commands:${source.verification_commands.length}`,
       `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}`,
       ...sourceArtifactWarnings,
+      `scorecard_target_status=${scorecardTargetStatus}`,
       `fresh_successor_slice=${isFreshSuccessor}; source_slice=${source.proposed_slice}; target_slice=${proposedSlice}`,
       `target_layer=${target.layer}; owner_surface=${target.owner_surface}`,
       `iteration_record_status=${iterationRecordStatus.status}${iterationRecordStatus.ref ? `; ref=${iterationRecordStatus.ref}` : ""}`,
@@ -1819,6 +1825,17 @@ function selectNextCoreBasicPlanTarget(
   }
   if (scorecardNextCoreBasicSliceId) return NEXT_CORE_GA_DESIGN_TARGET;
   return NEXT_GENERAL_DELEGATION_TARGET;
+}
+
+function describeScorecardTargetStatus(scorecardNextCoreBasicSliceId?: string | null): "not_provided" | "recognized" | "unrecognized" {
+  if (!scorecardNextCoreBasicSliceId) return "not_provided";
+  return [
+    NEXT_GENERAL_DELEGATION_TARGET.target_slice_id,
+    NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET.target_slice_id,
+    NEXT_CORE_GA_DESIGN_TARGET.target_slice_id
+  ].includes(scorecardNextCoreBasicSliceId as GaProjectDesignTargetSliceId)
+    ? "recognized"
+    : "unrecognized";
 }
 
 function selectOpenIterationPlanTarget(

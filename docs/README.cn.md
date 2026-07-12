@@ -238,6 +238,9 @@ delegated 的 `result_ref` 还必须同时匹配该 delegated event 的 `session
 显式列出来，避免只靠 opaque slice id 推断目标；phase gates 会带上 `forbidden_shortcuts`，
 compact context 也会为每个 phase gate 保留一条禁用捷径，避免只看到“不要把单个外部 adapter 当成核心身份”这一类防漂移约束；`capability_stage_plan` 会把当前核心能力阶段、
 基础能力阶段和下一步迭代方案拆开列出，并给每个阶段附带 `exit_criteria`，compact context 也会为每个 core/basic 阶段保留一条退出标准，避免把阶段标签当作进展证明；
+若 scorecard 给出非空但未知的 core/basic slice，plan 会保留
+`scorecard_target_status=unrecognized` 并返回 `needs_attention`；任何内部 fallback
+只供诊断，不能伪装成可执行的 ready 计划；
 plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_commands` 保持同一份切片级清单，
 避免计划视图和实际记录 iteration 的验证范围漂移；
 `selection_checks` 会带上 source artifact 的 evidence refs 和 verification commands 数量，
