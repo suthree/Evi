@@ -303,6 +303,72 @@ test("self-evolution scorecard graduates a verified delegation baseline to core 
   }
 });
 
+test("self-evolution scorecard returns to delegation after a verified GA successor", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-delegation-cycle-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_delegation.json", {
+      schema_version: 1,
+      id: "iteration_contract_verified_delegation",
+      ref: "self-evolution/iterations/iteration_contract_verified_delegation.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified bounded general delegation baseline.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "general_agent_delegation_hardening_after_verified",
+      evidence_refs: ["packages/core/src/delegate_agent_contract.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no expert scheduling"],
+      advisory_expert_roles: ["architect"],
+      outcome: {
+        status: "verified",
+        summary: "Delegation contract passed.",
+        evidence_refs: ["tests/context_harness.test.ts"],
+        verification_commands: ["pnpm run check"],
+        next_moves: ["Select the next core/basic slice."],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    });
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga_successor.json", {
+      schema_version: 1,
+      id: "iteration_contract_verified_ga_successor",
+      ref: "self-evolution/iterations/iteration_contract_verified_ga_successor.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verified GA design successor.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "core_ga_design_next_slice_after_verified",
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      verification_commands: ["pnpm run check"],
+      non_goals: ["no completion proof"],
+      advisory_expert_roles: ["architect"],
+      outcome: {
+        status: "verified",
+        summary: "GA design verification passed.",
+        evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
+        verification_commands: ["pnpm run check"],
+        next_moves: ["Return to delegation hardening."],
+        recorded_at: "2026-07-06T00:00:04Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:04Z",
+      boundary: "bounded iteration contract"
+    });
+
+    const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
+
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "general_agent_delegation");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "general_agent_delegation");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("self-evolution scorecard keeps core GA design as the core/basic outlet until the latest outcome is verified", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-partial-ga-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

@@ -603,6 +603,10 @@ prove completion.
 That outcome makes the delegation dimension `stable` and lets the default
 core/basic selection return to GA design unless an open iteration or attention
 state takes priority; it does not grant expert, tool, or completion authority.
+After a verified `core_ga_design_next_slice_after_*` successor, the default
+returns to bounded delegation hardening so core planning does not repeatedly
+select itself while the Harness contract still needs review. Attention and open
+iteration guards still take precedence.
 When a project-design reader has no recognized scorecard target, it likewise
 defaults to core GA design rather than reopening delegation; a matching open
 iteration still takes precedence.
