@@ -214,7 +214,9 @@ scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_
 baseline** 的 `core_ga_design_next_slice_after_*` successor 也完成 verified outcome 后，默认出口才会回到有界 delegation hardening，避免历史 successor 把规划困在重复 Harness 合同复核中；attention 与未关闭 iteration 仍优先。
 每个新的 project-design implementation contract 都会带目标相关的 `intent`，让后续
 迭代不必从 opaque slice id 猜测本轮要改进什么；当前计划审计会拒绝缺失或漂移的
-intent，旧历史合同仍保持可读。
+intent，旧历史合同仍保持可读。新的合同还会持久化
+`required_verification_entrypoints`；迭代审计优先读取被审计 iteration 的冻结字段，
+旧合同缺少该字段时才依次回退到当前计划和历史 `selection_checks` 文本。
 `pnpm run runtime -- capabilities acceptance` 和飞书 `/capabilities acceptance`
 同样会把默认下一步固定在 core/basic 或基础入口检查上；应用层、外部适配器和 local-learning
 只作为 follow-up slices 展示。

@@ -450,7 +450,10 @@ iteration. It is still a coverage diagnostic, not proof that those commands
 passed.
 `outcome_verification_claim_coverage` compares required verification entrypoints
 with outcome verification claims, so the audit can show whether each entrypoint
-maps to a completion claim.
+maps to a completion claim. New implementation contracts persist those
+entrypoints in `required_verification_entrypoints`; audit guidance reads the
+audited iteration's frozen contract first, falling back to the current plan and
+then legacy selection text only when an older contract has no structured field.
 `runtime_attention_outcome_coverage` reads bounded service health during the
 iteration audit. When `service-health` is a required entrypoint and current
 service health has non-healthy reasons, the `service-health:` outcome

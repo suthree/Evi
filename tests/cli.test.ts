@@ -1398,6 +1398,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       selected_layer: "core_runtime" as const,
       owner_surface: "ga_project_design",
       improvement_type: "reusable_ga_design_contract" as const,
+      required_verification_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
       implementation_scope: [
         "change one reusable GA project-design contract or read-model surface"
       ],
@@ -1641,6 +1642,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     "service-health",
     "check"
   ]);
+  assert.deepEqual(guidance.implementation_contract.required_verification_entrypoints, guidance.verification_entrypoints);
   assert.equal(guidance.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
   assert.equal(guidance.verification_commands.some((command) => command.includes("service health")), true);
   assert.equal(guidance.application_boundaries[0]?.includes("application slices"), true);
@@ -1672,6 +1674,31 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(matchingGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
   assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_open");
   assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_proposed_slice, "core_ga_design_next_slice_after_source");
+
+  const frozenEntrypointGuidance = buildIterationAuditGuidance(plan, {
+    id: "iteration_contract_historical",
+    ref: "self-evolution/iterations/iteration_contract_historical.json",
+    implementation_contract: {
+      ...plan.implementation_contract,
+      required_verification_entrypoints: ["project-design", "check"]
+    },
+    proposed_slice: "historical_core_ga_slice",
+    outcome_status: "verified"
+  });
+  assert.deepEqual(frozenEntrypointGuidance.verification_entrypoints, ["project-design", "check"]);
+  assert.deepEqual(frozenEntrypointGuidance.implementation_contract.required_verification_entrypoints, ["project-design", "check"]);
+
+  const legacyEntrypointGuidance = buildIterationAuditGuidance(plan, {
+    id: "iteration_contract_legacy",
+    ref: "self-evolution/iterations/iteration_contract_legacy.json",
+    implementation_contract: {
+      ...plan.implementation_contract,
+      required_verification_entrypoints: []
+    },
+    proposed_slice: "historical_core_ga_slice",
+    outcome_status: "verified"
+  });
+  assert.deepEqual(legacyEntrypointGuidance.verification_entrypoints, plan.implementation_contract.required_verification_entrypoints);
 
   const sourceGuidance = buildIterationAuditGuidance(
     plan,

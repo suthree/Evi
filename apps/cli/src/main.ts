@@ -863,6 +863,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(!contract.owner_surface ? ["owner_surface"] : []),
     ...(!contract.improvement_type ? ["improvement_type"] : []),
     ...(expectedContract.intent && !contract.intent?.trim() ? ["intent"] : []),
+    ...(expectedContract.required_verification_entrypoints?.length && !contract.required_verification_entrypoints?.length ? ["required_verification_entrypoints"] : []),
     ...(authoritativeDelegationContract && !contract.delegation_contract ? ["delegation_contract"] : []),
     ...(expectedContract.outcome_evidence_scope && !contract.outcome_evidence_scope ? ["outcome_evidence_scope"] : []),
     ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
@@ -878,6 +879,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(contract.owner_surface !== expectedContract.owner_surface || contract.owner_surface !== iteration.owner_surface ? ["owner_surface"] : []),
     ...(contract.improvement_type !== expectedContract.improvement_type ? ["improvement_type"] : []),
     ...(expectedContract.intent && contract.intent !== expectedContract.intent ? ["intent"] : []),
+    ...(expectedContract.required_verification_entrypoints && !isDeepStrictEqual(contract.required_verification_entrypoints, expectedContract.required_verification_entrypoints) ? ["required_verification_entrypoints"] : []),
     ...(delegationContractMismatch ? ["delegation_contract"] : []),
     ...(expectedContract.outcome_evidence_scope && !isDeepStrictEqual(contract.outcome_evidence_scope, expectedContract.outcome_evidence_scope) ? ["outcome_evidence_scope"] : []),
     ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
@@ -935,6 +937,7 @@ function implementationContractRequiredTokens(
     `implementation_contract.owner_surface=${contract.owner_surface}`,
     `implementation_contract.improvement_type=${contract.improvement_type}`,
     ...(contract.intent ? [`implementation_contract.intent=${contract.intent}`] : []),
+    ...(contract.required_verification_entrypoints?.length ? [`implementation_contract.required_verification_entrypoints=${contract.required_verification_entrypoints.join(",")}`] : []),
     ...(contract.delegation_contract ? ["implementation_contract.delegation_contract=shared_authority"] : []),
     ...(contract.outcome_evidence_scope ? ["implementation_contract.outcome_evidence_scope=bounded"] : []),
     "implementation_contract.implementation_scope",
@@ -1128,12 +1131,18 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   iteration_record_status: IterationAuditGuidanceInput["iteration_record_status"];
   boundary: string;
 } {
-  const entrypoints = plan.selection_checks
+  const implementationContract = subject?.implementation_contract ?? plan.implementation_contract;
+  const contractEntrypoints = implementationContract.required_verification_entrypoints?.map((item) => item.trim()).filter(Boolean) ?? [];
+  const planEntrypoints = plan.implementation_contract.required_verification_entrypoints?.map((item) => item.trim()).filter(Boolean) ?? [];
+  const legacyEntrypoints = plan.selection_checks
     .find((check) => check.startsWith("verification_entrypoints="))
     ?.replace("verification_entrypoints=", "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean) ?? [];
+  let entrypoints = contractEntrypoints;
+  if (!entrypoints.length) entrypoints = planEntrypoints;
+  if (!entrypoints.length) entrypoints = legacyEntrypoints;
   const matchesOpenIteration = Boolean(subject)
     && (plan.iteration_record_status.id === subject?.id || plan.iteration_record_status.ref === subject?.ref);
   const isSourceIteration = Boolean(subject) && plan.source_iteration_ref === subject?.ref;
@@ -1163,7 +1172,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     source_artifact_id: plan.source_artifact_id,
     source_iteration_ref: plan.source_iteration_ref,
     goal_scope: plan.goal_scope,
-    implementation_contract: plan.implementation_contract,
+    implementation_contract: implementationContract,
     iteration_focus: plan.iteration_focus,
     capability_stage_plan: plan.capability_stage_plan,
     phase_gates: plan.phase_gates,

@@ -152,6 +152,7 @@ export interface GaProjectDesignImplementationContract {
   owner_surface: string;
   improvement_type: "reusable_ga_design_contract";
   intent?: string;
+  required_verification_entrypoints?: string[];
   delegation_contract?: GaProjectDesignDelegationImplementationContract;
   outcome_evidence_scope?: GaProjectDesignOutcomeEvidenceScope;
   implementation_scope: string[];
@@ -453,6 +454,7 @@ const NEXT_GENERAL_DELEGATION_TARGET = {
 } as const satisfies GaProjectDesignPlanTarget;
 const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target runtime --state-root <state-root>";
 const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
+const REQUIRED_VERIFICATION_ENTRYPOINTS = ["project-design", "scorecard", "iterations", "service-health", "check"];
 
 export function getGaProjectDesignContract(): GaProjectDesignContract {
   return {
@@ -794,7 +796,7 @@ function buildNextCoreBasicPlan(
         ? [`iteration_contract_status=${iterationRecordStatus.implementation_contract_status}; attention=${iterationRecordStatus.implementation_contract_attention?.join(",") || "none"}`]
         : []),
       `governance_cleanup_superseded_open_iterations=${governanceCleanup.superseded_open_iterations.length}`,
-      "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
+      `verification_entrypoints=${implementationContract.required_verification_entrypoints?.join(",") ?? ""}`
     ],
     layer_decision: buildLayerDecision(source, target, proposedSlice, selectionStatus),
     learning_authority: buildLearningAuthority(),
@@ -967,6 +969,7 @@ function buildImplementationContract(
     owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
     intent: buildImplementationContractIntent(target),
+    required_verification_entrypoints: [...REQUIRED_VERIFICATION_ENTRYPOINTS],
     ...(target.target_dimension_id === "general_agent_delegation"
       ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
       : {}),
