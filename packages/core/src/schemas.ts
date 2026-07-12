@@ -213,6 +213,11 @@ export const toolResultEventMetadataSchema = z.object({
   is_write_run: z.boolean()
 });
 
+export const modelActionInputEventMetadataSchema = z.object({
+  delegated_observation_result_ids: z.array(z.string().min(1)),
+  recovery_guidance_result_ids: z.array(z.string().min(1))
+});
+
 export const finalResponseEventMetadataSchema = z.object({
   response_ref: z.string().min(1).optional(),
   action_id: z.string().min(1).optional(),
@@ -240,6 +245,7 @@ export const evidenceEventSchema = z.object({
   ]),
   summary: z.string().min(1),
   artifact_refs: z.array(z.string()).default([]),
+  model_input: modelActionInputEventMetadataSchema.optional(),
   tool_result: toolResultEventMetadataSchema.optional(),
   delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
   final_response: finalResponseEventMetadataSchema.optional(),

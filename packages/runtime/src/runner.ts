@@ -427,7 +427,8 @@ export class LiveAgentRunner {
         turn_id: snapshot.id,
         kind: "model_action",
         summary: persistedEnvelope.summary,
-        artifact_refs: uniqueRefs([...modelActionArtifactRefs, modelResponseRef, envelopeRef])
+        artifact_refs: uniqueRefs([...modelActionArtifactRefs, modelResponseRef, envelopeRef]),
+        model_input: modelActionInputEventMetadata(delegatedResults)
       });
       evidenceRefs.push(actionEvent.id);
       await this.store.appendJsonl("memory/episodes/events.jsonl", actionEvent);
@@ -2172,6 +2173,15 @@ function delegatedDispatchEventMetadata(
 
 function delegatedRecoveryGuidance(result: DelegatedResult): "none" | "main_harness_recovery" {
   return delegatedObservationRecoveryHint(result) === null ? "none" : "main_harness_recovery";
+}
+
+function modelActionInputEventMetadata(delegatedResults: DelegatedResult[]) {
+  return {
+    delegated_observation_result_ids: [...new Set(delegatedResults.map((result) => result.id))],
+    recovery_guidance_result_ids: [...new Set(delegatedResults
+      .filter((result) => delegatedObservationRecoveryHint(result) !== null)
+      .map((result) => result.id))]
+  };
 }
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {

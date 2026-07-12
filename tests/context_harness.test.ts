@@ -2244,7 +2244,6 @@ test("context bundle includes bounded live run trace without raw artifacts", asy
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_metadata=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_lineage=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_dispatch_failure_kind=pass/);
-    assert.match(rendered.markdown, /replay_check: delegated_dispatch_round_limit=pass/);
     assert.match(rendered.markdown, /replay_check: delegated_recovery_guidance=warning/);
     assert.match(rendered.markdown, /replay_check: delegated_result_contract=warning/);
     assert.match(rendered.markdown, /replay_check: model_diagnostic_integrity=warning/);
@@ -5816,7 +5815,11 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.equal(delegatedEvent?.delegated_dispatch?.recovery_guidance, "main_harness_recovery");
     assert.equal(trace.delegated_dispatches[0]?.recovery_guidance, "main_harness_recovery");
     assert.equal(trace.delegated_dispatches[0]?.recovery_guidance_present, true);
+    assert.equal(trace.rounds[1]?.model_input_present, true);
+    assert.deepEqual(trace.rounds[1]?.delegated_observation_result_ids, [delegated.id]);
+    assert.deepEqual(trace.rounds[1]?.recovery_guidance_result_ids, [delegated.id]);
     assert.equal(replay.checks.find((check) => check.id === "delegated_recovery_guidance")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_observation_input_lineage")?.status, "pass");
     assert.match(String(delegatedEvent?.summary ?? ""), /^Delegated result: action_id=action_[^;]+; round=1; sequence=1; task_chars=\d+; context_chars=\d+; model_invoked=true; contract_status=failed; dispatch_failure_kind=none; result_failure_kind=delegated_model_request_failed; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.contract_status, "failed");

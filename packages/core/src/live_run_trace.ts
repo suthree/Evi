@@ -33,6 +33,9 @@ type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" 
 export interface LiveRunTraceRound {
   round: number;
   envelope_ref: string;
+  model_input_present: boolean;
+  delegated_observation_result_ids: string[];
+  recovery_guidance_result_ids: string[];
   summary: string;
   completion_status: ModelActionEnvelope["completion_claim"]["status"];
   completion_verification_refs: string[];
@@ -771,6 +774,11 @@ async function readTraceRounds(
     .flatMap((event) => event.artifact_refs)
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref)))
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
+  const actionEventsByEnvelopeRef = new Map(events
+    .filter((event) => event.kind === "model_action")
+    .flatMap((event) => event.artifact_refs
+      .filter((ref) => /-model-action-r\d+\.json$/.test(ref))
+      .map((ref) => [ref, event] as const)));
   const rounds: LiveRunTraceRound[] = [];
   const invalidEnvelopeRefs: string[] = [];
   for (const ref of refs) {
@@ -800,9 +808,13 @@ async function readTraceRounds(
           ...delegationInputMetadata(parseDelegationRequest(action))
         };
       });
+    const modelInput = actionEventsByEnvelopeRef.get(ref)?.model_input;
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,
+      model_input_present: modelInput !== undefined,
+      delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],
+      recovery_guidance_result_ids: modelInput?.recovery_guidance_result_ids ?? [],
       summary: parsed.data.summary,
       completion_status: parsed.data.completion_claim.status,
       completion_verification_refs: [...parsed.data.completion_claim.verification_refs],

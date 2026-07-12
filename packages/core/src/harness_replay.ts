@@ -367,6 +367,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
     delegatedDispatchRoundLimitCheck(trace),
     delegatedResultFailureKindCheck(trace),
     delegatedRecoveryGuidanceCheck(trace),
+    delegatedObservationInputLineageCheck(trace),
     {
       id: "repo_write_guard",
       status: trace.repo_write_guards.some((guard) => guard.preexisting_dirty || guard.target_changed_after_write) ? "warning" : "pass",
@@ -1805,6 +1806,47 @@ function delegatedRecoveryGuidanceCheck(trace: LiveRunTraceSummary): HarnessRepl
       ? problemRefs
       : trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
   };
+}
+
+function delegatedObservationInputLineageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const laterRounds = trace.rounds.filter((round) => trace.delegated_dispatches.some((dispatch) => dispatch.round < round.round));
+  const missingMetadataRounds = laterRounds.filter((round) => !round.model_input_present);
+  const mismatchedRounds = laterRounds.filter((round) => {
+    if (!round.model_input_present) return false;
+    const priorDispatches = trace.delegated_dispatches.filter((dispatch) => dispatch.round < round.round);
+    const expectedObservationIds = unique(priorDispatches
+      .map((dispatch) => dispatch.result_id)
+      .filter((resultId): resultId is string => resultId !== null));
+    const expectedRecoveryIds = unique(priorDispatches
+      .filter((dispatch) => dispatch.recovery_guidance === "main_harness_recovery")
+      .map((dispatch) => dispatch.result_id)
+      .filter((resultId): resultId is string => resultId !== null));
+    return !sameStringSet(round.delegated_observation_result_ids, expectedObservationIds)
+      || !sameStringSet(round.recovery_guidance_result_ids, expectedRecoveryIds);
+  });
+  const problemRefs = unique([
+    ...missingMetadataRounds,
+    ...mismatchedRounds
+  ].map((round) => round.envelope_ref));
+  return {
+    id: "delegated_observation_input_lineage",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `later_model_rounds=${laterRounds.length}`,
+      `missing_model_input_metadata=${missingMetadataRounds.length}`,
+      `mismatched_observation_lineage=${mismatchedRounds.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : laterRounds.map((round) => round.envelope_ref)
+  };
+}
+
+function sameStringSet(left: string[], right: string[]): boolean {
+  return left.length === new Set(left).size
+    && right.length === new Set(right).size
+    && left.length === right.length
+    && left.every((value) => right.includes(value));
 }
 
 function isDispatchBlockedBeforeModel(dispatch: LiveRunDelegatedDispatchSummary): boolean {

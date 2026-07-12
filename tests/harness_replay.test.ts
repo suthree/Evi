@@ -130,6 +130,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "pass"
         && check.summary.includes("missing_recovery_guidance=0")
     ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "delegated_observation_input_lineage"
+        && check.status === "pass"
+        && check.summary.includes("mismatched_observation_lineage=0")
+    ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
       metadata_present: dispatch.metadata_present,
@@ -232,6 +237,32 @@ test("harness replay audit warns when failed delegation recovery guidance is inc
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /invalid_recovery_guidance=1/);
     assert.equal(check?.refs.some((ref) => ref.endsWith("#evidence_replay_delegated")), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when later model input omits recovery guidance lineage", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-observation-lineage-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, undefined, {
+      modelInputRecoveryGuidanceResultIds: []
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_observation_input_lineage");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /mismatched_observation_lineage=1/);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r2.json"), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -3938,6 +3969,8 @@ async function writeReplayTraceFixture(
     toolResultEventMetadata?: Record<string, unknown>;
     extraDelegatedResultRefs?: string[];
     recoveryGuidance?: "none" | "main_harness_recovery";
+    modelInputDelegatedObservationResultIds?: string[];
+    modelInputRecoveryGuidanceResultIds?: string[];
   } = {}
 ): Promise<void> {
   const sessionId = "session_replay_test";
@@ -4090,6 +4123,10 @@ async function writeReplayTraceFixture(
       `memory/episodes/${sessionId}-model-response-r1.json`,
       `memory/episodes/${sessionId}-model-action-r1.json`
     ],
+    model_input: {
+      delegated_observation_result_ids: [],
+      recovery_guidance_result_ids: []
+    },
     created_at: "2026-06-30T01:00:01.000Z"
   });
   await store.appendJsonl("memory/episodes/events.jsonl", {
@@ -4169,6 +4206,12 @@ async function writeReplayTraceFixture(
     kind: "model_action",
     summary: "Second round responds.",
     artifact_refs: [`memory/episodes/${sessionId}-model-action-r2.json`],
+    model_input: {
+      delegated_observation_result_ids: options.modelInputDelegatedObservationResultIds
+        ?? ((options.includeDelegatedEvent ?? true) ? ["delegated_result_invalid"] : []),
+      recovery_guidance_result_ids: options.modelInputRecoveryGuidanceResultIds
+        ?? (delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY ? ["delegated_result_invalid"] : [])
+    },
     created_at: "2026-06-30T01:00:04.000Z"
   });
   await store.appendJsonl("memory/episodes/events.jsonl", {
