@@ -202,6 +202,9 @@ export interface GaProjectDesignDelegationImplementationContract {
 }
 
 export interface GaProjectDesignSourceContinuation {
+  source_kind: GaProjectDesignPlanSourceKind;
+  source_artifact_id: string;
+  source_status: "verified" | "bootstrap";
   source_layer: CapabilityLayer;
   source_owner_surface: string;
   source_proposed_slice: string;
@@ -874,6 +877,9 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
 
 function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDesignSourceContinuation {
   return {
+    source_kind: source.kind,
+    source_artifact_id: source.id,
+    source_status: source.source_status,
     source_layer: source.layer,
     source_owner_surface: source.owner_surface,
     source_proposed_slice: source.proposed_slice,
@@ -889,7 +895,7 @@ function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDe
       "do not repeat completed source slice",
       "use source next_use and source_next_moves as direction, not completion proof"
     ]),
-    boundary: "read-only source-continuation summary for GA planning; carries forward the verified source layer, owner, completed slice, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
+    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
   };
 }
 

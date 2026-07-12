@@ -985,6 +985,9 @@ test("GA project design plan carries source continuation from basic iterations",
       "Design restart runtime observability as a basic runtime contract."
     ]);
     assert.doesNotMatch(readModel.artifacts[0]?.next_use ?? "", /Commit and restart runtime/);
+    assert.equal(plan?.source_continuation.source_kind, "verified_artifact");
+    assert.equal(plan?.source_continuation.source_artifact_id, "ga_design_artifact_iteration_contract_basic_source");
+    assert.equal(plan?.source_continuation.source_status, "verified");
     assert.equal(plan?.source_continuation.source_layer, "basic_entrypoint");
     assert.equal(plan?.source_continuation.source_owner_surface, "runtime_tools");
     assert.equal(plan?.source_continuation.source_proposed_slice, "runtime_state_boundary_for_basic_tools");

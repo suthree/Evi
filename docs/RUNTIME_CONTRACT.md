@@ -661,12 +661,12 @@ It may include `source_kind`, `source_artifact_id`, `source_iteration_ref`,
 `non_goals`, so review can distinguish a verified artifact source from a
 fresh-state bootstrap source and keep that source separate from the successor
 target.
-It may include `source_continuation`, a read-only summary of the verified
-source layer, owner surface, completed slice, source iteration ref, source
-implementation contract, primary `next_use`, and bounded `source_next_moves`
-candidates. This field preserves source direction for the next core/basic
-slice; it does not execute the next move, prove completion, or promote SOP,
-skill, memory, dream, expert, or adapter work.
+It may include `source_continuation`, a read-only summary of source kind,
+artifact identity, source status, layer, owner surface, completed slice, source
+iteration ref, source implementation contract, primary `next_use`, and bounded
+`source_next_moves` candidates. This field preserves source direction for the
+next core/basic slice; it does not execute the next move, prove completion, or
+promote SOP, skill, memory, dream, expert, or adapter work.
 It may also include `capability_stage_plan`; this does not add execution or
 completion authority.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
@@ -909,8 +909,10 @@ Required policy:
   orientation only and does not prove completion
 - Compact `source_continuation` must preserve the source layer/owner, completed
   source slice, source implementation contract id when present, source next-move
-  candidate count, one candidate next move, and the primary next-use hint; it is
-  source direction only and does not prove completion
+  candidate count, one candidate next move, and the primary next-use hint. The
+  adjacent compact `source_truth` line retains source kind, artifact identity,
+  source iteration ref, and source status. Both are source direction only and
+  do not prove completion
 - `next_core_basic_plan.iteration_focus` must explain the next core/basic
   direction and anti-drift checks without authorizing execution
 - Compact GA Project Design Plan context must preserve bounded anti-drift checks
