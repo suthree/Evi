@@ -347,6 +347,7 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
       refs: [trace.report_ref]
     },
     modelActionEnvelopeIntegrityCheck(trace),
+    modelActionEventBindingCheck(trace),
     modelDiagnosticIntegrityCheck(trace),
     completionVerificationStateCheck(trace),
     finalResponseEvidenceBindingCheck(trace),
@@ -392,6 +393,27 @@ function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessR
     refs: invalidRefs.length > 0
       ? unique([trace.report_ref, ...invalidRefs])
       : unique([trace.report_ref, ...trace.rounds.map((round) => round.envelope_ref)])
+  };
+}
+
+function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const missingModelActionEvents = trace.rounds.filter((round) => round.model_action_event_count === 0);
+  const duplicateModelActionEvents = trace.rounds.filter((round) => round.model_action_event_count > 1);
+  const problemRefs = unique([
+    ...missingModelActionEvents,
+    ...duplicateModelActionEvents
+  ].map((round) => round.envelope_ref));
+  return {
+    id: "model_action_event_binding",
+    status: problemRefs.length > 0 ? "warning" : "pass",
+    summary: [
+      `model_action_rounds=${trace.rounds.length}`,
+      `missing_model_action_events=${missingModelActionEvents.length}`,
+      `duplicate_model_action_events=${duplicateModelActionEvents.length}`
+    ].join("; "),
+    refs: problemRefs.length > 0
+      ? problemRefs
+      : trace.rounds.map((round) => round.envelope_ref)
   };
 }
 

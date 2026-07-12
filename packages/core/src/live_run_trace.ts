@@ -33,6 +33,8 @@ type DelegatedDispatchParsed = Omit<LiveRunDelegatedDispatchSummary, "event_id" 
 export interface LiveRunTraceRound {
   round: number;
   envelope_ref: string;
+  model_action_event_count: number;
+  model_action_event_ids: string[];
   model_input_present: boolean;
   delegated_observation_result_ids: string[];
   recovery_guidance_result_ids: string[];
@@ -774,11 +776,12 @@ async function readTraceRounds(
     .flatMap((event) => event.artifact_refs)
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref)))
     .sort((left, right) => roundNumber(left) - roundNumber(right) || left.localeCompare(right));
-  const actionEventsByEnvelopeRef = new Map(events
-    .filter((event) => event.kind === "model_action")
-    .flatMap((event) => event.artifact_refs
-      .filter((ref) => /-model-action-r\d+\.json$/.test(ref))
-      .map((ref) => [ref, event] as const)));
+  const actionEventsByEnvelopeRef = new Map<string, EpisodeEvent[]>();
+  for (const event of events.filter((item) => item.kind === "model_action")) {
+    for (const ref of event.artifact_refs.filter((item) => /-model-action-r\d+\.json$/.test(item))) {
+      actionEventsByEnvelopeRef.set(ref, [...(actionEventsByEnvelopeRef.get(ref) ?? []), event]);
+    }
+  }
   const rounds: LiveRunTraceRound[] = [];
   const invalidEnvelopeRefs: string[] = [];
   for (const ref of refs) {
@@ -808,10 +811,13 @@ async function readTraceRounds(
           ...delegationInputMetadata(parseDelegationRequest(action))
         };
       });
-    const modelInput = actionEventsByEnvelopeRef.get(ref)?.model_input;
+    const actionEvents = actionEventsByEnvelopeRef.get(ref) ?? [];
+    const modelInput = actionEvents.length === 1 ? actionEvents[0]!.model_input : undefined;
     rounds.push({
       round: roundNumber(ref),
       envelope_ref: ref,
+      model_action_event_count: actionEvents.length,
+      model_action_event_ids: actionEvents.map((event) => event.id),
       model_input_present: modelInput !== undefined,
       delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],
       recovery_guidance_result_ids: modelInput?.recovery_guidance_result_ids ?? [],

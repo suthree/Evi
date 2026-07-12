@@ -1454,6 +1454,9 @@ When a later main-model request occurs, its model-action event records only the
 prior delegated result ids and the subset requiring recovery guidance. Trace
 and replay compare those safe ids with earlier dispatches; they never retain or
 read model input, delegated task/context, output, or recovery-hint text.
+Each model-action envelope must have exactly one model-action event before that
+input metadata is trusted; replay warns on duplicate bindings rather than
+silently selecting one event.
 The reusable GA project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.

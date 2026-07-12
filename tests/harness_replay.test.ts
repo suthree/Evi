@@ -135,6 +135,11 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "pass"
         && check.summary.includes("mismatched_observation_lineage=0")
     ), true);
+    assert.equal(report.checks.some((check) =>
+      check.id === "model_action_event_binding"
+        && check.status === "pass"
+        && check.summary.includes("duplicate_model_action_events=0")
+    ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
       metadata_present: dispatch.metadata_present,
@@ -262,6 +267,42 @@ test("harness replay audit warns when later model input omits recovery guidance 
 
     assert.equal(check?.status, "warning");
     assert.match(check?.summary ?? "", /mismatched_observation_lineage=1/);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r2.json"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when a model-action envelope has duplicate events", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-model-event-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const roundTwo = events.find((event) => event.id === "evidence_replay_model_r2")!;
+    await store.writeText("memory/episodes/events.jsonl", `${[...events, {
+      ...roundTwo,
+      id: "evidence_replay_model_r2_duplicate"
+    }].map((event) => JSON.stringify(event)).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "model_action_event_binding");
+
+    assert.equal(trace.rounds[1]?.model_action_event_count, 2);
+    assert.equal(trace.rounds[1]?.model_input_present, false);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /duplicate_model_action_events=1/);
     assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r2.json"), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {

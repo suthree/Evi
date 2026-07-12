@@ -1372,6 +1372,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "delegated_recovery_guidance",
         "delegated_observation_input_lineage",
         "model_action_envelope_integrity",
+        "model_action_event_binding",
         "model_diagnostic_integrity",
         "delegated_results"
       ],
@@ -1386,6 +1387,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "replay audit warns when input-contract or per-round-limit rejected dispatches claim model_invoked=true or when a post-dispatch result claims model_invoked=false",
         "replay audit warns when a delegated dispatch lacks a model-action envelope ref, points at a missing model-action round, points at a round without delegate_agent actions, points at a different round envelope, uses an action_id not declared by the round envelope delegate_agent actions, or reports a sequence that does not match the declared delegate action order",
         "replay audit warns when a model-action envelope cannot be read or fails schema validation while preserving only its safe ref, never the envelope body or parser details",
+        "replay audit warns when a model-action envelope has duplicate event bindings before trusting its input metadata",
         "replay audit warns when a model-diagnostic artifact cannot be read while preserving only its safe ref, never the diagnostic body or read error",
         "replay audit warns when a delegated dispatch lacks a persisted delegated result JSON artifact ref",
         "operator Markdown/context views may cap rendered dispatch rows with an omitted count",
