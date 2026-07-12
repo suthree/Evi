@@ -222,6 +222,46 @@ test("delegate_agent rejects repository mutation task and context bypasses but k
   assert.equal(readOnlyReview.ok, true);
 });
 
+test("delegate_agent rejects Git command execution but keeps Git review read-only", () => {
+  const directTasks = [
+    "Review release readiness. Run git status. What changed?",
+    "Analyze the history. Execute git log --oneline. What changed?",
+    "Compare the branch. Use git diff main. What changed?",
+    "评审发布状态。执行 git status 后汇报什么变化？"
+  ];
+  const authorityGrants = [
+    "The delegated subagent may run git status before returning findings.",
+    "The delegated subagent may execute git log before returning findings.",
+    "允许 delegated subagent 执行 git diff。"
+  ];
+  const readOnlyReview = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Analyze whether git status should be run before release?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  });
+
+  for (const task of directTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+  }
+  for (const grant of authorityGrants) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: {
+        task: "Critique whether the answer needs more evidence.",
+        context: `${VALID_DELEGATE_CONTEXT} ${grant}`
+      }
+    });
+    assert.equal(result.ok, false, grant);
+  }
+  assert.equal(readOnlyReview.ok, true);
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",
@@ -291,7 +331,19 @@ test("delegated output rejects natural-language command and test execution claim
       findings_text: "No issue."
     }),
     JSON.stringify({
+      summary: "I ran git status and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
+      summary: "I executed git log and found no issue.",
+      findings_text: "No issue."
+    }),
+    JSON.stringify({
       summary: "我执行了测试，检查通过。",
+      findings_text: "无问题。"
+    }),
+    JSON.stringify({
+      summary: "我执行了 git diff，没有发现问题。",
       findings_text: "无问题。"
     }),
     `I ran the test suite.\n${JSON.stringify({

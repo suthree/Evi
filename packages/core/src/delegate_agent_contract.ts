@@ -252,7 +252,9 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksCompletion =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
-  const asksCommandOrTestExecution = hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_COMMAND_EXECUTION_TERMS);
+  const asksCommandOrTestExecution = hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_COMMAND_EXECUTION_TERMS)
+    || hasPrefixedGitCommand(text, DELEGATE_TASK_REQUEST_TERMS)
+    || hasDirectGitCommandIntent(task);
   const asksExpertScheduling =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
     || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
@@ -690,6 +692,7 @@ function hasDirectTaskMutationIntent(task: string, text: string): boolean {
 function grantsDelegatedAuthority(text: string): boolean {
   return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES)
     || hasNearbyBoundary(text, AUTHORITY_COMMAND_GRANT_PREFIXES, TASK_COMMAND_EXECUTION_TERMS, 80)
+    || grantsGitCommandAuthority(text)
     || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80)
     || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80)
     || hasNearbyBoundary(text, AUTHORITY_MUTATION_GRANT_PREFIXES, DESTRUCTIVE_MUTATION_TERMS, 80);
@@ -713,6 +716,27 @@ function hasUndeniedPhrase(text: string, phrase: string, denialWindow = 48): boo
 
 function hasAnyPhrase(text: string, phrases: readonly string[]): boolean {
   return phrases.some((phrase) => text.includes(phrase));
+}
+
+function hasPrefixedGitCommand(text: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => {
+    let index = text.indexOf(prefix);
+    while (index !== -1) {
+      if (/^git\s+[a-z][a-z0-9-]*/iu.test(text.slice(index + prefix.length).trimStart())) return true;
+      index = text.indexOf(prefix, index + prefix.length);
+    }
+    return false;
+  });
+}
+
+function grantsGitCommandAuthority(text: string): boolean {
+  return hasPrefixedGitCommand(text, AUTHORITY_COMMAND_GRANT_PREFIXES)
+    || /(?:可以|允许|授权).{0,80}(?:运行|执行|使用)\s+git\s+[a-z][a-z0-9-]*/iu.test(text);
+}
+
+function hasDirectGitCommandIntent(task: string): boolean {
+  return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:run|execute|use)\s+)?git\s+[a-z][a-z0-9-]*/iu.test(task)
+    || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:(?:执行|运行|使用)\s*)?git\s+[a-z][a-z0-9-]*/iu.test(task);
 }
 
 function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {
@@ -1120,6 +1144,7 @@ function delegatedTextClaimsAuthority(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
     || delegatedTextClaimsDestructiveMutation(text)
+    || hasPrefixedGitCommand(text, DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES)
     || hasNearbyBoundary(
       text,
       DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES,

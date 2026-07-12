@@ -1306,7 +1306,8 @@ fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
 push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
 or pull-request creation
 intent even across sentence boundaries, and it cannot ask the delegated
-subagent to run commands, tests, builds, or package-manager scripts, execute
+subagent to run commands (including `git status`, `git log`, or `git diff`),
+tests, builds, or package-manager scripts, execute
 tools, write or mutate state, decide completion, or schedule
 expert/multi-agent work. The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
@@ -1317,7 +1318,7 @@ refs. Tasks or contexts
 that omit, violate, or contradict those authority and output-shape boundaries
 are rejected before any delegated model call; a context that says no delegated
 authority and also grants destructive delete/remove/erase/unlink/drop/destroy,
-Git push/merge/rebase/cherry-pick/reset/tag, pull-request creation,
+Git commands (including read-only status/log/diff), pull-request creation,
 tool/write/mutation, completion, expert scheduling,
 multi-agent orchestration, model fan-out, hidden memory, raw delegated artifact,
 unstated repo state, context expansion, or invented evidence-ref authority is
@@ -1336,8 +1337,8 @@ Markdown, code fence, wrapper prose, or extra keys. The payload is strict: `dele
 fields are rejected before any delegated model call. The harness validates those
 contracts, rejects successful-looking outputs that echo raw delegated
 `task`/`context` or claim delegated tool/write/mutation, destructive
-delete/remove/erase/unlink/drop/destroy execution, Git push/merge/rebase/
-cherry-pick/reset/tag, pull-request creation, completion, expert,
+delete/remove/erase/unlink/drop/destroy execution, Git command execution,
+pull-request creation, completion, expert,
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
 state, context expansion, or invented evidence-ref authority. Natural-language
 delegated output execution assertions in active, third-person, passive, or terse
