@@ -1649,6 +1649,9 @@ remain unknown rather than becoming a new warning.
 Diagnostic refs from another session are excluded from the current trace and
 reported as bounded replay attention; their bodies are never read as current
 run evidence.
+Tool-result artifact refs from another session are likewise excluded from
+current-run evidence and reported as bounded replay attention without reading
+their bodies.
 Failed or skipped reports also appear as read-only `completion_verification`
 items in the Opportunity Backlog. Passed reports are suppressed. The backlog
 item and any review tick focus may include only structured report fields such

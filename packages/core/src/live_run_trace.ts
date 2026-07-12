@@ -232,6 +232,7 @@ export interface LiveRunTraceSummary {
   event_kind_counts: Record<string, number>;
   tool_result_count: number;
   tool_result_events: LiveRunToolResultEventSummary[];
+  foreign_tool_result_artifact_refs: string[];
   delegated_result_count: number;
   delegated_result_passed_count: number;
   delegated_result_failed_count: number;
@@ -369,6 +370,9 @@ async function summarizeLiveRunTrace(
   const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles, rounds);
+  const foreignToolResultArtifactRefs = unique(toolResultEvents
+    .flatMap((event) => event.artifact_refs)
+    .filter((ref) => ref.startsWith("memory/episodes/") && !ref.startsWith(`memory/episodes/${report.session_id}-`)));
   const finalResponseEvents = readFinalResponseEventSummaries(runEvents, rounds);
   const expectedFinalResponseRef = `memory/episodes/${report.session_id}-final-response.md`;
   const finalResponseChecks = report.checks
@@ -418,6 +422,7 @@ async function summarizeLiveRunTrace(
     ...rounds.map((round) => round.envelope_ref),
     ...invalidEnvelopeRefs,
     ...foreignModelActionEnvelopeRefs,
+    ...foreignToolResultArtifactRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...unreadableModelDiagnosticRefs,
     ...foreignModelDiagnosticRefs,
@@ -469,6 +474,7 @@ async function summarizeLiveRunTrace(
     event_kind_counts: eventKindCounts,
     tool_result_count: eventKindCounts.tool_result ?? 0,
     tool_result_events: toolResultEvents,
+    foreign_tool_result_artifact_refs: foreignToolResultArtifactRefs,
     delegated_result_count: delegatedResultCount,
     delegated_result_passed_count: Math.max(0, delegatedResultCount - delegatedResultFailedCount),
     delegated_result_failed_count: delegatedResultFailedCount,

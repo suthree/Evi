@@ -923,6 +923,7 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
     `- events: ${trace.event_count} (${renderCountMap(trace.event_kind_counts)})`,
     `- observations: ${trace.observation_ref_count}`,
     `- tool_results: ${trace.tool_result_count}`,
+    `- foreign_tool_result_artifacts: ${trace.foreign_tool_result_artifact_refs.length}`,
     `- claimed_verification_refs: ${trace.claimed_verification_refs.length}`,
     `- verification_evidence_refs: ${trace.verification_evidence_ref_count}`,
     `- delegated_results: ${trace.delegated_result_count}`,
@@ -952,6 +953,9 @@ function renderLiveRunTraceItem(trace: LiveRunTraceSummary, index: number): stri
   }
   for (const ref of trace.foreign_model_diagnostic_refs.slice(0, 3)) {
     lines.push(`- foreign_model_diagnostic_ref: ${ref}`);
+  }
+  for (const ref of trace.foreign_tool_result_artifact_refs.slice(0, 3)) {
+    lines.push(`- foreign_tool_result_artifact_ref: ${ref}`);
   }
   for (const ref of trace.invalid_model_action_envelope_refs.slice(0, 3)) {
     lines.push(`- invalid_model_action_envelope_ref: ${ref}`);
