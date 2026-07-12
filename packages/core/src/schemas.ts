@@ -4,6 +4,7 @@ import {
   delegateAgentActionContract,
   delegateAgentDispatchFailureKindValues,
   delegateAgentDispatchKindValues,
+  delegateAgentResultFailureKindsFromDispatch,
   delegateAgentResultFailureKindValues,
   delegateAgentResultKindValues
 } from "./action_contracts.js";
@@ -112,6 +113,53 @@ export const delegatedResultFailureKindSchema = z.enum(delegateAgentResultFailur
 export const delegatedResultKindSchema = z.enum(delegateAgentResultKindValues);
 export const delegatedRecoveryGuidanceSchema = z.enum(["none", "main_harness_recovery"]);
 
+type DelegatedOutcomeIntegrity = {
+  ok: boolean;
+  model_invoked: boolean;
+  contract_status: "passed" | "failed";
+  dispatch_failure_kind: typeof delegateAgentDispatchKindValues[number];
+  result_failure_kind: typeof delegateAgentResultKindValues[number];
+};
+
+const delegatedResultFailureKindsFromDispatch = new Set<string>(delegateAgentResultFailureKindsFromDispatch);
+
+function validateDelegatedOutcomeIntegrity(value: DelegatedOutcomeIntegrity, ctx: z.RefinementCtx): void {
+  const passed = value.ok && value.contract_status === "passed";
+  if (value.ok !== (value.contract_status === "passed")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["contract_status"], message: "delegated result ok must match contract_status." });
+  }
+  if (passed) {
+    if (!value.model_invoked) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["model_invoked"], message: "successful delegated results must invoke the delegated model." });
+    }
+    if (value.dispatch_failure_kind !== "none") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["dispatch_failure_kind"], message: "successful delegated results must not carry a dispatch failure kind." });
+    }
+    if (value.result_failure_kind !== "none") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["result_failure_kind"], message: "successful delegated results must not carry a result failure kind." });
+    }
+    return;
+  }
+  if (value.result_failure_kind === "none") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["result_failure_kind"], message: "failed delegated results must carry a result failure kind." });
+  }
+  if (value.dispatch_failure_kind !== "none") {
+    if (value.model_invoked) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["model_invoked"], message: "dispatch-rejected delegated results must not invoke the delegated model." });
+    }
+    if (value.result_failure_kind !== value.dispatch_failure_kind) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["result_failure_kind"], message: "dispatch-rejected delegated results must preserve the dispatch failure kind." });
+    }
+    return;
+  }
+  if (!value.model_invoked) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["model_invoked"], message: "non-dispatch delegated failures must follow a delegated model invocation." });
+  }
+  if (delegatedResultFailureKindsFromDispatch.has(value.result_failure_kind)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["result_failure_kind"], message: "non-dispatch delegated failures must not use a dispatch failure kind." });
+  }
+}
+
 export const delegatedResultSchema = z.object({
   id: z.string(),
   ok: z.boolean(),
@@ -133,7 +181,7 @@ export const delegatedResultSchema = z.object({
   error: z.string().nullable(),
   boundary: z.string(),
   created_at: z.string()
-});
+}).superRefine(validateDelegatedOutcomeIntegrity);
 
 export const delegatedObservationSchema = z.object({
   id: z.string(),
@@ -155,7 +203,7 @@ export const delegatedObservationSchema = z.object({
   proof_boundary: z.string(),
   boundary: z.string(),
   observation_boundary: z.string()
-});
+}).superRefine(validateDelegatedOutcomeIntegrity);
 
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),

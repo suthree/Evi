@@ -12,6 +12,10 @@ import {
   parseDelegatedOutput,
   parseDelegationRequest
 } from "../packages/core/src/delegate_agent_contract.js";
+import {
+  delegatedObservationSchema,
+  delegatedResultSchema
+} from "../packages/core/src/schemas.js";
 
 const VALID_DELEGATE_CONTEXT = [
   "No tool, write, or mutation authority is available.",
@@ -24,6 +28,64 @@ const DELEGATED_OUTPUT_SOURCE = {
   task: "Critique whether delegated output claims command authority.",
   context: VALID_DELEGATE_CONTEXT
 };
+
+const VALID_DELEGATED_RESULT = {
+  id: "delegated_result_schema_test",
+  ok: true,
+  summary: "Bounded delegated summary.",
+  action_id: "action_delegate_schema_test",
+  round: 1,
+  sequence: 1,
+  task_chars: 42,
+  context_chars: 84,
+  model_invoked: true,
+  contract_status: "passed" as const,
+  dispatch_failure_kind: "none" as const,
+  result_failure_kind: "none" as const,
+  findings_text: "Bounded delegated findings.",
+  output_text: "Bounded delegated findings.",
+  raw_output_preview: "",
+  error: null,
+  boundary: "bounded test result",
+  created_at: "2026-07-12T00:00:00Z"
+};
+
+test("delegated result and observation schemas reject inconsistent failure tuples", () => {
+  assert.equal(delegatedResultSchema.safeParse(VALID_DELEGATED_RESULT).success, true);
+  assert.equal(delegatedResultSchema.safeParse({
+    ...VALID_DELEGATED_RESULT,
+    result_failure_kind: "delegated_model_request_failed"
+  }).success, false);
+  assert.equal(delegatedResultSchema.safeParse({
+    ...VALID_DELEGATED_RESULT,
+    ok: false,
+    contract_status: "failed",
+    dispatch_failure_kind: "input_contract_failed",
+    result_failure_kind: "input_contract_failed",
+    model_invoked: true
+  }).success, false);
+  assert.equal(delegatedObservationSchema.safeParse({
+    id: VALID_DELEGATED_RESULT.id,
+    action_id: VALID_DELEGATED_RESULT.action_id,
+    round: VALID_DELEGATED_RESULT.round,
+    sequence: VALID_DELEGATED_RESULT.sequence,
+    ok: true,
+    contract_status: "passed",
+    dispatch_failure_kind: "none",
+    result_failure_kind: "delegated_output_contract_failed",
+    task_chars: VALID_DELEGATED_RESULT.task_chars,
+    context_chars: VALID_DELEGATED_RESULT.context_chars,
+    model_invoked: true,
+    summary: VALID_DELEGATED_RESULT.summary,
+    findings_text: VALID_DELEGATED_RESULT.findings_text,
+    error: null,
+    recovery_hint: null,
+    trust_boundary: "untrusted_advisory_data",
+    proof_boundary: "advisory_only",
+    boundary: "bounded test observation",
+    observation_boundary: "sanitized test observation"
+  }).success, false);
+});
 
 test("delegate_agent subagent instructions constrain source boundary", () => {
   const instructions = formatDelegateAgentSubagentInstructions().join("\n");

@@ -311,6 +311,8 @@ test("GA project design read model derives reusable artifacts from verified iter
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.result.result_failure_kinds,
       delegateAgentActionContract.result_kinds
     );
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("packages/core/src/schemas.ts"), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("tests/delegate_agent_contract.test.ts"), true);
     assert.deepEqual(
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.check_ids,
       delegateAgentActionContract.completion_gate_check_ids

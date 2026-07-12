@@ -1026,13 +1026,14 @@ function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProject
         "packages/core/src/action_contracts.ts",
         "packages/core/src/delegate_agent_completion_gate.ts",
         "packages/core/src/delegate_agent_contract.ts",
+        "packages/core/src/schemas.ts",
         "packages/core/src/harness_replay.ts",
         "packages/core/src/live_run_trace.ts",
         "packages/runtime/src/runner.ts"
       ]
     }, {
       id: "verification",
-      ref_prefixes: ["tests/context_harness.test.ts", "tests/harness_replay.test.ts"]
+      ref_prefixes: ["tests/context_harness.test.ts", "tests/delegate_agent_contract.test.ts", "tests/harness_replay.test.ts"]
     }, {
       id: "documentation",
       ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
