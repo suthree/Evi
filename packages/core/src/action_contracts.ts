@@ -65,13 +65,13 @@ export const delegateAgentAuthoringContract = {
       "task is empty or over the configured max chars",
       "task is a vague handoff without explicit analysis, critique, review, inspection, comparison, summarization, or evaluation intent",
       "task lacks one concrete question for the delegated subagent",
-      "task combines analysis intent with direct fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, or destroy intent",
+      "task combines analysis intent with direct fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, or release intent",
       "task combines analysis intent with command or test execution intent",
       "more than one delegate_agent action is proposed in the same model round",
       "task asks the delegated subagent to execute tools, mutate state, or decide completion",
       "task is expert scheduling or multi-agent orchestration instead of general delegation"
     ],
-    validation_error: "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request direct fix/repair/update/edit/patch/commit, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority."
+    validation_error: "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request direct fix/repair/update/edit/patch/commit/push/merge/deploy/publish/release, command/test execution, tool/write/mutation, completion, expert, or multi-agent scheduling authority."
   },
   context: {
     required: [
@@ -98,12 +98,12 @@ export const delegateAgentAuthoringContract = {
   },
   runner_input_contract: [
     "parseDelegationRequest validates strict task/context payloads before delegated model dispatch",
-    "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for destructive delete/remove/erase/unlink/drop/destroy, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
+    "validateDelegationTaskBoundary requires explicit bounded analysis intent as one concrete question and rejects direct fix/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, command/test execution, tool, write, mutation, completion, expert, or multi-agent scheduling requests; validateDelegationContextBoundary requires delegated analysis may use only explicit payload context or named evidence refs and rejects context grants for destructive delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, model fan-out, hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs",
     "validateDelegationContextBoundary requires no tool/write/mutation authority, expected summary/findings_text output shape, explicit payload/evidence source boundary, rejects contradictory command/test execution, completion, expert, multi-agent authority grants, or forbidden-source reliance, and keeps main-harness completion ownership"
   ],
   capability_boundaries: [
     "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
-    "delegated task must not combine analysis with direct fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, or destroy intent",
+    "delegated task must not combine analysis with direct fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, or release intent",
     "delegated task must not ask the subagent to run commands, tests, builds, or package-manager scripts",
     "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
     "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
@@ -142,7 +142,7 @@ export const delegateAgentActionContract = {
 
 export function formatDelegateAgentLiveInstruction(): string {
   return [
-    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success."
+    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success."
   ].join("\n");
 }
 

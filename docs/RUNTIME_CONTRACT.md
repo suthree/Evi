@@ -1302,7 +1302,8 @@ before they can enter history or trace read models.
 `task` itself must explicitly request bounded analysis, critique, review,
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
 task handoff, it cannot combine analysis with direct
-fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy
+fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
+push/merge/deploy/publish/release
 intent even across sentence boundaries, and it cannot ask the delegated
 subagent to run commands, tests, builds, or package-manager scripts, execute
 tools, write or mutate state, decide completion, or schedule

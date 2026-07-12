@@ -167,6 +167,48 @@ test("delegate_agent rejects sentence-separated direct mutation work before disp
   assert.equal(readOnlyReview.ok, true);
 });
 
+test("delegate_agent rejects release and repository mutation work but keeps its review read-only", () => {
+  const directTasks = [
+    "Analyze release status. Push the branch to remote. What changed?",
+    "Review the change. Merge it into main. What succeeded?",
+    "Critique the rollout. Deploy it now. What happened?",
+    "评估发布状态。推送分支到远端后汇报什么变化？"
+  ];
+  const readOnlyReview = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Analyze whether this branch should be merged before release?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  });
+  const authorityGrants = [
+    "The delegated subagent may push the branch to remote.",
+    "The delegated subagent may merge the change into main.",
+    "The delegated subagent may deploy the release.",
+    "允许 delegated subagent 发布到生产环境。"
+  ];
+
+  for (const task of directTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+  }
+  for (const grant of authorityGrants) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: {
+        task: "Critique whether the answer needs more evidence.",
+        context: `${VALID_DELEGATE_CONTEXT} ${grant}`
+      }
+    });
+    assert.equal(result.ok, false, grant);
+    if (!result.ok) assert.match(result.error, /must not grant tool\/write\/mutation/);
+  }
+  assert.equal(readOnlyReview.ok, true);
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",

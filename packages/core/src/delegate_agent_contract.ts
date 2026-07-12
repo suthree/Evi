@@ -428,15 +428,15 @@ const DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS = [
 ];
 
 const DIRECT_TASK_MUTATION_PATTERNS = [
-  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/,
+  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
   /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
-  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/,
+  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
   /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
-  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除)/u
+  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u
 ];
 
 const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
-  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/i
+  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i
 ];
 
 const DIRECT_TASK_MUTATION_PHRASES = [
@@ -463,7 +463,17 @@ const DIRECT_TASK_MUTATION_PHRASES = [
   "并移除",
   "然后移除",
   "并清除",
-  "然后清除"
+  "然后清除",
+  "并推送",
+  "然后推送",
+  "并合并",
+  "然后合并",
+  "并部署",
+  "然后部署",
+  "并发布",
+  "然后发布",
+  "并上线",
+  "然后上线"
 ];
 
 const DIRECT_TASK_MUTATION_PREFIXES = [
@@ -478,7 +488,12 @@ const DIRECT_TASK_MUTATION_PREFIXES = [
   "改文件",
   "删除",
   "移除",
-  "清除"
+  "清除",
+  "推送",
+  "合并",
+  "部署",
+  "发布",
+  "上线"
 ];
 
 const TOOL_AUTHORITY_TERMS = [
@@ -853,9 +868,19 @@ const DESTRUCTIVE_MUTATION_TERMS = [
   "unlink",
   "drop",
   "destroy",
+  "push",
+  "merge",
+  "deploy",
+  "publish",
+  "release",
   "删除",
   "移除",
-  "清除"
+  "清除",
+  "推送",
+  "合并",
+  "部署",
+  "发布",
+  "上线"
 ];
 
 const AUTHORITY_TOOL_GRANT_PREFIXES = [
