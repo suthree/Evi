@@ -9485,7 +9485,7 @@ class AnalysisThenCommandExecutionTaskThenDoneModel implements ModelClient {
         && delegatedSection.includes('"dispatch_failure_kind": "input_contract_failed"')
         && delegatedSection.includes('"result_failure_kind": "input_contract_failed"')
         && delegatedSection.includes("command/test execution")
-        && !delegatedSection.includes("Run pnpm test");
+        && !delegatedSection.includes("Test the project");
     }
     return this.mainCalls > 1 ? doneEnvelope() : analysisThenCommandExecutionDelegateEnvelope();
   }
@@ -10245,7 +10245,7 @@ function analysisThenCommandExecutionDelegateEnvelope(): Record<string, unknown>
       type: "delegate_agent",
       rationale: "Use a bounded subagent self-report before final answer.",
       payload: {
-        task: "Run pnpm test and analyze whether the failing check blocks completion.",
+        task: "Test the project and analyze whether the failing check blocks completion.",
         context: BOUNDED_DELEGATE_CONTEXT
       }
     }],

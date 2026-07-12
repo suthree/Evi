@@ -443,7 +443,9 @@ const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
 
 const DIRECT_TASK_COMMAND_EXECUTION_PATTERNS = [
   /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:run|execute|call|invoke|use)\s+(?:(?:the|a)\s+)?(?:test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|lint|build|commands?|shell|terminal|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/i,
-  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|调用|使用)\s*(?:命令|终端|测试|单测|集成测试|检查|构建|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/iu
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:test|check|lint|build|verify)\s+(?:(?:the|a)\s+)?(?:project|repo(?:sitory)?|codebase|test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|build|package)\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|调用|使用)\s*(?:命令|终端|测试|单测|集成测试|检查|构建|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/iu,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:测试|检查|构建|校验|验证)\s*(?:项目|仓库|代码库|测试|单测|集成测试|检查|构建)/u
 ];
 
 const DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS = [

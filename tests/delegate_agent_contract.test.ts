@@ -272,7 +272,13 @@ test("delegate_agent distinguishes execution-evidence analysis from command requ
   const executionTasks = [
     "Run the test suite, then critique failures?",
     "Could you execute pnpm run check and summarize?",
+    "Review release readiness; test the project and summarize?",
+    "Analyze the defect; check the build and explain failures?",
+    "Critique the change; lint the repository and summarize?",
+    "Review the release; verify the test suite and report?",
     "评审发布状态，然后执行测试并说明结果？",
+    "评审发布状态；测试项目并说明结果？",
+    "分析缺陷；检查构建并解释失败？",
     "请运行 pnpm run check 并评审？"
   ];
 
