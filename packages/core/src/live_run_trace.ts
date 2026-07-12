@@ -253,6 +253,7 @@ export interface LiveRunTraceSummary {
   foreign_model_diagnostic_refs: string[];
   invalid_model_action_envelope_refs: string[];
   foreign_model_action_envelope_refs: string[];
+  foreign_model_action_envelope_event_ids: string[];
   foreign_delegated_result_refs: string[];
   repo_write_guard_count: number;
   repo_write_guards: LiveRunRepoWriteGuardSummary[];
@@ -370,6 +371,10 @@ async function summarizeLiveRunTrace(
     .filter((event) => event.kind === "model_action")
     .flatMap((event) => event.artifact_refs)
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref) && !ref.startsWith(sessionModelActionPrefix)));
+  const foreignModelActionEnvelopeEventIds = unique(events
+    .filter((event) => event.kind === "model_action" && event.session_id !== report.session_id)
+    .filter((event) => event.artifact_refs.some((ref) => ref.startsWith(sessionModelActionPrefix)))
+    .map((event) => event.id));
   const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
   const traceRounds = await readTraceRounds(store, runEvents, events, report.session_id, episodeFiles);
   const { rounds, invalidEnvelopeRefs } = traceRounds;
@@ -505,6 +510,7 @@ async function summarizeLiveRunTrace(
     foreign_model_diagnostic_refs: foreignModelDiagnosticRefs,
     invalid_model_action_envelope_refs: invalidEnvelopeRefs,
     foreign_model_action_envelope_refs: foreignModelActionEnvelopeRefs,
+    foreign_model_action_envelope_event_ids: foreignModelActionEnvelopeEventIds,
     foreign_delegated_result_refs: foreignDelegatedResultRefs,
     repo_write_guard_count: repoWriteGuards.length,
     repo_write_guards: repoWriteGuards.slice(0, 5),
@@ -855,7 +861,7 @@ async function readTraceRounds(
   const modelActionEnvelopeRefs = (event: EpisodeEvent) => allModelActionEnvelopeRefs(event)
     .filter((ref) => ref.startsWith(sessionModelActionPrefix));
   const eventBoundRefs = new Set(allEvents
-    .filter((event) => event.kind === "model_action")
+    .filter((event) => event.kind === "model_action" && event.session_id === sessionId)
     .flatMap(allModelActionEnvelopeRefs));
   const persistedRefs = [...episodeFiles]
     .filter((ref) => ref.startsWith(sessionModelActionPrefix)

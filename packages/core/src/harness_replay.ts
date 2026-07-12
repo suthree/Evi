@@ -184,6 +184,7 @@ export async function runHarnessReplayAudit(
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.invalid_model_action_envelope_refs,
       ...trace.foreign_tool_result_artifact_refs,
+      ...trace.foreign_model_action_envelope_event_ids.map((eventId) => `${trace.report_ref}#${eventId}`),
       ...trace.unreadable_model_diagnostic_refs,
       ...trace.foreign_model_diagnostic_refs,
       ...trace.tool_result_events.map((event) => `${trace.report_ref}#${event.event_id}`),
@@ -394,12 +395,13 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
 function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const invalidRefs = trace.invalid_model_action_envelope_refs;
   const foreignRefs = trace.foreign_model_action_envelope_refs;
+  const foreignEventIds = trace.foreign_model_action_envelope_event_ids;
   return {
     id: "model_action_envelope_integrity",
-    status: invalidRefs.length > 0 || foreignRefs.length > 0 ? "warning" : "pass",
-    summary: `invalid_model_action_envelopes=${invalidRefs.length}; cross_session_model_action_envelopes=${foreignRefs.length}`,
-    refs: invalidRefs.length > 0 || foreignRefs.length > 0
-      ? unique([trace.report_ref, ...invalidRefs, ...foreignRefs])
+    status: invalidRefs.length > 0 || foreignRefs.length > 0 || foreignEventIds.length > 0 ? "warning" : "pass",
+    summary: `invalid_model_action_envelopes=${invalidRefs.length}; cross_session_model_action_envelopes=${foreignRefs.length}; cross_session_model_action_envelope_event_bindings=${foreignEventIds.length}`,
+    refs: invalidRefs.length > 0 || foreignRefs.length > 0 || foreignEventIds.length > 0
+      ? unique([trace.report_ref, ...invalidRefs, ...foreignRefs, ...foreignEventIds.map((eventId) => `${trace.report_ref}#${eventId}`)])
       : unique([trace.report_ref, ...trace.rounds.map((round) => round.envelope_ref)])
   };
 }

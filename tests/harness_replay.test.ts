@@ -578,6 +578,46 @@ test("harness replay audit isolates cross-session model-action envelope referenc
   }
 });
 
+test("harness replay audit flags another session that binds this session's envelope", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-reverse-cross-session-envelope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const currentRef = "memory/episodes/session_replay_test-model-action-r2.json";
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    events.push({
+      ...events.find((event) => event.id === "evidence_replay_model_r2")!,
+      id: "evidence_other_session_model_r2",
+      session_id: "session_other",
+      turn_id: "turn_other",
+      artifact_refs: [currentRef]
+    });
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_action_envelope_integrity");
+
+    assert.equal(trace.rounds.some((round) => round.envelope_ref === currentRef), true);
+    assert.deepEqual(trace.foreign_model_action_envelope_event_ids, ["evidence_other_session_model_r2"]);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /cross_session_model_action_envelope_event_bindings=1/);
+    assert.equal(integrity?.refs.includes(`${trace.report_ref}#evidence_other_session_model_r2`), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit isolates cross-session delegated-result references", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-cross-session-result-"));
   const repoRoot = join(root, "repo");

@@ -1520,7 +1520,10 @@ The trace inventories persisted envelopes for the current session as well as
 event refs, so an interrupted write-to-event handoff remains visible as a
 zero-event round instead of being omitted from replay.
 Cross-session action-envelope refs are excluded from the current trace and
-reported as bounded replay attention; they cannot make input metadata trusted.
+reported as bounded replay attention; replay also records when another session's
+model-action event binds a current-session envelope, and that foreign binding
+cannot hide an interrupted current-session zero-event round or make input
+metadata trusted.
 Cross-session delegated-result refs are likewise excluded from current-turn
 result references and cannot become completion evidence.
 The reusable GA project-design delegation contract projects that same shared
