@@ -571,6 +571,7 @@ test("harness replay audit isolates cross-session model-action envelope referenc
     assert.equal(integrity?.status, "warning");
     assert.match(integrity?.summary ?? "", /cross_session_model_action_envelopes=1/);
     assert.equal(integrity?.refs.includes(foreignRef), true);
+    assert.equal(report.refs.includes(foreignRef), true);
     assert.equal(binding?.status, "warning");
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
@@ -661,6 +662,7 @@ test("harness replay audit isolates cross-session delegated-result references", 
     assert.equal(coverage?.status, "warning");
     assert.match(coverage?.summary ?? "", /cross_session_delegated_result_refs=1/);
     assert.equal(coverage?.refs.includes(foreignRef), true);
+    assert.equal(report.refs.includes(foreignRef), true);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });

@@ -1525,7 +1525,10 @@ model-action event binds a current-session envelope, and that foreign binding
 cannot hide an interrupted current-session zero-event round or make input
 metadata trusted.
 Cross-session delegated-result refs are likewise excluded from current-turn
-result references and cannot become completion evidence.
+result references and cannot become completion evidence. Both cross-session
+signals remain in the check-specific and report-wide safe ref inventories, so
+later bounded context can retain the identity alert without reading artifact
+bodies.
 The reusable GA project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.

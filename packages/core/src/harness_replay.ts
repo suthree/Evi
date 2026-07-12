@@ -183,6 +183,7 @@ export async function runHarnessReplayAudit(
       ...trace.foreign_context_artifact_refs,
       ...trace.rounds.map((round) => round.envelope_ref),
       ...trace.invalid_model_action_envelope_refs,
+      ...trace.foreign_model_action_envelope_refs,
       ...trace.foreign_tool_result_artifact_refs,
       ...trace.foreign_model_action_envelope_event_ids.map((eventId) => `${trace.report_ref}#${eventId}`),
       ...trace.unreadable_model_diagnostic_refs,
@@ -191,6 +192,7 @@ export async function runHarnessReplayAudit(
       ...trace.model_diagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
       ...trace.repo_write_guards.map((guard) => `${trace.report_ref}#${guard.event_id}`),
       ...trace.verification_evidence_refs.map((item) => item.ref),
+      ...trace.foreign_delegated_result_refs,
       ...trace.delegated_result_refs,
       ...trace.delegated_dispatches.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
       ...trace.delegated_completion_gate_checks.flatMap((check) => check.refs)
