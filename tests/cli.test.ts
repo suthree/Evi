@@ -14,6 +14,7 @@ import {
   buildIterationAuditEvidenceAvailable,
   buildIterationAuditGuidance,
   buildIterationAuditImplementationContractCoverage,
+  buildIterationAuditOutcomeEvidenceScopeCoverage,
   buildIterationAuditNextCommand,
   buildIterationAuditRuntimeAttentionOutcomeCoverage,
   buildIterationAuditWorkspaceOutcomeCoverage,
@@ -522,6 +523,39 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(covered.required_tokens.includes("implementation_contract.boundary"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
 
+  const outcomeEvidenceScope = {
+    allowed_ref_prefixes: [
+      "packages/core/src/ga_project_design.ts",
+      "tests/ga_project_design.test.ts",
+      "docs/RUNTIME_CONTRACT.md",
+      "services/runtime/heartbeat.json"
+    ],
+    required_groups: [
+      { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
+      { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] },
+      { id: "documentation", ref_prefixes: ["docs/RUNTIME_CONTRACT.md"] },
+      { id: "runtime_health", ref_prefixes: ["services/runtime/heartbeat.json"] }
+    ],
+    boundary: "bounded scope"
+  };
+  const scopedPlanContract = { ...planContract, outcome_evidence_scope: outcomeEvidenceScope };
+  const missingOutcomeEvidenceScope = buildIterationAuditImplementationContractCoverage(scopedPlanContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: planContract
+  });
+  assert.equal(missingOutcomeEvidenceScope.status, "missing_required_fields");
+  assert.deepEqual(missingOutcomeEvidenceScope.missing_fields, ["outcome_evidence_scope"]);
+  const coveredOutcomeEvidenceScope = buildIterationAuditImplementationContractCoverage(scopedPlanContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: scopedPlanContract
+  });
+  assert.equal(coveredOutcomeEvidenceScope.status, "covered");
+  assert.equal(coveredOutcomeEvidenceScope.required_tokens.includes("implementation_contract.outcome_evidence_scope=bounded"), true);
+
   const delegationContract = getGaProjectDesignDelegationImplementationContract();
   const delegatedPlanContract = { ...planContract, delegation_contract: delegationContract };
   const missingDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
@@ -603,6 +637,40 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(missingHistoricalFields.status, "missing_required_fields");
   assert.deepEqual(missingHistoricalFields.missing_fields, ["implementation_scope"]);
+});
+
+test("iteration audit outcome evidence scope rejects missing and foreign evidence refs", () => {
+  const contract = {
+    outcome_evidence_scope: {
+      allowed_ref_prefixes: [
+        "packages/core/src/ga_project_design.ts",
+        "tests/ga_project_design.test.ts",
+        "docs/RUNTIME_CONTRACT.md",
+        "services/runtime/heartbeat.json"
+      ],
+      required_groups: [
+        { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
+        { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] },
+        { id: "documentation", ref_prefixes: ["docs/RUNTIME_CONTRACT.md"] },
+        { id: "runtime_health", ref_prefixes: ["services/runtime/heartbeat.json"] }
+      ],
+      boundary: "bounded scope"
+    }
+  };
+  const covered = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
+    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json"]
+  });
+  assert.equal(covered.status, "covered");
+  const missing = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
+    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"]
+  });
+  assert.equal(missing.status, "missing_required_groups");
+  assert.deepEqual(missing.missing_groups, ["documentation", "runtime_health"]);
+  const foreign = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
+    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json", "packages/runtime/src/runner.ts"]
+  });
+  assert.equal(foreign.status, "out_of_scope_evidence_refs");
+  assert.deepEqual(foreign.out_of_scope_refs, ["packages/runtime/src/runner.ts"]);
 });
 
 test("manual core and basic iterations require implementation contract flags", () => {

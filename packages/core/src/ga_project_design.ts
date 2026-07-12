@@ -152,9 +152,19 @@ export interface GaProjectDesignImplementationContract {
   owner_surface: string;
   improvement_type: "reusable_ga_design_contract";
   delegation_contract?: GaProjectDesignDelegationImplementationContract;
+  outcome_evidence_scope?: GaProjectDesignOutcomeEvidenceScope;
   implementation_scope: string[];
   deferred_scope: string[];
   delivery_standard: string[];
+  boundary: string;
+}
+
+export interface GaProjectDesignOutcomeEvidenceScope {
+  allowed_ref_prefixes: string[];
+  required_groups: Array<{
+    id: string;
+    ref_prefixes: string[];
+  }>;
   boundary: string;
 }
 
@@ -958,6 +968,7 @@ function buildImplementationContract(
     ...(target.target_dimension_id === "general_agent_delegation"
       ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
       : {}),
+    outcome_evidence_scope: buildOutcomeEvidenceScope(target),
     implementation_scope: [
       "change one reusable GA project-design contract or read-model surface",
       ...(target.target_dimension_id === "general_agent_delegation"
@@ -990,6 +1001,73 @@ function buildImplementationContract(
       "a verified outcome is recorded before the contract is reused as future GA design evidence"
     ],
     boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
+  };
+}
+
+function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProjectDesignOutcomeEvidenceScope {
+  let requiredGroups: GaProjectDesignOutcomeEvidenceScope["required_groups"];
+  if (target.target_dimension_id === "general_agent_delegation") {
+    requiredGroups = [{
+      id: "implementation",
+      ref_prefixes: [
+        "packages/core/src/action_contracts.ts",
+        "packages/core/src/delegate_agent_completion_gate.ts",
+        "packages/core/src/delegate_agent_contract.ts",
+        "packages/core/src/harness_replay.ts",
+        "packages/core/src/live_run_trace.ts",
+        "packages/runtime/src/runner.ts"
+      ]
+    }, {
+      id: "verification",
+      ref_prefixes: ["tests/context_harness.test.ts", "tests/harness_replay.test.ts"]
+    }, {
+      id: "documentation",
+      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+    }, {
+      id: "runtime_health",
+      ref_prefixes: ["services/runtime/heartbeat.json"]
+    }];
+  } else if (target.target_dimension_id === "basic_runtime_substrate") {
+    requiredGroups = [{
+      id: "implementation",
+      ref_prefixes: [
+        "packages/core/src/service_health.ts",
+        "packages/core/src/workspace_status.ts",
+        "apps/cli/src/main.ts"
+      ]
+    }, {
+      id: "verification",
+      ref_prefixes: ["tests/service_health.test.ts", "tests/workspace_status.test.ts", "tests/cli.test.ts"]
+    }, {
+      id: "documentation",
+      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+    }, {
+      id: "runtime_health",
+      ref_prefixes: ["services/runtime/heartbeat.json"]
+    }];
+  } else {
+    requiredGroups = [{
+      id: "implementation",
+      ref_prefixes: [
+        "packages/core/src/ga_project_design.ts",
+        "packages/core/src/self_evolution_iterations.ts",
+        "apps/cli/src/main.ts"
+      ]
+    }, {
+      id: "verification",
+      ref_prefixes: ["tests/ga_project_design.test.ts", "tests/cli.test.ts"]
+    }, {
+      id: "documentation",
+      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+    }, {
+      id: "runtime_health",
+      ref_prefixes: ["services/runtime/heartbeat.json"]
+    }];
+  }
+  return {
+    allowed_ref_prefixes: requiredGroups.flatMap((group) => group.ref_prefixes),
+    required_groups: requiredGroups,
+    boundary: "bounded outcome evidence scope for the selected core/basic owner surface; it constrains cited implementation, verification, documentation, and runtime-health refs without reading file bodies or proving completion"
   };
 }
 

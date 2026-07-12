@@ -170,8 +170,16 @@ function mergeOpenImplementationContract(
   supplied: GaProjectDesignImplementationContract | undefined
 ): GaProjectDesignImplementationContract | undefined {
   if (!existing || !supplied) return existing ?? supplied;
-  if (existing.delegation_contract || !supplied.delegation_contract) return existing;
-  return { ...existing, delegation_contract: supplied.delegation_contract };
+  const delegationContract = existing.delegation_contract ?? supplied.delegation_contract;
+  const outcomeEvidenceScope = existing.outcome_evidence_scope ?? supplied.outcome_evidence_scope;
+  if (delegationContract === existing.delegation_contract && outcomeEvidenceScope === existing.outcome_evidence_scope) {
+    return existing;
+  }
+  return {
+    ...existing,
+    ...(delegationContract ? { delegation_contract: delegationContract } : {}),
+    ...(outcomeEvidenceScope ? { outcome_evidence_scope: outcomeEvidenceScope } : {})
+  };
 }
 
 export async function listSelfEvolutionIterations(

@@ -423,10 +423,17 @@ source ref, iteration evidence refs, outcome evidence refs, and plan refs.
 `implementation_contract` with the audited iteration state record when the plan
 still targets that iteration; it covers the source artifact and source slice,
 selected slice/layer/owner, contract type, scope, delivery standard, and safety
-boundary. After the plan advances, it checks the audited iteration's persisted
-contract for self-consistency. Missing, incomplete, or mismatched contract
-fields keep the completion gate blocked; the diagnostic is
-read-only and does not repair state or prove completion.
+boundary. When the contract declares an `outcome_evidence_scope`, coverage also
+requires the same structured scope in the iteration record. After the plan
+advances, it checks the audited iteration's persisted contract for
+self-consistency. Missing, incomplete, or mismatched contract fields keep the
+completion gate blocked; the diagnostic is read-only and does not repair state
+or prove completion.
+`outcome_evidence_scope_coverage` applies a declared scope to outcome evidence
+refs: every ref must use one allowed prefix and every required evidence group
+must have a matching ref. It is a bounded path-prefix check only; it does not
+read file bodies or infer that an evidence ref proves the change. Historical
+contracts without this optional scope remain `not_required`.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
 declaration coverage only and must not imply execution success. For the matching
@@ -461,9 +468,9 @@ not read file bodies, stage, commit, reset, or prove completion.
 `completion_gate` summarizes the structural blockers before an iteration can be
 treated as ready for manual completion review: verified outcome record, outcome
 evidence refs, plan ref coverage, implementation contract coverage, outcome
-verification command coverage, outcome verification claim coverage, runtime
-attention outcome coverage, and workspace outcome coverage. A partial or failed
-outcome remains blocked by
+evidence scope coverage, outcome verification command coverage, outcome
+verification claim coverage, runtime attention outcome coverage, and workspace
+outcome coverage. A partial or failed outcome remains blocked by
 `verified_outcome`. Missing coverage diagnostics are blockers too; omitting a
 claim, runtime-attention, or workspace coverage object must not be interpreted
 as not applicable. It is a read-only gate and does not approve seeds, execute
