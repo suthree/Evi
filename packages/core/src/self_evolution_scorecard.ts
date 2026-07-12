@@ -113,6 +113,10 @@ export async function getSelfEvolutionScorecard(
     && iteration.proposed_slice.startsWith("core_ga_design_next_slice_after_")
     && iteration.outcome?.status === "verified"
   );
+  const hasVerifiedCoreGaDesignSuccessorAfterDelegation = isNewerIteration(
+    latestVerifiedCoreGaDesignIteration,
+    latestVerifiedDelegationIteration
+  );
   const delegationStage: SelfEvolutionStage = !delegated
     ? "planned"
     : latestVerifiedDelegationIteration
@@ -274,7 +278,7 @@ export async function getSelfEvolutionScorecard(
     dimensions,
     nextSlices,
     Boolean(latestBlockingOpenIteration),
-    Boolean(latestVerifiedCoreGaDesignIteration)
+    hasVerifiedCoreGaDesignSuccessorAfterDelegation
   );
   const defaultNextSlice = nextCoreBasicSlice ?? nextSlices[0] ?? null;
 
@@ -342,6 +346,15 @@ function selectNextCoreBasicSlice(
   }
 
   return coreBasicSlices[0] ?? null;
+}
+
+function isNewerIteration(
+  candidate: SelfEvolutionIterationContract | undefined,
+  baseline: SelfEvolutionIterationContract | undefined
+): boolean {
+  if (!candidate || !baseline) return false;
+  return candidate.created_at > baseline.created_at
+    || (candidate.created_at === baseline.created_at && candidate.id > baseline.id);
 }
 
 function dimensionStage(dimensions: SelfEvolutionDimension[], dimensionId: string): SelfEvolutionStage | undefined {
