@@ -396,6 +396,55 @@ test("harness replay audit isolates cross-session model-action envelope referenc
   }
 });
 
+test("harness replay audit isolates cross-session delegated-result references", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-cross-session-result-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    const foreignRef = "memory/episodes/session_other-delegated_result_invalid.json";
+    await writeReplayTraceFixture(store, DEFAULT_REPLAY_DELEGATED_SUMMARY, undefined, {
+      extraDelegatedResultRefs: [foreignRef]
+    });
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(
+      event.id === "evidence_replay_delegated"
+        ? {
+          ...event,
+          artifact_refs: [foreignRef],
+          delegated_dispatch: {
+            ...(event.delegated_dispatch as Record<string, unknown>),
+            result_ref: foreignRef
+          }
+        }
+        : event
+    )).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const coverage = report.checks.find((item) => item.id === "delegated_result_ref_coverage");
+
+    assert.deepEqual(trace.delegated_result_refs, [
+      "memory/episodes/session_replay_test-delegated_result_invalid.json"
+    ]);
+    assert.deepEqual(trace.foreign_delegated_result_refs, [foreignRef]);
+    assert.equal(trace.refs.includes(foreignRef), true);
+    assert.equal(coverage?.status, "warning");
+    assert.match(coverage?.summary ?? "", /cross_session_delegated_result_refs=1/);
+    assert.equal(coverage?.refs.includes(foreignRef), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit rejects a verified done trace whose final response file is missing", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-final-response-"));
   const repoRoot = join(root, "repo");

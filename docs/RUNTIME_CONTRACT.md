@@ -1463,6 +1463,8 @@ event refs, so an interrupted write-to-event handoff remains visible as a
 zero-event round instead of being omitted from replay.
 Cross-session action-envelope refs are excluded from the current trace and
 reported as bounded replay attention; they cannot make input metadata trusted.
+Cross-session delegated-result refs are likewise excluded from current-turn
+result references and cannot become completion evidence.
 The reusable GA project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.

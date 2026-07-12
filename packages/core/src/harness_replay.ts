@@ -1448,6 +1448,7 @@ function verificationEvidenceLineageCheck(trace: LiveRunTraceSummary): HarnessRe
 
 function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const reportRefs = new Set(trace.delegated_result_report_refs);
+  const foreignRefs = trace.foreign_delegated_result_refs;
   const dispatchesWithResultRef = trace.delegated_dispatches.filter((dispatch) => dispatch.result_ref);
   const dispatchRefs = new Set(dispatchesWithResultRef.map((dispatch) => dispatch.result_ref));
   const missingReportDispatchRefs = dispatchesWithResultRef.filter((dispatch) => !reportRefs.has(dispatch.result_ref));
@@ -1459,7 +1460,8 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
     || orphanReportRefs.length > 0
     || refsOutsideEventArtifacts.length > 0
     || missingResultArtifactFiles.length > 0
-    || mismatchedResultIdentityRefs.length > 0;
+    || mismatchedResultIdentityRefs.length > 0
+    || foreignRefs.length > 0;
   return {
     id: "delegated_result_ref_coverage",
     status: hasAttention ? "warning" : "pass",
@@ -1472,6 +1474,7 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
       `refs_outside_event_artifacts=${refsOutsideEventArtifacts.length}`,
       `missing_result_artifact_files=${missingResultArtifactFiles.length}`,
       `mismatched_result_identity_refs=${mismatchedResultIdentityRefs.length}`,
+      `cross_session_delegated_result_refs=${foreignRefs.length}`,
       `event_fallback_refs=${trace.delegated_result_event_fallback_refs.length}`
     ].join("; "),
     refs: hasAttention
@@ -1481,7 +1484,8 @@ function delegatedResultRefCoverageCheck(trace: LiveRunTraceSummary): HarnessRep
           ...orphanReportRefs,
           ...refsOutsideEventArtifacts.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
           ...missingResultArtifactFiles.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
-          ...mismatchedResultIdentityRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`)
+          ...mismatchedResultIdentityRefs.map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`),
+          ...foreignRefs
         ])
       : unique([trace.report_ref, ...trace.delegated_result_report_refs])
   };

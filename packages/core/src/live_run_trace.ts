@@ -242,6 +242,7 @@ export interface LiveRunTraceSummary {
   unreadable_model_diagnostic_refs: string[];
   invalid_model_action_envelope_refs: string[];
   foreign_model_action_envelope_refs: string[];
+  foreign_delegated_result_refs: string[];
   repo_write_guard_count: number;
   repo_write_guards: LiveRunRepoWriteGuardSummary[];
   rounds: LiveRunTraceRound[];
@@ -367,11 +368,19 @@ async function summarizeLiveRunTrace(
   const harnessActionCount = runEvents.filter((event) => isHarnessActionEvent(event)).length;
   const delegatedResultCount = eventKindCounts.delegated_result ?? 0;
   const delegatedDispatches = readDelegatedDispatchSummaries(runEvents, episodeFiles);
-  const delegatedResultReportRefs = unique(report.delegated_result_refs);
+  const sessionDelegatedResultPrefix = `memory/episodes/${report.session_id}-delegated_result`;
+  const isDelegatedResultRef = (ref: string) => /-delegated_result[^/]*\.json$/.test(ref);
+  const isCurrentDelegatedResultRef = (ref: string) =>
+    isDelegatedResultRef(ref) && ref.startsWith(sessionDelegatedResultPrefix);
+  const foreignDelegatedResultRefs = unique([
+    ...report.delegated_result_refs,
+    ...delegatedDispatches.map((dispatch) => dispatch.result_ref)
+  ].filter((ref) => isDelegatedResultRef(ref) && !isCurrentDelegatedResultRef(ref)));
+  const delegatedResultReportRefs = unique(report.delegated_result_refs.filter(isCurrentDelegatedResultRef));
   const delegatedResultReportRefSet = new Set(delegatedResultReportRefs);
   const delegatedResultEventFallbackRefs = unique(delegatedDispatches
     .map((dispatch) => dispatch.result_ref)
-    .filter((ref) => ref.length > 0 && !delegatedResultReportRefSet.has(ref)));
+    .filter((ref) => isCurrentDelegatedResultRef(ref) && !delegatedResultReportRefSet.has(ref)));
   const delegatedResultRefs = unique([
     ...delegatedResultReportRefs,
     ...delegatedResultEventFallbackRefs
@@ -398,6 +407,7 @@ async function summarizeLiveRunTrace(
     ...foreignModelActionEnvelopeRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...unreadableModelDiagnosticRefs,
+    ...foreignDelegatedResultRefs,
     ...report.observation_refs.slice(0, 12),
     ...report.verification_evidence_refs.map((item) => item.ref).slice(0, 12),
     ...delegatedResultRefs.slice(0, 12),
@@ -463,6 +473,7 @@ async function summarizeLiveRunTrace(
     unreadable_model_diagnostic_refs: unreadableModelDiagnosticRefs,
     invalid_model_action_envelope_refs: invalidEnvelopeRefs,
     foreign_model_action_envelope_refs: foreignModelActionEnvelopeRefs,
+    foreign_delegated_result_refs: foreignDelegatedResultRefs,
     repo_write_guard_count: repoWriteGuards.length,
     repo_write_guards: repoWriteGuards.slice(0, 5),
     rounds,
