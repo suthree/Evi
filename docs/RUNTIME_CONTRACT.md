@@ -1466,15 +1466,18 @@ delegated completion-gate check was omitted or drifted. Report-declared refs
 remain coverage metadata, not replay identity authority.
 Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded`,
-`input_contract_failed`, or `terminal_completion_claim`; successful dispatches or delegated-model contract
+`input_contract_failed`, `terminal_completion_claim`, or `terminal_response_action`; successful dispatches or delegated-model contract
 failures record `dispatch_failure_kind=none` explicitly. This means no
 dispatch-layer failure, not delegated success, so trace/replay read models can
 distinguish a real none value from an older or malformed summary that omitted
 the field. Delegated dispatch metadata also records `model_invoked`: input
-contract, terminal-completion, and per-round-limit rejects must keep `model_invoked=false`, while
+contract, terminal-completion, terminal-response, and per-round-limit rejects must keep `model_invoked=false`, while
 post-dispatch results, including delegated output contract failures and
 delegated model request failures, must keep `model_invoked=true`. Replay warns
-when that boundary is missing or contradicted, without reading delegated artifact
+when that boundary is missing or contradicted. It also requires
+`terminal_response_action` to refer to a non-terminal round containing
+`respond`, and requires a valid in-limit delegated action in that same kind of
+round to carry that failure kind, without reading delegated artifact
 bodies. New dispatches additionally persist the shared parse-derived input
 validity, normalized task/context character counts, and a SHA-256 input digest.
 Live Run Trace re-derives that bounded tuple from the declaring envelope; replay

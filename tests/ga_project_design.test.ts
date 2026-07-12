@@ -741,10 +741,12 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.task_contract.reject_if.some((item) => item.includes("expert scheduling or multi-agent orchestration")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("dispatch_limit_exceeded")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("terminal_completion_claim")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("terminal_response_action")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("model_invoked=false")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("harness replay checks")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.required.some((item) => item.includes("delegated_output_contract_failed")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.required.some((item) => item.includes("terminal_completion_claim")), true);
+    assert.equal(packet.next_core_basic_plan?.general_delegation_loop.result_failure_kind_contract.required.some((item) => item.includes("terminal_response_action")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("expert scheduling")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("validateDelegationTaskBoundary")), true);
     assert.equal(packet.next_core_basic_plan?.general_delegation_loop.runner_enforcement_contract.input_contract.some((item) => item.includes("one concrete question")), true);

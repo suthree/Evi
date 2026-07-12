@@ -1383,9 +1383,10 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "record dispatch_limit_exceeded when the per-round delegate limit rejects an action",
         "record input_contract_failed when payload validation fails before delegated model dispatch",
         "record terminal_completion_claim when a done or blocked envelope rejects delegation before delegated model dispatch",
+        "record terminal_response_action when an envelope with respond rejects delegation before delegated model dispatch",
         "record none when there is no dispatch-layer failure, including delegated output contract or model request failures after dispatch",
-        "record model_invoked=false for input_contract_failed, dispatch_limit_exceeded, or terminal_completion_claim and model_invoked=true only after dispatch reaches the delegated model call",
-        "harness replay checks dispatch_failure_kind coverage and pair consistency with result_failure_kind without reading delegated result bodies"
+        "record model_invoked=false for input_contract_failed, dispatch_limit_exceeded, terminal_completion_claim, or terminal_response_action and model_invoked=true only after dispatch reaches the delegated model call",
+        "harness replay checks dispatch_failure_kind coverage, terminal-response round semantics, and pair consistency with result_failure_kind without reading delegated result bodies"
       ],
       reject_if: [
         "operators must infer dispatch failure type from free-form error text",
@@ -1399,6 +1400,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "record dispatch_limit_exceeded when the per-round delegate limit creates the failed result",
         "record input_contract_failed when payload or authority validation creates the failed result",
         "record terminal_completion_claim when a done or blocked envelope rejects delegation before dispatch",
+        "record terminal_response_action when an envelope with respond rejects delegation before dispatch",
         "record delegated_output_contract_failed when the delegated model returned invalid or over-limit structured output",
         "record delegated_model_request_failed when the delegated model request failed before output validation",
         "record none for passed delegated results as an explicit no-result-failure kind",
@@ -1413,7 +1415,7 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
       instruction_boundary: [
         "liveInstructions states the model proposes while the harness executes, verifies, audits, and promotes",
         "delegate_agent is separate from use_tool and does not grant tool/write/mutation/completion authority",
-        "delegate_agent requires completion_claim.status=not_done; terminal done or blocked envelopes reject it before delegated model dispatch",
+        "delegate_agent requires completion_claim.status=not_done; terminal done or blocked envelopes and any envelope with respond reject it before delegated model dispatch",
         "subagent instructions limit delegated analysis to the provided Task/Context text and named evidence refs already present there",
         "subagent instructions require exactly one strict JSON object with only summary/findings_text and no Markdown, code fence, wrapper prose, or extra keys",
         "delegated tasks cannot schedule expert or autonomous multi-agent work"

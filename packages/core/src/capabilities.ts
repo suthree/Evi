@@ -570,7 +570,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
               "SOP audit, SOP promotion, skill promotion, and active-vault writes require verified done completion and cannot follow skipped, blocked, or failed-delegation-warning completion reports",
               "failed delegated results may only guide a later main-harness model round as sanitized observation, and recovery still requires independent completion evidence",
               `dispatch_failure_kind values are ${delegateDispatchKinds}; none means no dispatch-layer failure, not delegated success`,
-              "model_invoked is false for input-contract, terminal-completion, or per-round-limit rejects and true only after dispatch reaches the delegated model call",
+              "model_invoked is false for input-contract, terminal-completion, terminal-response, or per-round-limit rejects and true only after dispatch reaches the delegated model call",
               `result_failure_kind values are ${delegateResultKinds}; persisted delegated results and model observations use explicit none instead of null`,
               "harness replay warns when dispatch_failure_kind and result_failure_kind are legal but semantically mismatched",
               "harness replay checks delegate action coverage against delegated result events from bounded metadata",

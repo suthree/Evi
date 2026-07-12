@@ -454,6 +454,7 @@ export class LiveAgentRunner {
       );
       const toolActions = currentEnvelope.actions.filter((item) => item.type === "use_tool");
       const delegateActions = currentEnvelope.actions.filter((item) => item.type === "delegate_agent");
+      const hasRespondAction = currentEnvelope.actions.some((item) => item.type === "respond");
 
       for (const [index, action] of harnessActions.entries()) {
         if (discipline) {
@@ -553,6 +554,14 @@ export class LiveAgentRunner {
             delegateAgentAuthoringContract.terminal_completion_boundary,
             "terminal_completion_claim"
           );
+        } else if (hasRespondAction) {
+          delegated = this.rejectDelegation(
+            action,
+            round,
+            index + 1,
+            delegateAgentAuthoringContract.terminal_response_boundary,
+            "terminal_response_action"
+          );
         } else {
           delegated = await this.executeDelegation(action, round, index + 1);
         }
@@ -580,10 +589,8 @@ export class LiveAgentRunner {
         await this.writeDisciplineTodo(discipline);
       }
 
-      const hasTerminalAction = currentEnvelope.actions.some((item) =>
-        item.type === "respond"
-        || (item.type === "propose_sop" && currentEnvelope.completion_claim.status !== "not_done")
-      )
+      const hasTerminalAction = hasRespondAction
+        || currentEnvelope.actions.some((item) => item.type === "propose_sop" && currentEnvelope.completion_claim.status !== "not_done")
         || currentEnvelope.completion_claim.status !== "not_done";
       if (hasTerminalAction && hadObservationsBeforeRound) break;
     }
@@ -1581,7 +1588,7 @@ function delegatedObservationRecoveryHint(result: DelegatedResult): string | nul
   if (result.result_failure_kind === "input_contract_failed") {
     return `Revise the delegated task/context boundary; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
-  if (result.result_failure_kind === "terminal_completion_claim") {
+  if (result.result_failure_kind === "terminal_completion_claim" || result.result_failure_kind === "terminal_response_action") {
     return `Use delegation only from a non-terminal main-harness round; ${delegateAgentAuthoringContract.recovery.failure_hint}`;
   }
   if (result.result_failure_kind === "delegated_output_contract_failed") {

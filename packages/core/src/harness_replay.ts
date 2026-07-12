@@ -1808,6 +1808,7 @@ function delegatedDispatchLineageCheck(trace: LiveRunTraceSummary): HarnessRepla
 }
 
 function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
+  const roundsByNumber = new Map(trace.rounds.map((round) => [round.round, round]));
   const failedDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.ok || dispatch.contract_status !== "passed");
   const missingKindFieldDispatches = trace.delegated_dispatches.filter((dispatch) => !dispatch.dispatch_failure_kind_present);
   const invalidKindDispatches = trace.delegated_dispatches.filter((dispatch) =>
@@ -1821,11 +1822,26 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
     dispatch.dispatch_failure_kind === "dispatch_limit_exceeded"
       && dispatch.sequence <= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
   );
+  const unexpectedTerminalResponseKindDispatches = trace.delegated_dispatches.filter((dispatch) => {
+    if (dispatch.dispatch_failure_kind !== "terminal_response_action") return false;
+    const round = roundsByNumber.get(dispatch.round);
+    return round?.completion_status !== "not_done" || round.respond_action_expectations.length === 0;
+  });
+  const missedTerminalResponseKindDispatches = trace.delegated_dispatches.filter((dispatch) => {
+    const round = roundsByNumber.get(dispatch.round);
+    return round?.completion_status === "not_done"
+      && round.respond_action_expectations.length > 0
+      && dispatch.input_contract_valid === true
+      && dispatch.sequence <= DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND
+      && dispatch.dispatch_failure_kind !== "terminal_response_action";
+  });
   const problemRefs = unique([
     ...missingKindFieldDispatches,
     ...invalidKindDispatches,
     ...missingLimitKindDispatches,
-    ...unexpectedLimitKindDispatches
+    ...unexpectedLimitKindDispatches,
+    ...unexpectedTerminalResponseKindDispatches,
+    ...missedTerminalResponseKindDispatches
   ].map((dispatch) => `${trace.report_ref}#${dispatch.event_id}`));
   return {
     id: "delegated_dispatch_failure_kind",
@@ -1835,7 +1851,9 @@ function delegatedDispatchFailureKindCheck(trace: LiveRunTraceSummary): HarnessR
       `missing_kind_field=${missingKindFieldDispatches.length}`,
       `invalid_kind=${invalidKindDispatches.length}`,
       `missing_limit_kind=${missingLimitKindDispatches.length}`,
-      `unexpected_limit_kind=${unexpectedLimitKindDispatches.length}`
+      `unexpected_limit_kind=${unexpectedLimitKindDispatches.length}`,
+      `unexpected_terminal_response_kind=${unexpectedTerminalResponseKindDispatches.length}`,
+      `missed_terminal_response_kind=${missedTerminalResponseKindDispatches.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

@@ -549,7 +549,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
       },
       dispatch_failure_kind_contract: {
         field: "dispatch_failure_kind",
-        values: ["dispatch_limit_exceeded", "input_contract_failed", "terminal_completion_claim", "none"],
+        values: ["dispatch_limit_exceeded", "input_contract_failed", "terminal_completion_claim", "terminal_response_action", "none"],
         required: ["record bounded dispatch failure kind"],
         reject_if: ["free-form error text only"]
       },
@@ -559,6 +559,7 @@ test("compact GA plan general delegation loop keeps task context result bounds",
           "dispatch_limit_exceeded",
           "input_contract_failed",
           "terminal_completion_claim",
+          "terminal_response_action",
           "delegated_output_contract_failed",
           "delegated_model_request_failed",
           "none"
@@ -5250,7 +5251,7 @@ test("live runner rejects terminal delegation before submodel dispatch", async (
     const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
 
     assert.equal(model.delegationCalls, 0);
-    assert.equal(model.sawTerminalDelegationObservation, true);
+    assert.equal(model.sawRejectedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=terminal_completion_claim; result_failure_kind=terminal_completion_claim; ok=false\.$/);
     assert.equal(delegated.ok, false);
     assert.equal(delegated.model_invoked, false);
@@ -5263,6 +5264,56 @@ test("live runner rejects terminal delegation before submodel dispatch", async (
     assert.deepEqual(report.delegated_result_failure_kinds, [{ result_failure_kind: "terminal_completion_claim", count: 1 }]);
     assert.equal(trace.delegated_dispatches[0]?.model_invoked, false);
     assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind, "terminal_completion_claim");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_model_invocation_boundary")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.status, "pass");
+    assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner rejects delegation beside a respond action before submodel dispatch", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const model = new TerminalDelegationThenBlockedModel(
+      respondingDelegateCritiqueEnvelope,
+      "terminal_response_action",
+      "must not share a model action envelope with respond"
+    );
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Reject response and delegation in the same model envelope.");
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const delegatedEvent = events.find((event) => event.kind === "delegated_result");
+    const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
+    const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
+      ok: boolean;
+      model_invoked: boolean;
+      dispatch_failure_kind: string;
+      result_failure_kind: string;
+      error: string | null;
+    };
+    const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
+    const replay = await runHarnessReplayAudit(fixture.store, { traceRef: result.completion_report_ref ?? "" });
+
+    assert.equal(model.delegationCalls, 0);
+    assert.equal(model.sawRejectedDelegationObservation, true);
+    assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=terminal_response_action; result_failure_kind=terminal_response_action; ok=false\.$/);
+    assert.equal(delegated.ok, false);
+    assert.equal(delegated.model_invoked, false);
+    assert.equal(delegated.dispatch_failure_kind, "terminal_response_action");
+    assert.equal(delegated.result_failure_kind, "terminal_response_action");
+    assert.match(delegated.error ?? "", /must not share a model action envelope with respond/);
+    assert.equal(trace.delegated_dispatches[0]?.dispatch_failure_kind, "terminal_response_action");
     assert.equal(replay.checks.find((check) => check.id === "delegated_model_invocation_boundary")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_dispatch_failure_kind")?.status, "pass");
     assert.equal(replay.checks.find((check) => check.id === "delegated_result_failure_kind")?.status, "pass");
@@ -8710,7 +8761,13 @@ class MultiDelegationThenDoneModel implements ModelClient {
 class TerminalDelegationThenBlockedModel implements ModelClient {
   private mainCalls = 0;
   delegationCalls = 0;
-  sawTerminalDelegationObservation = false;
+  sawRejectedDelegationObservation = false;
+
+  constructor(
+    private readonly firstEnvelope: () => Record<string, unknown> = terminalDelegateCritiqueEnvelope,
+    private readonly expectedFailureKind = "terminal_completion_claim",
+    private readonly expectedBoundaryText = "completion_claim.status=not_done"
+  ) {}
 
   async create(request: ModelRequest): Promise<ModelResponse> {
     const isDelegation = request.instructions.includes("bounded local-agent subagent");
@@ -8735,14 +8792,14 @@ class TerminalDelegationThenBlockedModel implements ModelClient {
     this.mainCalls += 1;
     if (this.mainCalls > 1) {
       const delegatedSection = delegatedObservationsSection(request.input);
-      this.sawTerminalDelegationObservation = delegatedSection.includes('"model_invoked": false')
-        && delegatedSection.includes('"dispatch_failure_kind": "terminal_completion_claim"')
-        && delegatedSection.includes('"result_failure_kind": "terminal_completion_claim"')
-        && delegatedSection.includes("completion_claim.status=not_done")
+      this.sawRejectedDelegationObservation = delegatedSection.includes('"model_invoked": false')
+        && delegatedSection.includes(`"dispatch_failure_kind": "${this.expectedFailureKind}"`)
+        && delegatedSection.includes(`"result_failure_kind": "${this.expectedFailureKind}"`)
+        && delegatedSection.includes(this.expectedBoundaryText)
         && !delegatedSection.includes("This delegated response should not be requested.");
       return blockedEnvelope();
     }
-    return terminalDelegateCritiqueEnvelope();
+    return this.firstEnvelope();
   }
 }
 
@@ -10220,6 +10277,24 @@ function terminalDelegateCritiqueEnvelope(): Record<string, unknown> {
     }, ...(delegateEnvelope.actions as unknown[])],
     completion_claim: {
       status: "done",
+      verification_refs: []
+    }
+  };
+}
+
+function respondingDelegateCritiqueEnvelope(): Record<string, unknown> {
+  const delegateEnvelope = delegateCritiqueEnvelope();
+  return {
+    ...delegateEnvelope,
+    actions: [{
+      type: "respond",
+      rationale: "Return an incomplete response while incorrectly requesting delegation.",
+      payload: {
+        markdown: "This response action must not dispatch a delegated model."
+      }
+    }, ...(delegateEnvelope.actions as unknown[])],
+    completion_claim: {
+      status: "not_done",
       verification_refs: []
     }
   };

@@ -68,13 +68,13 @@ test("delegated result and observation schemas reject inconsistent failure tuple
   assert.equal(delegatedResultSchema.safeParse({
     ...VALID_DELEGATED_RESULT,
     ok: false,
-    summary: "Delegation was rejected in a terminal completion round.",
+    summary: "Delegation was rejected beside a response action.",
     model_invoked: false,
     contract_status: "failed",
-    dispatch_failure_kind: "terminal_completion_claim",
-    result_failure_kind: "terminal_completion_claim",
+    dispatch_failure_kind: "terminal_response_action",
+    result_failure_kind: "terminal_response_action",
     findings_text: null,
-    error: "terminal completion boundary"
+    error: "terminal response boundary"
   }).success, true);
   assert.equal(delegatedObservationSchema.safeParse({
     id: VALID_DELEGATED_RESULT.id,
