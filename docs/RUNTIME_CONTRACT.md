@@ -907,12 +907,11 @@ Required policy:
   ref, completed source slice, target successor slice, source status, source
   quality, and fresh-successor flag in one bounded handoff line; it is source
   orientation only and does not prove completion
-- Compact `source_continuation` must preserve the source layer/owner, completed
-  source slice, source implementation contract id when present, source next-move
-  candidate count, one candidate next move, and the primary next-use hint. The
-  adjacent compact `source_truth` line retains source kind, artifact identity,
-  source iteration ref, and source status. Both are source direction only and
-  do not prove completion
+- Compact `source_continuation` must preserve source kind, artifact identity,
+  source iteration ref, source status, source layer/owner, completed source
+  slice, source implementation contract id when present, source next-move
+  candidate count, one candidate next move, and the primary next-use hint. It
+  is source direction only and does not prove completion
 - `next_core_basic_plan.iteration_focus` must explain the next core/basic
   direction and anti-drift checks without authorizing execution
 - Compact GA Project Design Plan context must preserve bounded anti-drift checks

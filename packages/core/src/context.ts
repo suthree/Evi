@@ -1691,6 +1691,10 @@ export function compactGaPlanSourceContinuation(
     ?? source.source_next_moves[0]
     ?? source.next_use;
   return [
+    `kind=${source.source_kind}`,
+    `artifact=${source.source_artifact_id}`,
+    `ref=${source.source_iteration_ref}`,
+    `status=${source.source_status}`,
     `source=${source.source_layer}/${source.source_owner_surface}`,
     `completed=${source.source_proposed_slice}`,
     `contract=${sourceContract}`,

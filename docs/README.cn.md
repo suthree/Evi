@@ -266,6 +266,7 @@ compact context 也会按稳定 reason 前缀优先级保留 `source_kind`、`so
 但不会把 advisory warning 直接升级成 completion gate；
 `source_truth` 会把 source kind、source artifact、source iteration ref、已完成 source slice、目标 successor slice、source status/quality 和 fresh successor 标记合成一行，方便下一轮 handoff 不靠记忆拼证据；它本身不是完成证明；
 `source_continuation` 会把 source kind、artifact 身份、source status、source iteration ref、source layer/owner、已完成 source slice、source implementation contract、候选 next moves 数量、一个候选方向和主 `next_use` 保留成可单独定位来源的只读 handoff；它只保留来源方向，不执行下一步，也不证明完成；
+compact context 的同名行也保留这些来源身份，不再要求消费者跨读 `source_truth` 才能定位 handoff；它仍只是来源方向，不是完成证明；
 compact context 还可以显示 `verify_commands`，用短摘要保留 project-design artifact、open iteration、service health target 和 broad check 身份，方便 handoff 对齐验证范围；权威覆盖证据仍以 outcome 里的 verification command refs、verification claim coverage 和 iteration audit 为准；
 下一步迭代方案会带 layer 和 audit seed 前缀，避免把 core runtime 强化、basic entrypoint 验证、完成审计和延后的 local learning 复用混在一起；
 验收条件也会带同一套 audit seed 前缀，让 goal scope、current state、verification scope 和 learning persistence 可以直接对应；

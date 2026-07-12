@@ -594,6 +594,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(coreTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("packages/core/src/context.ts"), true);
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("tests/context_harness.test.ts"), true);
     const basicTargetReadModel = await getGaProjectDesignReadModel(store, {
       limit: 10,
       scorecardNextCoreBasicSliceId: "next_slice_basic_runtime_substrate"

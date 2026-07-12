@@ -1073,13 +1073,14 @@ function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProject
       id: "implementation",
       ref_prefixes: [
         "packages/core/src/ga_project_design.ts",
+        "packages/core/src/context.ts",
         "packages/core/src/self_evolution_scorecard.ts",
         "packages/core/src/self_evolution_iterations.ts",
         "apps/cli/src/main.ts"
       ]
     }, {
       id: "verification",
-      ref_prefixes: ["tests/ga_project_design.test.ts", "tests/self_evolution_scorecard.test.ts", "tests/cli.test.ts"]
+      ref_prefixes: ["tests/ga_project_design.test.ts", "tests/context_harness.test.ts", "tests/self_evolution_scorecard.test.ts", "tests/cli.test.ts"]
     }, {
       id: "documentation",
       ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
