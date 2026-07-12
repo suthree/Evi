@@ -5828,7 +5828,10 @@ test("live runner sanitizes delegated model request failures before observation"
     assert.equal(trace.rounds[1]?.model_action_event_count, 1);
     assert.deepEqual(trace.rounds[1]?.model_action_event_bindings, [{
       event_id: trace.rounds[1]?.model_action_event_ids[0],
-      envelope_ref_count: 1
+      envelope_ref_count: 1,
+      metadata_present: true,
+      envelope_ref_matches_artifact: true,
+      envelope_digest_matches: true
     }]);
     assert.deepEqual(trace.rounds[1]?.delegated_observation_result_ids, [delegated.id]);
     assert.deepEqual(trace.rounds[1]?.recovery_guidance_result_ids, [delegated.id]);

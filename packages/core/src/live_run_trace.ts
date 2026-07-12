@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import {
   delegateAgentCompletionGateCheckId,
@@ -56,6 +57,9 @@ export interface LiveRunTraceRound {
 export interface LiveRunModelActionEventBindingSummary {
   event_id: string;
   envelope_ref_count: number;
+  metadata_present: boolean;
+  envelope_ref_matches_artifact: boolean | null;
+  envelope_digest_matches: boolean | null;
 }
 
 export interface LiveRunRespondActionExpectation {
@@ -830,9 +834,14 @@ async function readTraceRounds(
   const rounds: LiveRunTraceRound[] = [];
   const invalidEnvelopeRefs: string[] = [];
   for (const ref of refs) {
+    const text = await store.readStateText(ref);
+    if (!text) {
+      invalidEnvelopeRefs.push(ref);
+      continue;
+    }
     let raw: unknown;
     try {
-      raw = await store.readStateJson<unknown>(ref);
+      raw = JSON.parse(text) as unknown;
     } catch {
       invalidEnvelopeRefs.push(ref);
       continue;
@@ -857,6 +866,7 @@ async function readTraceRounds(
         };
       });
     const actionEvents = actionEventsByEnvelopeRef.get(ref) ?? [];
+    const envelopeDigest = createHash("sha256").update(text).digest("hex");
     const modelInput = actionEvents.length === 1 && allModelActionEnvelopeRefs(actionEvents[0]!).length === 1
       ? actionEvents[0]!.model_input
       : undefined;
@@ -867,7 +877,14 @@ async function readTraceRounds(
       model_action_event_ids: actionEvents.map((event) => event.id),
       model_action_event_bindings: actionEvents.map((event) => ({
         event_id: event.id,
-        envelope_ref_count: allModelActionEnvelopeRefs(event).length
+        envelope_ref_count: allModelActionEnvelopeRefs(event).length,
+        metadata_present: event.model_action !== undefined,
+        envelope_ref_matches_artifact: event.model_action
+          ? event.model_action.envelope_ref === ref
+          : null,
+        envelope_digest_matches: event.model_action
+          ? event.model_action.envelope_sha256 === envelopeDigest
+          : null
       })),
       model_input_present: modelInput !== undefined,
       delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],

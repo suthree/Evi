@@ -220,6 +220,11 @@ export const modelActionInputEventMetadataSchema = z.object({
   delegated_observation_trust_boundary: z.literal("untrusted_advisory_data").nullable().default(null)
 });
 
+export const modelActionEventMetadataSchema = z.object({
+  envelope_ref: z.string().min(1),
+  envelope_sha256: z.string().regex(/^[a-f0-9]{64}$/)
+});
+
 export const finalResponseEventMetadataSchema = z.object({
   response_ref: z.string().min(1).optional(),
   action_id: z.string().min(1).optional(),
@@ -248,6 +253,7 @@ export const evidenceEventSchema = z.object({
   summary: z.string().min(1),
   artifact_refs: z.array(z.string()).default([]),
   model_input: modelActionInputEventMetadataSchema.optional(),
+  model_action: modelActionEventMetadataSchema.optional(),
   tool_result: toolResultEventMetadataSchema.optional(),
   delegated_dispatch: delegatedDispatchEventMetadataSchema.optional(),
   final_response: finalResponseEventMetadataSchema.optional(),

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -140,6 +141,8 @@ test("harness replay audit writes bounded evidence without reading raw run artif
         && check.status === "pass"
         && check.summary.includes("duplicate_model_action_events=0")
         && check.summary.includes("multi_envelope_model_action_events=0")
+        && check.summary.includes("missing_model_action_metadata=0")
+        && check.summary.includes("mismatched_model_action_envelope_digest=0")
     ), true);
     assert.deepEqual(report.delegated_dispatches.map((dispatch) => ({
       event_id: dispatch.event_id,
@@ -375,6 +378,74 @@ test("harness replay audit rejects model input metadata from a multi-envelope ev
     assert.match(check?.summary ?? "", /multi_envelope_model_action_events=1/);
     assert.equal(check?.refs.includes(roundTwoRef), true);
     assert.equal(check?.refs.includes(roundThreeRef), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when a model-action envelope digest drifts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-envelope-digest-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const envelopeRef = "memory/episodes/session_replay_test-model-action-r2.json";
+    const envelope = await store.readStateJson<Record<string, unknown>>(envelopeRef);
+    await store.writeJson(envelopeRef, {
+      ...envelope,
+      summary: "A valid envelope was changed after its model-action event."
+    });
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const binding = trace.rounds.find((round) => round.envelope_ref === envelopeRef)?.model_action_event_bindings[0];
+    const check = report.checks.find((item) => item.id === "model_action_event_binding");
+
+    assert.equal(binding?.metadata_present, true);
+    assert.equal(binding?.envelope_ref_matches_artifact, true);
+    assert.equal(binding?.envelope_digest_matches, false);
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /mismatched_model_action_envelope_digest=1/);
+    assert.equal(check?.refs.includes(envelopeRef), true);
+    assert.doesNotMatch(JSON.stringify(report), /valid envelope was changed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("harness replay audit warns when model-action metadata is only partially present", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-envelope-metadata-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(
+      event.id === "evidence_replay_model_r2"
+        ? Object.fromEntries(Object.entries(event).filter(([key]) => key !== "model_action"))
+        : event
+    )).join("\n")}\n`);
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "model_action_event_binding");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /missing_model_action_metadata=1/);
+    assert.match(check?.summary ?? "", /partial_model_action_metadata=true/);
     assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -4367,6 +4438,7 @@ async function writeReplayTraceFixture(
       `memory/episodes/${sessionId}-model-response-r1.json`,
       `memory/episodes/${sessionId}-model-action-r1.json`
     ],
+    model_action: await modelActionEventMetadata(store, `memory/episodes/${sessionId}-model-action-r1.json`),
     model_input: {
       delegated_observation_result_ids: [],
       recovery_guidance_result_ids: [],
@@ -4451,6 +4523,7 @@ async function writeReplayTraceFixture(
     kind: "model_action",
     summary: "Second round responds.",
     artifact_refs: [`memory/episodes/${sessionId}-model-action-r2.json`],
+    model_action: await modelActionEventMetadata(store, `memory/episodes/${sessionId}-model-action-r2.json`),
     model_input: {
       delegated_observation_result_ids: options.modelInputDelegatedObservationResultIds
         ?? ((options.includeDelegatedEvent ?? true) ? ["delegated_result_invalid"] : []),
@@ -4478,6 +4551,18 @@ async function writeReplayTraceFixture(
     },
     created_at: "2026-06-30T01:00:04.500Z"
   });
+}
+
+async function modelActionEventMetadata(store: AgentStore, ref: string): Promise<{
+  envelope_ref: string;
+  envelope_sha256: string;
+}> {
+  const text = await store.readStateText(ref);
+  assert.ok(text);
+  return {
+    envelope_ref: ref,
+    envelope_sha256: createHash("sha256").update(text).digest("hex")
+  };
 }
 
 async function markReplayCompletionVerified(store: AgentStore): Promise<void> {

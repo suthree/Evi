@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import {
   delegateAgentAuthoringContract,
@@ -428,6 +429,12 @@ export class LiveAgentRunner {
         kind: "model_action",
         summary: persistedEnvelope.summary,
         artifact_refs: uniqueRefs([...modelActionArtifactRefs, modelResponseRef, envelopeRef]),
+        model_action: {
+          envelope_ref: envelopeRef,
+          envelope_sha256: createHash("sha256")
+            .update(`${JSON.stringify(persistedEnvelope, null, 2)}\n`)
+            .digest("hex")
+        },
         model_input: modelActionInputEventMetadata(delegatedResults)
       });
       evidenceRefs.push(actionEvent.id);

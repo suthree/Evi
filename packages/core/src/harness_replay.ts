@@ -406,11 +406,25 @@ function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplay
     .map((binding) => binding.event_id));
   const multiEnvelopeRounds = trace.rounds.filter((round) =>
     round.model_action_event_bindings.some((binding) => binding.envelope_ref_count > 1));
-  const problemRefs = unique([
+  const bindings = trace.rounds.flatMap((round) => round.model_action_event_bindings.map((binding) => ({
+    ...binding,
+    envelope_ref: round.envelope_ref
+  })));
+  const missingMetadata = bindings.filter((binding) => !binding.metadata_present);
+  const metadataCoverageIsPartial = missingMetadata.length > 0 && missingMetadata.length < bindings.length;
+  const mismatchedEnvelopeRefs = bindings.filter((binding) => binding.envelope_ref_matches_artifact === false);
+  const mismatchedDigests = bindings.filter((binding) => binding.envelope_digest_matches === false);
+  const bindingProblemRefs = [
+    ...(metadataCoverageIsPartial ? missingMetadata : []),
+    ...mismatchedEnvelopeRefs,
+    ...mismatchedDigests
+  ].map((binding) => binding.envelope_ref);
+  const roundProblemRefs = [
     ...missingModelActionEvents,
     ...duplicateModelActionEvents,
     ...multiEnvelopeRounds
-  ].map((round) => round.envelope_ref));
+  ].map((round) => round.envelope_ref);
+  const problemRefs = unique([...roundProblemRefs, ...bindingProblemRefs]);
   return {
     id: "model_action_event_binding",
     status: problemRefs.length > 0 ? "warning" : "pass",
@@ -418,7 +432,11 @@ function modelActionEventBindingCheck(trace: LiveRunTraceSummary): HarnessReplay
       `model_action_rounds=${trace.rounds.length}`,
       `missing_model_action_events=${missingModelActionEvents.length}`,
       `duplicate_model_action_events=${duplicateModelActionEvents.length}`,
-      `multi_envelope_model_action_events=${multiEnvelopeModelActionEvents.length}`
+      `multi_envelope_model_action_events=${multiEnvelopeModelActionEvents.length}`,
+      `missing_model_action_metadata=${missingMetadata.length}`,
+      `partial_model_action_metadata=${metadataCoverageIsPartial}`,
+      `mismatched_model_action_envelope_ref=${mismatchedEnvelopeRefs.length}`,
+      `mismatched_model_action_envelope_digest=${mismatchedDigests.length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

@@ -1487,7 +1487,10 @@ read model input, delegated task/context, output, or recovery-hint text.
 Each model-action envelope must have exactly one model-action event, and that
 event may reference only that envelope, before its input metadata is trusted;
 replay warns on duplicate or multi-envelope bindings rather than silently
-selecting one event.
+selecting one event. New model-action events also retain only that envelope ref
+and a SHA-256 digest of its persisted JSON; replay warns if the ref or digest
+does not match the selected envelope, without reading or rendering its action
+payload.
 The trace inventories persisted envelopes for the current session as well as
 event refs, so an interrupted write-to-event handoff remains visible as a
 zero-event round instead of being omitted from replay.
