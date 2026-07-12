@@ -1652,6 +1652,9 @@ run evidence.
 Tool-result artifact refs from another session are likewise excluded from
 current-run evidence and reported as bounded replay attention without reading
 their bodies.
+Prompt context refs from another session are not selected as the current
+trace context and are reported as bounded replay attention without reading
+their bodies.
 Failed or skipped reports also appear as read-only `completion_verification`
 items in the Opportunity Backlog. Passed reports are suppressed. The backlog
 item and any review tick focus may include only structured report fields such

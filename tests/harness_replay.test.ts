@@ -4208,6 +4208,52 @@ test("harness replay flags cross-session tool-result artifacts", async () => {
   }
 });
 
+test("harness replay excludes cross-session prompt context artifacts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-foreign-context-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, PASSED_REPLAY_DELEGATED_SUMMARY);
+    const foreignRefs = [
+      "memory/episodes/session_other-context.md",
+      "memory/episodes/session_other-context.json"
+    ];
+    await store.writeText(foreignRefs[0]!, "RAW_FOREIGN_CONTEXT_SHOULD_NOT_APPEAR");
+    await store.writeJson(foreignRefs[1]!, { raw: "RAW_FOREIGN_CONTEXT_SHOULD_NOT_APPEAR" });
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(
+      event.id === "evidence_replay_prompt"
+        ? { ...event, artifact_refs: foreignRefs }
+        : event
+    )).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "context_artifact_identity");
+
+    assert.equal(trace.context_ref, undefined);
+    assert.equal(trace.context_manifest_ref, undefined);
+    assert.deepEqual(trace.foreign_context_artifact_refs, foreignRefs);
+    assert.equal(foreignRefs.every((ref) => trace.refs.includes(ref)), true);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /cross_session_context_artifacts=2/);
+    assert.equal(foreignRefs.every((ref) => integrity?.refs.includes(ref)), true);
+    assert.equal(foreignRefs.every((ref) => report.refs.includes(ref)), true);
+    assert.match(report.summary, /cross-session prompt context/);
+    assert.doesNotMatch(JSON.stringify({ trace, report }), /RAW_FOREIGN_CONTEXT_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay detects model-diagnostic content drift from bounded event metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-diagnostic-drift-"));
   const repoRoot = join(root, "repo");

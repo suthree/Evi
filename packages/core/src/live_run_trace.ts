@@ -222,6 +222,7 @@ export interface LiveRunTraceSummary {
   verification_evidence_refs: LiveRunVerificationEvidenceRefSummary[];
   context_ref?: string;
   context_manifest_ref?: string;
+  foreign_context_artifact_refs: string[];
   final_response_ref: string | null;
   expected_final_response_ref: string;
   final_response_ref_matches_identity: boolean;
@@ -354,8 +355,16 @@ async function summarizeLiveRunTrace(
     event.session_id === report.session_id && event.turn_id === report.turn_id
   );
   const promptEvent = runEvents.find((event) => event.kind === "prompt");
-  const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
-  const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
+  const promptArtifactRefs = promptEvent?.artifact_refs ?? [];
+  const sessionContextPrefix = `memory/episodes/${report.session_id}-`;
+  const contextRef = promptArtifactRefs.find((ref) =>
+    ref.startsWith(sessionContextPrefix) && ref.endsWith("-context.md"));
+  const contextManifestRef = promptArtifactRefs.find((ref) =>
+    ref.startsWith(sessionContextPrefix) && ref.endsWith("-context.json"));
+  const foreignContextArtifactRefs = unique(promptArtifactRefs.filter((ref) =>
+    ref.startsWith("memory/episodes/")
+      && (ref.endsWith("-context.md") || ref.endsWith("-context.json"))
+      && !ref.startsWith(sessionContextPrefix)));
   const sessionModelActionPrefix = `memory/episodes/${report.session_id}-model-action-r`;
   const foreignModelActionEnvelopeRefs = unique(runEvents
     .filter((event) => event.kind === "model_action")
@@ -417,6 +426,7 @@ async function summarizeLiveRunTrace(
     reportRef,
     contextRef,
     contextManifestRef,
+    ...foreignContextArtifactRefs,
     report.envelope_ref,
     report.final_response_ref,
     ...rounds.map((round) => round.envelope_ref),
@@ -464,6 +474,7 @@ async function summarizeLiveRunTrace(
     verification_evidence_refs: report.verification_evidence_refs.map((item) => ({ ...item })),
     context_ref: contextRef,
     context_manifest_ref: contextManifestRef,
+    foreign_context_artifact_refs: foreignContextArtifactRefs,
     final_response_ref: report.final_response_ref,
     expected_final_response_ref: expectedFinalResponseRef,
     final_response_ref_matches_identity: report.final_response_ref === expectedFinalResponseRef,
