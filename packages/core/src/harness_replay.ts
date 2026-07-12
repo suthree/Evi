@@ -386,12 +386,13 @@ function replayChecks(trace: LiveRunTraceSummary): HarnessReplayAuditCheck[] {
 
 function modelActionEnvelopeIntegrityCheck(trace: LiveRunTraceSummary): HarnessReplayAuditCheck {
   const invalidRefs = trace.invalid_model_action_envelope_refs;
+  const foreignRefs = trace.foreign_model_action_envelope_refs;
   return {
     id: "model_action_envelope_integrity",
-    status: invalidRefs.length > 0 ? "warning" : "pass",
-    summary: `invalid_model_action_envelopes=${invalidRefs.length}`,
-    refs: invalidRefs.length > 0
-      ? unique([trace.report_ref, ...invalidRefs])
+    status: invalidRefs.length > 0 || foreignRefs.length > 0 ? "warning" : "pass",
+    summary: `invalid_model_action_envelopes=${invalidRefs.length}; cross_session_model_action_envelopes=${foreignRefs.length}`,
+    refs: invalidRefs.length > 0 || foreignRefs.length > 0
+      ? unique([trace.report_ref, ...invalidRefs, ...foreignRefs])
       : unique([trace.report_ref, ...trace.rounds.map((round) => round.envelope_ref)])
   };
 }

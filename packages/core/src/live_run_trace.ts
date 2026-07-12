@@ -241,6 +241,7 @@ export interface LiveRunTraceSummary {
   model_diagnostics: LiveRunModelDiagnosticSummary[];
   unreadable_model_diagnostic_refs: string[];
   invalid_model_action_envelope_refs: string[];
+  foreign_model_action_envelope_refs: string[];
   repo_write_guard_count: number;
   repo_write_guards: LiveRunRepoWriteGuardSummary[];
   rounds: LiveRunTraceRound[];
@@ -344,12 +345,17 @@ async function summarizeLiveRunTrace(
   const promptEvent = runEvents.find((event) => event.kind === "prompt");
   const contextRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.md"));
   const contextManifestRef = promptEvent?.artifact_refs.find((ref) => ref.endsWith("-context.json"));
+  const sessionModelActionPrefix = `memory/episodes/${report.session_id}-model-action-r`;
+  const foreignModelActionEnvelopeRefs = unique(runEvents
+    .filter((event) => event.kind === "model_action")
+    .flatMap((event) => event.artifact_refs)
+    .filter((ref) => /-model-action-r\d+\.json$/.test(ref) && !ref.startsWith(sessionModelActionPrefix)));
   const episodeFiles = new Set(await store.listStateFiles("memory/episodes"));
   const traceRounds = await readTraceRounds(store, runEvents, events, report.session_id, episodeFiles);
   const { rounds, invalidEnvelopeRefs } = traceRounds;
   const finalEnvelopeRef = runEvents
     .filter((event) => event.kind === "model_action")
-    .at(-1)?.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
+    .at(-1)?.artifact_refs.find((ref) => ref.startsWith(sessionModelActionPrefix) && /-model-action-r\d+\.json$/.test(ref)) ?? null;
   const completionEnvelopeRound = rounds.find((round) => round.envelope_ref === finalEnvelopeRef);
   const eventKindCounts = countBy(runEvents.map((event) => event.kind));
   const toolResultEvents = readToolResultEventSummaries(runEvents, episodeFiles, rounds);
@@ -389,6 +395,7 @@ async function summarizeLiveRunTrace(
     report.final_response_ref,
     ...rounds.map((round) => round.envelope_ref),
     ...invalidEnvelopeRefs,
+    ...foreignModelActionEnvelopeRefs,
     ...modelDiagnostics.map((diagnostic) => diagnostic.diagnostic_ref),
     ...unreadableModelDiagnosticRefs,
     ...report.observation_refs.slice(0, 12),
@@ -455,6 +462,7 @@ async function summarizeLiveRunTrace(
     model_diagnostics: modelDiagnostics.slice(0, 5),
     unreadable_model_diagnostic_refs: unreadableModelDiagnosticRefs,
     invalid_model_action_envelope_refs: invalidEnvelopeRefs,
+    foreign_model_action_envelope_refs: foreignModelActionEnvelopeRefs,
     repo_write_guard_count: repoWriteGuards.length,
     repo_write_guards: repoWriteGuards.slice(0, 5),
     rounds,
@@ -490,7 +498,9 @@ function readToolResultEventSummaries(
   let currentEnvelopeRef: string | null = null;
   for (const event of events) {
     if (event.kind === "model_action") {
-      const envelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref));
+      const envelopeRef = event.artifact_refs.find((ref) =>
+        ref.startsWith(`memory/episodes/${event.session_id}-model-action-r`)
+          && /-model-action-r\d+\.json$/.test(ref));
       currentEnvelopeRef = envelopeRef ?? null;
       currentRound = envelopeRef ? roundNumber(envelopeRef) : 0;
     } else if (event.kind === "tool_result") {
@@ -549,7 +559,9 @@ function readFinalResponseEventSummaries(
   let currentEnvelopeRef: string | null = null;
   for (const event of events) {
     if (event.kind === "model_action") {
-      currentEnvelopeRef = event.artifact_refs.find((ref) => /-model-action-r\d+\.json$/.test(ref)) ?? null;
+      currentEnvelopeRef = event.artifact_refs.find((ref) =>
+        ref.startsWith(`memory/episodes/${event.session_id}-model-action-r`)
+          && /-model-action-r\d+\.json$/.test(ref)) ?? null;
       currentRound = currentEnvelopeRef ? roundNumber(currentEnvelopeRef) : 0;
       continue;
     }
@@ -780,12 +792,14 @@ async function readTraceRounds(
   sessionId: string,
   episodeFiles: Set<string>
 ): Promise<{ rounds: LiveRunTraceRound[]; invalidEnvelopeRefs: string[] }> {
-  const modelActionEnvelopeRefs = (event: EpisodeEvent) => event.artifact_refs
+  const allModelActionEnvelopeRefs = (event: EpisodeEvent) => event.artifact_refs
     .filter((ref) => /-model-action-r\d+\.json$/.test(ref));
   const sessionModelActionPrefix = `memory/episodes/${sessionId}-model-action-r`;
+  const modelActionEnvelopeRefs = (event: EpisodeEvent) => allModelActionEnvelopeRefs(event)
+    .filter((ref) => ref.startsWith(sessionModelActionPrefix));
   const eventBoundRefs = new Set(allEvents
     .filter((event) => event.kind === "model_action")
-    .flatMap(modelActionEnvelopeRefs));
+    .flatMap(allModelActionEnvelopeRefs));
   const persistedRefs = [...episodeFiles]
     .filter((ref) => ref.startsWith(sessionModelActionPrefix)
       && /-model-action-r\d+\.json$/.test(ref)
@@ -831,7 +845,7 @@ async function readTraceRounds(
         };
       });
     const actionEvents = actionEventsByEnvelopeRef.get(ref) ?? [];
-    const modelInput = actionEvents.length === 1 && modelActionEnvelopeRefs(actionEvents[0]!).length === 1
+    const modelInput = actionEvents.length === 1 && allModelActionEnvelopeRefs(actionEvents[0]!).length === 1
       ? actionEvents[0]!.model_input
       : undefined;
     rounds.push({
@@ -841,7 +855,7 @@ async function readTraceRounds(
       model_action_event_ids: actionEvents.map((event) => event.id),
       model_action_event_bindings: actionEvents.map((event) => ({
         event_id: event.id,
-        envelope_ref_count: modelActionEnvelopeRefs(event).length
+        envelope_ref_count: allModelActionEnvelopeRefs(event).length
       })),
       model_input_present: modelInput !== undefined,
       delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],

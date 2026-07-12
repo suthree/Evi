@@ -355,6 +355,47 @@ test("harness replay audit rejects model input metadata from a multi-envelope ev
   }
 });
 
+test("harness replay audit isolates cross-session model-action envelope references", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-cross-session-envelope-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store);
+    const foreignRef = "memory/episodes/session_other-model-action-r1.json";
+    const events = (await store.readStateText("memory/episodes/events.jsonl")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    await store.writeText("memory/episodes/events.jsonl", `${events.map((event) => JSON.stringify(
+      event.id === "evidence_replay_model_r2"
+        ? { ...event, artifact_refs: [...(event.artifact_refs as string[]), foreignRef] }
+        : event
+    )).join("\n")}\n`);
+
+    const trace = (await getLiveRunTrace(store, {
+      traceRef: "completion_verification_replay_test"
+    })).trace;
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const integrity = report.checks.find((item) => item.id === "model_action_envelope_integrity");
+    const binding = report.checks.find((item) => item.id === "model_action_event_binding");
+
+    assert.equal(trace.rounds.some((round) => round.envelope_ref === foreignRef), false);
+    assert.deepEqual(trace.foreign_model_action_envelope_refs, [foreignRef]);
+    assert.equal(trace.rounds[1]?.model_action_event_bindings[0]?.envelope_ref_count, 2);
+    assert.equal(trace.rounds[1]?.model_input_present, false);
+    assert.equal(integrity?.status, "warning");
+    assert.match(integrity?.summary ?? "", /cross_session_model_action_envelopes=1/);
+    assert.equal(integrity?.refs.includes(foreignRef), true);
+    assert.equal(binding?.status, "warning");
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit rejects a verified done trace whose final response file is missing", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-final-response-"));
   const repoRoot = join(root, "repo");
@@ -2557,9 +2598,11 @@ test("harness replay audit binds tool evidence round to a parsed envelope", asyn
     await writeForgedEnvelopeSequence(wrongIdentityRef);
     const wrongIdentity = await runHarnessReplayAudit(store, { traceRef: "completion_verification_replay_test" });
     const identityCheck = wrongIdentity.checks.find((item) => item.id === "verification_evidence_lineage");
+    const integrityCheck = wrongIdentity.checks.find((item) => item.id === "model_action_envelope_integrity");
     assert.equal(identityCheck?.status, "fail");
-    assert.match(identityCheck?.summary ?? "", /missing_tool_result_event_envelope_bindings=0/);
-    assert.match(identityCheck?.summary ?? "", /mismatched_tool_result_event_envelope_identities=1/);
+    assert.match(identityCheck?.summary ?? "", /missing_tool_result_event_envelope_bindings=1/);
+    assert.equal(integrityCheck?.status, "warning");
+    assert.match(integrityCheck?.summary ?? "", /cross_session_model_action_envelopes=1/);
     assert.doesNotMatch(JSON.stringify(wrongIdentity), /RAW_REPLAY_/);
   } finally {
     await rm(root, { recursive: true, force: true });

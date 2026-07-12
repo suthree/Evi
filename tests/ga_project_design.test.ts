@@ -469,7 +469,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("round without delegate_agent actions")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("without persisting recovery hint text")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("without reading model input")), true);
-    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("persisted current-session model-action envelopes")), true);
+    assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("crosses session boundaries")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("delegate_agent action ids")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("declared delegate action order")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.proof_boundary.some((item) => item.includes("persisted delegated result JSON artifact ref")), true);
