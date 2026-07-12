@@ -248,7 +248,7 @@ function validateDelegationTaskBoundary(task: string): string | null {
   const asksToolOrMutation =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TOOL_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_WRITE_MUTATION_TERMS);
-  const asksDirectMutation = hasDirectTaskMutationIntent(text);
+  const asksDirectMutation = hasDirectTaskMutationIntent(task, text);
   const asksCompletion =
     hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
     || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
@@ -432,7 +432,11 @@ const DIRECT_TASK_MUTATION_PATTERNS = [
   /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
   /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/,
   /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
-  /(?:并|然后|和|以及|并且|同时|，|、)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除)/u
+  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除)/u
+];
+
+const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
+  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy)\b/i
 ];
 
 const DIRECT_TASK_MUTATION_PHRASES = [
@@ -652,11 +656,12 @@ function normalizeBoundaryText(value: string): string {
   return value.toLowerCase().replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function hasDirectTaskMutationIntent(text: string): boolean {
+function hasDirectTaskMutationIntent(task: string, text: string): boolean {
   const taskCommand = text.replace(/^(?:please\s+|请\s*)+/, "");
   if (DIRECT_TASK_MUTATION_PATTERNS.some((pattern) => pattern.test(taskCommand))) return true;
   if (DIRECT_TASK_MUTATION_PHRASES.some((phrase) => taskCommand.includes(phrase))) return true;
-  return DIRECT_TASK_MUTATION_PREFIXES.some((term) => taskCommand.startsWith(term));
+  return DIRECT_TASK_MUTATION_PREFIXES.some((term) => taskCommand.startsWith(term))
+    || DIRECT_TASK_MUTATION_SENTENCE_PATTERNS.some((pattern) => pattern.test(task));
 }
 
 function grantsDelegatedAuthority(text: string): boolean {

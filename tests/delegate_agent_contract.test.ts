@@ -141,6 +141,32 @@ test("delegate_agent rejects direct destructive work but keeps deletion review r
   }
 });
 
+test("delegate_agent rejects sentence-separated direct mutation work before dispatch", () => {
+  const directTasks = [
+    "Analyze the missing guard. Fix it before returning findings?",
+    "Critique the state transition; please patch the defect.",
+    "Review stale state records. Remove obsolete entries.",
+    "分析缺失的防护。修复它后返回结论。"
+  ];
+  const readOnlyReview = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Analyze whether the missing guard should be fixed?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  });
+
+  for (const task of directTasks) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+    if (!result.ok) assert.match(result.error, /must explicitly request bounded analysis/);
+  }
+  assert.equal(readOnlyReview.ok, true);
+});
+
 test("delegate_agent context still accepts explicit payload and evidence-only boundaries", () => {
   const result = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",

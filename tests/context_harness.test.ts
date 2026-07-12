@@ -9398,7 +9398,7 @@ class AnalysisThenMutationTaskThenDoneModel implements ModelClient {
         && delegatedSection.includes('"dispatch_failure_kind": "input_contract_failed"')
         && delegatedSection.includes('"result_failure_kind": "input_contract_failed"')
         && delegatedSection.includes("delegate_agent.payload.task must explicitly request bounded analysis")
-        && !delegatedSection.includes("Find and fix the missing completion proof.");
+        && !delegatedSection.includes("Analyze the missing completion proof. Fix it before returning findings?");
     }
     return this.mainCalls > 1 ? doneEnvelope() : analysisThenMutationDelegateEnvelope();
   }
@@ -10198,7 +10198,7 @@ function analysisThenMutationDelegateEnvelope(): Record<string, unknown> {
       type: "delegate_agent",
       rationale: "Use a bounded subagent self-report before final answer.",
       payload: {
-        task: "Find and fix the missing completion proof.",
+        task: "Analyze the missing completion proof. Fix it before returning findings?",
         context: BOUNDED_DELEGATE_CONTEXT
       }
     }],
