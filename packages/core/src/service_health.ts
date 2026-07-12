@@ -31,11 +31,17 @@ export type ContentDailyEffectiveJobStatus = "missing" | "drafted" | "image_gene
 export type ServiceGatewayState = "running" | "stopped" | "error";
 export type ServiceHealthTarget = "runtime";
 
+export interface ServiceGatewayInboundSummary {
+  state: "observed" | "not_observed";
+  last_accepted_at?: string;
+}
+
 export interface ServiceGatewayChannelSummary {
   kind: string;
   channel_id: string;
   state: ServiceGatewayState;
   detail?: string;
+  inbound?: ServiceGatewayInboundSummary;
 }
 
 export interface ServiceGatewaySummary {
@@ -645,7 +651,8 @@ function serviceGatewaySummary(record: Record<string, unknown> | null): ServiceG
       kind,
       channel_id: channelId,
       state: channelState,
-      detail: stringField(item, "detail") ?? undefined
+      detail: stringField(item, "detail") ?? undefined,
+      inbound: serviceGatewayInboundSummary(recordField(item, "inbound"))
     }];
   });
   if (!state && channels.length === 0) return undefined;
@@ -656,6 +663,17 @@ function serviceGatewaySummary(record: Record<string, unknown> | null): ServiceG
         ? "running"
         : "stopped"),
     channels
+  };
+}
+
+function serviceGatewayInboundSummary(record: Record<string, unknown> | null): ServiceGatewayInboundSummary | undefined {
+  if (!record) return undefined;
+  const state = stringField(record, "state");
+  if (state !== "observed" && state !== "not_observed") return undefined;
+  const lastAcceptedAt = stringField(record, "last_accepted_at");
+  return {
+    state,
+    ...(lastAcceptedAt ? { last_accepted_at: lastAcceptedAt } : {})
   };
 }
 

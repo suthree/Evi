@@ -201,6 +201,12 @@ interface SeenState {
   ids: string[];
 }
 
+interface FeishuInboundLivenessState {
+  last_accepted_at: string;
+}
+
+const FEISHU_INBOUND_LIVENESS_REF = "channels/feishu/inbound-liveness.json";
+
 interface FeishuConversationHistoryItem {
   role: "user" | "assistant";
   message_id: string;
@@ -249,6 +255,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   private outboxDrainActive = false;
   private loaded = false;
   private running = false;
+  private lastAcceptedInboundAt: string | null = null;
 
   constructor(args: {
     config: FeishuChannelConfig;
@@ -277,6 +284,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   async start(): Promise<void> {
     await this.store.ensureLayout();
     await this.loadSeenState();
+    await this.loadInboundLiveness();
     await this.transport.start((event) => {
       void this.handleInboundEvent(event);
     });
@@ -310,7 +318,11 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
         ...(transportHealth && transportHealth.reconnect_attempts > 0
           ? [`reconnect_attempts=${transportHealth.reconnect_attempts}`]
           : [])
-      ].join("; ")
+      ].join("; "),
+      inbound: {
+        state: this.lastAcceptedInboundAt ? "observed" : "not_observed",
+        ...(this.lastAcceptedInboundAt ? { last_accepted_at: this.lastAcceptedInboundAt } : {})
+      }
     };
   }
 
@@ -2590,6 +2602,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   }
 
   private async recordInbound(message: NormalizedFeishuTextMessage): Promise<string> {
+    const acceptedAt = utcNow();
     const ref = await this.store.writeJson(`channels/feishu/inbound/${message.messageId}.json`, {
       event_id: message.eventId,
       message_id: message.messageId,
@@ -2599,8 +2612,12 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       open_id: message.openId,
       text: message.text,
       raw: message.raw,
-      created_at: utcNow()
+      created_at: acceptedAt
     });
+    this.lastAcceptedInboundAt = acceptedAt;
+    await this.store.writeJson(FEISHU_INBOUND_LIVENESS_REF, {
+      last_accepted_at: acceptedAt
+    } satisfies FeishuInboundLivenessState);
     await this.recordChannelEvent("inbound", `Accepted Feishu ${message.chatType} message ${message.messageId}.`, {
       artifact_ref: ref,
       message_id: message.messageId,
@@ -2717,6 +2734,28 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       this.seenMessageIds.push(id);
     }
   }
+
+  private async loadInboundLiveness(): Promise<void> {
+    const saved = await this.store.readStateJson<FeishuInboundLivenessState>(FEISHU_INBOUND_LIVENESS_REF);
+    const savedAt = validTimestamp(saved?.last_accepted_at);
+    if (savedAt) {
+      this.lastAcceptedInboundAt = savedAt;
+      return;
+    }
+
+    for (const ref of await this.store.listStateFiles("channels/feishu/inbound")) {
+      const inbound = await this.store.readStateJson<Record<string, unknown>>(ref).catch(() => null);
+      const acceptedAt = validTimestamp(inbound?.created_at);
+      if (acceptedAt && (!this.lastAcceptedInboundAt || acceptedAt > this.lastAcceptedInboundAt)) {
+        this.lastAcceptedInboundAt = acceptedAt;
+      }
+    }
+  }
+}
+
+function validTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
+  return value;
 }
 
 export function normalizePrivateTextMessage(event: FeishuInboundEvent): NormalizedFeishuPrivateMessage | null {

@@ -25,7 +25,11 @@ test("service health derives fresh resident runtime status from local state and 
           kind: "feishu",
           channel_id: "feishu-main",
           state: "running",
-          detail: "feishu:feishu-main"
+          detail: "feishu:feishu-main",
+          inbound: {
+            state: "observed",
+            last_accepted_at: "2026-06-30T00:00:10.000Z"
+          }
         }, {
           kind: "web",
           channel_id: "127.0.0.1:8765",
@@ -120,6 +124,10 @@ test("service health derives fresh resident runtime status from local state and 
       "feishu:running",
       "web:running"
     ]);
+    assert.deepEqual(health.service.gateway?.channels[0]?.inbound, {
+      state: "observed",
+      last_accepted_at: "2026-06-30T00:00:10.000Z"
+    });
     assert.equal(health.service.runtime_build?.source_commit_short, "abcdef012345");
     assert.equal(health.service.repo_head.read_status, "ok");
     assert.equal(health.service.repo_head.head_commit_short, "abcdef012345");

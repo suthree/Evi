@@ -91,7 +91,10 @@ test("Feishu adapter exposes a failed inbound connection without SDK details", a
       kind: "feishu",
       channel_id: "feishu-test",
       state: "error",
-      detail: "feishu:feishu-test; inbound=failed; reconnect_attempts=2"
+      detail: "feishu:feishu-test; inbound=failed; reconnect_attempts=2",
+      inbound: {
+        state: "not_observed"
+      }
     });
     await adapter.stop();
   } finally {
@@ -115,6 +118,41 @@ test("Feishu adapter keeps a connecting inbound connection running", async () =>
     assert.equal(adapter.health().state, "running");
     assert.equal(adapter.health().detail, "feishu:feishu-test; inbound=connecting");
     await adapter.stop();
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu adapter preserves accepted inbound liveness across restart", async () => {
+  const fixture = await createFixture();
+  try {
+    const first = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport: new MockFeishuTransport(),
+      runner: new StubRunner(fixture.store, "done"),
+      store: fixture.store
+    });
+    await first.start();
+    await first.handleInboundEvent(feishuEvent({
+      messageId: "om_liveness",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "hello"
+    }));
+    const firstInbound = first.health().inbound;
+    assert.equal(firstInbound?.state, "observed");
+    assert.match(firstInbound?.last_accepted_at ?? "", /^\d{4}-\d{2}-\d{2}T/);
+    await first.stop();
+
+    const restarted = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport: new MockFeishuTransport(),
+      runner: new StubRunner(fixture.store, "done"),
+      store: fixture.store
+    });
+    await restarted.start();
+    assert.deepEqual(restarted.health().inbound, firstInbound);
+    await restarted.stop();
   } finally {
     await fixture.cleanup();
   }

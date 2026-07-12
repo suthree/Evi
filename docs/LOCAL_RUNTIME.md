@@ -1534,6 +1534,11 @@ per-channel health, so `service health --target runtime` can show which channel 
 without reading provider logs or secrets. If a channel adapter fails during
 daemon startup, the daemon writes an `error` heartbeat with the failed
 MessageGateway channel before exiting.
+For Feishu, channel health also carries a privacy-safe `inbound` summary:
+`state=observed|not_observed` and, after an accepted message, its
+`last_accepted_at` timestamp. Transport `inbound=connected` only proves the
+WebSocket connection; it does not prove that an operator message reached the
+local adapter.
 
 Channel messages normalize into a provider-neutral source envelope before they
 touch runtime sessions. The envelope records the channel kind, configured
