@@ -1311,7 +1311,7 @@ fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
 push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
 or pull-request creation intent even across sentence boundaries. Neither
 `task` nor `context` may contain a control-plane instruction override or role
-change such as ignoring prior instructions or acting as the system/developer
+change such as ignoring or forgetting prior instructions or acting as the system/developer
 role; this is rejected before dispatch even when the surrounding payload names
 the normal bounded-analysis and no-authority constraints. A task cannot ask the delegated
 subagent to run commands (including `git status`, `git log`, or `git diff`),

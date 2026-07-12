@@ -1405,10 +1405,11 @@ const DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS = [
 ];
 
 const CONTROL_PLANE_INSTRUCTION_OVERRIDE_PATTERNS = [
-  /\b(?:ignore|disregard|override|bypass)\s+(?:all\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions?|rules?|prompts?|messages?)\b/,
+  /\b(?:ignore|disregard|override|bypass|forget)\s+(?:all\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions?|rules?|prompts?|messages?)\b/,
   /\b(?:act as|roleplay as|you are now)\s+(?:the\s+)?(?:system|developer|administrator|root)\b/,
   /\b(?:switch|change)\s+(?:to|into)\s+(?:the\s+)?(?:system|developer|administrator|root)\s+(?:role|mode)\b/,
-  /忽略(?:先前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
+  /忽略(?:先前|此前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
+  /忘记(?:先前|此前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
   /(?:覆盖|绕过)(?:系统|开发者|上文|以上)?(?:指令|规则|提示|消息)/u,
   /(?:你现在是|扮演|作为)(?:系统|开发者|管理员|根用户|root)(?:角色|身份)?/u
 ];
