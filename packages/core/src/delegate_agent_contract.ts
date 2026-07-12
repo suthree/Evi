@@ -1144,6 +1144,7 @@ function delegatedTextClaimsAuthority(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
     || delegatedTextClaimsDestructiveMutation(text)
+    || delegatedTextClaimsGitCommandExecution(text)
     || hasPrefixedGitCommand(text, DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES)
     || hasNearbyBoundary(
       text,
@@ -1174,6 +1175,12 @@ function delegatedTextClaimsDestructiveMutation(text: string): boolean {
     || /(?:我|子代理|委托子代理)(?:已经|已)?(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text)
     || /(?:拉取请求)(?:已经|已)?(?:被)?(?:创建|打开|提交)/u.test(text)
     || /^(?:已经|已)(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text);
+}
+
+function delegatedTextClaimsGitCommandExecution(text: string): boolean {
+  return /\bgit\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/.test(text)
+    || /^(?:ran|executed)\s+git\s+[a-z][a-z0-9-]*/.test(text)
+    || /git\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:已经|已)(?:被)?(?:运行|执行)/u.test(text);
 }
 
 function delegatedTextClaimsForbiddenSource(value: string): boolean {
