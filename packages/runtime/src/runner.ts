@@ -2188,7 +2188,10 @@ function modelActionInputEventMetadata(delegatedResults: DelegatedResult[]) {
     delegated_observation_result_ids: [...new Set(delegatedResults.map((result) => result.id))],
     recovery_guidance_result_ids: [...new Set(delegatedResults
       .filter((result) => delegatedObservationRecoveryHint(result) !== null)
-      .map((result) => result.id))]
+      .map((result) => result.id))],
+    delegated_observation_trust_boundary: delegatedResults.length > 0
+      ? "untrusted_advisory_data"
+      : null
   };
 }
 

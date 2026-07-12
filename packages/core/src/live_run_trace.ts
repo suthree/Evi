@@ -39,6 +39,7 @@ export interface LiveRunTraceRound {
   model_input_present: boolean;
   delegated_observation_result_ids: string[];
   recovery_guidance_result_ids: string[];
+  delegated_observation_trust_boundary: "untrusted_advisory_data" | null;
   summary: string;
   completion_status: ModelActionEnvelope["completion_claim"]["status"];
   completion_verification_refs: string[];
@@ -871,6 +872,7 @@ async function readTraceRounds(
       model_input_present: modelInput !== undefined,
       delegated_observation_result_ids: modelInput?.delegated_observation_result_ids ?? [],
       recovery_guidance_result_ids: modelInput?.recovery_guidance_result_ids ?? [],
+      delegated_observation_trust_boundary: modelInput?.delegated_observation_trust_boundary ?? null,
       summary: parsed.data.summary,
       completion_status: parsed.data.completion_claim.status,
       completion_verification_refs: [...parsed.data.completion_claim.verification_refs],

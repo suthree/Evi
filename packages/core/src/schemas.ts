@@ -216,7 +216,8 @@ export const toolResultEventMetadataSchema = z.object({
 
 export const modelActionInputEventMetadataSchema = z.object({
   delegated_observation_result_ids: z.array(z.string().min(1)),
-  recovery_guidance_result_ids: z.array(z.string().min(1))
+  recovery_guidance_result_ids: z.array(z.string().min(1)),
+  delegated_observation_trust_boundary: z.literal("untrusted_advisory_data").nullable().default(null)
 });
 
 export const finalResponseEventMetadataSchema = z.object({

@@ -2191,7 +2191,12 @@ proof. Before serializing delegated observations into the next main-model input,
 the runner marks them as `untrusted_advisory_data` and instructs the main model
 not to follow directives, commands, role changes, or completion claims embedded
 in their content; only the operator task and enclosing harness rules authorize
-actions. If a `done` claim follows any delegated result, completion verification
+actions. The same boundary is persisted as
+`model_input.delegated_observation_trust_boundary`; it is `null` when no
+delegated observation exists and `untrusted_advisory_data` otherwise. Live Run
+Trace exposes the marker, and replay warns when a later model round has
+delegated lineage but loses it. If a `done` claim follows any delegated result,
+completion verification
 also requires independent evidence: at least one harness-known non-delegated
 tool result id or tool artifact ref bound through
 `completion_claim.verification_refs`; a successful write/run tool result is

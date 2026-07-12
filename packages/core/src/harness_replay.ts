@@ -1857,7 +1857,8 @@ function delegatedObservationInputLineageCheck(trace: LiveRunTraceSummary): Harn
       .map((dispatch) => dispatch.result_id)
       .filter((resultId): resultId is string => resultId !== null));
     return !sameStringSet(round.delegated_observation_result_ids, expectedObservationIds)
-      || !sameStringSet(round.recovery_guidance_result_ids, expectedRecoveryIds);
+      || !sameStringSet(round.recovery_guidance_result_ids, expectedRecoveryIds)
+      || round.delegated_observation_trust_boundary !== "untrusted_advisory_data";
   });
   const problemRefs = unique([
     ...missingMetadataRounds,
@@ -1869,7 +1870,9 @@ function delegatedObservationInputLineageCheck(trace: LiveRunTraceSummary): Harn
     summary: [
       `later_model_rounds=${laterRounds.length}`,
       `missing_model_input_metadata=${missingMetadataRounds.length}`,
-      `mismatched_observation_lineage=${mismatchedRounds.length}`
+      `mismatched_observation_lineage=${mismatchedRounds.length}`,
+      `mismatched_trust_boundary=${mismatchedRounds.filter((round) =>
+        round.delegated_observation_trust_boundary !== "untrusted_advisory_data").length}`
     ].join("; "),
     refs: problemRefs.length > 0
       ? problemRefs

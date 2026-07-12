@@ -275,6 +275,32 @@ test("harness replay audit warns when later model input omits recovery guidance 
   }
 });
 
+test("harness replay audit warns when later model input loses the delegated trust boundary", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-observation-boundary-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeReplayTraceFixture(store, undefined, undefined, {
+      modelInputDelegatedObservationTrustBoundary: null
+    });
+
+    const report = await runHarnessReplayAudit(store, {
+      traceRef: "completion_verification_replay_test"
+    });
+    const check = report.checks.find((item) => item.id === "delegated_observation_input_lineage");
+
+    assert.equal(check?.status, "warning");
+    assert.match(check?.summary ?? "", /mismatched_trust_boundary=1/);
+    assert.equal(check?.refs.includes("memory/episodes/session_replay_test-model-action-r2.json"), true);
+    assert.doesNotMatch(JSON.stringify(report), /RAW_REPLAY_/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("harness replay audit warns when a model-action envelope has duplicate events", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-harness-replay-model-event-"));
   const repoRoot = join(root, "repo");
@@ -4188,6 +4214,7 @@ async function writeReplayTraceFixture(
     recoveryGuidance?: "none" | "main_harness_recovery";
     modelInputDelegatedObservationResultIds?: string[];
     modelInputRecoveryGuidanceResultIds?: string[];
+    modelInputDelegatedObservationTrustBoundary?: "untrusted_advisory_data" | null;
   } = {}
 ): Promise<void> {
   const sessionId = "session_replay_test";
@@ -4342,7 +4369,8 @@ async function writeReplayTraceFixture(
     ],
     model_input: {
       delegated_observation_result_ids: [],
-      recovery_guidance_result_ids: []
+      recovery_guidance_result_ids: [],
+      delegated_observation_trust_boundary: null
     },
     created_at: "2026-06-30T01:00:01.000Z"
   });
@@ -4427,7 +4455,10 @@ async function writeReplayTraceFixture(
       delegated_observation_result_ids: options.modelInputDelegatedObservationResultIds
         ?? ((options.includeDelegatedEvent ?? true) ? ["delegated_result_invalid"] : []),
       recovery_guidance_result_ids: options.modelInputRecoveryGuidanceResultIds
-        ?? (delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY ? ["delegated_result_invalid"] : [])
+        ?? (delegatedSummary === DEFAULT_REPLAY_DELEGATED_SUMMARY ? ["delegated_result_invalid"] : []),
+      delegated_observation_trust_boundary: options.modelInputDelegatedObservationTrustBoundary !== undefined
+        ? options.modelInputDelegatedObservationTrustBoundary
+        : ((options.includeDelegatedEvent ?? true) ? "untrusted_advisory_data" : null)
     },
     created_at: "2026-06-30T01:00:04.000Z"
   });
