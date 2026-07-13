@@ -914,8 +914,12 @@ Required policy:
   from the same read-only metadata, including source artifact evidence and
   verification-command counts, and must not execute verification
 - `next_core_basic_plan.selection_checks` may include bounded
-  `source_artifact_warning` entries when evidence refs or verification commands
-  are too thin; these warnings are plan-quality hints only and must not execute
+  `source_artifact_warning` entries when a verified source lacks its
+  `implementation_contract` or when evidence refs or verification commands are
+  too thin. A missing source contract keeps the successor at
+  `needs_attention` because its acceptance, scope, required entrypoints, and
+  rollback cannot be checked; the historical artifact remains readable and is
+  not migrated. These warnings are plan-quality hints only and must not execute
   verification or prove failure
 - `next_core_basic_plan.selection_checks` must keep the
   `source_artifact_warning_thresholds` visible beside source artifact counts, so

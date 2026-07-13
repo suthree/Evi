@@ -936,7 +936,7 @@ test("GA project design read model derives reusable artifacts from verified iter
   }
 });
 
-test("GA project design plan requires complete source verification claim mappings", async () => {
+test("GA project design plan requires a source contract and complete verification claim mappings", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-source-claims-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
@@ -988,14 +988,15 @@ test("GA project design plan requires complete source verification claim mapping
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_claim; entrypoint=project-design"), true);
     assert.equal(plan?.layer_decision.stage, "needs_attention");
 
+    const completeVerificationClaims = [
+      "project-design: source claim mapping is covered",
+      "check: full checks pass"
+    ];
     await store.writeJson(iteration.ref, {
       ...iteration,
       outcome: {
         ...iteration.outcome!,
-        verification_claims: [
-          "project-design: source claim mapping is covered",
-          "check: full checks pass"
-        ]
+        verification_claims: completeVerificationClaims
       }
     });
 
@@ -1004,6 +1005,21 @@ test("GA project design plan requires complete source verification claim mapping
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=ok"), true);
     assert.equal(plan?.selection_checks.some((check) => check.includes("missing_verification_claim")), false);
     assert.equal(plan?.layer_decision.stage, "core_basic_successor_ready");
+
+    const { implementation_contract: _implementationContract, ...legacyIteration } = iteration;
+    await store.writeJson(iteration.ref, {
+      ...legacyIteration,
+      outcome: {
+        ...iteration.outcome!,
+        verification_claims: completeVerificationClaims
+      }
+    });
+
+    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "needs_attention");
+    assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_implementation_contract"), true);
+    assert.equal(plan?.layer_decision.stage, "needs_attention");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1276,6 +1292,19 @@ test("GA project design planning packet surfaces matching open iteration", async
       layer: "core_runtime",
       owner_surface: "ga_project_design",
       proposed_slice: "verified_iteration_to_design_artifact",
+      implementation_contract: {
+        proposed_slice: "verified_iteration_to_design_artifact",
+        source_artifact_id: "ga_design_artifact_source",
+        source_proposed_slice: "source_slice",
+        selected_layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        improvement_type: "reusable_ga_design_contract",
+        required_verification_entrypoints: ["check"],
+        implementation_scope: ["surface a matching open iteration"],
+        deferred_scope: ["no completion gate changes"],
+        delivery_standard: ["matching open iteration contract stays inspectable"],
+        boundary: "bounded test implementation contract"
+      },
       evidence_refs: ["packages/core/src/ga_project_design.ts"],
       verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
       non_goals: ["no active-vault write"],

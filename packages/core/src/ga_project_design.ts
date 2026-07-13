@@ -752,6 +752,9 @@ function buildNextCoreBasicPlan(
     (entrypoint) => !source.verification_claims.some((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
   ) ?? [];
   const sourceArtifactWarnings = [
+    ...(source.kind === "verified_artifact" && !source.implementation_contract
+      ? ["source_artifact_warning=missing_implementation_contract"]
+      : []),
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
       ? [`source_artifact_warning=thin_evidence_refs; minimum=${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; actual=${source.evidence_refs.length}`]
       : []),

@@ -275,8 +275,8 @@ compact context 也会为每个 phase gate 保留一条禁用捷径，避免只�
 plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_commands` 保持同一份切片级清单，
 避免计划视图和实际记录 iteration 的验证范围漂移；
 `selection_checks` 会带上 source artifact 的 evidence refs 和 verification commands 数量，
-避免只看 `verified` 标签而忽略证据厚度；当数量过薄时会出现有界
-`source_artifact_warning`；它不会执行验证或成为 iteration completion gate，但会让 successor plan 保持 `needs_attention`；
+避免只看 `verified` 标签而忽略证据厚度；verified source 缺少 `implementation_contract`，或数量过薄时，都会出现有界
+`source_artifact_warning`。缺 source contract 时无法核对验收、范围、required entrypoints 和回滚，因此 successor plan 必须保持 `needs_attention`；历史 artifact 仍可读取且不会迁移。warning 不会执行验证或成为 iteration completion gate；
 同一组检查也会显示 `source_artifact_warning_thresholds`，避免调阈值时必须读源码；
 compact GA Project Design Plan context 仍保持三条 check 上限：保留 source 验证、证据数量和一条可操作 warning；若缺少必需 verification claim 映射，会优先显示具体 entrypoint，而不是更抽象的薄证据 warning 或阈值摘要；完整 plan 仍保留全部 warning 和阈值；
 也会独立显示 `fresh_successor_slice`，让重复已完成 slice 的风险在 handoff 时可见；
