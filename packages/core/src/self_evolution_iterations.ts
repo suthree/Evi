@@ -171,11 +171,13 @@ function mergeOpenImplementationContract(
 ): GaProjectDesignImplementationContract | undefined {
   if (!existing || !supplied) return existing ?? supplied;
   const intent = existing.intent ?? supplied.intent;
+  const acceptanceCriteria = existing.acceptance_criteria ?? supplied.acceptance_criteria;
   const requiredVerificationEntrypoints = existing.required_verification_entrypoints ?? supplied.required_verification_entrypoints;
   const delegationContract = existing.delegation_contract ?? supplied.delegation_contract;
   const outcomeEvidenceScope = existing.outcome_evidence_scope ?? supplied.outcome_evidence_scope;
   const rollbackStrategy = existing.rollback_strategy ?? supplied.rollback_strategy;
   if (intent === existing.intent
+    && acceptanceCriteria === existing.acceptance_criteria
     && requiredVerificationEntrypoints === existing.required_verification_entrypoints
     && delegationContract === existing.delegation_contract
     && outcomeEvidenceScope === existing.outcome_evidence_scope
@@ -185,6 +187,7 @@ function mergeOpenImplementationContract(
   return {
     ...existing,
     ...(intent ? { intent } : {}),
+    ...(acceptanceCriteria ? { acceptance_criteria: acceptanceCriteria } : {}),
     ...(requiredVerificationEntrypoints ? { required_verification_entrypoints: requiredVerificationEntrypoints } : {}),
     ...(delegationContract ? { delegation_contract: delegationContract } : {}),
     ...(outcomeEvidenceScope ? { outcome_evidence_scope: outcomeEvidenceScope } : {}),

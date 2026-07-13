@@ -152,6 +152,7 @@ export interface GaProjectDesignImplementationContract {
   owner_surface: string;
   improvement_type: "reusable_ga_design_contract";
   intent?: string;
+  acceptance_criteria?: string[];
   required_verification_entrypoints?: string[];
   delegation_contract?: GaProjectDesignDelegationImplementationContract;
   outcome_evidence_scope?: GaProjectDesignOutcomeEvidenceScope;
@@ -978,6 +979,7 @@ function buildImplementationContract(
     owner_surface: target.owner_surface,
     improvement_type: "reusable_ga_design_contract",
     intent: buildImplementationContractIntent(target),
+    acceptance_criteria: buildImplementationContractAcceptanceCriteria(target),
     required_verification_entrypoints: [...REQUIRED_VERIFICATION_ENTRYPOINTS],
     ...(target.target_dimension_id === "general_agent_delegation"
       ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
@@ -1031,6 +1033,26 @@ function buildImplementationContractIntent(target: GaProjectDesignPlanTarget): s
     case "general_agent_delegation":
       return "Harden one bounded delegation contract without expanding delegated authority or completion ownership.";
   }
+}
+
+function buildImplementationContractAcceptanceCriteria(target: GaProjectDesignPlanTarget): string[] {
+  let targetCriterion: string;
+  switch (target.target_dimension_id) {
+    case "core_ga_design":
+      targetCriterion = "future project-design readers can inspect the successor acceptance standard from implementation_contract alone";
+      break;
+    case "basic_runtime_substrate":
+      targetCriterion = "future runtime-substrate readers can inspect the resident acceptance standard from implementation_contract alone";
+      break;
+    case "general_agent_delegation":
+      targetCriterion = "future delegation readers can inspect the bounded delegation acceptance standard from implementation_contract alone";
+      break;
+  }
+  return [
+    targetCriterion,
+    "targeted checks cover the changed contract and iteration audit rejects missing or drifted acceptance criteria",
+    "project-design, scorecard, iterations, service-health, and check evidence are recorded before a verified outcome"
+  ];
 }
 
 function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProjectDesignOutcomeEvidenceScope {
@@ -1776,7 +1798,7 @@ function buildCompletionAuditSeeds(
       evidence_needed: [
         "workspace or git status when files changed",
         `implementation_contract.proposed_slice=${proposedSlice}`,
-        "implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation",
+        "implementation_contract names selected_layer, acceptance_criteria, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation",
         "outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope",
         "service health status and reasons when resident runtime behavior changed",
         "service health status and reasons when service health is a required verification command",
@@ -1787,7 +1809,7 @@ function buildCompletionAuditSeeds(
       reject_if: [
         "older memory is the only evidence",
         "implementation_contract.proposed_slice does not match the iteration proposed slice",
-        "implementation_contract is missing selected_layer, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy",
+        "implementation_contract is missing selected_layer, acceptance_criteria, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy",
         "outcome claims changes outside implementation_contract without a later-layer iteration contract",
         "external adapter pressure is treated as core identity without a reusable contract",
         "worktree changes are present but the outcome omits workspace status or changed paths",

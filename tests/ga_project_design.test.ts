@@ -13,7 +13,10 @@ import {
 } from "../packages/core/src/ga_project_design.js";
 import { compactGaPlanGovernanceCleanup } from "../packages/core/src/context.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "../packages/core/src/action_contracts.js";
-import type { SelfEvolutionIterationContract } from "../packages/core/src/self_evolution_iterations.js";
+import {
+  recordSelfEvolutionIteration,
+  type SelfEvolutionIterationContract
+} from "../packages/core/src/self_evolution_iterations.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("GA project design contract keeps core project design separate from application tools", () => {
@@ -83,6 +86,8 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(plan.next_iteration_seed.proposed_slice, "core_ga_design_fresh_bootstrap");
     assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
     assert.match(plan.implementation_contract.intent ?? "", /core-GA successor self-describing/);
+    assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("successor acceptance standard")), true);
+    assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("rejects missing or drifted acceptance criteria")), true);
     assert.deepEqual(plan.implementation_contract.required_verification_entrypoints, ["project-design", "scorecard", "iterations", "service-health", "check"]);
     assert.equal(plan.implementation_contract.rollback_strategy?.some((item) => item.includes("single bounded implementation commit")), true);
     assert.equal(plan.implementation_contract.rollback_strategy?.some((item) => item.includes("resident runtime")), true);
@@ -569,10 +574,10 @@ test("GA project design read model derives reusable artifacts from verified iter
         && seed.requirement.includes("classify runtime attention")
         && seed.requirement.includes("name the handling policy")
         && seed.evidence_needed.includes("implementation_contract.proposed_slice=general_agent_delegation_hardening_after_verified")
-        && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")
+        && seed.evidence_needed.includes("implementation_contract names selected_layer, acceptance_criteria, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")
         && seed.evidence_needed.includes("outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope")
         && seed.reject_if.includes("implementation_contract.proposed_slice does not match the iteration proposed slice")
-        && seed.reject_if.includes("implementation_contract is missing selected_layer, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy")
+        && seed.reject_if.includes("implementation_contract is missing selected_layer, acceptance_criteria, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy")
         && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")
         && seed.evidence_needed.includes("service health status and reasons when resident runtime behavior changed")
         && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")
@@ -796,7 +801,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")), true);
-    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, acceptance_criteria, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")), true);
@@ -1195,10 +1200,29 @@ test("GA project design planning packet surfaces matching open iteration", async
     assert.deepEqual(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, ["implementation_contract_missing"]);
     assert.equal(readModel.next_core_basic_plan?.selection_status, "needs_attention");
 
+    const expectedPlan = readModel.next_core_basic_plan;
+    assert.ok(expectedPlan);
+    const { acceptance_criteria: _legacyAcceptance, ...legacyContract } = expectedPlan.implementation_contract;
     await store.writeJson(openIteration.ref, {
       ...openIteration,
-      implementation_contract: readModel.next_core_basic_plan?.implementation_contract
+      implementation_contract: legacyContract
     });
+    readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+
+    assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "drifted");
+    const backfilled = await recordSelfEvolutionIteration(store, {
+      summary: expectedPlan.next_iteration_seed.summary,
+      layer: expectedPlan.next_iteration_seed.layer,
+      ownerSurface: expectedPlan.next_iteration_seed.owner_surface,
+      proposedSlice: expectedPlan.next_iteration_seed.proposed_slice,
+      sourceRef: expectedPlan.next_iteration_seed.source_ref,
+      implementationContract: expectedPlan.implementation_contract,
+      evidenceRefs: expectedPlan.next_iteration_seed.evidence_refs,
+      verificationCommands: expectedPlan.next_iteration_seed.verification_commands,
+      nonGoals: expectedPlan.next_iteration_seed.non_goals,
+      reuseOpen: true
+    });
+    assert.deepEqual(backfilled.iteration.implementation_contract?.acceptance_criteria, expectedPlan.implementation_contract.acceptance_criteria);
     readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.status, "open_iteration_available");

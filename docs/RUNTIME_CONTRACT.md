@@ -620,6 +620,11 @@ target-specific `intent`. It makes the planned work inspectable without
 decoding an opaque slice id; a current-plan audit treats a missing or changed
 intent as contract coverage failure. Historical contracts without the field
 remain readable.
+The contract also carries target-specific `acceptance_criteria`, so the frozen
+success standard travels with the iteration instead of only living in the
+advisory plan. Plan-derived iteration reuse may backfill the field; current-plan
+audit rejects missing or changed criteria, while historical contracts remain
+readable without migration.
 When a project-design reader has no recognized scorecard target, it likewise
 defaults to core GA design rather than reopening delegation; a matching open
 iteration still takes precedence.

@@ -451,6 +451,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
     owner_surface: "ga_project_design",
     improvement_type: "reusable_ga_design_contract" as const,
     intent: "Make the bounded core-GA successor self-describing and keep its planning and completion evidence reusable.",
+    acceptance_criteria: ["future project-design readers can inspect the successor acceptance standard from implementation_contract alone"],
     implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
     deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
     delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
@@ -524,6 +525,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=ga_design_artifact_iteration_contract_source"), true);
   assert.equal(covered.required_tokens.some((token) => token.startsWith("implementation_contract.intent=")), true);
+  assert.equal(covered.required_tokens.includes("implementation_contract.acceptance_criteria"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.rollback_strategy"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.boundary"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
@@ -688,6 +690,24 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(mismatchedIntent.status, "mismatched_contract");
   assert.deepEqual(mismatchedIntent.mismatched_fields, ["intent"]);
+
+  const missingAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, acceptance_criteria: [] }
+  });
+  assert.equal(missingAcceptance.status, "missing_required_fields");
+  assert.deepEqual(missingAcceptance.missing_fields, ["acceptance_criteria"]);
+
+  const mismatchedAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, acceptance_criteria: ["trust the opaque slice id"] }
+  });
+  assert.equal(mismatchedAcceptance.status, "mismatched_contract");
+  assert.deepEqual(mismatchedAcceptance.mismatched_fields, ["acceptance_criteria"]);
 
   const missingRollback = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
