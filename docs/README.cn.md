@@ -211,6 +211,7 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 核心/基础能力增益、可逆性和操作者边界。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
+core-GA dimension 与 architect lens 的 summary 会保留 derived artifact 总数，但只暴露最新 `limit` 条 artifact refs，避免 verified iteration 持续累积导致 scorecard JSON 无界增长。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
 当 `basic_runtime_substrate` 有最新基础入口迭代时，live context 会显示该迭代的 id、ref 和 outcome status，
 用于提醒未闭环的基础能力切片，不把它当完成证明。

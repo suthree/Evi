@@ -347,7 +347,10 @@ The CLI also exposes `governance scorecard` as a read-only self-evolution
 maturity view. It tracks current core GA design, basic runtime substrate,
 general-agent delegation, SOP/skill/memory loop, and memory/dream direction
 from local metadata. Its lenses are advisory context only and cannot close work
-or grant execution authority. Expert specialization and multi-agent scheduling
+or grant execution authority. The core-GA dimension and architect lens retain
+the total derived-artifact count in the summary but expose only the newest
+requested `limit` artifact refs, so repeated verified iterations cannot grow
+the read model without bound. Expert specialization and multi-agent scheduling
 stay deferred until the general delegation loop is stable.
 GA project-design planning may expose `learning_authority` to distinguish
 self-evolution SOPs or skills as repeatable procedure scaffolds from runtime

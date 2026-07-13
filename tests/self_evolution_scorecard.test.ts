@@ -193,32 +193,37 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-open-ga-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga.json", {
-      schema_version: 1,
-      id: "iteration_contract_verified_ga",
-      ref: "self-evolution/iterations/iteration_contract_verified_ga.json",
-      kind: "self_evolution_iteration_contract",
-      status: "recorded",
-      summary: "Verified GA project-design artifact baseline.",
-      layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "verified_iteration_to_design_artifact",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
-      verification_commands: ["pnpm run check"],
-      non_goals: ["no completion proof"],
-      advisory_expert_roles: ["architect", "verification_reviewer"],
-      outcome: {
-        status: "verified",
-        summary: "Verification passed.",
-        evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
+    for (const index of [1, 2, 3, 4]) {
+      const id = `iteration_contract_verified_ga_${index}`;
+      const ref = `self-evolution/iterations/${id}.json`;
+      const createdAt = `2026-07-06T00:00:0${index}Z`;
+      await store.writeJson(ref, {
+        schema_version: 1,
+        id,
+        ref,
+        kind: "self_evolution_iteration_contract",
+        status: "recorded",
+        summary: "Verified GA project-design artifact baseline.",
+        layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        proposed_slice: `verified_iteration_to_design_artifact_${index}`,
+        evidence_refs: ["packages/core/src/ga_project_design.ts"],
         verification_commands: ["pnpm run check"],
-        next_moves: ["Use the artifact in future core slices."],
-        recorded_at: "2026-07-06T00:00:03Z",
-        boundary: "bounded outcome record"
-      },
-      created_at: "2026-07-06T00:00:03Z",
-      boundary: "bounded iteration contract"
-    });
+        non_goals: ["no completion proof"],
+        advisory_expert_roles: ["architect", "verification_reviewer"],
+        outcome: {
+          status: "verified",
+          summary: "Verification passed.",
+          evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
+          verification_commands: ["pnpm run check"],
+          next_moves: ["Use the artifact in future core slices."],
+          recorded_at: createdAt,
+          boundary: "bounded outcome record"
+        },
+        created_at: createdAt,
+        boundary: "bounded iteration contract"
+      });
+    }
     await store.writeJson("self-evolution/iterations/iteration_contract_open_ga.json", {
       schema_version: 1,
       id: "iteration_contract_open_ga",
@@ -237,11 +242,15 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
       boundary: "bounded iteration contract"
     });
 
-    const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
+    const scorecard = await getSelfEvolutionScorecard(store, { limit: 2 });
     const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const architect = scorecard.expert_lenses.find((lens) => lens.id === "architect");
     assert.equal(core?.score, 5);
     assert.match(core?.summary ?? "", /derived project-design artifact/);
-    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga.json"), true);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_4.json"), true);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_3.json"), true);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_2.json"), false);
+    assert.deepEqual(architect?.evidence_refs, core?.evidence_refs);
     assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_ga/);
     const missingDream = scorecard.dimensions.find((dimension) => dimension.id === "memory_dream_direction");
     assert.equal(missingDream?.stage, "planned");

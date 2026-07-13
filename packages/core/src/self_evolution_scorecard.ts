@@ -158,7 +158,7 @@ export async function getSelfEvolutionScorecard(
       evidence_refs: compactRefs([
         "packages/core/src/ga_project_design.ts",
         "packages/core/src/capabilities.ts",
-        ...projectDesignArtifacts.map((artifact) => artifact.source_iteration_ref),
+        ...projectDesignArtifacts.slice(0, limit).map((artifact) => artifact.source_iteration_ref),
         ...dreams.map((dream) => dream.ref),
         ...iterations.iteration_refs.slice(0, 2)
       ]),
