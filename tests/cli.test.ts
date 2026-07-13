@@ -33,6 +33,7 @@ import {
 } from "../apps/cli/src/main.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { getGaProjectDesignDelegationImplementationContract } from "../packages/core/src/ga_project_design.js";
+import { implementationContractSha256 } from "../packages/core/src/self_evolution_iterations.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -629,6 +630,19 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(coveredHistorical.status, "covered");
   assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
+
+  const driftedHistorical = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, intent: "Post-hoc rewritten intent." },
+    implementation_contract_sha256: implementationContractSha256(planContract)
+  });
+  assert.equal(driftedHistorical.status, "mismatched_contract");
+  assert.deepEqual(driftedHistorical.mismatched_fields, ["implementation_contract_sha256"]);
 
   const { rollback_strategy: _legacyRollback, ...legacyHistoricalContract } = planContract;
   const coveredLegacyHistorical = buildIterationAuditImplementationContractCoverage({

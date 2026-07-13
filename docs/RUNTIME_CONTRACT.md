@@ -429,7 +429,12 @@ selected slice/layer/owner, contract type, scope, delivery standard, and safety
 boundary. When the contract declares an `outcome_evidence_scope`, coverage also
 requires the same structured scope in the iteration record. After the plan
 advances, it checks the audited iteration's persisted contract for
-self-consistency. Missing, incomplete, or mismatched contract fields keep the
+self-consistency. New and reused iteration records also persist a SHA-256
+fingerprint of the exact implementation contract; when present, the audit
+validates it so later field drift remains visible after the plan advances.
+Legacy records without a fingerprint remain readable and are not migrated.
+This is an integrity diagnostic, not a signature or file-content proof.
+Missing, incomplete, or mismatched contract fields keep the
 completion gate blocked; the diagnostic is read-only and does not repair state
 or prove completion.
 `outcome_evidence_scope_coverage` applies a declared scope to outcome evidence

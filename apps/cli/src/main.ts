@@ -24,6 +24,7 @@ import {
 } from "../../../packages/core/src/self_evolution_gaps.js";
 import {
   getSelfEvolutionIteration,
+  implementationContractSha256,
   listSelfEvolutionIterations,
   recordSelfEvolutionIterationOutcome,
   type SelfEvolutionIterationContract,
@@ -821,7 +822,7 @@ export function selectIterationAuditExpectedImplementationContract(
 
 export function buildIterationAuditImplementationContractCoverage(
   planContract: GaProjectDesignPlanPacket["implementation_contract"],
-  iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice" | "layer" | "owner_surface">
+  iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "implementation_contract_sha256" | "proposed_slice" | "layer" | "owner_surface">
 ): {
   status: IterationAuditImplementationContractCoverageStatus;
   missing_fields: string[];
@@ -856,6 +857,10 @@ export function buildIterationAuditImplementationContractCoverage(
     !isDeepStrictEqual(contract.delegation_contract, expectedContract.delegation_contract)
     || !isDeepStrictEqual(contract.delegation_contract, authoritativeDelegationContract)
   ) && !safelyAdvancedDelegationContract;
+  const contractDigestMismatch = Boolean(
+    iteration.implementation_contract_sha256
+    && iteration.implementation_contract_sha256 !== implementationContractSha256(contract)
+  );
   const missingFields = [
     ...(!contract.proposed_slice ? ["proposed_slice"] : []),
     ...(!contract.source_artifact_id ? ["source_artifact_id"] : []),
@@ -890,7 +895,8 @@ export function buildIterationAuditImplementationContractCoverage(
     ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
     ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : []),
     ...(expectedContract.rollback_strategy && !isDeepStrictEqual(contract.rollback_strategy, expectedContract.rollback_strategy) ? ["rollback_strategy"] : []),
-    ...(contract.boundary !== expectedContract.boundary ? ["boundary"] : [])
+    ...(contract.boundary !== expectedContract.boundary ? ["boundary"] : []),
+    ...(contractDigestMismatch ? ["implementation_contract_sha256"] : [])
   ];
   return {
     status: missingFields.length
@@ -902,7 +908,7 @@ export function buildIterationAuditImplementationContractCoverage(
     mismatched_fields: mismatchedFields,
     advanced_fields: safelyAdvancedDelegationContract ? ["delegation_contract"] : [],
     required_tokens: implementationContractRequiredTokens(expectedContract),
-    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, accepts only the fixed safe additive model-diagnostic replay refinement, otherwise checks persisted contract self-consistency; does not mutate state or prove completion"
+    boundary: "read-only implementation contract coverage diagnostic; compares the project-design plan contract with the audited iteration state record when the plan targets that iteration, accepts only the fixed safe additive model-diagnostic replay refinement, and validates a persisted SHA-256 fingerprint when present after the plan advances; legacy records without a fingerprint remain readable; does not mutate state or prove completion"
   };
 }
 

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import type { CapabilityLayer } from "./capabilities.js";
 import { newId, utcNow } from "./ids.js";
@@ -17,6 +18,7 @@ export interface SelfEvolutionIterationContract {
   proposed_slice: string;
   source_ref?: string;
   implementation_contract?: GaProjectDesignImplementationContract;
+  implementation_contract_sha256?: string;
   evidence_refs: string[];
   verification_commands: string[];
   non_goals: string[];
@@ -74,6 +76,12 @@ const ITERATION_ROOT = "self-evolution/iterations";
 const ITERATION_BOUNDARY = "self-evolution iteration contract writes one bounded local state record only; it declares layer, owner surface, evidence, verification commands, and advisory expert roles; it does not invoke models, execute tools, mutate repo files, write the active vault, manage services, publish externally, promote SOPs, promote skills, or prove completion";
 const OUTCOME_BOUNDARY = "self-evolution iteration outcome updates one existing local iteration record only; it records operator-supplied verification evidence and next moves; it does not run verification commands, invoke models, execute tools, mutate repo files, write the active vault, manage services, publish externally, promote SOPs, promote skills, or prove completion beyond the cited evidence";
 
+export function implementationContractSha256(
+  contract: GaProjectDesignImplementationContract
+): string {
+  return createHash("sha256").update(JSON.stringify(contract)).digest("hex");
+}
+
 export async function recordSelfEvolutionIteration(
   store: AgentStore,
   args: {
@@ -109,9 +117,22 @@ export async function recordSelfEvolutionIteration(
         existing.implementation_contract,
         args.implementationContract
       );
-      const iteration = implementationContract === existing.implementation_contract
-        ? existing
-        : { ...existing, implementation_contract: implementationContract };
+      const contractSha256 = implementationContract
+        ? implementationContractSha256(implementationContract)
+        : undefined;
+      let iteration = existing;
+      if (implementationContract !== existing.implementation_contract
+        || contractSha256 !== existing.implementation_contract_sha256) {
+        iteration = {
+          ...existing,
+          ...(implementationContract
+            ? {
+                implementation_contract: implementationContract,
+                implementation_contract_sha256: contractSha256
+              }
+            : {})
+        };
+      }
       if (iteration !== existing) await store.writeJson(iteration.ref, iteration);
       return {
         action: "record-iteration",
@@ -138,7 +159,12 @@ export async function recordSelfEvolutionIteration(
     owner_surface: ownerSurface,
     proposed_slice: proposedSlice,
     ...(sourceRef ? { source_ref: sourceRef } : {}),
-    ...(args.implementationContract ? { implementation_contract: args.implementationContract } : {}),
+    ...(args.implementationContract
+      ? {
+          implementation_contract: args.implementationContract,
+          implementation_contract_sha256: implementationContractSha256(args.implementationContract)
+        }
+      : {}),
     evidence_refs: compact(args.evidenceRefs ?? []),
     verification_commands: compact(args.verificationCommands ?? [
       "pnpm run check",

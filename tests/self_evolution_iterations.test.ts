@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   getLatestSelfEvolutionIteration,
   getSelfEvolutionIteration,
+  implementationContractSha256,
   listSelfEvolutionIterations,
   recordSelfEvolutionIterationOutcome,
   recordSelfEvolutionIteration
@@ -49,6 +50,11 @@ test("self-evolution iteration contracts record layer declarations without execu
     assert.equal(recorded.iteration.proposed_slice, "self_evolution_iteration_contract");
     assert.equal(recorded.iteration.implementation_contract?.proposed_slice, "self_evolution_iteration_contract");
     assert.equal(recorded.iteration.implementation_contract?.selected_layer, "core_runtime");
+    assert.match(recorded.iteration.implementation_contract_sha256 ?? "", /^[a-f0-9]{64}$/);
+    assert.equal(
+      recorded.iteration.implementation_contract_sha256,
+      implementationContractSha256(recorded.iteration.implementation_contract!)
+    );
     assert.equal(recorded.iteration.implementation_contract?.deferred_scope.some((item) => item.includes("external adapter")), true);
     assert.deepEqual(recorded.iteration.advisory_expert_roles, ["architect", "verification_reviewer", "orchestration_planner"]);
     assert.equal(recorded.iteration.verification_commands.includes("pnpm run check"), true);
@@ -77,6 +83,7 @@ test("self-evolution iteration contracts record layer declarations without execu
     assert.equal(outcome.iteration.outcome?.verification_commands.includes("pnpm exec tsx --test tests/self_evolution_iterations.test.ts"), true);
     assert.equal(outcome.iteration.outcome?.verification_claims.includes("check: iteration outcome records persisted verification claim coverage"), true);
     assert.equal(outcome.iteration.outcome?.next_moves.includes("Use outcome records to guide the next scorecard slice."), true);
+    assert.equal(outcome.iteration.implementation_contract_sha256, recorded.iteration.implementation_contract_sha256);
     assert.match(outcome.boundary, /updates one existing local iteration record only/);
     assert.match(outcome.boundary, /does not run verification commands/);
 
@@ -208,6 +215,7 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(second.reused_existing, true);
     assert.equal(second.iteration.id, first.iteration.id);
     assert.equal(second.iteration.implementation_contract?.source_artifact_id, "ga_design_artifact_iteration_contract_seed");
+    assert.equal(second.iteration.implementation_contract_sha256, first.iteration.implementation_contract_sha256);
     assert.match(second.boundary, /reused existing open iteration/);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
 
@@ -226,6 +234,10 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(backfilled.iteration.implementation_contract?.intent, "Harden one bounded delegation contract without expanding delegated authority or completion ownership.");
     assert.equal(backfilled.iteration.implementation_contract?.delegation_contract, delegationContract);
     assert.deepEqual(backfilled.iteration.implementation_contract?.rollback_strategy, ["revert the single bounded implementation commit"]);
+    assert.equal(
+      backfilled.iteration.implementation_contract_sha256,
+      implementationContractSha256(backfilled.iteration.implementation_contract!)
+    );
     assert.match(backfilled.boundary, /persisted supplied implementation contract fields/);
 
     await recordSelfEvolutionIterationOutcome(store, {
