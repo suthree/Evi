@@ -5184,6 +5184,7 @@ test("live runner rejects extra delegate actions without calling the delegated m
     };
     const second = JSON.parse(await readFile(join(fixture.stateRoot, secondRef), "utf8")) as {
       ok: boolean;
+      summary: string;
       sequence: number;
       contract_status: string;
       dispatch_failure_kind: string;
@@ -5210,6 +5211,7 @@ test("live runner rejects extra delegate actions without calling the delegated m
     assert.equal(first.dispatch_failure_kind, "none");
     assert.equal(first.result_failure_kind, "none");
     assert.equal(second.ok, false);
+    assert.equal(second.summary, "Delegation rejected: per-round dispatch limit exceeded.");
     assert.equal(second.sequence, 2);
     assert.equal(second.contract_status, "failed");
     assert.equal(second.dispatch_failure_kind, "dispatch_limit_exceeded");
@@ -5258,6 +5260,7 @@ test("live runner rejects terminal delegation before submodel dispatch", async (
     const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
+      summary: string;
       model_invoked: boolean;
       contract_status: string;
       dispatch_failure_kind: string;
@@ -5276,6 +5279,7 @@ test("live runner rejects terminal delegation before submodel dispatch", async (
     assert.equal(model.sawRejectedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=terminal_completion_claim; result_failure_kind=terminal_completion_claim; ok=false\.$/);
     assert.equal(delegated.ok, false);
+    assert.equal(delegated.summary, "Delegation rejected: terminal completion claim.");
     assert.equal(delegated.model_invoked, false);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "terminal_completion_claim");
@@ -5305,7 +5309,8 @@ test("live runner rejects delegation beside a respond action before submodel dis
     const model = new TerminalDelegationThenBlockedModel(
       respondingDelegateCritiqueEnvelope,
       "terminal_response_action",
-      "must not share a model action envelope with respond"
+      "must not share a model action envelope with respond",
+      "Delegation rejected: terminal response action."
     );
     const runner = new LiveAgentRunner({
       repoRoot: fixture.repoRoot,
@@ -5320,6 +5325,7 @@ test("live runner rejects delegation beside a respond action before submodel dis
     const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
+      summary: string;
       model_invoked: boolean;
       dispatch_failure_kind: string;
       result_failure_kind: string;
@@ -5332,6 +5338,7 @@ test("live runner rejects delegation beside a respond action before submodel dis
     assert.equal(model.sawRejectedDelegationObservation, true);
     assert.match(String(delegatedEvent?.summary ?? ""), /model_invoked=false; contract_status=failed; dispatch_failure_kind=terminal_response_action; result_failure_kind=terminal_response_action; ok=false\.$/);
     assert.equal(delegated.ok, false);
+    assert.equal(delegated.summary, "Delegation rejected: terminal response action.");
     assert.equal(delegated.model_invoked, false);
     assert.equal(delegated.dispatch_failure_kind, "terminal_response_action");
     assert.equal(delegated.result_failure_kind, "terminal_response_action");
@@ -6826,6 +6833,7 @@ test("live runner rejects delegate task without explicit analysis intent", async
     const delegatedRef = (delegatedEvent?.artifact_refs as string[] | undefined)?.[0] ?? "";
     const delegated = JSON.parse(await readFile(join(fixture.stateRoot, delegatedRef), "utf8")) as {
       ok: boolean;
+      summary: string;
       contract_status: string;
       dispatch_failure_kind: string;
       result_failure_kind: string;
@@ -6844,6 +6852,8 @@ test("live runner rejects delegate task without explicit analysis intent", async
     assert.equal(model.delegationCalls, 0);
     assert.equal(model.sawFailedTaskObservation, true);
     assert.equal(delegated.ok, false);
+    assert.equal(delegated.summary, "Delegation rejected: input contract failed.");
+    assert.equal(delegated.summary.length <= DELEGATED_AGENT_SUMMARY_MAX_CHARS, true);
     assert.equal(delegated.contract_status, "failed");
     assert.equal(delegated.dispatch_failure_kind, "input_contract_failed");
     assert.equal(delegated.result_failure_kind, "input_contract_failed");
@@ -8773,6 +8783,7 @@ class MultiDelegationThenDoneModel implements ModelClient {
       this.sawDelegateLimitObservation = delegatedSection.includes('"contract_status": "failed"')
         && delegatedSection.includes('"dispatch_failure_kind": "dispatch_limit_exceeded"')
         && delegatedSection.includes('"result_failure_kind": "dispatch_limit_exceeded"')
+        && delegatedSection.includes('"summary": "Delegation rejected: per-round dispatch limit exceeded."')
         && delegatedSection.includes("delegate_agent supports at most 1 action per model round")
         && delegatedSection.includes("The first delegated critique completed within the one-per-round boundary.")
         && !delegatedSection.includes("Run a second critique in the same model round.");
@@ -8789,7 +8800,8 @@ class TerminalDelegationThenBlockedModel implements ModelClient {
   constructor(
     private readonly firstEnvelope: () => Record<string, unknown> = terminalDelegateCritiqueEnvelope,
     private readonly expectedFailureKind = "terminal_completion_claim",
-    private readonly expectedBoundaryText = "completion_claim.status=not_done"
+    private readonly expectedBoundaryText = "completion_claim.status=not_done",
+    private readonly expectedSummary = "Delegation rejected: terminal completion claim."
   ) {}
 
   async create(request: ModelRequest): Promise<ModelResponse> {
@@ -8818,6 +8830,7 @@ class TerminalDelegationThenBlockedModel implements ModelClient {
       this.sawRejectedDelegationObservation = delegatedSection.includes('"model_invoked": false')
         && delegatedSection.includes(`"dispatch_failure_kind": "${this.expectedFailureKind}"`)
         && delegatedSection.includes(`"result_failure_kind": "${this.expectedFailureKind}"`)
+        && delegatedSection.includes(`"summary": "${this.expectedSummary}"`)
         && delegatedSection.includes(this.expectedBoundaryText)
         && !delegatedSection.includes("This delegated response should not be requested.");
       return blockedEnvelope();
@@ -9696,6 +9709,7 @@ class TaskAuthorityViolationThenDoneModel implements ModelClient {
       this.sawFailedTaskObservation = delegatedSection.includes('"contract_status": "failed"')
         && delegatedSection.includes('"dispatch_failure_kind": "input_contract_failed"')
         && delegatedSection.includes('"result_failure_kind": "input_contract_failed"')
+        && delegatedSection.includes('"summary": "Delegation rejected: input contract failed."')
         && delegatedSection.includes(this.expectedError)
         && !delegatedSection.includes(this.forbiddenInput);
     }

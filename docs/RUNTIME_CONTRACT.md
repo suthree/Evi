@@ -1504,6 +1504,11 @@ and delegated model request failures record `delegated_model_request_failed`.
 The sanitized observation fed back to the main harness preserves the bounded
 typed result summary instead of rewriting every failure as contract validation;
 raw task, context, output text, preview, and artifact bodies remain excluded.
+Pre-dispatch rejects use fixed bounded summaries for
+`dispatch_limit_exceeded`, `input_contract_failed`,
+`terminal_completion_claim`, and `terminal_response_action`; detailed
+validation text remains separate in the sanitized error field and cannot make
+the summary exceed its limit or misstate the typed failure kind.
 Passed delegated results record `result_failure_kind=none`; persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. New runner result and observation records reject contradictory

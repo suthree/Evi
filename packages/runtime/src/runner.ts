@@ -1430,7 +1430,7 @@ export class LiveAgentRunner {
     return delegatedResultSchema.parse({
       id: newId("delegated_result"),
       ok: false,
-      summary: `Delegated task failed input contract: ${error}`,
+      summary: delegatedRejectionSummary(dispatchFailureKind),
       action_id: action.id,
       round,
       sequence,
@@ -1563,6 +1563,19 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     boundary: result.boundary,
     observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
   });
+}
+
+function delegatedRejectionSummary(failureKind: DelegatedDispatchFailureKind): string {
+  switch (failureKind) {
+    case "dispatch_limit_exceeded":
+      return "Delegation rejected: per-round dispatch limit exceeded.";
+    case "input_contract_failed":
+      return "Delegation rejected: input contract failed.";
+    case "terminal_completion_claim":
+      return "Delegation rejected: terminal completion claim.";
+    case "terminal_response_action":
+      return "Delegation rejected: terminal response action.";
+  }
 }
 
 function delegatedObservationErrorForModelInput(error: string | null): string | null {
