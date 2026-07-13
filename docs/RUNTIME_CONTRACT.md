@@ -1516,7 +1516,10 @@ Passed delegated results record `result_failure_kind=none`; persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. New runner result and observation records reject contradictory
 `ok`, `contract_status`, `model_invoked`, and failure-kind tuples at the schema
-boundary; replay remains able to warn on malformed historical event metadata.
+boundary. The same schemas reuse the shared output contract and reject blank or
+over-limit summaries and over-limit non-null findings before persistence or
+main-model observation; replay remains able to warn on malformed historical
+event metadata.
 Replay audit treats the pair as a semantic contract too:
 dispatch-layer result failures must mirror `dispatch_failure_kind`, delegated
 output/model failures must keep `dispatch_failure_kind=none`, and passed

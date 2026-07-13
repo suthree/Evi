@@ -97,14 +97,17 @@ export const DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND = delegateAgentActionContract.
 export const DELEGATED_AGENT_SUMMARY_MAX_CHARS = delegateAgentActionContract.summary_max_chars;
 export const DELEGATED_AGENT_FINDINGS_MAX_CHARS = delegateAgentActionContract.findings_max_chars;
 
+const delegatedSummarySchema = z.string().trim().min(1).max(DELEGATED_AGENT_SUMMARY_MAX_CHARS);
+const delegatedFindingsTextSchema = z.string().trim().min(1).max(DELEGATED_AGENT_FINDINGS_MAX_CHARS);
+
 export const delegateAgentPayloadSchema = z.object({
   task: z.string().trim().min(1).max(DELEGATE_AGENT_TASK_MAX_CHARS),
   context: z.string().trim().min(1).max(DELEGATE_AGENT_CONTEXT_MAX_CHARS)
 }).strict();
 
 export const delegatedAgentOutputSchema = z.object({
-  summary: z.string().trim().min(1).max(DELEGATED_AGENT_SUMMARY_MAX_CHARS),
-  findings_text: z.string().trim().min(1).max(DELEGATED_AGENT_FINDINGS_MAX_CHARS)
+  summary: delegatedSummarySchema,
+  findings_text: delegatedFindingsTextSchema
 }).strict();
 
 export const delegatedDispatchFailureKindSchema = z.enum(delegateAgentDispatchFailureKindValues);
@@ -163,7 +166,7 @@ function validateDelegatedOutcomeIntegrity(value: DelegatedOutcomeIntegrity, ctx
 export const delegatedResultSchema = z.object({
   id: z.string(),
   ok: z.boolean(),
-  summary: z.string(),
+  summary: delegatedSummarySchema,
   action_id: z.string(),
   round: z.number().int().positive(),
   sequence: z.number().int().positive(),
@@ -175,7 +178,7 @@ export const delegatedResultSchema = z.object({
   contract_status: z.enum(["passed", "failed"]),
   dispatch_failure_kind: delegatedDispatchKindSchema,
   result_failure_kind: delegatedResultKindSchema,
-  findings_text: z.string().nullable(),
+  findings_text: delegatedFindingsTextSchema.nullable(),
   output_text: z.string(),
   raw_output_preview: z.string(),
   error: z.string().nullable(),
@@ -195,8 +198,8 @@ export const delegatedObservationSchema = z.object({
   task_chars: z.number().int().nonnegative(),
   context_chars: z.number().int().nonnegative(),
   model_invoked: z.boolean(),
-  summary: z.string(),
-  findings_text: z.string().nullable(),
+  summary: delegatedSummarySchema,
+  findings_text: delegatedFindingsTextSchema.nullable(),
   error: z.string().nullable(),
   recovery_hint: z.string().nullable(),
   trust_boundary: z.literal("untrusted_advisory_data"),

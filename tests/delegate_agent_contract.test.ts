@@ -14,6 +14,8 @@ import {
   parseDelegationRequest
 } from "../packages/core/src/delegate_agent_contract.js";
 import {
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   delegatedObservationSchema,
   delegatedResultSchema
 } from "../packages/core/src/schemas.js";
@@ -51,6 +53,28 @@ const VALID_DELEGATED_RESULT = {
   created_at: "2026-07-12T00:00:00Z"
 };
 
+const VALID_DELEGATED_OBSERVATION = {
+  id: VALID_DELEGATED_RESULT.id,
+  action_id: VALID_DELEGATED_RESULT.action_id,
+  round: VALID_DELEGATED_RESULT.round,
+  sequence: VALID_DELEGATED_RESULT.sequence,
+  ok: true,
+  contract_status: "passed" as const,
+  dispatch_failure_kind: "none" as const,
+  result_failure_kind: "none" as const,
+  task_chars: VALID_DELEGATED_RESULT.task_chars,
+  context_chars: VALID_DELEGATED_RESULT.context_chars,
+  model_invoked: true,
+  summary: VALID_DELEGATED_RESULT.summary,
+  findings_text: VALID_DELEGATED_RESULT.findings_text,
+  error: null,
+  recovery_hint: null,
+  trust_boundary: "untrusted_advisory_data" as const,
+  proof_boundary: "advisory_only",
+  boundary: "bounded test observation",
+  observation_boundary: "sanitized test observation"
+};
+
 test("delegated result and observation schemas reject inconsistent failure tuples", () => {
   assert.equal(delegatedResultSchema.safeParse(VALID_DELEGATED_RESULT).success, true);
   assert.equal(delegatedResultSchema.safeParse({
@@ -77,26 +101,18 @@ test("delegated result and observation schemas reject inconsistent failure tuple
     error: "terminal response boundary"
   }).success, true);
   assert.equal(delegatedObservationSchema.safeParse({
-    id: VALID_DELEGATED_RESULT.id,
-    action_id: VALID_DELEGATED_RESULT.action_id,
-    round: VALID_DELEGATED_RESULT.round,
-    sequence: VALID_DELEGATED_RESULT.sequence,
-    ok: true,
-    contract_status: "passed",
-    dispatch_failure_kind: "none",
+    ...VALID_DELEGATED_OBSERVATION,
     result_failure_kind: "delegated_output_contract_failed",
-    task_chars: VALID_DELEGATED_RESULT.task_chars,
-    context_chars: VALID_DELEGATED_RESULT.context_chars,
-    model_invoked: true,
-    summary: VALID_DELEGATED_RESULT.summary,
-    findings_text: VALID_DELEGATED_RESULT.findings_text,
-    error: null,
-    recovery_hint: null,
-    trust_boundary: "untrusted_advisory_data",
-    proof_boundary: "advisory_only",
-    boundary: "bounded test observation",
-    observation_boundary: "sanitized test observation"
   }).success, false);
+});
+
+test("delegated result and observation schemas enforce shared output bounds", () => {
+  assert.equal(delegatedResultSchema.safeParse({ ...VALID_DELEGATED_RESULT, summary: " " }).success, false);
+  assert.equal(delegatedResultSchema.safeParse({ ...VALID_DELEGATED_RESULT, summary: "s".repeat(DELEGATED_AGENT_SUMMARY_MAX_CHARS + 1) }).success, false);
+  assert.equal(delegatedResultSchema.safeParse({ ...VALID_DELEGATED_RESULT, findings_text: "f".repeat(DELEGATED_AGENT_FINDINGS_MAX_CHARS + 1) }).success, false);
+  assert.equal(delegatedObservationSchema.safeParse({ ...VALID_DELEGATED_OBSERVATION, summary: " " }).success, false);
+  assert.equal(delegatedObservationSchema.safeParse({ ...VALID_DELEGATED_OBSERVATION, summary: "s".repeat(DELEGATED_AGENT_SUMMARY_MAX_CHARS + 1) }).success, false);
+  assert.equal(delegatedObservationSchema.safeParse({ ...VALID_DELEGATED_OBSERVATION, findings_text: "f".repeat(DELEGATED_AGENT_FINDINGS_MAX_CHARS + 1) }).success, false);
 });
 
 test("delegate_agent subagent instructions constrain source boundary", () => {
