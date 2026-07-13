@@ -714,6 +714,7 @@ export async function getGaProjectDesignReadModel(
     artifact_policy: [
       "only verified self-evolution iteration outcomes with outcome evidence refs and verification commands become project-design artifacts",
       "verified source quality uses outcome-recorded verification commands; iteration-declared commands remain inspection metadata only",
+      "required entrypoint command identities must begin with the canonical pnpm invocation; embedded command phrases do not count",
       "fingerprinted implementation contracts must match their persisted SHA-256 before becoming reusable artifacts; legacy records without fingerprints remain readable",
       "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
       "artifacts are reusable design memory for future GA slices, not completion proof",
@@ -1984,18 +1985,22 @@ function verificationCommandCoversEntrypoint(command: string, entrypoint: string
   const normalizedCommand = command.trim().toLowerCase().replace(/\s+/g, " ");
   switch (entrypoint.trim().toLowerCase()) {
     case "project-design":
-      return /(?:^| )governance project-design(?: |$)/.test(normalizedCommand);
+      return commandStartsWithInvocation(normalizedCommand, "pnpm run runtime -- governance project-design");
     case "scorecard":
-      return /(?:^| )governance scorecard(?: |$)/.test(normalizedCommand);
+      return commandStartsWithInvocation(normalizedCommand, "pnpm run runtime -- governance scorecard");
     case "iterations":
-      return /(?:^| )governance iterations(?: |$)/.test(normalizedCommand);
+      return commandStartsWithInvocation(normalizedCommand, "pnpm run runtime -- governance iterations");
     case "service-health":
-      return /(?:^| )service health(?: |$)/.test(normalizedCommand);
+      return commandStartsWithInvocation(normalizedCommand, "pnpm run runtime -- service health");
     case "check":
-      return normalizedCommand === "pnpm run check" || normalizedCommand.startsWith("pnpm run check ");
+      return commandStartsWithInvocation(normalizedCommand, "pnpm run check");
     default:
       return false;
   }
+}
+
+function commandStartsWithInvocation(command: string, invocation: string): boolean {
+  return command === invocation || command.startsWith(`${invocation} `);
 }
 
 function verificationClaimBodyForEntrypoint(claim: string, entrypoint: string): string | undefined {

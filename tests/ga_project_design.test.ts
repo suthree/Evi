@@ -1028,6 +1028,29 @@ test("GA project design plan requires a source contract and complete verificatio
       "pnpm run check"
     ]);
 
+    const masqueradingVerificationCommands = [
+      "echo governance project-design",
+      "echo governance scorecard",
+      "echo governance iterations",
+      "echo service health",
+      "pnpm run check"
+    ];
+    await store.writeJson(iteration.ref, {
+      ...iteration,
+      outcome: {
+        ...iteration.outcome!,
+        verification_commands: masqueradingVerificationCommands,
+        verification_claims: completeVerificationClaims
+      }
+    });
+
+    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "needs_attention");
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=project-design"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=scorecard"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=iterations"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=service-health"), true);
+
     await store.writeJson(iteration.ref, {
       ...iteration,
       outcome: {

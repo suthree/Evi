@@ -935,7 +935,11 @@ Required policy:
   entrypoints, the source artifact's bounded outcome-recorded
   verification-command identities must cover each entrypoint. Iteration-level
   declared commands remain inspectable but cannot satisfy this quality gate. A
-  missing mapping emits
+  command identity must begin with the canonical `pnpm run runtime --
+  governance ...`, `pnpm run runtime -- service health`, or `pnpm run check`
+  invocation for its entrypoint; embedded phrases such as `echo governance
+  project-design` do not count. This intentionally is not a general shell
+  parser and does not accept prefixed wrappers. A missing mapping emits
   `source_artifact_warning=missing_verification_command; entrypoint=<id>` and
   keeps the successor at `needs_attention`. This is structural command
   coverage only; it does not execute a command or prove its result
