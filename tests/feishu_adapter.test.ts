@@ -38,6 +38,11 @@ import {
 const TEST_FEISHU_APP_ID_ENV = "AGENT_TEST_FEISHU_APP_ID";
 const TEST_FEISHU_APP_SECRET_ENV = "AGENT_TEST_FEISHU_APP_SECRET";
 
+test("Feishu transport leaves the SDK pong watchdog at its native default", async () => {
+  const source = await readFile(new URL("../packages/runtime/src/channels/feishu/client.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /pingTimeout/);
+});
+
 test("normalizes private Feishu text messages and rejects group messages", () => {
   assert.equal(parseFeishuTextContent(JSON.stringify({ text: "hello" })), "hello");
   assert.equal(parseFeishuTextContent("plain"), "plain");

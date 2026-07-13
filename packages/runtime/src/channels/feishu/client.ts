@@ -42,10 +42,7 @@ export class LarkSdkFeishuTransport implements FeishuTransport {
       appSecret: this.config.appSecret,
       domain: resolveLarkDomain(this.config.domain),
       loggerLevel: Lark.LoggerLevel.info,
-      source: "local-agent-feishu",
-      wsConfig: {
-        pingTimeout: 3
-      }
+      source: "local-agent-feishu"
     });
     await this.wsClient.start({ eventDispatcher: dispatcher });
   }
