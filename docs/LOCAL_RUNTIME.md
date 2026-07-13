@@ -1539,9 +1539,13 @@ daemon startup, the daemon writes an `error` heartbeat with the failed
 MessageGateway channel before exiting.
 For Feishu, channel health also carries a privacy-safe `inbound` summary:
 `state=observed|not_observed` and, after an accepted message, its
-`last_accepted_at` timestamp. Transport `inbound=connected` only proves the
-WebSocket connection; it does not prove that an operator message reached the
-local adapter.
+`last_accepted_at` timestamp. Its optional structured `connection_state` keeps
+`idle|connecting|connected|reconnecting|failed` separate from this accepted-
+message liveness. A running channel in `idle`, `connecting`, or `reconnecting`
+makes service health report `gateway_inbound_not_ready` attention; `failed`
+continues to report `gateway_error`. Missing legacy fields are not inferred
+from `detail`. Transport `connected` only proves the WebSocket connection; it
+does not prove that an operator message reached the local adapter.
 
 Channel messages normalize into a provider-neutral source envelope before they
 touch runtime sessions. The envelope records the channel kind, configured

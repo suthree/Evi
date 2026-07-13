@@ -36,6 +36,7 @@ export type ServiceOperatorNotificationState = "empty" | "queued" | "settled";
 
 export interface ServiceGatewayInboundSummary {
   state: "observed" | "not_observed";
+  connection_state?: "idle" | "connecting" | "connected" | "reconnecting" | "failed";
   last_accepted_at?: string;
 }
 
@@ -729,11 +730,25 @@ function serviceGatewayInboundSummary(record: Record<string, unknown> | null): S
   if (!record) return undefined;
   const state = stringField(record, "state");
   if (state !== "observed" && state !== "not_observed") return undefined;
+  const connectionState = serviceGatewayInboundConnectionState(stringField(record, "connection_state"));
   const lastAcceptedAt = stringField(record, "last_accepted_at");
   return {
     state,
+    ...(connectionState ? { connection_state: connectionState } : {}),
     ...(lastAcceptedAt ? { last_accepted_at: lastAcceptedAt } : {})
   };
+}
+
+function serviceGatewayInboundConnectionState(
+  value: string | null
+): ServiceGatewayInboundSummary["connection_state"] | undefined {
+  return value === "idle"
+    || value === "connecting"
+    || value === "connected"
+    || value === "reconnecting"
+    || value === "failed"
+    ? value
+    : undefined;
 }
 
 function serviceGatewayState(value: string | null): ServiceGatewayState | null {
@@ -781,6 +796,11 @@ function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
     result.service.gateway?.state === "error" || result.service.gateway?.channels.some((channel) => channel.state === "error")
       ? "gateway_error"
       : undefined,
+    result.service.gateway?.channels.some((channel) => {
+      const connectionState = channel.inbound?.connection_state;
+      return channel.state === "running"
+        && (connectionState === "idle" || connectionState === "connecting" || connectionState === "reconnecting");
+    }) ? "gateway_inbound_not_ready" : undefined,
     result.state_parse_errors.length > 0 ? "state_parse_error" : undefined,
     result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
   ]);
@@ -835,6 +855,13 @@ function serviceHealthAttentionFollowup(
     return {
       reason_code: reason,
       summary: "a message gateway channel reported an error; inspect the bounded channel health and repair its configured inbound transport before treating IM as reachable",
+      command: `pnpm run runtime -- service health --target ${result.target}`
+    };
+  }
+  if (reason === "gateway_inbound_not_ready") {
+    return {
+      reason_code: reason,
+      summary: "a running message gateway channel has not established its inbound transport; wait for connection readiness or inspect bounded channel health before treating IM as reachable",
       command: `pnpm run runtime -- service health --target ${result.target}`
     };
   }

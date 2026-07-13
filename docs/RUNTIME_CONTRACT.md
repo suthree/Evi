@@ -262,9 +262,12 @@ The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` renders the
 heartbeat-carried gateway summary, but it must not read provider logs, provider
 secrets, or provider SDK state. The Feishu adapter may project its non-sensitive
-inbound connection lifecycle into that heartbeat; a `failed` lifecycle makes the
-channel `error`, while `connecting`, `connected`, and `reconnecting` remain
-running. If an adapter fails during daemon startup, the daemon must write an
+inbound connection lifecycle into the structured `inbound.connection_state`
+field. A `failed` lifecycle makes the channel `error`; `idle`, `connecting`, and
+`reconnecting` keep the process running but make bounded service health report
+`gateway_inbound_not_ready` attention until the field becomes `connected`.
+Legacy channel health without the optional field is not inferred from display
+text. If an adapter fails during daemon startup, the daemon must write an
 `error` heartbeat with the failed MessageGateway channel before the foreground
 process or resident service exits.
 

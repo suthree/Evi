@@ -3,9 +3,11 @@ import type { RuntimeChannelKind } from "../../core/src/runtime_channel_messages
 export type { RuntimeChannelKind } from "../../core/src/runtime_channel_messages.js";
 export type RuntimeChannelState = "running" | "stopped" | "error";
 export type RuntimeChannelInboundState = "observed" | "not_observed";
+export type RuntimeChannelInboundConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "failed";
 
 export interface RuntimeChannelInboundHealth {
   state: RuntimeChannelInboundState;
+  connection_state?: RuntimeChannelInboundConnectionState;
   last_accepted_at?: string;
 }
 

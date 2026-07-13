@@ -222,6 +222,59 @@ test("service health flags a failed message gateway channel for operator attenti
   }
 });
 
+test("service health keeps non-ready inbound transports visible as runtime attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
+    for (const connectionState of ["idle", "connecting", "reconnecting"] as const) {
+      await store.writeJson("services/runtime/heartbeat.json", {
+        service: "runtime",
+        state: "running",
+        pid: 1234,
+        channel_id: "feishu-main",
+        scenario_id: "im-default",
+        updated_at: "2026-06-30T00:00:30.000Z",
+        gateway: {
+          state: "running",
+          channels: [{
+            kind: "feishu",
+            channel_id: "feishu-main",
+            state: "running",
+            detail: `feishu:feishu-main; inbound=${connectionState}`,
+            inbound: {
+              state: "not_observed",
+              connection_state: connectionState
+            }
+          }]
+        },
+        runtime_build: {
+          source_commit: "abcdef0123456789abcdef0123456789abcdef01",
+          source_commit_short: "abcdef012345",
+          source_branch: "develop",
+          source_is_dirty: false
+        }
+      });
+
+      const health = await getServiceHealth(store, {
+        now: "2026-06-30T00:01:00.000Z"
+      });
+
+      assert.equal(health.status, "attention");
+      assert.equal(health.service.gateway?.channels[0]?.inbound?.connection_state, connectionState);
+      assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["gateway_inbound_not_ready"]);
+      assert.deepEqual(health.status_reasons, ["gateway_inbound_not_ready"]);
+      assert.deepEqual(health.attention_followups, [{
+        reason_code: "gateway_inbound_not_ready",
+        summary: "a running message gateway channel has not established its inbound transport; wait for connection readiness or inspect bounded channel health before treating IM as reachable",
+        command: "pnpm run runtime -- service health --target runtime"
+      }]);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service health summarizes a bounded notification outbox without leaking delivery payloads", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

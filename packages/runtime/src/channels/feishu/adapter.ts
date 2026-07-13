@@ -321,6 +321,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       ].join("; "),
       inbound: {
         state: this.lastAcceptedInboundAt ? "observed" : "not_observed",
+        ...(inboundState ? { connection_state: inboundState } : {}),
         ...(this.lastAcceptedInboundAt ? { last_accepted_at: this.lastAcceptedInboundAt } : {})
       }
     };

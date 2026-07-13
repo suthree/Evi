@@ -166,6 +166,14 @@ Telegram 和 Discord 都能启动。config loader
 只解析 provider-neutral scenario；是否可启动和具体 Adapter 创建由
 `im_adapters.ts` 负责。
 
+Feishu channel health 会把无敏感信息的入站连接态写入结构化
+`inbound.connection_state`，与“是否真的接收过 operator 消息”的
+`observed|not_observed` 分开。进程虽在运行但连接仍为 `idle`、`connecting`
+或 `reconnecting` 时，`service health` 会返回
+`gateway_inbound_not_ready` attention；`connected` 才视为连接就绪，
+`failed` 仍归入 `gateway_error`。旧 heartbeat 缺少该字段时不会解析
+`detail` 文本猜测状态。
+
 IM 消息进入 runtime session 前会先变成统一 source envelope：channel kind、
 channel id、conversation type/id、thread id、actor id 和 profile。session
 route key、inbox 和 task run 都从这个结构派生，避免把 Feishu `chat_id`

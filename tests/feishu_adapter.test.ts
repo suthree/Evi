@@ -98,7 +98,8 @@ test("Feishu adapter exposes a failed inbound connection without SDK details", a
       state: "error",
       detail: "feishu:feishu-test; inbound=failed; reconnect_attempts=2",
       inbound: {
-        state: "not_observed"
+        state: "not_observed",
+        connection_state: "failed"
       }
     });
     await adapter.stop();
@@ -122,6 +123,10 @@ test("Feishu adapter keeps a connecting inbound connection running", async () =>
     await adapter.start();
     assert.equal(adapter.health().state, "running");
     assert.equal(adapter.health().detail, "feishu:feishu-test; inbound=connecting");
+    assert.deepEqual(adapter.health().inbound, {
+      state: "not_observed",
+      connection_state: "connecting"
+    });
     await adapter.stop();
   } finally {
     await fixture.cleanup();
