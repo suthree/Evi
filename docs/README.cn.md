@@ -44,7 +44,7 @@
 
 参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
 
-`governance project-design` 派生的 verified artifact 最多保留 outcome 的 10 条 `verification_claims`；在该上限内会先保留 source implementation contract 每个必需 entrypoint 的首条 claim，再用其余 claims 填充，避免排在后面的必需映射被同一 entrypoint 的重复声明挤掉。successor `source_continuation` 会继续暴露这些命令到完成声明的映射与数量；历史 outcome 没有 claims 时仍可读取，但会显示 thin-claims attention，不做状态迁移。
+`governance project-design` 派生的 verified artifact 最多保留 outcome 的 10 条 `verification_claims`；在该上限内会先保留 source implementation contract 每个必需 entrypoint 的首条 claim，再用其余 claims 填充，避免排在后面的必需映射被同一 entrypoint 的重复声明挤掉。successor `source_continuation` 会继续暴露这些命令到完成声明的映射与数量；历史 outcome 没有 claims 或缺少 source implementation contract 要求的任一 claim 映射时仍可读取、不做状态迁移，但 successor plan 会保持 `needs_attention`。
 
 ## 核心能力
 
@@ -276,7 +276,7 @@ plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_comman
 避免计划视图和实际记录 iteration 的验证范围漂移；
 `selection_checks` 会带上 source artifact 的 evidence refs 和 verification commands 数量，
 避免只看 `verified` 标签而忽略证据厚度；当数量过薄时会出现有界
-`source_artifact_warning`，它只是 plan 质量提示，不会执行验证或单独阻塞计划；
+`source_artifact_warning`；它不会执行验证或成为 iteration completion gate，但会让 successor plan 保持 `needs_attention`；
 同一组检查也会显示 `source_artifact_warning_thresholds`，避免调阈值时必须读源码；
 compact GA Project Design Plan context 会按稳定 check 前缀优先级保留这条阈值 check，而不是依赖数组位置；
 也会独立显示 `fresh_successor_slice`，让重复已完成 slice 的风险在 handoff 时可见；
@@ -285,7 +285,7 @@ compact GA Project Design Plan context 会按稳定 check 前缀优先级保留�
 `source_artifact_quality=ok|attention` 摘要 source 类型与 warning，
 compact context 也会按稳定 reason 前缀优先级保留 `source_kind`、`source_status`
 和 `source_artifact_quality`；
-但不会把 advisory warning 直接升级成 completion gate；
+source quality attention 只阻止 plan 伪装成 ready，不迁移历史 artifact，也不会升级成 completion gate；
 `source_truth` 会把 source kind、source artifact、source iteration ref、已完成 source slice、目标 successor slice、source status/quality 和 fresh successor 标记合成一行，方便下一轮 handoff 不靠记忆拼证据；它本身不是完成证明；
 `source_continuation` 会把 source kind、artifact 身份、source status、source iteration ref、source layer/owner、已完成 source slice、source implementation contract、候选 next moves 数量、一个候选方向和主 `next_use` 保留成可单独定位来源的只读 handoff；它只保留来源方向，不执行下一步，也不证明完成；
 compact context 的同名行也保留这些来源身份和 source contract 冻结的 verification entrypoints；历史 contract 缺失该字段时明确显示 `not_recorded`，不再要求消费者跨读 `source_truth` 或猜测 source 验证范围；它仍只是来源方向，不是完成证明；

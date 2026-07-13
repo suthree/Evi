@@ -748,12 +748,9 @@ function buildNextCoreBasicPlan(
   const isTargetLayerReady = isCoreBasicLayer(target.layer);
   const isOpenIterationContractReady = iterationRecordStatus.status !== "open_iteration_available"
     || iterationRecordStatus.implementation_contract_status === "aligned";
-  const selectionStatus = isFreshSuccessor
-    && isTargetLayerReady
-    && isOpenIterationContractReady
-    && scorecardTargetStatus !== "unrecognized"
-    ? "ready"
-    : "needs_attention";
+  const missingSourceVerificationClaims = source.implementation_contract?.required_verification_entrypoints?.filter(
+    (entrypoint) => !source.verification_claims.some((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
+  ) ?? [];
   const sourceArtifactWarnings = [
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
       ? [`source_artifact_warning=thin_evidence_refs; minimum=${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; actual=${source.evidence_refs.length}`]
@@ -763,9 +760,19 @@ function buildNextCoreBasicPlan(
       : []),
     ...(source.kind === "verified_artifact" && source.verification_claims.length < MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS
       ? [`source_artifact_warning=thin_verification_claims; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS}; actual=${source.verification_claims.length}`]
-      : [])
+      : []),
+    ...missingSourceVerificationClaims.map((entrypoint) =>
+      `source_artifact_warning=missing_verification_claim; entrypoint=${entrypoint}`
+    )
   ];
   const sourceArtifactQuality = sourceArtifactWarnings.length ? "attention" : "ok";
+  const selectionStatus = isFreshSuccessor
+    && isTargetLayerReady
+    && isOpenIterationContractReady
+    && sourceArtifactQuality === "ok"
+    && scorecardTargetStatus !== "unrecognized"
+    ? "ready"
+    : "needs_attention";
   const selectionReasons = [
     `source_kind=${source.kind}`,
     `source_status=${source.source_status}`,

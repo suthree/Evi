@@ -681,7 +681,9 @@ claims fill the available slots, so a late required mapping cannot disappear
 behind repeated claims for one entrypoint. Successor planning can therefore
 inspect which entrypoint claim each recorded command supported. Historical
 outcomes without claims remain readable and surface a thin-claims attention
-reason instead of being migrated.
+reason instead of being migrated. A source artifact that lacks any claim mapping
+required by its implementation contract also remains readable, but its
+successor plan stays `needs_attention` until a fully covered source is selected.
 
 When a verified source iteration carries an implementation-contract SHA-256,
 artifact derivation recomputes it before admitting the iteration as reusable
@@ -754,7 +756,9 @@ Core/basic plan verification commands must include bounded resident service
 health, so basic runtime state stays visible before a core design outcome is
 claimed.
 `selection_status` and `selection_reasons` summarize the same planning readiness
-for context handoff. An unknown non-empty scorecard target is retained as
+for context handoff. Any bounded source-artifact quality warning forces
+`needs_attention` while leaving the artifact readable; an unknown non-empty
+scorecard target is retained as
 `scorecard_target_status=unrecognized` and forces `needs_attention`; the
 fallback target is diagnostic only, not an executable-ready plan. These fields
 are planning quality hints, not completion proof.
@@ -960,7 +964,8 @@ Required policy:
   plan readiness only; they must not claim execution or completion
 - `next_core_basic_plan.selection_reasons` must include
   `source_artifact_quality=ok|attention` derived from source artifact warnings,
-  without turning advisory warnings into completion gates
+  and source quality attention must force plan `needs_attention` without
+  becoming an iteration completion gate or migrating the source artifact
 - The compact GA Project Design Plan context must preserve `source_kind`,
   `source_status`, and `source_artifact_quality` using stable reason-prefix
   priority rather than raw array position

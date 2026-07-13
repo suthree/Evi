@@ -455,7 +455,7 @@ test("GA project design read model derives reusable artifacts from verified iter
         "scorecard_command=pnpm run runtime -- governance scorecard --state-root <state-root>"
       ]
     );
-    assert.equal(readModel.next_core_basic_plan?.selection_status, "ready");
+    assert.equal(readModel.next_core_basic_plan?.selection_status, "needs_attention");
     assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("source_status=verified"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("fresh_successor_slice=true"), true);
@@ -474,7 +474,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.layer_decision.core_identity, "recurring_ga_project_design");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.selected_layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.source_layer, "core_runtime");
-    assert.equal(readModel.next_core_basic_plan?.layer_decision.stage, "core_basic_successor_ready");
+    assert.equal(readModel.next_core_basic_plan?.layer_decision.stage, "needs_attention");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
@@ -936,6 +936,79 @@ test("GA project design read model derives reusable artifacts from verified iter
   }
 });
 
+test("GA project design plan requires complete source verification claim mappings", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-source-claims-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    const iteration: SelfEvolutionIterationContract = {
+      schema_version: 1,
+      id: "iteration_contract_source_claims",
+      ref: "self-evolution/iterations/iteration_contract_source_claims.json",
+      kind: "self_evolution_iteration_contract",
+      status: "recorded",
+      summary: "Verify source claim mappings before successor reuse.",
+      layer: "core_runtime",
+      owner_surface: "ga_project_design",
+      proposed_slice: "source_claim_mapping_gate",
+      implementation_contract: {
+        proposed_slice: "source_claim_mapping_gate",
+        source_artifact_id: "ga_design_artifact_source",
+        source_proposed_slice: "source_slice",
+        selected_layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        improvement_type: "reusable_ga_design_contract",
+        required_verification_entrypoints: ["project-design", "check"],
+        implementation_scope: ["gate successor readiness on source claim mappings"],
+        deferred_scope: ["no iteration completion gate changes"],
+        delivery_standard: ["required source claim mappings are visible before reuse"],
+        boundary: "bounded test implementation contract"
+      },
+      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      non_goals: ["no state migration"],
+      advisory_expert_roles: ["architect", "verification_reviewer"],
+      outcome: {
+        status: "verified",
+        summary: "Source claim mapping outcome.",
+        evidence_refs: ["tests/ga_project_design.test.ts"],
+        verification_commands: ["pnpm run check"],
+        verification_claims: ["check: full checks pass"],
+        next_moves: ["Use this source for one bounded core/basic successor."],
+        recorded_at: "2026-07-06T00:00:03Z",
+        boundary: "bounded outcome record"
+      },
+      created_at: "2026-07-06T00:00:03Z",
+      boundary: "bounded iteration contract"
+    };
+    await store.writeJson(iteration.ref, iteration);
+
+    let plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "needs_attention");
+    assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_claim; entrypoint=project-design"), true);
+    assert.equal(plan?.layer_decision.stage, "needs_attention");
+
+    await store.writeJson(iteration.ref, {
+      ...iteration,
+      outcome: {
+        ...iteration.outcome!,
+        verification_claims: [
+          "project-design: source claim mapping is covered",
+          "check: full checks pass"
+        ]
+      }
+    });
+
+    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "ready");
+    assert.equal(plan?.selection_reasons.includes("source_artifact_quality=ok"), true);
+    assert.equal(plan?.selection_checks.some((check) => check.includes("missing_verification_claim")), false);
+    assert.equal(plan?.layer_decision.stage, "core_basic_successor_ready");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("GA project design artifact_count reports total artifacts despite response limit", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-counts-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
@@ -1211,7 +1284,8 @@ test("GA project design planning packet surfaces matching open iteration", async
         status: "verified",
         summary: "Verified source outcome.",
         evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+        verification_commands: ["pnpm run check"],
+        verification_claims: ["check: full source checks pass"],
         next_moves: ["Use this artifact when planning the next GA design slice; treat iteration_contract_stale_open_successor and iteration_contract_stale_open_basic_successor as separate governance cleanup."],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
