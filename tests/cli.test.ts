@@ -806,6 +806,14 @@ test("iteration audit uses local refs for unrelated manual iterations with contr
   ]);
   const coverage = buildIterationAuditPlanRefCoverage(selected, iteration);
   assert.equal(coverage.status, "covered");
+
+  const sourceSelected = selectIterationAuditPlanRefs(
+    "source_iteration_for_current_plan",
+    ["packages/core/src/ga_project_design.ts", "self-evolution/iterations/current_plan.json"],
+    iteration
+  );
+  assert.deepEqual(sourceSelected, selected);
+  assert.equal(buildIterationAuditPlanRefCoverage(sourceSelected, iteration).status, "covered");
 });
 
 test("iteration audit plan ref coverage compares plan refs to audited evidence refs", () => {

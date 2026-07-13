@@ -561,7 +561,7 @@ export function selectIterationAuditPlanRefs(
   planRefs: string[],
   iteration: SelfEvolutionIterationContract
 ): string[] {
-  if (guidanceScope !== "current_plan_context" || !iteration.implementation_contract) return planRefs;
+  if (guidanceScope === "matching_open_iteration" || !iteration.implementation_contract) return planRefs;
   return [...new Set([
     iteration.ref,
     iteration.source_ref,
