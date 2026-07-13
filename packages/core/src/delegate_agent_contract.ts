@@ -703,7 +703,14 @@ const SCHEDULING_TERMS = [
 ];
 
 function normalizeBoundaryText(value: string): string {
-  return value.normalize("NFKC").toLowerCase().replace(/\p{Cf}/gu, "").replace(/[._/;:(),-]+/g, " ").replace(/\s+/g, " ").trim();
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\p{Cf}/gu, "")
+    .replace(/\bauthori[sz]ed to\b/g, "allowed to")
+    .replace(/[._/;:(),-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function hasDirectTaskMutationIntent(task: string, text: string): boolean {
@@ -1191,6 +1198,7 @@ function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: str
 function delegatedTextClaimsAuthority(value: string): boolean {
   const text = normalizeBoundaryText(value);
   return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
+    || grantsDelegatedAuthority(text)
     || delegatedTextClaimsDestructiveMutation(text)
     || delegatedTextClaimsGitCommandExecution(text)
     || delegatedTextClaimsGenericCommandOrTestExecution(text)

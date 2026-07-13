@@ -1412,7 +1412,10 @@ unstated repo state, context expansion, or invented evidence-ref authority is
 invalid. Concrete command or tool-surface grants such as `tsc`, `pnpm`,
 `repo.search`, `command.run`, file reads, repo search, URL fetches, or web
 browsing are rejected as command/tool authority grants even when the same
-context also states a no-tool boundary. The delegated
+context also states a no-tool boundary. American and British
+`authorized/authorised to` wording is normalized to the existing `allowed to`
+boundary and rejected in both request context and delegated output before
+persistence. The delegated
 model must return a JSON object with non-empty `summary` and `findings_text`;
 `summary` is capped at 240 chars and `findings_text` is
 capped at 2000 chars. The fixed delegated-model instructions also repeat that
