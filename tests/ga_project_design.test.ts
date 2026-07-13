@@ -936,7 +936,7 @@ test("GA project design read model derives reusable artifacts from verified iter
   }
 });
 
-test("GA project design plan requires a source contract and complete verification claim mappings", async () => {
+test("GA project design plan requires a source contract and complete verification mappings", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-source-claims-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
@@ -957,7 +957,7 @@ test("GA project design plan requires a source contract and complete verificatio
         selected_layer: "core_runtime",
         owner_surface: "ga_project_design",
         improvement_type: "reusable_ga_design_contract",
-        required_verification_entrypoints: ["project-design", "check"],
+        required_verification_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
         implementation_scope: ["gate successor readiness on source claim mappings"],
         deferred_scope: ["no iteration completion gate changes"],
         delivery_standard: ["required source claim mappings are visible before reuse"],
@@ -990,12 +990,37 @@ test("GA project design plan requires a source contract and complete verificatio
 
     const completeVerificationClaims = [
       "project-design: source claim mapping is covered",
+      "scorecard: source scorecard mapping is covered",
+      "iterations: source iteration audit mapping is covered",
+      "service-health: source resident health mapping is covered",
       "check: full checks pass"
     ];
     await store.writeJson(iteration.ref, {
       ...iteration,
       outcome: {
         ...iteration.outcome!,
+        verification_claims: completeVerificationClaims
+      }
+    });
+
+    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "needs_attention");
+    assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=project-design"), true);
+    assert.equal(plan?.layer_decision.stage, "needs_attention");
+
+    const completeVerificationCommands = [
+      "pnpm run runtime -- governance project-design --state-root <state-root>",
+      "pnpm run runtime -- governance scorecard --state-root <state-root>",
+      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+      "pnpm run runtime -- service health --target runtime --state-root <state-root>",
+      "pnpm run check"
+    ];
+    await store.writeJson(iteration.ref, {
+      ...iteration,
+      outcome: {
+        ...iteration.outcome!,
+        verification_commands: completeVerificationCommands,
         verification_claims: completeVerificationClaims
       }
     });
@@ -1011,6 +1036,7 @@ test("GA project design plan requires a source contract and complete verificatio
       ...legacyIteration,
       outcome: {
         ...iteration.outcome!,
+        verification_commands: completeVerificationCommands,
         verification_claims: completeVerificationClaims
       }
     });

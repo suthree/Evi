@@ -748,13 +748,20 @@ function buildNextCoreBasicPlan(
   const isTargetLayerReady = isCoreBasicLayer(target.layer);
   const isOpenIterationContractReady = iterationRecordStatus.status !== "open_iteration_available"
     || iterationRecordStatus.implementation_contract_status === "aligned";
-  const missingSourceVerificationClaims = source.implementation_contract?.required_verification_entrypoints?.filter(
+  const requiredSourceVerificationEntrypoints = source.implementation_contract?.required_verification_entrypoints ?? [];
+  const missingSourceVerificationCommands = requiredSourceVerificationEntrypoints.filter(
+    (entrypoint) => !source.verification_commands.some((command) => verificationCommandCoversEntrypoint(command, entrypoint))
+  );
+  const missingSourceVerificationClaims = requiredSourceVerificationEntrypoints.filter(
     (entrypoint) => !source.verification_claims.some((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
-  ) ?? [];
+  );
   const sourceArtifactWarnings = [
     ...(source.kind === "verified_artifact" && !source.implementation_contract
       ? ["source_artifact_warning=missing_implementation_contract"]
       : []),
+    ...missingSourceVerificationCommands.map((entrypoint) =>
+      `source_artifact_warning=missing_verification_command; entrypoint=${entrypoint}`
+    ),
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
       ? [`source_artifact_warning=thin_evidence_refs; minimum=${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; actual=${source.evidence_refs.length}`]
       : []),
@@ -1964,6 +1971,24 @@ function boundedVerificationClaims(claims: string[], requiredEntrypoints: string
 export function verificationClaimCoversEntrypoint(claim: string, entrypoint: string): boolean {
   const body = verificationClaimBodyForEntrypoint(claim, entrypoint);
   return typeof body === "string" && body.length > 0;
+}
+
+function verificationCommandCoversEntrypoint(command: string, entrypoint: string): boolean {
+  const normalizedCommand = command.trim().toLowerCase().replace(/\s+/g, " ");
+  switch (entrypoint.trim().toLowerCase()) {
+    case "project-design":
+      return /(?:^| )governance project-design(?: |$)/.test(normalizedCommand);
+    case "scorecard":
+      return /(?:^| )governance scorecard(?: |$)/.test(normalizedCommand);
+    case "iterations":
+      return /(?:^| )governance iterations(?: |$)/.test(normalizedCommand);
+    case "service-health":
+      return /(?:^| )service health(?: |$)/.test(normalizedCommand);
+    case "check":
+      return normalizedCommand === "pnpm run check" || normalizedCommand.startsWith("pnpm run check ");
+    default:
+      return false;
+  }
 }
 
 function verificationClaimBodyForEntrypoint(claim: string, entrypoint: string): string | undefined {

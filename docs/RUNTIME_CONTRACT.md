@@ -924,6 +924,12 @@ Required policy:
 - `next_core_basic_plan.selection_checks` must keep the
   `source_artifact_warning_thresholds` visible beside source artifact counts, so
   threshold tuning does not require reading source code
+- When a source implementation contract declares required verification
+  entrypoints, the source artifact's bounded verification-command identities
+  must cover each entrypoint. A missing mapping emits
+  `source_artifact_warning=missing_verification_command; entrypoint=<id>` and
+  keeps the successor at `needs_attention`. This is structural command
+  coverage only; it does not execute a command or prove its result
 - The compact GA Project Design Plan context keeps the source verification and
   count checks plus one actionable source warning without increasing the
   three-check bound. When a required verification claim mapping is missing, it
