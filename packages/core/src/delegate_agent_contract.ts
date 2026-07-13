@@ -444,15 +444,16 @@ const DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS = [
 ];
 
 const DIRECT_TASK_MUTATION_PATTERNS = [
-  /^(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
+  /^(?:please\s+)?(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
   /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
-  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
+  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
   /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
-  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u
+  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|实施|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u
 ];
 
 const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
-  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i,
+  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i,
+  /(?:^|[\n.!?;:。！？；：，、]\s*)(?:请\s*)?(?:修复|更新|编辑|修改|修补|打补丁|实施|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u,
   /(?:^|[.!?;:]\s*)(?:please\s+)?(?:write|create)\s+(?:a\s+)?patch\b/i,
   /(?:^|[.!?;:。！？；：，、]\s*)(?:请\s*)?(?:写|创建)(?:一个|一份)?补丁/u
 ];
@@ -521,6 +522,7 @@ const DIRECT_TASK_MUTATION_PREFIXES = [
   "修改",
   "修补",
   "打补丁",
+  "实施",
   "改代码",
   "改文件",
   "删除",
@@ -730,7 +732,7 @@ function grantsDelegatedAuthority(text: string): boolean {
     || grantsGitCommandAuthority(text)
     || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80)
     || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80)
-    || hasNearbyBoundary(text, AUTHORITY_MUTATION_GRANT_PREFIXES, DESTRUCTIVE_MUTATION_TERMS, 80);
+    || hasNearbyBoundary(text, AUTHORITY_MUTATION_GRANT_PREFIXES, DIRECT_MUTATION_TERMS, 80);
 }
 
 function reliesOnForbiddenDelegationSource(text: string): boolean {
@@ -936,7 +938,8 @@ const AUTHORITY_MUTATION_GRANT_PREFIXES = [
   "授权"
 ];
 
-const DESTRUCTIVE_MUTATION_TERMS = [
+const DIRECT_MUTATION_TERMS = [
+  "implement",
   "delete",
   "remove",
   "erase",
@@ -953,6 +956,7 @@ const DESTRUCTIVE_MUTATION_TERMS = [
   "reset",
   "tag",
   "pull request",
+  "实施",
   "删除",
   "移除",
   "清除",

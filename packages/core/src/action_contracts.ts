@@ -78,7 +78,7 @@ export const delegateAgentAuthoringContract = {
       "task asks the delegated subagent to execute tools, mutate state, or decide completion",
       "task is expert scheduling or multi-agent orchestration instead of general delegation"
     ],
-    validation_error: "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request command/test execution (including Git), direct mutation (fix/repair/update/edit/patch/write or create a patch/commit/delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, or pull-request creation), tool/write/mutation, completion, expert, or multi-agent scheduling authority."
+    validation_error: "delegate_agent.payload.task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question and must not request command/test execution (including Git), direct mutation (fix/repair/update/edit/patch/implement/write or create a patch/commit/delete/remove/erase/unlink/drop/destroy/push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag, or pull-request creation), tool/write/mutation, completion, expert, or multi-agent scheduling authority."
   },
   context: {
     required: [
@@ -111,7 +111,7 @@ export const delegateAgentAuthoringContract = {
   ],
   capability_boundaries: [
     "delegated task must explicitly request bounded analysis, critique, review, inspection, comparison, summarization, or evaluation as one concrete question instead of vague task handoff",
-    "delegated task must not combine analysis with direct fix, repair, update, edit, patch, write or create a patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, Git push/merge/rebase/cherry-pick/reset/tag, or pull-request creation intent",
+    "delegated task must not combine analysis with direct fix, repair, update, edit, patch, implement, write or create a patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, Git push/merge/rebase/cherry-pick/reset/tag, or pull-request creation intent",
     "delegated task must not ask the subagent to run commands, including Git commands, tests, builds, or package-manager scripts, or to read files, search the repo, fetch URLs, or browse the web",
     "delegated context must state that delegated analysis may use only explicit payload context or named evidence refs",
     "delegated context must not contradict no-authority boundaries by granting tool, write, mutation, command/test execution, file read, repo search, URL fetch, web browsing, completion, expert scheduling, multi-agent orchestration, or model fan-out authority"
@@ -154,7 +154,7 @@ export const delegateAgentActionContract = {
 
 export function formatDelegateAgentLiveInstruction(): string {
   return [
-    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, write or create a patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, run Git commands, create a pull request, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.",
+    "Use delegate_agent only for one explicitly bounded analysis, critique, review, inspection, comparison, summarization, or evaluation task that is shaped as one concrete question per model round; delegated tasks must not ask the subagent to fix, repair, update, edit, patch, implement, write or create a patch, commit, delete, remove, erase, unlink, drop, destroy, push, merge, deploy, publish, release, run Git commands, create a pull request, execute tools, write or mutate state, decide completion, or schedule expert/multi-agent work. Delegated results are self-reports and must be verified by the main harness before being treated as success.",
     delegateAgentAuthoringContract.terminal_completion_boundary,
     delegateAgentAuthoringContract.terminal_response_boundary
   ].join("\n");

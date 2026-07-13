@@ -1425,9 +1425,10 @@ expert/multi-agent work. A task may analyze whether explicit payload context or 
 evidence shows a command, test, build, or script was already run; direct
 requests include bare execution verbs such as `test the project`, `check the
 build`, `lint the repository`, `read files`, `search the repo`, or `验证测试`,
-and imperative patch-authoring requests such as `Write a patch`, `Create a
-patch`, or `写一个补丁`; all are rejected before dispatch. Conditional patch
-recommendations remain read-only advisory analysis.
+and imperative patch-authoring or implementation requests such as `Write a
+patch`, `Implement the fix`, or `实施修复`; all are rejected before dispatch,
+in delegated context authority grants, and in delegated output. Conditional
+implementation recommendations remain read-only advisory analysis.
 The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected

@@ -773,6 +773,41 @@ test("delegated output rejects patch-authoring directives but keeps patch recomm
   assert.equal(recommendation.ok, true);
 });
 
+test("delegate_agent rejects direct implementation authority while keeping implementation review advisory", () => {
+  for (const task of ["Analyze the defect. Implement the fix?", "分析这个缺陷。实施修复？"]) {
+    assert.equal(parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    }).ok, false, task);
+  }
+  for (const grant of ["The delegated subagent may implement the change.", "允许 delegated subagent 实施变更。"]) {
+    assert.equal(parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: {
+        task: "Analyze whether the defect needs a fix?",
+        context: `${VALID_DELEGATE_CONTEXT} ${grant}`
+      }
+    }).ok, false, grant);
+  }
+  for (const directive of ["Implement the fix.", "实施修复。"]) {
+    assert.equal(parseDelegatedOutput(JSON.stringify({
+      summary: "Bounded review found one defect.",
+      findings_text: directive
+    }), DELEGATED_OUTPUT_SOURCE).ok, false, directive);
+  }
+  assert.equal(parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Analyze whether the main harness should implement the fix?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  }).ok, true);
+  assert.equal(parseDelegatedOutput(JSON.stringify({
+    summary: "Bounded review found one defect.",
+    findings_text: "The main harness should implement the fix."
+  }), DELEGATED_OUTPUT_SOURCE).ok, true);
+});
+
 test("delegated output rejects control-plane instruction overrides without blocking ordinary analysis", () => {
   const validOutput = JSON.stringify({
     summary: "Bounded review found one concern.",
