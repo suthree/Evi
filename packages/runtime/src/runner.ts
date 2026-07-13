@@ -1554,7 +1554,7 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     task_chars: result.task_chars,
     context_chars: result.context_chars,
     model_invoked: result.model_invoked,
-    summary: delegatedObservationSummaryForModelInput(result),
+    summary: result.summary,
     findings_text: result.findings_text,
     error: delegatedObservationErrorForModelInput(result.error),
     recovery_hint: delegatedObservationRecoveryHint(result),
@@ -1563,10 +1563,6 @@ function delegatedObservationForModelInput(result: DelegatedResult): DelegatedOb
     boundary: result.boundary,
     observation_boundary: "sanitized delegated observation for the main model; excludes raw delegated task, context, output_text, raw_output_preview, and persisted artifact body"
   });
-}
-
-function delegatedObservationSummaryForModelInput(result: DelegatedResult): string {
-  return result.ok ? result.summary : "Delegated result failed contract validation.";
 }
 
 function delegatedObservationErrorForModelInput(error: string | null): string | null {

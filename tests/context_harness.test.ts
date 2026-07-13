@@ -9310,6 +9310,8 @@ class DelegationRequestFailureThenDoneModel implements ModelClient {
       const delegatedSection = delegatedObservationsSection(request.input);
       this.sawSanitizedRequestFailureObservation = delegatedSection.includes('"contract_status": "failed"')
         && delegatedSection.includes('"result_failure_kind": "delegated_model_request_failed"')
+        && delegatedSection.includes('"summary": "Delegated task failed model request."')
+        && !delegatedSection.includes('"summary": "Delegated result failed contract validation."')
         && delegatedSection.includes("429 Too Many Requests")
         && delegatedSection.includes("[REDACTED]")
         && !delegatedSection.includes("SECRET_SHOULD_NOT_APPEAR")

@@ -1494,6 +1494,9 @@ lineage cannot satisfy a delegated completion gate. Every failed delegated resul
 safe `result_failure_kind`: dispatch rejects mirror the dispatch failure kind,
 delegated output contract failures record `delegated_output_contract_failed`,
 and delegated model request failures record `delegated_model_request_failed`.
+The sanitized observation fed back to the main harness preserves the bounded
+typed result summary instead of rewriting every failure as contract validation;
+raw task, context, output text, preview, and artifact bodies remain excluded.
 Passed delegated results record `result_failure_kind=none`; persisted delegated
 results and model observations use explicit `none` values instead of `null` for
 no-failure kinds. New runner result and observation records reject contradictory
