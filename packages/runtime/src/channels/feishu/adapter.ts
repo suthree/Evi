@@ -2854,12 +2854,12 @@ function renderAgentTask(
 }
 
 function isFeishuMention(text: string): boolean {
-  return /@(?:bot|evi)/i.test(text) || text.includes("@_user_");
+  return /@bot/i.test(text) || text.includes("@_user_");
 }
 
 function stripFeishuMention(text: string): string {
   return text
-    .replace(/@(?:bot|evi)/gi, "")
+    .replace(/@bot/gi, "")
     .replace(/@_user_[a-zA-Z0-9_-]+/g, "")
     .trim() || text;
 }

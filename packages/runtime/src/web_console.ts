@@ -279,7 +279,7 @@ function renderConsoleHtml(): string {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Evi Runtime</title>
+  <title>Local Runtime</title>
   <style>
     :root { color-scheme: light; --ink: #202124; --muted: #5f6368; --line: #d7dce2; --bg: #f7f8fa; --panel: #ffffff; --accent: #1a73e8; --ok: #137333; --warn: #b06000; }
     * { box-sizing: border-box; }
@@ -316,7 +316,7 @@ function renderConsoleHtml(): string {
   </style>
 </head>
 <body>
-  <header><h1>Evi Runtime</h1><button id="refresh">Refresh</button></header>
+  <header><h1>Local Runtime</h1><button id="refresh">Refresh</button></header>
   <main>
     <aside>
       <div class="bar"><h2>Sessions</h2></div>

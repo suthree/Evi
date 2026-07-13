@@ -192,7 +192,7 @@ externally, or prove that a goal is complete.
 
 ### Dream concept and design goal
 
-An Evi dream is a versioned, state-root-local projection of long-horizon
+A local-runtime dream is a versioned, state-root-local projection of long-horizon
 direction. It is not a transcript, free-form reflection, hidden chain of
 thought, durable identity, scheduler, or autonomous execution plan. Its
 authoritative inputs are accepted semantic memory, the latest verified

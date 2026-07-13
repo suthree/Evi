@@ -1,6 +1,6 @@
-# Evi
+# Local Runtime
 
-Evi is a local-first, single-machine runtime for a self-growing agent. It
+Local Runtime is a local-first, single-machine runtime for a self-growing agent. It
 turns a local task or IM message into bounded context, validated actions,
 evidence, verification, and a response.
 
@@ -23,7 +23,7 @@ contracts, or historical decisions here.
 
 ## Scope
 
-Evi is intentionally narrow:
+The runtime is intentionally narrow:
 
 - one local user and one machine;
 - bounded repo/state actions through the harness;
