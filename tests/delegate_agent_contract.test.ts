@@ -14,6 +14,12 @@ import {
   parseDelegationRequest
 } from "../packages/core/src/delegate_agent_contract.js";
 import {
+  delegatedResultsCheck,
+  delegatedVerificationRefs,
+  mainHarnessIndependentEvidenceAfterLatestDelegation,
+  mainHarnessRecoveryEvidenceAfterDelegationFailure
+} from "../packages/core/src/delegate_agent_completion_gate.js";
+import {
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   delegatedObservationSchema,
@@ -74,6 +80,37 @@ const VALID_DELEGATED_OBSERVATION = {
   boundary: "bounded test observation",
   observation_boundary: "sanitized test observation"
 };
+
+test("delegated completion evidence keeps unique ref identities", () => {
+  const failedResult = {
+    ...VALID_DELEGATED_RESULT,
+    ok: false,
+    contract_status: "failed" as const,
+    result_failure_kind: "delegated_output_contract_failed" as const
+  };
+  const duplicateRefs = ["tool_result_1", "tool_result_1"];
+  const rounds = new Map([["tool_result_1", 2]]);
+
+  assert.deepEqual(delegatedResultsCheck([failedResult], true, duplicateRefs).refs, [
+    failedResult.id,
+    "tool_result_1"
+  ]);
+  assert.deepEqual(mainHarnessIndependentEvidenceAfterLatestDelegation({
+    delegatedResults: [failedResult],
+    independentEvidenceRefs: duplicateRefs,
+    verificationEvidenceRounds: rounds
+  }), ["tool_result_1"]);
+  assert.deepEqual(mainHarnessRecoveryEvidenceAfterDelegationFailure({
+    delegatedResults: [failedResult],
+    independentEvidenceRefs: duplicateRefs,
+    verificationEvidenceRounds: rounds
+  }), ["tool_result_1"]);
+  assert.deepEqual(delegatedVerificationRefs(
+    [failedResult.id, failedResult.id],
+    [failedResult],
+    []
+  ), [failedResult.id]);
+});
 
 test("delegated result and observation schemas reject inconsistent failure tuples", () => {
   assert.equal(delegatedResultSchema.safeParse(VALID_DELEGATED_RESULT).success, true);

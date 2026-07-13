@@ -51,10 +51,10 @@ export function mainHarnessRecoveryEvidenceAfterDelegationFailure(args: {
     .map((result) => result.round);
   if (failedRounds.length === 0) return [];
   const latestFailedRound = Math.max(...failedRounds);
-  return args.independentEvidenceRefs.filter((ref) => {
+  return compactRefs(args.independentEvidenceRefs.filter((ref) => {
     const evidenceRound = args.verificationEvidenceRounds.get(ref);
     return typeof evidenceRound === "number" && evidenceRound > latestFailedRound;
-  });
+  }));
 }
 
 export function mainHarnessIndependentEvidenceAfterLatestDelegation(args: {
@@ -65,10 +65,10 @@ export function mainHarnessIndependentEvidenceAfterLatestDelegation(args: {
   const delegatedRounds = args.delegatedResults.map((result) => result.round);
   if (delegatedRounds.length === 0) return args.independentEvidenceRefs;
   const latestDelegatedRound = Math.max(...delegatedRounds);
-  return args.independentEvidenceRefs.filter((ref) => {
+  return compactRefs(args.independentEvidenceRefs.filter((ref) => {
     const evidenceRound = args.verificationEvidenceRounds.get(ref);
     return typeof evidenceRound === "number" && evidenceRound > latestDelegatedRound;
-  });
+  }));
 }
 
 export function delegatedVerificationRefs(
@@ -81,7 +81,7 @@ export function delegatedVerificationRefs(
     ...delegatedResults.map((result) => result.id),
     ...delegatedArtifactRefs
   ]);
-  return claimedRefs.filter((ref) => delegatedProofRefSet.has(ref));
+  return compactRefs(claimedRefs.filter((ref) => delegatedProofRefSet.has(ref)));
 }
 
 function summarizeDelegatedResultFailureKinds(failedDelegations: DelegatedResult[]): string {
@@ -91,5 +91,5 @@ function summarizeDelegatedResultFailureKinds(failedDelegations: DelegatedResult
 }
 
 function compactRefs(refs: Array<string | null | undefined>): string[] {
-  return refs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0);
+  return [...new Set(refs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0))];
 }

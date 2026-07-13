@@ -1573,7 +1573,10 @@ cites its harness-known ref. If any delegated result failed, completion requires
 both later successful write/run recovery evidence cited by the done claim as a
 tool result id or tool artifact ref and a bound non-delegated verification ref
 after the failed delegated result; an uncited write/run result and later
-read-only refs are context only. Every sanitized failed-delegation observation
+read-only refs are context only. Completion-gate helper outputs compact exact
+duplicate ref identities while preserving first-seen order, so one delegated,
+independent, or recovery evidence identity cannot inflate check cardinality.
+Every sanitized failed-delegation observation
 tells the main model these exact recovery prerequisites or to report blocked;
 no failure kind may imply that read-only verification alone recovers it. The
 shared `delegate_agent` payload instruction states the same prerequisites
