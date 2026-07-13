@@ -211,7 +211,10 @@ export const delegatedObservationSchema = z.object({
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),
   verification_refs: z.array(
-    z.string().min(1).max(delegateAgentActionContract.verification_ref_max_chars)
+    z.string()
+      .min(1)
+      .max(delegateAgentActionContract.verification_ref_max_chars)
+      .refine((ref) => ref.trim() === ref, "verification ref must not be blank or padded")
   ).max(delegateAgentActionContract.verification_refs_max_items).default([])
 });
 

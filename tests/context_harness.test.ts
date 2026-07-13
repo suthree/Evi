@@ -90,6 +90,9 @@ test("model action schema bounds completion verification refs", () => {
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["x".repeat(maxChars)])).success, true);
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["x".repeat(maxChars + 1)])).success, false);
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope([""])).success, false);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope([" \t\n"])).success, false);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope([" ref_1"])).success, false);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["ref_1 "])).success, false);
 });
 
 test("compact GA plan checks keep source quality basis by prefix", () => {

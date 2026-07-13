@@ -1360,8 +1360,9 @@ markers, so the same failure remains replayable without retaining untrusted text
 Exact duplicate known refs are compacted in first-seen order before the delegated
 model-action envelope and completion report are persisted, so one claimed identity
 cannot inflate completion-check or replay lineage cardinality.
-The envelope schema accepts at most 32 non-empty verification refs, each at most
-512 characters, so model-provided completion metadata stays bounded before it can
+The envelope schema accepts at most 32 non-blank verification refs, each at most
+512 characters; whitespace-only or padded refs are rejected rather than
+normalizing ref identities, so model-provided completion metadata stays bounded before it can
 reach completion reports, trace, or replay. The GA project-design general
 delegation loop and delegation implementation contract expose the same shared
 limits, including the non-empty requirement, so future slices do not need to infer
