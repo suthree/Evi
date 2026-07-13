@@ -999,7 +999,9 @@ export function buildIterationAuditOutcomeEvidenceScopeCoverage(
 }
 
 function refMatchesPrefix(ref: string, prefixes: string[]): boolean {
-  return prefixes.some((prefix) => ref.startsWith(prefix));
+  return prefixes.some((prefix) =>
+    ref === prefix || ref.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`)
+  );
 }
 
 export function buildIterationAuditCompletionGate(

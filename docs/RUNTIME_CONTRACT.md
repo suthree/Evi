@@ -434,11 +434,14 @@ completion gate blocked; the diagnostic is read-only and does not repair state
 or prove completion.
 `outcome_evidence_scope_coverage` applies a declared scope to outcome evidence
 refs: every ref must use one allowed prefix and every required evidence group
-must have a matching ref. It is a bounded path-prefix check only; it does not
-read file bodies or infer that an evidence ref proves the change. Historical
-contracts without this optional scope remain `not_required`. It uses the
-audited iteration's persisted contract after a plan advances, rather than
-applying a successor slice's scope to historical evidence.
+must have a matching ref. Prefix matching is path-segment aware: a ref must
+equal the declared prefix or be its `/`-delimited descendant, so lexical
+lookalikes such as `docs/RUNTIME_CONTRACT.md.forged` cannot satisfy the scope.
+It is a bounded path-prefix check only; it does not read file bodies or infer
+that an evidence ref proves the change. Historical contracts without this
+optional scope remain `not_required`. It uses the audited iteration's persisted
+contract after a plan advances, rather than applying a successor slice's scope
+to historical evidence.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
 declaration coverage only and must not imply execution success. For the matching

@@ -760,6 +760,33 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
   });
   assert.equal(foreign.status, "out_of_scope_evidence_refs");
   assert.deepEqual(foreign.out_of_scope_refs, ["packages/runtime/src/runner.ts"]);
+
+  const lexicalLookalikes = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
+    outcome_evidence_refs: [
+      "packages/core/src/ga_project_design.ts.forged",
+      "tests/ga_project_design.test.ts.forged",
+      "docs/RUNTIME_CONTRACT.md.forged",
+      "services/runtime/heartbeat.json.forged"
+    ]
+  });
+  assert.equal(lexicalLookalikes.status, "out_of_scope_evidence_refs");
+  assert.deepEqual(lexicalLookalikes.missing_groups, [
+    "implementation",
+    "verification",
+    "documentation",
+    "runtime_health"
+  ]);
+
+  const directoryScope = buildIterationAuditOutcomeEvidenceScopeCoverage({
+    outcome_evidence_scope: {
+      allowed_ref_prefixes: ["packages/core/src/"],
+      required_groups: [{ id: "implementation", ref_prefixes: ["packages/core/src/"] }],
+      boundary: "bounded directory scope"
+    }
+  }, {
+    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts"]
+  });
+  assert.equal(directoryScope.status, "covered");
 });
 
 test("manual core and basic iterations require implementation contract flags", () => {
