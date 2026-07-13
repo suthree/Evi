@@ -194,6 +194,11 @@ export interface GaProjectDesignDelegationImplementationContract {
   completion_verification: {
     authority: "main_harness";
     check_ids: string[];
+    verification_refs: {
+      max_items: number;
+      max_chars: number;
+      non_empty: true;
+    };
     recovery_requires: string[];
     delegated_refs_are_proof: false;
   };
@@ -259,6 +264,11 @@ export interface GaProjectDesignGeneralDelegationLoop {
     findings_max_chars: number;
     required: string[];
     reject_if: string[];
+  };
+  verification_ref_contract: {
+    max_items: number;
+    max_chars: number;
+    non_empty: true;
   };
   dispatch_failure_kind_contract: {
     field: "dispatch_failure_kind";
@@ -1161,6 +1171,11 @@ export function getGaProjectDesignDelegationImplementationContract(): GaProjectD
     completion_verification: {
       authority: "main_harness",
       check_ids: [...delegateAgentActionContract.completion_gate_check_ids],
+      verification_refs: {
+        max_items: delegateAgentActionContract.verification_refs_max_items,
+        max_chars: delegateAgentActionContract.verification_ref_max_chars,
+        non_empty: true
+      },
       recovery_requires: [...loop.recovery_contract.required],
       delegated_refs_are_proof: false
     },
@@ -1425,6 +1440,11 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
         "result is treated as tool evidence, final success, or mutation authority",
         "delegated result id or ref is used as completion verification proof"
       ]
+    },
+    verification_ref_contract: {
+      max_items: delegateAgentActionContract.verification_refs_max_items,
+      max_chars: delegateAgentActionContract.verification_ref_max_chars,
+      non_empty: true
     },
     dispatch_failure_kind_contract: {
       field: "dispatch_failure_kind",

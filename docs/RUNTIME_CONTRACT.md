@@ -1351,7 +1351,10 @@ delegated context, unknown refs are persisted only as ordered `unbound_claim_ref
 markers, so the same failure remains replayable without retaining untrusted text.
 The envelope schema accepts at most 32 non-empty verification refs, each at most
 512 characters, so model-provided completion metadata stays bounded before it can
-reach completion reports, trace, or replay.
+reach completion reports, trace, or replay. The GA project-design general
+delegation loop and delegation implementation contract expose the same shared
+limits, including the non-empty requirement, so future slices do not need to infer
+the runtime acceptance standard from schema code.
 For a `done` claim, every harness tool result must also be successful: a failed
 read-only, reversible, write, or run result is a failed `tool_result_outcomes`
 check even when the model omits its ref. Replay recomputes this gate from bounded

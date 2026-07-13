@@ -475,6 +475,11 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("completion verification proof")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("hidden memory")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.result_contract.reject_if.some((item) => item.includes("command/test execution")), true);
+    assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.verification_ref_contract, {
+      max_items: delegateAgentActionContract.verification_refs_max_items,
+      max_chars: delegateAgentActionContract.verification_ref_max_chars,
+      non_empty: true
+    });
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.field, "dispatch_failure_kind");
     assert.deepEqual(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.values, [...delegateAgentActionContract.dispatch_kinds]);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.dispatch_failure_kind_contract.required.some((item) => item.includes("harness replay checks")), true);
@@ -512,6 +517,14 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.recovery_requires.includes(delegateAgentAuthoringContract.recovery.failure_hint),
       true
+    );
+    assert.deepEqual(
+      readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.completion_verification.verification_refs,
+      {
+        max_items: delegateAgentActionContract.verification_refs_max_items,
+        max_chars: delegateAgentActionContract.verification_ref_max_chars,
+        non_empty: true
+      }
     );
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.recovery_contract.reject_if.some((item) => item.includes("automatic retry")), true);
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.replay_audit_contract.metadata_source.includes("Live Run Trace delegated result refs and dispatch metadata"), true);
