@@ -210,7 +210,9 @@ export const delegatedObservationSchema = z.object({
 
 export const completionClaimSchema = z.object({
   status: z.enum(["not_done", "done", "blocked"]).default("not_done"),
-  verification_refs: z.array(z.string()).default([])
+  verification_refs: z.array(
+    z.string().min(1).max(delegateAgentActionContract.verification_ref_max_chars)
+  ).max(delegateAgentActionContract.verification_refs_max_items).default([])
 });
 
 export const delegatedActionInputMetadataSchema = z.object({

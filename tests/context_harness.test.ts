@@ -46,6 +46,7 @@ import {
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS,
   delegatedResultSchema,
+  modelActionEnvelopeSchema,
   opportunitySchema,
   triggerSchema
 } from "../packages/core/src/schemas.js";
@@ -68,6 +69,26 @@ test("compact GA plan reasons keep source status and quality by prefix", () => {
     "source_artifact_quality=ok",
     "scorecard_target_status=recognized"
   ]);
+});
+
+test("model action schema bounds completion verification refs", () => {
+  const envelope = (verification_refs: string[]) => ({
+    summary: "verify bounded completion evidence",
+    actions: [],
+    completion_claim: { status: "done", verification_refs }
+  });
+  const maxItems = delegateAgentActionContract.verification_refs_max_items;
+  const maxChars = delegateAgentActionContract.verification_ref_max_chars;
+
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope(
+    Array.from({ length: maxItems }, (_, index) => `ref_${index}`)
+  )).success, true);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope(
+    Array.from({ length: maxItems + 1 }, (_, index) => `ref_${index}`)
+  )).success, false);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["x".repeat(maxChars)])).success, true);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["x".repeat(maxChars + 1)])).success, false);
+  assert.equal(modelActionEnvelopeSchema.safeParse(envelope([""])).success, false);
 });
 
 test("compact GA plan checks keep source quality basis by prefix", () => {

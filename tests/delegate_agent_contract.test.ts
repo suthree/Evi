@@ -148,6 +148,8 @@ test("delegate_agent payload instruction states the shared failed recovery contr
   const instruction = formatDelegateAgentPayloadInstruction();
 
   assert.equal(instruction.includes(delegateAgentAuthoringContract.recovery.failure_hint), true);
+  assert.match(instruction, /completion_claim\.verification_refs accepts at most 32 non-empty refs/);
+  assert.match(instruction, /at most 512 chars each/);
   assert.match(instruction, /later successful write\/run evidence plus a bound non-delegated verification ref/);
   assert.match(instruction, /otherwise report blocked/);
 });

@@ -140,6 +140,8 @@ export const delegateAgentActionContract = {
   context_max_chars: 12000,
   summary_max_chars: 240,
   findings_max_chars: 2000,
+  verification_refs_max_items: 32,
+  verification_ref_max_chars: 512,
   dispatch_failure_kinds: delegateAgentDispatchFailureKindValues,
   dispatch_kinds: delegateAgentDispatchKindValues,
   result_failure_kinds: delegateAgentResultFailureKindValues,
@@ -160,7 +162,7 @@ export function formatDelegateAgentLiveInstruction(): string {
 
 export function formatDelegateAgentPayloadInstruction(): string {
   const outputShape = delegateAgentActionContract.output_keys.join("/");
-  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, ${delegateAgentAuthoringContract.recovery.failure_hint}`;
+  return `delegate_agent.payload.task and delegate_agent.payload.context must both be non-empty strings; task max ${delegateAgentActionContract.task_max_chars} chars, context max ${delegateAgentActionContract.context_max_chars} chars. The context must name that the delegated subagent has no tool/write/mutation authority, completion remains with the main harness, the delegated output shape is ${outputShape}, and delegated analysis may use only explicit payload context or named evidence refs. Context must not rely on hidden memory, raw delegated artifacts, unstated repo state, context expansion, invented evidence refs, or grant file read, repo search, URL fetch, or web browsing authority. Delegated results are advisory only. completion_claim.verification_refs accepts at most ${delegateAgentActionContract.verification_refs_max_items} non-empty refs of at most ${delegateAgentActionContract.verification_ref_max_chars} chars each. A done claim after any delegated result must cite later harness-known non-delegated verification_refs; if a delegated result failed, ${delegateAgentAuthoringContract.recovery.failure_hint}`;
 }
 
 export function getDelegateAgentPayloadExample(): { task: string; context: string } {
