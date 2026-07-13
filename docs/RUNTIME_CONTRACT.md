@@ -1418,9 +1418,13 @@ contracts, rejects successful-looking outputs that echo raw delegated
 delete/remove/erase/unlink/drop/destroy execution, Git command execution,
 pull-request creation, completion, expert,
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
-state, context expansion, or invented evidence-ref authority. Natural-language
-delegated output execution assertions in active, third-person, passive, or terse
-form that state was deleted, removed, erased, unlinked, dropped, or destroyed,
+state, context expansion, or invented evidence-ref authority.
+Raw echo comparison applies Unicode NFKC normalization and removes invisible
+format controls before matching, so compatibility characters or zero-width
+separators cannot disguise a copied task/context string.
+Natural-language delegated output execution assertions in active, third-person,
+passive, or terse form that state was deleted, removed, erased, unlinked,
+dropped, or destroyed,
 tests, builds, commands, or checks were run or executed, or files were read,
 the repo was searched, URLs were fetched, or the web was browsed, are treated
 as delegated tool authority claims. Imperative execution, mutation, or read

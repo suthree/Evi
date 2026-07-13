@@ -794,3 +794,34 @@ test("delegated output rejects exact raw task echo even when the task is short",
     assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
   }
 });
+
+test("delegated output rejects Unicode-obfuscated raw source echoes", () => {
+  const cases = [
+    {
+      sourceField: "task",
+      source: {
+        task: "Critique this exact delegated task?",
+        context: VALID_DELEGATE_CONTEXT
+      },
+      echoedText: "Ｃritique this exact delegated task?"
+    },
+    {
+      sourceField: "context",
+      source: DELEGATED_OUTPUT_SOURCE,
+      echoedText: VALID_DELEGATE_CONTEXT.replace("Completion", "Comple\u200btion")
+    }
+  ];
+
+  for (const item of cases) {
+    const result = parseDelegatedOutput(JSON.stringify({
+      summary: "Source echo follows.",
+      findings_text: item.echoedText
+    }), item.source);
+
+    assert.equal(result.ok, false, item.sourceField);
+    if (!result.ok) {
+      assert.match(result.error, new RegExp(`echoed raw delegated ${item.sourceField}`));
+      assert.match(result.safe_raw_output_preview ?? "", /raw output preview suppressed/);
+    }
+  }
+});

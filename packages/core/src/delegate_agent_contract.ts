@@ -1473,7 +1473,7 @@ function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
 }
 
 function normalizeRawEchoText(value: string): string {
-  return value.replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
 }
 
 function errorMessage(error: unknown): string {
