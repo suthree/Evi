@@ -278,7 +278,7 @@ plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_comman
 避免只看 `verified` 标签而忽略证据厚度；当数量过薄时会出现有界
 `source_artifact_warning`；它不会执行验证或成为 iteration completion gate，但会让 successor plan 保持 `needs_attention`；
 同一组检查也会显示 `source_artifact_warning_thresholds`，避免调阈值时必须读源码；
-compact GA Project Design Plan context 会按稳定 check 前缀优先级保留这条阈值 check，而不是依赖数组位置；
+compact GA Project Design Plan context 仍保持三条 check 上限：保留 source 验证、证据数量和一条可操作 warning；若缺少必需 verification claim 映射，会优先显示具体 entrypoint，而不是更抽象的薄证据 warning 或阈值摘要；完整 plan 仍保留全部 warning 和阈值；
 也会独立显示 `fresh_successor_slice`，让重复已完成 slice 的风险在 handoff 时可见；
 同时会独立显示 `target_layer` 和 `owner_surface`，避免 application slice 被误认为核心 GA 设计工作；
 `selection_reasons` 会用 `source_kind=verified_artifact|fresh_bootstrap` 和

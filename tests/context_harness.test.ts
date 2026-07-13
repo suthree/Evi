@@ -95,17 +95,19 @@ test("model action schema bounds completion verification refs", () => {
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["ref_1 "])).success, false);
 });
 
-test("compact GA plan checks keep source quality basis by prefix", () => {
+test("compact GA plan checks keep the actionable source quality warning by prefix", () => {
   assert.deepEqual(compactGaPlanSelectionChecks([
     "fresh_successor_slice=true",
     "target_layer=core_runtime; owner_surface=ga_project_design",
     "source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2",
+    "source_artifact_warning=thin_evidence_refs; minimum=2; actual=1",
+    "source_artifact_warning=missing_verification_claim; entrypoint=project-design",
     "source_artifact_verified=verified; ref=self-evolution/iterations/source.json",
     "source_artifact_evidence=evidence_refs:16; verification_commands:11"
   ]), [
     "source_artifact_verified=verified; ref=self-evolution/iterations/source.json",
     "source_artifact_evidence=evidence_refs:16; verification_commands:11",
-    "source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2"
+    "source_artifact_warning=missing_verification_claim; entrypoint=project-design"
   ]);
 });
 
@@ -1629,7 +1631,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /learning_authority: process=self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs; judgment=core\/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence; completion=completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice; promotion=SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates/);
     assert.match(rendered.markdown, /selection: needs_attention; source_kind=verified_artifact \| source_status=verified \| source_artifact_quality=attention/);
     assert.match(rendered.markdown, /checks: source_artifact_verified=verified/);
-    assert.match(rendered.markdown, /source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2/);
+    assert.match(rendered.markdown, /source_artifact_warning=missing_verification_claim; entrypoint=project-design/);
     assert.match(rendered.markdown, /successor: fresh_successor_slice=true; source_slice=context_ga_project_design_plan; target_slice=general_agent_delegation_hardening_after_context_plan/);
     assert.match(rendered.markdown, /target: target_layer=core_runtime; owner_surface=ga_project_design/);
     assert.match(rendered.markdown, /verify: verification_entrypoints=project-design,scorecard,iterations,service-health,check/);

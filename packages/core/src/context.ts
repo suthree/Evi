@@ -1560,7 +1560,7 @@ async function selfEvolutionScorecardSection(
 const COMPACT_GA_PLAN_CHECK_PREFIXES = [
   "source_artifact_verified=",
   "source_artifact_evidence=",
-  "source_artifact_warning_thresholds="
+  "source_artifact_warning="
 ];
 
 const COMPACT_GA_PLAN_REASON_PREFIXES = [
@@ -1614,7 +1614,13 @@ export function compactGaPlanNonGoals(nonGoals: string[]): string[] {
 }
 
 export function compactGaPlanSelectionChecks(selectionChecks: string[]): string[] {
-  return compactGaPlanPrefixedItems(selectionChecks, COMPACT_GA_PLAN_CHECK_PREFIXES);
+  const missingClaimWarning = selectionChecks.find((check) =>
+    check.startsWith("source_artifact_warning=missing_verification_claim;")
+  );
+  const prioritizedChecks = missingClaimWarning
+    ? [missingClaimWarning, ...selectionChecks.filter((check) => check !== missingClaimWarning)]
+    : selectionChecks;
+  return compactGaPlanPrefixedItems(prioritizedChecks, COMPACT_GA_PLAN_CHECK_PREFIXES);
 }
 
 export function compactGaPlanSelectionReasons(selectionReasons: string[]): string[] {

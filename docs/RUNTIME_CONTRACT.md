@@ -920,9 +920,11 @@ Required policy:
 - `next_core_basic_plan.selection_checks` must keep the
   `source_artifact_warning_thresholds` visible beside source artifact counts, so
   threshold tuning does not require reading source code
-- The compact GA Project Design Plan context must preserve that threshold check
-  beside the source verification and count checks using stable check-prefix
-  priority rather than raw array position
+- The compact GA Project Design Plan context keeps the source verification and
+  count checks plus one actionable source warning without increasing the
+  three-check bound. When a required verification claim mapping is missing, it
+  takes priority over thinner-evidence warnings and the threshold summary;
+  the complete plan still exposes every warning and the thresholds
 - The compact GA Project Design Plan context must also surface the
   `fresh_successor_slice` check separately, so repeated completed slices are
   visible during handoff
