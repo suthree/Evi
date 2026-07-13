@@ -829,6 +829,22 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
     "runtime_health"
   ]);
 
+  const forgedDescendants = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
+    outcome_evidence_refs: [
+      "packages/core/src/ga_project_design.ts/forged",
+      "tests/ga_project_design.test.ts/forged",
+      "docs/RUNTIME_CONTRACT.md/forged",
+      "services/runtime/heartbeat.json/forged"
+    ]
+  });
+  assert.equal(forgedDescendants.status, "out_of_scope_evidence_refs");
+  assert.deepEqual(forgedDescendants.missing_groups, [
+    "implementation",
+    "verification",
+    "documentation",
+    "runtime_health"
+  ]);
+
   const directoryScope = buildIterationAuditOutcomeEvidenceScopeCoverage({
     outcome_evidence_scope: {
       allowed_ref_prefixes: ["packages/core/src/"],
@@ -989,6 +1005,49 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
   assert.deepEqual(missing.missing_refs, ["docs/RUNTIME_CONTRACT.md"]);
   assert.deepEqual(missing.required_outcome_evidence_refs, ["docs/RUNTIME_CONTRACT.md"]);
   assert.match(missing.repair_note, /--merge-existing-outcome/);
+});
+
+test("matching iteration plan refs stay inside the declared outcome evidence scope", () => {
+  const iteration = {
+    ref: "self-evolution/iterations/iteration_contract_scoped.json",
+    source_ref: "self-evolution/iterations/iteration_contract_source.json",
+    proposed_slice: "core_ga_design_next_slice",
+    implementation_contract: {
+      outcome_evidence_scope: {
+        allowed_ref_prefixes: [
+          "packages/core/src/ga_project_design.ts",
+          "tests/cli.test.ts",
+          "docs/RUNTIME_CONTRACT.md",
+          "services/runtime/heartbeat.json"
+        ],
+        required_groups: [],
+        boundary: "bounded scope"
+      }
+    },
+    evidence_refs: [],
+    verification_commands: [],
+    non_goals: [],
+    advisory_expert_roles: [],
+    created_at: "2026-07-06T00:00:01Z",
+    boundary: "bounded iteration contract"
+  } as unknown as Parameters<typeof selectIterationAuditPlanRefs>[2];
+
+  const selected = selectIterationAuditPlanRefs("matching_open_iteration", [
+    "packages/core/src/ga_project_design.ts",
+    "packages/core/src/action_contracts.ts",
+    "tests/cli.test.ts",
+    "docs/RUNTIME_CONTRACT.md",
+    "services/runtime/heartbeat.json",
+    iteration.ref
+  ], iteration);
+
+  assert.deepEqual(selected, [
+    "packages/core/src/ga_project_design.ts",
+    "tests/cli.test.ts",
+    "docs/RUNTIME_CONTRACT.md",
+    "services/runtime/heartbeat.json",
+    iteration.ref
+  ]);
 });
 
 test("iteration audit refs include source and outcome evidence refs", () => {

@@ -563,7 +563,16 @@ export function selectIterationAuditPlanRefs(
   planRefs: string[],
   iteration: SelfEvolutionIterationContract
 ): string[] {
-  if (guidanceScope === "matching_open_iteration" || !iteration.implementation_contract) return planRefs;
+  if (guidanceScope === "matching_open_iteration") {
+    const allowedPrefixes = iteration.implementation_contract?.outcome_evidence_scope?.allowed_ref_prefixes;
+    if (!allowedPrefixes?.length) return planRefs;
+    return planRefs.filter((ref) =>
+      ref === iteration.ref
+      || ref === iteration.source_ref
+      || refMatchesPrefix(ref, allowedPrefixes)
+    );
+  }
+  if (!iteration.implementation_contract) return planRefs;
   return [...new Set([
     iteration.ref,
     iteration.source_ref,
@@ -1015,7 +1024,7 @@ export function buildIterationAuditOutcomeEvidenceScopeCoverage(
 
 function refMatchesPrefix(ref: string, prefixes: string[]): boolean {
   return prefixes.some((prefix) =>
-    ref === prefix || ref.startsWith(prefix.endsWith("/") ? prefix : `${prefix}/`)
+    ref === prefix || (prefix.endsWith("/") && ref.startsWith(prefix))
   );
 }
 

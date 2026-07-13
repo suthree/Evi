@@ -428,6 +428,10 @@ use `--merge-existing-outcome` or manually preserve existing outcome fields
 while adding those refs.
 Its top-level `refs` list should cite the same audited surfaces: iteration ref,
 source ref, iteration evidence refs, outcome evidence refs, and plan refs.
+For a matching open iteration with `outcome_evidence_scope`, plan-ref coverage
+requires only plan refs that the same scope permits, plus the iteration and
+source identities. Context-only plan refs outside that contract cannot create
+an impossible requirement to cite evidence that scope coverage must reject.
 `implementation_contract_coverage` compares the GA project-design plan
 `implementation_contract` with the audited iteration state record when the plan
 still targets that iteration; it covers the source artifact and source slice,
@@ -445,9 +449,10 @@ completion gate blocked; the diagnostic is read-only and does not repair state
 or prove completion.
 `outcome_evidence_scope_coverage` applies a declared scope to outcome evidence
 refs: every ref must use one allowed prefix and every required evidence group
-must have a matching ref. Prefix matching is path-segment aware: a ref must
-equal the declared prefix or be its `/`-delimited descendant, so lexical
-lookalikes such as `docs/RUNTIME_CONTRACT.md.forged` cannot satisfy the scope.
+must have a matching ref. A file-shaped prefix matches only that exact ref;
+only an explicit directory prefix ending in `/` may match descendants. Thus
+neither `docs/RUNTIME_CONTRACT.md.forged` nor
+`docs/RUNTIME_CONTRACT.md/forged` can satisfy a file scope.
 It is a bounded path-prefix check only; it does not read file bodies or infer
 that an evidence ref proves the change. Historical contracts without this
 optional scope remain `not_required`. It uses the audited iteration's persisted
