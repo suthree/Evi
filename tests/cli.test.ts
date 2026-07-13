@@ -726,6 +726,32 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(blankHistoricalAcceptance.status, "missing_required_fields");
   assert.deepEqual(blankHistoricalAcceptance.missing_fields, ["acceptance_criteria"]);
 
+  for (const [field, implementationContract] of [
+    ["proposed_slice", { ...planContract, proposed_slice: "   " }],
+    ["source_artifact_id", { ...planContract, source_artifact_id: "   " }],
+    ["source_proposed_slice", { ...planContract, source_proposed_slice: "   " }],
+    ["owner_surface", { ...planContract, owner_surface: "   " }],
+    ["acceptance_criteria", { ...planContract, acceptance_criteria: ["Readable acceptance", "   "] }],
+    ["required_verification_entrypoints", { ...planContract, required_verification_entrypoints: ["project-design", "   "] }],
+    ["implementation_scope", { ...planContract, implementation_scope: ["   "] }],
+    ["deferred_scope", { ...planContract, deferred_scope: ["   "] }],
+    ["delivery_standard", { ...planContract, delivery_standard: ["   "] }],
+    ["rollback_strategy", { ...planContract, rollback_strategy: ["   "] }],
+    ["boundary", { ...planContract, boundary: "   " }]
+  ] as const) {
+    const blankField = buildIterationAuditImplementationContractCoverage({
+      ...planContract,
+      proposed_slice: "core_ga_design_next_slice_after_next"
+    }, {
+      proposed_slice: implementationContract.proposed_slice,
+      layer: "core_runtime",
+      owner_surface: implementationContract.owner_surface,
+      implementation_contract: implementationContract
+    });
+    assert.equal(blankField.status, "missing_required_fields", field);
+    assert.deepEqual(blankField.missing_fields, [field], field);
+  }
+
   const mismatchedAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",

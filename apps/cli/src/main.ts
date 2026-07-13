@@ -820,6 +820,14 @@ export function selectIterationAuditExpectedImplementationContract(
     : iteration.implementation_contract;
 }
 
+function hasNonBlankContractText(value: string | undefined): boolean {
+  return Boolean(value?.trim());
+}
+
+function hasNonBlankContractTextItems(items: string[] | undefined): boolean {
+  return Boolean(items?.length && items.every((item) => item.trim().length > 0));
+}
+
 export function buildIterationAuditImplementationContractCoverage(
   planContract: GaProjectDesignPlanPacket["implementation_contract"],
   iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "implementation_contract_sha256" | "proposed_slice" | "layer" | "owner_surface">
@@ -862,22 +870,22 @@ export function buildIterationAuditImplementationContractCoverage(
     && iteration.implementation_contract_sha256 !== implementationContractSha256(contract)
   );
   const missingFields = [
-    ...(!contract.proposed_slice ? ["proposed_slice"] : []),
-    ...(!contract.source_artifact_id ? ["source_artifact_id"] : []),
-    ...(!contract.source_proposed_slice ? ["source_proposed_slice"] : []),
-    ...(!contract.selected_layer ? ["selected_layer"] : []),
-    ...(!contract.owner_surface ? ["owner_surface"] : []),
-    ...(!contract.improvement_type ? ["improvement_type"] : []),
-    ...(expectedContract.intent && !contract.intent?.trim() ? ["intent"] : []),
-    ...(expectedContract.acceptance_criteria?.length && !contract.acceptance_criteria?.some((criterion) => criterion.trim()) ? ["acceptance_criteria"] : []),
-    ...(expectedContract.required_verification_entrypoints?.length && !contract.required_verification_entrypoints?.length ? ["required_verification_entrypoints"] : []),
+    ...(!hasNonBlankContractText(contract.proposed_slice) ? ["proposed_slice"] : []),
+    ...(!hasNonBlankContractText(contract.source_artifact_id) ? ["source_artifact_id"] : []),
+    ...(!hasNonBlankContractText(contract.source_proposed_slice) ? ["source_proposed_slice"] : []),
+    ...(!hasNonBlankContractText(contract.selected_layer) ? ["selected_layer"] : []),
+    ...(!hasNonBlankContractText(contract.owner_surface) ? ["owner_surface"] : []),
+    ...(!hasNonBlankContractText(contract.improvement_type) ? ["improvement_type"] : []),
+    ...(expectedContract.intent !== undefined && !hasNonBlankContractText(contract.intent) ? ["intent"] : []),
+    ...(expectedContract.acceptance_criteria !== undefined && !hasNonBlankContractTextItems(contract.acceptance_criteria) ? ["acceptance_criteria"] : []),
+    ...(expectedContract.required_verification_entrypoints !== undefined && !hasNonBlankContractTextItems(contract.required_verification_entrypoints) ? ["required_verification_entrypoints"] : []),
     ...(authoritativeDelegationContract && !contract.delegation_contract ? ["delegation_contract"] : []),
     ...(expectedContract.outcome_evidence_scope && !contract.outcome_evidence_scope ? ["outcome_evidence_scope"] : []),
-    ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
-    ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
-    ...(!contract.delivery_standard?.length ? ["delivery_standard"] : []),
-    ...(expectedContract.rollback_strategy?.length && !contract.rollback_strategy?.length ? ["rollback_strategy"] : []),
-    ...(!contract.boundary ? ["boundary"] : [])
+    ...(!hasNonBlankContractTextItems(contract.implementation_scope) ? ["implementation_scope"] : []),
+    ...(!hasNonBlankContractTextItems(contract.deferred_scope) ? ["deferred_scope"] : []),
+    ...(!hasNonBlankContractTextItems(contract.delivery_standard) ? ["delivery_standard"] : []),
+    ...(expectedContract.rollback_strategy !== undefined && !hasNonBlankContractTextItems(contract.rollback_strategy) ? ["rollback_strategy"] : []),
+    ...(!hasNonBlankContractText(contract.boundary) ? ["boundary"] : [])
   ];
   const mismatchedFields = [
     ...(contract.proposed_slice !== expectedContract.proposed_slice || contract.proposed_slice !== iteration.proposed_slice ? ["proposed_slice"] : []),
