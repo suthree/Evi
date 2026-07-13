@@ -1063,6 +1063,14 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
   const doneGateApplicable = authoritativeCompletionStatus === "done";
   const missingDelegatedResultsGateIds = delegatedResultIds
     .filter((resultId) => !reportedDelegatedResultsCheck?.refs.includes(resultId));
+  const allowedDelegatedResultsGateRefs = new Set([
+    ...delegatedResultIds,
+    ...modernPostFailedDelegationRecoveryRefs,
+    ...legacyPostFailedDelegationRefs
+  ]);
+  const unexpectedDelegatedResultsGateRefs = unique(
+    (reportedDelegatedResultsCheck?.refs ?? []).filter((ref) => !allowedDelegatedResultsGateRefs.has(ref))
+  );
   const claimedRefsBoundGateApplicable = doneGateApplicable;
   let expectedClaimedRefsBoundStatus: LiveRunCompletionCheckSummary["status"] | "unknown" = "skipped";
   if (!completionStatusKnown && (trace.delegated_result_count > 0 || reportedClaimedRefsBoundChecks.length > 0)) {
@@ -1178,6 +1186,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
     || !claimedRefsBoundStatusMatches
     || !delegatedIndependentStatusMatches
     || missingDelegatedResultsGateIds.length > 0
+    || unexpectedDelegatedResultsGateRefs.length > 0
     || expectedDelegatedSelfReportStatus === "unknown"
     || expectedClaimedRefsBoundStatus === "unknown"
     || expectedDelegatedIndependentStatus === "unknown") {
@@ -1236,6 +1245,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `duplicate_delegated_result_ids=${duplicateDelegatedResultIdCount}`,
       `duplicate_delegated_result_refs=${duplicateDelegatedResultRefCount}`,
       `missing_delegated_results_gate_ids=${missingDelegatedResultsGateIds.length}`,
+      `unexpected_delegated_results_gate_refs=${unexpectedDelegatedResultsGateRefs.length}`,
       `claimed_delegated_identity_refs=${claimedDelegatedIdentityRefs.length}`,
       `failed_delegated_dispatches=${failedDelegatedDispatches.length}`,
       `recovery_evidence=${recoveryEvidenceCount}`,
@@ -1255,7 +1265,7 @@ function delegatedCompletionGateCheck(trace: LiveRunTraceSummary): HarnessReplay
       `legacy_post_failed_delegation_refs=${legacyPostFailedDelegationRefs.length}`,
       `delegated_independent_status_match=${delegatedIndependentStatusMatches}`
     ].join("; "),
-    refs: [trace.report_ref]
+    refs: unique([trace.report_ref, ...unexpectedDelegatedResultsGateRefs])
   };
 }
 

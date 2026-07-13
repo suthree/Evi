@@ -1537,7 +1537,10 @@ derived from `ok`. Replay compares `claimed_verification_refs` with event-owned
 delegated result ids and refs; a verified trace that claims either exact
 identity as completion proof fails `verification_evidence_lineage` even if the
 delegated completion-gate check was omitted or drifted. Report-declared refs
-remain coverage metadata, not replay identity authority.
+remain coverage metadata, not replay identity authority. Replay also compares
+the `delegated_results` check refs with event-owned result ids and independently
+bound failed-delegation recovery refs; any extra ref is bounded replay attention
+instead of accepted recovery evidence.
 Dispatch-layer rejects also carry a safe
 `dispatch_failure_kind` such as `dispatch_limit_exceeded`,
 `input_contract_failed`, `terminal_completion_claim`, or `terminal_response_action`; successful dispatches or delegated-model contract
