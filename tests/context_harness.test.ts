@@ -45,6 +45,7 @@ import {
   DELEGATE_AGENT_TASK_MAX_CHARS,
   DELEGATED_AGENT_FINDINGS_MAX_CHARS,
   DELEGATED_AGENT_SUMMARY_MAX_CHARS,
+  type CompletionVerificationReport,
   delegatedResultSchema,
   modelActionEnvelopeSchema,
   opportunitySchema,
@@ -5598,7 +5599,7 @@ test("live runner rejects write-run-only recovery after failed delegation", asyn
   }
 });
 
-test("live runner accepts failed delegation recovery with write-run and verification refs", async () => {
+test("live runner compacts duplicate failed-delegation recovery refs", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -5614,11 +5615,15 @@ test("live runner accepts failed delegation recovery with write-run and verifica
     });
 
     const result = await runner.runTask("Recover in the main harness after a failed delegated result with a bound verification ref.");
-    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
-      verification_status: string;
-      verified: boolean;
-      checks: Array<{ id: string; status: string; summary: string; refs: string[] }>;
+    const report = JSON.parse(
+      await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")
+    ) as CompletionVerificationReport;
+    const persistedEnvelope = JSON.parse(await readFile(join(fixture.stateRoot, report.envelope_ref), "utf8")) as {
+      completion_claim: { verification_refs: string[] };
     };
+    const replay = await runHarnessReplayAudit(fixture.store, {
+      traceRef: result.completion_report_ref ?? ""
+    });
 
     assert.equal(result.verdict, "no_sop");
     assert.equal(model.sawSanitizedFailedObservation, true);
@@ -5627,6 +5632,7 @@ test("live runner accepts failed delegation recovery with write-run and verifica
     assert.match(model.claimedWriteRef, /^tool_result_/);
     assert.equal(report.verification_status, "passed");
     assert.equal(report.verified, true);
+    assert.deepEqual(persistedEnvelope.completion_claim.verification_refs, [model.claimedWriteRef]);
     assert.deepEqual(report.claimed_verification_refs, [model.claimedWriteRef]);
     const claimedLineage = report.verification_evidence_refs.find((item) => item.ref === model.claimedWriteRef);
     assert.ok(claimedLineage);
@@ -5654,6 +5660,10 @@ test("live runner accepts failed delegation recovery with write-run and verifica
     assert.equal(independentCheck?.status, "pass");
     assert.match(independentCheck?.summary ?? "", /both later write\/run recovery evidence and bound non-delegated verification refs/);
     assert.match(independentCheck?.summary ?? "", /verification_refs=1; write_run_results=1/);
+    const replayLineage = replay.checks.find((check) => check.id === "verification_evidence_lineage");
+    assert.equal(replayLineage?.status, "pass");
+    assert.match(replayLineage?.summary ?? "", /independent_evidence_refs=1/);
+    assert.match(replayLineage?.summary ?? "", /reported_independent_evidence_refs=1/);
   } finally {
     await fixture.cleanup();
   }
@@ -9084,7 +9094,7 @@ class InvalidDelegationThenStateWriteThenVerifiedDoneModel implements ModelClien
         && request.input.includes("file.write_state")
         && request.input.includes("observations/no-sop-smoke.txt");
       this.claimedWriteRef = latestToolResultRef(request.input);
-      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef]);
+      return doneEnvelopeWithVerificationRefs([this.claimedWriteRef, this.claimedWriteRef]);
     }
     return delegateCritiqueEnvelope();
   }

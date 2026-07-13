@@ -1352,6 +1352,9 @@ or tool artifact refs from the current run. Unknown or model-invented refs fail
 completion verification and do not count as independent proof. When a run has
 delegated context, unknown refs are persisted only as ordered `unbound_claim_ref_N`
 markers, so the same failure remains replayable without retaining untrusted text.
+Exact duplicate known refs are compacted in first-seen order before the delegated
+model-action envelope and completion report are persisted, so one claimed identity
+cannot inflate completion-check or replay lineage cardinality.
 The envelope schema accepts at most 32 non-empty verification refs, each at most
 512 characters, so model-provided completion metadata stays bounded before it can
 reach completion reports, trace, or replay. The GA project-design general

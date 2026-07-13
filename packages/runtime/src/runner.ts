@@ -1684,10 +1684,11 @@ function boundedDelegatedCompletionClaimEnvelope(
     ...args.delegatedResults.map((result) => result.id),
     ...args.delegatedArtifactRefs
   ]);
-  const verificationRefs = envelope.completion_claim.verification_refs.map((ref, index) =>
+  const verificationRefs = uniqueRefs(envelope.completion_claim.verification_refs.map((ref, index) =>
     knownRefs.has(ref) ? ref : `unbound_claim_ref_${index + 1}`
-  );
-  if (verificationRefs.every((ref, index) => ref === envelope.completion_claim.verification_refs[index])) {
+  ));
+  if (verificationRefs.length === envelope.completion_claim.verification_refs.length
+    && verificationRefs.every((ref, index) => ref === envelope.completion_claim.verification_refs[index])) {
     return envelope;
   }
   return modelActionEnvelopeSchema.parse({
