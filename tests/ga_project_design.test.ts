@@ -967,10 +967,21 @@ test("GA project design plan requires a source contract and complete verificatio
         selected_layer: "core_runtime",
         owner_surface: "ga_project_design",
         improvement_type: "reusable_ga_design_contract",
+        intent: "Require complete source contracts before successor reuse.",
+        acceptance_criteria: ["source contract completeness is visible before reuse"],
         required_verification_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
+        outcome_evidence_scope: {
+          allowed_ref_prefixes: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
+          required_groups: [
+            { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
+            { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] }
+          ],
+          boundary: "bounded test outcome evidence scope"
+        },
         implementation_scope: ["gate successor readiness on source claim mappings"],
         deferred_scope: ["no iteration completion gate changes"],
         delivery_standard: ["required source claim mappings are visible before reuse"],
+        rollback_strategy: ["revert the bounded source contract gate"],
         boundary: "bounded test implementation contract"
       },
       evidence_refs: ["packages/core/src/ga_project_design.ts"],
@@ -1065,6 +1076,28 @@ test("GA project design plan requires a source contract and complete verificatio
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=ok"), true);
     assert.equal(plan?.selection_checks.some((check) => check.includes("missing_verification_claim")), false);
     assert.equal(plan?.layer_decision.stage, "core_basic_successor_ready");
+
+    const {
+      acceptance_criteria: _acceptanceCriteria,
+      required_verification_entrypoints: _requiredEntrypoints,
+      outcome_evidence_scope: _outcomeEvidenceScope,
+      rollback_strategy: _rollbackStrategy,
+      ...incompleteImplementationContract
+    } = iteration.implementation_contract!;
+    await store.writeJson(iteration.ref, {
+      ...iteration,
+      implementation_contract: incompleteImplementationContract,
+      outcome: {
+        ...iteration.outcome!,
+        verification_commands: completeVerificationCommands,
+        verification_claims: completeVerificationClaims
+      }
+    });
+
+    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    assert.equal(plan?.selection_status, "needs_attention");
+    assert.equal(plan?.selection_checks.includes("source_artifact_warning=incomplete_implementation_contract; missing=acceptance_criteria,required_verification_entrypoints,outcome_evidence_scope,rollback_strategy"), true);
+    assert.equal(plan?.layer_decision.stage, "needs_attention");
 
     const { implementation_contract: _implementationContract, ...legacyIteration } = iteration;
     await store.writeJson(iteration.ref, {
@@ -1360,10 +1393,21 @@ test("GA project design planning packet surfaces matching open iteration", async
         selected_layer: "core_runtime",
         owner_surface: "ga_project_design",
         improvement_type: "reusable_ga_design_contract",
+        intent: "Keep the matching open successor contract inspectable.",
+        acceptance_criteria: ["matching open iteration remains aligned and visible"],
         required_verification_entrypoints: ["check"],
+        outcome_evidence_scope: {
+          allowed_ref_prefixes: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
+          required_groups: [
+            { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
+            { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] }
+          ],
+          boundary: "bounded matching-open outcome evidence scope"
+        },
         implementation_scope: ["surface a matching open iteration"],
         deferred_scope: ["no completion gate changes"],
         delivery_standard: ["matching open iteration contract stays inspectable"],
+        rollback_strategy: ["revert the bounded matching-open fixture"],
         boundary: "bounded test implementation contract"
       },
       evidence_refs: ["packages/core/src/ga_project_design.ts"],

@@ -928,6 +928,13 @@ Required policy:
   rollback cannot be checked; the historical artifact remains readable and is
   not migrated. These warnings are plan-quality hints only and must not execute
   verification or prove failure
+- A present but incomplete source implementation contract also remains readable
+  while its successor stays `needs_attention`. The plan emits
+  `source_artifact_warning=incomplete_implementation_contract; missing=<fields>`
+  unless contract identity, intent, acceptance criteria, required verification
+  entrypoints, bounded outcome-evidence scope, implementation/deferred scope,
+  delivery standard, rollback strategy, and boundary are all non-empty. This
+  read-only completeness check does not repair or migrate historical state
 - `next_core_basic_plan.selection_checks` must keep the
   `source_artifact_warning_thresholds` visible beside source artifact counts, so
   threshold tuning does not require reading source code

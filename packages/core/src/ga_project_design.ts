@@ -715,6 +715,7 @@ export async function getGaProjectDesignReadModel(
       "only verified self-evolution iteration outcomes with outcome evidence refs and verification commands become project-design artifacts",
       "verified source quality uses outcome-recorded verification commands; iteration-declared commands remain inspection metadata only",
       "required entrypoint command identities must begin with the canonical pnpm invocation; embedded command phrases do not count",
+      "verified source implementation contracts must retain complete identity, intent, acceptance, verification, scope, delivery, rollback, and boundary fields",
       "fingerprinted implementation contracts must match their persisted SHA-256 before becoming reusable artifacts; legacy records without fingerprints remain readable",
       "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
       "artifacts are reusable design memory for future GA slices, not completion proof",
@@ -753,6 +754,7 @@ function buildNextCoreBasicPlan(
   const isOpenIterationContractReady = iterationRecordStatus.status !== "open_iteration_available"
     || iterationRecordStatus.implementation_contract_status === "aligned";
   const requiredSourceVerificationEntrypoints = source.implementation_contract?.required_verification_entrypoints ?? [];
+  const missingSourceContractFields = missingSourceImplementationContractFields(source.implementation_contract);
   const missingSourceVerificationCommands = requiredSourceVerificationEntrypoints.filter(
     (entrypoint) => !source.quality_verification_commands.some((command) => verificationCommandCoversEntrypoint(command, entrypoint))
   );
@@ -762,6 +764,9 @@ function buildNextCoreBasicPlan(
   const sourceArtifactWarnings = [
     ...(source.kind === "verified_artifact" && !source.implementation_contract
       ? ["source_artifact_warning=missing_implementation_contract"]
+      : []),
+    ...(missingSourceContractFields.length
+      ? [`source_artifact_warning=incomplete_implementation_contract; missing=${missingSourceContractFields.join(",")}`]
       : []),
     ...missingSourceVerificationCommands.map((entrypoint) =>
       `source_artifact_warning=missing_verification_command; entrypoint=${entrypoint}`
@@ -2001,6 +2006,49 @@ function verificationCommandCoversEntrypoint(command: string, entrypoint: string
 
 function commandStartsWithInvocation(command: string, invocation: string): boolean {
   return command === invocation || command.startsWith(`${invocation} `);
+}
+
+function missingSourceImplementationContractFields(
+  contract: GaProjectDesignImplementationContract | undefined
+): string[] {
+  if (!contract) return [];
+  return [
+    ...(!hasNonBlankText(contract.proposed_slice) ? ["proposed_slice"] : []),
+    ...(!hasNonBlankText(contract.source_artifact_id) ? ["source_artifact_id"] : []),
+    ...(!hasNonBlankText(contract.source_proposed_slice) ? ["source_proposed_slice"] : []),
+    ...(!hasNonBlankText(contract.selected_layer) ? ["selected_layer"] : []),
+    ...(!hasNonBlankText(contract.owner_surface) ? ["owner_surface"] : []),
+    ...(!hasNonBlankText(contract.improvement_type) ? ["improvement_type"] : []),
+    ...(!hasNonBlankText(contract.intent) ? ["intent"] : []),
+    ...(!hasNonBlankTextItems(contract.acceptance_criteria) ? ["acceptance_criteria"] : []),
+    ...(!hasNonBlankTextItems(contract.required_verification_entrypoints) ? ["required_verification_entrypoints"] : []),
+    ...(!hasCompleteOutcomeEvidenceScope(contract.outcome_evidence_scope) ? ["outcome_evidence_scope"] : []),
+    ...(!hasNonBlankTextItems(contract.implementation_scope) ? ["implementation_scope"] : []),
+    ...(!hasNonBlankTextItems(contract.deferred_scope) ? ["deferred_scope"] : []),
+    ...(!hasNonBlankTextItems(contract.delivery_standard) ? ["delivery_standard"] : []),
+    ...(!hasNonBlankTextItems(contract.rollback_strategy) ? ["rollback_strategy"] : []),
+    ...(!hasNonBlankText(contract.boundary) ? ["boundary"] : [])
+  ];
+}
+
+function hasCompleteOutcomeEvidenceScope(scope: GaProjectDesignOutcomeEvidenceScope | undefined): boolean {
+  if (!scope || !Array.isArray(scope.required_groups)) return false;
+  return Boolean(
+    hasNonBlankTextItems(scope.allowed_ref_prefixes)
+    && scope.required_groups.length > 0
+    && scope.required_groups.every((group) => Boolean(group)
+      && hasNonBlankText(group.id)
+      && hasNonBlankTextItems(group.ref_prefixes))
+    && hasNonBlankText(scope.boundary)
+  );
+}
+
+function hasNonBlankText(value: unknown): boolean {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function hasNonBlankTextItems(items: unknown): boolean {
+  return Array.isArray(items) && items.length > 0 && items.every(hasNonBlankText);
 }
 
 function verificationClaimBodyForEntrypoint(claim: string, entrypoint: string): string | undefined {
