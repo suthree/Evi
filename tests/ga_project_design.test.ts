@@ -329,6 +329,7 @@ test("GA project design read model derives reusable artifacts from verified iter
       outcome: {
         ...verifiedIteration.outcome!,
         verification_claims: [
+          "project-design:",
           ...Array.from({ length: 10 }, (_, index) => `check: claim ${index + 1}`),
           "project-design: required late mapping"
         ]

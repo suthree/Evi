@@ -43,6 +43,7 @@ import {
   getGaProjectDesignArtifactPacket,
   getGaProjectDesignDelegationImplementationContract,
   getGaProjectDesignReadModel,
+  verificationClaimCoversEntrypoint,
   type GaProjectDesignArtifactPacket,
   type GaProjectDesignCompletionAuditSeed,
   type GaProjectDesignImplementationContract,
@@ -648,7 +649,7 @@ export function buildIterationAuditOutcomeVerificationClaimCoverage(
   const claims = evidence.outcome_verification_claims.map((claim) => claim.trim()).filter(Boolean);
   const required = [...new Set(requiredEntrypoints.map((entrypoint) => entrypoint.trim()).filter(Boolean))];
   const missingEntrypoints = required.filter((entrypoint) =>
-    !claims.some((claim) => claimCoversEntrypoint(claim, entrypoint))
+    !claims.some((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
   );
   let status: "covered" | "missing_claims" | "missing_entrypoints" = "covered";
   if (missingEntrypoints.length) {
@@ -683,7 +684,7 @@ export function buildIterationAuditRuntimeAttentionOutcomeCoverage(
   const attentionRequired = serviceHealthRequired && serviceHealth.status !== "healthy" && serviceHealthReasons.length > 0;
   const serviceHealthClaims = evidence.outcome_verification_claims
     .map((claim) => claim.trim())
-    .filter((claim) => claimCoversEntrypoint(claim, "service-health"));
+    .filter((claim) => verificationClaimCoversEntrypoint(claim, "service-health"));
   const claimText = serviceHealthClaims.join("\n").toLowerCase();
   const selectedClassification = RUNTIME_ATTENTION_CLASSIFICATIONS.find((classification) =>
     claimText.includes(`classification=${classification}`)
@@ -744,7 +745,7 @@ export function buildIterationAuditWorkspaceOutcomeCoverage(
   const changePaths = workspaceStatus.changes.map((change) => change.path.trim()).filter(Boolean);
   const workspaceClaims = evidence.outcome_verification_claims
     .map((claim) => claim.trim())
-    .filter((claim) => claimCoversEntrypoint(claim, "workspace"));
+    .filter((claim) => verificationClaimCoversEntrypoint(claim, "workspace"));
   const claimText = workspaceClaims.join("\n").toLowerCase();
   const missingPaths = changePaths.filter((path) => !claimText.includes(path.toLowerCase()));
   let status: IterationAuditWorkspaceCoverageStatus = "not_required";
@@ -1083,14 +1084,6 @@ export function buildManualIterationImplementationContract(options: CliOptions):
     delivery_standard: [...options.iterationDeliveryStandards],
     boundary: "manual self-evolution implementation contract; records intended scope for audit only and does not execute commands, mutate repo files, promote learning artifacts, schedule experts, or prove completion"
   };
-}
-
-function claimCoversEntrypoint(claim: string, entrypoint: string): boolean {
-  const normalizedClaim = claim.toLowerCase();
-  const normalizedEntrypoint = entrypoint.toLowerCase();
-  return normalizedClaim.startsWith(`${normalizedEntrypoint}:`)
-    || normalizedClaim.startsWith(`${normalizedEntrypoint}=`)
-    || normalizedClaim.includes(`entrypoint=${normalizedEntrypoint}`);
 }
 
 function runtimeAttentionOutcomeCoverageIsSatisfied(status: string): boolean {

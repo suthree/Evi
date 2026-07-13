@@ -463,7 +463,11 @@ iteration. It is still a coverage diagnostic, not proof that those commands
 passed.
 `outcome_verification_claim_coverage` compares required verification entrypoints
 with outcome verification claims, so the audit can show whether each entrypoint
-maps to a completion claim. New implementation contracts persist those
+maps to a completion claim. A mapping requires the exact entrypoint identity and
+a non-empty claim body: bare markers such as `check:` or `entrypoint=check`, and
+prefix collisions such as `entrypoint=checklist`, do not cover `check` or displace
+a later valid required claim in a derived project-design artifact. New
+implementation contracts persist those
 entrypoints in `required_verification_entrypoints`; audit guidance reads the
 audited iteration's frozen contract first, falling back to the current plan and
 then legacy selection text only when an older contract has no structured field.

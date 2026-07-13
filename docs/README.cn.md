@@ -291,7 +291,7 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 iteration audit 会用 `runtime_attention_outcome_coverage` 对这些要求做结构化检查：`service-health:` verification claim 需要包含 `status=<status>`、当前 reason codes、`classification=...`、`handling=...`，`repair_needed` 还需要 `follow_up=...` 或 `no_follow_up=...`；
 iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结构化检查：如果固定 `git status` 显示 dirty，`workspace:` verification claim 必须包含 `status=dirty` 和每个 changed path；如果变更列表被截断，completion gate 会继续阻塞；
 `verification_scope` audit seed 会要求 outcome 说明每条 verification command 支撑哪个 completion claim；只有命令列表、没有 claim coverage，不足以作为 verified outcome 证据；
-它还要求每个 required verification entrypoint 都映射到 completion claim；遗漏任一入口的 claim coverage，不能作为 verified outcome；
+它还要求每个 required verification entrypoint 都精确映射到带非空正文的 completion claim；裸 `check:`、`entrypoint=check` 或 `entrypoint=checklist` 这类空 marker/前缀碰撞不能覆盖 `check`，也不能在 derived project-design artifact 中挤掉后面的有效必需 claim；遗漏任一入口的 claim coverage，不能作为 verified outcome；
 `layer_decision` 会明确把 GA 项目设计识别为核心能力，并把外部工具
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。
 多 agent / 多专家调度属于 core/basic 稳定和 learning-persistence gate 之后的调度层；当前阶段只保留 advisory contract，不把它当作与 core/basic 并列的当前目标。

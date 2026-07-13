@@ -1941,10 +1941,37 @@ function compactOutcomeSummary(value: string): string {
 
 function boundedVerificationClaims(claims: string[], requiredEntrypoints: string[] = []): string[] {
   const compacted = compactRefs(claims);
+  const meaningfulClaims = compacted.filter((claim) => !requiredEntrypoints.some((entrypoint) =>
+    verificationClaimTargetsEntrypoint(claim, entrypoint)
+      && !verificationClaimCoversEntrypoint(claim, entrypoint)
+  ));
   const requiredClaims = requiredEntrypoints.map((entrypoint) =>
-    compacted.find((claim) => claim.startsWith(`${entrypoint}:`))
+    meaningfulClaims.find((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
   );
-  return compactRefs([...requiredClaims, ...compacted]).slice(0, MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS);
+  return compactRefs([...requiredClaims, ...meaningfulClaims]).slice(0, MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS);
+}
+
+export function verificationClaimCoversEntrypoint(claim: string, entrypoint: string): boolean {
+  const body = verificationClaimBodyForEntrypoint(claim, entrypoint);
+  return typeof body === "string" && body.length > 0;
+}
+
+function verificationClaimBodyForEntrypoint(claim: string, entrypoint: string): string | undefined {
+  const normalizedClaim = claim.trim().toLowerCase();
+  const normalizedEntrypoint = entrypoint.trim().toLowerCase();
+  if (!normalizedEntrypoint) return undefined;
+  for (const prefix of [`${normalizedEntrypoint}:`, `${normalizedEntrypoint}=`]) {
+    if (normalizedClaim.startsWith(prefix)) return normalizedClaim.slice(prefix.length).trim();
+  }
+  const marker = `entrypoint=${normalizedEntrypoint}`;
+  if (!normalizedClaim.startsWith(marker)) return undefined;
+  const suffix = normalizedClaim.slice(marker.length);
+  if (suffix.length > 0 && !/^[\s:=]/.test(suffix)) return undefined;
+  return suffix.replace(/^[\s:=]+/, "").trim();
+}
+
+function verificationClaimTargetsEntrypoint(claim: string, entrypoint: string): boolean {
+  return verificationClaimBodyForEntrypoint(claim, entrypoint) !== undefined;
 }
 
 function sourcePlanningNextMoves(nextMoves: string[]): string[] {

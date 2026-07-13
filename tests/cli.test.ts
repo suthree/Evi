@@ -1140,6 +1140,25 @@ test("iteration audit outcome verification claim coverage maps required entrypoi
   assert.equal(missingEntrypoint.status, "missing_entrypoints");
   assert.deepEqual(missingEntrypoint.missing_entrypoints, ["scorecard"]);
 
+  const emptyClaimBodies = buildIterationAuditOutcomeVerificationClaimCoverage(
+    ["project-design", "scorecard", "check"],
+    {
+      iteration_evidence_refs: [],
+      iteration_verification_commands: [],
+      runtime_iteration_verification_commands: [],
+      outcome_evidence_refs: [],
+      outcome_verification_commands: [],
+      outcome_verification_claims: [
+        "project-design:",
+        "scorecard=   ",
+        "entrypoint=check",
+        "entrypoint=checklist full repo checks pass"
+      ]
+    }
+  );
+  assert.equal(emptyClaimBodies.status, "missing_entrypoints");
+  assert.deepEqual(emptyClaimBodies.missing_entrypoints, ["project-design", "scorecard", "check"]);
+
   const covered = buildIterationAuditOutcomeVerificationClaimCoverage(
     ["project-design", "scorecard", "check"],
     {
