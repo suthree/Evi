@@ -1466,14 +1466,14 @@ function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
   if (normalizedOutput.includes(source)) return true;
   if (source.length < 40) return false;
   return source
-    .split(/[.;\n]/)
+    .split(/[.!?;。！？；\n]/)
     .map((chunk) => chunk.trim())
     .filter((chunk) => chunk.length >= 40)
     .some((chunk) => normalizedOutput.includes(chunk));
 }
 
 function normalizeRawEchoText(value: string): string {
-  return value.normalize("NFKC").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
+  return value.normalize("NFKC").toLowerCase().replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
 }
 
 function errorMessage(error: unknown): string {

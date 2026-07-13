@@ -1424,9 +1424,11 @@ delete/remove/erase/unlink/drop/destroy execution, Git command execution,
 pull-request creation, completion, expert,
 multi-agent, model fan-out, hidden memory, raw delegated artifact, unstated repo
 state, context expansion, or invented evidence-ref authority.
-Raw echo comparison applies Unicode NFKC normalization and removes invisible
-format controls before matching, so compatibility characters or zero-width
-separators cannot disguise a copied task/context string.
+Raw echo comparison applies Unicode NFKC and case normalization, removes
+invisible format controls, and recognizes both ASCII and Chinese sentence
+boundaries before matching. Compatibility characters, case changes,
+zero-width separators, or copying one long Chinese sentence therefore cannot
+disguise raw task/context text.
 Natural-language delegated output execution assertions in active, third-person,
 passive, or terse form that state was deleted, removed, erased, unlinked,
 dropped, or destroyed,

@@ -795,7 +795,8 @@ test("delegated output rejects exact raw task echo even when the task is short",
   }
 });
 
-test("delegated output rejects Unicode-obfuscated raw source echoes", () => {
+test("delegated output rejects canonicalized and multilingual raw source echoes", () => {
+  const chineseContextSentence = "这是一段明确超过四十个字符的中文原始上下文内容用于验证中文分句复制行为不能绕过委派输出安全边界";
   const cases = [
     {
       sourceField: "task",
@@ -809,6 +810,22 @@ test("delegated output rejects Unicode-obfuscated raw source echoes", () => {
       sourceField: "context",
       source: DELEGATED_OUTPUT_SOURCE,
       echoedText: VALID_DELEGATE_CONTEXT.replace("Completion", "Comple\u200btion")
+    },
+    {
+      sourceField: "task",
+      source: {
+        task: "Critique This Exact Delegated Task?",
+        context: VALID_DELEGATE_CONTEXT
+      },
+      echoedText: "critique this exact delegated task?"
+    },
+    {
+      sourceField: "context",
+      source: {
+        task: "请分析这段材料是否存在边界问题？",
+        context: `仅使用提供的上下文和证据引用。${chineseContextSentence}。其余约束保持不变且由主流程完成验收。`
+      },
+      echoedText: chineseContextSentence
     }
   ];
 
