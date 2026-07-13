@@ -714,6 +714,18 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(missingAcceptance.status, "missing_required_fields");
   assert.deepEqual(missingAcceptance.missing_fields, ["acceptance_criteria"]);
 
+  const blankHistoricalAcceptance = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, acceptance_criteria: ["   "] }
+  });
+  assert.equal(blankHistoricalAcceptance.status, "missing_required_fields");
+  assert.deepEqual(blankHistoricalAcceptance.missing_fields, ["acceptance_criteria"]);
+
   const mismatchedAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",

@@ -635,7 +635,8 @@ The contract also carries target-specific `acceptance_criteria`, so the frozen
 success standard travels with the iteration instead of only living in the
 advisory plan. Plan-derived iteration reuse may backfill the field; current-plan
 audit rejects missing or changed criteria, while historical contracts remain
-readable without migration.
+readable without migration. Historical audit still requires at least one
+non-blank criterion before treating that acceptance standard as covered.
 When a project-design reader has no recognized scorecard target, it likewise
 defaults to core GA design rather than reopening delegation; a matching open
 iteration still takes precedence.

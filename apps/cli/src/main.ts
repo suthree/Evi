@@ -869,7 +869,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(!contract.owner_surface ? ["owner_surface"] : []),
     ...(!contract.improvement_type ? ["improvement_type"] : []),
     ...(expectedContract.intent && !contract.intent?.trim() ? ["intent"] : []),
-    ...(expectedContract.acceptance_criteria?.length && !contract.acceptance_criteria?.length ? ["acceptance_criteria"] : []),
+    ...(expectedContract.acceptance_criteria?.length && !contract.acceptance_criteria?.some((criterion) => criterion.trim()) ? ["acceptance_criteria"] : []),
     ...(expectedContract.required_verification_entrypoints?.length && !contract.required_verification_entrypoints?.length ? ["required_verification_entrypoints"] : []),
     ...(authoritativeDelegationContract && !contract.delegation_contract ? ["delegation_contract"] : []),
     ...(expectedContract.outcome_evidence_scope && !contract.outcome_evidence_scope ? ["outcome_evidence_scope"] : []),
