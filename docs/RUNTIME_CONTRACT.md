@@ -909,9 +909,10 @@ Required policy:
   orientation only and does not prove completion
 - Compact `source_continuation` must preserve source kind, artifact identity,
   source iteration ref, source status, source layer/owner, completed source
-  slice, source implementation contract id when present, source next-move
-  candidate count, one candidate next move, and the primary next-use hint. It
-  is source direction only and does not prove completion
+  slice, source implementation contract id and frozen verification entrypoints
+  when present, source next-move candidate count, one candidate next move, and
+  the primary next-use hint. Missing historical verification entrypoints remain
+  `not_recorded`. It is source direction only and does not prove completion
 - `next_core_basic_plan.iteration_focus` must explain the next core/basic
   direction and anti-drift checks without authorizing execution
 - Compact GA Project Design Plan context must preserve bounded anti-drift checks

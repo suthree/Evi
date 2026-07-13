@@ -876,6 +876,7 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
 }
 
 function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDesignSourceContinuation {
+  const sourceVerificationEntrypoints = source.implementation_contract?.required_verification_entrypoints?.join(",") || "not_recorded";
   return {
     source_kind: source.kind,
     source_artifact_id: source.id,
@@ -891,11 +892,12 @@ function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDe
       `source=${source.layer}/${source.owner_surface}`,
       `completed_slice=${source.proposed_slice}`,
       source.implementation_contract ? `source_contract=${source.implementation_contract.proposed_slice}` : "source_contract=not_recorded",
+      `source_verification_entrypoints=${sourceVerificationEntrypoints}`,
       `source_next_move_candidates=${source.source_next_moves.length}`,
       "do not repeat completed source slice",
       "use source next_use and source_next_moves as direction, not completion proof"
     ]),
-    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
+    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, source verification entrypoints, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
   };
 }
 

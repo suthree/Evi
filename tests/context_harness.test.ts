@@ -26,6 +26,7 @@ import {
   compactGaPlanPhaseForbids,
   compactGaPlanProofBoundary,
   compactGaPlanRuntimeObservabilityGuard,
+  compactGaPlanSourceContinuation,
   compactGaPlanStageExitCriteria,
   compactGaPlanSourceTruth,
   compactGaPlanVerificationCommands,
@@ -98,6 +99,26 @@ test("compact GA plan source truth keeps source artifact and successor identity"
       "fresh_successor_slice=true; source_slice=completed_source_slice; target_slice=fresh_target_slice"
     ]
   }), "source_kind=verified_artifact; artifact=ga_design_artifact_source; ref=self-evolution/iterations/source.json; source_slice=completed_source_slice; target_slice=fresh_target_slice; status=verified; quality=ok; fresh_successor=true");
+});
+
+test("compact GA plan source continuation names missing source verification entrypoints", () => {
+  const compact = compactGaPlanSourceContinuation({
+    source_continuation: {
+      source_kind: "fresh_bootstrap",
+      source_artifact_id: "ga_design_bootstrap",
+      source_status: "bootstrap",
+      source_layer: "core_runtime",
+      source_owner_surface: "ga_project_design",
+      source_proposed_slice: "bootstrap_source",
+      source_iteration_ref: "docs/RUNTIME_CONTRACT.md",
+      next_use: "Select one core/basic slice.",
+      source_next_moves: ["Select one core/basic slice."],
+      carry_forward: [],
+      boundary: "read-only source continuation"
+    }
+  });
+
+  assert.match(compact, /contract=not_recorded; source_verify=not_recorded; candidates=1/);
 });
 
 test("compact GA plan goal scope keeps objective owner source and success evidence", () => {
@@ -1454,6 +1475,7 @@ test("context bundle includes bounded GA project design plan", async () => {
         selected_layer: "core_runtime",
         owner_surface: "ga_project_design",
         improvement_type: "reusable_ga_design_contract",
+        required_verification_entrypoints: ["project-design", "check"],
         implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
         deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
         delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
@@ -1553,7 +1575,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /layer: core_runtime; owner: ga_project_design; slice: general_agent_delegation_hardening_after_context_plan/);
     assert.match(rendered.markdown, /selection_origin: matching_open_iteration/);
     assert.match(rendered.markdown, /source_truth: source_kind=verified_artifact; artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; source_slice=context_ga_project_design_plan; target_slice=general_agent_delegation_hardening_after_context_plan; status=verified; quality=attention; fresh_successor=true/);
-    assert.match(rendered.markdown, /source_continuation: kind=verified_artifact; artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; status=verified; source=core_runtime\/ga_project_design; completed=context_ga_project_design_plan; contract=core_runtime\/ga_project_design\/context_ga_project_design_plan; candidates=3; candidate=Continue context source candidate/);
+    assert.match(rendered.markdown, /source_continuation: kind=verified_artifact; artifact=ga_design_artifact_iteration_contract_context_plan; ref=self-evolution\/iterations\/iteration_contract_context_plan\.json; status=verified; source=core_runtime\/ga_project_design; completed=context_ga_project_design_plan; contract=core_runtime\/ga_project_design\/context_ga_project_design_plan; source_verify=project-design,check; candidates=3; candidate=Continue context source candidate/);
     assert.doesNotMatch(rendered.markdown, /Commit and restart runtime/);
     assert.match(rendered.markdown, /goal_scope: objective=Continue self-evolution through core\/basic GA project-design capability gains before SOP, skill, memory, or dream promotion\.; owner=ga_project_design; source=operator_objective=core_basic_self_evolution_first\|source_artifact=ga_design_artifact_iteration_contract_context_plan; success=fresh_successor_slice=true; source_slice=context_ga_project_design_plan; target_slice=general_agent_delegation_hardening_after_context_plan/);
     assert.match(rendered.markdown, /implementation_contract: type=reusable_ga_design_contract; delegation=delegate_agent:task_context>result>trace_replay>main_harness_completion; scope=change one reusable GA project-design contract or read-model surface; defer=no external adapter or tool integration unless it names a reusable runtime contract; deliver=future iterations can inspect the contract without inferring intent from the opaque slice id/);

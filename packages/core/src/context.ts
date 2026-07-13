@@ -1687,6 +1687,7 @@ export function compactGaPlanSourceContinuation(
   const sourceContract = source.source_contract
     ? `${source.source_contract.selected_layer}/${source.source_contract.owner_surface}/${source.source_contract.proposed_slice}`
     : "not_recorded";
+  const sourceVerificationEntrypoints = source.source_contract?.required_verification_entrypoints?.join(",") || "not_recorded";
   const candidate = source.source_next_moves.find((item) => item !== source.next_use)
     ?? source.source_next_moves[0]
     ?? source.next_use;
@@ -1698,6 +1699,7 @@ export function compactGaPlanSourceContinuation(
     `source=${source.source_layer}/${source.source_owner_surface}`,
     `completed=${source.source_proposed_slice}`,
     `contract=${sourceContract}`,
+    `source_verify=${sourceVerificationEntrypoints}`,
     `candidates=${source.source_next_moves.length}`,
     `candidate=${candidate}`,
     `next=${source.next_use}`

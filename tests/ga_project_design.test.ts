@@ -949,6 +949,7 @@ test("GA project design plan carries source continuation from basic iterations",
         selected_layer: "basic_entrypoint",
         owner_surface: "runtime_tools",
         improvement_type: "reusable_ga_design_contract",
+        required_verification_entrypoints: ["service-health", "check"],
         implementation_scope: ["change one reusable basic tool boundary"],
         deferred_scope: ["no external adapters"],
         delivery_standard: ["repo-scoped tools cannot use runtime state paths"],
@@ -1000,6 +1001,7 @@ test("GA project design plan carries source continuation from basic iterations",
     assert.match(plan?.source_continuation.source_next_moves[2] ?? "", /restart runtime observability/);
     assert.equal(plan?.source_continuation.carry_forward.includes("source=basic_entrypoint/runtime_tools"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_contract=runtime_state_boundary_for_basic_tools"), true);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source_verification_entrypoints=service-health,check"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_next_move_candidates=3"), true);
     assert.match(plan?.source_continuation.next_use ?? "", /basic runtime substrate/);
     assert.doesNotMatch(plan?.planning_basis ?? "", /Commit and restart runtime/);
