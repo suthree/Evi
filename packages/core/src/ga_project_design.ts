@@ -56,6 +56,7 @@ export interface GaProjectDesignArtifact {
   reusable_pattern: string;
   evidence_refs: string[];
   verification_commands: string[];
+  verification_claims: string[];
   next_use: string;
   source_next_moves: string[];
   non_goals: string[];
@@ -78,6 +79,7 @@ interface GaProjectDesignPlanSource {
   source_next_moves: string[];
   evidence_refs: string[];
   verification_commands: string[];
+  verification_claims: string[];
   non_goals: string[];
 }
 
@@ -213,6 +215,7 @@ export interface GaProjectDesignSourceContinuation {
   source_iteration_ref: string;
   next_use: string;
   source_next_moves: string[];
+  source_verification_claims: string[];
   source_contract?: GaProjectDesignImplementationContract;
   carry_forward: string[];
   boundary: string;
@@ -406,6 +409,8 @@ const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from
 const COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX = "does not repeat completed source slice ";
 const MIN_SOURCE_ARTIFACT_EVIDENCE_REFS = 2;
 const MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS = 2;
+const MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS = 1;
+const MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS = 10;
 const OUTCOME_SUMMARY_MAX_CHARS = 240;
 const SOURCE_COMPLETION_NEXT_MOVE_PATTERNS = [
   /\bcommit\b.*\b(after this slice|slice|implementation|outcome|health|runtime|repo|file)\b/i,
@@ -695,6 +700,7 @@ export async function getGaProjectDesignReadModel(
     next_core_basic_plan: nextCoreBasicPlan,
     artifact_policy: [
       "only verified self-evolution iteration outcomes with outcome evidence refs and verification commands become project-design artifacts",
+      "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
       "artifacts are reusable design memory for future GA slices, not completion proof",
       "external adapters remain application slices unless the artifact names a reusable core/basic contract"
     ],
@@ -742,6 +748,9 @@ function buildNextCoreBasicPlan(
       : []),
     ...(source.verification_commands.length < MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS
       ? [`source_artifact_warning=thin_verification_commands; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}; actual=${source.verification_commands.length}`]
+      : []),
+    ...(source.kind === "verified_artifact" && source.verification_claims.length < MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS
+      ? [`source_artifact_warning=thin_verification_claims; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS}; actual=${source.verification_claims.length}`]
       : [])
   ];
   const sourceArtifactQuality = sourceArtifactWarnings.length ? "attention" : "ok";
@@ -790,7 +799,8 @@ function buildNextCoreBasicPlan(
         ? `source_artifact_verified=${source.source_status}; ref=${source.source_iteration_ref}`
         : `source_bootstrap_contract=true; ref=${source.source_iteration_ref}; proposed_slice=${proposedSlice}`,
       `source_artifact_evidence=evidence_refs:${source.evidence_refs.length}; verification_commands:${source.verification_commands.length}`,
-      `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}`,
+      `source_artifact_claims=verification_claims:${source.verification_claims.length}`,
+      `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}; verification_claims:${MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS}`,
       ...sourceArtifactWarnings,
       `scorecard_target_status=${scorecardTargetStatus}`,
       `target_selection_origin=${targetSelection.origin}`,
@@ -873,6 +883,7 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
     source_next_moves: artifact.source_next_moves,
     evidence_refs: artifact.evidence_refs,
     verification_commands: artifact.verification_commands,
+    verification_claims: artifact.verification_claims,
     non_goals: artifact.non_goals
   };
 }
@@ -889,17 +900,19 @@ function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDe
     source_iteration_ref: source.source_iteration_ref,
     next_use: source.next_use,
     source_next_moves: source.source_next_moves,
+    source_verification_claims: source.verification_claims,
     ...(source.implementation_contract ? { source_contract: source.implementation_contract } : {}),
     carry_forward: compactRefs([
       `source=${source.layer}/${source.owner_surface}`,
       `completed_slice=${source.proposed_slice}`,
       source.implementation_contract ? `source_contract=${source.implementation_contract.proposed_slice}` : "source_contract=not_recorded",
       `source_verification_entrypoints=${sourceVerificationEntrypoints}`,
+      `source_verification_claims=${source.verification_claims.length}`,
       `source_next_move_candidates=${source.source_next_moves.length}`,
       "do not repeat completed source slice",
       "use source next_use and source_next_moves as direction, not completion proof"
     ]),
-    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, source verification entrypoints, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
+    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, source verification entrypoints and claims, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
   };
 }
 
@@ -929,6 +942,7 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
       BASIC_RUNTIME_HEALTH_COMMAND,
       "pnpm run check"
     ],
+    verification_claims: [],
     non_goals: [
       "does not claim a verified source artifact exists",
       "does not promote SOPs, skills, memory, dreams, experts, or application adapters",
@@ -1880,6 +1894,8 @@ export function deriveGaProjectDesignArtifacts(
           ...iteration.verification_commands,
           ...outcome.verification_commands
         ]),
+        verification_claims: compactRefs(outcome.verification_claims ?? [])
+          .slice(0, MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS),
         next_use: sourceNextMoves[0] ?? defaultSourcePlanningNextMove(),
         source_next_moves: sourceNextMoves,
         non_goals: compactRefs([

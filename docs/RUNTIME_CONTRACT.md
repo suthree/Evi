@@ -645,6 +645,10 @@ total reusable artifact count; `listed_artifact_count` is the current limited
 response size. Historical iteration evidence refs must be collapsed during
 successor planning so plan refs stay bounded to the current source artifact and
 direct evidence.
+Derived artifacts also preserve up to ten of the verified outcome's
+`verification_claims`, so successor planning can inspect which entrypoint claim
+each recorded command supported. Historical outcomes without claims remain
+readable and surface a thin-claims attention reason instead of being migrated.
 `governance project-design --artifact <artifact-or-iteration-ref>` narrows that
 view to one derived artifact by artifact id, source iteration id, source state
 ref, or source filename. The packet may show whether the artifact is the source
@@ -669,7 +673,8 @@ target.
 It may include `source_continuation`, a read-only summary of source kind,
 artifact identity, source status, layer, owner surface, completed slice, source
 iteration ref, source implementation contract, primary `next_use`, and bounded
-`source_next_moves` candidates. This field preserves source direction for the
+`source_next_moves` candidates. It also carries the source outcome's bounded
+verification claims and their count. This field preserves source direction for the
 next core/basic slice; it does not execute the next move, prove completion, or
 promote SOP, skill, memory, dream, expert, or adapter work.
 It may also include `capability_stage_plan`; this does not add execution or

@@ -134,6 +134,10 @@ test("GA project design read model derives reusable artifacts from verified iter
         summary: "Project-design artifact derivation passed targeted verification.",
         evidence_refs: ["tests/ga_project_design.test.ts"],
         verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+        verification_claims: [
+          "project-design: derived artifact exposes verified source evidence",
+          "check: targeted project-design tests pass"
+        ],
         next_moves: ["Reuse the artifact when planning the next GA design slice; treat iteration_contract_stale_history as separate governance cleanup."],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
@@ -261,6 +265,15 @@ test("GA project design read model derives reusable artifacts from verified iter
         summary: "Long outcome summary ".repeat(30)
       }
     }])[0];
+    const boundedClaimsArtifact = deriveGaProjectDesignArtifacts([{
+      ...verifiedIteration,
+      id: "iteration_contract_many_claims",
+      ref: "self-evolution/iterations/iteration_contract_many_claims.json",
+      outcome: {
+        ...verifiedIteration.outcome!,
+        verification_claims: Array.from({ length: 12 }, (_, index) => `check: claim ${index + 1}`)
+      }
+    }])[0];
 
     assert.equal(readModel.action, "project-design");
     assert.equal(readModel.artifact_count, 1);
@@ -271,11 +284,17 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.artifacts[0]?.outcome_summary, "Project-design artifact derivation passed targeted verification.");
     assert.equal(boundedSummaryArtifact?.outcome_summary.length, 243);
     assert.match(boundedSummaryArtifact?.outcome_summary ?? "", /\.\.\.$/);
+    assert.equal(boundedClaimsArtifact?.verification_claims.length, 10);
+    assert.equal(boundedClaimsArtifact?.verification_claims.at(-1), "check: claim 10");
     assert.equal(readModel.artifacts[0]?.owner_surface, "ga_project_design");
     assert.match(readModel.artifacts[0]?.reusable_pattern ?? "", /explicit non-goals/);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("memory/dreams/dream_core.json"), true);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.artifacts[0]?.verification_commands.includes("pnpm exec tsx --test tests/ga_project_design.test.ts"), true);
+    assert.deepEqual(readModel.artifacts[0]?.verification_claims, [
+      "project-design: derived artifact exposes verified source evidence",
+      "check: targeted project-design tests pass"
+    ]);
     assert.match(readModel.artifacts[0]?.next_use ?? "", /Reuse the artifact when planning the next GA design slice/);
     assert.match(readModel.artifacts[0]?.next_use ?? "", /iteration_contract_stale_history/);
     assert.equal(readModel.artifacts[0]?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
@@ -378,7 +397,8 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.selection_reasons.includes("iteration_record_status=not_recorded"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.some((check) => check.includes("source_artifact_verified=verified")), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("source_artifact_evidence=evidence_refs:4; verification_commands:1"), true);
-    assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2"), true);
+    assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("source_artifact_claims=verification_claims:2"), true);
+    assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("source_artifact_warning_thresholds=evidence_refs:2; verification_commands:2; verification_claims:1"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("source_artifact_warning=thin_verification_commands; minimum=2; actual=1"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.some((check) => check.includes("fresh_successor_slice=true")), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.some((check) => check.includes("target_layer=core_runtime")), true);
@@ -1004,11 +1024,15 @@ test("GA project design plan carries source continuation from basic iterations",
     assert.equal(plan?.source_continuation.source_contract?.selected_layer, "basic_entrypoint");
     assert.equal(plan?.source_continuation.source_contract?.owner_surface, "runtime_tools");
     assert.equal(plan?.source_continuation.source_next_moves.length, 3);
+    assert.deepEqual(plan?.source_continuation.source_verification_claims, []);
     assert.match(plan?.source_continuation.source_next_moves[0] ?? "", /basic runtime substrate/);
     assert.match(plan?.source_continuation.source_next_moves[2] ?? "", /restart runtime observability/);
     assert.equal(plan?.source_continuation.carry_forward.includes("source=basic_entrypoint/runtime_tools"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_contract=runtime_state_boundary_for_basic_tools"), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_verification_entrypoints=service-health,check"), true);
+    assert.equal(plan?.source_continuation.carry_forward.includes("source_verification_claims=0"), true);
+    assert.equal(plan?.selection_checks.includes("source_artifact_claims=verification_claims:0"), true);
+    assert.equal(plan?.selection_checks.some((check) => check.includes("thin_verification_claims")), true);
     assert.equal(plan?.source_continuation.carry_forward.includes("source_next_move_candidates=3"), true);
     assert.match(plan?.source_continuation.next_use ?? "", /basic runtime substrate/);
     assert.doesNotMatch(plan?.planning_basis ?? "", /Commit and restart runtime/);

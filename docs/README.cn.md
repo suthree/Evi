@@ -44,6 +44,8 @@
 
 参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
 
+`governance project-design` 派生的 verified artifact 最多保留 outcome 的 10 条 `verification_claims`，并在 successor `source_continuation` 中继续暴露命令到完成声明的映射与数量；历史 outcome 没有 claims 时仍可读取，但会显示 thin-claims attention，不做状态迁移。
+
 ## 核心能力
 
 - `file.read`：读取仓库或状态文件。
