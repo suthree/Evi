@@ -357,6 +357,9 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("memory/dreams/dream_core.json"), true);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.artifacts[0]?.verification_commands.includes("pnpm exec tsx --test tests/ga_project_design.test.ts"), true);
+    assert.deepEqual(readModel.artifacts[0]?.outcome_verification_commands, [
+      "pnpm exec tsx --test tests/ga_project_design.test.ts"
+    ]);
     assert.deepEqual(readModel.artifacts[0]?.verification_claims, [
       "project-design: derived artifact exposes verified source evidence",
       "check: targeted project-design tests pass"
@@ -940,6 +943,13 @@ test("GA project design plan requires a source contract and complete verificatio
   const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-source-claims-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
+    const completeVerificationCommands = [
+      "pnpm run runtime -- governance project-design --state-root <state-root>",
+      "pnpm run runtime -- governance scorecard --state-root <state-root>",
+      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+      "pnpm run runtime -- service health --target runtime --state-root <state-root>",
+      "pnpm run check"
+    ];
     const iteration: SelfEvolutionIterationContract = {
       schema_version: 1,
       id: "iteration_contract_source_claims",
@@ -964,14 +974,17 @@ test("GA project design plan requires a source contract and complete verificatio
         boundary: "bounded test implementation contract"
       },
       evidence_refs: ["packages/core/src/ga_project_design.ts"],
-      verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      verification_commands: completeVerificationCommands,
       non_goals: ["no state migration"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       outcome: {
         status: "verified",
         summary: "Source claim mapping outcome.",
         evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["pnpm run check"],
+        verification_commands: [
+          "pnpm exec tsx --test tests/ga_project_design.test.ts",
+          "pnpm run check"
+        ],
         verification_claims: ["check: full checks pass"],
         next_moves: ["Use this source for one bounded core/basic successor."],
         recorded_at: "2026-07-06T00:00:03Z",
@@ -1008,14 +1021,13 @@ test("GA project design plan requires a source contract and complete verificatio
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=project-design"), true);
     assert.equal(plan?.layer_decision.stage, "needs_attention");
-
-    const completeVerificationCommands = [
-      "pnpm run runtime -- governance project-design --state-root <state-root>",
-      "pnpm run runtime -- governance scorecard --state-root <state-root>",
-      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-      "pnpm run runtime -- service health --target runtime --state-root <state-root>",
+    const declaredOnlyArtifact = (await getGaProjectDesignReadModel(store)).artifacts[0];
+    assert.equal(declaredOnlyArtifact?.verification_commands.includes(completeVerificationCommands[0]!), true);
+    assert.deepEqual(declaredOnlyArtifact?.outcome_verification_commands, [
+      "pnpm exec tsx --test tests/ga_project_design.test.ts",
       "pnpm run check"
-    ];
+    ]);
+
     await store.writeJson(iteration.ref, {
       ...iteration,
       outcome: {
@@ -1339,7 +1351,10 @@ test("GA project design planning packet surfaces matching open iteration", async
         status: "verified",
         summary: "Verified source outcome.",
         evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["pnpm run check"],
+        verification_commands: [
+          "pnpm exec tsx --test tests/ga_project_design.test.ts",
+          "pnpm run check"
+        ],
         verification_claims: ["check: full source checks pass"],
         next_moves: ["Use this artifact when planning the next GA design slice; treat iteration_contract_stale_open_successor and iteration_contract_stale_open_basic_successor as separate governance cleanup."],
         recorded_at: "2026-07-06T00:00:03Z",

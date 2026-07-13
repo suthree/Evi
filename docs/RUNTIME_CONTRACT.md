@@ -684,6 +684,13 @@ outcomes without claims remain readable and surface a thin-claims attention
 reason instead of being migrated. A source artifact that lacks any claim mapping
 required by its implementation contract also remains readable, but its
 successor plan stays `needs_attention` until a fully covered source is selected.
+The artifact keeps the combined iteration/outcome command list in
+`verification_commands` for inspection and exposes the executed-evidence view
+separately as `outcome_verification_commands`. Verified-source quality counts
+and required-entrypoint command mappings use only the outcome-recorded view, so
+a command declared before implementation cannot stand in for executed outcome
+evidence. This is metadata lineage validation only; it does not execute or
+prove the result of either command list.
 
 When a verified source iteration carries an implementation-contract SHA-256,
 artifact derivation recomputes it before admitting the iteration as reusable
@@ -925,8 +932,10 @@ Required policy:
   `source_artifact_warning_thresholds` visible beside source artifact counts, so
   threshold tuning does not require reading source code
 - When a source implementation contract declares required verification
-  entrypoints, the source artifact's bounded verification-command identities
-  must cover each entrypoint. A missing mapping emits
+  entrypoints, the source artifact's bounded outcome-recorded
+  verification-command identities must cover each entrypoint. Iteration-level
+  declared commands remain inspectable but cannot satisfy this quality gate. A
+  missing mapping emits
   `source_artifact_warning=missing_verification_command; entrypoint=<id>` and
   keeps the successor at `needs_attention`. This is structural command
   coverage only; it does not execute a command or prove its result

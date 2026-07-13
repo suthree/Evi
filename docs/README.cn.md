@@ -45,6 +45,7 @@
 参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
 
 `governance project-design` 派生的 verified artifact 最多保留 outcome 的 10 条 `verification_claims`；在该上限内会先保留 source implementation contract 每个必需 entrypoint 的首条 claim，再用其余 claims 填充，避免排在后面的必需映射被同一 entrypoint 的重复声明挤掉。successor `source_continuation` 会继续暴露这些命令到完成声明的映射与数量；历史 outcome 没有 claims 或缺少 source implementation contract 要求的任一 claim 映射时仍可读取、不做状态迁移，但 successor plan 会保持 `needs_attention`。
+artifact 的 `verification_commands` 继续保留 iteration 声明命令与 outcome 记录命令的合并视图，`outcome_verification_commands` 单独给出实际 outcome 证据视图；verified source 的命令数量和 required-entrypoint 映射只认后者，因此执行前声明过的命令不能冒充 outcome 执行证据。这只校验元数据血缘，不会执行命令或证明命令结果。
 
 ## 核心能力
 

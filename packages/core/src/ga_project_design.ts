@@ -57,6 +57,7 @@ export interface GaProjectDesignArtifact {
   reusable_pattern: string;
   evidence_refs: string[];
   verification_commands: string[];
+  outcome_verification_commands: string[];
   verification_claims: string[];
   next_use: string;
   source_next_moves: string[];
@@ -80,6 +81,7 @@ interface GaProjectDesignPlanSource {
   source_next_moves: string[];
   evidence_refs: string[];
   verification_commands: string[];
+  quality_verification_commands: string[];
   verification_claims: string[];
   non_goals: string[];
 }
@@ -711,6 +713,7 @@ export async function getGaProjectDesignReadModel(
     next_core_basic_plan: nextCoreBasicPlan,
     artifact_policy: [
       "only verified self-evolution iteration outcomes with outcome evidence refs and verification commands become project-design artifacts",
+      "verified source quality uses outcome-recorded verification commands; iteration-declared commands remain inspection metadata only",
       "fingerprinted implementation contracts must match their persisted SHA-256 before becoming reusable artifacts; legacy records without fingerprints remain readable",
       "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
       "artifacts are reusable design memory for future GA slices, not completion proof",
@@ -750,7 +753,7 @@ function buildNextCoreBasicPlan(
     || iterationRecordStatus.implementation_contract_status === "aligned";
   const requiredSourceVerificationEntrypoints = source.implementation_contract?.required_verification_entrypoints ?? [];
   const missingSourceVerificationCommands = requiredSourceVerificationEntrypoints.filter(
-    (entrypoint) => !source.verification_commands.some((command) => verificationCommandCoversEntrypoint(command, entrypoint))
+    (entrypoint) => !source.quality_verification_commands.some((command) => verificationCommandCoversEntrypoint(command, entrypoint))
   );
   const missingSourceVerificationClaims = requiredSourceVerificationEntrypoints.filter(
     (entrypoint) => !source.verification_claims.some((claim) => verificationClaimCoversEntrypoint(claim, entrypoint))
@@ -765,8 +768,8 @@ function buildNextCoreBasicPlan(
     ...(source.evidence_refs.length < MIN_SOURCE_ARTIFACT_EVIDENCE_REFS
       ? [`source_artifact_warning=thin_evidence_refs; minimum=${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; actual=${source.evidence_refs.length}`]
       : []),
-    ...(source.verification_commands.length < MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS
-      ? [`source_artifact_warning=thin_verification_commands; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}; actual=${source.verification_commands.length}`]
+    ...(source.quality_verification_commands.length < MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS
+      ? [`source_artifact_warning=thin_verification_commands; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}; actual=${source.quality_verification_commands.length}`]
       : []),
     ...(source.kind === "verified_artifact" && source.verification_claims.length < MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS
       ? [`source_artifact_warning=thin_verification_claims; minimum=${MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS}; actual=${source.verification_claims.length}`]
@@ -827,7 +830,7 @@ function buildNextCoreBasicPlan(
       source.kind === "verified_artifact"
         ? `source_artifact_verified=${source.source_status}; ref=${source.source_iteration_ref}`
         : `source_bootstrap_contract=true; ref=${source.source_iteration_ref}; proposed_slice=${proposedSlice}`,
-      `source_artifact_evidence=evidence_refs:${source.evidence_refs.length}; verification_commands:${source.verification_commands.length}`,
+      `source_artifact_evidence=evidence_refs:${source.evidence_refs.length}; verification_commands:${source.quality_verification_commands.length}`,
       `source_artifact_claims=verification_claims:${source.verification_claims.length}`,
       `source_artifact_warning_thresholds=evidence_refs:${MIN_SOURCE_ARTIFACT_EVIDENCE_REFS}; verification_commands:${MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS}; verification_claims:${MIN_SOURCE_ARTIFACT_VERIFICATION_CLAIMS}`,
       ...sourceArtifactWarnings,
@@ -912,6 +915,7 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
     source_next_moves: artifact.source_next_moves,
     evidence_refs: artifact.evidence_refs,
     verification_commands: artifact.verification_commands,
+    quality_verification_commands: artifact.outcome_verification_commands,
     verification_claims: artifact.verification_claims,
     non_goals: artifact.non_goals
   };
@@ -946,6 +950,13 @@ function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDe
 }
 
 function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
+  const verificationCommands = [
+    "pnpm run runtime -- governance project-design --state-root <state-root>",
+    "pnpm run runtime -- governance scorecard --state-root <state-root>",
+    "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
+    BASIC_RUNTIME_HEALTH_COMMAND,
+    "pnpm run check"
+  ];
   return {
     kind: "fresh_bootstrap",
     id: BOOTSTRAP_SOURCE_ID,
@@ -964,13 +975,8 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
       "docs/RUNTIME_CONTRACT.md",
       "docs/README.cn.md"
     ],
-    verification_commands: [
-      "pnpm run runtime -- governance project-design --state-root <state-root>",
-      "pnpm run runtime -- governance scorecard --state-root <state-root>",
-      "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
-      BASIC_RUNTIME_HEALTH_COMMAND,
-      "pnpm run check"
-    ],
+    verification_commands: verificationCommands,
+    quality_verification_commands: verificationCommands,
     verification_claims: [],
     non_goals: [
       "does not claim a verified source artifact exists",
@@ -1933,6 +1939,7 @@ export function deriveGaProjectDesignArtifacts(
           ...iteration.verification_commands,
           ...outcome.verification_commands
         ]),
+        outcome_verification_commands: compactRefs(outcome.verification_commands),
         verification_claims: boundedVerificationClaims(
           outcome.verification_claims ?? [],
           iteration.implementation_contract?.required_verification_entrypoints
