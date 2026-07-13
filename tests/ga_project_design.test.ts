@@ -274,6 +274,31 @@ test("GA project design read model derives reusable artifacts from verified iter
         verification_claims: Array.from({ length: 12 }, (_, index) => `check: claim ${index + 1}`)
       }
     }])[0];
+    const requiredClaimsArtifact = deriveGaProjectDesignArtifacts([{
+      ...verifiedIteration,
+      id: "iteration_contract_required_claims",
+      ref: "self-evolution/iterations/iteration_contract_required_claims.json",
+      implementation_contract: {
+        proposed_slice: "verified_iteration_to_design_artifact",
+        source_artifact_id: "ga_design_artifact_source",
+        source_proposed_slice: "source_slice",
+        selected_layer: "core_runtime",
+        owner_surface: "ga_project_design",
+        improvement_type: "reusable_ga_design_contract",
+        required_verification_entrypoints: ["project-design", "check"],
+        implementation_scope: ["preserve required claim mappings"],
+        deferred_scope: ["no completion gate changes"],
+        delivery_standard: ["required mappings survive artifact bounds"],
+        boundary: "bounded test implementation contract"
+      },
+      outcome: {
+        ...verifiedIteration.outcome!,
+        verification_claims: [
+          ...Array.from({ length: 10 }, (_, index) => `check: claim ${index + 1}`),
+          "project-design: required late mapping"
+        ]
+      }
+    }])[0];
 
     assert.equal(readModel.action, "project-design");
     assert.equal(readModel.artifact_count, 1);
@@ -286,6 +311,10 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.match(boundedSummaryArtifact?.outcome_summary ?? "", /\.\.\.$/);
     assert.equal(boundedClaimsArtifact?.verification_claims.length, 10);
     assert.equal(boundedClaimsArtifact?.verification_claims.at(-1), "check: claim 10");
+    assert.deepEqual(requiredClaimsArtifact?.verification_claims, [
+      "project-design: required late mapping",
+      ...Array.from({ length: 9 }, (_, index) => `check: claim ${index + 1}`)
+    ]);
     assert.equal(readModel.artifacts[0]?.owner_surface, "ga_project_design");
     assert.match(readModel.artifacts[0]?.reusable_pattern ?? "", /explicit non-goals/);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("memory/dreams/dream_core.json"), true);

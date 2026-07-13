@@ -646,9 +646,13 @@ response size. Historical iteration evidence refs must be collapsed during
 successor planning so plan refs stay bounded to the current source artifact and
 direct evidence.
 Derived artifacts also preserve up to ten of the verified outcome's
-`verification_claims`, so successor planning can inspect which entrypoint claim
-each recorded command supported. Historical outcomes without claims remain
-readable and surface a thin-claims attention reason instead of being migrated.
+`verification_claims`. Within that bound, the first claim for every entrypoint
+required by the source implementation contract is retained before remaining
+claims fill the available slots, so a late required mapping cannot disappear
+behind repeated claims for one entrypoint. Successor planning can therefore
+inspect which entrypoint claim each recorded command supported. Historical
+outcomes without claims remain readable and surface a thin-claims attention
+reason instead of being migrated.
 `governance project-design --artifact <artifact-or-iteration-ref>` narrows that
 view to one derived artifact by artifact id, source iteration id, source state
 ref, or source filename. The packet may show whether the artifact is the source

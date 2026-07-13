@@ -1894,8 +1894,10 @@ export function deriveGaProjectDesignArtifacts(
           ...iteration.verification_commands,
           ...outcome.verification_commands
         ]),
-        verification_claims: compactRefs(outcome.verification_claims ?? [])
-          .slice(0, MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS),
+        verification_claims: boundedVerificationClaims(
+          outcome.verification_claims ?? [],
+          iteration.implementation_contract?.required_verification_entrypoints
+        ),
         next_use: sourceNextMoves[0] ?? defaultSourcePlanningNextMove(),
         source_next_moves: sourceNextMoves,
         non_goals: compactRefs([
@@ -1913,6 +1915,14 @@ function compactOutcomeSummary(value: string): string {
   return normalized.length > OUTCOME_SUMMARY_MAX_CHARS
     ? `${normalized.slice(0, OUTCOME_SUMMARY_MAX_CHARS).trimEnd()}...`
     : normalized;
+}
+
+function boundedVerificationClaims(claims: string[], requiredEntrypoints: string[] = []): string[] {
+  const compacted = compactRefs(claims);
+  const requiredClaims = requiredEntrypoints.map((entrypoint) =>
+    compacted.find((claim) => claim.startsWith(`${entrypoint}:`))
+  );
+  return compactRefs([...requiredClaims, ...compacted]).slice(0, MAX_SOURCE_ARTIFACT_VERIFICATION_CLAIMS);
 }
 
 function sourcePlanningNextMoves(nextMoves: string[]): string[] {
