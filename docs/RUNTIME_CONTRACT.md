@@ -1405,7 +1405,7 @@ task handoff. One concrete question requires a question mark, an English
 interrogative such as `whether`, `what`, or `how`, or a supported Chinese
 interrogative expression; incidental words such as `if`, `is`, or `do` do not
 satisfy that boundary. The task cannot combine analysis with direct
-fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
+fix/repair/update/edit/patch, imperative `write/create a patch`, commit/delete/remove/erase/unlink/drop/destroy/
 push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
 or pull-request creation intent even across sentence boundaries. Neither
 `task` nor `context` can hide those boundary terms with Unicode format controls
@@ -1424,7 +1424,9 @@ expert/multi-agent work. A task may analyze whether explicit payload context or 
 evidence shows a command, test, build, or script was already run; direct
 requests include bare execution verbs such as `test the project`, `check the
 build`, `lint the repository`, `read files`, `search the repo`, or `验证测试`,
-and are rejected before dispatch.
+and imperative patch-authoring requests such as `Write a patch`, `Create a
+patch`, or `写一个补丁`; all are rejected before dispatch. Conditional patch
+recommendations remain read-only advisory analysis.
 The context must also
 explicitly state that the delegated subagent has no tool, write, or mutation
 authority, that completion remains with the main harness, and that the expected

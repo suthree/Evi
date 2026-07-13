@@ -175,6 +175,7 @@ test("delegate_agent payload example carries the shared authoring contract", () 
   assert.match(example.context, /no tools\/writes\/mutation/);
   assert.match(example.context, /main harness completes/);
   assert.match(example.context, /output=summary\/findings_text/);
+  assert.match(liveInstruction, /write or create a patch/);
   assert.match(liveInstruction, /completion_claim\.status=not_done/);
   assert.match(liveInstruction, /terminal done or blocked claims are rejected/);
   assert.match(example.task, /<=1000$/);
@@ -359,13 +360,23 @@ test("delegate_agent rejects sentence-separated direct mutation work before disp
   const directTasks = [
     "Analyze the missing guard. Fix it before returning findings?",
     "Critique the state transition; please patch the defect.",
+    "Analyze the defect. Write a patch that fixes it?",
+    "Review the code. Create a patch for the bug?",
     "Review stale state records. Remove obsolete entries.",
-    "分析缺失的防护。修复它后返回结论。"
+    "分析缺失的防护。修复它后返回结论。",
+    "分析这个缺陷。写一个补丁修复它？"
   ];
   const readOnlyReview = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",
     payload: {
       task: "Analyze whether the missing guard should be fixed?",
+      context: VALID_DELEGATE_CONTEXT
+    }
+  });
+  const readOnlyPatchReview = parseDelegationRequest({
+    rationale: "Use bounded delegated analysis.",
+    payload: {
+      task: "Review whether a patch should be written?",
       context: VALID_DELEGATE_CONTEXT
     }
   });
@@ -379,6 +390,7 @@ test("delegate_agent rejects sentence-separated direct mutation work before disp
     if (!result.ok) assert.match(result.error, /must explicitly request bounded analysis/);
   }
   assert.equal(readOnlyReview.ok, true);
+  assert.equal(readOnlyPatchReview.ok, true);
 });
 
 test("delegate_agent rejects repository mutation task and context bypasses but keeps review read-only", () => {
@@ -737,6 +749,28 @@ test("delegated output rejects destructive and repository execution claims in ev
     }), DELEGATED_OUTPUT_SOURCE);
     assert.equal(result.ok, true, recommendation);
   }
+});
+
+test("delegated output rejects patch-authoring directives but keeps patch recommendations advisory", () => {
+  for (const directive of [
+    "Write a patch that fixes the defect.",
+    "Create a patch for the bug.",
+    "写一个补丁修复这个缺陷。"
+  ]) {
+    const result = parseDelegatedOutput(JSON.stringify({
+      summary: "Bounded review found one defect.",
+      findings_text: directive
+    }), DELEGATED_OUTPUT_SOURCE);
+
+    assert.equal(result.ok, false, directive);
+    if (!result.ok) assert.match(result.error, /must not issue .* mutation/);
+  }
+
+  const recommendation = parseDelegatedOutput(JSON.stringify({
+    summary: "Bounded review found one defect.",
+    findings_text: "A patch should be written by the main harness."
+  }), DELEGATED_OUTPUT_SOURCE);
+  assert.equal(recommendation.ok, true);
 });
 
 test("delegated output rejects control-plane instruction overrides without blocking ordinary analysis", () => {

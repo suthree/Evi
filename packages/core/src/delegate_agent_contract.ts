@@ -452,7 +452,9 @@ const DIRECT_TASK_MUTATION_PATTERNS = [
 ];
 
 const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
-  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i
+  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i,
+  /(?:^|[.!?;:]\s*)(?:please\s+)?(?:write|create)\s+(?:a\s+)?patch\b/i,
+  /(?:^|[.!?;:。！？；：，、]\s*)(?:请\s*)?(?:写|创建)(?:一个|一份)?补丁/u
 ];
 
 const DIRECT_TASK_COMMAND_EXECUTION_PATTERNS = [
