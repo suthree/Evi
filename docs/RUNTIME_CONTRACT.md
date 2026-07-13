@@ -664,6 +664,14 @@ behind repeated claims for one entrypoint. Successor planning can therefore
 inspect which entrypoint claim each recorded command supported. Historical
 outcomes without claims remain readable and surface a thin-claims attention
 reason instead of being migrated.
+
+When a verified source iteration carries an implementation-contract SHA-256,
+artifact derivation recomputes it before admitting the iteration as reusable
+GA design evidence. A mismatch excludes the artifact and therefore prevents it
+from sourcing a successor plan. Legacy iterations without fingerprints remain
+readable and reusable; this check does not migrate or repair state, verify file
+bodies, or turn the digest into a signature.
+
 `governance project-design --artifact <artifact-or-iteration-ref>` narrows that
 view to one derived artifact by artifact id, source iteration id, source state
 ref, or source filename. The packet may show whether the artifact is the source

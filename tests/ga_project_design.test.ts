@@ -14,6 +14,7 @@ import {
 import { compactGaPlanGovernanceCleanup } from "../packages/core/src/context.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "../packages/core/src/action_contracts.js";
 import {
+  implementationContractSha256,
   recordSelfEvolutionIteration,
   type SelfEvolutionIterationContract
 } from "../packages/core/src/self_evolution_iterations.js";
@@ -239,6 +240,40 @@ test("GA project design read model derives reusable artifacts from verified iter
     await store.writeJson(partialIteration.ref, partialIteration);
     await store.writeJson(weakVerifiedIteration.ref, weakVerifiedIteration);
 
+    const fingerprintedContract = {
+      proposed_slice: verifiedIteration.proposed_slice,
+      source_artifact_id: "ga_design_artifact_source",
+      source_proposed_slice: "completed_source_slice",
+      selected_layer: "core_runtime" as const,
+      owner_surface: "ga_project_design",
+      improvement_type: "reusable_ga_design_contract" as const,
+      implementation_scope: ["derive one reusable GA project-design artifact"],
+      deferred_scope: ["no external adapter work"],
+      delivery_standard: ["only an integrity-matched contract becomes reusable"],
+      boundary: "read-only test implementation contract"
+    };
+    const fingerprintedIteration: SelfEvolutionIterationContract = {
+      ...verifiedIteration,
+      implementation_contract: fingerprintedContract,
+      implementation_contract_sha256: implementationContractSha256(fingerprintedContract)
+    };
+    const driftedIteration: SelfEvolutionIterationContract = {
+      ...fingerprintedIteration,
+      implementation_contract: {
+        ...fingerprintedContract,
+        intent: "Post-hoc rewritten source intent."
+      }
+    };
+    assert.equal(deriveGaProjectDesignArtifacts([fingerprintedIteration]).length, 1);
+    assert.equal(deriveGaProjectDesignArtifacts([driftedIteration]).length, 0);
+    assert.equal(deriveGaProjectDesignArtifacts([verifiedIteration]).length, 1);
+
+    await store.writeJson(driftedIteration.ref, driftedIteration);
+    const driftedReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    assert.equal(driftedReadModel.artifact_count, 0);
+    assert.equal(driftedReadModel.next_core_basic_plan, null);
+    await store.writeJson(verifiedIteration.ref, verifiedIteration);
+
     const fallbackReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
     assert.equal(fallbackReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
     assert.equal(fallbackReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
@@ -303,6 +338,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.action, "project-design");
     assert.equal(readModel.artifact_count, 1);
     assert.equal(readModel.artifact_policy[0]?.includes("outcome evidence refs and verification commands"), true);
+    assert.equal(readModel.artifact_policy.some((policy) => policy.includes("must match their persisted SHA-256")), true);
     assert.equal(readModel.artifacts[0]?.id, "ga_design_artifact_iteration_contract_verified");
     assert.equal(readModel.artifacts[0]?.source_iteration_ref, "self-evolution/iterations/iteration_contract_verified.json");
     assert.equal(readModel.artifacts[0]?.source_outcome_status, "verified");

@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { CapabilityLayer } from "./capabilities.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "./action_contracts.js";
 import {
+  implementationContractSha256,
   listSelfEvolutionIterations,
   type SelfEvolutionIterationContract
 } from "./self_evolution_iterations.js";
@@ -710,6 +711,7 @@ export async function getGaProjectDesignReadModel(
     next_core_basic_plan: nextCoreBasicPlan,
     artifact_policy: [
       "only verified self-evolution iteration outcomes with outcome evidence refs and verification commands become project-design artifacts",
+      "fingerprinted implementation contracts must match their persisted SHA-256 before becoming reusable artifacts; legacy records without fingerprints remain readable",
       "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
       "artifacts are reusable design memory for future GA slices, not completion proof",
       "external adapters remain application slices unless the artifact names a reusable core/basic contract"
@@ -1959,7 +1961,14 @@ function defaultSourcePlanningNextMove(): string {
 function hasReusableGaProjectDesignOutcome(iteration: SelfEvolutionIterationContract): boolean {
   return iteration.outcome?.status === "verified"
     && iteration.outcome.evidence_refs.length > 0
-    && iteration.outcome.verification_commands.length > 0;
+    && iteration.outcome.verification_commands.length > 0
+    && hasMatchingImplementationContractFingerprint(iteration);
+}
+
+function hasMatchingImplementationContractFingerprint(iteration: SelfEvolutionIterationContract): boolean {
+  if (!iteration.implementation_contract_sha256) return true;
+  return Boolean(iteration.implementation_contract
+    && implementationContractSha256(iteration.implementation_contract) === iteration.implementation_contract_sha256);
 }
 
 function buildSuccessorNonGoals(
