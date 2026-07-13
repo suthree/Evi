@@ -149,34 +149,44 @@ The capability boundary stack is:
 
 Self-iteration and self-growth are separate loops.
 
-Self-iteration means slow, evidence-backed improvement of the core and basic
+Self-iteration means active, evidence-backed improvement of the core and basic
 runtime substrate: context assembly, harness validation, bounded tool execution,
 evidence capture, completion verification, recovery, and operator inspection.
-Direction control is more important than active iteration. If the direction,
-verification path, or rollback story is unclear, the correct action is to pause,
-record the gap, or narrow the slice.
+The accepted local self-growing mission grants standing authority to modify
+repository source, tests, docs, local configuration, runtime state, the active
+vault, scripts, local dependencies, and governed identity without per-change
+operator confirmation.
 
-Gray self-iteration moves through stages:
+Local self-iteration may use these evidence modes:
 
 1. **Proposal or read-only audit**: identify the gap, owner surface, evidence,
    expected benefit, verification command, and rollback story without changing
    runtime behavior.
 2. **State-only rehearsal**: exercise the candidate path in local state or a
    sandboxed rehearsal surface without changing the default runtime path.
-3. **Gated write**: allow a narrow implementation only when evidence, checks,
-   and rollback notes are explicit.
-4. **Default adoption**: make the behavior part of the normal runtime only
-   after targeted verification shows core and basic capabilities were not
-   weakened.
+3. **Gated write**: implement locally when evidence, checks, and rollback notes
+   are explicit. The gate is harness/governance validation, not a mandatory
+   human confirmation.
+4. **Default adoption**: make the behavior part of the normal runtime after
+   targeted verification shows core and basic capabilities were not weakened.
+
+These modes are not a mandatory linear approval ladder. Under the standing
+local authority, the agent may move directly to a local write or default
+adoption when the evidence and verification path are already clear. Read-only
+surfaces remain read-only by their own contracts, and public publishing,
+private-data disclosure, and destructive remote operations remain separate
+external-effect gates.
 
 No self-iteration stage may trade away existing core/basic capability,
 completion verification, evidence capture, or operator inspection in order to
 ship faster.
 
-Self-growth means preserving reusable procedures through SOPs and skills. It
-expands the agent's working surface only after repeated or high-value evidence
-shows a clear trigger, bounded procedure, verification command, failure mode,
-and rollback or retirement rule.
+Self-growth means preserving reusable procedures through SOPs and skills. When
+`runtime.promotion_enabled` is true, draft, audit, promotion, revision, and
+retirement are autonomous local harness decisions rather than per-item operator
+confirmations. Durable procedures still require repeated or high-value evidence,
+a clear trigger, bounded procedure, verification command, failure mode, and
+rollback or retirement rule.
 
 Existing commands, adapters, delegated agent surfaces, SOPs, skills, and local
 runtime capabilities should be reused before new mechanisms are introduced. If

@@ -53,6 +53,26 @@ context should be refreshed through Trellis commands rather than manually
 owned. Stable runtime docs remain the authority for current runtime behavior,
 language boundaries, and operator-facing principles.
 
+## 2026-07-13 Open Local Evolution Authority
+
+The operator grants Evi standing full local authority for self-iteration and
+self-growth. Local file mutation is expected: the agent may modify repository
+source, tests, docs, configuration, runtime state, active-vault content, SOPs,
+skills, scripts, local dependencies, governed identity, and local Git history.
+Local draft, audit, promotion, revision, and retirement do not require
+per-change operator confirmation.
+
+This decision supersedes the earlier default that self-iteration should be slow
+or that durable local mutation and promotion should pause for a human gate. It
+does not supersede evidence, harness validation, completion verification,
+rollback/retirement, preservation of unrelated work, or the contract of an
+explicitly read-only command.
+
+The standing authority is local. Secret disclosure, private-data transmission,
+public publishing, and destructive remote or otherwise irreversible external
+operations remain separate external-effect gates unless the operator explicitly
+authorizes them for the task.
+
 ## 2026-07-02 TrellisVCS Context Hygiene
 
 TrellisVCS is initialized with latest minimal no-index metadata so the repo is

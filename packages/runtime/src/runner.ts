@@ -19,7 +19,7 @@ import {
 } from "../../core/src/delegate_agent_completion_gate.js";
 import { delegationInputMetadata, parseDelegatedOutput, parseDelegationRequest } from "../../core/src/delegate_agent_contract.js";
 import { formatSopMarkdown } from "../../core/src/formatters.js";
-import { newId, slugify, utcNow } from "../../core/src/ids.js";
+import { newId, slugify, slugifySkillName, utcNow } from "../../core/src/ids.js";
 import { MemoryStore, type EpisodeSearchHit } from "../../core/src/memory_store.js";
 import { findDuplicateRecalledSkill, recallSkills, recordSkillUsage, type SkillRecallHit } from "../../core/src/recall.js";
 import {
@@ -775,7 +775,7 @@ export class LiveAgentRunner {
         sopRef = await this.store.writeText(`sop/drafts/${sop.id}.md`, formatSopMarkdown(sop));
         vaultSopDraftRef = await this.store.writeRepoText(`${this.config.vault.root}/sop/drafts/${sop.id}.md`, formatSopMarkdown(sop));
         vaultSopPromotedRef = await this.store.writeRepoText(`${this.config.vault.root}/sop/promoted/${sop.id}.md`, formatSopMarkdown(sop));
-        const skillName = slugify(sop.title);
+        const skillName = slugifySkillName(sop.title);
         const promoted = await promoteSkillToVault({
           store: this.store,
           vaultRoot: this.config.vault,

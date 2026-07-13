@@ -1,8 +1,8 @@
 # Local Learning
 
-Local learning is the experimental first-version layer that turns local evidence
-into reusable local procedures. It is useful, but it is not the center of the
-first-version product boundary.
+Local learning is the active first-version self-growth layer that turns local
+evidence into reusable local procedures. It works alongside core/basic
+self-iteration rather than waiting for per-change operator approval.
 
 ## Boundary
 
@@ -12,7 +12,8 @@ The first version supports learning on one machine:
 - searchable episode evidence through the local MemoryStore
 - SOP drafts produced from local runs
 - autonomous audit of SOP candidates
-- optional promotion into the local active vault
+- autonomous evidence-gated promotion into the local active vault when
+  `runtime.promotion_enabled` is true
 - recall of local skills in later runs
 - duplicate-skill avoidance when recall already covers the candidate
 - proposal-only background review over episode memory
@@ -25,6 +26,20 @@ The first version does not support:
 - multi-machine vault sharing
 - cross-node conflict handling
 - compatibility promises for external runtimes
+
+## Standing Local Evolution Authority
+
+Within the accepted local self-growing mission, the runtime may write state,
+modify repository source/tests/docs, create or revise scripts, update local
+dependencies, and draft, audit, promote, revise, or retire local SOPs and skills
+without per-change operator confirmation. These are expected self-iteration and
+self-growth effects, not completion failures merely because files changed.
+
+Open local authority does not remove evidence or quality gates. Every durable
+change still needs attributable evidence, harness validation, targeted checks,
+and a rollback or retirement path. Explicitly read-only commands remain
+read-only. Secrets, public publishing, private-data disclosure, and destructive
+remote operations are outside this standing local authority.
 
 ## Local Active Vault
 
@@ -96,6 +111,10 @@ model proposes SOP
 
 The model must not claim that a skill has been promoted. Promotion is a harness
 result backed by local evidence.
+
+When `runtime.promotion_enabled` is true, this harness decision may run
+autonomously after verified completion. Operator confirmation is not required
+for each local draft, audit, promotion, revision, or retirement event.
 
 ## Reuse Before Promotion
 

@@ -229,6 +229,12 @@ export async function promoteSkillToVault(args: {
   const candidateRef = activeVaultRef(resolver, `skill-candidates/${args.sop.id}-${args.skillName}/SKILL.md`);
   const existing = await readSkillRegistryEntries(args.store, resolver);
   const previous = existing.find((entry) => entry.name === args.skillName || entry.instructions_ref === skillRef);
+  if (previous && previous.source_sop_ref !== args.sopRef) {
+    throw new Error(
+      `Skill name collision for ${args.skillName}: existing skill comes from ${previous.source_sop_ref}; `
+      + `refusing to overwrite it with ${args.sopRef}. Use a distinct skill name or the explicit skill revision path.`
+    );
+  }
   const skill = skillPackageSchema.parse({
     name: args.skillName,
     description: args.sop.trigger,

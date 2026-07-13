@@ -5,7 +5,7 @@ import {
 } from "./selected_skill_outcome_history.js";
 import { recordRegistrySkillUsage, scanSkillRegistry, type SkillRegistryEntry } from "./skill_registry.js";
 import type { SkillResolverLike } from "./skill_resolver.js";
-import { slugify } from "./ids.js";
+import { slugifySkillName } from "./ids.js";
 import { AgentStore } from "./store.js";
 
 const RECENT_SELECTED_SKILL_OUTCOME_LIMIT = 50;
@@ -136,7 +136,7 @@ export function findDuplicateRecalledSkill(
     ...sop.procedure,
     ...sop.required_tools
   ].join(" ");
-  const expectedName = slugify(args.skillName ?? sop.title);
+  const expectedName = slugifySkillName(args.skillName ?? sop.title);
 
   let best: { hit: SkillRecallHit; score: number } | null = null;
   for (const hit of hits) {
