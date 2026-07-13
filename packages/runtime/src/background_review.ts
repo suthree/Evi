@@ -67,7 +67,7 @@ import {
 import { getSopEvolutionLedger, sopEvolutionNextCommandActionId, type SopEvolutionDecision, type SopEvolutionLedgerEntry } from "../../core/src/sop_evolution_ledger.js";
 import { AgentStore } from "../../core/src/store.js";
 import { MemoryStore, type EpisodeEventRecord } from "../../core/src/memory_store.js";
-import { newId, slugify, utcNow } from "../../core/src/ids.js";
+import { newId, slugify, slugifySkillName, utcNow } from "../../core/src/ids.js";
 
 const REVIEW_TICK_BACKLOG_SCAN_LIMIT = 20;
 
@@ -1254,7 +1254,7 @@ export class BackgroundReviewRunner {
       throw new Error(`Audit ${auditRef} verdict is ${audit.verdict}; only promote verdicts can be promoted.`);
     }
 
-    const skillName = slugify(args.skillName ?? sop.title);
+    const skillName = slugifySkillName(args.skillName ?? sop.title);
     const duplicateSkill = findDuplicateRecalledSkill(
       sop,
       await recallSkills(this.store, `${sop.title}\n${sop.trigger}\n${sop.verification}`, 5, args.vaultRoot),

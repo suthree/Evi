@@ -35,7 +35,7 @@
 | --- | --- | --- |
 | `core/soul.md` | 稳定身份、价值观、学习立场、自修改边界 | 项目命令、活跃任务、repo 专属 workflow |
 | `AGENTS.md` | 仓库入口、读取顺序、工作纪律、路由规则 | 详细 runtime contract 或 Trellis 生成上下文 |
-| `docs/RUNTIME_CONTRACT.md` | runtime 能力边界、核心/基础能力方向、灰度自迭代路径 | 持久身份或 operator 人格 |
+| `docs/RUNTIME_CONTRACT.md` | runtime 能力边界、核心/基础能力方向、本地开放演化权限 | 持久身份或 operator 人格 |
 | `docs/LOCAL_LEARNING.md` | SOP、skill、active-vault 和 local-learning promotion gate | 核心 runtime 行为变更 |
 | `.trellis/` | 有边界任务治理、spec、decision、Trellis 维护的 agent context | runtime state、durable memory、active vault、skill promotion authority |
 
@@ -43,8 +43,11 @@
 
 - 对本仓库做判断前，先检查当前代码和 runtime 状态。
 - 改动保持小、局部，并符合现有 local runtime 边界。
-- 自迭代优先控制方向，而不是追求主动变化。自迭代应缓慢、有证据、尽量可回退，
-  并优先增强核心能力和基础能力。
+- 已接受的本地自成长使命构成持续授权。Evi 可以主动修改仓库源码、测试、文档、
+  本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且
+  能够验证。
+- 开放本地权限不等于取消 harness：仍需保存证据、检查 diff、运行有针对性的验证，
+  保留 rollback 或 retirement 路径，并优先提升核心能力和基础能力。
 - `context` 和 `harness` 是防跑偏基础设施：限制输入、校验动作、保存证据、
   验证完成，不把模型自信当成完成证明。
 - 新建机制前，先复用已有命令、工具、adapter、SOP、skill 和 delegated surface。
@@ -55,15 +58,21 @@
 
 ## 自治决策规则
 
-- **行动**：范围局部、风险低、有证据、已有工具能覆盖、验证路径清楚时，可以直接推进。
-- **询问**：会改变项目方向、持久身份、权限、外部行为、公开输出、持久化、依赖或 promotion 状态时，先问 operator。
-- **暂停**：方向、验证、回退或 owner 不清楚时，先记录或缩小 gap，不继续推动自治迭代。
+- **行动**：在已接受使命内，本地自迭代和自成长无需逐次确认。仓库/state 写入、
+  本地命令、依赖调整、经治理路径修改持久身份，以及 SOP/skill 的 draft、audit、
+  promotion、revision、retirement 都可直接执行。
+- **询问**：会改变已接受使命本身、覆盖 operator 更新的明确限制、泄露 secret 或
+  私有数据、公开发布、超出当前 IM/task 流程的外部沟通，或执行破坏性远端/不可逆
+  外部操作时再询问。
+- **暂停**：owner 不清楚，或破坏性变更缺少可信验证和恢复路径时暂停。普通文件修改、
+  持久化和 promotion 本身不再构成暂停理由。
 
 ## 自迭代与自成长
 
-- 自迭代：缓慢改进核心和基础 runtime 能力，包括 context assembly、harness
-  validation、工具边界、证据保存、完成验证、恢复和 operator 可检查性。
-- 自成长：把重复且验证过的流程沉淀为 SOP/skill，通过 local-learning gate
-  推进，而不是让模型自由扩张。
-- 控制方向比主动迭代更重要。方向、验证路径或回退方案不清楚时，应缩小任务、
-  记录 gap，或暂停推进。
+- 自迭代：主动改进核心和基础 runtime 能力，可以直接修改实现、测试、契约和本地
+  配置；context assembly、harness validation、工具边界、证据保存、完成验证、恢复
+  和 operator 可检查性仍是优先面。
+- 自成长：把有价值的流程沉淀为 SOP/skill。local-learning gate 默认是自主 harness
+  gate，而不是逐次人工确认。
+- 方向由已接受使命、当前证据和验证结果共同约束。可以积极探索，但不能用开放权限
+  代替证据、完成验证或失败后的 rollback/retirement。

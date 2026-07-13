@@ -24,7 +24,7 @@ This file is model-facing guidance for Codex and other host runtimes.
 | --- | --- | --- |
 | `core/soul.md` | Stable identity, values, learning stance, self-modification boundaries | Project commands, active tasks, repo-specific workflows |
 | `AGENTS.md` | Repository entrypoint, reading order, work discipline, routing rules | Detailed runtime contract or Trellis-generated context |
-| `docs/RUNTIME_CONTRACT.md` | Runtime capability boundaries, core/basic capability direction, gray self-iteration path | Durable identity or operator personality |
+| `docs/RUNTIME_CONTRACT.md` | Runtime capability boundaries, core/basic capability direction, local evolution authority | Durable identity or operator personality |
 | `docs/LOCAL_LEARNING.md` | SOP, skill, active-vault, and local-learning promotion gates | Core runtime behavior changes |
 | `.trellis/` | Bounded task governance, specs, decisions, Trellis-maintained agent context | Runtime state, durable memory, active vault, skill promotion authority |
 
@@ -32,7 +32,8 @@ This file is model-facing guidance for Codex and other host runtimes.
 
 - Inspect current code and runtime state before making claims about this repository.
 - Keep changes small and consistent with the existing local runtime boundary.
-- Prioritize direction control over active self-iteration. Self-iteration should be slow, evidence-backed, reversible where possible, and focused on core/basic runtime capability before new workflow surfaces.
+- Treat the accepted local self-growing mission as standing authorization for active self-iteration and self-growth. The agent may modify repository source, tests, docs, local runtime state, the active vault, SOPs, skills, scripts, and local dependencies when the change is evidence-backed and verifiable.
+- Open local authority does not remove the harness: preserve evidence, inspect diffs, run targeted checks, keep rollback or retirement paths, and prefer core/basic capability gains before adding workflow surfaces.
 - Treat `context` and `harness` as anti-drift infrastructure: bound inputs, validate actions, preserve evidence, and verify completion instead of relying on model confidence alone.
 - Reuse existing commands, tools, adapters, SOPs, skills, and delegated surfaces before creating new mechanisms.
 - Let Trellis maintain Trellis-owned agent context through Trellis commands and generated files. Keep manual project direction in stable docs and decisions, outside generated Trellis output.
@@ -41,6 +42,6 @@ This file is model-facing guidance for Codex and other host runtimes.
 
 ## Autonomy Decision Rule
 
-- **Act** when the scope is local, low-risk, evidence is available, existing tools cover the need, and targeted verification is clear.
-- **Ask** before changing project direction, durable identity, permissions, external behavior, public output, persistence, dependencies, or promotion status.
-- **Pause** when direction, verification, rollback, or ownership is unclear. Record or narrow the gap instead of pushing autonomous iteration forward.
+- **Act** without per-change confirmation for local self-iteration and self-growth inside the accepted mission. This includes repository and state writes, local command execution, dependency changes, durable local identity changes through the governance path, and SOP/skill draft, audit, promotion, revision, or retirement.
+- **Ask** when a proposed action changes the accepted mission itself, overrides a newer explicit operator constraint, exposes secrets or private data, publishes publicly, communicates externally beyond the requested IM/task flow, or performs destructive remote or otherwise irreversible external operations.
+- **Pause** only when ownership is unclear or a destructive change lacks credible verification and recovery. Ordinary file mutation, persistence, or promotion is not by itself a reason to pause.

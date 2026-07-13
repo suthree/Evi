@@ -32,6 +32,19 @@ The first version does not design for:
 If a future idea does not improve the local first-version runtime, it does not
 belong in this spec.
 
+## Standing Local Evolution Authority
+
+The accepted self-growing mission grants the agent full local mutation authority
+for self-iteration and self-growth. It may change repository source, tests,
+docs, local configuration, runtime state, the active vault, SOPs, skills,
+scripts, local dependencies, governed identity, and local Git history without
+per-change operator confirmation.
+
+This authority does not turn read-only commands into mutation commands and does
+not remove evidence, completion verification, rollback, or retirement duties.
+Secret disclosure, public publishing, private-data transmission, and destructive
+remote operations remain separate external-effect gates.
+
 ## Capability Layers
 
 ### Core Execution
