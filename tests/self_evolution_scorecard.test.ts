@@ -312,7 +312,7 @@ test("self-evolution scorecard graduates a verified delegation baseline to core 
   }
 });
 
-test("self-evolution scorecard returns to delegation after a verified GA successor", async () => {
+test("self-evolution scorecard does not reopen a stable delegation baseline after a verified GA successor", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-delegation-cycle-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
@@ -361,7 +361,7 @@ test("self-evolution scorecard returns to delegation after a verified GA success
         summary: "GA design verification passed.",
         evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
         verification_commands: ["pnpm run check"],
-        next_moves: ["Return to delegation hardening."],
+        next_moves: ["Select the next bounded core/basic slice from fresh negative evidence."],
         recorded_at: "2026-07-06T00:00:04Z",
         boundary: "bounded outcome record"
       },
@@ -371,8 +371,8 @@ test("self-evolution scorecard returns to delegation after a verified GA success
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
 
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "general_agent_delegation");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "general_agent_delegation");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

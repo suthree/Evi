@@ -625,10 +625,9 @@ prove completion.
 That outcome makes the delegation dimension `stable` and lets the default
 core/basic selection return to GA design unless an open iteration or attention
 state takes priority; it does not grant expert, tool, or completion authority.
-After a verified `core_ga_design_next_slice_after_*` successor that is newer
-than the delegation baseline, the default returns to bounded delegation
-hardening so a historical successor cannot trap planning in repeated delegation
-slices. Attention and open iteration guards still take precedence.
+A later verified GA-design successor does not reopen stable delegation by
+itself. Delegation hardening requires new negative evidence or a future explicit
+direction decision; attention and open-iteration guards still take precedence.
 
 Each new project-design implementation contract also carries a concise
 target-specific `intent`. It makes the planned work inspectable without

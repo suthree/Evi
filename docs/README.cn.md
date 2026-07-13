@@ -220,8 +220,9 @@ scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基�
 scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_slices`：
 默认下一步走 core/basic 出口，`next_slices` 只是按阶段、分数和层级给出的全维度只读排序，
 不会写 backlog 或执行推荐，也不能把 SOP/local-learning 跟进误当成核心能力方向。
-已验证的 delegation baseline 会先回到 GA design；只有一个明确命名且**晚于该
-baseline** 的 `core_ga_design_next_slice_after_*` successor 也完成 verified outcome 后，默认出口才会回到有界 delegation hardening，避免历史 successor 把规划困在重复 Harness 合同复核中；attention 与未关闭 iteration 仍优先。
+已验证的 delegation baseline 会回到 GA design；后续 verified GA-design successor
+本身不会再次打开 stable delegation。只有新的负面证据或未来明确的方向决策才能重新选择
+delegation hardening；attention 与未关闭 iteration 仍优先。
 每个新的 project-design implementation contract 都会带目标相关的 `intent`，让后续
 迭代不必从 opaque slice id 猜测本轮要改进什么；当前计划审计会拒绝缺失或漂移的
 intent，旧历史合同仍保持可读。新的合同还会持久化

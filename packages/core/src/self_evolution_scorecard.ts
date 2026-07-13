@@ -107,16 +107,6 @@ export async function getSelfEvolutionScorecard(
     && iteration.proposed_slice.startsWith("general_agent_delegation_hardening_after_")
     && iteration.outcome?.status === "verified"
   );
-  const latestVerifiedCoreGaDesignIteration = iterations.iterations.find((iteration) =>
-    iteration.layer === "core_runtime"
-    && iteration.owner_surface === "ga_project_design"
-    && iteration.proposed_slice.startsWith("core_ga_design_next_slice_after_")
-    && iteration.outcome?.status === "verified"
-  );
-  const hasVerifiedCoreGaDesignSuccessorAfterDelegation = isNewerIteration(
-    latestVerifiedCoreGaDesignIteration,
-    latestVerifiedDelegationIteration
-  );
   const delegationStage: SelfEvolutionStage = !delegated
     ? "planned"
     : latestVerifiedDelegationIteration
@@ -277,8 +267,7 @@ export async function getSelfEvolutionScorecard(
   const nextCoreBasicSlice = selectNextCoreBasicSlice(
     dimensions,
     nextSlices,
-    Boolean(latestBlockingOpenIteration),
-    hasVerifiedCoreGaDesignSuccessorAfterDelegation
+    Boolean(latestBlockingOpenIteration)
   );
   const defaultNextSlice = nextCoreBasicSlice ?? nextSlices[0] ?? null;
 
@@ -325,8 +314,7 @@ export async function getSelfEvolutionScorecard(
 function selectNextCoreBasicSlice(
   dimensions: SelfEvolutionDimension[],
   nextSlices: SelfEvolutionNextSlice[],
-  hasBlockingOpenIteration: boolean,
-  hasVerifiedCoreGaDesignSuccessor: boolean
+  hasBlockingOpenIteration: boolean
 ): SelfEvolutionNextSlice | null {
   const coreBasicSlices = nextSlices.filter((slice) =>
     slice.layer === "core_runtime"
@@ -339,22 +327,11 @@ function selectNextCoreBasicSlice(
   const coreGaDesign = dimensions.find((dimension) => dimension.id === "core_ga_design");
   const delegation = dimensions.find((dimension) => dimension.id === "general_agent_delegation");
   const delegationSlice = coreBasicSlices.find((slice) => slice.dimension_id === "general_agent_delegation");
-  const shouldHardenDelegation = delegation?.stage === "active"
-    || (delegation?.stage === "stable" && hasVerifiedCoreGaDesignSuccessor);
-  if (delegationSlice && shouldHardenDelegation && coreGaDesign?.stage === "active" && coreGaDesign.score >= 5) {
+  if (delegationSlice && delegation?.stage === "active" && coreGaDesign?.stage === "active" && coreGaDesign.score >= 5) {
     return delegationSlice;
   }
 
   return coreBasicSlices[0] ?? null;
-}
-
-function isNewerIteration(
-  candidate: SelfEvolutionIterationContract | undefined,
-  baseline: SelfEvolutionIterationContract | undefined
-): boolean {
-  if (!candidate || !baseline) return false;
-  return candidate.created_at > baseline.created_at
-    || (candidate.created_at === baseline.created_at && candidate.id > baseline.id);
 }
 
 function dimensionStage(dimensions: SelfEvolutionDimension[], dimensionId: string): SelfEvolutionStage | undefined {
