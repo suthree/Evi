@@ -462,6 +462,32 @@ test("delegate_agent context still accepts explicit payload and evidence-only bo
   assert.equal(result.ok, true);
 });
 
+test("delegate_agent requires an explicit question instead of incidental auxiliary words", () => {
+  for (const task of [
+    "Analyze this if possible.",
+    "Review the evidence. It is incomplete.",
+    "Summarize the result and do a bounded analysis."
+  ]) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, false, task);
+  }
+
+  for (const task of [
+    "Review whether the evidence supports the claim.",
+    "Review: can the evidence support the claim?",
+    "分析证据是否支持该结论。"
+  ]) {
+    const result = parseDelegationRequest({
+      rationale: "Use bounded delegated analysis.",
+      payload: { task, context: VALID_DELEGATE_CONTEXT }
+    });
+    assert.equal(result.ok, true, task);
+  }
+});
+
 test("delegation input metadata hashes normalized overlong task instead of fallback rationale", () => {
   const left = parseDelegationRequest({
     rationale: "Use bounded delegated analysis.",

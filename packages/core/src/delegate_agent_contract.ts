@@ -775,7 +775,7 @@ function hasDirectTaskReadToolIntent(task: string): boolean {
 
 function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {
   return /[?？]/.test(rawText)
-    || /\b(whether|which|what|why|how|where|when|who|does|do|is|are|can|should|could|would|if)\b/.test(normalizedText)
+    || /\b(whether|which|what|why|how|where|when|who)\b/.test(normalizedText)
     || ["是否", "能否", "可否", "哪", "什么", "为什么", "如何", "怎么", "哪里", "何时", "谁", "吗"].some((term) => rawText.includes(term));
 }
 

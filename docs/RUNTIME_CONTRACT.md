@@ -1347,7 +1347,10 @@ plus those delegated completion-gate check ids, so drifted spellings are rejecte
 before they can enter history or trace read models.
 `task` itself must explicitly request bounded analysis, critique, review,
 inspection, comparison, summarization, or evaluation work: it cannot be a vague
-task handoff, it cannot combine analysis with direct
+task handoff. One concrete question requires a question mark, an English
+interrogative such as `whether`, `what`, or `how`, or a supported Chinese
+interrogative expression; incidental words such as `if`, `is`, or `do` do not
+satisfy that boundary. The task cannot combine analysis with direct
 fix/repair/update/edit/patch/commit/delete/remove/erase/unlink/drop/destroy/
 push/merge/deploy/publish/release, Git push/merge/rebase/cherry-pick/reset/tag,
 or pull-request creation intent even across sentence boundaries. Neither
