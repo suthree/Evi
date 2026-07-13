@@ -725,6 +725,9 @@ The plan may also expose `acceptance_trace`: one row per acceptance criterion
 with its audit seed, phase, required verification entrypoints, and expected
 outcome claim prefixes. This is traceability guidance for outcome writeback and
 review; it does not execute commands, satisfy claims, or prove completion.
+The `current_state` acceptance trace explicitly requires implementation scope,
+deferred scope, delivery standard, and rollback strategy before outcome; compact
+context preserves this criterion instead of dropping rollback from handoff.
 The plan may also expose `implementation_contract`, which constrains the next
 slice to one reusable GA project-design contract/read-model improvement and
 names deferred external-tool, local-learning, and expert-orchestration scopes.

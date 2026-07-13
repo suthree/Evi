@@ -144,6 +144,7 @@ test("compact GA plan acceptance keeps audit seed labels and critical anti-drift
     "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
     "current_state: capability layer stays core_runtime or basic_entrypoint before implementation",
     "current_state: external adapters remain application slices unless a reusable runtime contract is named",
+    "current_state: implementation contract bounds allowed scope, deferred scope, delivery standard, and rollback strategy before outcome",
     "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
     "learning_persistence: outcome is recorded before reuse"
   ]), [
@@ -152,7 +153,8 @@ test("compact GA plan acceptance keeps audit seed labels and critical anti-drift
     "verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims",
     "learning_persistence: outcome is recorded before reuse",
     "goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact",
-    "current_state: external adapters remain application slices unless a reusable runtime contract is named"
+    "current_state: external adapters remain application slices unless a reusable runtime contract is named",
+    "current_state: implementation contract bounds allowed scope, deferred scope, delivery standard, and rollback strategy before outcome"
   ]);
 });
 
@@ -1612,7 +1614,7 @@ test("context bundle includes bounded GA project design plan", async () => {
     assert.match(rendered.markdown, /audit_require: goal_scope=Preserve the latest operator objective and do not redefine success around completed work.; current_state=Use current worktree and runtime state, classify runtime attention, and name the handling policy before trusting older memory or prior summaries.; verification_scope=Match verification evidence to the scope of the completion claim.; learning_persistence=Record the verified outcome before reusing the slice as future GA design evidence./);
     assert.match(rendered.markdown, /audit_evidence: goal_scope=proposed_slice=general_agent_delegation_hardening_after_context_plan; current_state=service health status and reasons when service health is a required verification command; verification_scope=outcome maps each required verification entrypoint to a completion claim; learning_persistence=record-iteration-outcome ref/);
     assert.match(rendered.markdown, /audit_reject: goal_scope=success criteria only describe the completed source artifact; current_state=service health is a required verification command but the outcome omits service health status or reasons; verification_scope=a required verification entrypoint is omitted from outcome claim coverage; learning_persistence=dream, SOP, skill, or memory artifacts are treated as completion proof/);
-    assert.match(rendered.markdown, /acceptance: goal_scope: operator goal is restated with owner surface, source of truth, and success evidence \| current_state: capability layer stays core_runtime or basic_entrypoint before implementation \| verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims \| learning_persistence: outcome is recorded before reuse \| goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact \| current_state: external adapters remain application slices unless a reusable runtime contract is named/);
+    assert.match(rendered.markdown, /acceptance: goal_scope: operator goal is restated with owner surface, source of truth, and success evidence \| current_state: capability layer stays core_runtime or basic_entrypoint before implementation \| verification_scope: verification commands are scoped to the slice and required entrypoints are covered by completion claims \| learning_persistence: outcome is recorded before reuse \| goal_scope: the next proposed slice is selected from current goal and scorecard evidence instead of copied from the source artifact \| current_state: external adapters remain application slices unless a reusable runtime contract is named \| current_state: implementation contract bounds allowed scope, deferred scope, delivery standard, and rollback strategy before outcome/);
     assert.match(rendered.markdown, /next_command: pnpm run runtime -- governance iterations --iteration iteration_contract_context_open --state-root <state-root>/);
     assert.doesNotMatch(rendered.markdown, /bounded outcome record/);
     assert.equal(section?.item_count, 1);

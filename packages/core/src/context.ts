@@ -1579,7 +1579,8 @@ const COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES = [
 
 const COMPACT_GA_PLAN_CRITICAL_ACCEPTANCE_PARTS = [
   "instead of copied from the source artifact",
-  "external adapters remain application slices"
+  "external adapters remain application slices",
+  "rollback strategy before outcome"
 ];
 
 const COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS = [

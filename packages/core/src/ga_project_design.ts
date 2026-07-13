@@ -1170,7 +1170,7 @@ function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
     {
       seed_id: "current_state",
       phase_id: "capability_layering",
-      criterion: "current_state: implementation contract bounds allowed scope, deferred scope, and delivery standard before outcome",
+      criterion: "current_state: implementation contract bounds allowed scope, deferred scope, delivery standard, and rollback strategy before outcome",
       required_entrypoints: ["project-design", "iterations", "workspace"],
       outcome_claim_prefixes: ["project-design:", "iterations:", "workspace:"]
     },
