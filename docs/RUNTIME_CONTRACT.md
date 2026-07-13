@@ -341,7 +341,10 @@ run those commands. Its
 `default_next_slice` must stay on the core/basic path. Application slices and
 local-learning items may remain visible as `follow_up_slices`, but default
 consumers must not treat external adapters, publishing work, or SOP growth as
-the core capability direction.
+the core capability direction. When core execution, Harness, and context gates
+are ready while basic entrypoints still require `operator_check`, the default
+slice is derived from that basic-entrypoint gate and remains verification-only;
+the audit does not claim that doctor, service health, Web, or IM checks ran.
 
 The CLI also exposes `governance scorecard` as a read-only self-evolution
 maturity view. It tracks current core GA design, basic runtime substrate,

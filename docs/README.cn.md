@@ -230,7 +230,9 @@ intent，旧历史合同仍保持可读。新的合同还会持久化
 旧合同缺少该字段时才依次回退到当前计划和历史 `selection_checks` 文本。
 `pnpm run runtime -- capabilities acceptance` 和飞书 `/capabilities acceptance`
 同样会把默认下一步固定在 core/basic 或基础入口检查上；应用层、外部适配器和 local-learning
-只作为 follow-up slices 展示。
+只作为 follow-up slices 展示。当 core execution、Harness 和 context gate 已 ready，只有
+`basic_entrypoints` 仍为 `operator_check` 时，默认 slice 会直接复用该基础入口 gate；它只要求
+操作者核验 doctor、resident health、Web 和 IM，不会把这些命令描述成已经执行。
 `pnpm run runtime -- governance act-next` 不带 `--opportunity` 时只走自动安全项；
 manual local、external adapter 或 local-learning follow-up 必须显式选择 opportunity。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`

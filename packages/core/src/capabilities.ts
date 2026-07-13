@@ -88,7 +88,7 @@ export interface CapabilityNextSlice {
 export interface CapabilityAcceptanceAudit {
   schema_version: 1;
   audit_id: "local_runtime_next_version_capability_acceptance";
-  audit_version: "2026-07-06";
+  audit_version: "2026-07-13";
   status: "operator_check_required";
   summary: string;
   gates: CapabilityAcceptanceGate[];
@@ -191,24 +191,60 @@ function readableList(values: readonly string[]): string {
 }
 
 export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
+  const basicEntrypointsGate: CapabilityAcceptanceGate = {
+    id: "basic_entrypoints",
+    title: "Basic entrypoints",
+    summary: "CLI, local web console, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
+    status: "operator_check",
+    layer: "basic_entrypoint",
+    evidence_refs: [
+      "apps/cli/src/main.ts",
+      "packages/core/src/runtime_channel_messages.ts",
+      "packages/core/src/runtime_sessions.ts",
+      "packages/runtime/src/im_config.ts",
+      "packages/runtime/src/message_gateway.ts",
+      "packages/runtime/src/channel_message_dispatcher.ts",
+      "packages/runtime/src/runtime_daemon.ts",
+      "packages/runtime/src/channels/feishu/adapter.ts",
+      "packages/runtime/src/web_console.ts",
+      "packages/runtime/src/service.ts",
+      "tests/cli.test.ts",
+      "tests/feishu_adapter.test.ts",
+      "tests/web_console.test.ts",
+      "tests/service.test.ts"
+    ],
+    verification_commands: [
+      "pnpm run runtime -- doctor --no-auth --no-im",
+      "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765",
+      "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
+      "pnpm run runtime -- service status --target runtime",
+      "pnpm run runtime -- service health --target runtime",
+      "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
+    ],
+    boundaries: [
+      "Feishu operator commands are read-only except explicit runtime-session binding and explicit task triggers",
+      "IM channel config recognizes Feishu, Telegram, and Discord provider kinds; all three have startable adapters in this slice",
+      "MessageGateway standardizes local channel adapter lifecycle for Web, Feishu, Telegram, and Discord providers; provider SDK details stay inside adapters",
+      "runtime channel sources use provider-neutral route/source keys before being bound to runtime sessions",
+      "runtime channel messages pass through the shared dispatcher for session binding, inbox append, and /run or mention trigger classification",
+      "local web console is localhost-only operator infrastructure, not a hosted multi-user GUI",
+      "resident service is single-user local launchd, not hosted service governance"
+    ]
+  };
   const defaultNextSlice: CapabilityNextSlice = {
-    id: "general_agent_delegation_hardening",
-    title: "General agent delegation hardening",
-    layer: "core_runtime",
-    reason: "General-agent delegation is the current bounded core/basic handoff; harden the task, context, result, trace, replay, and completion-verification boundaries before expert scheduling, application adapters, or local-learning follow-ups become the default next step.",
+    id: `${basicEntrypointsGate.id}_operator_verification`,
+    title: `${basicEntrypointsGate.title} operator verification`,
+    layer: basicEntrypointsGate.layer,
+    reason: "Basic entrypoints are the only acceptance gate still requiring operator verification; close that observable local-runtime check before expanding authority or moving to follow-up layers.",
     success_criteria: [
-      "delegate_agent rejects unbounded task/context inputs and forbidden hidden-source context before delegated model dispatch",
-      "delegated failure and completion-gate check metadata is visible through bounded Live Run Trace and Harness Replay read models without raw delegated artifact reads",
-      "main-harness recovery and completion verification keep authority after delegated results",
-      "expert scheduling, model fan-out, external adapters, and local-learning items remain follow-up slices"
+      "doctor and service health complete the explicit local operator check without claiming that this audit executed them",
+      "resident source matches repo HEAD and Feishu/Web channel status remains operator-visible",
+      "CLI, localhost Web, and IM remain single-machine basic entrypoints",
+      "external adapters and local-learning remain follow-up slices"
     ],
     refs: [
+      ...basicEntrypointsGate.evidence_refs,
       "packages/core/src/capabilities.ts",
-      "packages/core/src/live_run_trace.ts",
-      "packages/core/src/harness_replay.ts",
-      "packages/runtime/src/runner.ts",
-      "tests/context_harness.test.ts",
-      "tests/harness_replay.test.ts",
       "docs/RUNTIME_CONTRACT.md",
       "docs/LOCAL_RUNTIME.md"
     ]
@@ -217,7 +253,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
   const audit: Omit<CapabilityAcceptanceAudit, "next_slices"> = {
     schema_version: 1,
     audit_id: "local_runtime_next_version_capability_acceptance",
-    audit_version: "2026-07-06",
+    audit_version: "2026-07-13",
     status: "operator_check_required",
     summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, and service posture. It records the core/basic checks required before another feature slice is considered stable; local-learning and application work stay as follow-up guidance.",
     gates: [
@@ -243,46 +279,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
           "repo writes record bounded workspace status evidence but do not mutate git state"
         ]
       },
-      {
-        id: "basic_entrypoints",
-        title: "Basic entrypoints",
-        summary: "CLI, local web console, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
-        status: "operator_check",
-        layer: "basic_entrypoint",
-        evidence_refs: [
-          "apps/cli/src/main.ts",
-          "packages/core/src/runtime_channel_messages.ts",
-          "packages/core/src/runtime_sessions.ts",
-          "packages/runtime/src/im_config.ts",
-          "packages/runtime/src/message_gateway.ts",
-          "packages/runtime/src/channel_message_dispatcher.ts",
-          "packages/runtime/src/runtime_daemon.ts",
-          "packages/runtime/src/channels/feishu/adapter.ts",
-          "packages/runtime/src/web_console.ts",
-          "packages/runtime/src/service.ts",
-          "tests/cli.test.ts",
-          "tests/feishu_adapter.test.ts",
-          "tests/web_console.test.ts",
-          "tests/service.test.ts"
-        ],
-        verification_commands: [
-          "pnpm run runtime -- doctor --no-auth --no-im",
-          "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765",
-          "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
-          "pnpm run runtime -- service status --target runtime",
-          "pnpm run runtime -- service health --target runtime",
-          "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>"
-        ],
-        boundaries: [
-          "Feishu operator commands are read-only except explicit runtime-session binding and explicit task triggers",
-          "IM channel config recognizes Feishu, Telegram, and Discord provider kinds; all three have startable adapters in this slice",
-          "MessageGateway standardizes local channel adapter lifecycle for Web, Feishu, Telegram, and Discord providers; provider SDK details stay inside adapters",
-          "runtime channel sources use provider-neutral route/source keys before being bound to runtime sessions",
-          "runtime channel messages pass through the shared dispatcher for session binding, inbox append, and /run or mention trigger classification",
-          "local web console is localhost-only operator infrastructure, not a hosted multi-user GUI",
-          "resident service is single-user local launchd, not hosted service governance"
-        ]
-      },
+      basicEntrypointsGate,
       {
         id: "agent_harness",
         title: "Agent harness",
