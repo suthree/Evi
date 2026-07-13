@@ -728,6 +728,13 @@ review; it does not execute commands, satisfy claims, or prove completion.
 The plan may also expose `implementation_contract`, which constrains the next
 slice to one reusable GA project-design contract/read-model improvement and
 names deferred external-tool, local-learning, and expert-orchestration scopes.
+It also carries an explicit `rollback_strategy`: revert the single bounded
+implementation commit without rewriting prior iteration evidence; when the
+change is service-facing, restart the resident runtime and rerun targeted,
+full, and service-health checks before reuse. A matching open iteration may
+backfill this newly derived field. Current contracts with a missing or drifted
+rollback strategy fail implementation-contract coverage, while historical
+contracts that never expected the field remain readable.
 For `general_agent_delegation`, the same contract must name the allowed
 `delegate_agent` task, context, result, trace/replay, or completion-verification
 surface and keep delegated tool/write/mutation authority, delegated completion

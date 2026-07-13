@@ -1676,7 +1676,8 @@ export function compactGaPlanImplementationContract(
       : []),
     `scope=${contract.implementation_scope[0] ?? "unknown"}`,
     `defer=${contract.deferred_scope[0] ?? "unknown"}`,
-    `deliver=${contract.delivery_standard[0] ?? "unknown"}`
+    `deliver=${contract.delivery_standard[0] ?? "unknown"}`,
+    ...(contract.rollback_strategy?.[0] ? [`rollback=${contract.rollback_strategy[0]}`] : [])
   ].join("; ");
 }
 

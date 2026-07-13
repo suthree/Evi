@@ -217,13 +217,15 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
       implementationContract: {
         ...implementationContract,
         intent: "Harden one bounded delegation contract without expanding delegated authority or completion ownership.",
-        delegation_contract: delegationContract
+        delegation_contract: delegationContract,
+        rollback_strategy: ["revert the single bounded implementation commit"]
       }
     });
     assert.equal(backfilled.created, false);
     assert.equal(backfilled.reused_existing, true);
     assert.equal(backfilled.iteration.implementation_contract?.intent, "Harden one bounded delegation contract without expanding delegated authority or completion ownership.");
     assert.equal(backfilled.iteration.implementation_contract?.delegation_contract, delegationContract);
+    assert.deepEqual(backfilled.iteration.implementation_contract?.rollback_strategy, ["revert the single bounded implementation commit"]);
     assert.match(backfilled.boundary, /persisted supplied implementation contract fields/);
 
     await recordSelfEvolutionIterationOutcome(store, {

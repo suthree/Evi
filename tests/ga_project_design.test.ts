@@ -84,6 +84,8 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
     assert.match(plan.implementation_contract.intent ?? "", /core-GA successor self-describing/);
     assert.deepEqual(plan.implementation_contract.required_verification_entrypoints, ["project-design", "scorecard", "iterations", "service-health", "check"]);
+    assert.equal(plan.implementation_contract.rollback_strategy?.some((item) => item.includes("single bounded implementation commit")), true);
+    assert.equal(plan.implementation_contract.rollback_strategy?.some((item) => item.includes("resident runtime")), true);
     assert.equal(plan.next_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>");
     assert.equal(plan.selection_reasons.includes("source_kind=fresh_bootstrap"), true);
     assert.equal(plan.selection_reasons.includes("source_status=bootstrap"), true);
@@ -567,10 +569,10 @@ test("GA project design read model derives reusable artifacts from verified iter
         && seed.requirement.includes("classify runtime attention")
         && seed.requirement.includes("name the handling policy")
         && seed.evidence_needed.includes("implementation_contract.proposed_slice=general_agent_delegation_hardening_after_verified")
-        && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")
+        && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")
         && seed.evidence_needed.includes("outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope")
         && seed.reject_if.includes("implementation_contract.proposed_slice does not match the iteration proposed slice")
-        && seed.reject_if.includes("implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard")
+        && seed.reject_if.includes("implementation_contract is missing selected_layer, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy")
         && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")
         && seed.evidence_needed.includes("service health status and reasons when resident runtime behavior changed")
         && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")
@@ -794,7 +796,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.evidence_needed.includes("next_core_basic_plan.goal_scope names objective, owner_surface, source_of_truth, and success_evidence")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "goal_scope" && seed.reject_if.includes("goal_scope success evidence does not distinguish source slice from successor slice")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("worktree changes are present but the outcome omits workspace status or changed paths")), true);
-    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation")), true);
+    assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("outcome claims changes outside implementation_contract without a later-layer iteration contract")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.evidence_needed.includes("service health status and reasons when service health is a required verification command")), true);
     assert.equal(packet.next_core_basic_plan?.completion_audit_seeds.some((seed) => seed.id === "current_state" && seed.reject_if.includes("service health is a required verification command but the outcome omits service health status or reasons")), true);

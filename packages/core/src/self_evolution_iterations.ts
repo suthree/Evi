@@ -174,10 +174,12 @@ function mergeOpenImplementationContract(
   const requiredVerificationEntrypoints = existing.required_verification_entrypoints ?? supplied.required_verification_entrypoints;
   const delegationContract = existing.delegation_contract ?? supplied.delegation_contract;
   const outcomeEvidenceScope = existing.outcome_evidence_scope ?? supplied.outcome_evidence_scope;
+  const rollbackStrategy = existing.rollback_strategy ?? supplied.rollback_strategy;
   if (intent === existing.intent
     && requiredVerificationEntrypoints === existing.required_verification_entrypoints
     && delegationContract === existing.delegation_contract
-    && outcomeEvidenceScope === existing.outcome_evidence_scope) {
+    && outcomeEvidenceScope === existing.outcome_evidence_scope
+    && rollbackStrategy === existing.rollback_strategy) {
     return existing;
   }
   return {
@@ -185,7 +187,8 @@ function mergeOpenImplementationContract(
     ...(intent ? { intent } : {}),
     ...(requiredVerificationEntrypoints ? { required_verification_entrypoints: requiredVerificationEntrypoints } : {}),
     ...(delegationContract ? { delegation_contract: delegationContract } : {}),
-    ...(outcomeEvidenceScope ? { outcome_evidence_scope: outcomeEvidenceScope } : {})
+    ...(outcomeEvidenceScope ? { outcome_evidence_scope: outcomeEvidenceScope } : {}),
+    ...(rollbackStrategy ? { rollback_strategy: rollbackStrategy } : {})
   };
 }
 

@@ -158,6 +158,7 @@ export interface GaProjectDesignImplementationContract {
   implementation_scope: string[];
   deferred_scope: string[];
   delivery_standard: string[];
+  rollback_strategy?: string[];
   boundary: string;
 }
 
@@ -1013,6 +1014,10 @@ function buildImplementationContract(
       "verification maps to project-design, scorecard, iterations, service-health, and check entrypoints",
       "a verified outcome is recorded before the contract is reused as future GA design evidence"
     ],
+    rollback_strategy: [
+      "revert the single bounded implementation commit without rewriting prior iteration evidence",
+      "when the change is service-facing, restart the resident runtime and rerun targeted checks, pnpm run check, and service health before reuse"
+    ],
     boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
   };
 }
@@ -1771,7 +1776,7 @@ function buildCompletionAuditSeeds(
       evidence_needed: [
         "workspace or git status when files changed",
         `implementation_contract.proposed_slice=${proposedSlice}`,
-        "implementation_contract names selected_layer, implementation_scope, deferred_scope, and delivery_standard before implementation",
+        "implementation_contract names selected_layer, implementation_scope, deferred_scope, delivery_standard, and rollback_strategy before implementation",
         "outcome explains how the delivered change stayed inside implementation_scope and did not enter deferred_scope",
         "service health status and reasons when resident runtime behavior changed",
         "service health status and reasons when service health is a required verification command",
@@ -1782,7 +1787,7 @@ function buildCompletionAuditSeeds(
       reject_if: [
         "older memory is the only evidence",
         "implementation_contract.proposed_slice does not match the iteration proposed slice",
-        "implementation_contract is missing selected_layer, implementation_scope, deferred_scope, or delivery_standard",
+        "implementation_contract is missing selected_layer, implementation_scope, deferred_scope, delivery_standard, or rollback_strategy",
         "outcome claims changes outside implementation_contract without a later-layer iteration contract",
         "external adapter pressure is treated as core identity without a reusable contract",
         "worktree changes are present but the outcome omits workspace status or changed paths",

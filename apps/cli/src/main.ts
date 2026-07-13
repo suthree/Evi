@@ -870,6 +870,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...(!contract.implementation_scope?.length ? ["implementation_scope"] : []),
     ...(!contract.deferred_scope?.length ? ["deferred_scope"] : []),
     ...(!contract.delivery_standard?.length ? ["delivery_standard"] : []),
+    ...(expectedContract.rollback_strategy?.length && !contract.rollback_strategy?.length ? ["rollback_strategy"] : []),
     ...(!contract.boundary ? ["boundary"] : [])
   ];
   const mismatchedFields = [
@@ -886,6 +887,7 @@ export function buildIterationAuditImplementationContractCoverage(
     ...((contract.implementation_scope ?? []).join("\n") !== (expectedContract.implementation_scope ?? []).join("\n") ? ["implementation_scope"] : []),
     ...((contract.deferred_scope ?? []).join("\n") !== (expectedContract.deferred_scope ?? []).join("\n") ? ["deferred_scope"] : []),
     ...((contract.delivery_standard ?? []).join("\n") !== (expectedContract.delivery_standard ?? []).join("\n") ? ["delivery_standard"] : []),
+    ...(expectedContract.rollback_strategy && !isDeepStrictEqual(contract.rollback_strategy, expectedContract.rollback_strategy) ? ["rollback_strategy"] : []),
     ...(contract.boundary !== expectedContract.boundary ? ["boundary"] : [])
   ];
   return {
@@ -944,6 +946,7 @@ function implementationContractRequiredTokens(
     "implementation_contract.implementation_scope",
     "implementation_contract.deferred_scope",
     "implementation_contract.delivery_standard",
+    ...(contract.rollback_strategy?.length ? ["implementation_contract.rollback_strategy"] : []),
     "implementation_contract.boundary"
   ];
 }

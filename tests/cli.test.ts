@@ -454,6 +454,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
     implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
     deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
     delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
+    rollback_strategy: ["revert the single bounded implementation commit"],
     boundary: "read-only GA implementation contract"
   };
 
@@ -523,6 +524,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=ga_design_artifact_iteration_contract_source"), true);
   assert.equal(covered.required_tokens.some((token) => token.startsWith("implementation_contract.intent=")), true);
+  assert.equal(covered.required_tokens.includes("implementation_contract.rollback_strategy"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.boundary"), true);
   assert.match(covered.boundary, /does not mutate state or prove completion/);
 
@@ -626,6 +628,19 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.equal(coveredHistorical.status, "covered");
   assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
 
+  const { rollback_strategy: _legacyRollback, ...legacyHistoricalContract } = planContract;
+  const coveredLegacyHistorical = buildIterationAuditImplementationContractCoverage({
+    ...planContract,
+    proposed_slice: "core_ga_design_next_slice_after_next"
+  }, {
+    proposed_slice: "core_ga_design_next_slice_after_source",
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: legacyHistoricalContract
+  });
+  assert.equal(coveredLegacyHistorical.status, "covered");
+  assert.equal(coveredLegacyHistorical.required_tokens.includes("implementation_contract.rollback_strategy"), false);
+
   const persistedScopeContract = {
     ...planContract,
     outcome_evidence_scope: outcomeEvidenceScope
@@ -673,6 +688,24 @@ test("iteration audit implementation contract coverage compares plan and iterati
   });
   assert.equal(mismatchedIntent.status, "mismatched_contract");
   assert.deepEqual(mismatchedIntent.mismatched_fields, ["intent"]);
+
+  const missingRollback = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, rollback_strategy: [] }
+  });
+  assert.equal(missingRollback.status, "missing_required_fields");
+  assert.deepEqual(missingRollback.missing_fields, ["rollback_strategy"]);
+
+  const mismatchedRollback = buildIterationAuditImplementationContractCoverage(planContract, {
+    proposed_slice: planContract.proposed_slice,
+    layer: "core_runtime",
+    owner_surface: "ga_project_design",
+    implementation_contract: { ...planContract, rollback_strategy: ["rewrite history"] }
+  });
+  assert.equal(mismatchedRollback.status, "mismatched_contract");
+  assert.deepEqual(mismatchedRollback.mismatched_fields, ["rollback_strategy"]);
 });
 
 test("iteration audit outcome evidence scope rejects missing and foreign evidence refs", () => {
