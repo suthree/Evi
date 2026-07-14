@@ -123,6 +123,9 @@ Runtime control keeps core execution bounded:
   boundaries
 - read-only next-version capability acceptance audit over current gates,
   verification commands, and next candidate slices
+- explicit commit-bound basic-entrypoint verification over doctor, localhost
+  Web API, resident deployment identity, connected Feishu/running Web channels,
+  and clean workspace, with a bounded state record that becomes stale on drift
 - bounded Capability Catalog context for prompt-facing local ability
   orientation without expanding model authority
 - read-only service health diagnostics for heartbeat freshness, runtime-build

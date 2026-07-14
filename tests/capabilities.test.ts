@@ -274,7 +274,7 @@ test("capability acceptance audit records next-version gates without execution a
   const audit = getCapabilityAcceptanceAudit();
 
   assert.equal(audit.audit_id, "local_runtime_next_version_capability_acceptance");
-  assert.equal(audit.audit_version, "2026-07-13");
+  assert.equal(audit.audit_version, "2026-07-14");
   assert.equal(audit.status, "operator_check_required");
   assert.equal(audit.gates.some((gate) => gate.id === "core_execution" && gate.status === "ready"), true);
   assert.equal(audit.gates.find((gate) => gate.id === "core_execution")?.summary.includes("auditable bounded result metadata"), true);
@@ -309,21 +309,21 @@ test("capability acceptance audit records next-version gates without execution a
   const operatorCheckGate = audit.gates.find((gate) => gate.status === "operator_check");
   assert.equal(operatorCheckGate?.id, "basic_entrypoints");
   assert.equal(audit.gates.filter((gate) => gate.status === "operator_check").length, 1);
-  assert.equal(audit.default_next_slice.id, "basic_entrypoints_operator_verification");
-  assert.equal(audit.default_next_slice.layer, operatorCheckGate?.layer);
-  assert.equal(audit.default_next_slice.success_criteria.some((criterion) => criterion.includes("doctor and service health")), true);
-  assert.equal(audit.default_next_slice.success_criteria.some((criterion) => criterion.includes("resident source matches repo HEAD")), true);
-  assert.equal(audit.default_next_slice.success_criteria.some((criterion) => criterion.includes("external adapters and local-learning")), true);
-  assert.equal(audit.default_next_slice.refs.includes("apps/cli/src/main.ts"), true);
-  assert.equal(audit.default_next_slice.refs.includes("packages/runtime/src/web_console.ts"), true);
-  assert.equal(audit.default_next_slice.refs.includes("packages/runtime/src/service.ts"), true);
-  assert.equal(audit.default_next_slice.refs.includes("docs/ACTIVE_EXPLORATION.md"), false);
-  assert.equal(audit.next_slices[0]?.id, audit.default_next_slice.id);
+  assert.equal(audit.default_next_slice?.id, "basic_entrypoints_operator_verification");
+  assert.equal(audit.default_next_slice?.layer, operatorCheckGate?.layer);
+  assert.equal(audit.default_next_slice?.success_criteria.some((criterion) => criterion.includes("doctor and service health")), true);
+  assert.equal(audit.default_next_slice?.success_criteria.some((criterion) => criterion.includes("resident source matches repo HEAD")), true);
+  assert.equal(audit.default_next_slice?.success_criteria.some((criterion) => criterion.includes("external adapters and local-learning")), true);
+  assert.equal(audit.default_next_slice?.refs.includes("apps/cli/src/main.ts"), true);
+  assert.equal(audit.default_next_slice?.refs.includes("packages/runtime/src/web_console.ts"), true);
+  assert.equal(audit.default_next_slice?.refs.includes("packages/runtime/src/service.ts"), true);
+  assert.equal(audit.default_next_slice?.refs.includes("docs/ACTIVE_EXPLORATION.md"), false);
+  assert.equal(audit.next_slices[0]?.id, audit.default_next_slice?.id);
   assert.equal(audit.next_slices[0]?.layer, "basic_entrypoint");
   assert.equal(audit.next_slices.length, 1);
   assert.equal(audit.next_slices.every((slice) => slice.layer === "core_runtime" || slice.layer === "basic_entrypoint"), true);
   assert.equal(audit.next_slices.some((slice) => slice.layer === "application_slice" || slice.layer === "local_learning"), false);
-  assert.equal(audit.follow_up_slices.every((slice) => slice.id !== audit.default_next_slice.id), true);
+  assert.equal(audit.follow_up_slices.every((slice) => slice.id !== audit.default_next_slice?.id), true);
   assert.equal(audit.follow_up_slices.some((slice) => slice.id === "active_exploration_publish_plan"), true);
   assert.equal(audit.follow_up_slices.some((slice) => slice.id === "self_evolution_gap_intake"), true);
   assert.equal(audit.follow_up_slices.some((slice) => slice.id === "sop_skill_persistence_follow_up"), true);
@@ -353,4 +353,29 @@ test("capability acceptance audit records next-version gates without execution a
   ), true);
   assert.equal(audit.boundary.includes("read-only acceptance read model"), true);
   assert.equal(audit.boundary.includes("does not run tests"), true);
+});
+
+test("capability acceptance audit closes the basic entrypoint gate with current commit-bound evidence", () => {
+  const audit = getCapabilityAcceptanceAudit({
+    ref: "governance/capability-acceptance/basic-entrypoints.json",
+    status: "verified",
+    source_commit: "abc123",
+    verified_at: "2026-07-14T00:00:00.000Z",
+    check_statuses: {
+      cli: "pass",
+      doctor: "pass",
+      web: "pass",
+      service: "pass",
+      im: "pass",
+      workspace: "pass"
+    },
+    reasons: []
+  });
+
+  assert.equal(audit.status, "ready");
+  assert.equal(audit.summary.includes("core/basic capability baseline is ready"), true);
+  assert.equal(audit.gates.every((gate) => gate.status === "ready"), true);
+  assert.equal(audit.gates.find((gate) => gate.id === "basic_entrypoints")?.acceptance_evidence?.source_commit, "abc123");
+  assert.equal(audit.default_next_slice, null);
+  assert.deepEqual(audit.next_slices, []);
 });

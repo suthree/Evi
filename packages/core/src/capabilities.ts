@@ -65,6 +65,15 @@ type CapabilityCategoryDraft = Omit<CapabilityCategory, "capabilities"> & {
 
 export type CapabilityAcceptanceGateStatus = "ready" | "operator_check";
 
+export interface BasicEntrypointsAcceptanceEvidence {
+  ref: string;
+  status: "verified" | "stale" | "failed";
+  source_commit: string | null;
+  verified_at: string | null;
+  check_statuses: Record<string, "pass" | "fail">;
+  reasons: string[];
+}
+
 export interface CapabilityAcceptanceGate {
   id: string;
   title: string;
@@ -74,6 +83,7 @@ export interface CapabilityAcceptanceGate {
   evidence_refs: string[];
   verification_commands: string[];
   boundaries: string[];
+  acceptance_evidence?: BasicEntrypointsAcceptanceEvidence | null;
 }
 
 export interface CapabilityNextSlice {
@@ -88,12 +98,12 @@ export interface CapabilityNextSlice {
 export interface CapabilityAcceptanceAudit {
   schema_version: 1;
   audit_id: "local_runtime_next_version_capability_acceptance";
-  audit_version: "2026-07-13";
-  status: "operator_check_required";
+  audit_version: "2026-07-14";
+  status: "ready" | "operator_check_required";
   summary: string;
   gates: CapabilityAcceptanceGate[];
   verification_commands: string[];
-  default_next_slice: CapabilityNextSlice;
+  default_next_slice: CapabilityNextSlice | null;
   next_slices: CapabilityNextSlice[];
   follow_up_slices: CapabilityNextSlice[];
   refs: string[];
@@ -190,12 +200,15 @@ function readableList(values: readonly string[]): string {
   return `${values.slice(0, -1).join(", ")}, or ${values[values.length - 1]}`;
 }
 
-export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
+export function getCapabilityAcceptanceAudit(
+  basicEntrypointsEvidence: BasicEntrypointsAcceptanceEvidence | null = null
+): CapabilityAcceptanceAudit {
+  const basicEntrypointsReady = basicEntrypointsEvidence?.status === "verified";
   const basicEntrypointsGate: CapabilityAcceptanceGate = {
     id: "basic_entrypoints",
     title: "Basic entrypoints",
     summary: "CLI, local web console, foreground IM, resident service, Feishu operator commands, doctor, config, workspace, and capability views are available as local operator surfaces.",
-    status: "operator_check",
+    status: basicEntrypointsReady ? "ready" : "operator_check",
     layer: "basic_entrypoint",
     evidence_refs: [
       "apps/cli/src/main.ts",
@@ -206,15 +219,19 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "packages/runtime/src/channel_message_dispatcher.ts",
       "packages/runtime/src/runtime_daemon.ts",
       "packages/runtime/src/channels/feishu/adapter.ts",
+      "packages/runtime/src/capability_acceptance.ts",
       "packages/runtime/src/web_console.ts",
       "packages/runtime/src/service.ts",
       "tests/cli.test.ts",
+      "tests/capability_acceptance.test.ts",
       "tests/feishu_adapter.test.ts",
       "tests/web_console.test.ts",
-      "tests/service.test.ts"
+      "tests/service.test.ts",
+      ...(basicEntrypointsEvidence ? [basicEntrypointsEvidence.ref] : [])
     ],
     verification_commands: [
       "pnpm run runtime -- doctor --no-auth --no-im",
+      "pnpm run runtime -- capabilities verify-entrypoints --state-root <state-root>",
       "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765",
       "pnpm run runtime -- web --host 127.0.0.1 --port 8765",
       "pnpm run runtime -- service status --target runtime",
@@ -228,8 +245,10 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "runtime channel sources use provider-neutral route/source keys before being bound to runtime sessions",
       "runtime channel messages pass through the shared dispatcher for session binding, inbox append, and /run or mention trigger classification",
       "local web console is localhost-only operator infrastructure, not a hosted multi-user GUI",
-      "resident service is single-user local launchd, not hosted service governance"
-    ]
+      "resident service is single-user local launchd, not hosted service governance",
+      "verified acceptance is commit-bound local state; repo/runtime drift or a failed current health check returns this gate to operator_check"
+    ],
+    acceptance_evidence: basicEntrypointsEvidence
   };
   const defaultNextSlice: CapabilityNextSlice = {
     id: `${basicEntrypointsGate.id}_operator_verification`,
@@ -253,9 +272,11 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
   const audit: Omit<CapabilityAcceptanceAudit, "next_slices"> = {
     schema_version: 1,
     audit_id: "local_runtime_next_version_capability_acceptance",
-    audit_version: "2026-07-13",
-    status: "operator_check_required",
-    summary: "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, and service posture. It records the core/basic checks required before another feature slice is considered stable; local-learning and application work stay as follow-up guidance.",
+    audit_version: "2026-07-14",
+    status: basicEntrypointsReady ? "ready" : "operator_check_required",
+    summary: basicEntrypointsReady
+      ? "The local core/basic capability baseline is ready with commit-bound entrypoint verification evidence; local-learning and application work remain separate follow-up layers."
+      : "The next version baseline is a local-only acceptance posture over implemented core execution, entrypoints, harness, context, and service posture. It records the core/basic checks required before another feature slice is considered stable; local-learning and application work stay as follow-up guidance.",
     gates: [
       {
         id: "core_execution",
@@ -347,6 +368,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
     verification_commands: [
       "pnpm run check",
       "pnpm run runtime -- doctor --no-auth --no-im",
+      "pnpm run runtime -- capabilities verify-entrypoints --state-root <state-root>",
       "pnpm run runtime -- service health --target runtime",
       "pnpm run runtime -- governance opportunities --limit 10 --state-root <state-root>",
       "pnpm run runtime -- capabilities acceptance",
@@ -354,7 +376,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       "pnpm run runtime -- review replay-audit --trace <trace-ref> --state-root <state-root>",
       "pnpm run runtime -- review replays --limit 10 --state-root <state-root>"
     ],
-    default_next_slice: defaultNextSlice,
+    default_next_slice: basicEntrypointsReady ? null : defaultNextSlice,
     follow_up_slices: [
       {
         id: "active_exploration_publish_plan",
@@ -485,11 +507,11 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       ".trellis/decisions.md",
       "packages/core/src/capabilities.ts"
     ],
-    boundary: "read-only acceptance read model; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
+    boundary: "read-only acceptance read model over repo-owned contracts plus one bounded commit-bound entrypoint evidence record; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
   };
   return {
     ...audit,
-    next_slices: [audit.default_next_slice]
+    next_slices: audit.default_next_slice ? [audit.default_next_slice] : []
   };
 }
 

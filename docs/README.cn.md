@@ -268,6 +268,12 @@ intent，旧历史合同仍保持可读。新的合同还会持久化
 只作为 follow-up slices 展示。当 core execution、Harness 和 context gate 已 ready，只有
 `basic_entrypoints` 仍为 `operator_check` 时，默认 slice 会直接复用该基础入口 gate；它只要求
 操作者核验 doctor、resident health、Web 和 IM，不会把这些命令描述成已经执行。
+合并并重启到干净的当前提交后，可以执行
+`pnpm run runtime -- capabilities verify-entrypoints --state-root <state-root>`；它会实际检查
+doctor、localhost Web API、resident/repo 提交一致性、Web/飞书通道和工作区，并只写入一条
+`governance/capability-acceptance/basic-entrypoints.json` 验收记录。后续若提交、运行态、通道
+或工作区发生漂移，acceptance 会自动把该记录判为 stale，并把 gate 恢复为
+`operator_check`；飞书命令仍然只读，不能生成验收证据。
 `pnpm run runtime -- governance act-next` 不带 `--opportunity` 时只走自动安全项；
 manual local、external adapter 或 local-learning follow-up 必须显式选择 opportunity。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`

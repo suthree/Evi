@@ -1167,6 +1167,18 @@ Required policy:
 - next and follow-up slices are planning guidance only
 - CLI `capabilities acceptance` and Feishu `/capabilities acceptance` render
   the same acceptance baseline
+- explicit CLI `capabilities verify-entrypoints` runs the bounded local checks:
+  doctor without credential requirements, localhost `/api/sessions`, resident
+  service health and deployment identity, running Web and connected Feishu
+  channels, and a clean workspace
+- successful verification writes
+  `governance/capability-acceptance/basic-entrypoints.json`; acceptance reads
+  this record as ready only while its source commit still matches both the
+  resident runtime and repo HEAD and the live health/workspace checks remain
+  current
+- a missing, failed, malformed, or stale record leaves `basic_entrypoints` at
+  `operator_check`; a current verified record closes the current core/basic
+  baseline and leaves `default_next_slice` empty
 
 Forbidden behavior:
 
@@ -1174,7 +1186,10 @@ Forbidden behavior:
   restart, launchd inspection, or Feishu mutation
 - no auth record, API key, app secret, service log, raw context Markdown,
   review/SOP/skill body, or arbitrary state artifact reads
-- no state, repository, or active-vault writes
+- the acceptance read model performs no state, repository, or active-vault
+  writes; the explicit verifier writes only its bounded acceptance state record
+- the verifier does not invoke the model, run arbitrary tools, read secrets,
+  publish externally, mutate repository files, or write the active vault
 
 ### Local Auth Records
 

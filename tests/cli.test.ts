@@ -147,6 +147,11 @@ test("capabilities command parses read-only catalog options", () => {
 
   const auditAlias = parseArgs(["capabilities", "audit"]);
   assert.equal(auditAlias.capabilitiesAction, "acceptance");
+
+  const verifyEntrypoints = parseArgs(["capabilities", "verify-entrypoints", "--state-root", ".runtime/state"]);
+  assert.equal(verifyEntrypoints.command, "capabilities");
+  assert.equal(verifyEntrypoints.capabilitiesAction, "verify-entrypoints");
+  assert.equal(verifyEntrypoints.stateRoot, ".runtime/state");
 });
 
 test("web command parses local console host and port", () => {
