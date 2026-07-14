@@ -2687,3 +2687,17 @@ and every truncation or omission is recorded in the context manifest. An
 impossibly small declared limit fails closed instead of silently overshooting.
 Read-only usage and pressure commands remain diagnostics and do not mutate old
 context artifacts.
+
+## 2026-07-14 Basic Entrypoint Acceptance Is Commit Bound
+
+The basic-entrypoint gate is no longer permanently held at a static
+`operator_check`. A dedicated CLI verifier checks the actual local doctor, Web,
+service, IM, deployment, and workspace surfaces and persists one bounded record
+under the selected state root.
+
+The record is evidence, not durable truth. Acceptance reads it as verified only
+while the recorded source commit matches both resident runtime and repo HEAD,
+the workspace is clean, service health is current, Feishu is connected, and
+Web is running. Any drift returns the gate to `operator_check`. Feishu remains a
+read-only acceptance surface; only the explicit local CLI verifier can refresh
+the record.

@@ -170,6 +170,7 @@ import {
   showContextManifest,
   type ContextManifestSummary
 } from "../../context_manifest.js";
+import { readBasicEntrypointsAcceptanceEvidence } from "../../capability_acceptance.js";
 import {
   listOperatorNotifications,
   markOperatorNotificationFailed,
@@ -1024,7 +1025,11 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   private async renderOperatorCommand(command: FeishuOperatorCommand): Promise<string> {
     if (command.name === "help") return renderOperatorHelp();
     if (command.name === "capabilities") return renderCapabilityCatalog(getCapabilityCatalog());
-    if (command.name === "capability_acceptance") return renderCapabilityAcceptanceAudit(getCapabilityAcceptanceAudit());
+    if (command.name === "capability_acceptance") {
+      return renderCapabilityAcceptanceAudit(getCapabilityAcceptanceAudit(
+        await readBasicEntrypointsAcceptanceEvidence(this.store)
+      ));
+    }
     if (command.name === "status") return this.renderStatusCommand();
     if (command.name === "runtime_config") return this.renderRuntimeConfigCommand();
     if (command.name === "service_health") return this.renderServiceHealthCommand();
@@ -3508,7 +3513,7 @@ function renderCapabilityAcceptanceAudit(audit: CapabilityAcceptanceAudit): stri
     ...audit.verification_commands.map((command) => `- ${command}`),
     "",
     "Default next slice:",
-    ...renderCapabilityNextSlice(audit.default_next_slice, 0),
+    ...(audit.default_next_slice ? renderCapabilityNextSlice(audit.default_next_slice, 0) : ["- none; current core/basic baseline is ready"]),
     "",
     "Follow-up slices:",
     ...(audit.follow_up_slices.length > 0 ? audit.follow_up_slices.flatMap(renderCapabilityNextSlice) : ["- none"]),
@@ -3528,6 +3533,14 @@ function renderCapabilityAcceptanceGate(gate: CapabilityAcceptanceGate, index: n
     `   ${truncateText(gate.summary, 220)}`,
     `   evidence: ${gate.evidence_refs.slice(0, 4).join(" | ")}`,
     `   verify: ${gate.verification_commands.slice(0, 3).join(" | ")}`,
+    ...(gate.acceptance_evidence
+      ? [
+        `   acceptance: ${gate.acceptance_evidence.status} at ${gate.acceptance_evidence.verified_at ?? "unknown"}`,
+        `   acceptance_ref: ${gate.acceptance_evidence.ref}`,
+        `   acceptance_commit: ${gate.acceptance_evidence.source_commit ?? "none"}`,
+        `   acceptance_reasons: ${gate.acceptance_evidence.reasons.join(",") || "none"}`
+      ]
+      : []),
     `   boundary: ${truncateText(gate.boundaries.join("; "), 220)}`
   ];
 }

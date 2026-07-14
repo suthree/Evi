@@ -146,6 +146,10 @@ import {
 } from "../../../packages/runtime/src/operator_notifications.js";
 import { resumeAutonomy } from "../../../packages/runtime/src/autonomy_pause.js";
 import { runDoctor } from "../../../packages/runtime/src/doctor.js";
+import {
+  readBasicEntrypointsAcceptanceEvidence,
+  verifyBasicEntrypoints
+} from "../../../packages/runtime/src/capability_acceptance.js";
 import { getGovernanceStatus } from "../../../packages/runtime/src/governance_status.js";
 import { executeNextOpportunityAction } from "../../../packages/runtime/src/opportunity_actions.js";
 import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "../../../packages/runtime/src/model.js";
@@ -186,7 +190,7 @@ interface CliOptions {
   imAction?: "serve";
   daemonAction?: "serve";
   serviceAction?: ServiceAction | "health";
-  capabilitiesAction?: "catalog" | "acceptance";
+  capabilitiesAction?: "catalog" | "acceptance" | "verify-entrypoints";
   workspaceAction?: "status" | "runtime";
   notifyAction?: "queue" | "list";
   notifyOpenId?: string;
@@ -1468,13 +1472,26 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "capabilities") {
-    console.log(JSON.stringify(
-      options.capabilitiesAction === "acceptance"
-        ? getCapabilityAcceptanceAudit()
-        : getCapabilityCatalog(),
-      null,
-      2
-    ));
+    if (options.capabilitiesAction === "catalog" || !options.capabilitiesAction) {
+      console.log(JSON.stringify(getCapabilityCatalog(), null, 2));
+      return 0;
+    }
+    const config = await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      skipAuth: true
+    });
+    const store = new AgentStore(options.repoRoot ?? ".", config.state.root);
+    if (options.capabilitiesAction === "verify-entrypoints") {
+      const result = await verifyBasicEntrypoints({
+        store,
+        configDir: options.configDir
+      });
+      console.log(JSON.stringify(result, null, 2));
+      return result.status === "verified" ? 0 : 1;
+    }
+    const evidence = await readBasicEntrypointsAcceptanceEvidence(store);
+    console.log(JSON.stringify(getCapabilityAcceptanceAudit(evidence), null, 2));
     return 0;
   }
 
@@ -3203,14 +3220,15 @@ function parseStages(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function parseCapabilitiesAction(value: string): "catalog" | "acceptance" {
+function parseCapabilitiesAction(value: string): "catalog" | "acceptance" | "verify-entrypoints" {
   if (value === "catalog") return "catalog";
   if (value === "acceptance" || value === "audit") return "acceptance";
+  if (value === "verify-entrypoints") return "verify-entrypoints";
   throw new Error(`Unsupported capabilities action: ${value}`);
 }
 
-function isCapabilitiesAction(value: string): value is "catalog" | "acceptance" | "audit" {
-  return value === "catalog" || value === "acceptance" || value === "audit";
+function isCapabilitiesAction(value: string): value is "catalog" | "acceptance" | "audit" | "verify-entrypoints" {
+  return value === "catalog" || value === "acceptance" || value === "audit" || value === "verify-entrypoints";
 }
 
 function parseSkillAction(value: string): "list" | "validate" | "sync" | "health" | "outcomes" | "drifts" | "events" | "retire-event" {
@@ -3431,7 +3449,7 @@ function printUsage(): void {
   pnpm run runtime -- config set-runtime --review-tick-enabled [--review-tick-interval-ms 1800000] [--review-tick-limit 20]
   pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled [--content-feedback-refresh-interval-ms 3600000] [--content-feedback-refresh-limit 10] [--content-feedback-refresh-min-follow-up-age-ms 21600000] [--content-feedback-refresh-server-url http://localhost:18060/mcp]
   pnpm run runtime -- config set-runtime --content-creator-metrics-enabled [--content-creator-metrics-interval-ms 3600000] [--content-creator-metrics-limit 10] [--content-creator-metrics-creator-url https://creator.xiaohongshu.com/new/note-manager] [--content-creator-metrics-browser-session-name runtime-creator-metrics]
-  pnpm run runtime -- capabilities [catalog|acceptance|audit]
+  pnpm run runtime -- capabilities [catalog|acceptance|audit|verify-entrypoints] [--state-root .runtime/state]
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root .runtime/state]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]

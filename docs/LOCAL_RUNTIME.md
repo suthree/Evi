@@ -50,6 +50,7 @@ pnpm run runtime -- doctor --no-im
 pnpm run runtime -- config --state-root .runtime/state
 pnpm run runtime -- capabilities
 pnpm run runtime -- capabilities acceptance
+pnpm run runtime -- capabilities verify-entrypoints --state-root .runtime/state
 pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
 pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
@@ -1227,6 +1228,16 @@ and local-learning items may appear as follow-up guidance, but they are not the
 default next capability direction. It is guidance only: it does not run tests,
 invoke the model, inspect secrets, execute shell commands, restart services,
 mutate state, write the repo, or write the active vault.
+
+After a clean commit is installed and the resident runtime is healthy, run
+`capabilities verify-entrypoints --state-root <state-root>` to close the basic
+entrypoint gate. The explicit verifier checks doctor, the localhost
+`/api/sessions` response, resident/repo commit identity, Web/Feishu channel
+health, and workspace cleanliness, then writes only
+`governance/capability-acceptance/basic-entrypoints.json`. Later acceptance
+reads recompute the bounded current health and return the gate to
+`operator_check` when the repo, runtime, workspace, or channels drift. Feishu
+remains a read-only view and cannot create or refresh this evidence.
 
 Live context may also render a bounded `Live Run Trace` section for recent
 live harness runs. It summarizes completion report refs, context refs, event
