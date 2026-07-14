@@ -2673,3 +2673,17 @@ for another target or home, or a relative state root cannot redirect a service
 command. This decision changes only service lifecycle and health selection;
 ordinary live, pipeline, context, memory, review, and governance commands keep
 their existing state-root contracts.
+
+## 2026-07-14 Context Assembly Enforces The Hard Budget
+
+Context pressure is no longer diagnostic-only at the model invocation boundary.
+Every live context bundle must fit the active model-derived hard character limit
+or the shared 90,000-character fallback before it is persisted and sent.
+
+Degradation is deterministic and evidence-preserving: oversized sections keep
+bounded head and tail content, non-critical diagnostic/history sections yield
+before task/runtime/discipline/recall/selected-skill/output-contract sections,
+and every truncation or omission is recorded in the context manifest. An
+impossibly small declared limit fails closed instead of silently overshooting.
+Read-only usage and pressure commands remain diagnostics and do not mutate old
+context artifacts.

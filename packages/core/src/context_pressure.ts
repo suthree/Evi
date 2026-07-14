@@ -1,10 +1,12 @@
 import type { ContextBundleManifest } from "./context.js";
-import type { ContextBudgetSummary } from "./context_budget.js";
+import {
+  DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS,
+  type ContextBudgetSummary
+} from "./context_budget.js";
 import { AgentStore } from "./store.js";
 
 const CONTEXT_MANIFEST_ROOT = "memory/episodes";
 const DEFAULT_TOTAL_SOFT_LIMIT_CHARS = 45_000;
-const DEFAULT_TOTAL_HARD_LIMIT_CHARS = 90_000;
 const DEFAULT_SECTION_SOFT_LIMIT_CHARS = 14_000;
 const DEFAULT_SECTION_HARD_LIMIT_CHARS = 28_000;
 const DEFAULT_SECTION_SHARE_LIMIT = 0.45;
@@ -115,7 +117,7 @@ function summarizeContextPressure(
 ): ContextPressureSummary {
   const contextBudget = args.contextBudget ?? manifest.context_budget ?? null;
   const totalSoftLimit = args.totalSoftLimitChars ?? contextBudget?.total_soft_limit_chars ?? DEFAULT_TOTAL_SOFT_LIMIT_CHARS;
-  const totalHardLimit = args.totalHardLimitChars ?? contextBudget?.total_hard_limit_chars ?? DEFAULT_TOTAL_HARD_LIMIT_CHARS;
+  const totalHardLimit = args.totalHardLimitChars ?? contextBudget?.total_hard_limit_chars ?? DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS;
   const sectionSoftLimit = args.sectionSoftLimitChars ?? DEFAULT_SECTION_SOFT_LIMIT_CHARS;
   const sectionHardLimit = args.sectionHardLimitChars ?? DEFAULT_SECTION_HARD_LIMIT_CHARS;
   const sectionShareLimit = args.sectionShareLimit ?? DEFAULT_SECTION_SHARE_LIMIT;

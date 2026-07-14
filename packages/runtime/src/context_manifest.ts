@@ -17,6 +17,11 @@ export interface ContextManifestSummary {
   opportunity_ref_count: number;
   skill_ref_count: number;
   discipline_active: boolean;
+  budget_enforcement_status: "within_budget" | "compacted" | "not_recorded";
+  hard_limit_chars: number | null;
+  original_total_chars: number;
+  truncated_section_count: number;
+  omitted_section_count: number;
 }
 
 export interface ContextManifestListResult {
@@ -113,7 +118,12 @@ function summaryFromManifest(ref: string, manifest: ContextBundleManifest): Cont
     archive_ref_count: manifest.recall.archive_ref_count ?? 0,
     opportunity_ref_count: manifest.recall.opportunity_ref_count ?? 0,
     skill_ref_count: manifest.recall.skill_ref_count,
-    discipline_active: manifest.recall.discipline_active
+    discipline_active: manifest.recall.discipline_active,
+    budget_enforcement_status: manifest.budget_enforcement?.status ?? "not_recorded",
+    hard_limit_chars: manifest.budget_enforcement?.hard_limit_chars ?? manifest.context_budget?.total_hard_limit_chars ?? null,
+    original_total_chars: manifest.budget_enforcement?.original_total_chars ?? manifest.total_chars,
+    truncated_section_count: manifest.budget_enforcement?.truncated_sections.length ?? 0,
+    omitted_section_count: manifest.budget_enforcement?.omitted_section_titles.length ?? 0
   };
 }
 

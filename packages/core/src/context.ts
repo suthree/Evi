@@ -1,7 +1,11 @@
 import type { Opportunity, Trigger, TurnSnapshot } from "./schemas.js";
 import { allowedActions, getDelegateAgentPayloadExample } from "./action_contracts.js";
 export { allowedActions } from "./action_contracts.js";
-import { deriveContextBudget, type ContextBudgetSummary } from "./context_budget.js";
+import {
+  DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS,
+  deriveContextBudget,
+  type ContextBudgetSummary
+} from "./context_budget.js";
 import {
   getCapabilityCatalog,
   resolveCapabilityLayer,
@@ -123,6 +127,7 @@ interface ContextSection {
 interface ContextRenderOptions {
   vaultRoot?: SkillResolverLike;
   runtimeConfig?: ContextRuntimeConfigSummary;
+  contextBudget?: ContextBudgetSummary | null;
 }
 
 export interface ContextRuntimeConfigSummary {
@@ -229,6 +234,24 @@ export interface ContextBundleManifest {
     discipline_active: boolean;
   };
   context_budget?: ContextBudgetSummary | null;
+  budget_enforcement?: ContextBudgetEnforcement;
+}
+
+export interface ContextBudgetEnforcementSection {
+  title: string;
+  original_chars: number;
+  rendered_chars: number;
+}
+
+export interface ContextBudgetEnforcement {
+  status: "within_budget" | "compacted";
+  hard_limit_source: "model_config" | "runtime_default";
+  hard_limit_chars: number;
+  original_total_chars: number;
+  rendered_total_chars: number;
+  truncated_sections: ContextBudgetEnforcementSection[];
+  omitted_section_titles: string[];
+  boundary: string;
 }
 
 export interface RenderedContextBundle {
@@ -297,11 +320,13 @@ export async function renderContextBundleWithManifest(
   snapshot: TurnSnapshot,
   options: ContextRenderOptions = {}
 ): Promise<RenderedContextBundle> {
-  const sections = await buildContextSections(store, snapshot, options);
-  const markdown = sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n");
+  const originalSections = await buildContextSections(store, snapshot, options);
+  const contextBudget = contextBudgetFromOptions(options);
+  const budgeted = enforceContextHardBudget(originalSections, contextBudget);
+  const sections = budgeted.sections;
+  const markdown = renderContextSections(sections);
   const archiveSection = sections.find((section) => section.title === "Episode Archives");
   const opportunitySection = sections.find((section) => section.title === "Opportunity Backlog");
-  const contextBudget = contextBudgetFromOptions(options);
   return {
     markdown,
     manifest: {
@@ -328,9 +353,157 @@ export async function renderContextBundleWithManifest(
         opportunity_refs: opportunitySection?.refs ?? [],
         discipline_active: isQueryTodoDiscipline(snapshot.working_context.discipline)
       },
-      context_budget: contextBudget
+      context_budget: contextBudget,
+      budget_enforcement: budgeted.enforcement
     }
   };
+}
+
+const CONTEXT_BUDGET_BOUNDARY = "deterministic local context hard-budget enforcement; preserves section order plus bounded head/tail evidence, records every truncated or omitted section, does not read additional artifacts, invoke the model, mutate state, or infer a larger model window";
+const CRITICAL_CONTEXT_SECTIONS = new Set([
+  "Stable Core",
+  "Service Runtime",
+  "Runtime Config",
+  "Attention Plan",
+  "Turn Snapshot",
+  "Working Checkpoint",
+  "Query/Todo Discipline",
+  "Episode Recall",
+  "Selected Skills",
+  "Output Contract"
+]);
+const MANDATORY_CONTEXT_SECTIONS = new Set([
+  "Stable Core",
+  "Output Contract"
+]);
+
+function enforceContextHardBudget(
+  sections: ContextSection[],
+  contextBudget: ContextBudgetSummary | null
+): { sections: ContextSection[]; enforcement: ContextBudgetEnforcement } {
+  const hardLimit = contextBudget?.total_hard_limit_chars ?? DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS;
+  if (hardLimit < 513) {
+    throw new Error(`Context hard limit ${hardLimit} chars is too small for the bounded core context`);
+  }
+  const maxRenderedChars = hardLimit - 1;
+  const mandatoryTotal = renderContextSections(
+    sections.filter((section) => MANDATORY_CONTEXT_SECTIONS.has(section.title))
+  ).length;
+  if (mandatoryTotal > maxRenderedChars) {
+    throw new Error(`Context hard limit ${hardLimit} chars cannot preserve mandatory Stable Core and Output Contract sections`);
+  }
+  const originalTotal = renderContextSections(sections).length;
+  if (originalTotal <= maxRenderedChars) {
+    return {
+      sections,
+      enforcement: {
+        status: "within_budget",
+        hard_limit_source: contextBudget ? "model_config" : "runtime_default",
+        hard_limit_chars: hardLimit,
+        original_total_chars: originalTotal,
+        rendered_total_chars: originalTotal,
+        truncated_sections: [],
+        omitted_section_titles: [],
+        boundary: CONTEXT_BUDGET_BOUNDARY
+      }
+    };
+  }
+
+  const originalByTitle = new Map(sections.map((section) => [section.title, section]));
+  let bounded = sections.map((section) => ({ ...section }));
+  const perSectionLimit = Math.max(2_000, Math.min(12_000, Math.floor(hardLimit * 0.15)));
+  bounded = bounded.map((section) => !MANDATORY_CONTEXT_SECTIONS.has(section.title) && section.body.length > perSectionLimit
+    ? { ...section, body: boundedContextBody(section.title, section.body, perSectionLimit) }
+    : section);
+
+  bounded = shrinkContextSections(bounded, maxRenderedChars, false, 512, originalByTitle);
+  bounded = shrinkContextSections(bounded, maxRenderedChars, true, 512, originalByTitle);
+
+  const omitted: string[] = [];
+  if (renderContextSections(bounded).length > maxRenderedChars) {
+    const optionalTitles = bounded
+      .filter((section) => !CRITICAL_CONTEXT_SECTIONS.has(section.title))
+      .sort((left, right) => right.body.length - left.body.length || left.title.localeCompare(right.title))
+      .map((section) => section.title);
+    for (const title of optionalTitles) {
+      if (renderContextSections(bounded).length <= maxRenderedChars) break;
+      bounded = bounded.filter((section) => section.title !== title);
+      omitted.push(title);
+    }
+  }
+
+  bounded = shrinkContextSections(bounded, maxRenderedChars, true, 64, originalByTitle);
+  if (renderContextSections(bounded).length > maxRenderedChars) {
+    throw new Error(`Context hard limit ${hardLimit} chars cannot preserve the bounded critical context sections`);
+  }
+
+  const renderedTotal = renderContextSections(bounded).length;
+  const renderedByTitle = new Map(bounded.map((section) => [section.title, section.body.length]));
+  const truncatedSections = sections
+    .filter((section) => renderedByTitle.has(section.title) && renderedByTitle.get(section.title)! < section.body.length)
+    .map((section) => ({
+      title: section.title,
+      original_chars: section.body.length,
+      rendered_chars: renderedByTitle.get(section.title) ?? 0
+    }));
+  return {
+    sections: bounded,
+    enforcement: {
+      status: "compacted",
+      hard_limit_source: contextBudget ? "model_config" : "runtime_default",
+      hard_limit_chars: hardLimit,
+      original_total_chars: originalTotal,
+      rendered_total_chars: renderedTotal,
+      truncated_sections: truncatedSections,
+      omitted_section_titles: unique(omitted),
+      boundary: CONTEXT_BUDGET_BOUNDARY
+    }
+  };
+}
+
+function shrinkContextSections(
+  sections: ContextSection[],
+  hardLimit: number,
+  includeCritical: boolean,
+  minimumChars: number,
+  originalByTitle: Map<string, ContextSection>
+): ContextSection[] {
+  const bounded = sections.map((section) => ({ ...section }));
+  const candidates = bounded
+    .filter((section) => !MANDATORY_CONTEXT_SECTIONS.has(section.title))
+    .filter((section) => includeCritical || !CRITICAL_CONTEXT_SECTIONS.has(section.title))
+    .sort((left, right) => right.body.length - left.body.length || left.title.localeCompare(right.title));
+  for (const candidate of candidates) {
+    const overflow = renderContextSections(bounded).length - hardLimit;
+    if (overflow <= 0) break;
+    if (candidate.body.length <= minimumChars) continue;
+    const target = Math.max(minimumChars, candidate.body.length - overflow - 96);
+    const index = bounded.findIndex((section) => section.title === candidate.title);
+    const original = originalByTitle.get(candidate.title);
+    if (index >= 0 && original) {
+      bounded[index] = {
+        ...bounded[index]!,
+        body: boundedContextBody(candidate.title, original.body, target)
+      };
+    }
+  }
+  return bounded;
+}
+
+function boundedContextBody(title: string, body: string, maxChars: number): string {
+  if (body.length <= maxChars) return body;
+  if (maxChars <= 0) return "";
+  const omitted = body.length - maxChars;
+  const marker = `\n\n[context budget truncated ${omitted} chars from ${title}; bounded head and tail preserved]\n\n`;
+  if (marker.length >= maxChars) return marker.slice(0, maxChars);
+  const available = maxChars - marker.length;
+  const headChars = Math.ceil(available * 0.55);
+  const tailChars = available - headChars;
+  return `${body.slice(0, headChars)}${marker}${tailChars > 0 ? body.slice(-tailChars) : ""}`;
+}
+
+function renderContextSections(sections: ContextSection[]): string {
+  return sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n");
 }
 
 async function buildContextSections(
@@ -736,6 +909,7 @@ async function attentionPlanSection(
 }
 
 function contextBudgetFromOptions(options: ContextRenderOptions): ContextBudgetSummary | null {
+  if (options.contextBudget !== undefined) return options.contextBudget;
   return options.runtimeConfig?.active_model.context_budget ?? deriveContextBudget({
     model_id: options.runtimeConfig?.active_model.id ?? null,
     model: options.runtimeConfig?.active_model.model,

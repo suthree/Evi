@@ -107,6 +107,9 @@ Runtime control keeps core execution bounded:
   section distribution
 - optional model-aware context budget metadata derived from non-secret
   `models.jsonl` fields
+- hard-budget enforcement before context persistence/model invocation, using
+  the derived model limit or the shared 90,000-character fallback, with
+  deterministic head/tail-preserving degradation and manifest evidence
 - read-only local session recap from episode event metadata, completion report
   metadata, context manifest metadata, and bounded working checkpoint metadata
 - read-only context pressure diagnostics for oversized context manifests

@@ -35,6 +35,10 @@ test("context manifest list and show read local manifest sidecars", async () => 
     assert.equal(list.manifests[0]?.memory_hit_count, 2);
     assert.equal(list.manifests[0]?.archive_ref_count, 0);
     assert.equal(list.manifests[0]?.opportunity_ref_count, 0);
+    assert.equal(list.manifests[0]?.budget_enforcement_status, "not_recorded");
+    assert.equal(list.manifests[0]?.original_total_chars, 2200);
+    assert.equal(list.manifests[0]?.truncated_section_count, 0);
+    assert.equal(list.manifests[0]?.omitted_section_count, 0);
 
     const shown = await showContextManifest(store, { sessionId: "session_new" });
     assert.equal(shown.action, "show");

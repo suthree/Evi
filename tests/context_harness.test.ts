@@ -36,6 +36,7 @@ import {
   renderContextBundleWithManifest
 } from "../packages/core/src/context.js";
 import { getCapabilityCatalog } from "../packages/core/src/capabilities.js";
+import { deriveContextBudget } from "../packages/core/src/context_budget.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { getLiveRunTrace } from "../packages/core/src/live_run_trace.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
@@ -93,6 +94,56 @@ test("model action schema bounds completion verification refs", () => {
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope([" \t\n"])).success, false);
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope([" ref_1"])).success, false);
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["ref_1 "])).success, false);
+});
+
+test("context assembly enforces the fallback hard budget and preserves task head and tail", async () => {
+  const fixture = await createRepoFixture();
+  try {
+    await writeRepoFile(fixture.repoRoot, "core/soul.md", "Local self boundary.");
+    await writeRepoFile(fixture.repoRoot, "core/memory.md", "Local memory boundary.");
+    await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "Local runtime contract.");
+    await writeRepoFile(fixture.repoRoot, "memory/index.md", "Resident local index.");
+    const task = `TASK_HEAD_${"x".repeat(120_000)}_TASK_TAIL`;
+    const trigger = triggerSchema.parse({ type: "external_task", source: "prompt", text: task });
+    const opportunity = opportunitySchema.parse({ source: "explicit_task", description: task });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, task, opportunity);
+
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
+
+    assert.equal(rendered.manifest.budget_enforcement?.status, "compacted");
+    assert.equal(rendered.manifest.budget_enforcement?.hard_limit_source, "runtime_default");
+    assert.equal(rendered.manifest.budget_enforcement?.hard_limit_chars, 90_000);
+    assert.equal(rendered.markdown.length < 90_000, true, `context length ${rendered.markdown.length}`);
+    assert.equal(rendered.manifest.total_chars, rendered.markdown.length);
+    assert.equal(rendered.manifest.budget_enforcement?.rendered_total_chars, rendered.markdown.length);
+    assert.equal((rendered.manifest.budget_enforcement?.original_total_chars ?? 0) > rendered.markdown.length, true);
+    assert.equal(rendered.manifest.budget_enforcement?.truncated_sections.some((section) => section.title === "Turn Snapshot"), true);
+    assert.match(rendered.markdown, /TASK_HEAD_/);
+    assert.match(rendered.markdown, /_TASK_TAIL/);
+    assert.match(rendered.markdown, /context budget truncated/);
+    assert.match(rendered.markdown, /## Output Contract/);
+
+    const modelBudget = deriveContextBudget({
+      model_id: "bounded-model",
+      context_window_tokens: 20_000,
+      max_output_tokens: 2_000
+    });
+    assert.ok(modelBudget);
+    const modelBounded = await renderContextBundleWithManifest(fixture.store, snapshot, { contextBudget: modelBudget });
+    assert.equal(modelBounded.manifest.budget_enforcement?.hard_limit_source, "model_config");
+    assert.equal(modelBounded.markdown.length < modelBudget.total_hard_limit_chars, true);
+    assert.match(modelBounded.markdown, /TASK_HEAD_/);
+    assert.match(modelBounded.markdown, /_TASK_TAIL/);
+
+    const unsafeBudget = deriveContextBudget({ context_window_tokens: 800 });
+    assert.ok(unsafeBudget);
+    await assert.rejects(
+      renderContextBundleWithManifest(fixture.store, snapshot, { contextBudget: unsafeBudget }),
+      /cannot preserve mandatory Stable Core and Output Contract sections/
+    );
+  } finally {
+    await fixture.cleanup();
+  }
 });
 
 test("compact GA plan checks keep the actionable source quality warning by prefix", () => {
