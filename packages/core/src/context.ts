@@ -107,6 +107,8 @@ interface ContextSelection {
   };
 }
 
+export type ContextAttentionProfile = "focused" | "governance" | "recovery";
+
 export interface MemoryRecallHit {
   id: string;
   session_id: string;
@@ -234,6 +236,12 @@ export interface ContextBundleManifest {
     discipline_active: boolean;
   };
   context_budget?: ContextBudgetSummary | null;
+  attention_selection?: {
+    profile: ContextAttentionProfile;
+    included_section_titles: string[];
+    omitted_section_titles: string[];
+    boundary: string;
+  };
   budget_enforcement?: ContextBudgetEnforcement;
 }
 
@@ -278,6 +286,7 @@ export async function buildTurnSnapshot(
     },
     task_context: {
       accepted_goal: acceptedGoal,
+      attention_profile: selectContextAttentionProfile(acceptedGoal, opportunity),
       budget: opportunity.budget_hint,
       stop_signal_active: Boolean(stopSignal),
       stop_signal_ref: stopSignal ? "autonomy/runs/pause_signal.json" : null,
@@ -321,8 +330,9 @@ export async function renderContextBundleWithManifest(
   options: ContextRenderOptions = {}
 ): Promise<RenderedContextBundle> {
   const originalSections = await buildContextSections(store, snapshot, options);
+  const attention = selectContextSections(originalSections, attentionProfileFromSnapshot(snapshot));
   const contextBudget = contextBudgetFromOptions(options);
-  const budgeted = enforceContextHardBudget(originalSections, contextBudget);
+  const budgeted = enforceContextHardBudget(attention.sections, contextBudget);
   const sections = budgeted.sections;
   const markdown = renderContextSections(sections);
   const archiveSection = sections.find((section) => section.title === "Episode Archives");
@@ -354,6 +364,12 @@ export async function renderContextBundleWithManifest(
         discipline_active: isQueryTodoDiscipline(snapshot.working_context.discipline)
       },
       context_budget: contextBudget,
+      attention_selection: {
+        profile: attention.profile,
+        included_section_titles: sections.map((section) => section.title),
+        omitted_section_titles: attention.omittedSectionTitles,
+        boundary: "deterministic task-profile routing; keeps the resident index and current working state hot, loads governance or recovery histories only when relevant, and records every intentionally omitted section"
+      },
       budget_enforcement: budgeted.enforcement
     }
   };
@@ -376,6 +392,95 @@ const MANDATORY_CONTEXT_SECTIONS = new Set([
   "Stable Core",
   "Output Contract"
 ]);
+
+const FOCUSED_CONTEXT_SECTIONS = new Set([
+  "Stable Core",
+  "Resident Index",
+  "Service Runtime",
+  "Workspace Status",
+  "Runtime Config",
+  "Attention Plan",
+  "Capability Catalog",
+  "Task References",
+  "Turn Snapshot",
+  "Working Checkpoint",
+  "Query/Todo Discipline",
+  "Episode Recall",
+  "Selected Skills",
+  "Output Contract"
+]);
+
+const GOVERNANCE_CONTEXT_SECTIONS = new Set([
+  ...FOCUSED_CONTEXT_SECTIONS,
+  "Semantic Memory",
+  "Dreams",
+  "Self-Evolution Scorecard",
+  "GA Project Design Plan",
+  "Self-Evolution Iteration",
+  "Opportunity Backlog",
+  "Background Review History",
+  "Review Tick History",
+  "Governance Queue",
+  "Governance Outcomes",
+  "SOP Evolution Ledger",
+  "Completion Verification"
+]);
+
+const RECOVERY_CONTEXT_SECTIONS = new Set([
+  ...GOVERNANCE_CONTEXT_SECTIONS,
+  "Pipeline History",
+  "Live Run Trace",
+  "Harness Replay Audits",
+  "Completion Verification",
+  "Episode Archives"
+]);
+
+const ALL_CONTEXT_SECTION_TITLES = new Set([
+  ...GOVERNANCE_CONTEXT_SECTIONS,
+  ...RECOVERY_CONTEXT_SECTIONS
+]);
+
+export function selectContextAttentionProfile(
+  acceptedGoal: string,
+  opportunity: Pick<Opportunity, "source" | "description">
+): ContextAttentionProfile {
+  const text = `${acceptedGoal}\n${opportunity.description}`.toLowerCase();
+  if (
+    opportunity.source === "failed_workflow"
+    || /\b(error|failure|failed|debug|recover|recovery|rollback|replay|trace|incident|log|verification|context pressure|context health)\b/.test(text)
+    || /(失败|故障|排障|恢复|回滚|重放|日志|事故|验证|上下文压力|上下文健康)/.test(text)
+  ) return "recovery";
+  if (
+    opportunity.source === "stale_skill"
+    || opportunity.source === "tool_gap"
+    || opportunity.source === "autonomous_discovery"
+    || /\b(self[- ]?evolution|self[- ]?growth|governance|capability|capabilities|memory|sop|skill|learning|project design|attention|backlog|checkpoint|dream|iteration)\b/.test(text)
+    || /(自迭代|自成长|自进化|治理|能力|记忆|学习|技能|文档加载|注意力)/.test(text)
+  ) return "governance";
+  return "focused";
+}
+
+function attentionProfileFromSnapshot(snapshot: TurnSnapshot): ContextAttentionProfile {
+  const profile = getString((snapshot.task_context as Record<string, unknown>).attention_profile);
+  return profile === "governance" || profile === "recovery" ? profile : "focused";
+}
+
+function selectContextSections(
+  sections: ContextSection[],
+  profile: ContextAttentionProfile
+): { profile: ContextAttentionProfile; sections: ContextSection[]; omittedSectionTitles: string[] } {
+  const selectedTitles = profile === "governance"
+    ? GOVERNANCE_CONTEXT_SECTIONS
+    : profile === "recovery"
+      ? RECOVERY_CONTEXT_SECTIONS
+      : FOCUSED_CONTEXT_SECTIONS;
+  return {
+    profile,
+    sections: sections.filter((section) => selectedTitles.has(section.title)),
+    omittedSectionTitles: [...ALL_CONTEXT_SECTION_TITLES]
+      .filter((title) => !selectedTitles.has(title))
+  };
+}
 
 function enforceContextHardBudget(
   sections: ContextSection[],
@@ -511,16 +616,19 @@ async function buildContextSections(
   snapshot: TurnSnapshot,
   options: ContextRenderOptions
 ): Promise<ContextSection[]> {
+  const profile = attentionProfileFromSnapshot(snapshot);
+  const selectedTitles = profile === "governance"
+    ? GOVERNANCE_CONTEXT_SECTIONS
+    : profile === "recovery"
+      ? RECOVERY_CONTEXT_SECTIONS
+      : FOCUSED_CONTEXT_SECTIONS;
+  const include = (title: string): boolean => selectedTitles.has(title);
   const skillRefs = getStringArray(snapshot.recall_context.skill_refs);
-  const taskReferences = await taskReferencesSection(store, snapshot);
-  const harnessReplayAudits = await harnessReplayAuditSection(store);
-  const attentionPlan = await attentionPlanSection(store, snapshot, options);
-  const gaPlan = await gaProjectDesignPlanSection(store);
-  return [
+  const sections: ContextSection[] = [
     {
       title: "Stable Core",
       body: await stableCore(store),
-      refs: ["core/soul.md", "core/memory.md", "docs/RUNTIME_CONTRACT.md"],
+      refs: ["core/soul.md", "core/memory.md", "docs/INDEX.md"],
       item_count: 3
     },
     {
@@ -528,35 +636,51 @@ async function buildContextSections(
       body: refBlock("memory/index.md", await store.readRepoText("memory/index.md", 1400)),
       refs: ["memory/index.md"],
       item_count: 1
-    },
-    await serviceRuntimeSection(store),
-    await workspaceStatusSection(store),
-    runtimeConfigSection(options.runtimeConfig),
-    ...(attentionPlan ? [attentionPlan] : []),
-    capabilityCatalogSection(),
-    await semanticMemorySection(store),
-    await dreamSection(store),
-    await selfEvolutionScorecardSection(store, options.vaultRoot),
-    ...(gaPlan ? [gaPlan] : []),
-    ...(await selfEvolutionIterationSection(store)),
-    ...(taskReferences ? [taskReferences] : []),
-    await opportunityBacklogSection(store, options.vaultRoot),
-    await backgroundReviewHistorySection(store),
-    await reviewTickHistorySection(store),
-    await pipelineHistorySection(store),
-    await liveRunTraceSection(store),
-    ...((harnessReplayAudits.item_count ?? 0) > 0 ? [harnessReplayAudits] : []),
-    await governanceQueueSection(store, options.vaultRoot),
-    await governanceOutcomesSection(store),
-    await sopEvolutionLedgerSection(store, options.vaultRoot),
+    }
+  ];
+  if (include("Service Runtime")) sections.push(await serviceRuntimeSection(store));
+  if (include("Workspace Status")) sections.push(await workspaceStatusSection(store));
+  if (include("Runtime Config")) sections.push(runtimeConfigSection(options.runtimeConfig));
+  if (include("Attention Plan")) {
+    const attentionPlan = await attentionPlanSection(store, snapshot, options);
+    if (attentionPlan) sections.push(attentionPlan);
+  }
+  if (include("Capability Catalog")) sections.push(capabilityCatalogSection());
+  if (include("Semantic Memory")) sections.push(await semanticMemorySection(store));
+  if (include("Dreams")) sections.push(await dreamSection(store));
+  if (include("Self-Evolution Scorecard")) sections.push(await selfEvolutionScorecardSection(store, options.vaultRoot));
+  if (include("GA Project Design Plan")) {
+    const gaPlan = await gaProjectDesignPlanSection(store);
+    if (gaPlan) sections.push(gaPlan);
+  }
+  if (include("Self-Evolution Iteration")) sections.push(...await selfEvolutionIterationSection(store));
+  if (include("Task References")) {
+    const taskReferences = await taskReferencesSection(store, snapshot);
+    if (taskReferences) sections.push(taskReferences);
+  }
+  if (include("Opportunity Backlog")) sections.push(await opportunityBacklogSection(store, options.vaultRoot));
+  if (include("Background Review History")) sections.push(await backgroundReviewHistorySection(store));
+  if (include("Review Tick History")) sections.push(await reviewTickHistorySection(store));
+  if (include("Pipeline History")) sections.push(await pipelineHistorySection(store));
+  if (include("Live Run Trace")) sections.push(await liveRunTraceSection(store));
+  if (include("Harness Replay Audits")) {
+    const harnessReplayAudits = await harnessReplayAuditSection(store);
+    if ((harnessReplayAudits.item_count ?? 0) > 0) sections.push(harnessReplayAudits);
+  }
+  if (include("Governance Queue")) sections.push(await governanceQueueSection(store, options.vaultRoot));
+  if (include("Governance Outcomes")) sections.push(await governanceOutcomesSection(store));
+  if (include("SOP Evolution Ledger")) sections.push(await sopEvolutionLedgerSection(store, options.vaultRoot));
+  sections.push(
     {
       title: "Turn Snapshot",
-      body: JSON.stringify(snapshot, null, 2),
+      body: compactTurnSnapshot(snapshot),
       refs: [],
       item_count: 1
     },
     workingCheckpointSection(snapshot),
-    await completionVerificationSection(store),
+  );
+  if (include("Completion Verification")) sections.push(await completionVerificationSection(store));
+  sections.push(
     {
       title: "Query/Todo Discipline",
       body: await queryTodoDiscipline(store, snapshot),
@@ -569,7 +693,9 @@ async function buildContextSections(
       refs: episodeRecallRefs(snapshot),
       item_count: getRecordArray(snapshot.recall_context.memory_hits).length
     },
-    await episodeArchiveSection(store),
+  );
+  if (include("Episode Archives")) sections.push(await episodeArchiveSection(store));
+  sections.push(
     {
       title: "Selected Skills",
       body: await selectedSkills(store, snapshot),
@@ -582,7 +708,8 @@ async function buildContextSections(
       refs: ["packages/core/src/tool_contracts.ts"],
       item_count: allowedActions.length
     }
-  ];
+  );
+  return sections;
 }
 
 async function serviceRuntimeSection(store: AgentStore): Promise<ContextSection> {
@@ -3097,11 +3224,52 @@ function selectedSkillQualityLines(quality: Record<string, unknown> | null): str
 }
 
 async function stableCore(store: AgentStore): Promise<string> {
+  const docsIndex = await store.readRepoText("docs/INDEX.md", 1400);
   return [
-    refBlock("core/soul.md", await store.readRepoText("core/soul.md", 1800)),
-    refBlock("core/memory.md", await store.readRepoText("core/memory.md", 1500)),
-    refBlock("docs/RUNTIME_CONTRACT.md", await store.readRepoText("docs/RUNTIME_CONTRACT.md", 2200))
+    refBlock("core/soul.md", await store.readRepoText("core/soul.md", 1400)),
+    refBlock("core/memory.md", await store.readRepoText("core/memory.md", 1000)),
+    !docsIndex.trim()
+      ? refBlock("docs/RUNTIME_CONTRACT.md", await store.readRepoText("docs/RUNTIME_CONTRACT.md", 1400))
+      : refBlock("docs/INDEX.md", docsIndex)
   ].join("\n\n");
+}
+
+function compactTurnSnapshot(snapshot: TurnSnapshot): string {
+  const task = snapshot.task_context as Record<string, unknown>;
+  const working = snapshot.working_context as Record<string, unknown>;
+  const recall = snapshot.recall_context as Record<string, unknown>;
+  const checkpoint = getRecord(working.checkpoint_record);
+  const goal = compactAttentionText(getString(task.accepted_goal) ?? "none", 1200);
+  return [
+    "Compact current-turn state. Follow refs for details; do not infer omitted history.",
+    `- identity: { "session_id": "${snapshot.session_id}", "turn_id": "${snapshot.id}", "trigger_id": "${snapshot.trigger_id}" }`,
+    `- selected_opportunity: ${snapshot.selected_opportunity_id ?? "none"}`,
+    `- attention_profile: ${getString(task.attention_profile) ?? "focused"}`,
+    `- goal: ${goal}`,
+    `- budget: ${compactJson(task.budget, 320)}`,
+    `- stop_signal: active=${Boolean(task.stop_signal_active)} ref=${getString(task.stop_signal_ref) ?? "none"}`,
+    `- recall: memory=${getRecordArray(recall.memory_hits).length} skills=${getStringArray(recall.skill_refs).length}`,
+    `- checkpoint: ref=${getString(working.checkpoint_ref) ?? "none"} current=${compactAttentionText(getString(checkpoint?.current_step) ?? getString(working.checkpoint) ?? "none", 240)}`,
+    `- next: ${compactAttentionText(getString(checkpoint?.next_action) ?? "none", 240)}`,
+    `- constraints: ${getStringArray(working.open_constraints).slice(0, 6).map((item) => compactAttentionText(item, 100)).join(" | ") || "none"}`,
+    `- available_actions: ${snapshot.available_actions.length}; output=${snapshot.expected_output_schema}`
+  ].join("\n");
+}
+
+function compactAttentionText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  const marker = ` ...[${value.length - maxChars} chars omitted]... `;
+  const available = Math.max(2, maxChars - marker.length);
+  const head = Math.ceil(available * 0.6);
+  return `${value.slice(0, head)}${marker}${value.slice(-(available - head))}`;
+}
+
+function compactJson(value: unknown, maxChars: number): string {
+  try {
+    return compactAttentionText(JSON.stringify(value), maxChars);
+  } catch {
+    return "unavailable";
+  }
 }
 
 function disciplineRefs(snapshot: TurnSnapshot): string[] {

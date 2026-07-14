@@ -33,7 +33,8 @@ import {
   compactGaPlanReviewGate,
   compactGaPlanSelectionChecks,
   compactGaPlanSelectionReasons,
-  renderContextBundleWithManifest
+  renderContextBundleWithManifest,
+  selectContextAttentionProfile
 } from "../packages/core/src/context.js";
 import { getCapabilityCatalog } from "../packages/core/src/capabilities.js";
 import { deriveContextBudget } from "../packages/core/src/context_budget.js";
@@ -56,6 +57,21 @@ import { AgentStore } from "../packages/core/src/store.js";
 import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import type { ModelClient, ModelRequest, ModelResponse } from "../packages/runtime/src/model.js";
 import { LiveAgentRunner } from "../packages/runtime/src/runner.js";
+
+test("context attention profiles route normal, governance, and recovery tasks deterministically", () => {
+  assert.equal(selectContextAttentionProfile("Answer a simple local question.", {
+    source: "explicit_task",
+    description: "Answer a simple local question."
+  }), "focused");
+  assert.equal(selectContextAttentionProfile("Improve memory and skill loading.", {
+    source: "tool_gap",
+    description: "Improve local-learning attention."
+  }), "governance");
+  assert.equal(selectContextAttentionProfile("Rollback after a failed runtime restart.", {
+    source: "failed_workflow",
+    description: "Inspect logs and recover."
+  }), "recovery");
+});
 
 test("compact GA plan reasons keep source status and quality by prefix", () => {
   assert.deepEqual(compactGaPlanSelectionReasons([
@@ -96,7 +112,7 @@ test("model action schema bounds completion verification refs", () => {
   assert.equal(modelActionEnvelopeSchema.safeParse(envelope(["ref_1 "])).success, false);
 });
 
-test("context assembly enforces the fallback hard budget and preserves task head and tail", async () => {
+test("context assembly compacts the turn snapshot before fallback hard-budget pressure", async () => {
   const fixture = await createRepoFixture();
   try {
     await writeRepoFile(fixture.repoRoot, "core/soul.md", "Local self boundary.");
@@ -110,17 +126,20 @@ test("context assembly enforces the fallback hard budget and preserves task head
 
     const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
 
-    assert.equal(rendered.manifest.budget_enforcement?.status, "compacted");
+    assert.equal(rendered.manifest.budget_enforcement?.status, "within_budget");
     assert.equal(rendered.manifest.budget_enforcement?.hard_limit_source, "runtime_default");
-    assert.equal(rendered.manifest.budget_enforcement?.hard_limit_chars, 90_000);
-    assert.equal(rendered.markdown.length < 90_000, true, `context length ${rendered.markdown.length}`);
+    assert.equal(rendered.manifest.budget_enforcement?.hard_limit_chars, 64_000);
+    assert.equal(rendered.markdown.length < 64_000, true, `context length ${rendered.markdown.length}`);
     assert.equal(rendered.manifest.total_chars, rendered.markdown.length);
     assert.equal(rendered.manifest.budget_enforcement?.rendered_total_chars, rendered.markdown.length);
-    assert.equal((rendered.manifest.budget_enforcement?.original_total_chars ?? 0) > rendered.markdown.length, true);
-    assert.equal(rendered.manifest.budget_enforcement?.truncated_sections.some((section) => section.title === "Turn Snapshot"), true);
+    assert.equal(rendered.manifest.budget_enforcement?.original_total_chars, rendered.markdown.length);
+    assert.equal(rendered.manifest.budget_enforcement?.truncated_sections.length, 0);
+    assert.equal(rendered.manifest.attention_selection?.profile, "focused");
+    assert.equal(rendered.manifest.attention_selection?.omitted_section_titles.includes("GA Project Design Plan"), true);
+    assert.equal(rendered.manifest.attention_selection?.omitted_section_titles.includes("Live Run Trace"), true);
     assert.match(rendered.markdown, /TASK_HEAD_/);
     assert.match(rendered.markdown, /_TASK_TAIL/);
-    assert.match(rendered.markdown, /context budget truncated/);
+    assert.match(rendered.markdown, /chars omitted/);
     assert.match(rendered.markdown, /## Output Contract/);
 
     const modelBudget = deriveContextBudget({
@@ -729,11 +748,11 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     const trigger = triggerSchema.parse({
       type: "external_task",
       source: "prompt",
-      text: "Check the local context boundary."
+      text: "Debug and recover the full local context boundary."
     });
     const opportunity = opportunitySchema.parse({
       source: "explicit_task",
-      description: "Check the local context boundary."
+      description: "Debug and recover the full local context boundary."
     });
     const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity, {
       memory_hits: [{

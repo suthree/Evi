@@ -2,7 +2,7 @@ const DEFAULT_CHARS_PER_TOKEN = 4;
 const DEFAULT_SOFT_THRESHOLD = 0.8;
 const DEFAULT_HARD_THRESHOLD = 0.95;
 
-export const DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS = 90_000;
+export const DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS = 64_000;
 
 export interface ContextBudgetInput {
   model_id?: string | null;

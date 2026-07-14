@@ -20,9 +20,13 @@
 ## 本地上下文
 
 - 本仓库是 local-first、single-machine 的自成长 agent runtime。
-- 稳定模型上下文优先读取 `README.md`、`docs/RUNTIME_CONTRACT.md`、
-  `docs/LOCAL_RUNTIME.md` 和 `docs/LOCAL_LEARNING.md`。
-- 本地 operator 快速阅读优先看 `docs/README.cn.md` 和本文件。
+- 稳定模型上下文先读取 `README.md`、`docs/INDEX.md` 和 `memory/index.md`。
+  从紧凑索引路由，先搜索标题或标识符，再按任务只读取
+  `docs/RUNTIME_CONTRACT.md`、`docs/LOCAL_RUNTIME.md` 或
+  `docs/LOCAL_LEARNING.md` 的相关章节。
+- 本地 operator 快速阅读优先看 `docs/INDEX.cn.md`、`docs/README.cn.md` 和本文件。
+- 长文档、原始日志、episode 和 archive 是按需证据库，不是常驻 prompt context。
+  当前目标、working checkpoint、选中引用和验证证据的注意力优先级高于历史正文。
 - 只有在处理 active-exploration、内容发布、图像生成、小红书适配器或反馈采集时，
   才读取 `docs/ACTIVE_EXPLORATION.md`。
 - 只有在修改 Trellis 集成、项目方向或任务治理时，才读取

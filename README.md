@@ -7,11 +7,13 @@ evidence, verification, and a response.
 ## Start here
 
 - Chinese operator entrypoint: [docs/README.cn.md](docs/README.cn.md)
+- Compact documentation router: [docs/INDEX.md](docs/INDEX.md) and
+  [docs/INDEX.cn.md](docs/INDEX.cn.md)
 - Repository work rules: [AGENTS.md](AGENTS.md) and
   [docs/AGENTS.cn.md](docs/AGENTS.cn.md)
 - Stable identity and learning stance: [core/soul.md](core/soul.md) and
   [core/soul.cn.md](core/soul.cn.md)
-- Runtime contract and local operations:
+- Runtime contract and local operations (read the routed section on demand):
   [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md) and
   [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md)
 - SOP, skill, and active-vault boundaries:

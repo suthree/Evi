@@ -1302,8 +1302,11 @@ future roadmap material.
 
 Every rendered bundle is subject to a hard character budget before it is
 persisted or sent to the model. The limit comes from the active model's derived
-`total_hard_limit_chars` when available; otherwise the runtime uses the same
-90,000-character fallback as context-pressure diagnostics. If the original
+`total_hard_limit_chars` when available; otherwise the runtime uses a
+64,000-character fallback. Before hard-budget enforcement, the assembler uses
+the task-bound `focused`, `governance`, or `recovery` attention profile and
+records its included and intentionally omitted sections in
+`attention_selection`. If the selected
 bundle exceeds the limit, assembly deterministically bounds oversized sections,
 then reduces non-critical diagnostic/history sections before critical task,
 runtime, recall, selected-skill, discipline, and output-contract sections. Each
@@ -4129,7 +4132,7 @@ pnpm run runtime -- pipeline runs --state-root .runtime/state
 pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
-pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime
+pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
 pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
