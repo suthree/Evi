@@ -226,11 +226,12 @@ Repo-scoped tools treat `.runtime/`, `.runtime-*`, `.runtime_*`, and
 Use `file.read` with `scope=state`, `file.write_state`, or explicit
 `--state-root` commands for runtime artifacts.
 
-The resident runtime service remains separate by default: service lifecycle commands
-without `--state-root` use `<LOCAL_RUNTIME_HOME>/state/runtime`, so the
-long-lived service state does not depend on the repo checkout. Passing
-`--state-root .runtime/state` is still available for intentional local
-foreground daemon experiments.
+The resident runtime service remains separate by default. Service lifecycle
+and health commands resolve state in this order: an explicit `--state-root`,
+the absolute `state_root` recorded by the installed service manifest, then
+`<LOCAL_RUNTIME_HOME>/state/runtime` when no valid manifest exists. This keeps
+operator diagnostics aligned with an installed service that intentionally uses
+`.runtime/state` while preserving the checkout-independent fallback.
 
 Content dry-runs write local publish-plan artifacts under `content/runs/`.
 They are planning artifacts for active exploration. Default dry-runs do not
@@ -1158,10 +1159,12 @@ macOS it is managed through `launchd` and writes:
 ```
 
 When `--state-root` is omitted, service lifecycle commands and `service health`
-use the service-scoped default state root:
-`<LOCAL_RUNTIME_HOME>/state/runtime`. Passing `--state-root` is still an explicit
-override. This keeps the read-only health surface aligned with the resident
-service heartbeat instead of the repo-local interactive default.
+first read the installed `<LOCAL_RUNTIME_HOME>/service/runtime.json` manifest
+and use its absolute `state_root`. If the manifest is missing, malformed,
+belongs to another target/home, or contains a relative state root, they safely
+fall back to `<LOCAL_RUNTIME_HOME>/state/runtime`. Passing `--state-root` remains
+the highest-priority explicit override. This keeps the read-only health surface
+aligned with the state root the resident process actually received.
 
 `service install`, `service start`, and `service restart` sync a built runtime
 snapshot before loading the launchd job. The snapshot contains compiled JS,
