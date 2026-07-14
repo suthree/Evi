@@ -316,7 +316,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
       {
         id: "context_runtime",
         title: "Context runtime",
-        summary: "Context bundles, manifests, usage, pressure diagnostics, pressure operator guidance, health diagnostics, repair guidance, capability catalog context, runtime config context, and service health context are implemented.",
+        summary: "Context bundles with hard-budget enforcement, enforcement-aware manifests, usage and pressure diagnostics, pressure operator guidance, health diagnostics, repair guidance, capability catalog context, runtime config context, and service health context are implemented.",
         status: "ready",
         layer: "core_runtime",
         evidence_refs: [
@@ -338,6 +338,7 @@ export function getCapabilityAcceptanceAudit(): CapabilityAcceptanceAudit {
         ],
         boundaries: [
           "read models do not read raw context Markdown",
+          "live context assembly enforces the model-derived hard limit or the shared 90,000-character fallback before model invocation and records deterministic degradation evidence",
           "pressure guidance is explicit operator guidance and never auto-compacts or rewrites context",
           "repair is explicit and selected by operator"
         ]
@@ -594,7 +595,7 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
       {
         id: "context.manifests",
         title: "Context manifests",
-        summary: "List and inspect JSON sidecars for recent context bundles.",
+        summary: "List and inspect JSON sidecars for recent context bundles, including hard-budget enforcement status and bounded degradation counts.",
         status: "implemented",
         commands: ["pnpm run runtime -- context list", "pnpm run runtime -- context show --context <ref>", "/context", "/context <ref>"],
         refs: ["packages/runtime/src/context_manifest.ts"],

@@ -3984,10 +3984,13 @@ test("operator context commands read manifest sidecars without running the agent
     assert.match(transport.sent[0].text, /session_new/);
     assert.match(transport.sent[0].text, /memory_hits: 2/);
     assert.match(transport.sent[0].text, /opportunity_refs: 0/);
+    assert.match(transport.sent[0].text, /budget_enforcement: not_recorded/);
+    assert.match(transport.sent[0].text, /budget_original_chars: 2200/);
     assert.match(transport.sent[0].text, /This command is read-only/);
     assert.match(transport.sent[1].text, /Context manifest/);
     assert.match(transport.sent[1].text, /session: session_new/);
     assert.match(transport.sent[1].text, /opportunity_refs: 0/);
+    assert.match(transport.sent[1].text, /budget_enforcement: not_recorded/);
     assert.match(transport.sent[1].text, /Stable Core/);
     assert.match(transport.sent[1].text, /memory\/episodes\/prior\.json/);
     assert.match(transport.sent[1].text, /does not read raw context Markdown/);

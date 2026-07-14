@@ -1285,6 +1285,24 @@ includes only:
 The context bundle must not dump all docs, all sessions, all skills, or all
 future roadmap material.
 
+Every rendered bundle is subject to a hard character budget before it is
+persisted or sent to the model. The limit comes from the active model's derived
+`total_hard_limit_chars` when available; otherwise the runtime uses the same
+90,000-character fallback as context-pressure diagnostics. If the original
+bundle exceeds the limit, assembly deterministically bounds oversized sections,
+then reduces non-critical diagnostic/history sections before critical task,
+runtime, recall, selected-skill, discipline, and output-contract sections. Each
+truncation preserves a bounded head and tail so a long accepted task keeps both
+its opening scope and latest instruction. An implausibly small declared limit
+fails closed before model invocation.
+
+The context manifest records `budget_enforcement` with the limit source,
+original and rendered totals, truncated sections, omitted section titles, and
+the enforcement boundary. Context list/show and Feishu operator views expose
+this metadata without reading raw context Markdown. Enforcement does not fetch
+extra artifacts, infer a larger provider window, mutate source/state, or claim
+that omitted evidence was shown to the model.
+
 When rendered, `Attention Plan` is a short read-only routing hint over the
 accepted goal, non-secret model context budget, latest context-pressure
 manifest metadata, and current working checkpoint metadata. It must not read

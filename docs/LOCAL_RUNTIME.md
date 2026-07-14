@@ -938,7 +938,18 @@ If the active `models.jsonl` record declares `context_window_tokens`, usage and
 pressure diagnostics derive an estimated input budget from that value minus
 `max_output_tokens`, using bounded local metadata only. Missing
 `context_window_tokens` keeps the existing static thresholds. This is a warning
-surface only; it does not compact context or query the model provider.
+surface only; the diagnostic command itself does not compact context or query
+the model provider.
+
+Live context assembly separately enforces the derived model hard limit, or a
+90,000-character fallback when the active model does not declare a context
+window. Oversized bundles are deterministically reduced before persistence and
+model invocation. The reducer preserves bounded head/tail evidence, prioritizes
+the accepted task, runtime/config orientation, query/todo discipline, recall,
+selected skills, and output contract, and records all truncation or omission in
+the manifest `budget_enforcement` field. `context`, `context show`, and Feishu
+`/context` expose the enforcement summary without reading raw context Markdown.
+Limits too small to hold the bounded core fail before invoking the model.
 
 Session recap is exposed through `memory recap`, `memory recap --session
 <session-id>`, Feishu `/recap`, and Feishu `/recap <session-id>`. It summarizes
