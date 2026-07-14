@@ -132,6 +132,7 @@ type TodoStatus = "pending" | "in_progress" | "done" | "blocked";
 
 const DEFAULT_EPISODE_RECALL_LIMIT = 4;
 const PRESSURE_EPISODE_RECALL_LIMIT = 1;
+const MAX_MODEL_FORMAT_REPAIR_ATTEMPTS = 1;
 
 interface TodoStep {
   id: string;
@@ -302,7 +303,9 @@ export class LiveAgentRunner {
     const harnessArtifactRefs: string[] = [];
     const modelDiagnosticRefs: string[] = [];
     const verificationEvidenceRounds = new Map<string, number>();
-    let modelFailureOccurred = false;
+    let terminalModelFailureOccurred = false;
+    let modelFormatRepairAttempts = 0;
+    const modelFailureRecoveryGuidance: string[] = [];
 
     const maxRounds = discipline ? 5 : 3;
     for (let round = 1; round <= maxRounds; round += 1) {
@@ -314,8 +317,15 @@ export class LiveAgentRunner {
         await this.writeDisciplineTodo(discipline);
       }
       const instructions = liveInstructions(this.discipline);
-      const input = renderModelInput(bundle, toolResults, delegatedResults, harnessActionResults);
+      const input = renderModelInput(
+        bundle,
+        toolResults,
+        delegatedResults,
+        harnessActionResults,
+        modelFailureRecoveryGuidance
+      );
       const modelActionArtifactRefs: string[] = [];
+      let roundFailureDiagnostic: ModelFailureDiagnostic | null = null;
       try {
         const modelResponse = await this.model.create({ instructions, input });
         modelResponseRef = await this.store.writeJson(
@@ -347,6 +357,7 @@ export class LiveAgentRunner {
             diagnostic
           );
           modelDiagnosticRefs.push(diagnosticRef);
+          roundFailureDiagnostic = diagnostic;
           modelActionArtifactRefs.push(diagnosticRef);
           const diagnosticEvent = evidenceEventSchema.parse({
             session_id: snapshot.session_id,
@@ -360,7 +371,6 @@ export class LiveAgentRunner {
           await this.store.appendJsonl("memory/episodes/events.jsonl", diagnosticEvent);
           envelope = modelFailureEnvelope(diagnostic, diagnosticRef);
           roundModelFailed = true;
-          modelFailureOccurred = true;
           if (discipline) {
             markTodo(discipline, "model_actions", "blocked");
             discipline.iteration_log.push(`Round ${round}: model cognition failed; ${diagnostic.stage}/${diagnostic.failure_kind}: ${diagnostic.error_preview}`);
@@ -390,6 +400,7 @@ export class LiveAgentRunner {
         );
         modelResponseRef = diagnosticRef;
         modelDiagnosticRefs.push(diagnosticRef);
+        roundFailureDiagnostic = diagnostic;
         modelActionArtifactRefs.push(diagnosticRef);
         const diagnosticEvent = evidenceEventSchema.parse({
           session_id: snapshot.session_id,
@@ -403,7 +414,6 @@ export class LiveAgentRunner {
         await this.store.appendJsonl("memory/episodes/events.jsonl", diagnosticEvent);
         envelope = modelFailureEnvelope(diagnostic, diagnosticRef);
         roundModelFailed = true;
-        modelFailureOccurred = true;
         if (discipline) {
           markTodo(discipline, "model_actions", "blocked");
           discipline.iteration_log.push(`Round ${round}: model cognition failed; ${diagnostic.stage}/${diagnostic.failure_kind}: ${diagnostic.error_preview}`);
@@ -447,7 +457,27 @@ export class LiveAgentRunner {
         await this.writeDisciplineTodo(discipline);
       }
 
-      if (roundModelFailed) break;
+      if (roundModelFailed) {
+        const canRepairFormat = roundFailureDiagnostic?.stage === "envelope_parse"
+          && modelFormatRepairAttempts < MAX_MODEL_FORMAT_REPAIR_ATTEMPTS
+          && round < maxRounds;
+        if (canRepairFormat) {
+          modelFormatRepairAttempts += 1;
+          modelFailureRecoveryGuidance.push([
+            `Round ${round} produced no executable action because the ModelActionEnvelope was invalid.`,
+            `Diagnostic ref: ${modelDiagnosticRefs.at(-1) ?? "unavailable"}.`,
+            "Return one strict JSON ModelActionEnvelope matching the Output Contract; do not repeat prose, markdown fences, unknown action types, or multiple respond actions."
+          ].join(" "));
+          if (discipline) {
+            markTodo(discipline, "model_actions", "in_progress");
+            discipline.iteration_log.push(`Round ${round}: scheduling one bounded ModelActionEnvelope format-repair round.`);
+            await this.writeDisciplineTodo(discipline);
+          }
+          continue;
+        }
+        terminalModelFailureOccurred = true;
+        break;
+      }
       const currentEnvelope = envelope;
       const harnessActions = currentEnvelope.actions.filter((item): item is ActionProposal & { type: HarnessActionResult["action_type"] } =>
         isHarnessStateAction(item, currentEnvelope.completion_claim.status)
@@ -702,7 +732,7 @@ export class LiveAgentRunner {
     let vaultSopPromotedRef: string | null = null;
     let auditRef: string | null = null;
     let skillRef: string | null = null;
-    let verdict = modelFailureOccurred
+    let verdict = terminalModelFailureOccurred
       ? "blocked_model_error"
       : completionVerification.ok
         ? "no_sop"
@@ -1519,9 +1549,18 @@ function renderModelInput(
   bundle: string,
   toolResults: ToolResult[],
   delegatedResults: DelegatedResult[],
-  harnessActionResults: HarnessActionResult[]
+  harnessActionResults: HarnessActionResult[],
+  modelFailureRecoveryGuidance: string[] = []
 ): string {
   const sections = ["## Response Format Reminder\n\nReturn valid json only.", bundle];
+  if (modelFailureRecoveryGuidance.length > 0) {
+    sections.push([
+      "## Model Format Recovery",
+      "",
+      "The previous invalid output produced no executable actions and grants no completion authority.",
+      ...modelFailureRecoveryGuidance.map((item) => `- ${item}`)
+    ].join("\n"));
+  }
   if (toolResults.length > 0) {
     sections.push(`## Tool Observations\n\n${toolResults.map((item) => JSON.stringify(item, null, 2)).join("\n\n")}`);
   }
@@ -1640,6 +1679,8 @@ function persistedModelResponseMetadata(response: ModelResponse): Record<string,
     model: response.model,
     response_id: response.responseId,
     output_chars: response.outputText.length,
+    request_attempts: response.requestAttempts ?? 1,
+    recovered_request_failures: response.recoveredRequestFailures ?? [],
     boundary: "bounded model response metadata; raw model output and provider payload are not persisted",
     created_at: utcNow()
   };
@@ -2109,6 +2150,14 @@ function verifyCompletionClaim(args: {
       ? compactRefs([...failedDelegationVerificationRefs, ...delegatedRecoveryEvidenceRefs])
       : postDelegationClaimedRefs
   });
+  if (args.modelDiagnosticRefs.length > 0) {
+    checks.push({
+      id: "model_diagnostics",
+      status: "warning",
+      summary: `Model cognition recovered after ${args.modelDiagnosticRefs.length} bounded diagnostic artifact(s).`,
+      refs: args.modelDiagnosticRefs
+    });
+  }
 
   const failures = checks.filter((check) => check.status === "fail").map((check) => check.summary.replace(/\.$/, ""));
   if (failures.length > 0) {

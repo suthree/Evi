@@ -89,6 +89,7 @@ const modelRecordSchema = z.object({
   reasoning_effort: z.string().optional(),
   context_window_tokens: z.number().int().positive().optional(),
   max_output_tokens: z.number().int().positive().default(2400),
+  timeout_ms: z.number().int().positive().default(120000),
   store: z.boolean().default(false),
   json_object: z.boolean().default(true)
 });

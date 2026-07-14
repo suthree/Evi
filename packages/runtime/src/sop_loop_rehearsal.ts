@@ -359,6 +359,7 @@ function rehearsalConfig(args: { stateRoot: string; activeVault: string }): Runt
       model: "deterministic-sop-rehearsal",
       auth_id: "sop-loop-rehearsal",
       max_output_tokens: 2400,
+      timeout_ms: 120000,
       store: false,
       json_object: true,
       api_key: "local-rehearsal"
