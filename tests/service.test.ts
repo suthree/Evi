@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,9 +7,12 @@ import {
   buildRuntimeServiceDefinition,
   parseLaunchdPid,
   renderLaunchdPlist,
+  rollbackServiceRuntimeBundle,
   resolveServiceDefinition,
   resolveServiceConfigSelectors,
-  runServiceCommand
+  rotateServiceLogs,
+  runServiceCommand,
+  syncServiceRuntimeBundle
 } from "../packages/runtime/src/service.js";
 
 test("launchd plist uses explicit runtime daemon runner and does not contain secrets", () => {
@@ -65,6 +68,7 @@ test("runtime service definition starts the unified daemon with configurable cha
   assert.equal(definition.manifestPath, "/home/user/.local-runtime/service/runtime.json");
   assert.equal(definition.heartbeatPath, "/work/runtime/.runtime/state/services/runtime/heartbeat.json");
   assert.equal(definition.taskQueueStatusPath, "/work/runtime/.runtime/state/services/runtime/task_queue.json");
+  assert.equal(definition.runtimePreviousRoot, "/home/user/.local-runtime/service/runtime/previous");
   assert.match(plist, /<string>daemon<\/string>/);
   assert.match(plist, /<string>serve<\/string>/);
   assert.match(plist, /<string>--no-im<\/string>/);
@@ -80,6 +84,104 @@ test("runtime service definition starts the unified daemon with configurable cha
 test("parseLaunchdPid reads launchctl print output", () => {
   assert.equal(parseLaunchdPid("state = running\npid = 12345\n"), 12345);
   assert.equal(parseLaunchdPid("state = waiting\n"), null);
+});
+
+test("service runtime rollback swaps current and previous bundles reversibly", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-rollback-"));
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: join(root, "repo"),
+    configDir: join(root, "repo/config"),
+    stateRoot: join(root, "state"),
+    homeRoot: join(root, "home"),
+    nodePath: process.execPath
+  });
+  try {
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "current-commit");
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "stable-commit");
+
+    await rollbackServiceRuntimeBundle(definition);
+    assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "stable-commit");
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "current-commit");
+
+    await rollbackServiceRuntimeBundle(definition);
+    assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "current-commit");
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "stable-commit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service runtime rollback rejects a missing last known-good bundle", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-rollback-missing-"));
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: join(root, "repo"),
+    configDir: join(root, "repo/config"),
+    stateRoot: join(root, "state"),
+    homeRoot: join(root, "home"),
+    nodePath: process.execPath
+  });
+  try {
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "current-commit");
+    await assert.rejects(() => rollbackServiceRuntimeBundle(definition), /last known-good runtime is unavailable or incomplete/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service logs rotate at the lifecycle size cap and retain bounded history", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-log-"));
+  const stdoutPath = join(root, "runtime.out.log");
+  const stderrPath = join(root, "runtime.err.log");
+  try {
+    await writeFile(stdoutPath, "new-output", "utf8");
+    await writeFile(`${stdoutPath}.1`, "old-output", "utf8");
+    await writeFile(stderrPath, "small", "utf8");
+    await rotateServiceLogs({ stdoutPath, stderrPath }, 8, 3);
+    assert.equal(await readFile(`${stdoutPath}.1`, "utf8"), "new-output");
+    assert.equal(await readFile(`${stdoutPath}.2`, "utf8"), "old-output");
+    assert.equal(await readFile(stderrPath, "utf8"), "small");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime sync preserves only commit-bound verified current builds as last known-good", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-sync-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot,
+    configDir,
+    stateRoot,
+    homeRoot: join(root, "home"),
+    nodePath: process.execPath
+  });
+  try {
+    await mkdir(join(repoRoot, "dist/apps/cli/src"), { recursive: true });
+    await mkdir(join(repoRoot, "node_modules"), { recursive: true });
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(repoRoot, "dist/apps/cli/src/main.js"), "export const version = 1;\n", "utf8");
+    await writeFile(join(configDir, "config.jsonl"), "", "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "verified-commit", repoRoot);
+    await mkdir(join(stateRoot, "governance/capability-acceptance"), { recursive: true });
+    await writeFile(join(stateRoot, "governance/capability-acceptance/basic-entrypoints.json"), `${JSON.stringify({
+      status: "verified",
+      source_commit: "verified-commit",
+      repo_root: repoRoot,
+      state_root: stateRoot
+    })}\n`, "utf8");
+
+    await syncServiceRuntimeBundle(definition);
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "verified-commit");
+
+    await writeFile(join(repoRoot, "dist/apps/cli/src/main.js"), "export const version = 2;\n", "utf8");
+    await syncServiceRuntimeBundle(definition);
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "verified-commit");
+    assert.match(await readFile(join(definition.runtimeCurrentRoot, "dist/apps/cli/src/main.js"), "utf8"), /version = 2/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("service definition accepts configured Discord IM providers with an adapter", async () => {
@@ -352,6 +454,19 @@ test("service status combines launchd status and heartbeat", async () => {
       source_branch: "develop",
       source_is_dirty: false
     })}\n`, "utf8");
+    await mkdir(join(homeRoot, "service/runtime/previous"), { recursive: true });
+    await writeFile(join(homeRoot, "service/runtime/previous/build.json"), `${JSON.stringify({
+      schema_version: 1,
+      target: "runtime",
+      runtime_current_root: join(homeRoot, "service/runtime/previous"),
+      repo_root: repoRoot,
+      built_at: "2026-06-28T00:00:10.000Z",
+      node_version: "v24.0.0",
+      source_commit: "abcdef0123456789abcdef0123456789abcdef01",
+      source_commit_short: "abcdef012345",
+      source_branch: "develop",
+      source_is_dirty: false
+    })}\n`, "utf8");
     await writeFile(join(stateRoot, "services/runtime/review_tick.json"), `${JSON.stringify({
       service: "review_tick",
       state: "ok",
@@ -488,6 +603,7 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.runtime?.source_branch, "develop");
     assert.equal(result.runtime?.source_is_dirty, false);
     assert.equal(result.runtime?.runtime_current_root, join(homeRoot, "service/runtime/current"));
+    assert.equal(result.previous_runtime?.source_commit_short, "abcdef012345");
     assert.equal(result.review_tick?.state, "ok");
     assert.equal(result.review_tick?.last_inbox_count, 2);
     assert.equal(result.task_queue?.state, "ok");
@@ -548,3 +664,23 @@ test("runtime service status points operators to runtime bounded health", async 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function writeTestRuntimeBundle(root: string, sourceCommit: string, repoRoot = "/repo"): Promise<void> {
+  await mkdir(join(root, "dist/apps/cli/src"), { recursive: true });
+  await mkdir(join(root, "node_modules"), { recursive: true });
+  await mkdir(join(root, "config"), { recursive: true });
+  await writeFile(join(root, "dist/apps/cli/src/main.js"), "export {};\n", "utf8");
+  await writeFile(join(root, "config/config.jsonl"), "", "utf8");
+  await writeFile(join(root, "build.json"), `${JSON.stringify({
+    schema_version: 1,
+    target: "runtime",
+    runtime_current_root: root,
+    repo_root: repoRoot,
+    built_at: "2026-07-14T00:00:00.000Z",
+    node_version: process.version,
+    source_commit: sourceCommit,
+    source_commit_short: sourceCommit.slice(0, 12),
+    source_branch: "develop",
+    source_is_dirty: false
+  })}\n`, "utf8");
+}

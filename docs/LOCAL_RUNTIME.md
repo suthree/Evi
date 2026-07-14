@@ -84,7 +84,7 @@ pnpm run runtime -- content publish-execute --run content_run_... --external-wri
 pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime/state
 pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state --dry-run --state-root ~/.local-runtime/state/runtime
 pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
-pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime
+pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
 pnpm run runtime -- workspace status --state-root .runtime/state
 pnpm run runtime -- workspace runtime --state-root .runtime/state
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
@@ -942,10 +942,20 @@ pressure diagnostics derive an estimated input budget from that value minus
 surface only; the diagnostic command itself does not compact context or query
 the model provider.
 
-Live context assembly separately enforces the derived model hard limit, or a
-90,000-character fallback when the active model does not declare a context
-window. Oversized bundles are deterministically reduced before persistence and
-model invocation. The reducer preserves bounded head/tail evidence, prioritizes
+Live context assembly first selects a deterministic attention profile from the
+accepted task: `focused` for normal work, `governance` for self-evolution,
+memory, SOP, skill, or capability work, and `recovery` for failures, rollback,
+verification, traces, or context pressure. Focused runs keep the resident
+index, current runtime/config, goal, checkpoint, selected recall/skills, and
+output contract hot; governance and recovery histories are loaded only by the
+matching profile. The manifest `attention_selection` records the profile and
+every intentionally omitted section.
+
+Assembly then enforces the derived model hard limit, or a 64,000-character
+fallback when the active model does not declare a context window. The compact
+Turn Snapshot preserves machine-readable identity plus bounded goal head/tail
+instead of embedding the full snapshot JSON. Oversized bundles are
+deterministically reduced before persistence and model invocation. The reducer preserves bounded head/tail evidence, prioritizes
 the accepted task, runtime/config orientation, query/todo discipline, recall,
 selected skills, and output contract, and records all truncation or omission in
 the manifest `budget_enforcement` field. `context`, `context show`, and Feishu
@@ -1163,6 +1173,8 @@ macOS it is managed through `launchd` and writes:
 <LOCAL_RUNTIME_HOME>/service/runtime.json
 <LOCAL_RUNTIME_HOME>/service/runtime/current/
 <LOCAL_RUNTIME_HOME>/service/runtime/current/build.json
+<LOCAL_RUNTIME_HOME>/service/runtime/previous/
+<LOCAL_RUNTIME_HOME>/service/runtime/previous/build.json
 <LOCAL_RUNTIME_HOME>/logs/runtime.out.log
 <LOCAL_RUNTIME_HOME>/logs/runtime.err.log
 <state_root>/services/runtime/heartbeat.json
@@ -1189,6 +1201,21 @@ runtime and returns `health_command` pointing to the matching bounded
 metadata so Feishu `/status`, `governance status`, and Feishu `/governance` can
 confirm which build the resident process is actually running without reading
 the copied runtime path.
+
+Before replacing `current`, the service compares its build commit with the
+commit-bound `governance/capability-acceptance/basic-entrypoints.json` record.
+Only a clean build with a `verified` commit, repo root, and state-root match is
+promoted to `previous`; an unverified or dirty current build
+never overwrites the last known-good slot. `service rollback` stops launchd,
+validates both bundles, swaps `current` and `previous`, and starts the same job
+again. The replaced build remains in `previous`, so the same command can
+reverse the rollback. `service status` exposes both `runtime` and
+`previous_runtime` build metadata.
+
+Service stdout and stderr logs rotate after the job is stopped and before a
+start, restart, install, or rollback. Each active log is capped at 2 MiB with
+three local rotations (`.1` through `.3`). Rotation is lifecycle-bounded and
+does not delete state evidence, context manifests, or episode archives.
 Live context may render the same heartbeat metadata in a bounded `Service
 Runtime` section for runtime orientation. Context assembly also reads bounded
 repo git identity from `.git/HEAD` and refs so it can mark the resident build

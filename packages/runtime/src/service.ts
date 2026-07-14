@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -19,8 +19,11 @@ import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_run
 
 const execFile = promisify(execFileCallback);
 
-export type ServiceAction = "install" | "start" | "stop" | "restart" | "status" | "logs" | "uninstall";
+export type ServiceAction = "install" | "start" | "stop" | "restart" | "rollback" | "status" | "logs" | "uninstall";
 export type ServiceTarget = "runtime";
+
+export const SERVICE_LOG_ROTATE_BYTES = 2 * 1024 * 1024;
+export const SERVICE_LOG_ROTATE_KEEP = 3;
 
 export interface ServiceCommandOptions {
   action: ServiceAction;
@@ -78,8 +81,10 @@ export interface ServiceDefinition {
   homeRoot: string;
   runtimeRoot: string;
   runtimeCurrentRoot: string;
+  runtimePreviousRoot: string;
   runtimeNextRoot: string;
   runtimeBuildPath: string;
+  runtimePreviousBuildPath: string;
   runtimeConfigDir: string;
   logDir: string;
   stdoutPath: string;
@@ -115,6 +120,7 @@ export interface ServiceCommandResult {
   };
   launchd?: LaunchdStatus;
   runtime?: ServiceRuntimeBuild | null;
+  previous_runtime?: ServiceRuntimeBuild | null;
   heartbeat?: ServiceHeartbeat | null;
   review_tick?: ReviewTickLoopStatus | null;
   task_queue?: RuntimeTaskQueueWorkerStatus | null;
@@ -189,6 +195,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition)
     });
     throw new Error("local runtime service management currently supports macOS launchd only.");
@@ -206,6 +213,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       message: "Service definition installed. Run service start to load it."
     });
@@ -224,6 +232,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       message: "Service start requested."
     });
@@ -240,6 +249,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       message: "Service stop requested."
     });
@@ -258,8 +268,29 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       message: "Service restart requested."
+    });
+  }
+
+  if (action === "rollback") {
+    await stopLaunchd(definition, run);
+    await rotateServiceLogs(definition);
+    await rollbackServiceRuntimeBundle(definition);
+    await startLaunchd(definition, run);
+    return buildResult(action, definition, {
+      launchd: await inspectLaunchd(definition, run),
+      heartbeat: await readHeartbeat(definition),
+      reviewTick: await readReviewTickStatus(definition),
+      taskQueue: await readTaskQueueStatus(definition),
+      contentDaily: await readContentDailyStatus(definition),
+      contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
+      contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
+      runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
+      autonomyPause: await readAutonomyPauseStatus(definition),
+      message: "Service runtime rolled back to the last known-good build; the replaced build is retained for one-step reversal."
     });
   }
 
@@ -274,6 +305,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       message: "Service unloaded. Remove the plist manually if you want to delete the installed definition."
     });
@@ -289,6 +321,7 @@ export async function runServiceCommand(
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
+      previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
       stdoutTail: await tailFile(definition.stdoutPath, options.limit ?? 80),
       stderrTail: await tailFile(definition.stderrPath, options.limit ?? 80)
@@ -304,6 +337,7 @@ export async function runServiceCommand(
     contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
     contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
     runtime: await readRuntimeBuild(definition),
+    previousRuntime: await readPreviousRuntimeBuild(definition),
     autonomyPause: await readAutonomyPauseStatus(definition)
   });
 }
@@ -422,9 +456,11 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   const serviceDir = resolve(homeRoot, "service");
   const runtimeRoot = resolve(serviceDir, "runtime");
   const runtimeCurrentRoot = resolve(runtimeRoot, "current");
+  const runtimePreviousRoot = resolve(runtimeRoot, "previous");
   const runtimeNextRoot = resolve(runtimeRoot, "next");
   const runtimeConfigDir = resolve(runtimeCurrentRoot, "config");
   const runtimeBuildPath = resolve(runtimeCurrentRoot, "build.json");
+  const runtimePreviousBuildPath = resolve(runtimePreviousRoot, "build.json");
   const stdoutPath = resolve(logDir, `${target}.out.log`);
   const stderrPath = resolve(logDir, `${target}.err.log`);
   const runtimeCliEntry = resolve(runtimeCurrentRoot, "dist/apps/cli/src/main.js");
@@ -463,8 +499,10 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
     homeRoot,
     runtimeRoot,
     runtimeCurrentRoot,
+    runtimePreviousRoot,
     runtimeNextRoot,
     runtimeBuildPath,
+    runtimePreviousBuildPath,
     runtimeConfigDir,
     logDir,
     stdoutPath,
@@ -536,6 +574,7 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
   if (!existsSync(definition.programArguments[0])) {
     throw new Error(`node executable not found: ${definition.programArguments[0]}`);
   }
+  await rotateServiceLogs(definition);
   await syncServiceRuntimeBundle(definition);
   for (const file of definition.runnerFiles) {
     if (!existsSync(file)) throw new Error(`Local Runtime service runner file not found: ${file}`);
@@ -556,7 +595,9 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     home_root: definition.homeRoot,
     runtime_root: definition.runtimeRoot,
     runtime_current_root: definition.runtimeCurrentRoot,
+    runtime_previous_root: definition.runtimePreviousRoot,
     runtime_build_path: definition.runtimeBuildPath,
+    runtime_previous_build_path: definition.runtimePreviousBuildPath,
     stdout_path: definition.stdoutPath,
     stderr_path: definition.stderrPath,
     heartbeat_path: definition.heartbeatPath,
@@ -572,7 +613,7 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
   }, null, 2)}\n`, "utf8");
 }
 
-async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
+export async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
   const sourceDist = resolve(definition.repoRoot, "dist");
   const sourceCliEntry = resolve(sourceDist, "apps/cli/src/main.js");
   const sourceNodeModules = resolve(definition.repoRoot, "node_modules");
@@ -604,8 +645,104 @@ async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<
     private: true,
     type: "module"
   }, null, 2)}\n`, "utf8");
-  await rm(definition.runtimeCurrentRoot, { recursive: true, force: true });
-  await rename(definition.runtimeNextRoot, definition.runtimeCurrentRoot);
+  const preserveCurrent = await isCurrentRuntimeKnownGood(definition);
+  if (preserveCurrent) {
+    await rm(definition.runtimePreviousRoot, { recursive: true, force: true });
+    await rename(definition.runtimeCurrentRoot, definition.runtimePreviousRoot);
+  } else {
+    await rm(definition.runtimeCurrentRoot, { recursive: true, force: true });
+  }
+  try {
+    await rename(definition.runtimeNextRoot, definition.runtimeCurrentRoot);
+  } catch (error) {
+    if (preserveCurrent && existsSync(definition.runtimePreviousRoot) && !existsSync(definition.runtimeCurrentRoot)) {
+      await rename(definition.runtimePreviousRoot, definition.runtimeCurrentRoot);
+    } else if (existsSync(definition.runtimePreviousRoot) && !existsSync(definition.runtimeCurrentRoot)) {
+      await cp(definition.runtimePreviousRoot, definition.runtimeCurrentRoot, { recursive: true, force: true });
+    }
+    throw error;
+  }
+}
+
+export async function rollbackServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
+  await assertRuntimeBundleUsable(definition.runtimePreviousRoot, "last known-good runtime");
+  await assertRuntimeBundleUsable(definition.runtimeCurrentRoot, "current runtime");
+  await rm(definition.runtimeNextRoot, { recursive: true, force: true });
+  await rename(definition.runtimeCurrentRoot, definition.runtimeNextRoot);
+  try {
+    await rename(definition.runtimePreviousRoot, definition.runtimeCurrentRoot);
+    await rename(definition.runtimeNextRoot, definition.runtimePreviousRoot);
+  } catch (error) {
+    if (!existsSync(definition.runtimeCurrentRoot) && existsSync(definition.runtimePreviousRoot)) {
+      await rename(definition.runtimePreviousRoot, definition.runtimeCurrentRoot);
+    }
+    if (!existsSync(definition.runtimePreviousRoot) && existsSync(definition.runtimeNextRoot)) {
+      await rename(definition.runtimeNextRoot, definition.runtimePreviousRoot);
+    }
+    throw error;
+  }
+}
+
+async function isCurrentRuntimeKnownGood(definition: ServiceDefinition): Promise<boolean> {
+  if (!existsSync(definition.runtimeCurrentRoot)) return false;
+  const build = await readRuntimeBuild(definition);
+  if (!build?.source_commit || build.source_is_dirty !== false) return false;
+  try {
+    const raw = JSON.parse(await readFile(
+      resolve(definition.stateRoot, "governance/capability-acceptance/basic-entrypoints.json"),
+      "utf8"
+    )) as unknown;
+    return isRecord(raw)
+      && raw.status === "verified"
+      && typeof raw.source_commit === "string"
+      && raw.source_commit === build.source_commit
+      && raw.repo_root === definition.repoRoot
+      && raw.state_root === definition.stateRoot
+      && build.repo_root === definition.repoRoot;
+  } catch {
+    return false;
+  }
+}
+
+async function assertRuntimeBundleUsable(root: string, label: string): Promise<void> {
+  const required = [
+    resolve(root, "build.json"),
+    resolve(root, "dist/apps/cli/src/main.js"),
+    resolve(root, "node_modules"),
+    resolve(root, "config")
+  ];
+  const missing = required.filter((path) => !existsSync(path));
+  if (missing.length > 0) {
+    throw new Error(`${label} is unavailable or incomplete: ${missing.join(", ")}`);
+  }
+  const build = await readServiceRuntimeBuild(resolve(root, "build.json"));
+  if (!build?.source_commit) throw new Error(`${label} build metadata is missing a source commit: ${root}`);
+}
+
+export async function rotateServiceLogs(
+  definition: Pick<ServiceDefinition, "stdoutPath" | "stderrPath">,
+  maxBytes = SERVICE_LOG_ROTATE_BYTES,
+  keep = SERVICE_LOG_ROTATE_KEEP
+): Promise<void> {
+  await Promise.all([
+    rotateFile(definition.stdoutPath, maxBytes, keep),
+    rotateFile(definition.stderrPath, maxBytes, keep)
+  ]);
+}
+
+async function rotateFile(path: string, maxBytes: number, keep: number): Promise<void> {
+  let size = 0;
+  try {
+    size = (await stat(path)).size;
+  } catch {
+    return;
+  }
+  if (size <= maxBytes || keep < 1) return;
+  await rm(`${path}.${keep}`, { force: true });
+  for (let index = keep - 1; index >= 1; index -= 1) {
+    if (existsSync(`${path}.${index}`)) await rename(`${path}.${index}`, `${path}.${index + 1}`);
+  }
+  await rename(path, `${path}.1`);
 }
 
 async function buildServiceRuntimeBuild(definition: ServiceDefinition): Promise<ServiceRuntimeBuild> {
@@ -692,6 +829,10 @@ async function readHeartbeat(definition: ServiceDefinition): Promise<ServiceHear
 
 async function readRuntimeBuild(definition: ServiceDefinition): Promise<ServiceRuntimeBuild | null> {
   return await readServiceRuntimeBuild(definition.runtimeBuildPath);
+}
+
+async function readPreviousRuntimeBuild(definition: ServiceDefinition): Promise<ServiceRuntimeBuild | null> {
+  return await readServiceRuntimeBuild(definition.runtimePreviousBuildPath);
 }
 
 async function readReviewTickStatus(definition: ServiceDefinition): Promise<ReviewTickLoopStatus | null> {
@@ -788,6 +929,7 @@ function buildResult(
     contentFeedbackRefresh?: ContentFeedbackRefreshLoopStatus | null;
     contentCreatorMetrics?: ContentCreatorMetricsLoopStatus | null;
     runtime?: ServiceRuntimeBuild | null;
+    previousRuntime?: ServiceRuntimeBuild | null;
     autonomyPause?: AutonomyPauseStatus | null;
     message?: string;
     stdoutTail?: string;
@@ -813,6 +955,7 @@ function buildResult(
     },
     launchd: args.launchd,
     runtime: args.runtime,
+    previous_runtime: args.previousRuntime,
     heartbeat: args.heartbeat,
     review_tick: args.reviewTick,
     task_queue: args.taskQueue,

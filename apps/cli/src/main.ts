@@ -1539,7 +1539,7 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "service") {
-    if (!options.serviceAction) throw new Error("service requires an action: install, start, stop, restart, status, health, logs, or uninstall");
+    if (!options.serviceAction) throw new Error("service requires an action: install, start, stop, restart, rollback, status, health, logs, or uninstall");
     if (options.serviceAction === "health") {
       const selectors = await resolveServiceConfigSelectors({
         target: options.serviceTarget,
@@ -3427,6 +3427,7 @@ function isServiceAction(value: string): value is ServiceAction {
     || value === "start"
     || value === "stop"
     || value === "restart"
+    || value === "rollback"
     || value === "status"
     || value === "logs"
     || value === "uninstall";
@@ -3480,7 +3481,7 @@ function printUsage(): void {
   pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published|failed [--adapter xiaohongshu-mcp] [--tool publish_content] [--external-write] [--confirmed] [--login-status logged_in] [--post-id ...] [--post-url ...] [--screenshot ...] [--state-root .runtime/state]
   pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root .runtime/state]
   pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- service install|start|stop|restart|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- service install|start|stop|restart|rollback|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]
   pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime/state]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]

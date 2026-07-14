@@ -24,7 +24,10 @@
 本地 SOP、技能和记忆学习是可用能力，但不是每次运行的主要成功标准。主要标准是 runtime 是否能通过具体核心能力完成并验证工作。
 
 live context 在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
-`total_hard_limit_chars`，模型未声明上下文窗口时使用 90,000 字符兜底。超限时按确定性
+`total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
+`focused`、`governance` 或 `recovery` 注意力 profile；普通任务不再常驻加载治理、trace、
+archive 等历史 section，manifest 的 `attention_selection` 会记录主动省略项。Turn Snapshot
+保留机器可读身份和任务首尾，不再内嵌完整 JSON。超限时再按确定性
 顺序压缩，保留任务首尾、runtime/config、query/todo、recall、selected skills 和输出合同；
 manifest 会记录原始/实际长度、截断 section 与省略 section，`/context` 可只读查看。
 声明的预算小到无法容纳核心上下文时会在模型调用前失败，不会静默超限发送。
@@ -425,8 +428,15 @@ Feishu 仍作为 runtime 内的 channel adapter 运行，服务 target 只保留
 pnpm run runtime -- service status --target runtime
 pnpm run runtime -- service health --target runtime
 pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
+pnpm run runtime -- service rollback --target runtime
 pnpm run runtime -- service logs --target runtime --limit 40
 ```
+
+新部署只会把通过 commit-bound 基础入口验收的 `current` 保存为
+`previous`。`service rollback` 校验并交换两者，回退后可用同一命令一步恢复；
+`service status` 同时显示 `runtime` 和 `previous_runtime`。服务停止后的启动、重启、
+安装或回滚会轮转 stdout/stderr，每个活动日志 2 MiB，保留 `.1` 到 `.3`，不清理
+state evidence、context manifest 或 episode archive。
 
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
 `application_slices` 的分层状态和原因码，避免把 resident runtime 的基础健康

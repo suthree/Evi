@@ -359,7 +359,7 @@ export function getCapabilityAcceptanceAudit(
         ],
         boundaries: [
           "read models do not read raw context Markdown",
-          "live context assembly enforces the model-derived hard limit or the shared 90,000-character fallback before model invocation and records deterministic degradation evidence",
+          "live context assembly selects a task-bound attention profile, compacts the turn snapshot, enforces the model-derived hard limit or 64,000-character fallback, and records deterministic omission or degradation evidence",
           "pressure guidance is explicit operator guidance and never auto-compacts or rewrites context",
           "repair is explicit and selected by operator"
         ]
@@ -895,11 +895,11 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       {
         id: "service.lifecycle",
         title: "Service lifecycle",
-        summary: "Install, start, stop, restart, status, logs, and uninstall the resident runtime daemon.",
+        summary: "Install, start, stop, restart, roll back to a commit-bound last known-good build, inspect status/logs, and uninstall the resident runtime daemon.",
         status: "implemented",
-        commands: ["pnpm run runtime -- service install|start|stop|restart|status|logs|uninstall --target runtime"],
+        commands: ["pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime"],
         refs: ["packages/runtime/src/service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "docs/LOCAL_RUNTIME.md"],
-        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon and owns resident channel adapters", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
+        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon and owns resident channel adapters", "only a current build matching verified basic-entrypoint acceptance may replace the previous last known-good slot", "rollback swaps current and previous so one-step reversal remains available", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
       },
       {
         id: "service.health",

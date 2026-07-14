@@ -6,7 +6,8 @@ This file is the compact resident index for the agent. It should stay small enou
 
 - Stable identity and self-modification policy: `core/soul.md`
 - Memory and recall policy: `core/memory.md`
-- Runtime object contract: `docs/RUNTIME_CONTRACT.md`
+- Documentation and evidence router: `docs/INDEX.md`
+- Runtime object contract, on demand: `docs/RUNTIME_CONTRACT.md`
 - Runtime/reference boundary: `core/runtimes.md`
 - Shared vocabulary: `CONTEXT.md`
 
@@ -19,6 +20,6 @@ This file is the compact resident index for the agent. It should stay small enou
 - The default growth loop is evidence -> SOP -> autonomous audit -> skill promotion -> reuse telemetry -> revision or retirement.
 - Human review is not required in the default promotion loop, but explicit operator stop/pause signals must be honored.
 
-## Initial Recall Rule
+## Resident Recall Rule
 
-Load this index, `core/soul.md`, `core/memory.md`, and `docs/RUNTIME_CONTRACT.md` before making claims about the agent architecture. Load raw episodes, SOPs, or skills only when selected by the context assembler.
+Load this index plus the bounded stable core and `docs/INDEX.md`. Route into long documents by task intent and matching headings. Load raw episodes, logs, archives, SOPs, or skills only when the context assembler or selected evidence names them. Keep this file at or below 30 lines and store procedures or history behind pointers.

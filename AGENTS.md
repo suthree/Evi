@@ -14,7 +14,8 @@ This file is model-facing guidance for Codex and other host runtimes.
 ## Local Context
 
 - Treat this repository as a local-first, single-machine runtime for a self-growing agent.
-- Start with `README.md`, `docs/RUNTIME_CONTRACT.md`, `docs/LOCAL_RUNTIME.md`, and `docs/LOCAL_LEARNING.md` for stable model-facing context. Use `docs/README.cn.md` and `docs/AGENTS.cn.md` as fast Simplified Chinese operator-facing overviews.
+- Start with `README.md`, `docs/INDEX.md`, and `memory/index.md`. Route from the compact indexes, search headings or identifiers first, and read only the task-relevant sections of `docs/RUNTIME_CONTRACT.md`, `docs/LOCAL_RUNTIME.md`, or `docs/LOCAL_LEARNING.md`. Use `docs/INDEX.cn.md`, `docs/README.cn.md`, and `docs/AGENTS.cn.md` as fast Simplified Chinese operator-facing overviews.
+- Treat long documents, raw logs, episodes, and archives as on-demand evidence stores rather than resident prompt context. Keep the current goal, working checkpoint, selected refs, and verification evidence hotter than historical bodies.
 - Read `docs/ACTIVE_EXPLORATION.md` only for active-exploration, content publishing, image-generation, Xiaohongshu adapter, or feedback-capture work.
 - Read `.trellis/agents/AGENTS.md`, `.trellis/spec/local-single-machine-mvp.md`, and `.trellis/decisions.md` only when changing Trellis integration, project direction, or task governance.
 
