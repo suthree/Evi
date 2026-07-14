@@ -334,23 +334,45 @@ async function readSelectedSkillOutcomeLayer(store: AgentStore): Promise<MemoryL
   const refs = await jsonRefs(store, "memory/skills/usage");
   let valid = 0;
   let passed = 0;
-  let needsAttention = 0;
+  let historicalAttention = 0;
   let latestSeenAt: string | null = null;
+  const latestBySkill = new Map<string, { createdAt: string; needsAttention: boolean }>();
+  const skillsWithHistoricalAttention = new Set<string>();
   for (const ref of refs) {
     const parsed = selectedSkillUsageOutcomeSchema.safeParse(await readStateJsonSafe(store, ref));
     if (!parsed.success) continue;
     valid += 1;
     latestSeenAt = maxString(latestSeenAt, parsed.data.created_at);
-    if (parsed.data.verified && parsed.data.verification_status === "passed" && parsed.data.completion_status === "done") {
+    const needsAttention = !(
+      parsed.data.verified
+      && parsed.data.verification_status === "passed"
+      && parsed.data.completion_status === "done"
+    );
+    if (!needsAttention) {
       passed += 1;
     } else {
-      needsAttention += 1;
+      historicalAttention += 1;
+      skillsWithHistoricalAttention.add(parsed.data.skill_name);
+    }
+    const latest = latestBySkill.get(parsed.data.skill_name);
+    if (!latest || parsed.data.created_at > latest.createdAt) {
+      latestBySkill.set(parsed.data.skill_name, {
+        createdAt: parsed.data.created_at,
+        needsAttention
+      });
     }
   }
+  const currentAttentionSkills = [...latestBySkill.entries()]
+    .filter(([, outcome]) => outcome.needsAttention)
+    .map(([skillName]) => skillName)
+    .sort();
+  const recoveredSkillCount = [...skillsWithHistoricalAttention]
+    .filter((skillName) => latestBySkill.get(skillName)?.needsAttention === false)
+    .length;
   return {
     id: "selected_skill_outcomes",
     title: "Selected skill outcomes",
-    status: needsAttention > 0 ? "needs_attention" : valid > 0 ? "active" : "empty",
+    status: currentAttentionSkills.length > 0 ? "needs_attention" : valid > 0 ? "active" : "empty",
     context_role: "recall_quality_signal",
     selected_for_context: false,
     state_refs: ["memory/skills/usage"],
@@ -362,11 +384,14 @@ async function readSelectedSkillOutcomeLayer(store: AgentStore): Promise<MemoryL
       outcome_files: refs.length,
       valid_outcomes: valid,
       passed_outcomes: passed,
-      attention_outcomes: needsAttention,
+      attention_outcomes: currentAttentionSkills.length,
+      historical_attention_outcomes: historicalAttention,
+      recovered_skill_count: recoveredSkillCount,
+      attention_skills: currentAttentionSkills.join(","),
       latest_seen_at: latestSeenAt
     },
     context_policy: "Selected-skill outcomes tune future skill recall and backlog focus without injecting raw skill bodies, context Markdown, or final responses.",
-    recommendations: needsAttention > 0
+    recommendations: currentAttentionSkills.length > 0
       ? ["pnpm run runtime -- skills outcomes --state-root <state-root>", "pnpm run runtime -- skills drifts --state-root <state-root>"]
       : []
   };

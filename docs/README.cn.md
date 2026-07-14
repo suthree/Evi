@@ -274,6 +274,10 @@ doctor、localhost Web API、resident/repo 提交一致性、Web/飞书通道和
 `governance/capability-acceptance/basic-entrypoints.json` 验收记录。后续若提交、运行态、通道
 或工作区发生漂移，acceptance 会自动把该记录判为 stale，并把 gate 恢复为
 `operator_check`；飞书命令仍然只读，不能生成验收证据。
+本地学习状态不会再把历史 selected-skill 失败永久当成当前故障：`memory layers` 和
+Opportunity Backlog 按每个 skill 的最新 outcome 判断当前 attention，同时保留历史失败计数；
+新的 verified done/passed 会关闭旧 attention，连续 drift 只统计最近一次成功之后尚未恢复的
+失败序列，不删除或改写原始 telemetry。
 `pnpm run runtime -- governance act-next` 不带 `--opportunity` 时只走自动安全项；
 manual local、external adapter 或 local-learning follow-up 必须显式选择 opportunity。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`

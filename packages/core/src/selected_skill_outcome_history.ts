@@ -145,7 +145,11 @@ function summarizeSelectedSkillDrift(
   const sorted = [...outcomes].sort((left, right) =>
     right.created_at.localeCompare(left.created_at) || right.id.localeCompare(left.id) || right.outcome_ref.localeCompare(left.outcome_ref)
   );
-  const attention = sorted.filter(needsSelectedSkillOutcomeAttention);
+  const attention: SelectedSkillOutcomeHistorySummary[] = [];
+  for (const outcome of sorted) {
+    if (!needsSelectedSkillOutcomeAttention(outcome)) break;
+    attention.push(outcome);
+  }
   if (attention.length < 2) return null;
 
   const latest = sorted[0];

@@ -369,10 +369,12 @@ context manifest, completion verification report, final response, completion
 status, verification status, and final verdict. They describe observed outcome,
 not causal effectiveness.
 
-Failed, skipped, blocked, unfinished, or unverified selected-skill outcomes also
-feed the ranked Opportunity Backlog as `selected_skill_outcome` items. Passed
-outcomes remain evidence only. This lets context assembly and unscoped review
-tick notice skill drift signals without reading raw skill bodies, context
+Failed, skipped, blocked, unfinished, or unverified selected-skill outcomes are
+preserved as historical telemetry. Current memory-layer health and the ranked
+Opportunity Backlog evaluate only the newest outcome for each skill: a newer
+verified pass closes older attention without deleting it, while a newest
+attention outcome remains a `selected_skill_outcome` item. This lets context
+assembly and unscoped review tick notice skill drift signals without reading raw skill bodies, context
 Markdown, or final-response artifacts. Governance status and Feishu operator
 views can show the top bounded selected-skill outcome summary so the operator
 sees the skill ref, verification status, completion report ref, and verdict
@@ -380,8 +382,10 @@ before choosing whether any skill revision work is warranted. Operators can
 inspect the selected-skill outcome history with `skills outcomes` or Feishu
 `/skill outcomes`; those views read only the outcome JSON metadata and linked
 refs.
-When the same selected skill repeatedly produces attention outcomes, the
-read-only drift summary groups those outcomes by skill. `skills drifts`,
+When the same selected skill repeatedly produces consecutive attention outcomes
+after its last verified pass, the read-only drift summary groups that unresolved
+streak by skill. A newer verified pass closes the drift without rewriting prior
+outcomes. `skills drifts`,
 `skills drifts --skill-name <name>`, Feishu `/skill drifts`, and Feishu
 `/skill drift <skill-name>` show aggregate counts and latest refs only. The
 summary is a diagnosis input for later review; it does not prove causal skill
