@@ -1210,7 +1210,9 @@ never overwrites the last known-good slot. `service rollback` stops launchd,
 validates both bundles, swaps `current` and `previous`, and starts the same job
 again. The replaced build remains in `previous`, so the same command can
 reverse the rollback. `service status` exposes both `runtime` and
-`previous_runtime` build metadata.
+`previous_runtime` build metadata. Launchd bootstrap uses a bounded exponential
+retry after `bootout` so the asynchronous unload window cannot leave a
+successfully swapped runtime stopped after one transient error.
 
 Service stdout and stderr logs rotate after the job is stopped and before a
 start, restart, install, or rollback. Each active log is capped at 2 MiB with

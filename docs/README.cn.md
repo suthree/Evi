@@ -436,7 +436,8 @@ pnpm run runtime -- service logs --target runtime --limit 40
 `previous`。`service rollback` 校验并交换两者，回退后可用同一命令一步恢复；
 `service status` 同时显示 `runtime` 和 `previous_runtime`。服务停止后的启动、重启、
 安装或回滚会轮转 stdout/stderr，每个活动日志 2 MiB，保留 `.1` 到 `.3`，不清理
-state evidence、context manifest 或 episode archive。
+state evidence、context manifest 或 episode archive。`bootout` 后的 launchd
+异步卸载窗口通过有界指数重试吸收，单次瞬态 bootstrap error 不会直接放弃启动。
 
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
 `application_slices` 的分层状态和原因码，避免把 resident runtime 的基础健康

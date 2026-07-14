@@ -777,10 +777,21 @@ async function startLaunchd(definition: ServiceDefinition, run: CommandRunner): 
     const bootout = await run("launchctl", ["bootout", `${definition.domain}/${definition.label}`], { timeoutMs: 30000 });
     if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed before start: ${bootout.stderr || bootout.stdout}`);
   }
-  const bootstrap = await run("launchctl", ["bootstrap", definition.domain, definition.plistPath], { timeoutMs: 30000 });
-  if (bootstrap.exitCode !== 0) throw new Error(`launchctl bootstrap failed: ${bootstrap.stderr || bootstrap.stdout}`);
+  let bootstrap: CommandResult | null = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    bootstrap = await run("launchctl", ["bootstrap", definition.domain, definition.plistPath], { timeoutMs: 30000 });
+    if (bootstrap.exitCode === 0 || (await inspectLaunchd(definition, run)).loaded) break;
+    if (attempt < 4) await delay(250 * (2 ** attempt));
+  }
+  if (!bootstrap || (bootstrap.exitCode !== 0 && !(await inspectLaunchd(definition, run)).loaded)) {
+    throw new Error(`launchctl bootstrap failed after bounded retry: ${bootstrap?.stderr || bootstrap?.stdout || "unknown error"}`);
+  }
   const kickstart = await run("launchctl", ["kickstart", "-k", `${definition.domain}/${definition.label}`], { timeoutMs: 30000 });
   if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr || kickstart.stdout}`);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolveDelay) => setTimeout(resolveDelay, milliseconds));
 }
 
 async function stopLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<void> {

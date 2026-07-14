@@ -128,6 +128,59 @@ test("service runtime rollback rejects a missing last known-good bundle", async 
   }
 });
 
+test("service rollback retries transient launchd bootstrap failure after bundle swap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-rollback-retry-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot })
+    ].join("\n") + "\n", "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "current-commit");
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "stable-commit");
+    let loaded = true;
+    let bootstrapAttempts = 0;
+    const result = await runServiceCommand({
+      action: "rollback",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot
+    }, {
+      platform: "darwin",
+      run: async (_command, args) => {
+        const action = args[0];
+        if (action === "print") return loaded
+          ? { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 }
+          : { stdout: "", stderr: "not loaded", exitCode: 1 };
+        if (action === "bootout") {
+          loaded = false;
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        if (action === "bootstrap") {
+          bootstrapAttempts += 1;
+          if (bootstrapAttempts === 1) return { stdout: "", stderr: "Bootstrap failed: 5", exitCode: 5 };
+          loaded = true;
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    });
+
+    assert.equal(bootstrapAttempts, 2);
+    assert.equal(result.launchd?.loaded, true);
+    assert.equal(result.runtime?.source_commit, "stable-commit");
+    assert.equal(result.previous_runtime?.source_commit, "current-commit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service logs rotate at the lifecycle size cap and retain bounded history", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-log-"));
   const stdoutPath = join(root, "runtime.out.log");
