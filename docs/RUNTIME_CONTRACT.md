@@ -1216,11 +1216,14 @@ Local service runtime is a resident mode for one user on this machine. It may:
 - surface active autonomy pause signals as read-only status
 - restart after local development changes
 
-When `--state-root` is omitted, service lifecycle and service health commands
-use `<LOCAL_RUNTIME_HOME>/state/runtime` as the service-scoped state root. Explicit
-`--state-root` still overrides that default. This rule is limited to the
-resident service harness and does not change ordinary interactive runtime state
-selection for live, pipeline, memory, context, or review commands.
+Service lifecycle and service health commands resolve state root with one
+ordered contract: explicit `--state-root`, then the valid absolute `state_root`
+in the installed `<LOCAL_RUNTIME_HOME>/service/runtime.json` manifest, then
+`<LOCAL_RUNTIME_HOME>/state/runtime` as the safe fallback. A missing, malformed,
+wrong-target, wrong-home, or relative-root manifest must not redirect the
+command. This rule is limited to the resident service harness and does not
+change ordinary interactive runtime state selection for live, pipeline,
+memory, context, or review commands.
 
 Local service runtime must not introduce hosted service design, multi-user
 queues, remote deployment, cross-machine state, or production daemon

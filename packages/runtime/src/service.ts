@@ -2,7 +2,7 @@ import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 import { summarizeContentDailyEffectiveStatus } from "../../core/src/service_health.js";
 import { AgentStore } from "../../core/src/store.js";
@@ -378,14 +378,34 @@ export async function resolveServiceConfigSelectors(
     configDir: options.configDir,
     stateRoot: options.stateRoot
   });
+  const installedStateRoot = options.stateRoot
+    ? null
+    : await readInstalledServiceStateRoot(options.target, selectors.homeRoot);
   const serviceStateRoot = options.stateRoot
     ? selectors.stateRoot
-    : resolve(selectors.homeRoot, "state/runtime");
+    : installedStateRoot ?? resolve(selectors.homeRoot, "state/runtime");
   const serviceSelectors = await loadConfigSelectors({
     configDir: options.configDir,
     stateRoot: serviceStateRoot
   });
   return serviceSelectors;
+}
+
+async function readInstalledServiceStateRoot(
+  target: ServiceTarget,
+  homeRoot: string
+): Promise<string | null> {
+  const manifestPath = resolve(homeRoot, "service", `${target}.json`);
+  try {
+    const raw = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
+    if (!isRecord(raw)) return null;
+    if (raw.target !== target) return null;
+    if (typeof raw.home_root === "string" && resolve(raw.home_root) !== resolve(homeRoot)) return null;
+    if (typeof raw.state_root !== "string" || !isAbsolute(raw.state_root)) return null;
+    return resolve(raw.state_root);
+  } catch {
+    return null;
+  }
 }
 
 export function buildRuntimeServiceDefinition(input: ServiceDefinitionInput): ServiceDefinition {
@@ -836,6 +856,10 @@ function escapeXml(value: string): string {
 
 function currentUserName(): string {
   return process.env.USER ?? process.env.LOGNAME ?? userInfo().username;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function assertSupportedServiceTarget(target: ServiceTarget): void {

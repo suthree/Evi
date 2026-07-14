@@ -2658,3 +2658,18 @@ does not add hosted service governance, durable cross-process task scheduling,
 multi-user auth, desktop packaging, a generic retry broker, Telegram adapter
 features beyond the long-polling Bot API adapter, or Discord features beyond
 the Gateway/REST bot adapter.
+
+## 2026-07-14 Installed Service Manifest Owns Default State Root
+
+The installed service manifest is the durable source of truth for the state
+root actually passed to the resident process. Service lifecycle and
+`service health` commands therefore resolve state root in this order:
+explicit `--state-root`, the valid absolute `state_root` in
+`<LOCAL_RUNTIME_HOME>/service/runtime.json`, then
+`<LOCAL_RUNTIME_HOME>/state/runtime` as the safe fallback.
+
+Manifest selection is fail-closed. A missing or malformed manifest, a manifest
+for another target or home, or a relative state root cannot redirect a service
+command. This decision changes only service lifecycle and health selection;
+ordinary live, pipeline, context, memory, review, and governance commands keep
+their existing state-root contracts.

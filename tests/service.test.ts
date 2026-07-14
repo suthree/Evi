@@ -243,12 +243,13 @@ test("runtime service provider flag overrides stale active IM selectors", async 
   }
 });
 
-test("service config selectors use home-scoped state by default and preserve explicit state roots", async () => {
+test("service config selectors prefer installed manifest state and preserve explicit state roots", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-selectors-"));
   const repoRoot = join(root, "repo");
   const configDir = join(repoRoot, "config");
   const homeRoot = join(root, "home");
   const repoStateRoot = join(root, "repo-state");
+  const installedStateRoot = join(root, "installed-state");
   const explicitStateRoot = join(root, "explicit-state");
   try {
     await mkdir(configDir, { recursive: true });
@@ -263,12 +264,45 @@ test("service config selectors use home-scoped state by default and preserve exp
     });
     assert.equal(defaultSelectors.stateRoot, join(homeRoot, "state/runtime"));
 
+    await mkdir(join(homeRoot, "service"), { recursive: true });
+    await writeFile(join(homeRoot, "service/runtime.json"), `${JSON.stringify({
+      target: "runtime",
+      home_root: homeRoot,
+      state_root: installedStateRoot
+    })}\n`, "utf8");
+
+    const installedSelectors = await resolveServiceConfigSelectors({
+      target: "runtime",
+      configDir
+    });
+    assert.equal(installedSelectors.stateRoot, installedStateRoot);
+
     const explicitSelectors = await resolveServiceConfigSelectors({
       target: "runtime",
       configDir,
       stateRoot: explicitStateRoot
     });
     assert.equal(explicitSelectors.stateRoot, explicitStateRoot);
+
+    await writeFile(join(homeRoot, "service/runtime.json"), "{invalid\n", "utf8");
+    const malformedManifestSelectors = await resolveServiceConfigSelectors({
+      target: "runtime",
+      configDir
+    });
+    assert.equal(malformedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+
+    for (const manifest of [
+      { target: "other", home_root: homeRoot, state_root: installedStateRoot },
+      { target: "runtime", home_root: join(root, "other-home"), state_root: installedStateRoot },
+      { target: "runtime", home_root: homeRoot, state_root: "relative-state" }
+    ]) {
+      await writeFile(join(homeRoot, "service/runtime.json"), `${JSON.stringify(manifest)}\n`, "utf8");
+      const rejectedManifestSelectors = await resolveServiceConfigSelectors({
+        target: "runtime",
+        configDir
+      });
+      assert.equal(rejectedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -301,6 +335,11 @@ test("service status combines launchd status and heartbeat", async () => {
       updated_at: "2026-06-29T00:00:30.000Z"
     })}\n`, "utf8");
     await mkdir(join(homeRoot, "service/runtime/current"), { recursive: true });
+    await writeFile(join(homeRoot, "service/runtime.json"), `${JSON.stringify({
+      target: "runtime",
+      home_root: homeRoot,
+      state_root: stateRoot
+    })}\n`, "utf8");
     await writeFile(join(homeRoot, "service/runtime/current/build.json"), `${JSON.stringify({
       schema_version: 1,
       target: "runtime",
@@ -426,8 +465,7 @@ test("service status combines launchd status and heartbeat", async () => {
       action: "status",
       target: "runtime",
       configDir,
-      repoRoot,
-      stateRoot
+      repoRoot
     }, {
       platform: "darwin",
       run: async () => ({
@@ -443,6 +481,7 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.health_command, "pnpm run runtime -- service health --target runtime");
     assert.equal(result.launchd?.loaded, true);
     assert.equal(result.launchd?.pid, 12345);
+    assert.equal(result.state_root, stateRoot);
     assert.equal(result.heartbeat?.pid, 777);
     assert.equal(result.heartbeat?.state, "running");
     assert.equal(result.runtime?.source_commit_short, "0123456789ab");

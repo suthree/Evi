@@ -614,9 +614,11 @@ The MVP is healthy when:
   with resident deployment status against repo HEAD, without inspecting
   launchd, reading logs, invoking the model, restarting services, reading
   source bodies, running shell commands, or mutating state
-- `service health --target im` without `--state-root` reads the same
-  `<LOCAL_RUNTIME_HOME>/state/runtime` service-scoped state root used by service
-  lifecycle commands; explicit `--state-root` remains an override
+- `service health --target runtime` without `--state-root` reads the valid
+  absolute state root recorded by the installed service manifest, falling back
+  to `<LOCAL_RUNTIME_HOME>/state/runtime` when no valid manifest exists; service
+  lifecycle commands use the same rule and explicit `--state-root` remains the
+  highest-priority override
 - effective runtime config can be inspected through CLI and Feishu as a
   non-secret summary of selectors, model metadata, optional context budget,
   runtime flags, source refs, defaulted fields, vault roots, and restart

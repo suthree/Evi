@@ -168,6 +168,13 @@ pnpm run runtime -- service status --target runtime
 pnpm run runtime -- service health --target runtime
 ```
 
+service lifecycle 和 `service health` 使用同一条 state-root 解析规则：显式
+`--state-root` 优先；未传时读取已安装的
+`<LOCAL_RUNTIME_HOME>/service/runtime.json`，使用其中有效的绝对
+`state_root`；manifest 缺失、损坏、target/home 不匹配或记录相对路径时，
+安全回退到 `<LOCAL_RUNTIME_HOME>/state/runtime`。因此服务即使有意安装到
+repo-local `.runtime/state`，默认 `status`/`health` 也会读取真实心跳。
+
 当前真实外部 IM provider 是 Feishu、Telegram 和 Discord。Web、Feishu、
 Telegram、Discord 已经通过 MessageGateway 作为通讯 Adapter 管理。Discord
 当前是 Bot Gateway + REST send 的最小接入，不包含 slash commands、完整
