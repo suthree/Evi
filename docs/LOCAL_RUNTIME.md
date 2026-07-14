@@ -1345,9 +1345,18 @@ When model cognition fails before a valid action envelope exists, live runs
 write `memory/episodes/<session>-model-diagnostic-r<round>.json` and append a
 `model_diagnostic` event. The diagnostic records failure stage, failure kind,
 sanitized previews, model/config metadata, context refs, response ref when one
-exists, and input size metadata. It is local observability only: no retry,
-failover, completion proof, repo write, active-vault write, or external
-publication is authorized by the diagnostic.
+exists, and input size metadata. It is local observability only: the diagnostic
+does not authorize failover, completion proof, repo writes, active-vault
+writes, or external publication.
+
+Text-model requests have a configurable `timeout_ms` with a 120-second default.
+The OpenAI-compatible client retries at most once for HTTP 408/409/429, 5xx,
+transport timeout, or bounded network failure and records only generic attempt
+metadata on recovery. The live harness also permits one format-repair round
+after an invalid `ModelActionEnvelope`; the failed round remains a diagnostic,
+executes no action, and the repaired envelope must pass the normal completion
+verification path. Non-transient request failures and a second invalid envelope
+remain blocked.
 
 The resident service has an optional review tick loop for local learning. It is
 configured through JSONL runtime records:

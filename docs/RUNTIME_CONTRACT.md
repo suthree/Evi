@@ -1876,8 +1876,22 @@ writes `memory/episodes/<session>-model-diagnostic-r<round>.json` and appends a
 `model_diagnostic` evidence event. The diagnostic records only failure stage,
 failure kind, sanitized previews, model/config metadata, context refs, response
 ref when one exists, and input size metadata. It is observability for operators
-and later SOP/backlog work; it is not retry authority, failover policy, or
-completion proof.
+and later SOP/backlog work; the diagnostic itself is not retry authority,
+failover policy, or completion proof.
+
+The OpenAI-compatible model client may retry one request that fails with HTTP
+408, 409, 429, a 5xx response, a transport timeout, or a bounded network error.
+The text-model `timeout_ms` defaults to 120000. A recovered response records
+`request_attempts` and generic `recovered_request_failures` in bounded response
+metadata; raw provider errors remain unpersisted. Authentication, billing,
+schema, and other non-transient failures are not retried. Separately, the main
+live harness may run one additional model round after an invalid
+`ModelActionEnvelope`. The failed round persists its diagnostic and blocked
+envelope, executes no proposed action, and adds only harness-owned format
+guidance to the next input. A later valid envelope must still satisfy ordinary
+tool-evidence and completion verification gates; recovery never turns the
+failed output itself into evidence or grants tool, write, publication, or
+completion authority.
 
 New `model_diagnostic` events retain only the diagnostic ref and a SHA-256
 digest of its persisted JSON. Live Run Trace and replay compare those values

@@ -3993,7 +3993,7 @@ test("live runner persists bounded response metadata when model envelope parsing
     const trace = (await getLiveRunTrace(fixture.store, { traceRef: result.completion_report_ref ?? "" })).trace;
 
     assert.equal(result.verdict, "blocked_model_error");
-    assert.match(result.model_response_ref, /-model-response-r1\.json$/);
+    assert.match(result.model_response_ref, /-model-response-r2\.json$/);
     assert.equal(response.output_chars, "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR".length);
     assert.equal(Object.hasOwn(response, "outputText"), false);
     assert.equal(Object.hasOwn(response, "raw"), false);
@@ -4001,14 +4001,51 @@ test("live runner persists bounded response metadata when model envelope parsing
     assert.doesNotMatch(JSON.stringify(response), /RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR/);
     assert.equal(diagnostic.stage, "envelope_parse");
     assert.equal(diagnostic.failure_kind, "format");
-    assert.equal(diagnostic.response_ref, result.model_response_ref);
+    assert.match(diagnostic.response_ref ?? "", /-model-response-r1\.json$/);
     assert.match(diagnostic.error_preview, /could not be parsed as ModelActionEnvelope/);
     assert.equal(diagnostic.output_preview, "Model output could not be parsed; raw output was not persisted.");
     assert.doesNotMatch(JSON.stringify(diagnostic), /RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR/);
-    assert.equal(trace.model_diagnostics[0]?.response_ref, result.model_response_ref);
-    assert.match(rendered.markdown, /model_diagnostics: 1/);
+    assert.match(trace.model_diagnostics[0]?.response_ref ?? "", /-model-response-r1\.json$/);
+    assert.equal(trace.model_diagnostic_count, 2);
+    assert.match(rendered.markdown, /model_diagnostics: 2/);
     assert.match(rendered.markdown, /model_diagnostic: round=1 stage=envelope_parse kind=format/);
     assert.doesNotMatch(rendered.markdown, /RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner performs one bounded format-repair round and preserves the recovered diagnostic", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    const model = new InvalidEnvelopeThenDoneModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model
+    });
+
+    const result = await runner.runTask("Recover one invalid model action envelope.");
+    const report = JSON.parse(await readFile(join(fixture.stateRoot, result.completion_report_ref ?? ""), "utf8")) as {
+      verification_status: string;
+      verified: boolean;
+      checks: Array<{ id: string; status: string; refs: string[] }>;
+    };
+    const events = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
+    const diagnosticEvents = events.filter((event) => event.kind === "model_diagnostic");
+
+    assert.equal(result.verdict, "no_sop");
+    assert.equal(report.verification_status, "passed");
+    assert.equal(report.verified, true);
+    assert.equal(model.calls, 2);
+    assert.equal(model.sawFormatRecovery, true);
+    assert.equal(diagnosticEvents.length, 1);
+    assert.equal(report.checks.find((check) => check.id === "model_diagnostics")?.status, "warning");
+    assert.equal(report.checks.find((check) => check.id === "model_diagnostics")?.refs.length, 1);
   } finally {
     await fixture.cleanup();
   }
@@ -8041,6 +8078,37 @@ class InvalidEnvelopeModel implements ModelClient {
       responseId: "response-invalid-envelope",
       outputText: "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR",
       raw: { outputText: "RAW_INVALID_MODEL_OUTPUT_SHOULD_NOT_APPEAR" }
+    };
+  }
+}
+
+class InvalidEnvelopeThenDoneModel implements ModelClient {
+  calls = 0;
+  sawFormatRecovery = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    this.calls += 1;
+    if (this.calls === 1) {
+      return {
+        provider: "test",
+        api: "responses",
+        model: "invalid-envelope-then-done",
+        responseId: "response-invalid-envelope-before-repair",
+        outputText: "INVALID_ENVELOPE_BEFORE_BOUNDED_REPAIR",
+        raw: { suppressed: true }
+      };
+    }
+    this.sawFormatRecovery = request.input.includes("## Model Format Recovery")
+      && request.input.includes("produced no executable action")
+      && request.input.includes("Return one strict JSON ModelActionEnvelope");
+    const outputText = JSON.stringify(doneEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "invalid-envelope-then-done",
+      responseId: "response-valid-envelope-after-repair",
+      outputText,
+      raw: { outputText }
     };
   }
 }

@@ -142,6 +142,19 @@ next inspection commands. It must not rebuild indexes, render semantic memory
 or candidate content, read raw episode artifacts, execute confirmations, mutate
 state, write the active vault, or invoke the model.
 
+## 2026-07-14 Bounded Model Cognition Recovery
+
+The local runtime may recover from model-layer failures only before executable
+actions exist. The OpenAI-compatible client retries one transient HTTP or
+transport failure and records generic request-attempt metadata. The main live
+harness may run one format-repair round after an invalid action envelope while
+preserving the failed diagnostic and executing no failed-round action.
+
+Recovery does not authorize provider failover, model fan-out, unbounded retry,
+tool replay, repo or vault writes, publication, or completion. A later valid
+envelope must pass the same evidence-binding and completion-verification gates
+as any other live run; a second format failure remains blocked.
+
 ## 2026-06-29 IM Baseline
 
 Provider-first Feishu CLI commands are not retained as a compatibility surface

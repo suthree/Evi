@@ -789,6 +789,8 @@ function persistedStageModelResponseMetadata(response: Awaited<ReturnType<ModelC
     model: response.model,
     response_id: response.responseId,
     output_chars: response.outputText.length,
+    request_attempts: response.requestAttempts ?? 1,
+    recovered_request_failures: response.recoveredRequestFailures ?? [],
     boundary: "bounded stage model response metadata; raw model output and provider payload are not persisted",
     created_at: utcNow()
   };
