@@ -1882,9 +1882,19 @@ not revise, retire, or rewrite skills automatically, and it does not read raw
 prior contexts, final responses, completion Markdown, model prompts, or tool
 results.
 
+Memory-layer status and the Opportunity Backlog treat only the newest outcome
+for each skill as current attention. Historical failed/blocked/skipped outcomes
+remain inspectable and continue to contribute to historical counts, but a newer
+verified done/passed outcome marks that skill recovered and suppresses its old
+backlog item. `memory layers` exposes current `attention_outcomes`, cumulative
+`historical_attention_outcomes`, recovered skill count, and current attention
+skill names without reading raw run or skill bodies.
+
 `skills drifts`, `skills drifts --skill-name <name>`, Feishu `/skill drifts`,
-and Feishu `/skill drift <skill-name>` group repeated failed, skipped, blocked,
-unfinished, or unverified selected-skill outcomes by skill. They may show
+and Feishu `/skill drift <skill-name>` group the consecutive failed, skipped,
+blocked, unfinished, or unverified outcome streak after the skill's most recent
+verified pass. A later verified pass closes current drift while preserving all
+historical outcomes. These commands may show
 aggregate counts, latest outcome refs, latest attention outcome ref, latest
 completion report ref, latest final response ref, verdicts, and registry use
 count. They are read-only diagnostic summaries and must not revise, retire, or
@@ -1917,9 +1927,10 @@ Completion verification backlog items may show bounded model diagnostic
 kind/stage/refs and sanitized previews from diagnostic JSON, but they do not
 render raw model response bodies, final responses, tool outputs, or completion
 Markdown.
-Repeated selected-skill attention for the same skill may collapse into a single
+Repeated unresolved selected-skill attention for the same skill may collapse into a single
 `selected_skill_drift` item so the queue does not spend multiple slots on one
-skill. Service-health backlog items may show only bounded heartbeat,
+skill; a newer verified pass removes the recovered skill from current attention
+without rewriting telemetry. Service-health backlog items may show only bounded heartbeat,
 runtime-build, repo HEAD, deployment-status, review-tick, pause,
 inspect-command, and restart-guidance fields derived from the service health
 read model. Attention-worthy working checkpoints from

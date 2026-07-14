@@ -2701,3 +2701,15 @@ the workspace is clean, service health is current, Feishu is connected, and
 Web is running. Any drift returns the gate to `operator_check`. Feishu remains a
 read-only acceptance surface; only the explicit local CLI verifier can refresh
 the record.
+
+## 2026-07-14 Selected Skill Attention Is Recoverable
+
+Selected-skill outcome history remains append-only, but historical failure is
+not permanent current health. Memory-layer diagnostics and Opportunity Backlog
+attention use the newest outcome for each skill. A newer verified done/passed
+result closes older attention without deleting it.
+
+Drift is an unresolved consecutive attention streak after the most recent
+verified pass, not an all-time failure count. This keeps history available for
+inspection and recall tuning while allowing later verified use to demonstrate
+recovery.

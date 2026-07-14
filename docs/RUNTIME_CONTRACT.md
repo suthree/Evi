@@ -2233,6 +2233,12 @@ governance actions, or read raw selected skill bodies, raw context Markdown,
 final responses, completion Markdown, model prompts, or tool results. Context
 may render only the final score, base score, aggregate quality counts,
 adjustment, and latest outcome ref before the selected `SKILL.md` body.
+Memory-layer health, current selected-skill backlog items, and drift summaries
+must distinguish current unresolved attention from retained history. The newest
+outcome for each skill owns current health: a verified done/passed outcome
+closes older attention, while a newest attention outcome remains active.
+Repeated drift counts only the consecutive attention streak after the most
+recent verified pass. Recovery never deletes or rewrites historical telemetry.
 
 ## Tool Contracts
 
@@ -2597,14 +2603,15 @@ restart guidance should omit `--state-root <state-root>` by default. Explicit
 state-root guidance is reserved for an operator-selected alternate service
 state root.
 Failed, skipped, blocked, unfinished, or
-unverified selected-skill outcomes may appear as `selected_skill_outcome`
+unverified latest selected-skill outcomes may appear as `selected_skill_outcome`
 items. These items are derived only from `memory/skills/usage/*.json` outcome
 artifacts and may show skill refs, context manifest refs, completion report
 refs, final response refs, completion status, verification status, verified
-flag, final verdict, and use count. Passed selected-skill outcomes are
-suppressed from the backlog. When the same selected skill has repeated failed,
-skipped, blocked, unfinished, or unverified outcomes, the backlog may collapse
-those single outcome items into one `selected_skill_drift` summary. That summary
+flag, final verdict, and use count. A newest verified pass suppresses older
+attention outcomes for that skill without deleting them. When the same selected
+skill has a consecutive unresolved streak of failed, skipped, blocked,
+unfinished, or unverified outcomes after its last pass, the backlog may collapse
+those current items into one `selected_skill_drift` summary. That summary
 may show only bounded aggregate counts, latest outcome refs, latest attention
 outcome ref, latest completion report ref, latest final response ref, verdicts,
 and registry use count. It is diagnostic attention only and must not revise,

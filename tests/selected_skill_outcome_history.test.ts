@@ -83,7 +83,7 @@ test("selected skill outcome history lists and inspects bounded outcome summarie
   }
 });
 
-test("selected skill outcome history summarizes repeated skill drift without raw artifacts", async () => {
+test("selected skill outcome history summarizes the unresolved failure streak after the last success", async () => {
   const fixture = await createFixture();
   try {
     await fixture.store.writeRepoText("vault/skills/drift-history/SKILL.md", [
@@ -133,7 +133,7 @@ test("selected skill outcome history summarizes repeated skill drift without raw
       verification_status: "passed",
       verified: true,
       verdict: "no_sop",
-      created_at: "2026-06-30T00:03:00.000Z"
+      created_at: "2026-06-29T23:59:00.000Z"
     }));
 
     const drifts = await listSelectedSkillDrifts(fixture.store, { limit: 10 });
@@ -147,7 +147,7 @@ test("selected skill outcome history summarizes repeated skill drift without raw
     assert.equal(drift?.attention_count, 2);
     assert.equal(drift?.failed_count, 2);
     assert.equal(drift?.passed_count, 1);
-    assert.equal(drift?.latest_outcome_ref, "memory/skills/usage/session_passed-drift-history.json");
+    assert.equal(drift?.latest_outcome_ref, "memory/skills/usage/session_drift_b-drift-history.json");
     assert.equal(drift?.latest_attention_outcome_ref, "memory/skills/usage/session_drift_b-drift-history.json");
     assert.equal(drift?.latest_completion_report_ref, "memory/episodes/session_drift_b-completion-verification.json");
     assert.equal(drift?.use_count, 5);
@@ -158,6 +158,33 @@ test("selected skill outcome history summarizes repeated skill drift without raw
     assert.doesNotMatch(JSON.stringify(drifts), /RAW_DRIFT_SKILL_BODY_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(JSON.stringify(drifts), /RAW_DRIFT_CONTEXT_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(JSON.stringify(drifts), /RAW_DRIFT_FINAL_RESPONSE_SHOULD_NOT_APPEAR/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("selected skill outcome history closes drift after a newer verified success", async () => {
+  const fixture = await createFixture();
+  try {
+    for (const [suffix, createdAt, passed] of [
+      ["a", "2026-06-30T00:00:00.000Z", false],
+      ["b", "2026-06-30T00:01:00.000Z", false],
+      ["c", "2026-06-30T00:02:00.000Z", true]
+    ] as const) {
+      await fixture.store.writeJson(`memory/skills/usage/session_drift_recovered_${suffix}-skill.json`, selectedSkillOutcome({
+        id: `skill_usage_drift_recovered_${suffix}`,
+        session_id: `session_drift_recovered_${suffix}`,
+        skill_name: "drift-recovered",
+        verification_status: passed ? "passed" : "failed",
+        verified: passed,
+        verdict: passed ? "reused_skill" : "completion_unverified",
+        created_at: createdAt
+      }));
+    }
+
+    const drifts = await listSelectedSkillDrifts(fixture.store, { limit: 10 });
+    assert.equal(drifts.count, 0);
+    assert.deepEqual(drifts.drifts, []);
   } finally {
     await fixture.cleanup();
   }

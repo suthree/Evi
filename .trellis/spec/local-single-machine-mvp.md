@@ -214,6 +214,9 @@ Runtime control keeps core execution bounded:
 - attention-worthy working checkpoint focus selection for unscoped review ticks
 - selected-skill outcome and drift focus selection can create gated
   `skill_revision` review proposals
+- selected-skill layer health and backlog attention use each skill's newest
+  outcome, while drift uses only the unresolved attention streak after the last
+  verified pass; recovered history remains append-only and inspectable
 - explicit SOP loop rehearsal can run the live promotion/reuse path in a
   state-scoped sandbox without touching the real active vault
 - completion verification

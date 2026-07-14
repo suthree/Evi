@@ -672,6 +672,38 @@ test("opportunity backlog surfaces failed selected skill outcomes without raw bo
   }
 });
 
+test("opportunity backlog does not keep a recovered selected skill failure open", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.store.writeJson("memory/skills/usage/session_recovered_old-skill.json", selectedSkillOutcome({
+      id: "skill_usage_recovered_old",
+      session_id: "session_recovered_old",
+      skill_name: "recovered-skill",
+      verification_status: "failed",
+      verified: false,
+      verdict: "completion_unverified",
+      created_at: "2026-06-30T00:00:00.000Z"
+    }));
+    await fixture.store.writeJson("memory/skills/usage/session_recovered_new-skill.json", selectedSkillOutcome({
+      id: "skill_usage_recovered_new",
+      session_id: "session_recovered_new",
+      skill_name: "recovered-skill",
+      verification_status: "passed",
+      verified: true,
+      verdict: "reused_skill",
+      created_at: "2026-06-30T00:01:00.000Z"
+    }));
+
+    const backlog = await getOpportunityBacklog(fixture.store, { limit: 20 });
+    assert.equal(backlog.items.some((item) =>
+      item.kind === "selected_skill_outcome"
+      && item.selected_skill_outcome?.skill_name === "recovered-skill"
+    ), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("opportunity backlog summarizes repeated selected skill drift without duplicating single outcomes", async () => {
   const fixture = await createFixture();
   try {
@@ -733,6 +765,36 @@ test("opportunity backlog summarizes repeated selected skill drift without dupli
     assert.doesNotMatch(JSON.stringify(backlog), /RAW_REPEAT_DRIFT_SKILL_BODY_SHOULD_NOT_BE_IN_BACKLOG/);
     assert.doesNotMatch(JSON.stringify(backlog), /RAW_REPEAT_DRIFT_CONTEXT_SHOULD_NOT_BE_IN_BACKLOG/);
     assert.doesNotMatch(JSON.stringify(backlog), /RAW_REPEAT_DRIFT_FINAL_RESPONSE_SHOULD_NOT_BE_IN_BACKLOG/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("selected skill drift closes after a newer verified outcome", async () => {
+  const fixture = await createFixture();
+  try {
+    for (const [suffix, createdAt, passed] of [
+      ["a", "2026-06-30T00:00:00.000Z", false],
+      ["b", "2026-06-30T00:01:00.000Z", false],
+      ["c", "2026-06-30T00:02:00.000Z", true]
+    ] as const) {
+      await fixture.store.writeJson(`memory/skills/usage/session_recovered_drift_${suffix}-skill.json`, selectedSkillOutcome({
+        id: `skill_usage_recovered_drift_${suffix}`,
+        session_id: `session_recovered_drift_${suffix}`,
+        skill_name: "recovered-drift-skill",
+        verification_status: passed ? "passed" : "failed",
+        verified: passed,
+        verdict: passed ? "reused_skill" : "completion_unverified",
+        created_at: createdAt
+      }));
+    }
+
+    const backlog = await getOpportunityBacklog(fixture.store, { limit: 20 });
+    assert.equal(backlog.items.some((item) =>
+      (item.kind === "selected_skill_drift" || item.kind === "selected_skill_outcome")
+      && (item.selected_skill_drift?.skill_name === "recovered-drift-skill"
+        || item.selected_skill_outcome?.skill_name === "recovered-drift-skill")
+    ), false);
   } finally {
     await fixture.cleanup();
   }

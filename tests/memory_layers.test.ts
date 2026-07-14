@@ -187,11 +187,49 @@ test("memory layer diagnostic summarizes context entrypoints without leaking raw
     const skills = layer(result.layers, "selected_skill_outcomes");
     assert.equal(skills.context_role, "recall_quality_signal");
     assert.equal(skills.counts.attention_outcomes, 1);
+    assert.equal(skills.counts.historical_attention_outcomes, 1);
+    assert.equal(skills.counts.recovered_skill_count, 0);
+    assert.equal(skills.counts.attention_skills, "memory-layer-skill");
 
     const output = JSON.stringify(result);
     assert.doesNotMatch(output, /RAW_LAYER_ARTIFACT_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(output, /RAW_ACCEPTED_MEMORY_CONTENT_SHOULD_NOT_APPEAR/);
     assert.doesNotMatch(output, /RAW_CANDIDATE_CONTENT_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("memory layer keeps historical selected-skill failures without treating recovered skills as current attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-memory-layers-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await store.writeJson("memory/skills/usage/session_old-recovered-skill.json", selectedSkillOutcome({
+      id: "skill_usage_old_failure",
+      session_id: "session_old",
+      skill_name: "recovered-skill",
+      verification_status: "failed",
+      verified: false,
+      created_at: "2026-07-03T00:00:00.000Z"
+    }));
+    await store.writeJson("memory/skills/usage/session_new-recovered-skill.json", selectedSkillOutcome({
+      id: "skill_usage_new_success",
+      session_id: "session_new",
+      skill_name: "recovered-skill",
+      verification_status: "passed",
+      verified: true,
+      created_at: "2026-07-03T00:01:00.000Z"
+    }));
+
+    const skills = layer((await getMemoryLayerDiagnostics(store)).layers, "selected_skill_outcomes");
+    assert.equal(skills.status, "active");
+    assert.equal(skills.counts.valid_outcomes, 2);
+    assert.equal(skills.counts.passed_outcomes, 1);
+    assert.equal(skills.counts.attention_outcomes, 0);
+    assert.equal(skills.counts.historical_attention_outcomes, 1);
+    assert.equal(skills.counts.recovered_skill_count, 1);
+    assert.equal(skills.counts.attention_skills, "");
+    assert.deepEqual(skills.recommendations, []);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

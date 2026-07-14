@@ -1342,14 +1342,21 @@ async function readSelectedSkillOutcomeItems(
     .sort()
     .reverse()
     .slice(0, MAX_SELECTED_SKILL_OUTCOME_SCAN);
-  const items: OpportunityBacklogItem[] = [];
+  const latestBySkill = new Map<string, { ref: string; value: Record<string, unknown>; createdAt: string }>();
   for (const ref of refs) {
     const raw = await store.readStateJson<unknown>(ref);
-    const item = selectedSkillOutcomeItem(ref, raw, suppressedSkillNames);
-    if (item) items.push(item);
-    if (items.length >= MAX_SELECTED_SKILL_OUTCOME_ITEMS) break;
+    if (!isRecord(raw)) continue;
+    const skillName = stringField(raw, "skill_name");
+    const createdAt = stringField(raw, "created_at");
+    if (!skillName || !createdAt) continue;
+    const latest = latestBySkill.get(skillName);
+    if (!latest || createdAt > latest.createdAt) latestBySkill.set(skillName, { ref, value: raw, createdAt });
   }
-  return items;
+  return [...latestBySkill.values()]
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.ref.localeCompare(left.ref))
+    .map((outcome) => selectedSkillOutcomeItem(outcome.ref, outcome.value, suppressedSkillNames))
+    .filter((item): item is OpportunityBacklogItem => item !== null)
+    .slice(0, MAX_SELECTED_SKILL_OUTCOME_ITEMS);
 }
 
 function selectedSkillOutcomeItem(
