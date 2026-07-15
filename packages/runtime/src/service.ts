@@ -301,7 +301,9 @@ export async function runServiceCommand(
     await rotateServiceLogs(definition);
     await rollbackServiceRuntimeBundle(definition);
     await startLaunchd(definition, run);
-    if (existsSync(definition.supervisorPlistPath)) await startSupervisor(definition, run);
+    // Bind the supervisor restart to this service installation rather than to a
+    // same-label plist that may belong to another test or local checkout.
+    if (existsSync(definition.supervisorManifestPath)) await startSupervisor(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
       supervisor: await inspectSupervisor(definition, run),
