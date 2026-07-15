@@ -55,3 +55,10 @@ task.
   stage a distinct local candidate, submit an explicit deployment failure,
   verify automatic rollback/recovery evidence and repair-task enqueueing, then
   deploy a new repaired commit and verify resident service health.
+
+## Live Drill
+
+- Candidate marker: `transactional-deploy-drill-v1`.
+- The marker intentionally makes this commit distinct from the known-good
+  baseline; the live drill will submit an explicit failure signal instead of
+  introducing an uncontrolled runtime defect.
