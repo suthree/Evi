@@ -8,7 +8,7 @@ import {
 } from "./self_evolution_iterations.js";
 import type { AgentStore } from "./store.js";
 
-export type GaProjectDesignPhaseId =
+export type ProjectDesignPhaseId =
   | "goal_intake"
   | "capability_layering"
   | "contract_design"
@@ -16,8 +16,8 @@ export type GaProjectDesignPhaseId =
   | "verification_review"
   | "learning_persistence";
 
-export interface GaProjectDesignPhase {
-  id: GaProjectDesignPhaseId;
+export interface ProjectDesignPhase {
+  id: ProjectDesignPhaseId;
   title: string;
   layer: CapabilityLayer | "cross_layer";
   objective: string;
@@ -26,16 +26,16 @@ export interface GaProjectDesignPhase {
   forbidden_shortcuts: string[];
 }
 
-export interface GaProjectDesignContract {
+export interface ProjectDesignContract {
   schema_version: 1;
-  contract_id: "ga_project_design_contract";
+  contract_id: "project_design_contract";
   contract_version: "2026-07-06";
   action: "project-design";
   status: "implemented";
   layer: "core_runtime";
   title: string;
   summary: string;
-  phases: GaProjectDesignPhase[];
+  phases: ProjectDesignPhase[];
   decision_rules: string[];
   verification_policy: string[];
   non_goals: string[];
@@ -44,7 +44,7 @@ export interface GaProjectDesignContract {
   boundary: string;
 }
 
-export interface GaProjectDesignArtifact {
+export interface ProjectDesignArtifact {
   id: string;
   title: string;
   source_iteration_ref: string;
@@ -53,7 +53,7 @@ export interface GaProjectDesignArtifact {
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
-  source_implementation_contract?: GaProjectDesignImplementationContract;
+  source_implementation_contract?: ProjectDesignImplementationContract;
   reusable_pattern: string;
   evidence_refs: string[];
   verification_commands: string[];
@@ -65,10 +65,10 @@ export interface GaProjectDesignArtifact {
   boundary: string;
 }
 
-export type GaProjectDesignPlanSourceKind = "verified_artifact" | "fresh_bootstrap";
+export type ProjectDesignPlanSourceKind = "verified_artifact" | "fresh_bootstrap";
 
-interface GaProjectDesignPlanSource {
-  kind: GaProjectDesignPlanSourceKind;
+interface ProjectDesignPlanSource {
+  kind: ProjectDesignPlanSourceKind;
   id: string;
   source_iteration_ref: string;
   source_status: "verified" | "bootstrap";
@@ -76,7 +76,7 @@ interface GaProjectDesignPlanSource {
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
-  implementation_contract?: GaProjectDesignImplementationContract;
+  implementation_contract?: ProjectDesignImplementationContract;
   next_use: string;
   source_next_moves: string[];
   evidence_refs: string[];
@@ -86,8 +86,8 @@ interface GaProjectDesignPlanSource {
   non_goals: string[];
 }
 
-export interface GaProjectDesignPlanPhaseGate {
-  phase_id: GaProjectDesignPhaseId;
+export interface ProjectDesignPlanPhaseGate {
+  phase_id: ProjectDesignPhaseId;
   title: string;
   layer: CapabilityLayer | "cross_layer";
   objective: string;
@@ -96,37 +96,37 @@ export interface GaProjectDesignPlanPhaseGate {
   forbidden_shortcuts: string[];
 }
 
-export interface GaProjectDesignCompletionAuditSeed {
+export interface ProjectDesignCompletionAuditSeed {
   id: "goal_scope" | "current_state" | "verification_scope" | "learning_persistence";
-  phase_id: GaProjectDesignPhaseId;
+  phase_id: ProjectDesignPhaseId;
   requirement: string;
   evidence_needed: string[];
   reject_if: string[];
 }
 
-export interface GaProjectDesignAcceptanceTrace {
-  seed_id: GaProjectDesignCompletionAuditSeed["id"];
-  phase_id: GaProjectDesignPhaseId;
+export interface ProjectDesignAcceptanceTrace {
+  seed_id: ProjectDesignCompletionAuditSeed["id"];
+  phase_id: ProjectDesignPhaseId;
   criterion: string;
   required_entrypoints: string[];
   outcome_claim_prefixes: string[];
 }
 
-export interface GaProjectDesignLayerDecision {
+export interface ProjectDesignLayerDecision {
   selected_layer: CapabilityLayer;
   selected_owner_surface: string;
   source_layer: CapabilityLayer;
   source_owner_surface: string;
   source_proposed_slice: string;
   proposed_slice: string;
-  core_identity: "recurring_ga_project_design";
+  core_identity: "recurring_project_design";
   stage: "core_basic_successor_ready" | "needs_attention";
   reasons: string[];
   application_boundaries: string[];
   required_before_outcome: string[];
 }
 
-export interface GaProjectDesignLearningAuthority {
+export interface ProjectDesignLearningAuthority {
   process_scaffold: string;
   judgment_authority: string;
   completion_authority: string;
@@ -134,7 +134,7 @@ export interface GaProjectDesignLearningAuthority {
   boundary: string;
 }
 
-export interface GaProjectDesignIterationFocus {
+export interface ProjectDesignIterationFocus {
   direction_id: "core_basic_plan_clarity";
   direction: string;
   rationale: string;
@@ -142,25 +142,25 @@ export interface GaProjectDesignIterationFocus {
   anti_drift_checks: string[];
 }
 
-export interface GaProjectDesignGoalScope {
+export interface ProjectDesignGoalScope {
   objective: string;
   owner_surface: string;
   source_of_truth: string[];
   success_evidence: string[];
 }
 
-export interface GaProjectDesignImplementationContract {
+export interface ProjectDesignImplementationContract {
   proposed_slice: string;
   source_artifact_id: string;
   source_proposed_slice: string;
   selected_layer: CapabilityLayer;
   owner_surface: string;
-  improvement_type: "reusable_ga_design_contract";
+  improvement_type: "reusable_project_design_contract";
   intent?: string;
   acceptance_criteria?: string[];
   required_verification_entrypoints?: string[];
-  delegation_contract?: GaProjectDesignDelegationImplementationContract;
-  outcome_evidence_scope?: GaProjectDesignOutcomeEvidenceScope;
+  delegation_contract?: ProjectDesignDelegationImplementationContract;
+  outcome_evidence_scope?: ProjectDesignOutcomeEvidenceScope;
   implementation_scope: string[];
   deferred_scope: string[];
   delivery_standard: string[];
@@ -168,7 +168,7 @@ export interface GaProjectDesignImplementationContract {
   boundary: string;
 }
 
-export interface GaProjectDesignOutcomeEvidenceScope {
+export interface ProjectDesignOutcomeEvidenceScope {
   allowed_ref_prefixes: string[];
   required_groups: Array<{
     id: string;
@@ -177,7 +177,7 @@ export interface GaProjectDesignOutcomeEvidenceScope {
   boundary: string;
 }
 
-export interface GaProjectDesignDelegationImplementationContract {
+export interface ProjectDesignDelegationImplementationContract {
   action: "delegate_agent";
   lifecycle_steps: string[];
   task_context: {
@@ -213,8 +213,8 @@ export interface GaProjectDesignDelegationImplementationContract {
   boundary: string;
 }
 
-export interface GaProjectDesignSourceContinuation {
-  source_kind: GaProjectDesignPlanSourceKind;
+export interface ProjectDesignSourceContinuation {
+  source_kind: ProjectDesignPlanSourceKind;
   source_artifact_id: string;
   source_status: "verified" | "bootstrap";
   source_layer: CapabilityLayer;
@@ -224,12 +224,12 @@ export interface GaProjectDesignSourceContinuation {
   next_use: string;
   source_next_moves: string[];
   source_verification_claims: string[];
-  source_contract?: GaProjectDesignImplementationContract;
+  source_contract?: ProjectDesignImplementationContract;
   carry_forward: string[];
   boundary: string;
 }
 
-export interface GaProjectDesignCapabilityStage {
+export interface ProjectDesignCapabilityStage {
   id: string;
   title: string;
   layer: "core_runtime" | "basic_entrypoint";
@@ -240,13 +240,13 @@ export interface GaProjectDesignCapabilityStage {
   evidence_refs: string[];
 }
 
-export interface GaProjectDesignCapabilityStagePlan {
-  core_capabilities: GaProjectDesignCapabilityStage[];
-  basic_capabilities: GaProjectDesignCapabilityStage[];
+export interface ProjectDesignCapabilityStagePlan {
+  core_capabilities: ProjectDesignCapabilityStage[];
+  basic_capabilities: ProjectDesignCapabilityStage[];
   next_iteration_plan: string[];
 }
 
-export interface GaProjectDesignGeneralDelegationLoop {
+export interface ProjectDesignGeneralDelegationLoop {
   action: "delegate_agent";
   layer: "core_runtime";
   stage: "active";
@@ -308,7 +308,7 @@ export interface GaProjectDesignGeneralDelegationLoop {
   boundary: string;
 }
 
-export interface GaProjectDesignIterationRecordStatus {
+export interface ProjectDesignIterationRecordStatus {
   status: "not_recorded" | "open_iteration_available";
   implementation_contract_status?: "aligned" | "missing" | "drifted";
   implementation_contract_attention?: string[];
@@ -321,7 +321,7 @@ export interface GaProjectDesignIterationRecordStatus {
   boundary: string;
 }
 
-export interface GaProjectDesignGovernanceCleanupItem {
+export interface ProjectDesignGovernanceCleanupItem {
   id: string;
   ref: string;
   proposed_slice: string;
@@ -334,12 +334,12 @@ export interface GaProjectDesignGovernanceCleanupItem {
   boundary: string;
 }
 
-export interface GaProjectDesignGovernanceCleanup {
-  superseded_open_iterations: GaProjectDesignGovernanceCleanupItem[];
+export interface ProjectDesignGovernanceCleanup {
+  superseded_open_iterations: ProjectDesignGovernanceCleanupItem[];
   boundary: string;
 }
 
-export interface GaProjectDesignIterationSeed {
+export interface ProjectDesignIterationSeed {
   summary: string;
   layer: CapabilityLayer;
   owner_surface: string;
@@ -352,42 +352,42 @@ export interface GaProjectDesignIterationSeed {
   boundary: string;
 }
 
-export interface GaProjectDesignPlanPacket {
+export interface ProjectDesignPlanPacket {
   schema_version: 1;
   action: "project-design-plan";
   status: "advisory";
   id: string;
   title: string;
-  target_dimension_id: GaProjectDesignTargetDimensionId;
-  target_slice_id: GaProjectDesignTargetSliceId;
-  target_selection_origin: GaProjectDesignPlanTargetSelectionOrigin;
+  target_dimension_id: ProjectDesignTargetDimensionId;
+  target_slice_id: ProjectDesignTargetSliceId;
+  target_selection_origin: ProjectDesignPlanTargetSelectionOrigin;
   layer: CapabilityLayer;
   owner_surface: string;
   proposed_slice: string;
-  source_kind: GaProjectDesignPlanSourceKind;
+  source_kind: ProjectDesignPlanSourceKind;
   source_artifact_id: string;
   source_iteration_ref: string;
   source_proposed_slice: string;
   planning_basis: string;
-  goal_scope: GaProjectDesignGoalScope;
-  implementation_contract: GaProjectDesignImplementationContract;
-  source_continuation: GaProjectDesignSourceContinuation;
-  iteration_focus: GaProjectDesignIterationFocus;
-  capability_stage_plan: GaProjectDesignCapabilityStagePlan;
-  general_delegation_loop: GaProjectDesignGeneralDelegationLoop;
+  goal_scope: ProjectDesignGoalScope;
+  implementation_contract: ProjectDesignImplementationContract;
+  source_continuation: ProjectDesignSourceContinuation;
+  iteration_focus: ProjectDesignIterationFocus;
+  capability_stage_plan: ProjectDesignCapabilityStagePlan;
+  general_delegation_loop: ProjectDesignGeneralDelegationLoop;
   scorecard_basis: string[];
   selection_status: "ready" | "needs_attention";
   selection_reasons: string[];
   selection_checks: string[];
-  layer_decision: GaProjectDesignLayerDecision;
-  learning_authority: GaProjectDesignLearningAuthority;
-  iteration_record_status: GaProjectDesignIterationRecordStatus;
-  governance_cleanup: GaProjectDesignGovernanceCleanup;
-  next_iteration_seed: GaProjectDesignIterationSeed;
-  phase_gates: GaProjectDesignPlanPhaseGate[];
-  completion_audit_seeds: GaProjectDesignCompletionAuditSeed[];
+  layer_decision: ProjectDesignLayerDecision;
+  learning_authority: ProjectDesignLearningAuthority;
+  iteration_record_status: ProjectDesignIterationRecordStatus;
+  governance_cleanup: ProjectDesignGovernanceCleanup;
+  next_iteration_seed: ProjectDesignIterationSeed;
+  phase_gates: ProjectDesignPlanPhaseGate[];
+  completion_audit_seeds: ProjectDesignCompletionAuditSeed[];
   acceptance_criteria: string[];
-  acceptance_trace: GaProjectDesignAcceptanceTrace[];
+  acceptance_trace: ProjectDesignAcceptanceTrace[];
   verification_commands: string[];
   next_command: string;
   non_goals: string[];
@@ -395,30 +395,30 @@ export interface GaProjectDesignPlanPacket {
   boundary: string;
 }
 
-export interface GaProjectDesignArtifactPacket {
+export interface ProjectDesignArtifactPacket {
   schema_version: 1;
   action: "project-design-artifact";
   status: "advisory";
-  artifact: GaProjectDesignArtifact;
+  artifact: ProjectDesignArtifact;
   source_for_next_core_basic_plan: boolean;
-  next_core_basic_plan: GaProjectDesignPlanPacket | null;
+  next_core_basic_plan: ProjectDesignPlanPacket | null;
   refs: string[];
   boundary: string;
 }
 
-export interface GaProjectDesignReadModel extends GaProjectDesignContract {
+export interface ProjectDesignReadModel extends ProjectDesignContract {
   artifact_count: number;
   listed_artifact_count: number;
-  artifacts: GaProjectDesignArtifact[];
-  next_core_basic_plan: GaProjectDesignPlanPacket | null;
+  artifacts: ProjectDesignArtifact[];
+  next_core_basic_plan: ProjectDesignPlanPacket | null;
   artifact_policy: string[];
 }
 
-const BOUNDARY = "read-only GA project design contract; does not invoke models, execute tools, mutate state, write repo files, write the active vault, manage services, promote SOPs, promote skills, create expert agents, or prove completion";
-const ARTIFACT_BOUNDARY = "read-only derived GA project design artifact; derived from verified self-evolution iteration metadata only; does not write state, promote memory, draft SOPs, promote skills, execute tools, or prove future project completion";
-const ARTIFACT_PACKET_BOUNDARY = "read-only GA project design artifact inspection packet; does not derive new artifacts, record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
-const ITERATION_SEED_BOUNDARY = "read-only GA project design iteration seed; does not record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
-const PLAN_BOUNDARY = "read-only GA project design planning packet; derived from the contract plus either verified core/basic artifacts or a fresh-state bootstrap source only; does not record iterations, execute commands, invoke models, create projects, schedule experts, mutate state, write repo files, or prove completion";
+const BOUNDARY = "read-only project design contract; does not invoke models, execute tools, mutate state, write repo files, write the active vault, manage services, promote SOPs, promote skills, create expert agents, or prove completion";
+const ARTIFACT_BOUNDARY = "read-only derived project design artifact; derived from verified self-evolution iteration metadata only; does not write state, promote memory, draft SOPs, promote skills, execute tools, or prove future project completion";
+const ARTIFACT_PACKET_BOUNDARY = "read-only project design artifact inspection packet; does not derive new artifacts, record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
+const ITERATION_SEED_BOUNDARY = "read-only project design iteration seed; does not record iterations, execute tools, mutate state, write repo files, write the active vault, promote SOPs, promote skills, schedule experts, or prove completion";
+const PLAN_BOUNDARY = "read-only project design planning packet; derived from the contract plus either verified core/basic artifacts or a fresh-state bootstrap source only; does not record iterations, execute commands, invoke models, create projects, schedule experts, mutate state, write repo files, or prove completion";
 const COMPLETED_SOURCE_SLICE_NON_GOAL_PREFIX = "does not repeat completed source slice ";
 const MIN_SOURCE_ARTIFACT_EVIDENCE_REFS = 2;
 const MIN_SOURCE_ARTIFACT_VERIFICATION_COMMANDS = 2;
@@ -432,63 +432,63 @@ const SOURCE_COMPLETION_NEXT_MOVE_PATTERNS = [
   /\bpost-commit\b.*\b(health|outcome refs?|service health|restart|merge)\b/i,
   /\bmerge .*?\b(health refs?|outcome refs?|post-commit health|service health)\b/i
 ];
-const BOOTSTRAP_SOURCE_ID = "ga_design_bootstrap_contract_source";
+const BOOTSTRAP_SOURCE_ID = "project_design_bootstrap_contract_source";
 const BOOTSTRAP_SOURCE_REF = "docs/RUNTIME_CONTRACT.md";
 const BOOTSTRAP_SOURCE_SLICE = "fresh_state_no_verified_iteration";
-const BOOTSTRAP_PROPOSED_SLICE = "core_ga_design_fresh_bootstrap";
-type GaProjectDesignTargetDimensionId = "core_ga_design" | "basic_runtime_substrate" | "general_agent_delegation";
-export type GaProjectDesignTargetSliceId =
-  | "next_slice_core_ga_design"
+const BOOTSTRAP_PROPOSED_SLICE = "core_project_design_fresh_bootstrap";
+type ProjectDesignTargetDimensionId = "core_project_design" | "basic_runtime_substrate" | "general_agent_delegation";
+export type ProjectDesignTargetSliceId =
+  | "next_slice_core_project_design"
   | "next_slice_basic_runtime_substrate"
   | "next_slice_general_agent_delegation";
-interface GaProjectDesignPlanTarget {
-  target_dimension_id: GaProjectDesignTargetDimensionId;
-  target_slice_id: GaProjectDesignTargetSliceId;
+interface ProjectDesignPlanTarget {
+  target_dimension_id: ProjectDesignTargetDimensionId;
+  target_slice_id: ProjectDesignTargetSliceId;
   layer: CapabilityLayer;
   owner_surface: string;
 }
-export type GaProjectDesignPlanTargetSelectionOrigin =
+export type ProjectDesignPlanTargetSelectionOrigin =
   | "fresh_bootstrap"
   | "matching_open_iteration"
   | "scorecard_target"
   | "unrecognized_scorecard_fallback"
   | "no_scorecard_default";
-interface GaProjectDesignPlanTargetSelection {
-  target: GaProjectDesignPlanTarget;
-  origin: GaProjectDesignPlanTargetSelectionOrigin;
+interface ProjectDesignPlanTargetSelection {
+  target: ProjectDesignPlanTarget;
+  origin: ProjectDesignPlanTargetSelectionOrigin;
 }
-const NEXT_CORE_GA_DESIGN_TARGET = {
-  target_dimension_id: "core_ga_design",
-  target_slice_id: "next_slice_core_ga_design",
+const NEXT_CORE_PROJECT_DESIGN_TARGET = {
+  target_dimension_id: "core_project_design",
+  target_slice_id: "next_slice_core_project_design",
   layer: "core_runtime",
-  owner_surface: "ga_project_design"
-} as const satisfies GaProjectDesignPlanTarget;
+  owner_surface: "project_design"
+} as const satisfies ProjectDesignPlanTarget;
 const NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET = {
   target_dimension_id: "basic_runtime_substrate",
   target_slice_id: "next_slice_basic_runtime_substrate",
   layer: "basic_entrypoint",
-  owner_surface: "ga_project_design"
-} as const satisfies GaProjectDesignPlanTarget;
+  owner_surface: "project_design"
+} as const satisfies ProjectDesignPlanTarget;
 const NEXT_GENERAL_DELEGATION_TARGET = {
   target_dimension_id: "general_agent_delegation",
   target_slice_id: "next_slice_general_agent_delegation",
   layer: "core_runtime",
-  owner_surface: "ga_project_design"
-} as const satisfies GaProjectDesignPlanTarget;
+  owner_surface: "project_design"
+} as const satisfies ProjectDesignPlanTarget;
 const BASIC_RUNTIME_HEALTH_COMMAND = "pnpm run runtime -- service health --target runtime --state-root <state-root>";
-const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic GA project-design capability gains before SOP, skill, memory, or dream promotion.";
+const CORE_BASIC_SELF_EVOLUTION_OBJECTIVE = "Continue self-evolution through core/basic project-design capability gains before SOP, skill, memory, or dream promotion.";
 const REQUIRED_VERIFICATION_ENTRYPOINTS = ["project-design", "scorecard", "iterations", "service-health", "check"];
 
-export function getGaProjectDesignContract(): GaProjectDesignContract {
+export function getProjectDesignContract(): ProjectDesignContract {
   return {
     schema_version: 1,
-    contract_id: "ga_project_design_contract",
+    contract_id: "project_design_contract",
     contract_version: "2026-07-06",
     action: "project-design",
     status: "implemented",
     layer: "core_runtime",
-    title: "GA project design contract",
-    summary: "Defines the reusable loop for turning an operator goal into a bounded GA project slice with layer classification, contract design, verification evidence, and durable learning.",
+    title: "project design contract",
+    summary: "Defines the reusable loop for turning an operator goal into a bounded project-design slice with layer classification, contract design, verification evidence, and durable learning.",
     phases: [
       {
         id: "goal_intake",
@@ -532,7 +532,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
         id: "contract_design",
         title: "Contract design",
         layer: "core_runtime",
-        objective: "Name the smallest reusable contract that improves GA delivery across projects.",
+        objective: "Name the smallest reusable contract that improves agent delivery across projects.",
         required_inputs: [
           "owner surface",
           "proposed slice",
@@ -639,7 +639,7 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
       "CONTEXT.md",
       "docs/RUNTIME_CONTRACT.md",
       "docs/LOCAL_RUNTIME.md",
-      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/project_design.ts",
       "packages/core/src/capabilities.ts",
       "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
@@ -651,16 +651,16 @@ export function getGaProjectDesignContract(): GaProjectDesignContract {
   };
 }
 
-export async function getGaProjectDesignArtifactPacket(
+export async function getProjectDesignArtifactPacket(
   store: AgentStore,
   args: { artifactRef: string; limit?: number; scorecardNextCoreBasicSliceId?: string | null }
-): Promise<GaProjectDesignArtifactPacket> {
-  const readModel = await getGaProjectDesignReadModel(store, {
+): Promise<ProjectDesignArtifactPacket> {
+  const readModel = await getProjectDesignReadModel(store, {
     limit: args.limit,
     scorecardNextCoreBasicSliceId: args.scorecardNextCoreBasicSliceId
   });
-  const artifact = selectGaProjectDesignArtifact(readModel.artifacts, args.artifactRef);
-  if (!artifact) throw new Error(`GA project design artifact not found: ${args.artifactRef}`);
+  const artifact = selectProjectDesignArtifact(readModel.artifacts, args.artifactRef);
+  if (!artifact) throw new Error(`project design artifact not found: ${args.artifactRef}`);
   const plan = readModel.next_core_basic_plan?.source_artifact_id === artifact.id
     ? readModel.next_core_basic_plan
     : null;
@@ -680,10 +680,10 @@ export async function getGaProjectDesignArtifactPacket(
   };
 }
 
-export function selectGaProjectDesignArtifact(
-  artifacts: GaProjectDesignArtifact[],
+export function selectProjectDesignArtifact(
+  artifacts: ProjectDesignArtifact[],
   artifactRef: string
-): GaProjectDesignArtifact | null {
+): ProjectDesignArtifact | null {
   const requested = artifactRef.trim();
   if (!requested) return null;
   return artifacts.find((artifact) =>
@@ -694,15 +694,15 @@ export function selectGaProjectDesignArtifact(
   ) ?? null;
 }
 
-export async function getGaProjectDesignReadModel(
+export async function getProjectDesignReadModel(
   store: AgentStore,
   args: { limit?: number; scorecardNextCoreBasicSliceId?: string | null } = {}
-): Promise<GaProjectDesignReadModel> {
+): Promise<ProjectDesignReadModel> {
   await store.ensureLayout();
   const limit = Math.max(0, args.limit ?? 10);
-  const contract = getGaProjectDesignContract();
+  const contract = getProjectDesignContract();
   const iterations = await listSelfEvolutionIterations(store);
-  const allArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
+  const allArtifacts = deriveProjectDesignArtifacts(iterations.iterations);
   const artifacts = allArtifacts.slice(0, limit);
   const nextCoreBasicPlan = buildNextCoreBasicPlan(contract, allArtifacts, iterations.iterations, args.scorecardNextCoreBasicSliceId);
   return {
@@ -718,7 +718,7 @@ export async function getGaProjectDesignReadModel(
       "verified source implementation contracts must retain complete identity, intent, acceptance, verification, scope, delivery, rollback, and boundary fields",
       "fingerprinted implementation contracts must match their persisted SHA-256 before becoming reusable artifacts; legacy records without fingerprints remain readable",
       "verified outcome claim mappings are preserved when present; historical artifacts without claims remain readable with attention",
-      "artifacts are reusable design memory for future GA slices, not completion proof",
+      "artifacts are reusable design memory for future project-design slices, not completion proof",
       "external adapters remain application slices unless the artifact names a reusable core/basic contract"
     ],
     refs: compactRefs([
@@ -732,11 +732,11 @@ export async function getGaProjectDesignReadModel(
 }
 
 function buildNextCoreBasicPlan(
-  contract: GaProjectDesignContract,
-  artifacts: GaProjectDesignArtifact[],
+  contract: ProjectDesignContract,
+  artifacts: ProjectDesignArtifact[],
   iterations: SelfEvolutionIterationContract[],
   scorecardNextCoreBasicSliceId?: string | null
-): GaProjectDesignPlanPacket | null {
+): ProjectDesignPlanPacket | null {
   const source = selectNextCoreBasicPlanSource(artifacts, iterations);
   if (!source) return null;
   const targetSelection = selectNextCoreBasicPlanTarget(source, iterations, scorecardNextCoreBasicSliceId);
@@ -810,8 +810,8 @@ function buildNextCoreBasicPlan(
     schema_version: 1,
     action: "project-design-plan",
     status: "advisory",
-    id: `ga_design_plan_${safeIdPart(source.id)}`,
-    title: `Next core/basic GA planning packet: ${proposedSlice}`,
+    id: `project_design_plan_${safeIdPart(source.id)}`,
+    title: `Next core/basic project planning packet: ${proposedSlice}`,
     target_dimension_id: target.target_dimension_id,
     target_slice_id: target.target_slice_id,
     target_selection_origin: targetSelection.origin,
@@ -872,7 +872,7 @@ function buildNextCoreBasicPlan(
     next_command: iterationRecordStatus.inspect_command ?? nextIterationSeed.record_command,
     non_goals: buildSuccessorNonGoals(source, contract, ["does not execute the next slice"]),
     refs: compactRefs([
-      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/project_design.ts",
       "packages/core/src/action_contracts.ts",
       "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
@@ -888,16 +888,16 @@ function buildNextCoreBasicPlan(
 }
 
 function selectNextCoreBasicPlanSource(
-  artifacts: GaProjectDesignArtifact[],
+  artifacts: ProjectDesignArtifact[],
   iterations: SelfEvolutionIterationContract[]
-): GaProjectDesignPlanSource | null {
+): ProjectDesignPlanSource | null {
   const sourceArtifact = artifacts.find((artifact) => isCoreBasicLayer(artifact.layer));
   if (sourceArtifact) return planSourceFromArtifact(sourceArtifact);
   const freshBootstrap = buildFreshBootstrapSource();
   const openBootstrapIteration = iterations.find((iteration) =>
     !iteration.outcome
-    && iteration.layer === NEXT_CORE_GA_DESIGN_TARGET.layer
-    && iteration.owner_surface === NEXT_CORE_GA_DESIGN_TARGET.owner_surface
+    && iteration.layer === NEXT_CORE_PROJECT_DESIGN_TARGET.layer
+    && iteration.owner_surface === NEXT_CORE_PROJECT_DESIGN_TARGET.owner_surface
     && iteration.proposed_slice === BOOTSTRAP_PROPOSED_SLICE
     && (iteration.source_ref ?? "") === freshBootstrap.source_iteration_ref
   );
@@ -906,7 +906,7 @@ function selectNextCoreBasicPlanSource(
   return null;
 }
 
-function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDesignPlanSource {
+function planSourceFromArtifact(artifact: ProjectDesignArtifact): ProjectDesignPlanSource {
   return {
     kind: "verified_artifact",
     id: artifact.id,
@@ -927,7 +927,7 @@ function planSourceFromArtifact(artifact: GaProjectDesignArtifact): GaProjectDes
   };
 }
 
-function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDesignSourceContinuation {
+function buildSourceContinuation(source: ProjectDesignPlanSource): ProjectDesignSourceContinuation {
   const sourceVerificationEntrypoints = source.implementation_contract?.required_verification_entrypoints?.join(",") || "not_recorded";
   return {
     source_kind: source.kind,
@@ -951,11 +951,11 @@ function buildSourceContinuation(source: GaProjectDesignPlanSource): GaProjectDe
       "do not repeat completed source slice",
       "use source next_use and source_next_moves as direction, not completion proof"
     ]),
-    boundary: "read-only source-continuation summary for GA planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, source verification entrypoints and claims, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
+    boundary: "read-only source-continuation summary for project planning; carries forward source kind, artifact identity, status, layer, owner, completed slice, source verification entrypoints and claims, next-use hints, and optional implementation contract without executing work, mutating state, or proving completion"
   };
 }
 
-function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
+function buildFreshBootstrapSource(): ProjectDesignPlanSource {
   const verificationCommands = [
     "pnpm run runtime -- governance project-design --state-root <state-root>",
     "pnpm run runtime -- governance scorecard --state-root <state-root>",
@@ -968,16 +968,16 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
     id: BOOTSTRAP_SOURCE_ID,
     source_iteration_ref: BOOTSTRAP_SOURCE_REF,
     source_status: "bootstrap",
-    outcome_summary: "No verified iteration outcome exists; use the GA project design contract as the bounded bootstrap source.",
-    layer: NEXT_CORE_GA_DESIGN_TARGET.layer,
-    owner_surface: NEXT_CORE_GA_DESIGN_TARGET.owner_surface,
+    outcome_summary: "No verified iteration outcome exists; use the project design contract as the bounded bootstrap source.",
+    layer: NEXT_CORE_PROJECT_DESIGN_TARGET.layer,
+    owner_surface: NEXT_CORE_PROJECT_DESIGN_TARGET.owner_surface,
     proposed_slice: BOOTSTRAP_SOURCE_SLICE,
-    next_use: "Use the GA project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source.",
+    next_use: "Use the project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source.",
     source_next_moves: [
-      "Use the GA project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source."
+      "Use the project design contract itself to open the first bounded core/basic iteration before any SOP, skill, memory, dream, expert, or application slice is treated as the source."
     ],
     evidence_refs: [
-      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/project_design.ts",
       "docs/RUNTIME_CONTRACT.md",
       "docs/README.cn.md"
     ],
@@ -992,22 +992,22 @@ function buildFreshBootstrapSource(): GaProjectDesignPlanSource {
   };
 }
 
-function buildProjectDesignInspectionCommand(source: GaProjectDesignPlanSource): string {
+function buildProjectDesignInspectionCommand(source: ProjectDesignPlanSource): string {
   if (source.kind === "verified_artifact") {
     return `pnpm run runtime -- governance project-design --artifact ${source.id} --state-root <state-root>`;
   }
   return "pnpm run runtime -- governance project-design --state-root <state-root>";
 }
 
-function buildPlanningBasis(source: GaProjectDesignPlanSource, proposedSlice: string): string {
+function buildPlanningBasis(source: ProjectDesignPlanSource, proposedSlice: string): string {
   if (source.kind === "fresh_bootstrap") {
-    return `Use the GA project design contract as bootstrap source, then open ${proposedSlice} as the first core/basic slice. ${source.next_use}`;
+    return `Use the project design contract as bootstrap source, then open ${proposedSlice} as the first core/basic slice. ${source.next_use}`;
   }
   return `Use ${source.id} as evidence, then choose a new core/basic slice instead of repeating completed slice ${source.proposed_slice}. ${source.next_use}`;
 }
 
 function buildScorecardBasis(
-  target: GaProjectDesignPlanTarget,
+  target: ProjectDesignPlanTarget,
   scorecardNextCoreBasicSliceId?: string | null
 ): string[] {
   return [
@@ -1022,26 +1022,26 @@ function buildScorecardBasis(
 }
 
 function buildImplementationContract(
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget,
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget,
   proposedSlice: string
-): GaProjectDesignImplementationContract {
+): ProjectDesignImplementationContract {
   return {
     proposed_slice: proposedSlice,
     source_artifact_id: source.id,
     source_proposed_slice: source.proposed_slice,
     selected_layer: target.layer,
     owner_surface: target.owner_surface,
-    improvement_type: "reusable_ga_design_contract",
+    improvement_type: "reusable_project_design_contract",
     intent: buildImplementationContractIntent(target),
     acceptance_criteria: buildImplementationContractAcceptanceCriteria(target),
     required_verification_entrypoints: [...REQUIRED_VERIFICATION_ENTRYPOINTS],
     ...(target.target_dimension_id === "general_agent_delegation"
-      ? { delegation_contract: getGaProjectDesignDelegationImplementationContract() }
+      ? { delegation_contract: getProjectDesignDelegationImplementationContract() }
       : {}),
     outcome_evidence_scope: buildOutcomeEvidenceScope(target),
     implementation_scope: [
-      "change one reusable GA project-design contract or read-model surface",
+      "change one reusable project-design contract or read-model surface",
       ...(target.target_dimension_id === "general_agent_delegation"
         ? [
           "for general_agent_delegation, constrain delegate_agent task, context, result, trace/replay, or completion-verification boundaries only",
@@ -1069,20 +1069,20 @@ function buildImplementationContract(
         ]
         : []),
       "verification maps to project-design, scorecard, iterations, service-health, and check entrypoints",
-      "a verified outcome is recorded before the contract is reused as future GA design evidence"
+      "a verified outcome is recorded before the contract is reused as future project design evidence"
     ],
     rollback_strategy: [
       "revert the single bounded implementation commit without rewriting prior iteration evidence",
       "when the change is service-facing, restart the resident runtime and rerun targeted checks, pnpm run check, and service health before reuse"
     ],
-    boundary: "read-only GA implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
+    boundary: "read-only project-design implementation contract; constrains the next slice before implementation but does not execute commands, write outcomes, promote learning artifacts, schedule experts, or prove completion"
   };
 }
 
-function buildImplementationContractIntent(target: GaProjectDesignPlanTarget): string {
+function buildImplementationContractIntent(target: ProjectDesignPlanTarget): string {
   switch (target.target_dimension_id) {
-    case "core_ga_design":
-      return "Make the bounded core-GA successor self-describing and keep its planning and completion evidence reusable.";
+    case "core_project_design":
+      return "Make the bounded core-project-design successor self-describing and keep its planning and completion evidence reusable.";
     case "basic_runtime_substrate":
       return "Improve one bounded runtime entrypoint or observability contract while keeping resident health inspectable.";
     case "general_agent_delegation":
@@ -1090,10 +1090,10 @@ function buildImplementationContractIntent(target: GaProjectDesignPlanTarget): s
   }
 }
 
-function buildImplementationContractAcceptanceCriteria(target: GaProjectDesignPlanTarget): string[] {
+function buildImplementationContractAcceptanceCriteria(target: ProjectDesignPlanTarget): string[] {
   let targetCriterion: string;
   switch (target.target_dimension_id) {
-    case "core_ga_design":
+    case "core_project_design":
       targetCriterion = "future project-design readers can inspect the successor acceptance standard from implementation_contract alone";
       break;
     case "basic_runtime_substrate":
@@ -1110,8 +1110,8 @@ function buildImplementationContractAcceptanceCriteria(target: GaProjectDesignPl
   ];
 }
 
-function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProjectDesignOutcomeEvidenceScope {
-  let requiredGroups: GaProjectDesignOutcomeEvidenceScope["required_groups"];
+function buildOutcomeEvidenceScope(target: ProjectDesignPlanTarget): ProjectDesignOutcomeEvidenceScope {
+  let requiredGroups: ProjectDesignOutcomeEvidenceScope["required_groups"];
   if (target.target_dimension_id === "general_agent_delegation") {
     requiredGroups = [{
       id: "implementation",
@@ -1156,7 +1156,7 @@ function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProject
     requiredGroups = [{
       id: "implementation",
       ref_prefixes: [
-        "packages/core/src/ga_project_design.ts",
+        "packages/core/src/project_design.ts",
         "packages/core/src/context.ts",
         "packages/core/src/self_evolution_scorecard.ts",
         "packages/core/src/self_evolution_iterations.ts",
@@ -1164,7 +1164,7 @@ function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProject
       ]
     }, {
       id: "verification",
-      ref_prefixes: ["tests/ga_project_design.test.ts", "tests/context_harness.test.ts", "tests/self_evolution_scorecard.test.ts", "tests/cli.test.ts"]
+      ref_prefixes: ["tests/project_design.test.ts", "tests/context_harness.test.ts", "tests/self_evolution_scorecard.test.ts", "tests/cli.test.ts"]
     }, {
       id: "documentation",
       ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
@@ -1180,7 +1180,7 @@ function buildOutcomeEvidenceScope(target: GaProjectDesignPlanTarget): GaProject
   };
 }
 
-export function getGaProjectDesignDelegationImplementationContract(): GaProjectDesignDelegationImplementationContract {
+export function getProjectDesignDelegationImplementationContract(): ProjectDesignDelegationImplementationContract {
   const loop = buildGeneralDelegationLoop();
   return {
     action: loop.action,
@@ -1215,11 +1215,11 @@ export function getGaProjectDesignDelegationImplementationContract(): GaProjectD
       checks: [...loop.replay_audit_contract.checks],
       reads_delegated_artifact_bodies: false
     },
-    boundary: "read-only delegate_agent implementation boundary copied from the shared GA delegation loop; does not dispatch models, read delegated artifact bodies, grant delegated authority, or prove completion"
+    boundary: "read-only delegate_agent implementation boundary copied from the shared project-design delegation loop; does not dispatch models, read delegated artifact bodies, grant delegated authority, or prove completion"
   };
 }
 
-function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
+function buildAcceptanceTrace(): ProjectDesignAcceptanceTrace[] {
   return [
     {
       seed_id: "goal_scope",
@@ -1281,10 +1281,10 @@ function buildAcceptanceTrace(): GaProjectDesignAcceptanceTrace[] {
 }
 
 function buildGoalScope(
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget,
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget,
   proposedSlice: string
-): GaProjectDesignGoalScope {
+): ProjectDesignGoalScope {
   return {
     objective: CORE_BASIC_SELF_EVOLUTION_OBJECTIVE,
     owner_surface: target.owner_surface,
@@ -1304,20 +1304,20 @@ function buildGoalScope(
 }
 
 function buildIterationFocus(
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget
-): GaProjectDesignIterationFocus {
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget
+): ProjectDesignIterationFocus {
   return {
     direction_id: "core_basic_plan_clarity",
     direction: source.kind === "fresh_bootstrap"
       ? `Open one bounded ${target.layer}/${target.owner_surface} improvement from the bootstrap source: ${source.outcome_summary}`
       : `Choose one new bounded ${target.layer}/${target.owner_surface} contract or read-model improvement after verified outcome: ${source.outcome_summary}`,
     rationale: source.kind === "fresh_bootstrap"
-      ? "No verified source iteration exists, so the GA project design contract supplies the bounded bootstrap direction."
-      : `Choose a fresh successor from verified GA design evidence at ${source.layer}/${source.owner_surface} while the source remains completed context only.`,
+      ? "No verified source iteration exists, so the project design contract supplies the bounded bootstrap direction."
+      : `Choose a fresh successor from verified project design evidence at ${source.layer}/${source.owner_surface} while the source remains completed context only.`,
     next_steps: [
       "inspect the current project-design plan and matching open iteration",
-      "pick one small reusable GA design contract improvement",
+      "pick one small reusable project design contract improvement",
       "verify the slice with project-design, scorecard, iteration audit, service health, and broad checks before recording an outcome"
     ],
     anti_drift_checks: [
@@ -1329,12 +1329,12 @@ function buildIterationFocus(
 }
 
 function buildCapabilityStagePlan(
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget,
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget,
   proposedSlice: string
-): GaProjectDesignCapabilityStagePlan {
+): ProjectDesignCapabilityStagePlan {
   const sharedEvidence = [
-    "packages/core/src/ga_project_design.ts",
+    "packages/core/src/project_design.ts",
     source.source_iteration_ref
   ];
   return {
@@ -1370,10 +1370,10 @@ function buildCapabilityStagePlan(
         title: "Contract design",
         layer: "core_runtime",
         stage: "hardening",
-        current_state: `The current successor ${proposedSlice} is open to improve reusable GA design contracts.`,
+        current_state: `The current successor ${proposedSlice} is open to improve reusable project design contracts.`,
         next_iteration: "Pick one small reusable contract improvement and record verified outcome evidence before reuse.",
         exit_criteria: [
-          "one reusable GA design contract improvement is implemented",
+          "one reusable project design contract improvement is implemented",
           "verified outcome evidence exists before the improvement is reused"
         ],
         evidence_refs: sharedEvidence
@@ -1428,7 +1428,7 @@ function buildCapabilityStagePlan(
       }
     ],
     next_iteration_plan: [
-      `core_runtime[goal_scope]: continue ${proposedSlice} as a ga_project_design hardening slice`,
+      `core_runtime[goal_scope]: continue ${proposedSlice} as a project_design hardening slice`,
       `core_runtime[current_state]: choose one reusable ${target.target_dimension_id} improvement, not an external adapter task`,
       "core_runtime[general_agent_delegation]: audit and sync existing runner-enforced delegate_agent task/context/result/trace/replay/completion contract before expert specialization",
       "basic_entrypoint[verification_scope]: verify with project-design, scorecard, iteration audit, service health, and pnpm run check",
@@ -1437,7 +1437,7 @@ function buildCapabilityStagePlan(
   };
 }
 
-function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
+function buildGeneralDelegationLoop(): ProjectDesignGeneralDelegationLoop {
   return {
     action: "delegate_agent",
     layer: "core_runtime",
@@ -1655,11 +1655,11 @@ function buildGeneralDelegationLoop(): GaProjectDesignGeneralDelegationLoop {
 }
 
 function buildLayerDecision(
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget,
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget,
   proposedSlice: string,
-  selectionStatus: GaProjectDesignPlanPacket["selection_status"]
-): GaProjectDesignLayerDecision {
+  selectionStatus: ProjectDesignPlanPacket["selection_status"]
+): ProjectDesignLayerDecision {
   return {
     selected_layer: target.layer,
     selected_owner_surface: target.owner_surface,
@@ -1667,10 +1667,10 @@ function buildLayerDecision(
     source_owner_surface: source.owner_surface,
     source_proposed_slice: source.proposed_slice,
     proposed_slice: proposedSlice,
-    core_identity: "recurring_ga_project_design",
+    core_identity: "recurring_project_design",
     stage: selectionStatus === "ready" ? "core_basic_successor_ready" : "needs_attention",
     reasons: [
-      "core identity is the reusable GA project-design loop, not a single external adapter",
+      "core identity is the reusable project-design loop, not a single external adapter",
       "the next slice is a core/basic successor because it improves design classification, planning, or verification reuse",
       `source_layer=${source.layer}; selected_layer=${target.layer}`
     ],
@@ -1688,10 +1688,10 @@ function buildLayerDecision(
   };
 }
 
-function buildLearningAuthority(): GaProjectDesignLearningAuthority {
+function buildLearningAuthority(): ProjectDesignLearningAuthority {
   return {
     process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
-    judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+    judgment_authority: "core/basic layer selection stays with project_design, scorecard, iteration contract, and current runtime evidence",
     completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
     promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
     boundary: "read-only learning authority boundary; does not draft SOPs, promote skills, accept memory, refresh dreams, select skills, invoke models, execute tools, or prove completion"
@@ -1700,9 +1700,9 @@ function buildLearningAuthority(): GaProjectDesignLearningAuthority {
 
 function buildIterationRecordStatus(
   iterations: SelfEvolutionIterationContract[],
-  seed: GaProjectDesignIterationSeed,
-  expectedContract: GaProjectDesignImplementationContract
-): GaProjectDesignIterationRecordStatus {
+  seed: ProjectDesignIterationSeed,
+  expectedContract: ProjectDesignImplementationContract
+): ProjectDesignIterationRecordStatus {
   const openIteration = iterations.find((iteration) =>
     !iteration.outcome
     && iteration.layer === seed.layer
@@ -1711,7 +1711,7 @@ function buildIterationRecordStatus(
     && (iteration.source_ref ?? "") === seed.source_ref
   );
   if (openIteration) {
-    let implementationContractStatus: NonNullable<GaProjectDesignIterationRecordStatus["implementation_contract_status"]> = "aligned";
+    let implementationContractStatus: NonNullable<ProjectDesignIterationRecordStatus["implementation_contract_status"]> = "aligned";
     if (!openIteration.implementation_contract) implementationContractStatus = "missing";
     else if (!isDeepStrictEqual(openIteration.implementation_contract, expectedContract)) implementationContractStatus = "drifted";
     const implementationContractAttention: string[] = [];
@@ -1727,53 +1727,53 @@ function buildIterationRecordStatus(
       inspect_command: `pnpm run runtime -- governance iterations --iteration ${openIteration.id} --state-root <state-root>`,
       audit_command: `pnpm run runtime -- governance iterations --iteration ${openIteration.id} --audit-seed all --state-root <state-root>`,
       record_command: seed.record_command,
-      boundary: "read-only GA project design iteration record status; detects a matching open iteration and compares its implementation contract with the current authoritative plan before selection; does not repair state, write outcomes, or prove completion"
+      boundary: "read-only project design iteration record status; detects a matching open iteration and compares its implementation contract with the current authoritative plan before selection; does not repair state, write outcomes, or prove completion"
     };
   }
   return {
     status: "not_recorded",
     record_command: seed.record_command,
-    boundary: "read-only GA project design iteration record status; no matching open iteration was found; does not write state or prove completion"
+    boundary: "read-only project design iteration record status; no matching open iteration was found; does not write state or prove completion"
   };
 }
 
 function buildGovernanceCleanup(
   iterations: SelfEvolutionIterationContract[],
-  source: GaProjectDesignPlanSource
-): GaProjectDesignGovernanceCleanup {
+  source: ProjectDesignPlanSource
+): ProjectDesignGovernanceCleanup {
   const sourceIteration = iterations.find((iteration) => iteration.ref === source.source_iteration_ref);
   const superseded = sourceIteration
     ? iterations
-      .filter((iteration) => isSupersededOpenGaIteration(iteration, sourceIteration, source))
+      .filter((iteration) => isSupersededOpenProjectIteration(iteration, sourceIteration, source))
       .map((iteration) => buildGovernanceCleanupItem(iteration, sourceIteration))
     : [];
   return {
     superseded_open_iterations: superseded.slice(0, 5),
-    boundary: "read-only GA project-design governance cleanup summary; lists open GA iterations already superseded by a newer verified core/basic source artifact; does not record outcomes, mutate state, or prove cleanup completion"
+    boundary: "read-only project-design governance cleanup summary; lists open project-design iterations already superseded by a newer verified core/basic source artifact; does not record outcomes, mutate state, or prove cleanup completion"
   };
 }
 
-function isSupersededOpenGaIteration(
+function isSupersededOpenProjectIteration(
   candidate: SelfEvolutionIterationContract,
   sourceIteration: SelfEvolutionIterationContract,
-  source: GaProjectDesignPlanSource
+  source: ProjectDesignPlanSource
 ): boolean {
   return !candidate.outcome
     && isCoreBasicLayer(candidate.layer)
-    && candidate.owner_surface === "ga_project_design"
-    && isGaProjectDesignSuccessorSlice(candidate.proposed_slice)
+    && candidate.owner_surface === "project_design"
+    && isProjectDesignSuccessorSlice(candidate.proposed_slice)
     && candidate.created_at < sourceIteration.created_at
     && sourceMentionsCleanupCandidate(source, candidate);
 }
 
-function isGaProjectDesignSuccessorSlice(proposedSlice: string): boolean {
-  return proposedSlice.startsWith("core_ga_design_next_slice_after_")
+function isProjectDesignSuccessorSlice(proposedSlice: string): boolean {
+  return proposedSlice.startsWith("core_project_design_next_slice_after_")
     || proposedSlice.startsWith("basic_runtime_substrate_hardening_after_")
     || proposedSlice.startsWith("general_agent_delegation_hardening_after_");
 }
 
 function sourceMentionsCleanupCandidate(
-  source: GaProjectDesignPlanSource,
+  source: ProjectDesignPlanSource,
   candidate: SelfEvolutionIterationContract
 ): boolean {
   const sourceText = [
@@ -1787,7 +1787,7 @@ function sourceMentionsCleanupCandidate(
 function buildGovernanceCleanupItem(
   iteration: SelfEvolutionIterationContract,
   sourceIteration: SelfEvolutionIterationContract
-): GaProjectDesignGovernanceCleanupItem {
+): ProjectDesignGovernanceCleanupItem {
   return {
     id: iteration.id,
     ref: iteration.ref,
@@ -1796,21 +1796,21 @@ function buildGovernanceCleanupItem(
     created_at: iteration.created_at,
     superseded_by_ref: sourceIteration.ref,
     suggested_outcome_status: "partial",
-    reason: `Open GA iteration ${iteration.id} predates verified source ${sourceIteration.id}; keep it as governance cleanup instead of treating it as the active successor blocker.`,
+    reason: `Open project-design iteration ${iteration.id} predates verified source ${sourceIteration.id}; keep it as governance cleanup instead of treating it as the active successor blocker.`,
     inspect_command: `pnpm run runtime -- governance iterations --iteration ${iteration.id} --state-root <state-root>`,
     boundary: "read-only superseded open iteration cleanup item; suggests partial outcome review but does not write state or verify the stale slice"
   };
 }
 
 function buildNextIterationSeed(
-  contract: GaProjectDesignContract,
-  source: GaProjectDesignPlanSource,
-  target: GaProjectDesignPlanTarget,
+  contract: ProjectDesignContract,
+  source: ProjectDesignPlanSource,
+  target: ProjectDesignPlanTarget,
   proposedSlice: string
-): GaProjectDesignIterationSeed {
+): ProjectDesignIterationSeed {
   return {
     summary: source.kind === "fresh_bootstrap"
-      ? `Open first core/basic GA design bootstrap slice ${proposedSlice} from the GA project design contract.`
+      ? `Open first core/basic project design bootstrap slice ${proposedSlice} from the project design contract.`
       : `Open next core/basic ${target.target_dimension_id} slice ${proposedSlice} from verified project-design artifact ${source.id}.`,
     layer: target.layer,
     owner_surface: target.owner_surface,
@@ -1834,9 +1834,9 @@ function buildNextIterationSeed(
 }
 
 function buildCompletionAuditSeeds(
-  source: GaProjectDesignPlanSource,
+  source: ProjectDesignPlanSource,
   proposedSlice: string
-): GaProjectDesignCompletionAuditSeed[] {
+): ProjectDesignCompletionAuditSeed[] {
   return [
     {
       id: "goal_scope",
@@ -1906,7 +1906,7 @@ function buildCompletionAuditSeeds(
     {
       id: "learning_persistence",
       phase_id: "learning_persistence",
-      requirement: "Record the verified outcome before reusing the slice as future GA design evidence.",
+      requirement: "Record the verified outcome before reusing the slice as future project design evidence.",
       evidence_needed: [
         "record-iteration-outcome ref",
         "next moves preserve non-goals and boundaries",
@@ -1921,17 +1921,17 @@ function buildCompletionAuditSeeds(
   ];
 }
 
-export function deriveGaProjectDesignArtifacts(
+export function deriveProjectDesignArtifacts(
   iterations: SelfEvolutionIterationContract[]
-): GaProjectDesignArtifact[] {
+): ProjectDesignArtifact[] {
   return iterations
-    .filter(hasReusableGaProjectDesignOutcome)
+    .filter(hasReusableProjectDesignOutcome)
     .map((iteration) => {
       const outcome = iteration.outcome!;
       const sourceNextMoves = sourcePlanningNextMoves(outcome.next_moves);
       return {
-        id: `ga_design_artifact_${safeIdPart(iteration.id)}`,
-        title: `Reusable GA project design: ${iteration.proposed_slice}`,
+        id: `project_design_artifact_${safeIdPart(iteration.id)}`,
+        title: `Reusable project design: ${iteration.proposed_slice}`,
         source_iteration_ref: iteration.ref,
         source_outcome_status: "verified",
         outcome_summary: compactOutcomeSummary(outcome.summary),
@@ -1954,7 +1954,7 @@ export function deriveGaProjectDesignArtifacts(
         source_next_moves: sourceNextMoves,
         non_goals: compactRefs([
           ...dropHistoricalSourceSliceNonGoals(iteration.non_goals),
-          "does not prove future GA project completion",
+          "does not prove future project completion",
           "does not promote one-off external adapter behavior into core identity"
         ]),
         boundary: ARTIFACT_BOUNDARY
@@ -2009,7 +2009,7 @@ function commandStartsWithInvocation(command: string, invocation: string): boole
 }
 
 function missingSourceImplementationContractFields(
-  contract: GaProjectDesignImplementationContract | undefined
+  contract: ProjectDesignImplementationContract | undefined
 ): string[] {
   if (!contract) return [];
   return [
@@ -2031,7 +2031,7 @@ function missingSourceImplementationContractFields(
   ];
 }
 
-function hasCompleteOutcomeEvidenceScope(scope: GaProjectDesignOutcomeEvidenceScope | undefined): boolean {
+function hasCompleteOutcomeEvidenceScope(scope: ProjectDesignOutcomeEvidenceScope | undefined): boolean {
   if (!scope || !Array.isArray(scope.required_groups)) return false;
   return Boolean(
     hasNonBlankTextItems(scope.allowed_ref_prefixes)
@@ -2080,7 +2080,7 @@ function defaultSourcePlanningNextMove(): string {
   return "Use this verified artifact as evidence for a fresh bounded core/basic successor slice without repeating the completed source slice.";
 }
 
-function hasReusableGaProjectDesignOutcome(iteration: SelfEvolutionIterationContract): boolean {
+function hasReusableProjectDesignOutcome(iteration: SelfEvolutionIterationContract): boolean {
   return iteration.outcome?.status === "verified"
     && iteration.outcome.evidence_refs.length > 0
     && iteration.outcome.verification_commands.length > 0
@@ -2094,8 +2094,8 @@ function hasMatchingImplementationContractFingerprint(iteration: SelfEvolutionIt
 }
 
 function buildSuccessorNonGoals(
-  source: GaProjectDesignPlanSource,
-  contract: GaProjectDesignContract,
+  source: ProjectDesignPlanSource,
+  contract: ProjectDesignContract,
   tail: string[]
 ): string[] {
   return compactRefs([
@@ -2108,7 +2108,7 @@ function buildSuccessorNonGoals(
   ]);
 }
 
-function buildSuccessorEvidenceRefs(source: GaProjectDesignPlanSource): string[] {
+function buildSuccessorEvidenceRefs(source: ProjectDesignPlanSource): string[] {
   return compactRefs([
     source.source_iteration_ref,
     ...dropHistoricalIterationEvidenceRefs(source.evidence_refs, [source.source_iteration_ref])
@@ -2150,12 +2150,12 @@ function describeReusablePattern(iteration: SelfEvolutionIterationContract): str
 }
 
 function selectNextCoreBasicPlanTarget(
-  source: GaProjectDesignPlanSource,
+  source: ProjectDesignPlanSource,
   iterations: SelfEvolutionIterationContract[],
   scorecardNextCoreBasicSliceId?: string | null
-): GaProjectDesignPlanTargetSelection {
+): ProjectDesignPlanTargetSelection {
   if (source.kind === "fresh_bootstrap") {
-    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "fresh_bootstrap" };
+    return { target: NEXT_CORE_PROJECT_DESIGN_TARGET, origin: "fresh_bootstrap" };
   }
   const openIterationTarget = selectOpenIterationPlanTarget(source, iterations);
   if (openIterationTarget) {
@@ -2167,13 +2167,13 @@ function selectNextCoreBasicPlanTarget(
   if (scorecardNextCoreBasicSliceId === NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET.target_slice_id) {
     return { target: NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET, origin: "scorecard_target" };
   }
-  if (scorecardNextCoreBasicSliceId === NEXT_CORE_GA_DESIGN_TARGET.target_slice_id) {
-    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "scorecard_target" };
+  if (scorecardNextCoreBasicSliceId === NEXT_CORE_PROJECT_DESIGN_TARGET.target_slice_id) {
+    return { target: NEXT_CORE_PROJECT_DESIGN_TARGET, origin: "scorecard_target" };
   }
   if (scorecardNextCoreBasicSliceId) {
-    return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "unrecognized_scorecard_fallback" };
+    return { target: NEXT_CORE_PROJECT_DESIGN_TARGET, origin: "unrecognized_scorecard_fallback" };
   }
-  return { target: NEXT_CORE_GA_DESIGN_TARGET, origin: "no_scorecard_default" };
+  return { target: NEXT_CORE_PROJECT_DESIGN_TARGET, origin: "no_scorecard_default" };
 }
 
 function describeScorecardTargetStatus(scorecardNextCoreBasicSliceId?: string | null): "not_provided" | "recognized" | "unrecognized" {
@@ -2181,17 +2181,17 @@ function describeScorecardTargetStatus(scorecardNextCoreBasicSliceId?: string | 
   return [
     NEXT_GENERAL_DELEGATION_TARGET.target_slice_id,
     NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET.target_slice_id,
-    NEXT_CORE_GA_DESIGN_TARGET.target_slice_id
-  ].includes(scorecardNextCoreBasicSliceId as GaProjectDesignTargetSliceId)
+    NEXT_CORE_PROJECT_DESIGN_TARGET.target_slice_id
+  ].includes(scorecardNextCoreBasicSliceId as ProjectDesignTargetSliceId)
     ? "recognized"
     : "unrecognized";
 }
 
 function selectOpenIterationPlanTarget(
-  source: GaProjectDesignPlanSource,
+  source: ProjectDesignPlanSource,
   iterations: SelfEvolutionIterationContract[]
-): GaProjectDesignPlanTarget | null {
-  return [NEXT_GENERAL_DELEGATION_TARGET, NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET, NEXT_CORE_GA_DESIGN_TARGET].find((target) =>
+): ProjectDesignPlanTarget | null {
+  return [NEXT_GENERAL_DELEGATION_TARGET, NEXT_BASIC_RUNTIME_SUBSTRATE_TARGET, NEXT_CORE_PROJECT_DESIGN_TARGET].find((target) =>
     iterations.some((iteration) =>
       !iteration.outcome
       && iteration.layer === target.layer
@@ -2202,21 +2202,21 @@ function selectOpenIterationPlanTarget(
   ) ?? null;
 }
 
-function nextProposedSlice(source: GaProjectDesignPlanSource, target: GaProjectDesignPlanTarget): string {
+function nextProposedSlice(source: ProjectDesignPlanSource, target: ProjectDesignPlanTarget): string {
   if (target.target_dimension_id === "general_agent_delegation") {
     return `general_agent_delegation_hardening_after_${sourceIterationSuffix(source)}`;
   }
   if (target.target_dimension_id === "basic_runtime_substrate") {
     return `basic_runtime_substrate_hardening_after_${sourceIterationSuffix(source)}`;
   }
-  return nextCoreGaDesignProposedSlice(source);
+  return nextCoreProjectDesignProposedSlice(source);
 }
 
-function nextCoreGaDesignProposedSlice(source: GaProjectDesignPlanSource): string {
-  return `core_ga_design_next_slice_after_${sourceIterationSuffix(source)}`;
+function nextCoreProjectDesignProposedSlice(source: ProjectDesignPlanSource): string {
+  return `core_project_design_next_slice_after_${sourceIterationSuffix(source)}`;
 }
 
-function sourceIterationSuffix(source: GaProjectDesignPlanSource): string {
+function sourceIterationSuffix(source: ProjectDesignPlanSource): string {
   const iterationId = sourceIterationId(source)
     ?? safeIdPart(source.id);
   const parts = iterationId.split("_");
@@ -2224,11 +2224,11 @@ function sourceIterationSuffix(source: GaProjectDesignPlanSource): string {
   return iterationId.replace(/^iteration_contract_/, "") || "source";
 }
 
-function sourceIterationFilename(source: GaProjectDesignArtifact | GaProjectDesignPlanSource): string | null {
+function sourceIterationFilename(source: ProjectDesignArtifact | ProjectDesignPlanSource): string | null {
   return source.source_iteration_ref.split("/").at(-1) ?? null;
 }
 
-function sourceIterationId(source: GaProjectDesignArtifact | GaProjectDesignPlanSource): string | null {
+function sourceIterationId(source: ProjectDesignArtifact | ProjectDesignPlanSource): string | null {
   return source.source_iteration_ref.match(/(iteration_contract_[^/.]+)/)?.[1] ?? null;
 }
 

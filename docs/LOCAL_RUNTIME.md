@@ -29,6 +29,50 @@ pnpm run check
 The package scripts remain the source of truth for build, test, doctor, and
 runtime entrypoints.
 
+## Release Candidate Verification
+
+Model definitions and IM channel records are machine-local configuration. The
+repository ships neutral, non-secret templates only. A formal release must not
+be accepted from an already configured development state root.
+
+Run the structural clean-room gate first:
+
+```bash
+pnpm run release:verify
+```
+
+This command copies only versioned and non-ignored workspace files into a
+temporary source tree, installs frozen dependencies, runs the complete check,
+creates a fresh `HOME` and `LOCAL_RUNTIME_HOME`, validates the model/IM
+templates with placeholder auth, starts a foreground `--no-im` daemon, and
+probes the localhost Web API. It makes no external model call and sends no IM
+message. On failure it retains the temporary evidence directory; `--keep`
+retains it after success.
+
+External acceptance uses a second fresh local home. Copy the template records
+there, replace the example model endpoint/model id with the release test model,
+and provide the model key and IM app credentials only through that isolated
+home or its explicitly named environment variables. Copy
+`config/release-smoke.example.jsonl` as the isolated `config.jsonl` override so
+test tasks cannot promote one-off SOPs or skills. Then run `doctor`, one small
+`live` task, and one real private-chat request/reply loop.
+
+Never run two resident IM consumers with the same app credentials. Use a
+separate test app, or stop the current resident service before starting the
+candidate. The macOS service label is user-scoped and stable, so resident
+service acceptance either uses a dedicated macOS test user or temporarily
+stops the current service, verifies the candidate, and restores the previous
+service afterward.
+
+The release sequence is:
+
+```text
+develop -> v0.1.0-rc.1 -> structural clean-room -> real model/IM smoke
+        -> resident restart/rollback smoke -> main -> v0.1.0
+```
+
+Current development-state regression is useful but is not the release gate.
+
 ## First-Version Command Contract
 
 The first-version command surface should be:
@@ -108,7 +152,7 @@ pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --st
 pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
 pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
 pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state
+pnpm run runtime -- governance project-design --artifact project_design_artifact_iteration_contract_... --state-root .runtime/state
 pnpm run runtime -- governance project-design --audit-seed verification_scope --state-root .runtime/state
 pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
 pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
@@ -167,6 +211,7 @@ It should check:
 - repository readability
 - JSONL config parsing
 - active model selection
+- active IM scenario model selection and model-layer resolution
 - model auth unless `--no-auth` is passed
 - non-secret model auth source diagnostics: auth id, source ref, direct/env
   mode, and whether an explicitly named env value is present
@@ -438,7 +483,7 @@ back to a generic background-review SOP template.
 Gap intake does not read draft bodies, invoke the model, execute tools, publish
 externally, mutate state, write the repository, or write the active vault.
 `governance scorecard` is the local self-evolution maturity read model. It
-summarizes core GA design, basic runtime substrate, SOP/skill/memory loop,
+summarizes core project design, basic runtime substrate, SOP/skill/memory loop,
 general-agent delegation, and memory/dream direction from the
 capability catalog, memory layers, dream snapshots, self-evolution iteration
 contracts, SOP evolution ledger, and Opportunity Backlog. The expert lenses are
@@ -448,7 +493,7 @@ the active vault.
 The scorecard treats `general_agent_delegation` as the current subagent
 baseline; expert specialization and multi-agent scheduling remain deferred
 until that loop is stable.
-The live context summary keeps `core_ga_design` and `basic_runtime_substrate`
+The live context summary keeps `core_project_design` and `basic_runtime_substrate`
 visible beside orchestration readiness, so core design progress and basic
 runtime health remain paired before the next slice is claimed. This is
 prioritization context only, not completion proof. When the scorecard exposes a
@@ -467,12 +512,12 @@ is the runtime/design slice the self-iteration loop should close next.
 all-dimension prioritization context, not backlog writes or execution
 authority; it may still surface local-learning follow-up work first when SOP,
 skill, or memory evidence is the lowest-scoring dimension.
-When no blocking core/basic iteration is open, core GA design is already active
+When no blocking core/basic iteration is open, core project design is already active
 with full local evidence, and the general delegation loop is active, the
 scorecard default core/basic outlet moves to `general_agent_delegation`
 hardening unless a basic runtime attention slice must be handled first. The
-project-design plan keeps fresh bootstrap on `core_ga_design`, then uses the
-current scorecard target to seed `basic_runtime_substrate`, `core_ga_design`, or
+project-design plan keeps fresh bootstrap on `core_project_design`, then uses the
+current scorecard target to seed `basic_runtime_substrate`, `core_project_design`, or
 `general_agent_delegation` from the verified source artifact. A matching open
 plan-derived iteration stays authoritative for that source so
 `record-iteration --from-project-design-plan` does not drift after the scorecard
@@ -483,14 +528,14 @@ If a non-empty scorecard target is not one of the supported core/basic slice
 ids, the plan keeps `scorecard_target_status=unrecognized` in its bounded
 selection metadata and returns `needs_attention`; any fallback target is
 diagnostic only and cannot be treated as ready for execution.
-`governance project-design` is the core GA project design contract. It defines
+`governance project-design` is the core project design contract. It defines
 the reusable loop for goal intake, capability layering, contract design,
 execution planning, verification review, and learning persistence. It is
 read-only and does not create projects, execute tools, spawn experts, promote
 memory/SOP/skills, or prove completion.
 It also derives read-only project-design artifacts from verified
 self-evolution iteration outcomes that include outcome evidence refs and
-verification commands, so recurring GA design lessons can be reused without
+verification commands, so recurring project design lessons can be reused without
 writing state, drafting SOPs, promoting skills, or granting completion
 authority. Historical completed-source non-goals are collapsed during artifact
 and successor-plan derivation, so the next seed carries the current source-slice
@@ -526,7 +571,7 @@ The same artifact-scoped summary may include `capability_stage_plan`, but it
 remains inspection context only.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
 `layer_decision`, so artifact review can inspect why the successor remains core
-GA design work instead of an external-tool application slice.
+project design work instead of an external-tool application slice.
 It may include `phase_gates` with their `forbidden_shortcuts`, so the artifact
 review can inspect phase-level anti-drift constraints without switching to the
 full project-design view.
@@ -575,13 +620,13 @@ artifacts. If those counts are too thin, bounded `source_artifact_warning`
 entries may appear as plan-quality hints; they do not execute verification or
 block the plan by themselves. The same checks keep
 `source_artifact_warning_thresholds` visible beside the counts, so threshold
-tuning does not require source-code inspection. The compact GA Project Design
+tuning does not require source-code inspection. The compact Project Design
 Plan context preserves the same threshold check beside the source verification
 and count checks using stable check-prefix priority rather than raw array
 position. It also surfaces the `fresh_successor_slice` check separately, so
 repeated completed slices remain visible during context handoff.
 It surfaces the `target_layer` and `owner_surface` check separately as well, so
-application slices are not mistaken for core GA design work during handoff.
+application slices are not mistaken for core project design work during handoff.
 `selection_reasons` also include
 `source_artifact_quality=ok|attention` as a short advisory summary derived from
 those warnings. The compact context preserves `source_kind`, `source_status`,
@@ -621,7 +666,7 @@ part of every core/basic completion review.
 The plan-level `verification_commands` reuse the same slice-scoped command list
 as `next_iteration_seed.verification_commands`, so the visible plan and the
 recorded iteration seed cannot drift.
-`layer_decision` makes the same self-recognition explicit: recurring GA project
+`layer_decision` makes the same self-recognition explicit: recurring project design
 design is the core identity, the selected successor stays in the core/basic
 layer, and external tools or adapters remain application slices unless a
 reusable runtime contract is named.
@@ -671,7 +716,7 @@ resident runtime behavior changed, and rejects verified outcomes that omit
 runtime attention reasons while service health is not healthy.
 When service health is in the required verification command list, the same seed
 requires the outcome to cite service-health status and reasons even for
-read-only GA design slices.
+read-only project design slices.
 When service health is not healthy, the same seed requires runtime attention to
 be classified as `acceptable`, `repair_needed`, or `verification_blocker`.
 Naming the reason without classification is not enough outcome evidence.
@@ -771,7 +816,7 @@ entrypoint still keep that seed out of `ready_for_manual_review`.
 The audit packet keeps the iteration `source_ref` summary when present, so the
 operator can trace the planned core/basic slice back to the source iteration
 without opening the full record.
-It also includes `plan_ref_coverage`, which compares GA project-design plan refs
+It also includes `plan_ref_coverage`, which compares project-design plan refs
 against the audited iteration, source, and outcome refs; it is a diagnostic and
 does not read file bodies or prove completion. If refs are missing,
 `required_outcome_evidence_refs` lists the refs to add to outcome evidence.
@@ -792,7 +837,7 @@ coverage; it does not repair state or prove completion.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs. It only
 shows declaration coverage; it does not mean the commands were executed or
-passed. Matching open-iteration audits use the current GA project-design plan as
+passed. Matching open-iteration audits use the current project-design plan as
 the selected command source; source or historical iteration audits use the
 audited iteration's own runtime-bound verification commands, so newer plans do
 not move the audit target.
@@ -831,7 +876,7 @@ remains read-only and does not approve seeds or prove the commands passed.
 Use `governance iterations --iteration <id> --audit-seed all` to inspect all
 completion-audit seeds for the same iteration in one packet. It is still
 read-only; it aggregates seed requirements, per-seed evidence status, cited
-evidence, and bounded `audit_guidance` from the GA project-design plan without
+evidence, and bounded `audit_guidance` from the project-design plan without
 running checks, writing outcomes, or approving completion. The guidance carries
 `goal_scope`, so completion review can see the objective, owner surface, source
 of truth, and success evidence without leaving the audit packet. It also
@@ -858,7 +903,7 @@ source/selected layer, core-identity reasons, application boundaries, and
 required-before-outcome commands stay visible as review evidence while external
 adapters remain application slices unless a reusable runtime contract is named.
 It also carries `implementation_contract`, so the next slice states the one
-allowed reusable GA design contract/read-model improvement, the deferred
+allowed reusable project design contract/read-model improvement, the deferred
 external-tool/local-learning/expert scopes, and the delivery standard before
 implementation begins. For `general_agent_delegation`, that contract also
 names the allowed `delegate_agent` task/context/result/trace/replay/completion
@@ -866,7 +911,7 @@ verification surface and excludes delegated tool/write/mutation authority,
 delegated completion authority, model fan-out, autonomous scheduling, and
 expert personas.
 The same implementation contract embeds a structured `delegation_contract`
-derived from the shared GA delegation loop, so its payload/output keys, limits,
+derived from the shared project design delegation loop, so its payload/output keys, limits,
 failure kinds, recovery requirements, replay checks, and main-harness
 completion authority remain available without reading a sibling plan field.
 Reusing a matching open plan iteration can backfill this derived field, and
@@ -989,7 +1034,7 @@ accepted goal, selected recall/skill counts, budget metadata, pressure manifest
 metadata, and checkpoint metadata. It does not render on quiet first turns, read
 raw context Markdown or raw artifacts, compact context, invoke tools, or
 authorize mutation.
-Live context also includes a bounded `GA Project Design Plan` section when
+Live context also includes a bounded `Project Design Plan` section when
 `governance project-design` has a verified core/basic `next_core_basic_plan`.
 The section shows only the plan id, target layer, owner surface, proposed
 slice, source artifact, planning basis, layer-decision summary, acceptance
@@ -1002,7 +1047,7 @@ The rendered capability-stage summary keeps core abilities and basic abilities
 visible together before the next iteration is claimed.
 It may include a short representative stage-exit summary so the next model turn
 does not treat a stage label as progress by itself.
-The layer-decision summary keeps recurring GA project design as the core
+The layer-decision summary keeps recurring project design as the core
 identity and keeps external tools or adapters as application slices unless they
 name a reusable runtime contract. If a matching open iteration exists, the next
 command can point to that iteration's inspection command instead of another
@@ -1046,7 +1091,7 @@ prove completion.
 When verified `core_runtime` or `basic_entrypoint` iteration outcomes create
 SOP-candidate follow-ups, Opportunity Backlog keeps them visible but demotes
 them below real local-learning SOP work. The next core/basic step should come
-from GA project design first, with SOP drafting only after the lesson recurs
+from project design first, with SOP drafting only after the lesson recurs
 outside that artifact.
 
 When the latest context pressure guidance identifies `reduce_episode_recall`,
@@ -2290,7 +2335,7 @@ output parsing in `packages/core/src/delegate_agent_contract.ts` and pure
 delegated completion-gate checks in
 `packages/core/src/delegate_agent_completion_gate.ts`; schema validation, the
 live runner, Live Run Trace, replay checks, capability
-summaries, context read models, and GA project-design packets consume those
+summaries, context read models, and project-design packets consume those
 shared contracts to avoid drift. Completion verification report schema accepts
 only the shared harness check ids plus those delegated completion-gate check ids
 so drifted spellings are rejected before they reach read models.

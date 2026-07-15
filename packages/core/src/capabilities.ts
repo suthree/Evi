@@ -5,7 +5,7 @@ import {
   type AllowedAction
 } from "./action_contracts.js";
 import { getExpertOrchestrationContract } from "./expert_orchestration.js";
-import { getGaProjectDesignContract } from "./ga_project_design.js";
+import { getProjectDesignContract } from "./project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
 
 export type CapabilityCategoryId =
@@ -149,7 +149,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/action_contracts.ts",
       "packages/core/src/tool_contracts.ts",
       "packages/core/src/context.ts",
-      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/project_design.ts",
       "packages/core/src/expert_orchestration.ts",
       "packages/core/src/harness_replay.ts",
       "packages/core/src/pipeline_history.ts",
@@ -605,7 +605,7 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
 }
 
 function contextReadModelsCategory(): CapabilityCategoryDraft {
-  const projectDesignContract = getGaProjectDesignContract();
+  const projectDesignContract = getProjectDesignContract();
   const expertContract = getExpertOrchestrationContract();
   return {
     id: "context_read_models",
@@ -676,7 +676,7 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
         ]
       },
       {
-        id: "ga.project_design_contract",
+        id: "project.design_contract",
         title: projectDesignContract.title,
         summary: projectDesignContract.summary,
         status: "implemented",
@@ -688,12 +688,12 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
           "project-design may derive and inspect read-only artifacts from verified iteration outcomes; artifacts are reuse guidance, not state writes or completion proof",
           "project-design may expose a read-only next_core_basic_plan from verified core/basic artifacts; the plan is advisory context and does not record iterations or execute work",
           "next_core_basic_plan includes read-only goal_scope with the operator objective, owner surface, source of truth, and success evidence before selecting the next slice",
-          "next_core_basic_plan includes a read-only layer_decision that keeps recurring GA project design as core identity and external adapters as application slices by default",
+          "next_core_basic_plan includes a read-only layer_decision that keeps recurring project design as core identity and external adapters as application slices by default",
           "next_core_basic_plan includes read-only iteration_record_status so matching open iterations are inspected instead of blindly recording duplicates",
           "next_core_basic_plan may include a read-only next_iteration_seed for record-iteration --from-project-design-plan; the seed itself does not write state",
           "next_core_basic_plan may include completion_audit_seeds for goal scope, current state, verification scope, and learning persistence; seeds are advisory evidence prompts only",
           "classifies external adapters as application slices unless their pattern generalizes back into the runtime contract",
-          "keeps GA project design as a core-runtime loop over goal intake, layering, contract design, execution planning, verification, and durable learning"
+          "keeps project design as a core-runtime loop over goal intake, layering, contract design, execution planning, verification, and durable learning"
         ]
       },
       {
@@ -844,13 +844,13 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
       {
         id: "self_evolution.scorecard",
         title: "Self-evolution scorecard",
-        summary: "Assess GA project design artifacts, core/basic capability growth, general-agent delegation, and gated local-learning continuity as the read-only core/basic selection view.",
+        summary: "Assess project design artifacts, core/basic capability growth, general-agent delegation, and gated local-learning continuity as the read-only core/basic selection view.",
         status: "implemented",
         layer: "core_runtime",
         commands: ["pnpm run runtime -- governance scorecard"],
         refs: [
           "packages/core/src/self_evolution_scorecard.ts",
-          "packages/core/src/ga_project_design.ts",
+          "packages/core/src/project_design.ts",
           "packages/core/src/capabilities.ts",
           "packages/core/src/memory_layers.ts",
           "packages/core/src/dreams.ts"
@@ -878,7 +878,7 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
           "packages/core/src/expert_orchestration.ts",
           "CONTEXT.md"
         ],
-        boundaries: ["iteration contracts and outcomes write one local state record only; they declare layer, verification intent, outcome evidence, and next moves, but do not execute work, run verification commands, invoke models, mutate repo files, write the active vault, manage services, promote SOPs, promote skills, or prove completion beyond cited evidence; plan-derived iteration recording copies a read-only GA project-design seed into one iteration contract only and reuses a matching open iteration instead of writing duplicates; iteration audit-seed inspection and aggregate completion audit are read-only and advisory; seed evidence status summarizes evidence presence only and does not prove the seed is satisfied"]
+        boundaries: ["iteration contracts and outcomes write one local state record only; they declare layer, verification intent, outcome evidence, and next moves, but do not execute work, run verification commands, invoke models, mutate repo files, write the active vault, manage services, promote SOPs, promote skills, or prove completion beyond cited evidence; plan-derived iteration recording copies a read-only project-design seed into one iteration contract only and reuses a matching open iteration instead of writing duplicates; iteration audit-seed inspection and aggregate completion audit are read-only and advisory; seed evidence status summarizes evidence presence only and does not prove the seed is satisfied"]
       }
     ]
   };

@@ -76,13 +76,13 @@ export function getExpertOrchestrationContract(): ExpertOrchestrationContract {
     status: "implemented",
     layer: "core_runtime",
     title: "Expert orchestration contract",
-    summary: "Defines advisory expert roles, scheduling boundaries, and main-thread verification authority for future multi-expert GA project design work.",
+    summary: "Defines advisory expert roles, scheduling boundaries, and main-thread verification authority for future multi-expert project design work.",
     roles: [
       {
         id: "architect",
         title: "Architect",
         status: "implemented",
-        focus: "Core GA project design, domain boundaries, and reusable runtime contracts.",
+        focus: "Core project design, domain boundaries, and reusable runtime contracts.",
         allowed_inputs: [
           "capability catalog",
           "self-evolution scorecard",
@@ -201,7 +201,7 @@ export function getExpertOrchestrationContract(): ExpertOrchestrationContract {
         trigger: "Use when proposed work could change core/basic/local-learning/application classification or promote an external adapter into core identity.",
         roles: ["architect", "verification_reviewer"],
         required_inputs: [
-          "GA project design contract",
+          "project design contract",
           "capability catalog",
           "self-evolution scorecard next_slices",
           "current worktree or runtime state when relevant"

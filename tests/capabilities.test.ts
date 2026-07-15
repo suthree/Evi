@@ -64,7 +64,7 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(delegateAgent?.summary.includes("main harness"), true);
   assert.equal(catalog.refs.includes("docs/RUNTIME_CONTRACT.md"), true);
   assert.equal(catalog.refs.includes("packages/core/src/capabilities.ts"), true);
-  assert.equal(catalog.refs.includes("packages/core/src/ga_project_design.ts"), true);
+  assert.equal(catalog.refs.includes("packages/core/src/project_design.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/expert_orchestration.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/harness_replay.ts"), true);
   assert.equal(catalog.refs.includes("packages/core/src/pipeline_history.ts"), true);
@@ -160,15 +160,15 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(iterations?.boundaries?.some((boundary) => boundary.includes("aggregate completion audit") && boundary.includes("read-only")), true);
   assert.equal(iterations?.boundaries?.some((boundary) => boundary.includes("seed evidence status") && boundary.includes("does not prove")), true);
   assert.equal(iterations?.boundaries?.some((boundary) => boundary.includes("do not execute work")), true);
-  const projectDesignContract = readModels?.capabilities.find((capability) => capability.id === "ga.project_design_contract");
+  const projectDesignContract = readModels?.capabilities.find((capability) => capability.id === "project.design_contract");
   assert.equal(projectDesignContract?.layer, "core_runtime");
   assert.equal(projectDesignContract?.category_layer, "core_runtime");
   assert.equal(projectDesignContract?.effective_layer, "core_runtime");
   assert.equal(projectDesignContract?.commands?.includes("pnpm run runtime -- governance project-design"), true);
   assert.equal(projectDesignContract?.commands?.some((command) => command.includes("--artifact <artifact-or-iteration-ref>")), true);
   assert.equal(projectDesignContract?.commands?.some((command) => command.includes("--audit-seed <seed-id>")), true);
-  assert.equal(projectDesignContract?.refs?.includes("packages/core/src/ga_project_design.ts"), true);
-  assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("read-only GA project design contract")), true);
+  assert.equal(projectDesignContract?.refs?.includes("packages/core/src/project_design.ts"), true);
+  assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("read-only project design contract")), true);
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("derive and inspect read-only artifacts")), true);
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("next_core_basic_plan") && boundary.includes("advisory context")), true);
   assert.equal(projectDesignContract?.boundaries?.some((boundary) => boundary.includes("layer_decision") && boundary.includes("external adapters as application slices")), true);

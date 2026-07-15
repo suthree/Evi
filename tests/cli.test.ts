@@ -6,8 +6,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import {
-  bindGaProjectDesignArtifactPacketCommands,
-  bindGaProjectDesignReadModelCommands,
+  bindProjectDesignArtifactPacketCommands,
+  bindProjectDesignReadModelCommands,
   bindIterationDetailRuntimeCommands,
   bindIterationRecordResultCommand,
   buildIterationAuditCompletionGate,
@@ -32,7 +32,7 @@ import {
   selectIterationAuditVerificationCoverageCommands
 } from "../apps/cli/src/main.js";
 import { AgentStore } from "../packages/core/src/store.js";
-import { getGaProjectDesignDelegationImplementationContract } from "../packages/core/src/ga_project_design.js";
+import { getProjectDesignDelegationImplementationContract } from "../packages/core/src/project_design.js";
 import { implementationContractSha256 } from "../packages/core/src/self_evolution_iterations.js";
 
 const execFileAsync = promisify(execFile);
@@ -266,11 +266,11 @@ test("governance project-design command parses core design read model", () => {
     "governance",
     "project-design",
     "--artifact",
-    "ga_design_artifact_iteration_contract_1"
+    "project_design_artifact_iteration_contract_1"
   ]);
   assert.equal(artifact.command, "governance");
   assert.equal(artifact.governanceAction, "project-design");
-  assert.equal(artifact.projectDesignArtifactRef, "ga_design_artifact_iteration_contract_1");
+  assert.equal(artifact.projectDesignArtifactRef, "project_design_artifact_iteration_contract_1");
 });
 
 test("governance project-design CLI keeps display limit out of scorecard target selection", async () => {
@@ -302,23 +302,23 @@ test("governance project-design CLI keeps display limit out of scorecard target 
       ref: "self-evolution/iterations/iteration_contract_cli_scorecard_target.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA design source for CLI scorecard binding.",
+      summary: "Verified project design source for CLI scorecard binding.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "cli_scorecard_target_source",
       implementation_contract: {
         proposed_slice: "cli_scorecard_target_source",
         source_artifact_id: "manual_record_iteration",
         source_proposed_slice: "manual_record_iteration",
         selected_layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        improvement_type: "reusable_ga_design_contract",
-        implementation_scope: ["change one reusable GA project-design read-model rule"],
+        owner_surface: "project_design",
+        improvement_type: "reusable_project_design_contract",
+        implementation_scope: ["change one reusable project-design read-model rule"],
         deferred_scope: ["no external adapters"],
         delivery_standard: ["CLI project-design keeps scorecard selection independent from display limit"],
         boundary: "manual implementation contract"
       },
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["does not prove future project completion"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -378,7 +378,7 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     seed,
     { outcome_status: "not_recorded" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       runtime_iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: [],
@@ -395,11 +395,11 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     seed,
     { outcome_status: "verified" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
-      outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
-      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
-      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
+      outcome_evidence_refs: ["tests/project_design.test.ts"],
+      outcome_verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed project design behavior"]
     },
     { status: "missing_entrypoints" }
   );
@@ -410,11 +410,11 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     seed,
     { outcome_status: "verified" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
-      outcome_evidence_refs: ["tests/ga_project_design.test.ts"],
-      outcome_verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
-      outcome_verification_claims: ["check: tests cover the changed GA design behavior"]
+      outcome_evidence_refs: ["tests/project_design.test.ts"],
+      outcome_verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
+      outcome_verification_claims: ["check: tests cover the changed project design behavior"]
     },
     { status: "covered" }
   );
@@ -434,7 +434,7 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     currentStateSeed,
     { outcome_status: "verified" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: ["tests/cli.test.ts"],
       outcome_verification_commands: ["pnpm run check"],
@@ -450,7 +450,7 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     currentStateSeed,
     { outcome_status: "verified" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: ["tests/cli.test.ts"],
       outcome_verification_commands: ["pnpm run check"],
@@ -467,7 +467,7 @@ test("iteration audit seed evidence status stays conservative before outcome evi
     currentStateSeed,
     { outcome_status: "verified" },
     {
-      iteration_evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      iteration_evidence_refs: ["packages/core/src/project_design.ts"],
       iteration_verification_commands: ["pnpm run check"],
       outcome_evidence_refs: ["tests/cli.test.ts"],
       outcome_verification_commands: ["pnpm run check"],
@@ -484,33 +484,33 @@ test("iteration audit seed evidence status stays conservative before outcome evi
 
 test("iteration audit implementation contract coverage compares plan and iteration contracts", () => {
   const planContract = {
-    proposed_slice: "core_ga_design_next_slice_after_source",
-    source_artifact_id: "ga_design_artifact_iteration_contract_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
+    source_artifact_id: "project_design_artifact_iteration_contract_source",
     source_proposed_slice: "completed_source",
     selected_layer: "core_runtime" as const,
-    owner_surface: "ga_project_design",
-    improvement_type: "reusable_ga_design_contract" as const,
-    intent: "Make the bounded core-GA successor self-describing and keep its planning and completion evidence reusable.",
+    owner_surface: "project_design",
+    improvement_type: "reusable_project_design_contract" as const,
+    intent: "Make the bounded core-project-design successor self-describing and keep its planning and completion evidence reusable.",
     acceptance_criteria: ["future project-design readers can inspect the successor acceptance standard from implementation_contract alone"],
-    implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+    implementation_scope: ["change one reusable project-design contract or read-model surface"],
     deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
     delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
     rollback_strategy: ["revert the single bounded implementation commit"],
-    boundary: "read-only GA implementation contract"
+    boundary: "read-only project-design implementation contract"
   };
 
   const missing = buildIterationAuditImplementationContractCoverage(planContract, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design"
+    owner_surface: "project_design"
   });
   assert.equal(missing.status, "missing_contract");
   assert.deepEqual(missing.missing_fields, ["implementation_contract"]);
 
   const mismatched = buildIterationAuditImplementationContractCoverage(planContract, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: {
       ...planContract,
       deferred_scope: ["no SOP or skill promotion"]
@@ -520,12 +520,12 @@ test("iteration audit implementation contract coverage compares plan and iterati
   assert.deepEqual(mismatched.mismatched_fields, ["deferred_scope"]);
 
   const mismatchedLineage = buildIterationAuditImplementationContractCoverage(planContract, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: {
       ...planContract,
-      source_artifact_id: "ga_design_artifact_iteration_contract_other",
+      source_artifact_id: "project_design_artifact_iteration_contract_other",
       source_proposed_slice: "different_source",
       boundary: "unrelated contract boundary"
     }
@@ -538,9 +538,9 @@ test("iteration audit implementation contract coverage compares plan and iterati
   ]);
 
   const missingLineage = buildIterationAuditImplementationContractCoverage(planContract, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: {
       ...planContract,
       source_artifact_id: "",
@@ -556,14 +556,14 @@ test("iteration audit implementation contract coverage compares plan and iterati
   ]);
 
   const covered = buildIterationAuditImplementationContractCoverage(planContract, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: planContract
   });
   assert.equal(covered.status, "covered");
   assert.equal(covered.required_tokens.includes("implementation_contract.implementation_scope"), true);
-  assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=ga_design_artifact_iteration_contract_source"), true);
+  assert.equal(covered.required_tokens.includes("implementation_contract.source_artifact_id=project_design_artifact_iteration_contract_source"), true);
   assert.equal(covered.required_tokens.some((token) => token.startsWith("implementation_contract.intent=")), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.acceptance_criteria"), true);
   assert.equal(covered.required_tokens.includes("implementation_contract.rollback_strategy"), true);
@@ -572,14 +572,14 @@ test("iteration audit implementation contract coverage compares plan and iterati
 
   const outcomeEvidenceScope = {
     allowed_ref_prefixes: [
-      "packages/core/src/ga_project_design.ts",
-      "tests/ga_project_design.test.ts",
+      "packages/core/src/project_design.ts",
+      "tests/project_design.test.ts",
       "docs/RUNTIME_CONTRACT.md",
       "services/runtime/heartbeat.json"
     ],
     required_groups: [
-      { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
-      { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] },
+      { id: "implementation", ref_prefixes: ["packages/core/src/project_design.ts"] },
+      { id: "verification", ref_prefixes: ["tests/project_design.test.ts"] },
       { id: "documentation", ref_prefixes: ["docs/RUNTIME_CONTRACT.md"] },
       { id: "runtime_health", ref_prefixes: ["services/runtime/heartbeat.json"] }
     ],
@@ -589,7 +589,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const missingOutcomeEvidenceScope = buildIterationAuditImplementationContractCoverage(scopedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: planContract
   });
   assert.equal(missingOutcomeEvidenceScope.status, "missing_required_fields");
@@ -597,18 +597,18 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const coveredOutcomeEvidenceScope = buildIterationAuditImplementationContractCoverage(scopedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: scopedPlanContract
   });
   assert.equal(coveredOutcomeEvidenceScope.status, "covered");
   assert.equal(coveredOutcomeEvidenceScope.required_tokens.includes("implementation_contract.outcome_evidence_scope=bounded"), true);
 
-  const delegationContract = getGaProjectDesignDelegationImplementationContract();
+  const delegationContract = getProjectDesignDelegationImplementationContract();
   const delegatedPlanContract = { ...planContract, delegation_contract: delegationContract };
   const missingDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: planContract
   });
   assert.equal(missingDelegationContract.status, "missing_required_fields");
@@ -616,7 +616,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const coveredDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: delegatedPlanContract
   });
   assert.equal(coveredDelegationContract.status, "covered");
@@ -632,7 +632,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const safelyAdvancedDelegationContract = buildIterationAuditImplementationContractCoverage(delegatedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: {
       ...planContract,
       delegation_contract: preDiagnosticIntegrityContract
@@ -652,7 +652,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const driftedTogether = buildIterationAuditImplementationContractCoverage(driftedPlanContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: driftedPlanContract
   });
   assert.equal(driftedTogether.status, "mismatched_contract");
@@ -660,23 +660,23 @@ test("iteration audit implementation contract coverage compares plan and iterati
 
   const coveredHistorical = buildIterationAuditImplementationContractCoverage({
     ...planContract,
-    proposed_slice: "core_ga_design_next_slice_after_next"
+    proposed_slice: "core_project_design_next_slice_after_next"
   }, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: planContract
   });
   assert.equal(coveredHistorical.status, "covered");
-  assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_ga_design_next_slice_after_source");
+  assert.equal(coveredHistorical.required_tokens[0], "implementation_contract.proposed_slice=core_project_design_next_slice_after_source");
 
   const driftedHistorical = buildIterationAuditImplementationContractCoverage({
     ...planContract,
-    proposed_slice: "core_ga_design_next_slice_after_next"
+    proposed_slice: "core_project_design_next_slice_after_next"
   }, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, intent: "Post-hoc rewritten intent." },
     implementation_contract_sha256: implementationContractSha256(planContract)
   });
@@ -686,11 +686,11 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const { rollback_strategy: _legacyRollback, ...legacyHistoricalContract } = planContract;
   const coveredLegacyHistorical = buildIterationAuditImplementationContractCoverage({
     ...planContract,
-    proposed_slice: "core_ga_design_next_slice_after_next"
+    proposed_slice: "core_project_design_next_slice_after_next"
   }, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: legacyHistoricalContract
   });
   assert.equal(coveredLegacyHistorical.status, "covered");
@@ -706,18 +706,18 @@ test("iteration audit implementation contract coverage compares plan and iterati
   }, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: persistedScopeContract
   });
   assert.deepEqual(selectedPersistedScopeContract, persistedScopeContract);
 
   const missingHistoricalFields = buildIterationAuditImplementationContractCoverage({
     ...planContract,
-    proposed_slice: "core_ga_design_next_slice_after_next"
+    proposed_slice: "core_project_design_next_slice_after_next"
   }, {
-    proposed_slice: "core_ga_design_next_slice_after_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: {
       ...planContract,
       implementation_scope: []
@@ -729,7 +729,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const missingIntent = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, intent: "" }
   });
   assert.equal(missingIntent.status, "missing_required_fields");
@@ -738,7 +738,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const mismatchedIntent = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, intent: "A different project goal." }
   });
   assert.equal(mismatchedIntent.status, "mismatched_contract");
@@ -747,7 +747,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const missingAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, acceptance_criteria: [] }
   });
   assert.equal(missingAcceptance.status, "missing_required_fields");
@@ -755,11 +755,11 @@ test("iteration audit implementation contract coverage compares plan and iterati
 
   const blankHistoricalAcceptance = buildIterationAuditImplementationContractCoverage({
     ...planContract,
-    proposed_slice: "core_ga_design_next_slice_after_next"
+    proposed_slice: "core_project_design_next_slice_after_next"
   }, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, acceptance_criteria: ["   "] }
   });
   assert.equal(blankHistoricalAcceptance.status, "missing_required_fields");
@@ -780,7 +780,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   ] as const) {
     const blankField = buildIterationAuditImplementationContractCoverage({
       ...planContract,
-      proposed_slice: "core_ga_design_next_slice_after_next"
+      proposed_slice: "core_project_design_next_slice_after_next"
     }, {
       proposed_slice: implementationContract.proposed_slice,
       layer: "core_runtime",
@@ -794,7 +794,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const mismatchedAcceptance = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, acceptance_criteria: ["trust the opaque slice id"] }
   });
   assert.equal(mismatchedAcceptance.status, "mismatched_contract");
@@ -803,7 +803,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const missingRollback = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, rollback_strategy: [] }
   });
   assert.equal(missingRollback.status, "missing_required_fields");
@@ -812,7 +812,7 @@ test("iteration audit implementation contract coverage compares plan and iterati
   const mismatchedRollback = buildIterationAuditImplementationContractCoverage(planContract, {
     proposed_slice: planContract.proposed_slice,
     layer: "core_runtime",
-    owner_surface: "ga_project_design",
+    owner_surface: "project_design",
     implementation_contract: { ...planContract, rollback_strategy: ["rewrite history"] }
   });
   assert.equal(mismatchedRollback.status, "mismatched_contract");
@@ -823,14 +823,14 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
   const contract = {
     outcome_evidence_scope: {
       allowed_ref_prefixes: [
-        "packages/core/src/ga_project_design.ts",
-        "tests/ga_project_design.test.ts",
+        "packages/core/src/project_design.ts",
+        "tests/project_design.test.ts",
         "docs/RUNTIME_CONTRACT.md",
         "services/runtime/heartbeat.json"
       ],
       required_groups: [
-        { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
-        { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] },
+        { id: "implementation", ref_prefixes: ["packages/core/src/project_design.ts"] },
+        { id: "verification", ref_prefixes: ["tests/project_design.test.ts"] },
         { id: "documentation", ref_prefixes: ["docs/RUNTIME_CONTRACT.md"] },
         { id: "runtime_health", ref_prefixes: ["services/runtime/heartbeat.json"] }
       ],
@@ -838,24 +838,24 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
     }
   };
   const covered = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
-    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json"]
+    outcome_evidence_refs: ["packages/core/src/project_design.ts", "tests/project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json"]
   });
   assert.equal(covered.status, "covered");
   const missing = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
-    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"]
+    outcome_evidence_refs: ["packages/core/src/project_design.ts", "tests/project_design.test.ts"]
   });
   assert.equal(missing.status, "missing_required_groups");
   assert.deepEqual(missing.missing_groups, ["documentation", "runtime_health"]);
   const foreign = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
-    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json", "packages/runtime/src/runner.ts"]
+    outcome_evidence_refs: ["packages/core/src/project_design.ts", "tests/project_design.test.ts", "docs/RUNTIME_CONTRACT.md", "services/runtime/heartbeat.json", "packages/runtime/src/runner.ts"]
   });
   assert.equal(foreign.status, "out_of_scope_evidence_refs");
   assert.deepEqual(foreign.out_of_scope_refs, ["packages/runtime/src/runner.ts"]);
 
   const lexicalLookalikes = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
     outcome_evidence_refs: [
-      "packages/core/src/ga_project_design.ts.forged",
-      "tests/ga_project_design.test.ts.forged",
+      "packages/core/src/project_design.ts.forged",
+      "tests/project_design.test.ts.forged",
       "docs/RUNTIME_CONTRACT.md.forged",
       "services/runtime/heartbeat.json.forged"
     ]
@@ -870,8 +870,8 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
 
   const forgedDescendants = buildIterationAuditOutcomeEvidenceScopeCoverage(contract, {
     outcome_evidence_refs: [
-      "packages/core/src/ga_project_design.ts/forged",
-      "tests/ga_project_design.test.ts/forged",
+      "packages/core/src/project_design.ts/forged",
+      "tests/project_design.test.ts/forged",
       "docs/RUNTIME_CONTRACT.md/forged",
       "services/runtime/heartbeat.json/forged"
     ]
@@ -891,7 +891,7 @@ test("iteration audit outcome evidence scope rejects missing and foreign evidenc
       boundary: "bounded directory scope"
     }
   }, {
-    outcome_evidence_refs: ["packages/core/src/ga_project_design.ts"]
+    outcome_evidence_refs: ["packages/core/src/project_design.ts"]
   });
   assert.equal(directoryScope.status, "covered");
 });
@@ -918,9 +918,9 @@ test("manual core and basic iterations require implementation contract flags", (
     "--layer",
     "core_runtime",
     "--owner-surface",
-    "ga_project_design",
+    "project_design",
     "--proposed-slice",
-    "ga_contract_boundary",
+    "project_contract_boundary",
     "--implementation-scope",
     "change one reusable boundary"
   ])), /requires --implementation-scope, --deferred-scope, and --delivery-standard/);
@@ -967,7 +967,7 @@ test("iteration audit uses local refs for unrelated manual iterations with contr
       source_proposed_slice: "manual_record_iteration",
       selected_layer: "basic_entrypoint",
       owner_surface: "runtime_tools",
-      improvement_type: "reusable_ga_design_contract",
+      improvement_type: "reusable_project_design_contract",
       implementation_scope: ["change one reusable runtime tool boundary"],
       deferred_scope: ["no external adapter"],
       delivery_standard: ["iteration audit can inspect the intended scope"],
@@ -983,7 +983,7 @@ test("iteration audit uses local refs for unrelated manual iterations with contr
 
   const selected = selectIterationAuditPlanRefs(
     "current_plan_context",
-    ["packages/core/src/ga_project_design.ts", "self-evolution/iterations/current_plan.json"],
+    ["packages/core/src/project_design.ts", "self-evolution/iterations/current_plan.json"],
     iteration
   );
 
@@ -996,7 +996,7 @@ test("iteration audit uses local refs for unrelated manual iterations with contr
 
   const sourceSelected = selectIterationAuditPlanRefs(
     "source_iteration_for_current_plan",
-    ["packages/core/src/ga_project_design.ts", "self-evolution/iterations/current_plan.json"],
+    ["packages/core/src/project_design.ts", "self-evolution/iterations/current_plan.json"],
     iteration
   );
   assert.deepEqual(sourceSelected, selected);
@@ -1008,15 +1008,15 @@ test("iteration audit plan ref coverage compares plan refs to audited evidence r
     [
       "self-evolution/iterations/iteration_contract_open.json",
       "self-evolution/iterations/iteration_contract_source.json",
-      "packages/core/src/ga_project_design.ts",
-      "tests/ga_project_design.test.ts"
+      "packages/core/src/project_design.ts",
+      "tests/project_design.test.ts"
     ],
     {
       ref: "self-evolution/iterations/iteration_contract_open.json",
       source_ref: "self-evolution/iterations/iteration_contract_source.json",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       outcome: {
-        evidence_refs: ["tests/ga_project_design.test.ts"]
+        evidence_refs: ["tests/project_design.test.ts"]
       }
     } as Parameters<typeof buildIterationAuditPlanRefCoverage>[1]
   );
@@ -1050,11 +1050,11 @@ test("matching iteration plan refs stay inside the declared outcome evidence sco
   const iteration = {
     ref: "self-evolution/iterations/iteration_contract_scoped.json",
     source_ref: "self-evolution/iterations/iteration_contract_source.json",
-    proposed_slice: "core_ga_design_next_slice",
+    proposed_slice: "core_project_design_next_slice",
     implementation_contract: {
       outcome_evidence_scope: {
         allowed_ref_prefixes: [
-          "packages/core/src/ga_project_design.ts",
+          "packages/core/src/project_design.ts",
           "tests/cli.test.ts",
           "docs/RUNTIME_CONTRACT.md",
           "services/runtime/heartbeat.json"
@@ -1072,7 +1072,7 @@ test("matching iteration plan refs stay inside the declared outcome evidence sco
   } as unknown as Parameters<typeof selectIterationAuditPlanRefs>[2];
 
   const selected = selectIterationAuditPlanRefs("matching_open_iteration", [
-    "packages/core/src/ga_project_design.ts",
+    "packages/core/src/project_design.ts",
     "packages/core/src/action_contracts.ts",
     "tests/cli.test.ts",
     "docs/RUNTIME_CONTRACT.md",
@@ -1081,7 +1081,7 @@ test("matching iteration plan refs stay inside the declared outcome evidence sco
   ], iteration);
 
   assert.deepEqual(selected, [
-    "packages/core/src/ga_project_design.ts",
+    "packages/core/src/project_design.ts",
     "tests/cli.test.ts",
     "docs/RUNTIME_CONTRACT.md",
     "services/runtime/heartbeat.json",
@@ -1093,14 +1093,14 @@ test("iteration audit refs include source and outcome evidence refs", () => {
   const refs = buildIterationAuditRefs(
     [
       "docs/RUNTIME_CONTRACT.md",
-      "tests/ga_project_design.test.ts"
+      "tests/project_design.test.ts"
     ],
     {
       ref: "self-evolution/iterations/iteration_contract_open.json",
       source_ref: "self-evolution/iterations/iteration_contract_source.json",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       outcome: {
-        evidence_refs: ["tests/ga_project_design.test.ts"]
+        evidence_refs: ["tests/project_design.test.ts"]
       }
     } as Parameters<typeof buildIterationAuditRefs>[1]
   );
@@ -1108,8 +1108,8 @@ test("iteration audit refs include source and outcome evidence refs", () => {
   assert.deepEqual(refs, [
     "self-evolution/iterations/iteration_contract_open.json",
     "self-evolution/iterations/iteration_contract_source.json",
-    "packages/core/src/ga_project_design.ts",
-    "tests/ga_project_design.test.ts",
+    "packages/core/src/project_design.ts",
+    "tests/project_design.test.ts",
     "docs/RUNTIME_CONTRACT.md"
   ]);
 });
@@ -1633,31 +1633,31 @@ test("iteration audit verification coverage uses stable iteration commands for h
 
 test("iteration audit guidance carries core/basic verification entrypoints", () => {
   const plan = {
-    proposed_slice: "core_ga_design_next_slice_after_source",
-    source_artifact_id: "ga_design_artifact_iteration_contract_source",
+    proposed_slice: "core_project_design_next_slice_after_source",
+    source_artifact_id: "project_design_artifact_iteration_contract_source",
     source_iteration_ref: "self-evolution/iterations/iteration_contract_source.json",
     goal_scope: {
-      objective: "continue core/basic GA project-design capability gains before SOP or skill promotion",
-      owner_surface: "ga_project_design",
+      objective: "continue core/basic project-design capability gains before SOP or skill promotion",
+      owner_surface: "project_design",
       source_of_truth: [
         "operator_objective=core_basic_self_evolution_first",
-        "source_artifact=ga_design_artifact_iteration_contract_source"
+        "source_artifact=project_design_artifact_iteration_contract_source"
       ],
       success_evidence: [
-        "target_slice=core_ga_design_next_slice_after_source",
+        "target_slice=core_project_design_next_slice_after_source",
         "verified outcome records evidence refs and completion claims"
       ]
     },
     implementation_contract: {
-      proposed_slice: "core_ga_design_next_slice_after_source",
-      source_artifact_id: "ga_design_artifact_iteration_contract_source",
+      proposed_slice: "core_project_design_next_slice_after_source",
+      source_artifact_id: "project_design_artifact_iteration_contract_source",
       source_proposed_slice: "completed_source",
       selected_layer: "core_runtime" as const,
-      owner_surface: "ga_project_design",
-      improvement_type: "reusable_ga_design_contract" as const,
+      owner_surface: "project_design",
+      improvement_type: "reusable_project_design_contract" as const,
       required_verification_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
       implementation_scope: [
-        "change one reusable GA project-design contract or read-model surface"
+        "change one reusable project-design contract or read-model surface"
       ],
       deferred_scope: [
         "no external adapter or tool integration unless it names a reusable runtime contract"
@@ -1665,15 +1665,15 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       delivery_standard: [
         "future iterations can inspect the contract without inferring intent from the opaque slice id"
       ],
-      boundary: "read-only GA implementation contract"
+      boundary: "read-only project-design implementation contract"
     },
     iteration_focus: {
       direction_id: "core_basic_plan_clarity" as const,
-      direction: "Clarify the next core/basic GA design improvement before implementation.",
-      rationale: "The successor should be chosen from verified GA design evidence.",
+      direction: "Clarify the next core/basic project design improvement before implementation.",
+      rationale: "The successor should be chosen from verified project design evidence.",
       next_steps: [
         "inspect the current project-design plan and matching open iteration",
-        "pick one small reusable GA design contract improvement",
+        "pick one small reusable project design contract improvement",
         "verify the slice with project-design, scorecard, iteration audit, service health, and broad checks before recording an outcome"
       ],
       anti_drift_checks: [
@@ -1695,7 +1695,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
             "objective and owner surface are visible",
             "success evidence distinguishes source from successor"
           ],
-          evidence_refs: ["packages/core/src/ga_project_design.ts"]
+          evidence_refs: ["packages/core/src/project_design.ts"]
         }
       ],
       basic_capabilities: [
@@ -1785,8 +1785,8 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "does not execute the next slice"
     ],
     scorecard_basis: [
-      "next_core_basic_slice=next_slice_core_ga_design",
-      "target_dimension=core_ga_design",
+      "next_core_basic_slice=next_slice_core_project_design",
+      "target_dimension=core_project_design",
       "target_layer=core_runtime"
     ],
     selection_status: "ready" as const,
@@ -1794,12 +1794,12 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       "source_status=verified",
       "fresh_successor_slice=true",
       "target_layer=core_runtime",
-      "owner_surface=ga_project_design"
+      "owner_surface=project_design"
     ],
     selection_checks: [
       "source_artifact_verified=verified; ref=self-evolution/iterations/iteration_contract_source.json",
-      "fresh_successor_slice=true; source_slice=completed_source; target_slice=core_ga_design_next_slice_after_source",
-      "target_layer=core_runtime; owner_surface=ga_project_design",
+      "fresh_successor_slice=true; source_slice=completed_source; target_slice=core_project_design_next_slice_after_source",
+      "target_layer=core_runtime; owner_surface=project_design",
       "verification_entrypoints=project-design,scorecard,iterations,service-health,check"
     ],
     verification_commands: [
@@ -1811,22 +1811,22 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
     ],
     learning_authority: {
       process_scaffold: "self-evolution SOPs and skills may preserve repeatable workflow after verified evidence recurs",
-      judgment_authority: "core/basic layer selection stays with ga_project_design, scorecard, iteration contract, and current runtime evidence",
+      judgment_authority: "core/basic layer selection stays with project_design, scorecard, iteration contract, and current runtime evidence",
       completion_authority: "completion stays with verified iteration outcome plus completion_gate coverage, not SOP text, selected-skill recall, dream snapshots, or expert advice",
       promotion_gate: "SOP drafting, audit, promotion, semantic memory, dream refresh, and skill reuse remain later local-learning gates",
       boundary: "read-only learning authority boundary"
     },
     layer_decision: {
       selected_layer: "core_runtime",
-      selected_owner_surface: "ga_project_design",
+      selected_owner_surface: "project_design",
       source_layer: "core_runtime",
-      source_owner_surface: "ga_project_design",
+      source_owner_surface: "project_design",
       source_proposed_slice: "completed_source",
-      proposed_slice: "core_ga_design_next_slice_after_source",
-      core_identity: "recurring_ga_project_design",
+      proposed_slice: "core_project_design_next_slice_after_source",
+      core_identity: "recurring_project_design",
       stage: "core_basic_successor_ready",
       reasons: [
-        "core identity is the reusable GA project-design loop, not a single external adapter",
+        "core identity is the reusable project-design loop, not a single external adapter",
         "the next slice is a core/basic successor because it improves design classification, planning, or verification reuse",
         "source_layer=core_runtime; selected_layer=core_runtime"
       ],
@@ -1848,15 +1848,15 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   };
   const guidance = buildIterationAuditGuidance(plan);
 
-  assert.equal(guidance.core_identity, "recurring_ga_project_design");
+  assert.equal(guidance.core_identity, "recurring_project_design");
   assert.equal(guidance.selected_layer, "core_runtime");
   assert.equal(guidance.guidance_scope, "current_plan_context");
-  assert.equal(guidance.goal_scope.owner_surface, "ga_project_design");
+  assert.equal(guidance.goal_scope.owner_surface, "project_design");
   assert.equal(guidance.goal_scope.source_of_truth.some((item) => item.includes("operator_objective=core_basic_self_evolution_first")), true);
-  assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_ga_design_next_slice_after_source")), true);
-  assert.equal(guidance.implementation_contract.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.goal_scope.success_evidence.some((item) => item.includes("target_slice=core_project_design_next_slice_after_source")), true);
+  assert.equal(guidance.implementation_contract.proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(guidance.implementation_contract.selected_layer, "core_runtime");
-  assert.equal(guidance.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+  assert.equal(guidance.implementation_contract.implementation_scope.some((item) => item.includes("one reusable project-design contract")), true);
   assert.equal(guidance.implementation_contract.deferred_scope.some((item) => item.includes("external adapter or tool integration")), true);
   assert.equal(guidance.implementation_contract.delivery_standard.some((item) => item.includes("without inferring intent from the opaque slice id")), true);
   assert.equal(guidance.implementation_contract.boundary.includes("read-only"), true);
@@ -1885,10 +1885,10 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.selection_reasons.some((reason) => reason === "source_status=verified"), true);
   assert.equal(guidance.selection_reasons.some((reason) => reason === "fresh_successor_slice=true"), true);
   assert.equal(guidance.selection_checks.some((check) => check.includes("target_layer=core_runtime")), true);
-  assert.equal(guidance.scorecard_basis.some((basis) => basis === "next_core_basic_slice=next_slice_core_ga_design"), true);
+  assert.equal(guidance.scorecard_basis.some((basis) => basis === "next_core_basic_slice=next_slice_core_project_design"), true);
   assert.equal(guidance.layer_decision.source_layer, "core_runtime");
   assert.equal(guidance.layer_decision.source_proposed_slice, "completed_source");
-  assert.equal(guidance.layer_decision.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.layer_decision.proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(guidance.layer_decision.stage, "core_basic_successor_ready");
   assert.equal(guidance.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
   assert.equal(guidance.layer_decision.application_boundaries[0]?.includes("application slices"), true);
@@ -1906,7 +1906,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(guidance.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
   assert.match(guidance.learning_authority.completion_authority, /not SOP text/);
   assert.equal(guidance.completion_seed_scope.applies_to, "current_successor_plan");
-  assert.equal(guidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(guidance.completion_seed_scope.seed_proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(guidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
   assert.equal(guidance.completion_seed_scope.audited_iteration_id, undefined);
   assert.match(guidance.completion_seed_scope.note, /current next_core_basic_plan/);
@@ -1921,17 +1921,17 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       source_ref: "self-evolution/iterations/iteration_contract_source.json",
       implementation_contract: plan.implementation_contract,
       verification_commands: ["pnpm run matching-frozen-check --state-root <state-root>"],
-      proposed_slice: "core_ga_design_next_slice_after_source",
+      proposed_slice: "core_project_design_next_slice_after_source",
       outcome_status: "not_recorded"
     },
     ".runtime/state"
   );
   assert.equal(matchingGuidance.guidance_scope, "matching_open_iteration");
   assert.equal(matchingGuidance.completion_seed_scope.applies_to, "audited_iteration");
-  assert.equal(matchingGuidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(matchingGuidance.completion_seed_scope.seed_proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(matchingGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
   assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_open");
-  assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(matchingGuidance.completion_seed_scope.audited_iteration_proposed_slice, "core_project_design_next_slice_after_source");
   assert.deepEqual(matchingGuidance.verification_commands, [
     "pnpm run runtime -- governance project-design --state-root .runtime/state",
     "pnpm run runtime -- governance scorecard --state-root .runtime/state",
@@ -1947,7 +1947,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ...plan.implementation_contract,
       required_verification_entrypoints: ["project-design", "check"]
     },
-    proposed_slice: "historical_core_ga_slice",
+    proposed_slice: "historical_core_project_slice",
     outcome_status: "verified"
   });
   assert.deepEqual(frozenEntrypointGuidance.verification_entrypoints, ["project-design", "check"]);
@@ -1960,7 +1960,7 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
       ...plan.implementation_contract,
       required_verification_entrypoints: []
     },
-    proposed_slice: "historical_core_ga_slice",
+    proposed_slice: "historical_core_project_slice",
     outcome_status: "verified"
   });
   assert.deepEqual(legacyEntrypointGuidance.verification_entrypoints, plan.implementation_contract.required_verification_entrypoints);
@@ -1984,12 +1984,12 @@ test("iteration audit guidance carries core/basic verification entrypoints", () 
   assert.equal(sourceGuidance.guidance_scope, "source_iteration_for_current_plan");
   assert.equal(sourceGuidance.audited_iteration?.id, "iteration_contract_source");
   assert.equal(sourceGuidance.audited_iteration?.source_ref, "self-evolution/iterations/iteration_contract_parent.json");
-  assert.equal(sourceGuidance.audited_iteration?.implementation_contract?.proposed_slice, "core_ga_design_next_slice_after_source");
-  assert.equal(sourceGuidance.proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(sourceGuidance.audited_iteration?.implementation_contract?.proposed_slice, "core_project_design_next_slice_after_source");
+  assert.equal(sourceGuidance.proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(sourceGuidance.audited_iteration?.proposed_slice, "completed_source_slice");
   assert.notEqual(sourceGuidance.audited_iteration?.proposed_slice, sourceGuidance.proposed_slice);
   assert.equal(sourceGuidance.completion_seed_scope.applies_to, "successor_plan_from_audited_source");
-  assert.equal(sourceGuidance.completion_seed_scope.seed_proposed_slice, "core_ga_design_next_slice_after_source");
+  assert.equal(sourceGuidance.completion_seed_scope.seed_proposed_slice, "core_project_design_next_slice_after_source");
   assert.equal(sourceGuidance.completion_seed_scope.seed_source_proposed_slice, "completed_source");
   assert.equal(sourceGuidance.completion_seed_scope.audited_iteration_id, "iteration_contract_source");
   assert.equal(sourceGuidance.completion_seed_scope.audited_iteration_proposed_slice, "completed_source_slice");
@@ -2032,7 +2032,7 @@ test("iteration audit next command binds current state root", () => {
 });
 
 test("project design CLI packets bind current state root in next commands", () => {
-  const readModel = bindGaProjectDesignReadModelCommands({
+  const readModel = bindProjectDesignReadModelCommands({
     next_core_basic_plan: {
       scorecard_basis: [
         "scorecard_command=pnpm run runtime -- governance scorecard --state-root <state-root>"
@@ -2060,7 +2060,7 @@ test("project design CLI packets bind current state root in next commands", () =
       },
       next_command: "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root <state-root>"
     }
-  } as Parameters<typeof bindGaProjectDesignReadModelCommands>[0], ".runtime/state");
+  } as Parameters<typeof bindProjectDesignReadModelCommands>[0], ".runtime/state");
 
   const plan = readModel.next_core_basic_plan;
   assert.equal(plan?.next_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_open --state-root .runtime/state");
@@ -2071,7 +2071,7 @@ test("project design CLI packets bind current state root in next commands", () =
   assert.equal(plan?.layer_decision.required_before_outcome[0]?.includes("<state-root>"), false);
   assert.equal(plan?.scorecard_basis[0], "scorecard_command=pnpm run runtime -- governance scorecard --state-root .runtime/state");
 
-  const packet = bindGaProjectDesignArtifactPacketCommands({
+  const packet = bindProjectDesignArtifactPacketCommands({
     next_core_basic_plan: {
       iteration_record_status: {
         status: "not_recorded",
@@ -2079,7 +2079,7 @@ test("project design CLI packets bind current state root in next commands", () =
       },
       next_command: "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>"
     }
-  } as Parameters<typeof bindGaProjectDesignArtifactPacketCommands>[0], ".runtime/state");
+  } as Parameters<typeof bindProjectDesignArtifactPacketCommands>[0], ".runtime/state");
 
   assert.equal(packet.next_core_basic_plan?.next_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state");
   assert.equal(packet.next_core_basic_plan?.iteration_record_status.record_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state");
@@ -2113,7 +2113,7 @@ test("iteration detail CLI output adds bound runtime verification commands", () 
     iteration: {
       id: "iteration_contract_open",
       ref: "self-evolution/iterations/iteration_contract_open.json",
-      proposed_slice: "core_ga_design_next_slice",
+      proposed_slice: "core_project_design_next_slice",
       verification_commands: [
         "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
         "pnpm run check"
@@ -2134,8 +2134,8 @@ test("iteration audit evidence adds bound runtime verification commands", () => 
   const evidence = buildIterationAuditEvidenceAvailable({
     id: "iteration_contract_open",
     ref: "self-evolution/iterations/iteration_contract_open.json",
-    proposed_slice: "core_ga_design_next_slice",
-    evidence_refs: ["packages/core/src/ga_project_design.ts"],
+    proposed_slice: "core_project_design_next_slice",
+    evidence_refs: ["packages/core/src/project_design.ts"],
     verification_commands: [
       "pnpm run runtime -- governance iterations --iteration <iteration-ref> --audit-seed all --state-root <state-root>",
       "pnpm run check"

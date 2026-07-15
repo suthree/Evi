@@ -23,7 +23,7 @@ test("dream snapshot records long-horizon direction without executing work", asy
       action_type: "semantic_memory",
       status: "accepted",
       scope: "core_capability_self_recognition",
-      summary: "Core ability is GA design and self-evolution.",
+      summary: "Core ability is project design and self-evolution.",
       content: "External tools are application slices.",
       source_candidate_id: "memory_proposal_core",
       source_candidate_ref: "memory/semantic/candidates/memory_proposal_core.json",
@@ -89,7 +89,7 @@ test("dream snapshot records long-horizon direction without executing work", asy
     assert.equal(result.dream.latest_iteration_outcome?.iteration_ref, "self-evolution/iterations/iteration_contract_core.json");
     assert.equal(result.dream.latest_iteration_outcome?.status, "verified");
     assert.equal(result.dream.latest_iteration_outcome?.next_moves.includes("Use the verified outcome to choose the next bounded slice."), true);
-    const coreAxis = result.dream.axes.find((axis) => axis.id === "core_ga_design");
+    const coreAxis = result.dream.axes.find((axis) => axis.id === "core_project_design");
     assert.equal(coreAxis?.evidence_refs.includes("self-evolution/iterations/iteration_contract_core.json"), true);
     const dreamAxis = result.dream.axes.find((axis) => axis.id === "dream_planning");
     assert.equal(dreamAxis?.status, "active");

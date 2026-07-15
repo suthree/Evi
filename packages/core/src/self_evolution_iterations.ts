@@ -3,7 +3,7 @@ import { basename } from "node:path";
 import type { CapabilityLayer } from "./capabilities.js";
 import { newId, utcNow } from "./ids.js";
 import type { ExpertOrchestrationRoleId } from "./expert_orchestration.js";
-import type { GaProjectDesignImplementationContract } from "./ga_project_design.js";
+import type { ProjectDesignImplementationContract } from "./project_design.js";
 import type { AgentStore } from "./store.js";
 
 export interface SelfEvolutionIterationContract {
@@ -17,7 +17,7 @@ export interface SelfEvolutionIterationContract {
   owner_surface: string;
   proposed_slice: string;
   source_ref?: string;
-  implementation_contract?: GaProjectDesignImplementationContract;
+  implementation_contract?: ProjectDesignImplementationContract;
   implementation_contract_sha256?: string;
   evidence_refs: string[];
   verification_commands: string[];
@@ -77,7 +77,7 @@ const ITERATION_BOUNDARY = "self-evolution iteration contract writes one bounded
 const OUTCOME_BOUNDARY = "self-evolution iteration outcome updates one existing local iteration record only; it records operator-supplied verification evidence and next moves; it does not run verification commands, invoke models, execute tools, mutate repo files, write the active vault, manage services, publish externally, promote SOPs, promote skills, or prove completion beyond the cited evidence";
 
 export function implementationContractSha256(
-  contract: GaProjectDesignImplementationContract
+  contract: ProjectDesignImplementationContract
 ): string {
   return createHash("sha256").update(JSON.stringify(contract)).digest("hex");
 }
@@ -90,7 +90,7 @@ export async function recordSelfEvolutionIteration(
     ownerSurface: string;
     proposedSlice: string;
     sourceRef?: string;
-    implementationContract?: GaProjectDesignImplementationContract;
+    implementationContract?: ProjectDesignImplementationContract;
     evidenceRefs?: string[];
     verificationCommands?: string[];
     nonGoals?: string[];
@@ -192,9 +192,9 @@ export async function recordSelfEvolutionIteration(
 }
 
 function mergeOpenImplementationContract(
-  existing: GaProjectDesignImplementationContract | undefined,
-  supplied: GaProjectDesignImplementationContract | undefined
-): GaProjectDesignImplementationContract | undefined {
+  existing: ProjectDesignImplementationContract | undefined,
+  supplied: ProjectDesignImplementationContract | undefined
+): ProjectDesignImplementationContract | undefined {
   if (!existing || !supplied) return existing ?? supplied;
   const intent = existing.intent ?? supplied.intent;
   const acceptanceCriteria = existing.acceptance_criteria ?? supplied.acceptance_criteria;

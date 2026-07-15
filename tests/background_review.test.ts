@@ -2195,7 +2195,7 @@ test("reused skill coverage treats historical duplicate refs as evidence after s
     await store.writeJson("sop/drafts/sop_promoted_after_reuse.json", {
       id: "sop_promoted_after_reuse",
       title: "Draft SOP for self-evolution gap: verified_iteration_outcome_sop_candidate",
-      trigger: "Use when verified iteration outcomes need GA project-design artifact review.",
+      trigger: "Use when verified iteration outcomes need project-design artifact review.",
       procedure: [
         "Inspect the verified iteration outcome.",
         "Keep draft, audit, promote, and skill gates explicit."
@@ -2212,7 +2212,7 @@ test("reused skill coverage treats historical duplicate refs as evidence after s
     await store.writeRepoText(staleSkillRef, [
       "---",
       "name: capability-self-recognition-guard",
-      "description: Use when operator corrections distinguish core GA project design from application tool adapters.",
+      "description: Use when operator corrections distinguish core project design from application tool adapters.",
       "---",
       "",
       "Historical stale skill."
@@ -2220,7 +2220,7 @@ test("reused skill coverage treats historical duplicate refs as evidence after s
     await store.writeRepoText(promotedSkillRef, [
       "---",
       "name: verified-iteration-outcome-sop-candidate",
-      "description: Use when verified iteration outcomes need GA project-design artifact review and explicit SOP gates.",
+      "description: Use when verified iteration outcomes need project-design artifact review and explicit SOP gates.",
       "---",
       "",
       "Current promoted skill."

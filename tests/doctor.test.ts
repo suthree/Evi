@@ -152,6 +152,33 @@ test("doctor checks IM by default and reports missing Feishu app auth", async ()
   }
 });
 
+test("doctor rejects an IM scenario whose model is absent from configured model layers", async () => {
+  const fixture = await createDoctorFixture({ scenarioModelId: "missing-scenario-model" });
+  const previous = process.env[TEST_ENV];
+  const previousFeishuAppId = process.env[TEST_FEISHU_APP_ID_ENV];
+  const previousFeishuSecret = process.env[TEST_FEISHU_APP_SECRET_ENV];
+  process.env[TEST_ENV] = "test-key";
+  process.env[TEST_FEISHU_APP_ID_ENV] = "cli_test_app_id";
+  process.env[TEST_FEISHU_APP_SECRET_ENV] = "cli_test_app_secret";
+  try {
+    const report = await runDoctor({
+      repoRoot: fixture.repoRoot,
+      configDir: fixture.configDir,
+      stateRoot: fixture.stateRoot
+    });
+
+    assert.equal(report.ok, false);
+    assert.equal(check(report, "config")?.level, "ok");
+    assert.equal(check(report, "im")?.level, "error");
+    assert.match(check(report, "im")?.summary ?? "", /missing-scenario-model/);
+  } finally {
+    restoreEnv(TEST_ENV, previous);
+    restoreEnv(TEST_FEISHU_APP_ID_ENV, previousFeishuAppId);
+    restoreEnv(TEST_FEISHU_APP_SECRET_ENV, previousFeishuSecret);
+    await fixture.cleanup();
+  }
+});
+
 test("doctor resolves Discord IM provider with API-key channel auth", async () => {
   const fixture = await createDoctorFixture({ imProvider: "discord" });
   const previous = process.env[TEST_ENV];
@@ -299,6 +326,7 @@ async function createDoctorFixture(options: {
   im?: boolean;
   imProvider?: "feishu" | "telegram" | "discord";
   localHomeConfig?: boolean;
+  scenarioModelId?: string;
 } = {}): Promise<{
   repoRoot: string;
   configDir: string;
@@ -370,7 +398,7 @@ async function createDoctorFixture(options: {
         type: "scenario",
         id: "im-default",
         channel_id: channelId,
-        model_id: "test-model",
+        model_id: options.scenarioModelId ?? "test-model",
         discipline: "query_todo",
         reply_policy: "final_response",
         concurrency: "per_sender"

@@ -20,7 +20,7 @@ The first-version local agent is one local TypeScript/Node runtime that can:
 - expose a read-only local capability catalog through CLI and IM
 - expose a read-only next-version capability acceptance audit through CLI and
   IM
-- expose read-only GA project-design artifacts derived from verified
+- expose read-only project-design artifacts derived from verified
   self-evolution iterations with outcome evidence refs and verification commands
   while collapsing historical completed-source non-goals during successor
   planning
@@ -85,28 +85,17 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 
 ## Reference Stance
 
-GenericAgent, Hermes, OpenClaw, pi, Codex, and Claude Code are reference
-projects. They are not standards or compatibility targets.
+External agent implementations are references only. They are not standards or
+compatibility targets, and their project names must not become runtime
+identifiers, configuration keys, capability IDs, or persisted state fields.
 
 The agent may borrow a pattern only when it strengthens this local contract. A
 reference project never overrides the local first-version boundary.
 
-Current local reference takeaways:
-
-- Hermes demonstrates an end-to-end engineering shell around the model:
-  model-agnostic provider selection, gateway entrypoints, toolsets, skills,
-  memory, cron/webhook triggers, and delivery channels. The runtime should borrow
-  the closed-loop shape only when the same loop is bounded by local evidence and
-  verification gates.
-- pi demonstrates harness engineering: turn snapshots, explicit phases,
-  queued safe-point mutations, durable session logs, recovery boundaries, and
-  structured observability events. The runtime should borrow these as reference
-  patterns for output stabilization and runtime control only when they
-  strengthen the local contract before adding broad tool authority.
-- GenericAgent demonstrates a small general-agent baseline: a minimal loop,
-  atomic tools, and task-derived skills. The runtime should borrow the progression
-  from minimal general capability to specialized skills, while keeping skill
-  crystallization behind explicit audit and promotion gates.
+Reusable takeaways include provider-neutral model selection, bounded gateway
+entrypoints, explicit harness phases, durable local evidence, recovery
+boundaries, atomic tools, and audited skill promotion. These patterns enter the
+runtime only under neutral local contracts and verification gates.
 
 ## Capability Layers
 
@@ -360,15 +349,15 @@ slice is derived from that basic-entrypoint gate and remains verification-only;
 the audit does not claim that doctor, service health, Web, or IM checks ran.
 
 The CLI also exposes `governance scorecard` as a read-only self-evolution
-maturity view. It tracks current core GA design, basic runtime substrate,
+maturity view. It tracks current core project design, basic runtime substrate,
 general-agent delegation, SOP/skill/memory loop, and memory/dream direction
 from local metadata. Its lenses are advisory context only and cannot close work
-or grant execution authority. The core-GA dimension and architect lens retain
+or grant execution authority. The core project-design dimension and architect lens retain
 the total derived-artifact count in the summary but expose only the newest
 requested `limit` artifact refs, so repeated verified iterations cannot grow
 the read model without bound. Expert specialization and multi-agent scheduling
 stay deferred until the general delegation loop is stable.
-GA project-design planning may expose `learning_authority` to distinguish
+project-design planning may expose `learning_authority` to distinguish
 self-evolution SOPs or skills as repeatable procedure scaffolds from runtime
 judgment authority. Core/basic layer selection remains with project-design,
 scorecard, iteration contracts, and current evidence; completion authority
@@ -425,11 +414,11 @@ diagnostics, not completion proof. For the `verification_scope` seed,
 `seed_evidence_status` must also respect outcome verification claim coverage, so
 claim refs that omit a required entrypoint still keep the seed out of
 `ready_for_manual_review`.
-The audit packet's `iteration` summary keeps `source_ref` when present so GA
+The audit packet's `iteration` summary keeps `source_ref` when present so project design
 project-design completion review can trace the planned slice back to its source
 iteration without reading the full record.
 The packet also includes `plan_ref_coverage`, a read-only comparison between
-the GA project-design plan `refs` and the audited iteration/source/outcome refs;
+the project-design plan `refs` and the audited iteration/source/outcome refs;
 missing refs are diagnostics, not completion proof. When refs are missing,
 `required_outcome_evidence_refs` repeats the refs that must be added as outcome
 evidence before the completion gate can clear. Because
@@ -442,7 +431,7 @@ For a matching open iteration with `outcome_evidence_scope`, plan-ref coverage
 requires only plan refs that the same scope permits, plus the iteration and
 source identities. Context-only plan refs outside that contract cannot create
 an impossible requirement to cite evidence that scope coverage must reject.
-`implementation_contract_coverage` compares the GA project-design plan
+`implementation_contract_coverage` compares the project-design plan
 `implementation_contract` with the audited iteration state record when the plan
 still targets that iteration; it covers the source artifact and source slice,
 selected slice/layer/owner, contract type, scope, delivery standard, and safety
@@ -471,7 +460,7 @@ to historical evidence.
 `verification_command_coverage` compares selected required commands with
 runtime-bound iteration commands and outcome verification command refs; it is
 declaration coverage only and must not imply execution success. For the matching
-open iteration, selected commands come from the current GA project-design plan.
+open iteration, selected commands come from the current project-design plan.
 For a source or historical iteration, selected commands come from that audited
 iteration's own runtime-bound verification commands, so later successor plans do
 not move the completion-audit target. `audit_guidance.verification_commands`
@@ -521,7 +510,7 @@ checks, or prove completion.
 `governance iterations --iteration <id> --audit-seed all` aggregates every
 project-design completion seed against the same iteration evidence in one
 read-only packet, including per-seed evidence status and bounded
-`audit_guidance` copied from the GA project-design plan: core identity,
+`audit_guidance` copied from the project-design plan: core identity,
 goal scope, iteration focus, capability stage plan, phase gates, acceptance
 criteria, acceptance trace, non-goals, scorecard basis, selection
 status/reasons/checks, layer decision, application boundary, learning
@@ -637,16 +626,16 @@ runtime is progressing against its own core/basic learning standards. It is a
 `core_runtime` read-only selection surface implemented in
 `packages/core/src/self_evolution_scorecard.ts`; it may inspect local-learning
 maturity metadata only as gated context.
-Live context must keep the core GA design stage and the basic runtime substrate
+Live context must keep the core project design stage and the basic runtime substrate
 stage visible together, so future core/basic slices are chosen from both design
 progress and local runtime health. This summary is context only; it does not
 prove completion.
 `delegate_agent` remains an active baseline until a matching
 `general_agent_delegation_hardening_after_*` iteration has a verified outcome.
 That outcome makes the delegation dimension `stable` and lets the default
-core/basic selection return to GA design unless an open iteration or attention
+core/basic selection return to project design unless an open iteration or attention
 state takes priority; it does not grant expert, tool, or completion authority.
-A later verified GA-design successor does not reopen stable delegation by
+A later verified project-design successor does not reopen stable delegation by
 itself. Delegation hardening requires new negative evidence or a future explicit
 direction decision; attention and open-iteration guards still take precedence.
 
@@ -665,19 +654,19 @@ generally, every required top-level contract string must be non-blank and every
 required text list must contain only non-blank items before implementation
 contract coverage can pass.
 When a project-design reader has no recognized scorecard target, it likewise
-defaults to core GA design rather than reopening delegation; a matching open
+defaults to core project design rather than reopening delegation; a matching open
 iteration still takes precedence.
 Each project-design plan exposes `target_selection_origin` so an operator can
 distinguish bootstrap, matching-open-iteration, recognized-scorecard, unknown
 scorecard fallback, and no-scorecard default selection without inferring it.
 
-`governance project-design` exposes the core GA project design contract from
-`packages/core/src/ga_project_design.ts`. The contract defines the reusable
+`governance project-design` exposes the core project design contract from
+`packages/core/src/project_design.ts`. The contract defines the reusable
 goal intake -> capability layering -> contract design -> execution planning ->
 verification review -> learning persistence loop. It is a read-only source of
 truth for project design, not a scheduler or execution engine.
 The same read model also derives project-design `artifacts` from verified
-self-evolution iteration outcomes. These artifacts make accumulated GA project
+self-evolution iteration outcomes. These artifacts make accumulated project-design
 design lessons visible for reuse, but they do not write state, mutate memory,
 draft SOPs, promote skills, or prove future completion. `artifact_count` is the
 total reusable artifact count; `listed_artifact_count` is the current limited
@@ -704,7 +693,7 @@ prove the result of either command list.
 
 When a verified source iteration carries an implementation-contract SHA-256,
 artifact derivation recomputes it before admitting the iteration as reusable
-GA design evidence. A mismatch excludes the artifact and therefore prevents it
+project design evidence. A mismatch excludes the artifact and therefore prevents it
 from sourcing a successor plan. Legacy iterations without fingerprints remain
 readable and reusable; this check does not migrate or repair state, verify file
 bodies, or turn the digest into a signature.
@@ -741,7 +730,7 @@ It may also include `capability_stage_plan`; this does not add execution or
 completion authority.
 It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
 `layer_decision`, so source-artifact review can inspect why the successor is
-core GA design work instead of an external-tool application slice.
+core project design work instead of an external-tool application slice.
 It may include `phase_gates` with their `forbidden_shortcuts`, so source-artifact
 review sees the same phase-level anti-drift constraints as the full plan.
 It may include `completion_audit_seeds` and `verification_commands`, so
@@ -750,7 +739,7 @@ checks before outcome claims.
 It may include audit-seed-labeled `acceptance_criteria` for the same read-only
 review target exposed by the full project-design view.
 It may include `implementation_contract`, so artifact-scoped review can inspect
-the allowed reusable GA contract/read-model change, deferred scopes, and
+the allowed reusable project-design contract/read-model change, deferred scopes, and
 delivery standard before implementation.
 When a derived artifact belongs to `core_runtime` or `basic_entrypoint`, the
 read model may expose `next_core_basic_plan`: a read-only planning packet with
@@ -801,7 +790,7 @@ The `current_state` acceptance trace explicitly requires implementation scope,
 deferred scope, delivery standard, and rollback strategy before outcome; compact
 context preserves this criterion instead of dropping rollback from handoff.
 The plan may also expose `implementation_contract`, which constrains the next
-slice to one reusable GA project-design contract/read-model improvement and
+slice to one reusable project-design contract/read-model improvement and
 names deferred external-tool, local-learning, and expert-orchestration scopes.
 It also carries an explicit `rollback_strategy`: revert the single bounded
 implementation commit without rewriting prior iteration evidence; when the
@@ -816,7 +805,7 @@ surface and keep delegated tool/write/mutation authority, delegated completion
 authority, model fan-out, autonomous scheduling, and expert personas out of
 scope.
 The contract carries that surface in a structured `delegation_contract` copied
-from the shared GA delegation loop: payload and output keys, limits, failure
+from the shared project design delegation loop: payload and output keys, limits, failure
 kinds, completion-gate check ids, recovery requirements, replay metadata/checks,
 and main-harness authority remain inspectable from the implementation contract
 itself. Plan-derived iteration reuse may backfill this newly derived field on a
@@ -839,7 +828,7 @@ The basic `runtime_observability` stage may be `attention_guard`; this is a
 guard role that keeps service-health attention visible and must not be treated
 as a healthy service claim.
 `layer_decision` makes the capability classification explicit for the next
-slice: recurring GA project design is the core identity, external tools and
+slice: recurring project design is the core identity, external tools and
 adapters remain application slices by default, and SOP/skill/memory/dream
 promotion follows only after core/basic evidence supports reuse.
 `iteration_record_status` reports whether a matching open iteration already
@@ -882,7 +871,7 @@ open iteration that later cannot explain its boundary.
 
 Required policy:
 
-- GA project design must keep the original operator objective intact while
+- project design must keep the original operator objective intact while
   deriving concrete success criteria and evidence requirements
 - dimensions must distinguish core runtime, basic entrypoint, local learning,
   and orchestration readiness
@@ -960,18 +949,18 @@ Required policy:
   `source_artifact_warning=missing_verification_command; entrypoint=<id>` and
   keeps the successor at `needs_attention`. This is structural command
   coverage only; it does not execute a command or prove its result
-- The compact GA Project Design Plan context keeps the source verification and
+- The compact Project Design Plan context keeps the source verification and
   count checks plus one actionable source warning without increasing the
   three-check bound. When a required verification claim mapping is missing, it
   takes priority over thinner-evidence warnings and the threshold summary;
   the complete plan still exposes every warning and the thresholds
-- The compact GA Project Design Plan context must also surface the
+- The compact Project Design Plan context must also surface the
   `fresh_successor_slice` check separately, so repeated completed slices are
   visible during handoff
-- The compact GA Project Design Plan context must also surface the
+- The compact Project Design Plan context must also surface the
   `target_layer` and `owner_surface` check separately, so application slices are
-  not mistaken for core GA design work during handoff
-- When a matching open iteration exists, the compact GA Project Design Plan
+  not mistaken for core project design work during handoff
+- When a matching open iteration exists, the compact Project Design Plan
   context may surface a bounded `review_gate` line with the missing outcome
   record, outcome verification command coverage, outcome verification claim
   coverage, required verification entrypoints, and required completion coverage
@@ -1008,7 +997,7 @@ Required policy:
   `source_artifact_quality=ok|attention` derived from source artifact warnings,
   and source quality attention must force plan `needs_attention` without
   becoming an iteration completion gate or migrating the source artifact
-- The compact GA Project Design Plan context must preserve `source_kind`,
+- The compact Project Design Plan context must preserve `source_kind`,
   `source_status`, and `source_artifact_quality` using stable reason-prefix
   priority rather than raw array position
 - Compact `source_truth` must preserve the source artifact id, source iteration
@@ -1023,7 +1012,7 @@ Required policy:
   `not_recorded`. It is source direction only and does not prove completion
 - `next_core_basic_plan.iteration_focus` must explain the next core/basic
   direction and anti-drift checks without authorizing execution
-- Compact GA Project Design Plan context must preserve bounded anti-drift checks
+- Compact Project Design Plan context must preserve bounded anti-drift checks
   from `iteration_focus`, so external-adapter pressure, premature SOP/skill/
   memory/dream promotion, and unverified completion claims stay visible during
   handoff
@@ -1048,7 +1037,7 @@ Required policy:
   healthy
 - When service health is in the required verification command list, the
   `current_state` completion audit seed must require the outcome to cite
-  service-health status and reasons even for read-only GA design slices
+  service-health status and reasons even for read-only project design slices
 - When service health is not healthy, the `current_state` completion audit seed
   must require runtime attention to be classified as `acceptable`,
   `repair_needed`, or `verification_blocker`; naming the reason without a
@@ -1089,7 +1078,7 @@ Required policy:
   verification-entrypoint claim-coverage reject when present, so handoff keeps
   the strongest missing-entrypoint failure visible
 - Compact `acceptance` must keep one criterion for every audit-seed label plus
-  the fresh-successor and external-adapter boundary criteria, so core GA design
+  the fresh-successor and external-adapter boundary criteria, so core project design
   handoff cannot hide copied slices or application-slice drift
 - every `capability_stage_plan` stage must include exit criteria without
   granting automatic approval
@@ -1343,11 +1332,11 @@ accepted goal, non-secret model context budget, latest context-pressure
 manifest metadata, and current working checkpoint metadata. It must not read
 raw context Markdown, raw skill/SOP/review artifacts, compact context, invoke
 tools, authorize mutation, or appear when no attention signal exists.
-When rendered, `GA Project Design Plan` must keep the verification entrypoint
+When rendered, `Project Design Plan` must keep the verification entrypoint
 summary visible when present, including `service-health` for core/basic plans,
 without rendering full artifacts or executing the checks.
 
-When rendered, `GA Project Design Plan` is a short read-only context section
+When rendered, `Project Design Plan` is a short read-only context section
 over `governance project-design.next_core_basic_plan`. It may show the plan id,
 target layer, owner surface, proposed slice, source artifact, acceptance
 summary, planning basis, iteration focus, capability-stage summary, phase
@@ -1358,7 +1347,7 @@ completed source slice so the next model turn does not infer purpose from an
 opaque slice id alone. A compact `anti_drift` line may preserve the bounded
 checks that keep external-adapter pressure, premature SOP/skill/memory/dream
 promotion, and unverified completion claims visible during handoff. The
-layer-decision summary keeps recurring GA project design as the core identity
+layer-decision summary keeps recurring project design as the core identity
 and keeps external tools or adapters as application slices unless they name a
 reusable runtime contract. A compact `layer_guard` line may keep the
 layer-decision stage plus source and selected layer/owner continuity visible
@@ -1413,7 +1402,7 @@ experts, write state, or prove completion.
 Verified iteration outcomes from `core_runtime` or `basic_entrypoint` remain
 visible as self-evolution follow-ups, but Opportunity Backlog ranks their SOP
 candidate review behind real local-learning SOP work. The canonical next move
-for those layers is the GA project-design plan, not immediate SOP churn.
+for those layers is the project-design plan, not immediate SOP churn.
 
 The `Workspace Status` context section uses the same fixed
 `workspace status` read model. It is pre-write orientation only: it may show
@@ -1492,7 +1481,7 @@ cannot inflate completion-check or replay lineage cardinality.
 The envelope schema accepts at most 32 non-blank verification refs, each at most
 512 characters; whitespace-only or padded refs are rejected rather than
 normalizing ref identities, so model-provided completion metadata stays bounded before it can
-reach completion reports, trace, or replay. The GA project-design general
+reach completion reports, trace, or replay. The project-design general
 delegation loop and delegation implementation contract expose the same shared
 limits, including the non-empty requirement, so future slices do not need to infer
 the runtime acceptance standard from schema code.
@@ -1511,7 +1500,7 @@ pure contract parser lives in `packages/core/src/delegate_agent_contract.ts`;
 the pure delegated completion-gate checks live in
 `packages/core/src/delegate_agent_completion_gate.ts`; the schemas, live runner,
 Live Run Trace, harness replay checks, capability
-catalog, context read models, and GA project-design read model derive their
+catalog, context read models, and project-design read model derive their
 limits, task/context authoring rules, failure-kind values, and delegated
 completion-gate check ids from those sources instead of redeclaring them.
 The model-facing Output Contract also renders its compact `delegate_agent`
@@ -1756,7 +1745,7 @@ result references and cannot become completion evidence. Both cross-session
 signals remain in the check-specific and report-wide safe ref inventories, so
 later bounded context can retain the identity alert without reading artifact
 bodies.
-The reusable GA project-design delegation contract projects that same shared
+The reusable project-design delegation contract projects that same shared
 requirement unchanged for later core-runtime planning.
 The core capability catalog carries it unchanged for bounded operator context.
 The final response artifact alone is not independent completion proof. The live
@@ -1848,7 +1837,7 @@ delegation, or is present without a failed delegated result.
 If a delegated result failed and the run does not reach verified `done`
 completion, any `propose_sop` action remains state-only and must not enter live
 SOP audit, SOP promotion, skill promotion, or active-vault writes.
-The GA project-design read model mirrors this same runner/replay boundary in
+The project-design read model mirrors this same runner/replay boundary in
 `next_core_basic_plan.general_delegation_loop`: `lifecycle_steps` names the
 harness-owned flow from `validate_task_context` through
 `verify_main_harness_completion`, `runner_enforcement_contract`
@@ -2168,9 +2157,9 @@ snapshot contains the latest verified direction.
 
 Its design goal is to compress verified runtime evidence into traceable,
 comparable, and rejectable long-horizon direction candidates: what capability
-to deepen, what risk to hold, and what work to defer. Codex, Hermes, GA, and
-other open implementations may inform mechanisms, but they are references, not
-the acceptance standard. The runtime accepts a dream direction only by local
+to deepen, what risk to hold, and what work to defer. External implementations
+may inform mechanisms, but they are references, not the acceptance standard.
+The runtime accepts a dream direction only by local
 evidence lineage, measurable core/basic capability value, reversibility, and
 operator-owned authority boundaries. Dream therefore proposes future focus; it
 does not acquire background execution, permission expansion, publication,
@@ -2471,7 +2460,7 @@ memory.
 
 Daily episode archives are deterministic state summaries generated from
 `memory/episodes/events.jsonl` through `memory archive`. They provide a
-GA-style L4 archive orientation layer and an OpenClaw-style bounded context
+agent-runtime-style L4 archive orientation layer and an OpenClaw-style bounded context
 summary without model compaction. Context assembly may read only
 `memory/archives/*.json` archive summaries. It must not read raw episode
 artifacts, rebuild the SQLite index, write archives, invoke the model
@@ -4168,7 +4157,7 @@ pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --st
 pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
 pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
 pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state
+pnpm run runtime -- governance project-design --artifact project_design_artifact_iteration_contract_... --state-root .runtime/state
 pnpm run runtime -- governance project-design --audit-seed verification_scope --state-root .runtime/state
 pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
 pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --implementation-scope "..." --deferred-scope "..." --delivery-standard "..." --reuse-open --state-root .runtime/state

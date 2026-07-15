@@ -71,7 +71,7 @@ test("self-evolution gaps derive SOP candidates from operator corrections", asyn
     const store = new AgentStore(root.repoRoot, root.stateRoot);
 
     const recorded = await recordOperatorCorrection(store, {
-      summary: "Operator corrected capability classification: external tool usage is an application slice, while repeated GA project design is core capability.",
+      summary: "Operator corrected capability classification: external tool usage is an application slice, while repeated project design is core capability.",
       ownerSurface: "runtime_contract",
       proposedSlice: "capability_self_recognition_guard",
       sourceRef: "CONTEXT.md",

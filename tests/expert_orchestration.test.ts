@@ -51,7 +51,7 @@ test("expert delegation plan renders one gate without execution authority", () =
   assert.equal(plan.gate_id, "core_boundary_review");
   assert.deepEqual(plan.role_ids, ["architect", "verification_reviewer"]);
   assert.equal(plan.roles.map((role) => role.id).includes("architect"), true);
-  assert.equal(plan.required_inputs.some((input) => input.includes("GA project design contract")), true);
+  assert.equal(plan.required_inputs.some((input) => input.includes("project design contract")), true);
   assert.equal(plan.expected_output.some((output) => output.includes("capability layer")), true);
   assert.equal(plan.reject_if.some((rule) => rule.includes("application-tool")), true);
   assert.equal(plan.completion_authority.includes("main runtime"), true);

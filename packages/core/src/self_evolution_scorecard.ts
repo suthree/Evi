@@ -5,9 +5,9 @@ import {
 } from "./capabilities.js";
 import { listLatestDreamSnapshots } from "./dreams.js";
 import {
-  deriveGaProjectDesignArtifacts,
-  getGaProjectDesignContract
-} from "./ga_project_design.js";
+  deriveProjectDesignArtifacts,
+  getProjectDesignContract
+} from "./project_design.js";
 import { getMemoryLayerDiagnostics } from "./memory_layers.js";
 import { getOpportunityBacklog } from "./opportunity_backlog.js";
 import {
@@ -112,8 +112,8 @@ export async function getSelfEvolutionScorecard(
     : latestVerifiedDelegationIteration
       ? "stable"
       : "active";
-  const projectDesignContract = getGaProjectDesignContract();
-  const projectDesignArtifacts = deriveGaProjectDesignArtifacts(iterations.iterations);
+  const projectDesignContract = getProjectDesignContract();
+  const projectDesignArtifacts = deriveProjectDesignArtifacts(iterations.iterations);
   const latestCoreBasicProjectDesignArtifactIteration = latestCoreBasicProjectDesignArtifactSource(iterations.iterations, projectDesignArtifacts);
   const latestOpenIteration = iterations.iterations.find((iteration) => isOpenCoreBasicIteration(iteration));
   const latestBlockingOpenIteration = latestOpenIteration && !isSupersededOpenIteration(latestOpenIteration, latestCoreBasicProjectDesignArtifactIteration)
@@ -129,8 +129,8 @@ export async function getSelfEvolutionScorecard(
 
   const dimensions: SelfEvolutionDimension[] = [
     {
-      id: "core_ga_design",
-      title: "Core GA project design",
+      id: "core_project_design",
+      title: "Core project design",
       stage: layerCounts.core_runtime > 0 ? "active" : "emerging",
       layer: "core_runtime",
       score: clampScore(
@@ -141,19 +141,19 @@ export async function getSelfEvolutionScorecard(
         + (latestOutcome?.status === "verified" ? 1 : 0)
       ),
       summary: projectDesignArtifacts.length > 0
-        ? `Core identity is recurring GA project design through ${projectDesignContract.contract_id} and ${projectDesignArtifacts.length} derived project-design artifact(s); latest outcome is ${latestOutcome?.status ?? "not_recorded"}.`
+        ? `Core identity is recurring project design through ${projectDesignContract.contract_id} and ${projectDesignArtifacts.length} derived project-design artifact(s); latest outcome is ${latestOutcome?.status ?? "not_recorded"}.`
         : latestOutcome
-        ? `Core identity is recurring GA project design through ${projectDesignContract.contract_id}, bounded contracts, and iteration outcomes; latest outcome is ${latestOutcome.status}.`
-        : "Core identity is recurring GA project design through bounded contracts, iteration-layer declarations, verification, and durable learning, not external adapter usage.",
+        ? `Core identity is recurring project design through ${projectDesignContract.contract_id}, bounded contracts, and iteration outcomes; latest outcome is ${latestOutcome.status}.`
+        : "Core identity is recurring project design through bounded contracts, iteration-layer declarations, verification, and durable learning, not external adapter usage.",
       evidence_refs: compactRefs([
-        "packages/core/src/ga_project_design.ts",
+        "packages/core/src/project_design.ts",
         "packages/core/src/capabilities.ts",
         ...projectDesignArtifacts.slice(0, limit).map((artifact) => artifact.source_iteration_ref),
         ...dreams.map((dream) => dream.ref),
         ...iterations.iteration_refs.slice(0, 2)
       ]),
       next_moves: [
-        coreGaDesignNextMove(latestBlockingOpenIteration, latestSupersededOpenIteration, latestOutcome),
+        coreProjectDesignNextMove(latestBlockingOpenIteration, latestSupersededOpenIteration, latestOutcome),
         "Use scorecard deltas to choose the next bounded core-runtime slice."
       ]
     },
@@ -254,7 +254,7 @@ export async function getSelfEvolutionScorecard(
         : {}),
       next_moves: latestVerifiedDelegationIteration
         ? [
-          "Keep the verified delegation baseline bounded while selecting the next GA core/basic slice.",
+          "Keep the verified delegation baseline bounded while selecting the next project-design core/basic slice.",
           "Keep expert personas and multi-agent scheduling deferred until a later explicit authority decision."
         ]
         : [
@@ -286,7 +286,7 @@ export async function getSelfEvolutionScorecard(
     ),
     default_next_slice: defaultNextSlice,
     next_iterations: [
-      firstNextMove(dimensions, "core_ga_design"),
+      firstNextMove(dimensions, "core_project_design"),
       firstNextMove(dimensions, "general_agent_delegation"),
       firstNextMove(dimensions, "basic_runtime_substrate")
     ],
@@ -294,7 +294,7 @@ export async function getSelfEvolutionScorecard(
     next_core_basic_slice: nextCoreBasicSlice,
     refs: compactRefs([
       "packages/core/src/self_evolution_scorecard.ts",
-      "packages/core/src/ga_project_design.ts",
+      "packages/core/src/project_design.ts",
       "packages/core/src/capabilities.ts",
       "packages/core/src/delegate_agent_completion_gate.ts",
       "packages/core/src/delegate_agent_contract.ts",
@@ -324,10 +324,10 @@ function selectNextCoreBasicSlice(
   if (attentionSlice) return attentionSlice;
   if (hasBlockingOpenIteration) return coreBasicSlices[0] ?? null;
 
-  const coreGaDesign = dimensions.find((dimension) => dimension.id === "core_ga_design");
+  const coreProjectDesign = dimensions.find((dimension) => dimension.id === "core_project_design");
   const delegation = dimensions.find((dimension) => dimension.id === "general_agent_delegation");
   const delegationSlice = coreBasicSlices.find((slice) => slice.dimension_id === "general_agent_delegation");
-  if (delegationSlice && delegation?.stage === "active" && coreGaDesign?.stage === "active" && coreGaDesign.score >= 5) {
+  if (delegationSlice && delegation?.stage === "active" && coreProjectDesign?.stage === "active" && coreProjectDesign.score >= 5) {
     return delegationSlice;
   }
 
@@ -340,7 +340,7 @@ function dimensionStage(dimensions: SelfEvolutionDimension[], dimensionId: strin
 
 function latestCoreBasicProjectDesignArtifactSource(
   iterations: SelfEvolutionIterationContract[],
-  artifacts: ReturnType<typeof deriveGaProjectDesignArtifacts>
+  artifacts: ReturnType<typeof deriveProjectDesignArtifacts>
 ): SelfEvolutionIterationContract | undefined {
   const latestArtifact = artifacts.find((artifact) =>
     artifact.layer === "core_runtime"
@@ -353,7 +353,7 @@ function latestCoreBasicProjectDesignArtifactSource(
 function isOpenCoreBasicIteration(iteration: SelfEvolutionIterationContract): boolean {
   return !iteration.outcome
     && (iteration.layer === "core_runtime" || iteration.layer === "basic_entrypoint")
-    && iteration.owner_surface === "ga_project_design";
+    && iteration.owner_surface === "project_design";
 }
 
 function describeIterationOutcomeStatus(iteration: SelfEvolutionIterationContract | undefined): string {
@@ -368,7 +368,7 @@ function isSupersededOpenIteration(
   return Boolean(latestArtifactIteration && latestArtifactIteration.created_at > openIteration.created_at);
 }
 
-function coreGaDesignNextMove(
+function coreProjectDesignNextMove(
   blockingOpenIteration: SelfEvolutionIterationContract | undefined,
   supersededOpenIteration: SelfEvolutionIterationContract | undefined,
   latestOutcome: SelfEvolutionIterationContract["outcome"] | undefined
@@ -442,8 +442,8 @@ function nextSliceReason(dimension: SelfEvolutionDimension): string {
 }
 
 function nextSliceSuccessCriteria(dimensionId: string): string[] {
-  if (dimensionId === "core_ga_design") return [
-    "the slice cites the GA project design contract, a derived project-design artifact, or a verified iteration outcome",
+  if (dimensionId === "core_project_design") return [
+    "the slice cites the project design contract, a derived project-design artifact, or a verified iteration outcome",
     "the owner surface and capability layer are explicit before implementation",
     "external adapters remain application slices unless the runtime contract is reusable"
   ];
@@ -482,9 +482,9 @@ function buildExpertLenses(
       id: "architect",
       title: "Architect lens",
       status: "active",
-      focus: "Core GA project design and reusable runtime contracts.",
+      focus: "Core project design and reusable runtime contracts.",
       current_question: "Does the next iteration improve a core/basic contract instead of only one external-tool slice?",
-      evidence_refs: refsFor(dimensions, "core_ga_design")
+      evidence_refs: refsFor(dimensions, "core_project_design")
     },
     {
       id: "runtime_operator",

@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  deriveGaProjectDesignArtifacts,
-  getGaProjectDesignArtifactPacket,
-  getGaProjectDesignDelegationImplementationContract,
-  getGaProjectDesignContract,
-  getGaProjectDesignReadModel,
-  selectGaProjectDesignArtifact
-} from "../packages/core/src/ga_project_design.js";
-import { compactGaPlanGovernanceCleanup } from "../packages/core/src/context.js";
+  deriveProjectDesignArtifacts,
+  getProjectDesignArtifactPacket,
+  getProjectDesignDelegationImplementationContract,
+  getProjectDesignContract,
+  getProjectDesignReadModel,
+  selectProjectDesignArtifact
+} from "../packages/core/src/project_design.js";
+import { compactProjectPlanGovernanceCleanup } from "../packages/core/src/context.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "../packages/core/src/action_contracts.js";
 import {
   implementationContractSha256,
@@ -20,10 +20,10 @@ import {
 } from "../packages/core/src/self_evolution_iterations.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
-test("GA project design contract keeps core project design separate from application tools", () => {
-  const contract = getGaProjectDesignContract();
+test("project design contract keeps core project design separate from application tools", () => {
+  const contract = getProjectDesignContract();
 
-  assert.equal(contract.contract_id, "ga_project_design_contract");
+  assert.equal(contract.contract_id, "project_design_contract");
   assert.equal(contract.action, "project-design");
   assert.equal(contract.layer, "core_runtime");
   assert.equal(contract.status, "implemented");
@@ -47,29 +47,26 @@ test("GA project design contract keeps core project design separate from applica
   assert.equal(contract.decision_rules.some((rule) => rule.includes("SOPs and skills may preserve repeatable procedure")), true);
   assert.equal(contract.verification_policy.some((policy) => policy.includes("current worktree and runtime state")), true);
   assert.equal(contract.non_goals.includes("no external-tool execution"), true);
-  assert.equal(contract.refs.includes("packages/core/src/ga_project_design.ts"), true);
-  assert.match(contract.boundary, /read-only GA project design contract/);
+  assert.equal(contract.refs.includes("packages/core/src/project_design.ts"), true);
+  assert.match(contract.boundary, /read-only project design contract/);
   assert.match(contract.boundary, /does not invoke models/);
   assert.match(contract.boundary, /prove completion/);
 });
 
 test("runtime reference stance keeps external projects as references only", async () => {
   const doc = await readFile("docs/RUNTIME_CONTRACT.md", "utf8");
-  const referenceLines = doc
-    .split("\n")
-    .filter((line) => /\b(?:GenericAgent|Hermes|OpenClaw|pi|Codex|Claude Code)\b/.test(line));
-  const positiveStandardLines = referenceLines.filter((line) => /\bstandards?\b/i.test(line) && !/\bnot standards\b/i.test(line));
+  const referenceSection = doc.match(/## Reference Stance\n([\s\S]*?)(?=\n## )/)?.[1] ?? "";
 
-  assert.match(doc, /They are not standards or compatibility targets/);
-  assert.match(doc, /reference\s+patterns/);
-  assert.deepEqual(positiveStandardLines, []);
+  assert.match(referenceSection, /External agent implementations are references only/);
+  assert.match(referenceSection, /not standards or\s+compatibility targets/);
+  assert.match(referenceSection, /project names must not become runtime\s+identifiers/);
 });
 
-test("GA project design read model bootstraps the first core/basic plan from empty state", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-bootstrap-"));
+test("project design read model bootstraps the first core/basic plan from empty state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-bootstrap-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const readModel = await getProjectDesignReadModel(store, { limit: 10 });
     const plan = readModel.next_core_basic_plan;
 
     assert.equal(readModel.artifact_count, 0);
@@ -77,16 +74,16 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(readModel.artifacts.length, 0);
     assert.ok(plan);
     assert.equal(plan.source_kind, "fresh_bootstrap");
-    assert.equal(plan.target_dimension_id, "core_ga_design");
-    assert.equal(plan.target_slice_id, "next_slice_core_ga_design");
+    assert.equal(plan.target_dimension_id, "core_project_design");
+    assert.equal(plan.target_slice_id, "next_slice_core_project_design");
     assert.equal(plan.target_selection_origin, "fresh_bootstrap");
-    assert.equal(plan.source_artifact_id, "ga_design_bootstrap_contract_source");
+    assert.equal(plan.source_artifact_id, "project_design_bootstrap_contract_source");
     assert.equal(plan.source_iteration_ref, "docs/RUNTIME_CONTRACT.md");
     assert.equal(plan.source_proposed_slice, "fresh_state_no_verified_iteration");
-    assert.equal(plan.proposed_slice, "core_ga_design_fresh_bootstrap");
-    assert.equal(plan.next_iteration_seed.proposed_slice, "core_ga_design_fresh_bootstrap");
+    assert.equal(plan.proposed_slice, "core_project_design_fresh_bootstrap");
+    assert.equal(plan.next_iteration_seed.proposed_slice, "core_project_design_fresh_bootstrap");
     assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
-    assert.match(plan.implementation_contract.intent ?? "", /core-GA successor self-describing/);
+    assert.match(plan.implementation_contract.intent ?? "", /core-project-design successor self-describing/);
     assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("successor acceptance standard")), true);
     assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("rejects missing or drifted acceptance criteria")), true);
     assert.deepEqual(plan.implementation_contract.required_verification_entrypoints, ["project-design", "scorecard", "iterations", "service-health", "check"]);
@@ -97,7 +94,7 @@ test("GA project design read model bootstraps the first core/basic plan from emp
     assert.equal(plan.selection_reasons.includes("source_status=bootstrap"), true);
     assert.equal(plan.selection_checks.some((check) => check.startsWith("source_bootstrap_contract=true")), true);
     assert.equal(plan.selection_checks.some((check) => check.includes("source_artifact_verified=verified")), false);
-    assert.match(plan.planning_basis, /GA project design contract as bootstrap source/);
+    assert.match(plan.planning_basis, /project design contract as bootstrap source/);
     assert.equal(plan.next_iteration_seed.non_goals.some((nonGoal) => nonGoal.includes("bootstrap source as a verified completed slice")), true);
     assert.match(plan.boundary, /fresh-state bootstrap source/);
   } finally {
@@ -105,8 +102,8 @@ test("GA project design read model bootstraps the first core/basic plan from emp
   }
 });
 
-test("GA project design read model derives reusable artifacts from verified iteration outcomes with evidence", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-"));
+test("project design read model derives reusable artifacts from verified iteration outcomes with evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const verifiedIteration: SelfEvolutionIterationContract = {
@@ -115,16 +112,16 @@ test("GA project design read model derives reusable artifacts from verified iter
       ref: "self-evolution/iterations/iteration_contract_verified.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Turn verified outcomes into reusable GA design artifacts.",
+      summary: "Turn verified outcomes into reusable project design artifacts.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "verified_iteration_to_design_artifact",
       source_ref: "memory/dreams/dream_core.json",
       evidence_refs: [
-        "packages/core/src/ga_project_design.ts",
+        "packages/core/src/project_design.ts",
         "self-evolution/iterations/iteration_contract_stale_history.json"
       ],
-      verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
       non_goals: [
         "no active-vault write",
         "does not repeat completed source slice stale_previous_slice"
@@ -133,13 +130,13 @@ test("GA project design read model derives reusable artifacts from verified iter
       outcome: {
         status: "verified",
         summary: "Project-design artifact derivation passed targeted verification.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
+        verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
         verification_claims: [
           "project-design: derived artifact exposes verified source evidence",
           "check: targeted project-design tests pass"
         ],
-        next_moves: ["Reuse the artifact when planning the next GA design slice; treat iteration_contract_stale_history as separate governance cleanup."],
+        next_moves: ["Reuse the artifact when planning the next project design slice; treat iteration_contract_stale_history as separate governance cleanup."],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
       },
@@ -154,16 +151,16 @@ test("GA project design read model derives reusable artifacts from verified iter
       status: "recorded",
       summary: "Partial work should not become a reusable design artifact.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "partial_project_design_slice",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect"],
       outcome: {
         status: "partial",
         summary: "Verification is incomplete.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
         verification_commands: [],
         next_moves: ["Finish verification before reuse."],
         recorded_at: "2026-07-06T00:00:04Z",
@@ -180,9 +177,9 @@ test("GA project design read model derives reusable artifacts from verified iter
       status: "recorded",
       summary: "Verified without outcome evidence should not become reusable.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "weak_verified_project_design_slice",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof without evidence"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -204,12 +201,12 @@ test("GA project design read model derives reusable artifacts from verified iter
       ref: "self-evolution/iterations/iteration_contract_stale_history.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Older open GA iteration should stay cleanup, not source evidence.",
+      summary: "Older open project-design iteration should stay cleanup, not source evidence.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "core_ga_design_next_slice_after_stale_history",
+      owner_surface: "project_design",
+      proposed_slice: "core_project_design_next_slice_after_stale_history",
       source_ref: "self-evolution/iterations/iteration_contract_previous.json",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -222,12 +219,12 @@ test("GA project design read model derives reusable artifacts from verified iter
       ref: "self-evolution/iterations/iteration_contract_unrelated_history.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Older unrelated GA iteration should not be inferred as cleanup.",
+      summary: "Older unrelated project-design iteration should not be inferred as cleanup.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "core_ga_design_next_slice_after_unrelated",
+      owner_surface: "project_design",
+      proposed_slice: "core_project_design_next_slice_after_unrelated",
       source_ref: "self-evolution/iterations/iteration_contract_unrelated_source.json",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -242,12 +239,12 @@ test("GA project design read model derives reusable artifacts from verified iter
 
     const fingerprintedContract = {
       proposed_slice: verifiedIteration.proposed_slice,
-      source_artifact_id: "ga_design_artifact_source",
+      source_artifact_id: "project_design_artifact_source",
       source_proposed_slice: "completed_source_slice",
       selected_layer: "core_runtime" as const,
-      owner_surface: "ga_project_design",
-      improvement_type: "reusable_ga_design_contract" as const,
-      implementation_scope: ["derive one reusable GA project-design artifact"],
+      owner_surface: "project_design",
+      improvement_type: "reusable_project_design_contract" as const,
+      implementation_scope: ["derive one reusable project-design artifact"],
       deferred_scope: ["no external adapter work"],
       delivery_standard: ["only an integrity-matched contract becomes reusable"],
       boundary: "read-only test implementation contract"
@@ -264,34 +261,34 @@ test("GA project design read model derives reusable artifacts from verified iter
         intent: "Post-hoc rewritten source intent."
       }
     };
-    assert.equal(deriveGaProjectDesignArtifacts([fingerprintedIteration]).length, 1);
-    assert.equal(deriveGaProjectDesignArtifacts([driftedIteration]).length, 0);
-    assert.equal(deriveGaProjectDesignArtifacts([verifiedIteration]).length, 1);
+    assert.equal(deriveProjectDesignArtifacts([fingerprintedIteration]).length, 1);
+    assert.equal(deriveProjectDesignArtifacts([driftedIteration]).length, 0);
+    assert.equal(deriveProjectDesignArtifacts([verifiedIteration]).length, 1);
 
     await store.writeJson(driftedIteration.ref, driftedIteration);
-    const driftedReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const driftedReadModel = await getProjectDesignReadModel(store, { limit: 10 });
     assert.equal(driftedReadModel.artifact_count, 0);
     assert.equal(driftedReadModel.next_core_basic_plan, null);
     await store.writeJson(verifiedIteration.ref, verifiedIteration);
 
-    const fallbackReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
-    assert.equal(fallbackReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
-    assert.equal(fallbackReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
-    assert.equal(fallbackReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
+    const fallbackReadModel = await getProjectDesignReadModel(store, { limit: 10 });
+    assert.equal(fallbackReadModel.next_core_basic_plan?.target_dimension_id, "core_project_design");
+    assert.equal(fallbackReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_project_design");
+    assert.equal(fallbackReadModel.next_core_basic_plan?.proposed_slice, "core_project_design_next_slice_after_verified");
     assert.equal(fallbackReadModel.next_core_basic_plan?.target_selection_origin, "no_scorecard_default");
 
-    const readModel = await getGaProjectDesignReadModel(store, {
+    const readModel = await getProjectDesignReadModel(store, {
       limit: 10,
       scorecardNextCoreBasicSliceId: "next_slice_general_agent_delegation"
     });
-    const derived = deriveGaProjectDesignArtifacts([
+    const derived = deriveProjectDesignArtifacts([
       weakVerifiedIteration,
       partialIteration,
       staleOpenIteration,
       unrelatedOpenIteration,
       verifiedIteration
     ]);
-    const boundedSummaryArtifact = deriveGaProjectDesignArtifacts([{
+    const boundedSummaryArtifact = deriveProjectDesignArtifacts([{
       ...verifiedIteration,
       id: "iteration_contract_long_summary",
       ref: "self-evolution/iterations/iteration_contract_long_summary.json",
@@ -300,7 +297,7 @@ test("GA project design read model derives reusable artifacts from verified iter
         summary: "Long outcome summary ".repeat(30)
       }
     }])[0];
-    const boundedClaimsArtifact = deriveGaProjectDesignArtifacts([{
+    const boundedClaimsArtifact = deriveProjectDesignArtifacts([{
       ...verifiedIteration,
       id: "iteration_contract_many_claims",
       ref: "self-evolution/iterations/iteration_contract_many_claims.json",
@@ -309,17 +306,17 @@ test("GA project design read model derives reusable artifacts from verified iter
         verification_claims: Array.from({ length: 12 }, (_, index) => `check: claim ${index + 1}`)
       }
     }])[0];
-    const requiredClaimsArtifact = deriveGaProjectDesignArtifacts([{
+    const requiredClaimsArtifact = deriveProjectDesignArtifacts([{
       ...verifiedIteration,
       id: "iteration_contract_required_claims",
       ref: "self-evolution/iterations/iteration_contract_required_claims.json",
       implementation_contract: {
         proposed_slice: "verified_iteration_to_design_artifact",
-        source_artifact_id: "ga_design_artifact_source",
+        source_artifact_id: "project_design_artifact_source",
         source_proposed_slice: "source_slice",
         selected_layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        improvement_type: "reusable_ga_design_contract",
+        owner_surface: "project_design",
+        improvement_type: "reusable_project_design_contract",
         required_verification_entrypoints: ["project-design", "check"],
         implementation_scope: ["preserve required claim mappings"],
         deferred_scope: ["no completion gate changes"],
@@ -340,7 +337,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.artifact_count, 1);
     assert.equal(readModel.artifact_policy[0]?.includes("outcome evidence refs and verification commands"), true);
     assert.equal(readModel.artifact_policy.some((policy) => policy.includes("must match their persisted SHA-256")), true);
-    assert.equal(readModel.artifacts[0]?.id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(readModel.artifacts[0]?.id, "project_design_artifact_iteration_contract_verified");
     assert.equal(readModel.artifacts[0]?.source_iteration_ref, "self-evolution/iterations/iteration_contract_verified.json");
     assert.equal(readModel.artifacts[0]?.source_outcome_status, "verified");
     assert.equal(readModel.artifacts[0]?.outcome_summary, "Project-design artifact derivation passed targeted verification.");
@@ -352,48 +349,48 @@ test("GA project design read model derives reusable artifacts from verified iter
       "project-design: required late mapping",
       ...Array.from({ length: 9 }, (_, index) => `check: claim ${index + 1}`)
     ]);
-    assert.equal(readModel.artifacts[0]?.owner_surface, "ga_project_design");
+    assert.equal(readModel.artifacts[0]?.owner_surface, "project_design");
     assert.match(readModel.artifacts[0]?.reusable_pattern ?? "", /explicit non-goals/);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("memory/dreams/dream_core.json"), true);
     assert.equal(readModel.artifacts[0]?.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
-    assert.equal(readModel.artifacts[0]?.verification_commands.includes("pnpm exec tsx --test tests/ga_project_design.test.ts"), true);
+    assert.equal(readModel.artifacts[0]?.verification_commands.includes("pnpm exec tsx --test tests/project_design.test.ts"), true);
     assert.deepEqual(readModel.artifacts[0]?.outcome_verification_commands, [
-      "pnpm exec tsx --test tests/ga_project_design.test.ts"
+      "pnpm exec tsx --test tests/project_design.test.ts"
     ]);
     assert.deepEqual(readModel.artifacts[0]?.verification_claims, [
       "project-design: derived artifact exposes verified source evidence",
       "check: targeted project-design tests pass"
     ]);
-    assert.match(readModel.artifacts[0]?.next_use ?? "", /Reuse the artifact when planning the next GA design slice/);
+    assert.match(readModel.artifacts[0]?.next_use ?? "", /Reuse the artifact when planning the next project design slice/);
     assert.match(readModel.artifacts[0]?.next_use ?? "", /iteration_contract_stale_history/);
     assert.equal(readModel.artifacts[0]?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
-    assert.match(readModel.artifacts[0]?.boundary ?? "", /read-only derived GA project design artifact/);
+    assert.match(readModel.artifacts[0]?.boundary ?? "", /read-only derived project design artifact/);
     assert.equal(readModel.next_core_basic_plan?.action, "project-design-plan");
     assert.equal(readModel.next_core_basic_plan?.status, "advisory");
     assert.equal(readModel.next_core_basic_plan?.target_dimension_id, "general_agent_delegation");
     assert.equal(readModel.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
     assert.equal(readModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
-    assert.equal(readModel.next_core_basic_plan?.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(readModel.next_core_basic_plan?.source_artifact_id, "project_design_artifact_iteration_contract_verified");
     assert.equal(readModel.next_core_basic_plan?.layer, "core_runtime");
-    assert.equal(readModel.next_core_basic_plan?.owner_surface, "ga_project_design");
+    assert.equal(readModel.next_core_basic_plan?.owner_surface, "project_design");
     assert.equal(readModel.next_core_basic_plan?.proposed_slice, "general_agent_delegation_hardening_after_verified");
     assert.equal(readModel.next_core_basic_plan?.source_proposed_slice, "verified_iteration_to_design_artifact");
     assert.notEqual(readModel.next_core_basic_plan?.proposed_slice, readModel.next_core_basic_plan?.source_proposed_slice);
     assert.match(readModel.next_core_basic_plan?.planning_basis ?? "", /instead of repeating completed slice verified_iteration_to_design_artifact/);
-    assert.match(readModel.next_core_basic_plan?.goal_scope.objective ?? "", /core\/basic GA project-design capability gains/);
-    assert.equal(readModel.next_core_basic_plan?.goal_scope.owner_surface, "ga_project_design");
+    assert.match(readModel.next_core_basic_plan?.goal_scope.objective ?? "", /core\/basic project-design capability gains/);
+    assert.equal(readModel.next_core_basic_plan?.goal_scope.owner_surface, "project_design");
     assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("operator_objective=core_basic_self_evolution_first"), true);
-    assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("source_artifact=ga_design_artifact_iteration_contract_verified"), true);
+    assert.equal(readModel.next_core_basic_plan?.goal_scope.source_of_truth.includes("source_artifact=project_design_artifact_iteration_contract_verified"), true);
     assert.equal(readModel.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("target_slice=general_agent_delegation_hardening_after_verified")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.proposed_slice, "general_agent_delegation_hardening_after_verified");
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.selected_layer, "core_runtime");
-    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable GA project-design contract")), true);
+    assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("one reusable project-design contract")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("runner-enforced task/context/result contract and main-harness completion gate")), true);
     assert.equal(readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.action, "delegate_agent");
     assert.deepEqual(
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract,
-      getGaProjectDesignDelegationImplementationContract()
+      getProjectDesignDelegationImplementationContract()
     );
     assert.deepEqual(
       readModel.next_core_basic_plan?.implementation_contract.delegation_contract?.lifecycle_steps,
@@ -423,7 +420,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.direction_id, "core_basic_plan_clarity");
     assert.match(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /after verified outcome: Project-design artifact derivation passed targeted verification\./);
     assert.doesNotMatch(readModel.next_core_basic_plan?.iteration_focus.direction ?? "", /general_agent_delegation_hardening_after_verified/);
-    assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified GA design evidence/);
+    assert.match(readModel.next_core_basic_plan?.iteration_focus.rationale ?? "", /verified project design evidence/);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.next_steps.some((step) => step.includes("matching open iteration")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.anti_drift_checks.some((check) => check.includes("external adapter or MCP pressure")), true);
     assert.equal(readModel.next_core_basic_plan?.iteration_focus.anti_drift_checks.some((check) => check.includes("SOP, skill, memory, or dream")), true);
@@ -474,7 +471,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.selection_checks.some((check) => check.includes("iteration_record_status=not_recorded")), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("governance_cleanup_superseded_open_iterations=1"), true);
     assert.equal(readModel.next_core_basic_plan?.selection_checks.includes("verification_entrypoints=project-design,scorecard,iterations,service-health,check"), true);
-    assert.equal(readModel.next_core_basic_plan?.layer_decision.core_identity, "recurring_ga_project_design");
+    assert.equal(readModel.next_core_basic_plan?.layer_decision.core_identity, "recurring_project_design");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.selected_layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.source_layer, "core_runtime");
     assert.equal(readModel.next_core_basic_plan?.layer_decision.stage, "needs_attention");
@@ -483,7 +480,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
     assert.equal(readModel.next_core_basic_plan?.layer_decision.required_before_outcome.some((command) => command.includes("--audit-seed all")), true);
     assert.equal(readModel.next_core_basic_plan?.learning_authority.process_scaffold.includes("SOPs and skills may preserve repeatable workflow"), true);
-    assert.equal(readModel.next_core_basic_plan?.learning_authority.judgment_authority.includes("core/basic layer selection stays with ga_project_design"), true);
+    assert.equal(readModel.next_core_basic_plan?.learning_authority.judgment_authority.includes("core/basic layer selection stays with project_design"), true);
     assert.equal(readModel.next_core_basic_plan?.learning_authority.completion_authority.includes("verified iteration outcome plus completion_gate coverage"), true);
     assert.equal(readModel.next_core_basic_plan?.learning_authority.promotion_gate.includes("later local-learning gates"), true);
     assert.match(readModel.next_core_basic_plan?.learning_authority.boundary ?? "", /read-only learning authority boundary/);
@@ -619,19 +616,19 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.general_delegation_loop.deferred_scope.some((item) => item.includes("no expert personas")), true);
     assert.match(readModel.next_core_basic_plan?.general_delegation_loop.boundary ?? "", /does not spawn agents/);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.layer, "core_runtime");
-    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.owner_surface, "ga_project_design");
+    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.owner_surface, "project_design");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.proposed_slice, "general_agent_delegation_hardening_after_verified");
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.source_ref, verifiedIteration.ref);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.evidence_refs.includes(verifiedIteration.ref), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.evidence_refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
-    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("project-design --artifact ga_design_artifact_iteration_contract_verified")), true);
+    assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("project-design --artifact project_design_artifact_iteration_contract_verified")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.some((command) => command.includes("--audit-seed all")), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.verification_commands.includes("pnpm run runtime -- service health --target runtime --state-root <state-root>"), true);
     assert.deepEqual(readModel.next_core_basic_plan?.verification_commands, readModel.next_core_basic_plan?.next_iteration_seed.verification_commands);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
     assert.equal(readModel.next_core_basic_plan?.next_iteration_seed.record_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>");
-    assert.match(readModel.next_core_basic_plan?.next_iteration_seed.boundary ?? "", /read-only GA project design iteration seed/);
+    assert.match(readModel.next_core_basic_plan?.next_iteration_seed.boundary ?? "", /read-only project design iteration seed/);
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.status, "not_recorded");
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.record_command, "pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root <state-root>");
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.length, 1);
@@ -641,7 +638,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations[0]?.superseded_by_ref, verifiedIteration.ref);
     assert.match(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations[0]?.reason ?? "", /governance cleanup/);
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === unrelatedOpenIteration.id), false);
-    assert.match(compactGaPlanGovernanceCleanup(readModel.next_core_basic_plan!), /iteration_contract_stale_history:partial/);
+    assert.match(compactProjectPlanGovernanceCleanup(readModel.next_core_basic_plan!), /iteration_contract_stale_history:partial/);
     assert.equal(readModel.next_core_basic_plan?.phase_gates.length, 6);
     assert.equal(
       readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "capability_layering")?.forbidden_shortcuts.includes("do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default"),
@@ -695,17 +692,17 @@ test("GA project design read model derives reusable artifacts from verified iter
       ),
       true
     );
-    const coreTargetReadModel = await getGaProjectDesignReadModel(store, {
+    const coreTargetReadModel = await getProjectDesignReadModel(store, {
       limit: 10,
-      scorecardNextCoreBasicSliceId: "next_slice_core_ga_design"
+      scorecardNextCoreBasicSliceId: "next_slice_core_project_design"
     });
-    assert.equal(coreTargetReadModel.next_core_basic_plan?.target_dimension_id, "core_ga_design");
-    assert.equal(coreTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_ga_design");
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.target_dimension_id, "core_project_design");
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.target_slice_id, "next_slice_core_project_design");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
-    assert.equal(coreTargetReadModel.next_core_basic_plan?.proposed_slice, "core_ga_design_next_slice_after_verified");
+    assert.equal(coreTargetReadModel.next_core_basic_plan?.proposed_slice, "core_project_design_next_slice_after_verified");
     assert.equal(coreTargetReadModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("packages/core/src/context.ts"), true);
     assert.equal(coreTargetReadModel.next_core_basic_plan?.implementation_contract.outcome_evidence_scope?.allowed_ref_prefixes.includes("tests/context_harness.test.ts"), true);
-    const basicTargetReadModel = await getGaProjectDesignReadModel(store, {
+    const basicTargetReadModel = await getProjectDesignReadModel(store, {
       limit: 10,
       scorecardNextCoreBasicSliceId: "next_slice_basic_runtime_substrate"
     });
@@ -714,7 +711,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(basicTargetReadModel.next_core_basic_plan?.layer, "basic_entrypoint");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.proposed_slice, "basic_runtime_substrate_hardening_after_verified");
     assert.equal(basicTargetReadModel.next_core_basic_plan?.target_selection_origin, "scorecard_target");
-    const unknownScorecardTargetReadModel = await getGaProjectDesignReadModel(store, {
+    const unknownScorecardTargetReadModel = await getProjectDesignReadModel(store, {
       limit: 10,
       scorecardNextCoreBasicSliceId: "next_slice_unknown_future_dimension"
     });
@@ -766,7 +763,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.match(readModel.next_core_basic_plan?.next_command ?? "", /--from-project-design-plan/);
     assert.equal(readModel.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice verified_iteration_to_design_artifact"), true);
     assert.equal(readModel.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
-    assert.match(readModel.next_core_basic_plan?.boundary ?? "", /read-only GA project design planning packet/);
+    assert.match(readModel.next_core_basic_plan?.boundary ?? "", /read-only project design planning packet/);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_stale_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("self-evolution/iterations/iteration_contract_unrelated_history.json"), false);
     assert.equal(readModel.next_core_basic_plan?.refs.includes("packages/core/src/action_contracts.ts"), true);
@@ -780,39 +777,39 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(readModel.refs.includes("self-evolution/iterations/iteration_contract_verified.json"), true);
     assert.equal(derived.length, 1);
     assert.equal(derived[0]?.source_iteration_ref, verifiedIteration.ref);
-    assert.equal(selectGaProjectDesignArtifact(derived, "ga_design_artifact_iteration_contract_verified")?.id, "ga_design_artifact_iteration_contract_verified");
-    assert.equal(selectGaProjectDesignArtifact(derived, "iteration_contract_verified")?.id, "ga_design_artifact_iteration_contract_verified");
-    assert.equal(selectGaProjectDesignArtifact(derived, "iteration_contract_verified.json")?.id, "ga_design_artifact_iteration_contract_verified");
-    assert.equal(selectGaProjectDesignArtifact(derived, verifiedIteration.ref)?.id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(selectProjectDesignArtifact(derived, "project_design_artifact_iteration_contract_verified")?.id, "project_design_artifact_iteration_contract_verified");
+    assert.equal(selectProjectDesignArtifact(derived, "iteration_contract_verified")?.id, "project_design_artifact_iteration_contract_verified");
+    assert.equal(selectProjectDesignArtifact(derived, "iteration_contract_verified.json")?.id, "project_design_artifact_iteration_contract_verified");
+    assert.equal(selectProjectDesignArtifact(derived, verifiedIteration.ref)?.id, "project_design_artifact_iteration_contract_verified");
 
-    const packet = await getGaProjectDesignArtifactPacket(store, {
+    const packet = await getProjectDesignArtifactPacket(store, {
       artifactRef: "iteration_contract_verified",
       scorecardNextCoreBasicSliceId: "next_slice_general_agent_delegation"
     });
 
     assert.equal(packet.action, "project-design-artifact");
     assert.equal(packet.status, "advisory");
-    assert.equal(packet.artifact.id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(packet.artifact.id, "project_design_artifact_iteration_contract_verified");
     assert.equal(packet.source_for_next_core_basic_plan, true);
     assert.deepEqual(packet.next_core_basic_plan, readModel.next_core_basic_plan);
     assert.equal(packet.next_core_basic_plan?.schema_version, 1);
     assert.equal(packet.next_core_basic_plan?.action, "project-design-plan");
     assert.equal(packet.next_core_basic_plan?.status, "advisory");
-    assert.match(packet.next_core_basic_plan?.title ?? "", /Next core\/basic GA planning packet/);
+    assert.match(packet.next_core_basic_plan?.title ?? "", /Next core\/basic project planning packet/);
     assert.equal(packet.next_core_basic_plan?.target_dimension_id, "general_agent_delegation");
     assert.equal(packet.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
     assert.equal(packet.next_core_basic_plan?.layer, "core_runtime");
-    assert.equal(packet.next_core_basic_plan?.owner_surface, "ga_project_design");
+    assert.equal(packet.next_core_basic_plan?.owner_surface, "project_design");
     assert.equal(packet.next_core_basic_plan?.proposed_slice, "general_agent_delegation_hardening_after_verified");
-    assert.equal(packet.next_core_basic_plan?.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(packet.next_core_basic_plan?.source_artifact_id, "project_design_artifact_iteration_contract_verified");
     assert.equal(packet.next_core_basic_plan?.source_iteration_ref, verifiedIteration.ref);
     assert.equal(packet.next_core_basic_plan?.source_proposed_slice, "verified_iteration_to_design_artifact");
     assert.match(packet.next_core_basic_plan?.planning_basis ?? "", /instead of repeating completed slice verified_iteration_to_design_artifact/);
-    assert.equal(packet.next_core_basic_plan?.goal_scope.owner_surface, "ga_project_design");
+    assert.equal(packet.next_core_basic_plan?.goal_scope.owner_surface, "project_design");
     assert.equal(packet.next_core_basic_plan?.goal_scope.success_evidence.some((evidence) => evidence.includes("verified outcome records evidence refs")), true);
-    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_artifact_id, "ga_design_artifact_iteration_contract_verified");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.source_artifact_id, "project_design_artifact_iteration_contract_verified");
     assert.equal(packet.next_core_basic_plan?.implementation_contract.source_proposed_slice, "verified_iteration_to_design_artifact");
-    assert.equal(packet.next_core_basic_plan?.implementation_contract.improvement_type, "reusable_ga_design_contract");
+    assert.equal(packet.next_core_basic_plan?.implementation_contract.improvement_type, "reusable_project_design_contract");
     assert.equal(packet.next_core_basic_plan?.implementation_contract.implementation_scope.some((item) => item.includes("delegate_agent task, context, result, trace/replay, or completion-verification boundaries only")), true);
     assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("no expert-agent scheduling")), true);
     assert.equal(packet.next_core_basic_plan?.implementation_contract.deferred_scope.some((item) => item.includes("delegated completion authority")), true);
@@ -827,7 +824,7 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.selection_checks.includes("verification_entrypoints=project-design,scorecard,iterations,service-health,check"), true);
     assert.equal(packet.next_core_basic_plan?.selection_checks.includes("governance_cleanup_superseded_open_iterations=1"), true);
     assert.equal(packet.next_core_basic_plan?.governance_cleanup.superseded_open_iterations[0]?.inspect_command, "pnpm run runtime -- governance iterations --iteration iteration_contract_stale_history --state-root <state-root>");
-    assert.equal(packet.next_core_basic_plan?.layer_decision.core_identity, "recurring_ga_project_design");
+    assert.equal(packet.next_core_basic_plan?.layer_decision.core_identity, "recurring_project_design");
     assert.equal(packet.next_core_basic_plan?.layer_decision.reasons.some((reason) => reason.includes("not a single external adapter")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("external tools and adapters stay application slices")), true);
     assert.equal(packet.next_core_basic_plan?.layer_decision.application_boundaries.some((boundary) => boundary.includes("expert and multi-agent scheduling follow after the general delegation loop is stable")), true);
@@ -929,18 +926,18 @@ test("GA project design read model derives reusable artifacts from verified iter
     assert.equal(packet.next_core_basic_plan?.non_goals.includes("does not repeat completed source slice stale_previous_slice"), false);
     assert.equal(packet.next_core_basic_plan?.refs.includes(verifiedIteration.ref), true);
     assert.equal(packet.next_core_basic_plan?.refs.includes("packages/core/src/live_run_trace.ts"), true);
-    assert.match(packet.next_core_basic_plan?.boundary ?? "", /read-only GA project design planning packet/);
+    assert.match(packet.next_core_basic_plan?.boundary ?? "", /read-only project design planning packet/);
     assert.match(packet.next_core_basic_plan?.next_command ?? "", /record-iteration/);
     assert.equal(packet.refs.includes(verifiedIteration.ref), true);
-    assert.match(packet.boundary, /read-only GA project design artifact inspection packet/);
+    assert.match(packet.boundary, /read-only project design artifact inspection packet/);
     assert.match(packet.boundary, /does not derive new artifacts/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("GA project design plan requires a source contract and complete verification mappings", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-source-claims-"));
+test("project design plan requires a source contract and complete verification mappings", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-source-claims-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const completeVerificationCommands = [
@@ -958,23 +955,23 @@ test("GA project design plan requires a source contract and complete verificatio
       status: "recorded",
       summary: "Verify source claim mappings before successor reuse.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "source_claim_mapping_gate",
       implementation_contract: {
         proposed_slice: "source_claim_mapping_gate",
-        source_artifact_id: "ga_design_artifact_source",
+        source_artifact_id: "project_design_artifact_source",
         source_proposed_slice: "source_slice",
         selected_layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        improvement_type: "reusable_ga_design_contract",
+        owner_surface: "project_design",
+        improvement_type: "reusable_project_design_contract",
         intent: "Require complete source contracts before successor reuse.",
         acceptance_criteria: ["source contract completeness is visible before reuse"],
         required_verification_entrypoints: ["project-design", "scorecard", "iterations", "service-health", "check"],
         outcome_evidence_scope: {
-          allowed_ref_prefixes: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
+          allowed_ref_prefixes: ["packages/core/src/project_design.ts", "tests/project_design.test.ts"],
           required_groups: [
-            { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
-            { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] }
+            { id: "implementation", ref_prefixes: ["packages/core/src/project_design.ts"] },
+            { id: "verification", ref_prefixes: ["tests/project_design.test.ts"] }
           ],
           boundary: "bounded test outcome evidence scope"
         },
@@ -984,16 +981,16 @@ test("GA project design plan requires a source contract and complete verificatio
         rollback_strategy: ["revert the bounded source contract gate"],
         boundary: "bounded test implementation contract"
       },
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: completeVerificationCommands,
       non_goals: ["no state migration"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       outcome: {
         status: "verified",
         summary: "Source claim mapping outcome.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
         verification_commands: [
-          "pnpm exec tsx --test tests/ga_project_design.test.ts",
+          "pnpm exec tsx --test tests/project_design.test.ts",
           "pnpm run check"
         ],
         verification_claims: ["check: full checks pass"],
@@ -1006,7 +1003,7 @@ test("GA project design plan requires a source contract and complete verificatio
     };
     await store.writeJson(iteration.ref, iteration);
 
-    let plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    let plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "needs_attention");
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_claim; entrypoint=project-design"), true);
@@ -1027,15 +1024,15 @@ test("GA project design plan requires a source contract and complete verificatio
       }
     });
 
-    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "needs_attention");
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=project-design"), true);
     assert.equal(plan?.layer_decision.stage, "needs_attention");
-    const declaredOnlyArtifact = (await getGaProjectDesignReadModel(store)).artifacts[0];
+    const declaredOnlyArtifact = (await getProjectDesignReadModel(store)).artifacts[0];
     assert.equal(declaredOnlyArtifact?.verification_commands.includes(completeVerificationCommands[0]!), true);
     assert.deepEqual(declaredOnlyArtifact?.outcome_verification_commands, [
-      "pnpm exec tsx --test tests/ga_project_design.test.ts",
+      "pnpm exec tsx --test tests/project_design.test.ts",
       "pnpm run check"
     ]);
 
@@ -1055,7 +1052,7 @@ test("GA project design plan requires a source contract and complete verificatio
       }
     });
 
-    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "needs_attention");
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=project-design"), true);
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_verification_command; entrypoint=scorecard"), true);
@@ -1071,7 +1068,7 @@ test("GA project design plan requires a source contract and complete verificatio
       }
     });
 
-    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "ready");
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=ok"), true);
     assert.equal(plan?.selection_checks.some((check) => check.includes("missing_verification_claim")), false);
@@ -1094,7 +1091,7 @@ test("GA project design plan requires a source contract and complete verificatio
       }
     });
 
-    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "needs_attention");
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=incomplete_implementation_contract; missing=acceptance_criteria,required_verification_entrypoints,outcome_evidence_scope,rollback_strategy"), true);
     assert.equal(plan?.layer_decision.stage, "needs_attention");
@@ -1109,7 +1106,7 @@ test("GA project design plan requires a source contract and complete verificatio
       }
     });
 
-    plan = (await getGaProjectDesignReadModel(store)).next_core_basic_plan;
+    plan = (await getProjectDesignReadModel(store)).next_core_basic_plan;
     assert.equal(plan?.selection_status, "needs_attention");
     assert.equal(plan?.selection_reasons.includes("source_artifact_quality=attention"), true);
     assert.equal(plan?.selection_checks.includes("source_artifact_warning=missing_implementation_contract"), true);
@@ -1119,8 +1116,8 @@ test("GA project design plan requires a source contract and complete verificatio
   }
 });
 
-test("GA project design artifact_count reports total artifacts despite response limit", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-counts-"));
+test("project design artifact_count reports total artifacts despite response limit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-counts-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const firstIteration: SelfEvolutionIterationContract = {
@@ -1131,16 +1128,16 @@ test("GA project design artifact_count reports total artifacts despite response 
       status: "recorded",
       summary: "First verified artifact.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "count_first_slice",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no external-tool execution"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       outcome: {
         status: "verified",
         summary: "First verified artifact outcome.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
         verification_commands: ["pnpm run check"],
         next_moves: ["Use this as count evidence."],
         recorded_at: "2026-07-06T00:00:01Z",
@@ -1165,19 +1162,19 @@ test("GA project design artifact_count reports total artifacts despite response 
     await store.writeJson(firstIteration.ref, firstIteration);
     await store.writeJson(secondIteration.ref, secondIteration);
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 1 });
+    const readModel = await getProjectDesignReadModel(store, { limit: 1 });
 
     assert.equal(readModel.artifact_count, 2);
     assert.equal(readModel.listed_artifact_count, 1);
     assert.equal(readModel.artifacts.length, 1);
-    assert.equal(readModel.artifacts[0]?.id, "ga_design_artifact_iteration_contract_count_second");
+    assert.equal(readModel.artifacts[0]?.id, "project_design_artifact_iteration_contract_count_second");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("GA project design planning packet ignores non-core verified artifacts", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-local-learning-"));
+test("project design planning packet ignores non-core verified artifacts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-local-learning-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     await store.writeJson("self-evolution/iterations/iteration_contract_local_learning.json", {
@@ -1190,15 +1187,15 @@ test("GA project design planning packet ignores non-core verified artifacts", as
       layer: "local_learning",
       owner_surface: "sop_skill_memory_loop",
       proposed_slice: "verified_iteration_outcome_sop_candidate",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
-      verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
+      verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
       non_goals: ["do not treat SOP follow-up as core identity"],
       advisory_expert_roles: ["learning_curator", "verification_reviewer"],
       outcome: {
         status: "verified",
         summary: "Local-learning verification passed.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
+        verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
         next_moves: ["Keep this as local-learning follow-up."],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
@@ -1207,7 +1204,7 @@ test("GA project design planning packet ignores non-core verified artifacts", as
       boundary: "bounded iteration contract"
     });
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const readModel = await getProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.artifact_count, 1);
     assert.equal(readModel.artifacts[0]?.layer, "local_learning");
@@ -1217,8 +1214,8 @@ test("GA project design planning packet ignores non-core verified artifacts", as
   }
 });
 
-test("GA project design plan carries source continuation from basic iterations", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-basic-source-"));
+test("project design plan carries source continuation from basic iterations", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-basic-source-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const basicIteration: SelfEvolutionIterationContract = {
@@ -1237,7 +1234,7 @@ test("GA project design plan carries source continuation from basic iterations",
         source_proposed_slice: "manual_record_iteration",
         selected_layer: "basic_entrypoint",
         owner_surface: "runtime_tools",
-        improvement_type: "reusable_ga_design_contract",
+        improvement_type: "reusable_project_design_contract",
         required_verification_entrypoints: ["service-health", "check"],
         implementation_scope: ["change one reusable basic tool boundary"],
         deferred_scope: ["no external adapters"],
@@ -1267,7 +1264,7 @@ test("GA project design plan carries source continuation from basic iterations",
     };
     await store.writeJson(basicIteration.ref, basicIteration);
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const readModel = await getProjectDesignReadModel(store, { limit: 10 });
     const plan = readModel.next_core_basic_plan;
 
     assert.equal(readModel.artifacts[0]?.source_implementation_contract?.proposed_slice, "runtime_state_boundary_for_basic_tools");
@@ -1278,7 +1275,7 @@ test("GA project design plan carries source continuation from basic iterations",
     ]);
     assert.doesNotMatch(readModel.artifacts[0]?.next_use ?? "", /Commit and restart runtime/);
     assert.equal(plan?.source_continuation.source_kind, "verified_artifact");
-    assert.equal(plan?.source_continuation.source_artifact_id, "ga_design_artifact_iteration_contract_basic_source");
+    assert.equal(plan?.source_continuation.source_artifact_id, "project_design_artifact_iteration_contract_basic_source");
     assert.equal(plan?.source_continuation.source_status, "verified");
     assert.equal(plan?.source_continuation.source_layer, "basic_entrypoint");
     assert.equal(plan?.source_continuation.source_owner_surface, "runtime_tools");
@@ -1306,8 +1303,8 @@ test("GA project design plan carries source continuation from basic iterations",
   }
 });
 
-test("GA project design source next moves fall back when source outcome only has completion actions", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-completion-source-"));
+test("project design source next moves fall back when source outcome only has completion actions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-completion-source-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const iteration: SelfEvolutionIterationContract = {
@@ -1316,31 +1313,31 @@ test("GA project design source next moves fall back when source outcome only has
       ref: "self-evolution/iterations/iteration_contract_completion_only_source.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA design slice with only completion housekeeping next moves.",
+      summary: "Verified project design slice with only completion housekeeping next moves.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "completion_only_source_next_moves",
       implementation_contract: {
         proposed_slice: "completion_only_source_next_moves",
         source_artifact_id: "manual_record_iteration",
         source_proposed_slice: "manual_record_iteration",
         selected_layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        improvement_type: "reusable_ga_design_contract",
-        implementation_scope: ["change one reusable GA project-design read-model rule"],
+        owner_surface: "project_design",
+        improvement_type: "reusable_project_design_contract",
+        implementation_scope: ["change one reusable project-design read-model rule"],
         deferred_scope: ["no external adapters"],
         delivery_standard: ["successor planning cannot repeat completed source housekeeping"],
         boundary: "manual implementation contract"
       },
-      evidence_refs: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
-      verification_commands: ["node --import tsx --test tests/ga_project_design.test.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts", "tests/project_design.test.ts"],
+      verification_commands: ["node --import tsx --test tests/project_design.test.ts"],
       non_goals: ["does not rewrite original outcome next_moves"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       outcome: {
         status: "verified",
-        summary: "GA design source next move fallback passed.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
-        verification_commands: ["node --import tsx --test tests/ga_project_design.test.ts"],
+        summary: "project design source next move fallback passed.",
+        evidence_refs: ["tests/project_design.test.ts"],
+        verification_commands: ["node --import tsx --test tests/project_design.test.ts"],
         next_moves: [
           "Commit this slice implementation.",
           "Restart resident runtime onto commit abc123.",
@@ -1355,7 +1352,7 @@ test("GA project design source next moves fall back when source outcome only has
     };
     await store.writeJson(iteration.ref, iteration);
 
-    const readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const readModel = await getProjectDesignReadModel(store, { limit: 10 });
     const plan = readModel.next_core_basic_plan;
     const fallback = "Use this verified artifact as evidence for a fresh bounded core/basic successor slice without repeating the completed source slice.";
 
@@ -1372,8 +1369,8 @@ test("GA project design source next moves fall back when source outcome only has
   }
 });
 
-test("GA project design planning packet surfaces matching open iteration", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-ga-design-open-"));
+test("project design planning packet surfaces matching open iteration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-project-design-design-open-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     const verifiedIteration: SelfEvolutionIterationContract = {
@@ -1382,25 +1379,25 @@ test("GA project design planning packet surfaces matching open iteration", async
       ref: "self-evolution/iterations/iteration_contract_verified.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified source for a next GA design slice.",
+      summary: "Verified source for a next project design slice.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "verified_iteration_to_design_artifact",
       implementation_contract: {
         proposed_slice: "verified_iteration_to_design_artifact",
-        source_artifact_id: "ga_design_artifact_source",
+        source_artifact_id: "project_design_artifact_source",
         source_proposed_slice: "source_slice",
         selected_layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        improvement_type: "reusable_ga_design_contract",
+        owner_surface: "project_design",
+        improvement_type: "reusable_project_design_contract",
         intent: "Keep the matching open successor contract inspectable.",
         acceptance_criteria: ["matching open iteration remains aligned and visible"],
         required_verification_entrypoints: ["check"],
         outcome_evidence_scope: {
-          allowed_ref_prefixes: ["packages/core/src/ga_project_design.ts", "tests/ga_project_design.test.ts"],
+          allowed_ref_prefixes: ["packages/core/src/project_design.ts", "tests/project_design.test.ts"],
           required_groups: [
-            { id: "implementation", ref_prefixes: ["packages/core/src/ga_project_design.ts"] },
-            { id: "verification", ref_prefixes: ["tests/ga_project_design.test.ts"] }
+            { id: "implementation", ref_prefixes: ["packages/core/src/project_design.ts"] },
+            { id: "verification", ref_prefixes: ["tests/project_design.test.ts"] }
           ],
           boundary: "bounded matching-open outcome evidence scope"
         },
@@ -1410,20 +1407,20 @@ test("GA project design planning packet surfaces matching open iteration", async
         rollback_strategy: ["revert the bounded matching-open fixture"],
         boundary: "bounded test implementation contract"
       },
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
-      verification_commands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
+      verification_commands: ["pnpm exec tsx --test tests/project_design.test.ts"],
       non_goals: ["no active-vault write"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       outcome: {
         status: "verified",
         summary: "Verified source outcome.",
-        evidence_refs: ["tests/ga_project_design.test.ts"],
+        evidence_refs: ["tests/project_design.test.ts"],
         verification_commands: [
-          "pnpm exec tsx --test tests/ga_project_design.test.ts",
+          "pnpm exec tsx --test tests/project_design.test.ts",
           "pnpm run check"
         ],
         verification_claims: ["check: full source checks pass"],
-        next_moves: ["Use this artifact when planning the next GA design slice; treat iteration_contract_stale_open_successor and iteration_contract_stale_open_basic_successor as separate governance cleanup."],
+        next_moves: ["Use this artifact when planning the next project design slice; treat iteration_contract_stale_open_successor and iteration_contract_stale_open_basic_successor as separate governance cleanup."],
         recorded_at: "2026-07-06T00:00:03Z",
         boundary: "bounded outcome record"
       },
@@ -1438,10 +1435,10 @@ test("GA project design planning packet surfaces matching open iteration", async
       status: "recorded",
       summary: "Open successor should be visible in the plan.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "general_agent_delegation_hardening_after_verified",
       source_ref: verifiedIteration.ref,
-      evidence_refs: [verifiedIteration.ref, "packages/core/src/ga_project_design.ts"],
+      evidence_refs: [verifiedIteration.ref, "packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["does not prove completion"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -1456,7 +1453,7 @@ test("GA project design planning packet surfaces matching open iteration", async
       status: "recorded",
       summary: "Older open delegation iteration should be governance cleanup only.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "general_agent_delegation_hardening_after_stale_open",
       source_ref: "self-evolution/iterations/iteration_contract_previous.json",
       evidence_refs: ["self-evolution/iterations/iteration_contract_previous.json"],
@@ -1474,7 +1471,7 @@ test("GA project design planning packet surfaces matching open iteration", async
       status: "recorded",
       summary: "Older open basic runtime iteration should be governance cleanup only.",
       layer: "basic_entrypoint",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "basic_runtime_substrate_hardening_after_stale_open",
       source_ref: "self-evolution/iterations/iteration_contract_previous_basic.json",
       evidence_refs: ["self-evolution/iterations/iteration_contract_previous_basic.json"],
@@ -1490,10 +1487,10 @@ test("GA project design planning packet surfaces matching open iteration", async
       ref: "self-evolution/iterations/iteration_contract_unrelated_open_successor.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Older unrelated GA iteration should not be cleanup.",
+      summary: "Older unrelated project-design iteration should not be cleanup.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "core_ga_design_next_slice_after_unrelated_open",
+      owner_surface: "project_design",
+      proposed_slice: "core_project_design_next_slice_after_unrelated_open",
       source_ref: "self-evolution/iterations/iteration_contract_unrelated.json",
       evidence_refs: ["self-evolution/iterations/iteration_contract_unrelated.json"],
       verification_commands: ["pnpm run check"],
@@ -1508,7 +1505,7 @@ test("GA project design planning packet surfaces matching open iteration", async
     await store.writeJson(verifiedIteration.ref, verifiedIteration);
     await store.writeJson(openIteration.ref, openIteration);
 
-    let readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    let readModel = await getProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "missing");
     assert.deepEqual(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, ["implementation_contract_missing"]);
@@ -1521,7 +1518,7 @@ test("GA project design planning packet surfaces matching open iteration", async
       ...openIteration,
       implementation_contract: legacyContract
     });
-    readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    readModel = await getProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "drifted");
     const backfilled = await recordSelfEvolutionIteration(store, {
@@ -1537,7 +1534,7 @@ test("GA project design planning packet surfaces matching open iteration", async
       reuseOpen: true
     });
     assert.deepEqual(backfilled.iteration.implementation_contract?.acceptance_criteria, expectedPlan.implementation_contract.acceptance_criteria);
-    readModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    readModel = await getProjectDesignReadModel(store, { limit: 10 });
 
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.status, "open_iteration_available");
     assert.equal(readModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "aligned");
@@ -1563,22 +1560,22 @@ test("GA project design planning packet surfaces matching open iteration", async
     assert.equal(readModel.refs.includes(staleOpenBasicIteration.ref), false);
     assert.equal(readModel.refs.includes(unrelatedOpenIteration.ref), false);
 
-    const scorecardGuardReadModel = await getGaProjectDesignReadModel(store, {
+    const scorecardGuardReadModel = await getProjectDesignReadModel(store, {
       limit: 10,
-      scorecardNextCoreBasicSliceId: "next_slice_core_ga_design"
+      scorecardNextCoreBasicSliceId: "next_slice_core_project_design"
     });
     assert.equal(scorecardGuardReadModel.next_core_basic_plan?.target_slice_id, "next_slice_general_agent_delegation");
     assert.equal(scorecardGuardReadModel.next_core_basic_plan?.target_selection_origin, "matching_open_iteration");
     assert.deepEqual(
       scorecardGuardReadModel.next_core_basic_plan?.scorecard_basis.slice(0, 3),
       [
-        "next_core_basic_slice=next_slice_core_ga_design",
+        "next_core_basic_slice=next_slice_core_project_design",
         "plan_target_slice=next_slice_general_agent_delegation",
         "target_dimension=general_agent_delegation"
       ]
     );
 
-    const packet = await getGaProjectDesignArtifactPacket(store, {
+    const packet = await getProjectDesignArtifactPacket(store, {
       artifactRef: "iteration_contract_verified"
     });
     assert.equal(packet.next_core_basic_plan?.iteration_record_status.status, "open_iteration_available");
@@ -1600,7 +1597,7 @@ test("GA project design planning packet surfaces matching open iteration", async
         }
       }
     });
-    const driftedReadModel = await getGaProjectDesignReadModel(store, { limit: 10 });
+    const driftedReadModel = await getProjectDesignReadModel(store, { limit: 10 });
     assert.equal(driftedReadModel.next_core_basic_plan?.iteration_record_status.implementation_contract_status, "drifted");
     assert.deepEqual(driftedReadModel.next_core_basic_plan?.iteration_record_status.implementation_contract_attention, ["implementation_contract_differs_from_current_plan"]);
     assert.equal(driftedReadModel.next_core_basic_plan?.selection_status, "needs_attention");

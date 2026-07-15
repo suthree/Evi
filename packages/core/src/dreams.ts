@@ -127,7 +127,7 @@ export async function createDreamSnapshot(
     status: "active",
     title: "Core self-evolution long-horizon plan",
     summary: [
-      "Keep the local runtime focused on recurring GA project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded general-agent delegation.",
+      "Keep the local runtime focused on recurring project design, runtime self-evolution, SOP-to-skill persistence, semantic memory, dream planning, and bounded general-agent delegation.",
       "Treat external tools as application slices unless they become reusable runtime contracts."
     ].join(" "),
     created_at: utcNow(),
@@ -289,10 +289,10 @@ function buildAxes(
   const delegationActive = delegationRefs.length > 0;
   return [
     {
-      id: "core_ga_design",
-      title: "Core GA project design",
+      id: "core_project_design",
+      title: "Core project design",
       status: "active",
-      summary: `Capability catalog currently exposes ${capabilityCount} bounded capabilities; keep design work centered on reusable runtime contracts and GA delivery loops.`,
+      summary: `Capability catalog currently exposes ${capabilityCount} bounded capabilities; keep design work centered on reusable runtime contracts and agent delivery loops.`,
       evidence_refs: compactRefs(["packages/core/src/capabilities.ts", ...semanticRefs, ...iterationRefs]),
       next_moves: [
         "Make every major iteration state its core/basic/application layer before implementation.",
@@ -365,7 +365,7 @@ function buildHorizons(): DreamHorizon[] {
     {
       id: "next",
       title: "Next horizon",
-      objective: "Make GA project design a repeatable runtime loop from goal intake to verified delivery and durable learning.",
+      objective: "Make project design a repeatable runtime loop from goal intake to verified delivery and durable learning.",
       success_criteria: [
         "operator corrections can become backlog gaps",
         "audited SOPs can promote to skills without false duplicate reuse",

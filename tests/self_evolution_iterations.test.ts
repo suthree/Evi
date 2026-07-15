@@ -12,9 +12,9 @@ import {
   recordSelfEvolutionIteration
 } from "../packages/core/src/self_evolution_iterations.js";
 import {
-  getGaProjectDesignDelegationImplementationContract,
-  getGaProjectDesignReadModel
-} from "../packages/core/src/ga_project_design.js";
+  getProjectDesignDelegationImplementationContract,
+  getProjectDesignReadModel
+} from "../packages/core/src/project_design.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
 test("self-evolution iteration contracts record layer declarations without executing work", async () => {
@@ -29,15 +29,15 @@ test("self-evolution iteration contracts record layer declarations without execu
       sourceRef: "memory/dreams/dream_core.json",
       implementationContract: {
         proposed_slice: "self_evolution_iteration_contract",
-        source_artifact_id: "ga_design_artifact_iteration_contract_seed",
+        source_artifact_id: "project_design_artifact_iteration_contract_seed",
         source_proposed_slice: "previous_core_slice",
         selected_layer: "core_runtime",
         owner_surface: "runtime_contract",
-        improvement_type: "reusable_ga_design_contract",
-        implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+        improvement_type: "reusable_project_design_contract",
+        implementation_scope: ["change one reusable project-design contract or read-model surface"],
         deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
         delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
-        boundary: "read-only GA implementation contract"
+        boundary: "read-only project-design implementation contract"
       },
       evidenceRefs: ["packages/core/src/self_evolution_scorecard.ts", "packages/core/src/expert_orchestration.ts"],
       verificationCommands: ["pnpm run check"],
@@ -129,7 +129,7 @@ test("self-evolution iteration outcome can merge existing evidence lists", async
     const recorded = await recordSelfEvolutionIteration(store, {
       summary: "Record a core iteration that will need outcome repair.",
       layer: "core_runtime",
-      ownerSurface: "ga_project_design",
+      ownerSurface: "project_design",
       proposedSlice: "outcome_merge_repair",
       evidenceRefs: ["packages/core/src/self_evolution_iterations.ts"],
       verificationCommands: ["pnpm run check"]
@@ -184,24 +184,24 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
   try {
     const implementationContract = {
       proposed_slice: "general_agent_delegation_hardening_after_seed",
-      source_artifact_id: "ga_design_artifact_iteration_contract_seed",
+      source_artifact_id: "project_design_artifact_iteration_contract_seed",
       source_proposed_slice: "previous_core_slice",
       selected_layer: "core_runtime" as const,
-      owner_surface: "ga_project_design",
-      improvement_type: "reusable_ga_design_contract" as const,
-      implementation_scope: ["change one reusable GA project-design contract or read-model surface"],
+      owner_surface: "project_design",
+      improvement_type: "reusable_project_design_contract" as const,
+      implementation_scope: ["change one reusable project-design contract or read-model surface"],
       deferred_scope: ["no external adapter or tool integration unless it names a reusable runtime contract"],
       delivery_standard: ["future iterations can inspect the contract without inferring intent from the opaque slice id"],
-      boundary: "read-only GA implementation contract"
+      boundary: "read-only project-design implementation contract"
     };
     const args = {
       summary: "Open next general delegation hardening slice from the current plan seed.",
       layer: "core_runtime" as const,
-      ownerSurface: "ga_project_design",
+      ownerSurface: "project_design",
       proposedSlice: "general_agent_delegation_hardening_after_seed",
       sourceRef: "self-evolution/iterations/iteration_contract_seed.json",
       implementationContract,
-      evidenceRefs: ["packages/core/src/ga_project_design.ts"],
+      evidenceRefs: ["packages/core/src/project_design.ts"],
       verificationCommands: ["pnpm run check"],
       nonGoals: ["does not execute the planned slice"],
       reuseOpen: true
@@ -214,12 +214,12 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
     assert.equal(second.created, false);
     assert.equal(second.reused_existing, true);
     assert.equal(second.iteration.id, first.iteration.id);
-    assert.equal(second.iteration.implementation_contract?.source_artifact_id, "ga_design_artifact_iteration_contract_seed");
+    assert.equal(second.iteration.implementation_contract?.source_artifact_id, "project_design_artifact_iteration_contract_seed");
     assert.equal(second.iteration.implementation_contract_sha256, first.iteration.implementation_contract_sha256);
     assert.match(second.boundary, /reused existing open iteration/);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
 
-    const delegationContract = getGaProjectDesignDelegationImplementationContract();
+    const delegationContract = getProjectDesignDelegationImplementationContract();
     const backfilled = await recordSelfEvolutionIteration(store, {
       ...args,
       implementationContract: {
@@ -259,11 +259,11 @@ test("self-evolution iteration contracts can reuse matching open plan-derived it
   }
 });
 
-test("fresh GA project design bootstrap plan can open the first core iteration", async () => {
+test("fresh project design bootstrap plan can open the first core iteration", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-iteration-bootstrap-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    const plan = (await getGaProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
+    const plan = (await getProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
     assert.ok(plan);
     assert.equal(plan.source_kind, "fresh_bootstrap");
 
@@ -284,19 +284,19 @@ test("fresh GA project design bootstrap plan can open the first core iteration",
 
     assert.equal(first.created, true);
     assert.equal(first.iteration.layer, "core_runtime");
-    assert.equal(first.iteration.owner_surface, "ga_project_design");
-    assert.equal(first.iteration.proposed_slice, "core_ga_design_fresh_bootstrap");
+    assert.equal(first.iteration.owner_surface, "project_design");
+    assert.equal(first.iteration.proposed_slice, "core_project_design_fresh_bootstrap");
     assert.equal(first.iteration.source_ref, "docs/RUNTIME_CONTRACT.md");
-    assert.equal(first.iteration.implementation_contract?.source_artifact_id, "ga_design_bootstrap_contract_source");
+    assert.equal(first.iteration.implementation_contract?.source_artifact_id, "project_design_bootstrap_contract_source");
     assert.equal(first.iteration.implementation_contract?.source_proposed_slice, "fresh_state_no_verified_iteration");
     assert.equal(first.iteration.verification_commands.includes("pnpm run runtime -- governance project-design --state-root <state-root>"), true);
-    assert.equal(first.iteration.verification_commands.some((command) => command.includes("--artifact ga_design_bootstrap_contract_source")), false);
+    assert.equal(first.iteration.verification_commands.some((command) => command.includes("--artifact project_design_bootstrap_contract_source")), false);
     assert.equal(second.created, false);
     assert.equal(second.reused_existing, true);
     assert.equal(second.iteration.id, first.iteration.id);
     assert.equal((await listSelfEvolutionIterations(store)).count, 1);
 
-    const openPlan = (await getGaProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
+    const openPlan = (await getProjectDesignReadModel(store, { limit: 10 })).next_core_basic_plan;
     assert.ok(openPlan);
     assert.equal(openPlan.source_kind, "fresh_bootstrap");
     assert.equal(openPlan.iteration_record_status.status, "open_iteration_available");

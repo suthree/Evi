@@ -73,6 +73,22 @@ public publishing, and destructive remote or otherwise irreversible external
 operations remain separate external-effect gates unless the operator explicitly
 authorizes them for the task.
 
+## 2026-07-15 Neutral Runtime Naming And Release Candidate Gate
+
+Implementation names are capability-oriented and project-neutral. Repository
+or reference-project names must not enter runtime identifiers, configuration
+fields, capability IDs, scripts, or persisted state contracts. The former
+project-specific project-design namespace is replaced by `project_design`,
+`core_project_design`, and `project.design_contract`; future checks enforce the
+same boundary across implementation source and templates.
+
+Machine model and IM configuration remain non-secret templates in the
+repository. Development-state regression is necessary but not sufficient for a
+release. A release candidate must pass an isolated structural clean-room using
+fresh home/state roots, followed by one real model task, one real IM
+request/reply loop, and resident restart/rollback smoke before `develop` merges
+to `main` and receives a stable tag.
+
 ## 2026-07-02 TrellisVCS Context Hygiene
 
 TrellisVCS is initialized with latest minimal no-index metadata so the repo is

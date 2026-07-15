@@ -40,16 +40,16 @@ import {
   getExpertOrchestrationContract
 } from "../../../packages/core/src/expert_orchestration.js";
 import {
-  getGaProjectDesignArtifactPacket,
-  getGaProjectDesignDelegationImplementationContract,
-  getGaProjectDesignReadModel,
+  getProjectDesignArtifactPacket,
+  getProjectDesignDelegationImplementationContract,
+  getProjectDesignReadModel,
   verificationClaimCoversEntrypoint,
-  type GaProjectDesignArtifactPacket,
-  type GaProjectDesignCompletionAuditSeed,
-  type GaProjectDesignImplementationContract,
-  type GaProjectDesignPlanPacket,
-  type GaProjectDesignReadModel
-} from "../../../packages/core/src/ga_project_design.js";
+  type ProjectDesignArtifactPacket,
+  type ProjectDesignCompletionAuditSeed,
+  type ProjectDesignImplementationContract,
+  type ProjectDesignPlanPacket,
+  type ProjectDesignReadModel
+} from "../../../packages/core/src/project_design.js";
 import { getSopEvolutionLedger } from "../../../packages/core/src/sop_evolution_ledger.js";
 import {
   getPipelineRun,
@@ -368,21 +368,21 @@ interface IterationAuditGuidanceInput {
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
-  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
-  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
-  iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
-  capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
-  phase_gates: GaProjectDesignPlanPacket["phase_gates"];
-  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
-  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
-  non_goals: GaProjectDesignPlanPacket["non_goals"];
-  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
-  selection_status: GaProjectDesignPlanPacket["selection_status"];
-  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
+  goal_scope: ProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: ProjectDesignPlanPacket["implementation_contract"];
+  iteration_focus: ProjectDesignPlanPacket["iteration_focus"];
+  capability_stage_plan: ProjectDesignPlanPacket["capability_stage_plan"];
+  phase_gates: ProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: ProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: ProjectDesignPlanPacket["acceptance_trace"];
+  non_goals: ProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: ProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: ProjectDesignPlanPacket["selection_status"];
+  selection_reasons: ProjectDesignPlanPacket["selection_reasons"];
   selection_checks: string[];
   verification_commands: string[];
-  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
-  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
+  learning_authority: ProjectDesignPlanPacket["learning_authority"];
+  layer_decision: ProjectDesignPlanPacket["layer_decision"];
   iteration_record_status: {
     status: string;
     id?: string;
@@ -398,7 +398,7 @@ interface IterationAuditGuidanceSubject {
   id: string;
   ref: string;
   source_ref?: string;
-  implementation_contract?: GaProjectDesignPlanPacket["implementation_contract"];
+  implementation_contract?: ProjectDesignPlanPacket["implementation_contract"];
   verification_commands?: string[];
   proposed_slice: string;
   outcome_status: string;
@@ -457,7 +457,7 @@ const RUNTIME_ATTENTION_CLASSIFICATIONS = ["acceptable", "repair_needed", "verif
 const SAFE_ADDITIVE_DELEGATION_REPLAY_CHECK = "model_diagnostic_integrity";
 
 export function buildIterationAuditSeedEvidenceStatus(
-  seed: GaProjectDesignCompletionAuditSeed,
+  seed: ProjectDesignCompletionAuditSeed,
   iteration: { outcome_status: string },
   evidence: IterationAuditEvidenceAvailable,
   outcomeVerificationClaimCoverage?: { status: string },
@@ -466,8 +466,8 @@ export function buildIterationAuditSeedEvidenceStatus(
   implementationContractCoverage?: { status: string },
   outcomeEvidenceScopeCoverage?: { status: string }
 ): {
-  seed_id: GaProjectDesignCompletionAuditSeed["id"];
-  phase_id: GaProjectDesignCompletionAuditSeed["phase_id"];
+  seed_id: ProjectDesignCompletionAuditSeed["id"];
+  phase_id: ProjectDesignCompletionAuditSeed["phase_id"];
   evidence_status: IterationAuditSeedEvidenceStatus;
   missing: string[];
   evidence_counts: {
@@ -570,7 +570,7 @@ export function buildIterationAuditPlanRefCoverage(
     repair_note: missingRefs.length
       ? "record-iteration-outcome replaces the outcome by default; use --merge-existing-outcome or preserve existing outcome fields while adding these refs as outcome evidence before rerunning the audit"
       : "no plan ref repair required",
-    boundary: "read-only plan ref coverage diagnostic; compares GA project-design plan refs with the audited iteration refs and outcome refs; does not read file bodies or prove completion"
+    boundary: "read-only plan ref coverage diagnostic; compares project-design plan refs with the audited iteration refs and outcome refs; does not read file bodies or prove completion"
   };
 }
 
@@ -838,9 +838,9 @@ export async function getIterationAuditServiceHealthSnapshot(args: {
 }
 
 export function selectIterationAuditExpectedImplementationContract(
-  planContract: GaProjectDesignPlanPacket["implementation_contract"],
+  planContract: ProjectDesignPlanPacket["implementation_contract"],
   iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "proposed_slice">
-): GaProjectDesignImplementationContract {
+): ProjectDesignImplementationContract {
   return planContract.proposed_slice === iteration.proposed_slice || !iteration.implementation_contract
     ? planContract
     : iteration.implementation_contract;
@@ -855,7 +855,7 @@ function hasNonBlankContractTextItems(items: string[] | undefined): boolean {
 }
 
 export function buildIterationAuditImplementationContractCoverage(
-  planContract: GaProjectDesignPlanPacket["implementation_contract"],
+  planContract: ProjectDesignPlanPacket["implementation_contract"],
   iteration: Pick<SelfEvolutionIterationContract, "implementation_contract" | "implementation_contract_sha256" | "proposed_slice" | "layer" | "owner_surface">
 ): {
   status: IterationAuditImplementationContractCoverageStatus;
@@ -878,7 +878,7 @@ export function buildIterationAuditImplementationContractCoverage(
   }
   const expectedContract = selectIterationAuditExpectedImplementationContract(planContract, iteration);
   const authoritativeDelegationContract = contract.delegation_contract || expectedContract.delegation_contract
-    ? getGaProjectDesignDelegationImplementationContract()
+    ? getProjectDesignDelegationImplementationContract()
     : undefined;
   const safelyAdvancedDelegationContract = Boolean(
     contract.delegation_contract
@@ -947,8 +947,8 @@ export function buildIterationAuditImplementationContractCoverage(
 }
 
 function isSafeAdditiveDelegationReplayContract(
-  previous: NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>,
-  current: NonNullable<GaProjectDesignImplementationContract["delegation_contract"]>
+  previous: NonNullable<ProjectDesignImplementationContract["delegation_contract"]>,
+  current: NonNullable<ProjectDesignImplementationContract["delegation_contract"]>
 ): boolean {
   const { trace_replay: previousTrace, ...previousWithoutTrace } = previous;
   const { trace_replay: currentTrace, ...currentWithoutTrace } = current;
@@ -972,7 +972,7 @@ function isOrderedSubset(previous: string[], current: string[]): boolean {
 }
 
 function implementationContractRequiredTokens(
-  contract: Partial<GaProjectDesignPlanPacket["implementation_contract"]>
+  contract: Partial<ProjectDesignPlanPacket["implementation_contract"]>
 ): string[] {
   return [
     `implementation_contract.proposed_slice=${contract.proposed_slice}`,
@@ -995,7 +995,7 @@ function implementationContractRequiredTokens(
 }
 
 export function buildIterationAuditOutcomeEvidenceScopeCoverage(
-  contract: Pick<GaProjectDesignImplementationContract, "outcome_evidence_scope">,
+  contract: Pick<ProjectDesignImplementationContract, "outcome_evidence_scope">,
   evidence: Pick<IterationAuditEvidenceAvailable, "outcome_evidence_refs">
 ): {
   status: IterationAuditOutcomeEvidenceScopeCoverageStatus;
@@ -1080,7 +1080,7 @@ export function buildIterationAuditCompletionGate(
   };
 }
 
-export function buildManualIterationImplementationContract(options: CliOptions): GaProjectDesignImplementationContract | undefined {
+export function buildManualIterationImplementationContract(options: CliOptions): ProjectDesignImplementationContract | undefined {
   const hasContract =
     options.iterationImplementationScopes.length > 0
     || options.iterationDeferredScopes.length > 0
@@ -1103,7 +1103,7 @@ export function buildManualIterationImplementationContract(options: CliOptions):
     source_proposed_slice: options.iterationSourceRef ?? "manual_record_iteration",
     selected_layer: layer,
     owner_surface: ownerSurface,
-    improvement_type: "reusable_ga_design_contract",
+    improvement_type: "reusable_project_design_contract",
     implementation_scope: [...options.iterationImplementationScopes],
     deferred_scope: [...options.iterationDeferredScopes],
     delivery_standard: [...options.iterationDeliveryStandards],
@@ -1148,19 +1148,19 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   proposed_slice: string;
   source_artifact_id: string;
   source_iteration_ref: string;
-  goal_scope: GaProjectDesignPlanPacket["goal_scope"];
-  implementation_contract: GaProjectDesignPlanPacket["implementation_contract"];
-  iteration_focus: GaProjectDesignPlanPacket["iteration_focus"];
-  capability_stage_plan: GaProjectDesignPlanPacket["capability_stage_plan"];
-  phase_gates: GaProjectDesignPlanPacket["phase_gates"];
-  acceptance_criteria: GaProjectDesignPlanPacket["acceptance_criteria"];
-  acceptance_trace: GaProjectDesignPlanPacket["acceptance_trace"];
-  non_goals: GaProjectDesignPlanPacket["non_goals"];
-  scorecard_basis: GaProjectDesignPlanPacket["scorecard_basis"];
-  selection_status: GaProjectDesignPlanPacket["selection_status"];
-  selection_reasons: GaProjectDesignPlanPacket["selection_reasons"];
-  selection_checks: GaProjectDesignPlanPacket["selection_checks"];
-  layer_decision: GaProjectDesignPlanPacket["layer_decision"];
+  goal_scope: ProjectDesignPlanPacket["goal_scope"];
+  implementation_contract: ProjectDesignPlanPacket["implementation_contract"];
+  iteration_focus: ProjectDesignPlanPacket["iteration_focus"];
+  capability_stage_plan: ProjectDesignPlanPacket["capability_stage_plan"];
+  phase_gates: ProjectDesignPlanPacket["phase_gates"];
+  acceptance_criteria: ProjectDesignPlanPacket["acceptance_criteria"];
+  acceptance_trace: ProjectDesignPlanPacket["acceptance_trace"];
+  non_goals: ProjectDesignPlanPacket["non_goals"];
+  scorecard_basis: ProjectDesignPlanPacket["scorecard_basis"];
+  selection_status: ProjectDesignPlanPacket["selection_status"];
+  selection_reasons: ProjectDesignPlanPacket["selection_reasons"];
+  selection_checks: ProjectDesignPlanPacket["selection_checks"];
+  layer_decision: ProjectDesignPlanPacket["layer_decision"];
   guidance_scope: IterationAuditGuidanceScope;
   audited_iteration?: IterationAuditGuidanceSubject;
   completion_seed_scope: IterationAuditCompletionSeedScope;
@@ -1168,7 +1168,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
   required_before_outcome: string[];
   verification_commands: string[];
   application_boundaries: string[];
-  learning_authority: GaProjectDesignPlanPacket["learning_authority"];
+  learning_authority: ProjectDesignPlanPacket["learning_authority"];
   iteration_record_status: IterationAuditGuidanceInput["iteration_record_status"];
   boundary: string;
 } {
@@ -1240,7 +1240,7 @@ export function buildIterationAuditGuidance(plan: IterationAuditGuidanceInput, s
     application_boundaries: plan.layer_decision.application_boundaries,
     learning_authority: plan.learning_authority,
     iteration_record_status: boundIterationRecordStatus,
-    boundary: "read-only iteration audit guidance; uses GA project-design commands for the matching open iteration and the audited iteration's frozen commands otherwise; does not execute checks, write outcomes, or prove completion"
+    boundary: "read-only iteration audit guidance; uses project-design commands for the matching open iteration and the audited iteration's frozen commands otherwise; does not execute checks, write outcomes, or prove completion"
   };
 }
 
@@ -1332,58 +1332,58 @@ export function bindIterationDetailRuntimeCommands(
   };
 }
 
-export function bindGaProjectDesignReadModelCommands(
-  readModel: GaProjectDesignReadModel,
+export function bindProjectDesignReadModelCommands(
+  readModel: ProjectDesignReadModel,
   stateRoot?: string
-): GaProjectDesignReadModel {
+): ProjectDesignReadModel {
   return {
     ...readModel,
     next_core_basic_plan: readModel.next_core_basic_plan
-      ? bindGaProjectDesignPlanCommands(readModel.next_core_basic_plan, stateRoot)
+      ? bindProjectDesignPlanCommands(readModel.next_core_basic_plan, stateRoot)
       : null
   };
 }
 
-export function bindGaProjectDesignArtifactPacketCommands(
-  packet: GaProjectDesignArtifactPacket,
+export function bindProjectDesignArtifactPacketCommands(
+  packet: ProjectDesignArtifactPacket,
   stateRoot?: string
-): GaProjectDesignArtifactPacket {
+): ProjectDesignArtifactPacket {
   return {
     ...packet,
     next_core_basic_plan: packet.next_core_basic_plan
-      ? bindGaProjectDesignPlanCommands(packet.next_core_basic_plan, stateRoot)
+      ? bindProjectDesignPlanCommands(packet.next_core_basic_plan, stateRoot)
       : null
   };
 }
 
-async function getScorecardBoundGaProjectDesignReadModel(
+async function getScorecardBoundProjectDesignReadModel(
   store: AgentStore,
   args: { limit?: number; vaultRoot?: SkillResolverLike } = {}
-): Promise<GaProjectDesignReadModel> {
+): Promise<ProjectDesignReadModel> {
   const scorecard = await getSelfEvolutionScorecard(store, {
     vaultRoot: args.vaultRoot
   });
-  return getGaProjectDesignReadModel(store, {
+  return getProjectDesignReadModel(store, {
     limit: args.limit,
     scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
   });
 }
 
-async function getScorecardBoundGaProjectDesignArtifactPacket(
+async function getScorecardBoundProjectDesignArtifactPacket(
   store: AgentStore,
   args: { artifactRef: string; limit?: number; vaultRoot?: SkillResolverLike }
-): Promise<GaProjectDesignArtifactPacket> {
+): Promise<ProjectDesignArtifactPacket> {
   const scorecard = await getSelfEvolutionScorecard(store, {
     vaultRoot: args.vaultRoot
   });
-  return getGaProjectDesignArtifactPacket(store, {
+  return getProjectDesignArtifactPacket(store, {
     artifactRef: args.artifactRef,
     limit: args.limit,
     scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
   });
 }
 
-function bindGaProjectDesignPlanCommands<T extends Partial<GaProjectDesignPlanPacket>>(
+function bindProjectDesignPlanCommands<T extends Partial<ProjectDesignPlanPacket>>(
   plan: T,
   stateRoot?: string
 ): T {
@@ -2334,16 +2334,16 @@ export async function main(): Promise<number> {
     }
     if (action === "project-design") {
       if (options.projectDesignArtifactRef) {
-        const result = await getScorecardBoundGaProjectDesignArtifactPacket(store, {
+        const result = await getScorecardBoundProjectDesignArtifactPacket(store, {
           artifactRef: options.projectDesignArtifactRef,
           limit: options.limit,
           vaultRoot: config.vault
         });
-        console.log(JSON.stringify(bindGaProjectDesignArtifactPacketCommands(result, config.state.root), null, 2));
+        console.log(JSON.stringify(bindProjectDesignArtifactPacketCommands(result, config.state.root), null, 2));
         return 0;
       }
-      const readModel = bindGaProjectDesignReadModelCommands(
-        await getScorecardBoundGaProjectDesignReadModel(store, {
+      const readModel = bindProjectDesignReadModelCommands(
+        await getScorecardBoundProjectDesignReadModel(store, {
           limit: options.limit,
           vaultRoot: config.vault
         }),
@@ -2387,7 +2387,7 @@ export async function main(): Promise<number> {
         const detail = await getSelfEvolutionIteration(store, {
           iterationRef: required(options.iterationRef, "governance iterations --audit-seed requires --iteration")
         });
-        const readModel = await getScorecardBoundGaProjectDesignReadModel(store, {
+        const readModel = await getScorecardBoundProjectDesignReadModel(store, {
           limit: options.limit,
           vaultRoot: config.vault
         });
@@ -2496,7 +2496,7 @@ export async function main(): Promise<number> {
     }
     if (action === "record-iteration") {
       if (options.iterationFromProjectDesignPlan) {
-        const readModel = await getScorecardBoundGaProjectDesignReadModel(store, {
+        const readModel = await getScorecardBoundProjectDesignReadModel(store, {
           limit: options.limit,
           vaultRoot: config.vault
         });
@@ -3575,7 +3575,7 @@ function printUsage(): void {
   pnpm run runtime -- memory propose-candidate --summary "..." --content "..." [--scope local] [--rationale "..."] [--artifact-ref memory/episodes/events.jsonl] [--state-root .runtime/state]
   pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... [--state-root .runtime/state]
   pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... [--state-root .runtime/state]
-  pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact ga_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
+  pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact project_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--implementation-scope "..."] [--deferred-scope "..."] [--delivery-standard "..."] [--reuse-open] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
   pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
   pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]

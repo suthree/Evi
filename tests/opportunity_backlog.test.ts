@@ -221,21 +221,21 @@ test("opportunity backlog demotes core/basic iteration outcome SOP follow-ups", 
   const fixture = await createFixture();
   try {
     const coreIteration = await recordSelfEvolutionIteration(fixture.store, {
-      summary: "Keep cumulative GA project design ahead of SOP follow-up churn.",
+      summary: "Keep cumulative project design ahead of SOP follow-up churn.",
       layer: "core_runtime",
-      ownerSurface: "ga_project_design",
+      ownerSurface: "project_design",
       proposedSlice: "next_core_basic_plan",
       sourceRef: "self-evolution/scorecard/latest.json",
-      evidenceRefs: ["packages/core/src/ga_project_design.ts"],
+      evidenceRefs: ["packages/core/src/project_design.ts"],
       verificationCommands: ["pnpm run check"],
       nonGoals: ["do not treat application tools as core runtime identity"]
     });
     await recordSelfEvolutionIterationOutcome(fixture.store, {
       iterationRef: coreIteration.iteration.id,
       status: "verified",
-      summary: "The GA plan was verified and should remain the core/basic planning source.",
-      evidenceRefs: ["tests/ga_project_design.test.ts"],
-      verificationCommands: ["pnpm exec tsx --test tests/ga_project_design.test.ts"],
+      summary: "The project-design plan was verified and should remain the core/basic planning source.",
+      evidenceRefs: ["tests/project_design.test.ts"],
+      verificationCommands: ["pnpm exec tsx --test tests/project_design.test.ts"],
       nextMoves: ["Use the plan before drafting SOP follow-ups."]
     });
 

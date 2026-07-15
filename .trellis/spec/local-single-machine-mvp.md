@@ -358,6 +358,9 @@ compatibility layer.
 
 GenericAgent, Hermes, OpenClaw, pi, Codex, and Claude Code are references only.
 They can inspire local agent decisions, but they are not standards.
+Reference-project and repository names must not become runtime identifiers,
+configuration fields, capability IDs, script names, or persisted state fields.
+Implementation contracts use capability-oriented neutral naming.
 
 ## Success Criteria
 

@@ -45,7 +45,14 @@ back into `main`.
 main -> f/* -> develop -> main
 ```
 
-The active implementation branch is `f1/init`.
+The integration branch is `develop`. A release candidate is verified from an
+isolated local environment before `develop` merges into `main` and receives a
+version tag.
+
+Runtime identifiers, config fields, capability IDs, scripts, and persisted
+state use capability-oriented names such as `local-runtime`, `project_design`,
+`model`, and `im-channel`. Names of this repository or external reference
+projects must not become implementation contracts.
 
 ## Trellis owns iteration governance
 
@@ -67,6 +74,7 @@ that surface.
 ```bash
 pnpm install --frozen-lockfile
 pnpm run check
+pnpm run release:verify
 pnpm run runtime -- doctor --state-root .runtime/state
 ```
 

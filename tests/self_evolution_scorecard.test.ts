@@ -16,7 +16,7 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
       action_type: "semantic_memory",
       status: "accepted",
       scope: "core_capability_self_recognition",
-      summary: "Core ability is GA design and self-evolution.",
+      summary: "Core ability is project design and self-evolution.",
       content: "External tools are application slices.",
       source_candidate_id: "memory_proposal_core",
       source_candidate_ref: "memory/semantic/candidates/memory_proposal_core.json",
@@ -32,7 +32,7 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
       action_type: "dream_snapshot",
       status: "active",
       title: "Core self-evolution long-horizon plan",
-      summary: "Keep the agent focused on GA project design and self-evolution.",
+      summary: "Keep the agent focused on project design and self-evolution.",
       created_at: "2026-07-06T00:00:02Z",
       source_refs: ["memory/semantic/accepted/semantic_memory_core.json"],
       semantic_memory_refs: ["memory/semantic/accepted/semantic_memory_core.json"],
@@ -82,16 +82,16 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(scorecard.action, "scorecard");
     assert.equal(scorecard.status, "evolving");
     assert.equal(scorecard.dimensions.length, 5);
-    assert.equal(scorecard.dimensions.some((dimension) => dimension.id === "core_ga_design" && dimension.layer === "core_runtime"), true);
+    assert.equal(scorecard.dimensions.some((dimension) => dimension.id === "core_project_design" && dimension.layer === "core_runtime"), true);
     assert.equal(scorecard.dimensions.some((dimension) => dimension.id === "basic_runtime_substrate" && dimension.layer === "basic_entrypoint"), true);
     assert.equal(scorecard.dimensions.some((dimension) => dimension.id === "sop_skill_memory_loop" && dimension.layer === "local_learning"), true);
     const sopLoop = scorecard.dimensions.find((dimension) => dimension.id === "sop_skill_memory_loop");
     assert.equal(sopLoop?.score, 3);
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
     assert.match(core?.summary ?? "", /derived project-design artifact/);
     assert.match(core?.summary ?? "", /latest outcome is verified/);
     assert.equal(core?.next_moves[0], "Use the latest iteration outcome to choose the next bounded core/basic slice.");
-    assert.equal(core?.evidence_refs.includes("packages/core/src/ga_project_design.ts"), true);
+    assert.equal(core?.evidence_refs.includes("packages/core/src/project_design.ts"), true);
     assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_scorecard.json"), true);
     const memoryDream = scorecard.dimensions.find((dimension) => dimension.id === "memory_dream_direction");
     assert.equal(memoryDream?.stage, "active");
@@ -131,11 +131,11 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
     assert.equal(delegationSlice?.success_criteria.some((criterion) => criterion.includes("main harness")), true);
     assert.equal(delegationSlice?.success_criteria.some((criterion) => criterion.includes("result_failure_kind")), true);
     assert.equal(scorecard.next_slices.some((slice) =>
-      slice.dimension_id === "core_ga_design"
+      slice.dimension_id === "core_project_design"
       && slice.success_criteria.some((criterion) => criterion.includes("derived project-design artifact"))
     ), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_scorecard.ts"), true);
-    assert.equal(scorecard.refs.includes("packages/core/src/ga_project_design.ts"), true);
+    assert.equal(scorecard.refs.includes("packages/core/src/project_design.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/delegate_agent_completion_gate.ts"), true);
     assert.equal(scorecard.refs.includes("packages/runtime/src/runner.ts"), true);
     assert.equal(scorecard.refs.includes("packages/core/src/self_evolution_iterations.ts"), true);
@@ -189,12 +189,12 @@ test("self-evolution scorecard summarizes core/basic learning maturity without e
   }
 });
 
-test("self-evolution scorecard keeps verified GA design artifacts visible while the newest iteration is open", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-open-ga-"));
+test("self-evolution scorecard keeps verified project design artifacts visible while the newest iteration is open", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-open-project-design-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
     for (const index of [1, 2, 3, 4]) {
-      const id = `iteration_contract_verified_ga_${index}`;
+      const id = `iteration_contract_verified_project_${index}`;
       const ref = `self-evolution/iterations/${id}.json`;
       const createdAt = `2026-07-06T00:00:0${index}Z`;
       await store.writeJson(ref, {
@@ -203,11 +203,11 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
         ref,
         kind: "self_evolution_iteration_contract",
         status: "recorded",
-        summary: "Verified GA project-design artifact baseline.",
+        summary: "Verified project-design artifact baseline.",
         layer: "core_runtime",
-        owner_surface: "ga_project_design",
+        owner_surface: "project_design",
         proposed_slice: `verified_iteration_to_design_artifact_${index}`,
-        evidence_refs: ["packages/core/src/ga_project_design.ts"],
+        evidence_refs: ["packages/core/src/project_design.ts"],
         verification_commands: ["pnpm run check"],
         non_goals: ["no completion proof"],
         advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -224,17 +224,17 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
         boundary: "bounded iteration contract"
       });
     }
-    await store.writeJson("self-evolution/iterations/iteration_contract_open_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_open_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_open_ga",
-      ref: "self-evolution/iterations/iteration_contract_open_ga.json",
+      id: "iteration_contract_open_project_design",
+      ref: "self-evolution/iterations/iteration_contract_open_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Open GA design hardening slice.",
+      summary: "Open project design hardening slice.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "open_ga_design_hardening",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "open_project_design_hardening",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -243,26 +243,26 @@ test("self-evolution scorecard keeps verified GA design artifacts visible while 
     });
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 2 });
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
     const architect = scorecard.expert_lenses.find((lens) => lens.id === "architect");
     assert.equal(core?.score, 5);
     assert.match(core?.summary ?? "", /derived project-design artifact/);
-    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_4.json"), true);
-    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_3.json"), true);
-    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_ga_2.json"), false);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_project_4.json"), true);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_project_3.json"), true);
+    assert.equal(core?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_project_2.json"), false);
     assert.deepEqual(architect?.evidence_refs, core?.evidence_refs);
-    assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_ga/);
+    assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_project_design/);
     const missingDream = scorecard.dimensions.find((dimension) => dimension.id === "memory_dream_direction");
     assert.equal(missingDream?.stage, "planned");
     assert.match(missingDream?.summary ?? "", /No dream snapshot exists/);
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_project_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_project_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("self-evolution scorecard graduates a verified delegation baseline to core GA design", async () => {
+test("self-evolution scorecard graduates a verified delegation baseline to core project design", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-verified-delegation-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
@@ -274,7 +274,7 @@ test("self-evolution scorecard graduates a verified delegation baseline to core 
       status: "recorded",
       summary: "Verified bounded general delegation baseline.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "general_agent_delegation_hardening_after_verified",
       evidence_refs: ["packages/core/src/delegate_agent_contract.ts", "packages/runtime/src/runner.ts"],
       verification_commands: ["pnpm run check"],
@@ -305,14 +305,14 @@ test("self-evolution scorecard graduates a verified delegation baseline to core 
     assert.match(delegation?.summary ?? "", /verified bounded delegation baseline/);
     assert.equal(delegation?.evidence_refs.includes("self-evolution/iterations/iteration_contract_verified_delegation.json"), true);
     assert.match(delegation?.next_moves[0] ?? "", /verified delegation baseline/);
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_project_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_project_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("self-evolution scorecard does not reopen a stable delegation baseline after a verified GA successor", async () => {
+test("self-evolution scorecard does not reopen a stable delegation baseline after a verified project-design successor", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-delegation-cycle-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
@@ -324,7 +324,7 @@ test("self-evolution scorecard does not reopen a stable delegation baseline afte
       status: "recorded",
       summary: "Verified bounded general delegation baseline.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "general_agent_delegation_hardening_after_verified",
       evidence_refs: ["packages/core/src/delegate_agent_contract.ts"],
       verification_commands: ["pnpm run check"],
@@ -342,23 +342,23 @@ test("self-evolution scorecard does not reopen a stable delegation baseline afte
       created_at: "2026-07-06T00:00:03Z",
       boundary: "bounded iteration contract"
     });
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga_successor.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_project_successor.json", {
       schema_version: 1,
-      id: "iteration_contract_verified_ga_successor",
-      ref: "self-evolution/iterations/iteration_contract_verified_ga_successor.json",
+      id: "iteration_contract_verified_project_successor",
+      ref: "self-evolution/iterations/iteration_contract_verified_project_successor.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA design successor.",
+      summary: "Verified project design successor.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "core_ga_design_next_slice_after_verified",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "core_project_design_next_slice_after_verified",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect"],
       outcome: {
         status: "verified",
-        summary: "GA design verification passed.",
+        summary: "project design verification passed.",
         evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
         verification_commands: ["pnpm run check"],
         next_moves: ["Select the next bounded core/basic slice from fresh negative evidence."],
@@ -371,34 +371,34 @@ test("self-evolution scorecard does not reopen a stable delegation baseline afte
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
 
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_project_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_project_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("self-evolution scorecard returns to core GA after a newer delegation baseline", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-ga-before-delegation-"));
+test("self-evolution scorecard returns to core project design after a newer delegation baseline", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-project-design-before-delegation-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_verified_ga",
-      ref: "self-evolution/iterations/iteration_contract_verified_ga.json",
+      id: "iteration_contract_verified_project_design",
+      ref: "self-evolution/iterations/iteration_contract_verified_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA design successor before the latest delegation baseline.",
+      summary: "Verified project design successor before the latest delegation baseline.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "core_ga_design_next_slice_after_previous_delegation",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "core_project_design_next_slice_after_previous_delegation",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect"],
       outcome: {
         status: "verified",
-        summary: "GA design verification passed.",
+        summary: "project design verification passed.",
         evidence_refs: ["tests/self_evolution_scorecard.test.ts"],
         verification_commands: ["pnpm run check"],
         next_moves: ["Return to delegation hardening."],
@@ -408,16 +408,16 @@ test("self-evolution scorecard returns to core GA after a newer delegation basel
       created_at: "2026-07-06T00:00:03Z",
       boundary: "bounded iteration contract"
     });
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_delegation_after_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_delegation_after_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_verified_delegation_after_ga",
-      ref: "self-evolution/iterations/iteration_contract_verified_delegation_after_ga.json",
+      id: "iteration_contract_verified_delegation_after_project_design",
+      ref: "self-evolution/iterations/iteration_contract_verified_delegation_after_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified delegation baseline after the prior GA successor.",
+      summary: "Verified delegation baseline after the prior project-design successor.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "general_agent_delegation_hardening_after_ga",
+      owner_surface: "project_design",
+      proposed_slice: "general_agent_delegation_hardening_after_project_design",
       evidence_refs: ["packages/core/src/delegate_agent_contract.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no expert scheduling"],
@@ -437,28 +437,28 @@ test("self-evolution scorecard returns to core GA after a newer delegation basel
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
 
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_project_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_project_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("self-evolution scorecard keeps core GA design as the core/basic outlet until the latest outcome is verified", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-partial-ga-"));
+test("self-evolution scorecard keeps core project design as the core/basic outlet until the latest outcome is verified", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-partial-project-design-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga_before_partial.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_project_before_partial.json", {
       schema_version: 1,
-      id: "iteration_contract_verified_ga_before_partial",
-      ref: "self-evolution/iterations/iteration_contract_verified_ga_before_partial.json",
+      id: "iteration_contract_verified_project_before_partial",
+      ref: "self-evolution/iterations/iteration_contract_verified_project_before_partial.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA project-design artifact baseline.",
+      summary: "Verified project-design artifact baseline.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "verified_iteration_to_design_artifact",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -474,17 +474,17 @@ test("self-evolution scorecard keeps core GA design as the core/basic outlet unt
       created_at: "2026-07-06T00:00:03Z",
       boundary: "bounded iteration contract"
     });
-    await store.writeJson("self-evolution/iterations/iteration_contract_partial_ga_after_verified.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_partial_project_after_verified.json", {
       schema_version: 1,
-      id: "iteration_contract_partial_ga_after_verified",
-      ref: "self-evolution/iterations/iteration_contract_partial_ga_after_verified.json",
+      id: "iteration_contract_partial_project_after_verified",
+      ref: "self-evolution/iterations/iteration_contract_partial_project_after_verified.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Partial GA design hardening slice.",
+      summary: "Partial project design hardening slice.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "partial_ga_design_hardening",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "partial_project_design_hardening",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -502,11 +502,11 @@ test("self-evolution scorecard keeps core GA design as the core/basic outlet unt
     });
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
 
     assert.equal(core?.score, 4);
-    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_ga_design");
-    assert.equal(scorecard.default_next_slice?.dimension_id, "core_ga_design");
+    assert.equal(scorecard.next_core_basic_slice?.dimension_id, "core_project_design");
+    assert.equal(scorecard.default_next_slice?.dimension_id, "core_project_design");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -516,17 +516,17 @@ test("self-evolution scorecard surfaces open basic iterations", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-open-basic-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_verified_ga_for_basic.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_verified_project_for_basic.json", {
       schema_version: 1,
-      id: "iteration_contract_verified_ga_for_basic",
-      ref: "self-evolution/iterations/iteration_contract_verified_ga_for_basic.json",
+      id: "iteration_contract_verified_project_for_basic",
+      ref: "self-evolution/iterations/iteration_contract_verified_project_for_basic.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Verified GA baseline before basic work.",
+      summary: "Verified project-design baseline before basic work.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "verified_ga_before_basic",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "verified_project_before_basic",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -550,7 +550,7 @@ test("self-evolution scorecard surfaces open basic iterations", async () => {
       status: "recorded",
       summary: "Open basic runtime substrate slice.",
       layer: "basic_entrypoint",
-      owner_surface: "ga_project_design",
+      owner_surface: "project_design",
       proposed_slice: "manual_basic_iteration_contract_guard",
       evidence_refs: ["packages/core/src/self_evolution_iterations.ts"],
       verification_commands: ["pnpm run check"],
@@ -568,7 +568,7 @@ test("self-evolution scorecard surfaces open basic iterations", async () => {
     });
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
     const basic = scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate");
 
     assert.match(core?.next_moves[0] ?? "", /Close the active iteration outcome for iteration_contract_open_basic/);
@@ -590,37 +590,37 @@ test("self-evolution scorecard surfaces open basic iterations", async () => {
 });
 
 test("self-evolution scorecard separates superseded open iterations from the current core plan", async () => {
-  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-stale-open-ga-"));
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-stale-open-project-design-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_stale_open_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_stale_open_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_stale_open_ga",
-      ref: "self-evolution/iterations/iteration_contract_stale_open_ga.json",
+      id: "iteration_contract_stale_open_project_design",
+      ref: "self-evolution/iterations/iteration_contract_stale_open_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Older open GA design hardening slice.",
+      summary: "Older open project design hardening slice.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "older_open_ga_design_hardening",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "older_open_project_design_hardening",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
       created_at: "2026-07-06T00:00:03Z",
       boundary: "bounded iteration contract"
     });
-    await store.writeJson("self-evolution/iterations/iteration_contract_new_verified_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_new_verified_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_new_verified_ga",
-      ref: "self-evolution/iterations/iteration_contract_new_verified_ga.json",
+      id: "iteration_contract_new_verified_project_design",
+      ref: "self-evolution/iterations/iteration_contract_new_verified_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Newer verified GA project-design artifact.",
+      summary: "Newer verified project-design artifact.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "newer_verified_ga_design",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "newer_verified_project_design",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -638,10 +638,10 @@ test("self-evolution scorecard separates superseded open iterations from the cur
     });
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 5 });
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
     assert.match(core?.summary ?? "", /latest outcome is verified/);
     assert.match(core?.next_moves[0] ?? "", /Use the latest iteration outcome to choose the next bounded core\/basic slice/);
-    assert.match(core?.next_moves[0] ?? "", /superseded open iteration iteration_contract_stale_open_ga/);
+    assert.match(core?.next_moves[0] ?? "", /superseded open iteration iteration_contract_stale_open_project_design/);
     assert.doesNotMatch(core?.next_moves[0] ?? "", /Close the active iteration outcome/);
     assert.equal(scorecard.next_iterations[0], core?.next_moves[0]);
   } finally {
@@ -653,17 +653,17 @@ test("self-evolution scorecard gating sees superseded open iterations beyond dis
   const root = await mkdtemp(join(tmpdir(), "local-runtime-scorecard-stale-open-window-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));
   try {
-    await store.writeJson("self-evolution/iterations/iteration_contract_old_open_ga.json", {
+    await store.writeJson("self-evolution/iterations/iteration_contract_old_open_project_design.json", {
       schema_version: 1,
-      id: "iteration_contract_old_open_ga",
-      ref: "self-evolution/iterations/iteration_contract_old_open_ga.json",
+      id: "iteration_contract_old_open_project_design",
+      ref: "self-evolution/iterations/iteration_contract_old_open_project_design.json",
       kind: "self_evolution_iteration_contract",
       status: "recorded",
-      summary: "Older open GA design hardening slice.",
+      summary: "Older open project design hardening slice.",
       layer: "core_runtime",
-      owner_surface: "ga_project_design",
-      proposed_slice: "older_open_ga_design_hardening",
-      evidence_refs: ["packages/core/src/ga_project_design.ts"],
+      owner_surface: "project_design",
+      proposed_slice: "older_open_project_design_hardening",
+      evidence_refs: ["packages/core/src/project_design.ts"],
       verification_commands: ["pnpm run check"],
       non_goals: ["no completion proof"],
       advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -671,17 +671,17 @@ test("self-evolution scorecard gating sees superseded open iterations beyond dis
       boundary: "bounded iteration contract"
     });
     for (let index = 1; index <= 5; index += 1) {
-      await store.writeJson(`self-evolution/iterations/iteration_contract_new_verified_ga_${index}.json`, {
+      await store.writeJson(`self-evolution/iterations/iteration_contract_new_verified_project_${index}.json`, {
         schema_version: 1,
-        id: `iteration_contract_new_verified_ga_${index}`,
-        ref: `self-evolution/iterations/iteration_contract_new_verified_ga_${index}.json`,
+        id: `iteration_contract_new_verified_project_${index}`,
+        ref: `self-evolution/iterations/iteration_contract_new_verified_project_${index}.json`,
         kind: "self_evolution_iteration_contract",
         status: "recorded",
-        summary: `Newer verified GA project-design artifact ${index}.`,
+        summary: `Newer verified project-design artifact ${index}.`,
         layer: "core_runtime",
-        owner_surface: "ga_project_design",
-        proposed_slice: `newer_verified_ga_design_${index}`,
-        evidence_refs: ["packages/core/src/ga_project_design.ts"],
+        owner_surface: "project_design",
+        proposed_slice: `newer_verified_project_design_${index}`,
+        evidence_refs: ["packages/core/src/project_design.ts"],
         verification_commands: ["pnpm run check"],
         non_goals: ["no completion proof"],
         advisory_expert_roles: ["architect", "verification_reviewer"],
@@ -700,10 +700,10 @@ test("self-evolution scorecard gating sees superseded open iterations beyond dis
     }
 
     const scorecard = await getSelfEvolutionScorecard(store, { limit: 3 });
-    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+    const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
 
-    assert.equal(scorecard.refs.includes("self-evolution/iterations/iteration_contract_old_open_ga.json"), false);
-    assert.match(core?.next_moves[0] ?? "", /superseded open iteration iteration_contract_old_open_ga/);
+    assert.equal(scorecard.refs.includes("self-evolution/iterations/iteration_contract_old_open_project_design.json"), false);
+    assert.match(core?.next_moves[0] ?? "", /superseded open iteration iteration_contract_old_open_project_design/);
     assert.equal(scorecard.next_core_basic_slice?.layer, "core_runtime");
     assert.equal(scorecard.default_next_slice?.layer, "core_runtime");
   } finally {

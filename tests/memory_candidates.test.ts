@@ -26,7 +26,7 @@ test("propose memory candidate writes state-only candidate and evidence", async 
     const proposed = await proposeMemoryCandidate(store, {
       scope: "self_recognition",
       summary: "Core capability boundary",
-      content: "Core capabilities are recurring GA project design and runtime self-evolution, not one-off application tools.",
+      content: "Core capabilities are recurring project design and runtime self-evolution, not one-off application tools.",
       rationale: "The operator corrected the capability taxonomy.",
       artifactRefs: ["CONTEXT.md", "CONTEXT.md", "docs/RUNTIME_CONTRACT.md"]
     });

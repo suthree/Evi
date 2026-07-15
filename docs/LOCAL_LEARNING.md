@@ -235,16 +235,11 @@ skills remain procedural memory, and iteration outcomes remain completion
 evidence. Dream may recommend which layer deserves attention next, but cannot
 promote, execute, reconcile state roots, or prove completion.
 
-Reference projects inform this separation but do not define compatibility:
-
-- [OpenAI Codex](https://github.com/openai/codex) contributes scoped durable
-  instruction and inspectable-session patterns.
-- [Hermes Agent](https://github.com/NousResearch/hermes-agent) separates compact
-  persistent memory, on-demand session recall, procedural skills, and scheduled
-  execution.
-- [GenericAgent](https://github.com/lsdefine/GenericAgent) contributes layered
-  L0-L4 memory, on-demand context density, and verified-trajectory-to-skill
-  evolution.
+External implementations inform this separation but do not define
+compatibility. Reusable patterns include scoped durable instructions,
+inspectable sessions, compact persistent memory, on-demand recall, procedural
+skills, layered context density, and verified-trajectory-to-skill evolution.
+Their project names do not enter local runtime identifiers or state contracts.
 
 Daily episode archives are deterministic bounded summaries generated from the
 append-only episode JSONL. `memory archive-health` compares event metadata with
@@ -288,7 +283,7 @@ active vault, invoke the model, or run shell commands.
 Operators can inspect self-evolution maturity through
 `governance scorecard`. The scorecard reads only capability catalog metadata,
 memory-layer diagnostics, accepted dream snapshots, the SOP evolution ledger,
-and the Opportunity Backlog. It classifies current progress across core GA
+and the Opportunity Backlog. It classifies current progress across core project design
 design, basic runtime substrate, general-agent delegation, SOP/skill/memory
 loop, and memory/dream direction. Its review lenses are advisory context, not
 delegated agents, and the command never promotes SOPs, writes skills, invokes
@@ -299,14 +294,14 @@ default. `next_slices` stays read-only, all-dimension prioritization context
 derived from dimension stage, score, and layer; it may surface local-learning
 SOP follow-ups first, but those hints must not redefine the agent's core
 capability direction or execute the slice.
-`governance project-design` exposes the core GA project design contract. It
+`governance project-design` exposes the core project design contract. It
 keeps goal intake, capability layering, contract design, execution planning,
 verification review, and learning persistence as the reusable loop before a
 project slice is treated as durable progress. It is read-only and does not
 execute tools, create projects, spawn experts, promote memories, or prove
 completion.
 Verified self-evolution iteration outcomes can also appear there as read-only
-project-design artifacts. They are reusable GA design lessons, not state
+project-design artifacts. They are reusable project design lessons, not state
 writes, SOP drafts, skill promotion, or future completion proof.
 If the latest reusable artifact is core/basic, `project-design` also emits
 `next_core_basic_plan`, an advisory planning packet with phase gates,

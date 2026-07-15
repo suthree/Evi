@@ -1854,7 +1854,7 @@ async function readSelfEvolutionGapItems(store: AgentStore): Promise<Opportunity
         side_effect_level: actNextCommand ? "local_write" : "none"
       },
       next_step: isCoreBasicIterationOutcomeFollowUp
-        ? `Inspect the derived gap as a low-priority learning follow-up after the GA project-design plan: ${gap.inspect_command}. Do not draft a SOP unless the lesson recurs outside the core/basic project-design artifact.`
+        ? `Inspect the derived gap as a low-priority learning follow-up after the project-design plan: ${gap.inspect_command}. Do not draft a SOP unless the lesson recurs outside the core/basic project-design artifact.`
         : actNextCommand
         ? `Inspect the derived gap, then run the typed opportunity executor: ${actNextCommand}.`
         : actionKind === "draft_sop"

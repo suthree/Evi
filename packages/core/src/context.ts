@@ -14,9 +14,9 @@ import {
 } from "./capabilities.js";
 import { getDreamFreshness, listLatestDreamSnapshots } from "./dreams.js";
 import {
-  getGaProjectDesignReadModel,
-  type GaProjectDesignPlanPacket
-} from "./ga_project_design.js";
+  getProjectDesignReadModel,
+  type ProjectDesignPlanPacket
+} from "./project_design.js";
 import { getSelfEvolutionScorecard } from "./self_evolution_scorecard.js";
 import { getLatestSelfEvolutionIteration } from "./self_evolution_iterations.js";
 import {
@@ -415,7 +415,7 @@ const GOVERNANCE_CONTEXT_SECTIONS = new Set([
   "Semantic Memory",
   "Dreams",
   "Self-Evolution Scorecard",
-  "GA Project Design Plan",
+  "Project Design Plan",
   "Self-Evolution Iteration",
   "Opportunity Backlog",
   "Background Review History",
@@ -649,8 +649,8 @@ async function buildContextSections(
   if (include("Semantic Memory")) sections.push(await semanticMemorySection(store));
   if (include("Dreams")) sections.push(await dreamSection(store));
   if (include("Self-Evolution Scorecard")) sections.push(await selfEvolutionScorecardSection(store, options.vaultRoot));
-  if (include("GA Project Design Plan")) {
-    const gaPlan = await gaProjectDesignPlanSection(store);
+  if (include("Project Design Plan")) {
+    const gaPlan = await projectDesignPlanSection(store);
     if (gaPlan) sections.push(gaPlan);
   }
   if (include("Self-Evolution Iteration")) sections.push(...await selfEvolutionIterationSection(store));
@@ -1108,7 +1108,7 @@ function capabilityCatalogSample(category: CapabilityCategory): string[] {
   }
   if (category.id === "context_read_models") {
     return category.capabilities
-      .filter((capability) => ["context.manifests", "ga.project_design_contract", "expert.orchestration_contract"].includes(capability.id))
+      .filter((capability) => ["context.manifests", "project.design_contract", "expert.orchestration_contract"].includes(capability.id))
       .map(render);
   }
   if (category.id === "runtime_service") {
@@ -1842,13 +1842,13 @@ async function selfEvolutionScorecardSection(
   vaultRoot: SkillResolverLike | undefined
 ): Promise<ContextSection> {
   const scorecard = await getSelfEvolutionScorecard(store, { limit: 3, vaultRoot });
-  const core = scorecard.dimensions.find((dimension) => dimension.id === "core_ga_design");
+  const core = scorecard.dimensions.find((dimension) => dimension.id === "core_project_design");
   const basic = scorecard.dimensions.find((dimension) => dimension.id === "basic_runtime_substrate");
   const delegation = scorecard.dimensions.find((dimension) => dimension.id === "general_agent_delegation");
   return {
     title: "Self-Evolution Scorecard",
     body: [
-      `core_ga_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};general_agent_delegation=${delegation?.stage ?? "unknown"}`,
+      `core_project_design=${core?.stage ?? "unknown"};basic_runtime_substrate=${basic?.stage ?? "unknown"};general_agent_delegation=${delegation?.stage ?? "unknown"}`,
       ...(basic?.latest_iteration
         ? [`latest_basic_iteration=${basic.latest_iteration.id};status=${basic.latest_iteration.outcome_status};ref=${basic.latest_iteration.ref}`]
         : [])
@@ -1858,33 +1858,33 @@ async function selfEvolutionScorecardSection(
   };
 }
 
-const COMPACT_GA_PLAN_CHECK_PREFIXES = [
+const COMPACT_PROJECT_PLAN_CHECK_PREFIXES = [
   "source_artifact_verified=",
   "source_artifact_evidence=",
   "source_artifact_warning="
 ];
 
-const COMPACT_GA_PLAN_REASON_PREFIXES = [
+const COMPACT_PROJECT_PLAN_REASON_PREFIXES = [
   "source_kind=",
   "source_status=",
   "source_artifact_quality=",
   "scorecard_target_status="
 ];
 
-const COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES = [
+const COMPACT_PROJECT_PLAN_ACCEPTANCE_PREFIXES = [
   "goal_scope:",
   "current_state:",
   "verification_scope:",
   "learning_persistence:"
 ];
 
-const COMPACT_GA_PLAN_CRITICAL_ACCEPTANCE_PARTS = [
+const COMPACT_PROJECT_PLAN_CRITICAL_ACCEPTANCE_PARTS = [
   "instead of copied from the source artifact",
   "external adapters remain application slices",
   "rollback strategy before outcome"
 ];
 
-const COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS = [
+const COMPACT_PROJECT_PLAN_CRITICAL_NON_GOAL_PARTS = [
   "does not promote SOPs",
   "does not promote one-off external adapter behavior",
   "no external-tool execution",
@@ -1892,7 +1892,7 @@ const COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS = [
   "no completion proof without executed verification"
 ];
 
-function compactGaPlanPrefixedItems(items: string[], prefixes: string[]): string[] {
+function compactProjectPlanPrefixedItems(items: string[], prefixes: string[]): string[] {
   const selected: string[] = [];
   for (const prefix of prefixes) {
     const item = items.find((candidate) => candidate.startsWith(prefix));
@@ -1905,33 +1905,33 @@ function compactGaPlanPrefixedItems(items: string[], prefixes: string[]): string
   return selected;
 }
 
-export function compactGaPlanNonGoals(nonGoals: string[]): string[] {
+export function compactProjectPlanNonGoals(nonGoals: string[]): string[] {
   const selected: string[] = [];
-  for (const part of COMPACT_GA_PLAN_CRITICAL_NON_GOAL_PARTS) {
+  for (const part of COMPACT_PROJECT_PLAN_CRITICAL_NON_GOAL_PARTS) {
     const item = nonGoals.find((candidate) => candidate.includes(part));
     if (item) selected.push(item);
   }
   return selected;
 }
 
-export function compactGaPlanSelectionChecks(selectionChecks: string[]): string[] {
+export function compactProjectPlanSelectionChecks(selectionChecks: string[]): string[] {
   const missingClaimWarning = selectionChecks.find((check) =>
     check.startsWith("source_artifact_warning=missing_verification_claim;")
   );
   const prioritizedChecks = missingClaimWarning
     ? [missingClaimWarning, ...selectionChecks.filter((check) => check !== missingClaimWarning)]
     : selectionChecks;
-  return compactGaPlanPrefixedItems(prioritizedChecks, COMPACT_GA_PLAN_CHECK_PREFIXES);
+  return compactProjectPlanPrefixedItems(prioritizedChecks, COMPACT_PROJECT_PLAN_CHECK_PREFIXES);
 }
 
-export function compactGaPlanSelectionReasons(selectionReasons: string[]): string[] {
-  return compactGaPlanPrefixedItems(selectionReasons, COMPACT_GA_PLAN_REASON_PREFIXES);
+export function compactProjectPlanSelectionReasons(selectionReasons: string[]): string[] {
+  return compactProjectPlanPrefixedItems(selectionReasons, COMPACT_PROJECT_PLAN_REASON_PREFIXES);
 }
 
-export function compactGaPlanSourceTruth(
-  plan: Pick<GaProjectDesignPlanPacket,
+export function compactProjectPlanSourceTruth(
+  plan: Pick<ProjectDesignPlanPacket,
     "source_artifact_id" | "source_iteration_ref" | "source_proposed_slice" | "proposed_slice" | "selection_checks" | "selection_reasons">
-    & { source_kind?: GaProjectDesignPlanPacket["source_kind"] }
+    & { source_kind?: ProjectDesignPlanPacket["source_kind"] }
 ): string {
   const sourceKind = plan.source_kind
     ?? plan.selection_reasons
@@ -1949,23 +1949,23 @@ export function compactGaPlanSourceTruth(
   return `source_kind=${sourceKind ?? "unknown"}; artifact=${plan.source_artifact_id}; ref=${plan.source_iteration_ref}; source_slice=${plan.source_proposed_slice}; target_slice=${plan.proposed_slice}; status=${sourceStatus ?? "unknown"}; quality=${sourceQuality ?? "unknown"}; fresh_successor=${freshSuccessor ?? "unknown"}`;
 }
 
-export function compactGaPlanAcceptanceCriteria(acceptanceCriteria: string[]): string[] {
-  const selected = compactGaPlanPrefixedItems(acceptanceCriteria, COMPACT_GA_PLAN_ACCEPTANCE_PREFIXES);
-  for (const part of COMPACT_GA_PLAN_CRITICAL_ACCEPTANCE_PARTS) {
+export function compactProjectPlanAcceptanceCriteria(acceptanceCriteria: string[]): string[] {
+  const selected = compactProjectPlanPrefixedItems(acceptanceCriteria, COMPACT_PROJECT_PLAN_ACCEPTANCE_PREFIXES);
+  for (const part of COMPACT_PROJECT_PLAN_CRITICAL_ACCEPTANCE_PARTS) {
     const item = acceptanceCriteria.find((candidate) => candidate.includes(part));
     if (item && !selected.includes(item)) selected.push(item);
   }
   return selected;
 }
 
-export function compactGaPlanAntiDriftChecks(
-  plan: Pick<GaProjectDesignPlanPacket, "iteration_focus">
+export function compactProjectPlanAntiDriftChecks(
+  plan: Pick<ProjectDesignPlanPacket, "iteration_focus">
 ): string {
   return plan.iteration_focus.anti_drift_checks.slice(0, 3).join(" | ");
 }
 
-export function compactGaPlanGoalScope(
-  plan: Pick<GaProjectDesignPlanPacket, "goal_scope">
+export function compactProjectPlanGoalScope(
+  plan: Pick<ProjectDesignPlanPacket, "goal_scope">
 ): string {
   const scope = plan.goal_scope;
   const source = scope.source_of_truth.slice(0, 2).join("|");
@@ -1973,8 +1973,8 @@ export function compactGaPlanGoalScope(
   return `objective=${scope.objective}; owner=${scope.owner_surface}; source=${source}; success=${success}`;
 }
 
-export function compactGaPlanImplementationContract(
-  plan: Pick<GaProjectDesignPlanPacket, "implementation_contract">
+export function compactProjectPlanImplementationContract(
+  plan: Pick<ProjectDesignPlanPacket, "implementation_contract">
 ): string {
   const contract = plan.implementation_contract;
   return [
@@ -1989,8 +1989,8 @@ export function compactGaPlanImplementationContract(
   ].join("; ");
 }
 
-export function compactGaPlanSourceContinuation(
-  plan: Pick<GaProjectDesignPlanPacket, "source_continuation">
+export function compactProjectPlanSourceContinuation(
+  plan: Pick<ProjectDesignPlanPacket, "source_continuation">
 ): string {
   const source = plan.source_continuation;
   const sourceContract = source.source_contract
@@ -2015,38 +2015,38 @@ export function compactGaPlanSourceContinuation(
   ].join("; ");
 }
 
-export function compactGaPlanLayerGuard(
-  plan: Pick<GaProjectDesignPlanPacket, "layer_decision">
+export function compactProjectPlanLayerGuard(
+  plan: Pick<ProjectDesignPlanPacket, "layer_decision">
 ): string {
   const decision = plan.layer_decision;
   return `stage=${decision.stage}; source=${decision.source_layer}/${decision.source_owner_surface}; selected=${decision.selected_layer}/${decision.selected_owner_surface}`;
 }
 
-export function compactGaPlanLearningAuthority(
-  plan: Pick<GaProjectDesignPlanPacket, "learning_authority">
+export function compactProjectPlanLearningAuthority(
+  plan: Pick<ProjectDesignPlanPacket, "learning_authority">
 ): string {
   const authority = plan.learning_authority;
   return `process=${authority.process_scaffold}; judgment=${authority.judgment_authority}; completion=${authority.completion_authority}; promotion=${authority.promotion_gate}`;
 }
 
-export function compactGaPlanAuditRequirements(
-  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+export function compactProjectPlanAuditRequirements(
+  plan: Pick<ProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
   return plan.completion_audit_seeds
     .map((seed) => `${seed.id}=${seed.requirement}`)
     .join("; ");
 }
 
-export function compactGaPlanAuditEvidence(
-  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+export function compactProjectPlanAuditEvidence(
+  plan: Pick<ProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
   return plan.completion_audit_seeds
-    .map((seed) => `${seed.id}=${compactGaPlanAuditEvidenceItem(seed)}`)
+    .map((seed) => `${seed.id}=${compactProjectPlanAuditEvidenceItem(seed)}`)
     .join("; ");
 }
 
-function compactGaPlanAuditEvidenceItem(
-  seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
+function compactProjectPlanAuditEvidenceItem(
+  seed: ProjectDesignPlanPacket["completion_audit_seeds"][number]
 ): string {
   if (seed.id === "current_state") {
     return seed.evidence_needed.find((evidence) => evidence.includes("service health is a required verification command"))
@@ -2061,16 +2061,16 @@ function compactGaPlanAuditEvidenceItem(
   return seed.evidence_needed[0] ?? "unknown";
 }
 
-export function compactGaPlanAuditRejects(
-  plan: Pick<GaProjectDesignPlanPacket, "completion_audit_seeds">
+export function compactProjectPlanAuditRejects(
+  plan: Pick<ProjectDesignPlanPacket, "completion_audit_seeds">
 ): string {
   return plan.completion_audit_seeds
-    .map((seed) => `${seed.id}=${compactGaPlanAuditReject(seed)}`)
+    .map((seed) => `${seed.id}=${compactProjectPlanAuditReject(seed)}`)
     .join("; ");
 }
 
-function compactGaPlanAuditReject(
-  seed: GaProjectDesignPlanPacket["completion_audit_seeds"][number]
+function compactProjectPlanAuditReject(
+  seed: ProjectDesignPlanPacket["completion_audit_seeds"][number]
 ): string {
   if (seed.id === "current_state") {
     return seed.reject_if.find((reject) => reject.includes("service health is a required verification command"))
@@ -2085,8 +2085,8 @@ function compactGaPlanAuditReject(
   return seed.reject_if[0] ?? "unknown";
 }
 
-export function compactGaPlanStageExitCriteria(
-  plan: Pick<GaProjectDesignPlanPacket, "capability_stage_plan">
+export function compactProjectPlanStageExitCriteria(
+  plan: Pick<ProjectDesignPlanPacket, "capability_stage_plan">
 ): string {
   const core = plan.capability_stage_plan.core_capabilities
     .map((item) => `${item.id}=${item.exit_criteria[0] ?? "unknown"}`)
@@ -2097,8 +2097,8 @@ export function compactGaPlanStageExitCriteria(
   return `core=${core}; basic=${basic}`;
 }
 
-export function compactGaPlanRuntimeObservabilityGuard(
-  plan: Pick<GaProjectDesignPlanPacket, "capability_stage_plan">
+export function compactProjectPlanRuntimeObservabilityGuard(
+  plan: Pick<ProjectDesignPlanPacket, "capability_stage_plan">
 ): string | null {
   const capability = plan.capability_stage_plan.basic_capabilities
     .find((item) => item.id === "runtime_observability");
@@ -2106,16 +2106,16 @@ export function compactGaPlanRuntimeObservabilityGuard(
   return `stage=${capability.stage}; current=${capability.current_state}; next=${capability.next_iteration}; exit=${capability.exit_criteria[1] ?? capability.exit_criteria[0] ?? "unknown"}`;
 }
 
-export function compactGaPlanGovernanceCleanup(
-  plan: Pick<GaProjectDesignPlanPacket, "governance_cleanup">
+export function compactProjectPlanGovernanceCleanup(
+  plan: Pick<ProjectDesignPlanPacket, "governance_cleanup">
 ): string | null {
   const items = plan.governance_cleanup.superseded_open_iterations;
   if (items.length === 0) return null;
   return `superseded_open_iterations=${items.length}; ${items.map((item) => `${item.id}:${item.suggested_outcome_status}`).join(",")}`;
 }
 
-export function compactGaPlanGeneralDelegationLoop(
-  plan: Pick<GaProjectDesignPlanPacket, "general_delegation_loop">
+export function compactProjectPlanGeneralDelegationLoop(
+  plan: Pick<ProjectDesignPlanPacket, "general_delegation_loop">
 ): string {
   const loop = plan.general_delegation_loop;
   const inputContract = loop.runner_enforcement_contract.input_contract.slice(0, 2).join("+") || "input contract";
@@ -2140,15 +2140,15 @@ export function compactGaPlanGeneralDelegationLoop(
   return `action=${loop.action}; stage=${loop.stage}; lifecycle=${loop.lifecycle_steps.join(">")}; max_per_round=${loop.max_actions_per_round}; dispatch_kind=${loop.dispatch_failure_kind_contract.field}; result_kind=${loop.result_failure_kind_contract.field}; task_max=${loop.task_contract.max_chars}; context_max=${loop.context_contract.max_chars}; result=${loop.result_contract.summary_max_chars}/${loop.result_contract.findings_max_chars}; verification_refs=${loop.verification_ref_contract.max_items}x${loop.verification_ref_contract.max_chars}; verification_refs_non_empty=${loop.verification_ref_contract.non_empty}; runner=${inputContract}; gate=${loop.runner_enforcement_contract.completion_gate.join("+")}; recovery=${loop.recovery_contract.required[0] ?? "main harness recovery"}; replay=${loop.replay_audit_contract.checks.join("+")}; metadata=${replayMetadata}; proof=${proofBoundary}; authority=${loop.completion_authority[0] ?? "main harness"}; defer=${loop.deferred_scope.slice(0, 2).join(",")}`;
 }
 
-export function compactGaPlanPhaseForbids(
-  plan: Pick<GaProjectDesignPlanPacket, "phase_gates">
+export function compactProjectPlanPhaseForbids(
+  plan: Pick<ProjectDesignPlanPacket, "phase_gates">
 ): string {
   return plan.phase_gates
     .map((gate) => `${gate.phase_id}=${gate.forbidden_shortcuts[0] ?? "unknown"}`)
     .join("; ");
 }
 
-const COMPACT_GA_PLAN_PROOF_REQUIREMENTS = [
+const COMPACT_PROJECT_PLAN_PROOF_REQUIREMENTS = [
   "verified_outcome",
   "outcome_evidence_refs",
   "plan_ref_coverage",
@@ -2159,18 +2159,18 @@ const COMPACT_GA_PLAN_PROOF_REQUIREMENTS = [
   "workspace_outcome_coverage"
 ].join(",");
 
-export function compactGaPlanReviewGate(
-  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status" | "selection_checks">
+export function compactProjectPlanReviewGate(
+  plan: Pick<ProjectDesignPlanPacket, "iteration_record_status" | "selection_checks">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
   const required = plan.selection_checks
     .find((check) => check.startsWith("verification_entrypoints="))
     ?.replace("verification_entrypoints=", "");
-  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; required_coverage=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
+  return `blocked; blockers=outcome_record,outcome_verification_command_coverage,outcome_verification_claim_coverage${required ? `; required=${required}` : ""}; required_coverage=${COMPACT_PROJECT_PLAN_PROOF_REQUIREMENTS}; outcome_status=${plan.iteration_record_status.outcome_status ?? "not_recorded"}`;
 }
 
-export function compactGaPlanVerificationCommands(
-  plan: Pick<GaProjectDesignPlanPacket, "verification_commands" | "iteration_record_status">
+export function compactProjectPlanVerificationCommands(
+  plan: Pick<ProjectDesignPlanPacket, "verification_commands" | "iteration_record_status">
 ): string[] {
   const iterationId = plan.iteration_record_status.status === "open_iteration_available"
     ? plan.iteration_record_status.id
@@ -2195,27 +2195,27 @@ export function compactGaPlanVerificationCommands(
   });
 }
 
-export function compactGaPlanAfterVerifyCommand(
-  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
+export function compactProjectPlanAfterVerifyCommand(
+  plan: Pick<ProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available" || !plan.iteration_record_status.id) return null;
   return `pnpm run runtime -- governance record-iteration-outcome --iteration ${plan.iteration_record_status.id} --outcome-status verified --summary "..." --evidence-ref <ref...> --verification-command "<command...>" --verification-claim "<entrypoint>: <claim>" --next-move "..." --state-root <state-root>`;
 }
 
-export function compactGaPlanEvidenceRefs(refs: string[]): string[] {
+export function compactProjectPlanEvidenceRefs(refs: string[]): string[] {
   return refs.slice(0, 6);
 }
 
-export function compactGaPlanProofBoundary(
-  plan: Pick<GaProjectDesignPlanPacket, "iteration_record_status">
+export function compactProjectPlanProofBoundary(
+  plan: Pick<ProjectDesignPlanPacket, "iteration_record_status">
 ): string | null {
   if (plan.iteration_record_status.status !== "open_iteration_available") return null;
-  return `evidence_basis=candidate_refs_only; require=${COMPACT_GA_PLAN_PROOF_REQUIREMENTS}`;
+  return `evidence_basis=candidate_refs_only; require=${COMPACT_PROJECT_PLAN_PROOF_REQUIREMENTS}`;
 }
 
-async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
+async function projectDesignPlanSection(store: AgentStore): Promise<ContextSection | null> {
   const scorecard = await getSelfEvolutionScorecard(store);
-  const readModel = await getGaProjectDesignReadModel(store, {
+  const readModel = await getProjectDesignReadModel(store, {
     limit: 3,
     scorecardNextCoreBasicSliceId: scorecard.next_core_basic_slice?.id
   });
@@ -2225,32 +2225,32 @@ async function gaProjectDesignPlanSection(store: AgentStore): Promise<ContextSec
   const freshSuccessorCheck = plan.selection_checks.find((check) => check.startsWith("fresh_successor_slice="));
   const targetLayerCheck = plan.selection_checks.find((check) => check.startsWith("target_layer="));
   const verificationEntryPoints = plan.selection_checks.find((check) => check.startsWith("verification_entrypoints="));
-  const compactSelectionReasons = compactGaPlanSelectionReasons(plan.selection_reasons);
-  const compactSelectionChecks = compactGaPlanSelectionChecks(plan.selection_checks);
-  const sourceTruth = compactGaPlanSourceTruth(plan);
-  const compactAcceptanceCriteria = compactGaPlanAcceptanceCriteria(plan.acceptance_criteria);
-  const compactNonGoals = compactGaPlanNonGoals(plan.non_goals);
-  const compactAntiDriftChecks = compactGaPlanAntiDriftChecks(plan);
-  const compactGoalScope = compactGaPlanGoalScope(plan);
-  const compactImplementationContract = compactGaPlanImplementationContract(plan);
-  const compactSourceContinuation = compactGaPlanSourceContinuation(plan);
-  const compactLayerGuard = compactGaPlanLayerGuard(plan);
-  const compactLearningAuthority = compactGaPlanLearningAuthority(plan);
-  const compactAuditRequirements = compactGaPlanAuditRequirements(plan);
-  const compactAuditEvidence = compactGaPlanAuditEvidence(plan);
-  const compactAuditRejects = compactGaPlanAuditRejects(plan);
-  const compactStageExitCriteria = compactGaPlanStageExitCriteria(plan);
-  const runtimeObservabilityGuard = compactGaPlanRuntimeObservabilityGuard(plan);
-  const governanceCleanup = compactGaPlanGovernanceCleanup(plan);
-  const generalDelegationLoop = compactGaPlanGeneralDelegationLoop(plan);
-  const compactPhaseForbids = compactGaPlanPhaseForbids(plan);
-  const reviewGate = compactGaPlanReviewGate(plan);
-  const compactVerificationCommands = compactGaPlanVerificationCommands(plan);
-  const afterVerifyCommand = compactGaPlanAfterVerifyCommand(plan);
-  const evidenceRefs = compactGaPlanEvidenceRefs(plan.refs);
-  const proofBoundary = compactGaPlanProofBoundary(plan);
+  const compactSelectionReasons = compactProjectPlanSelectionReasons(plan.selection_reasons);
+  const compactSelectionChecks = compactProjectPlanSelectionChecks(plan.selection_checks);
+  const sourceTruth = compactProjectPlanSourceTruth(plan);
+  const compactAcceptanceCriteria = compactProjectPlanAcceptanceCriteria(plan.acceptance_criteria);
+  const compactNonGoals = compactProjectPlanNonGoals(plan.non_goals);
+  const compactAntiDriftChecks = compactProjectPlanAntiDriftChecks(plan);
+  const compactGoalScope = compactProjectPlanGoalScope(plan);
+  const compactImplementationContract = compactProjectPlanImplementationContract(plan);
+  const compactSourceContinuation = compactProjectPlanSourceContinuation(plan);
+  const compactLayerGuard = compactProjectPlanLayerGuard(plan);
+  const compactLearningAuthority = compactProjectPlanLearningAuthority(plan);
+  const compactAuditRequirements = compactProjectPlanAuditRequirements(plan);
+  const compactAuditEvidence = compactProjectPlanAuditEvidence(plan);
+  const compactAuditRejects = compactProjectPlanAuditRejects(plan);
+  const compactStageExitCriteria = compactProjectPlanStageExitCriteria(plan);
+  const runtimeObservabilityGuard = compactProjectPlanRuntimeObservabilityGuard(plan);
+  const governanceCleanup = compactProjectPlanGovernanceCleanup(plan);
+  const generalDelegationLoop = compactProjectPlanGeneralDelegationLoop(plan);
+  const compactPhaseForbids = compactProjectPlanPhaseForbids(plan);
+  const reviewGate = compactProjectPlanReviewGate(plan);
+  const compactVerificationCommands = compactProjectPlanVerificationCommands(plan);
+  const afterVerifyCommand = compactProjectPlanAfterVerifyCommand(plan);
+  const evidenceRefs = compactProjectPlanEvidenceRefs(plan.refs);
+  const proofBoundary = compactProjectPlanProofBoundary(plan);
   return {
-    title: "GA Project Design Plan",
+    title: "Project Design Plan",
     body: [
       `plan: ${plan.id}`,
       `layer: ${plan.layer}; owner: ${plan.owner_surface}; slice: ${plan.proposed_slice}`,

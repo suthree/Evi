@@ -69,7 +69,7 @@ test("skill recall gives a bounded bonus for verified passed outcomes", async ()
 test("duplicate skill detection ignores generic vault-promotion overlap", () => {
   const sop = sopDraft({
     title: "Draft SOP for self-evolution gap: capability_self_recognition_guard",
-    trigger: "Use when operator corrections distinguish core GA project design from application tool adapters.",
+    trigger: "Use when operator corrections distinguish core project design from application tool adapters.",
     procedure: [
       "Inspect the operator correction gap.",
       "Confirm Nasdaq data and Xiaohongshu MCP are application slices, not core runtime capability.",
@@ -90,7 +90,7 @@ test("duplicate skill detection ignores generic vault-promotion overlap", () => 
 test("duplicate skill detection requires specific skill-name overlap for fuzzy matches", () => {
   const sop = sopDraft({
     title: "Draft SOP for self-evolution gap: verified_iteration_outcome_sop_candidate",
-    trigger: "Use when verified iteration outcomes need GA project-design artifact review.",
+    trigger: "Use when verified iteration outcomes need project-design artifact review.",
     procedure: [
       "Inspect the verified iteration outcome.",
       "Confirm derived project-design artifacts stay read-only.",
@@ -102,7 +102,7 @@ test("duplicate skill detection requires specific skill-name overlap for fuzzy m
 
   const hit = skillHit({
     name: "capability-self-recognition-guard",
-    description: "Use when operator corrections distinguish core GA project design from application tool adapters and keep self-evolution gates explicit."
+    description: "Use when operator corrections distinguish core project design from application tool adapters and keep self-evolution gates explicit."
   });
 
   assert.equal(findDuplicateRecalledSkill(sop, [hit]), null);

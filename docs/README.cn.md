@@ -34,7 +34,7 @@ manifest 会记录原始/实际长度、截断 section 与省略 section，`/con
 
 ## 本地开放演化权限
 
-Evi 的本地自迭代和自成长默认开放：在已接受使命内，可以自主修改项目源码、测试、
+本地 agent 的自迭代和自成长默认开放：在已接受使命内，可以自主修改项目源码、测试、
 文档、本地配置、runtime state、active vault、SOP、skill、脚本和本地依赖，也可以
 通过 harness 自主完成 draft、audit、promotion、revision 和 retirement。文件发生变化
 本身不是失败条件。
@@ -62,7 +62,7 @@ Evi 的本地自迭代和自成长默认开放：在已接受使命内，可以�
 能力目录的层级判断必须同时保留类别默认层和能力实际层：`category_layer` 表示所属类别的默认边界，`effective_layer` 表示该能力最终生效的边界；`layer` 只表示能力对类别默认层的显式覆盖。消费者不应再自行猜测 fallback。
 上下文里的 `expert.orchestration_contract[boundary]` 只表示专家/多 agent 编排的 advisory 边界可见，不代表当前 agent 获得专家调度、模型 fan-out 或完成判断权。
 
-参考项目的使用方式也按这个边界处理：Hermes 提供 model-agnostic、gateway、toolset、skills、memory、cron/webhook 和多渠道交付的闭环样式；pi 提供 harness snapshot、phase、安全队列、durable session、恢复边界和 observability event 的工程模式；GenericAgent 提供小核心循环、原子工具和任务后沉淀 skill 的通用 agent 基线。它们是工程化参考，不是本仓库的标准或兼容目标。
+外部 agent 实现只提供机制参考，例如 provider-neutral 模型选择、gateway、toolset、skills、memory、harness phase、durable session、恢复边界和原子工具；它们不是本仓库的标准或兼容目标，项目名也不能进入 runtime 标识、配置字段或持久化状态。
 
 `governance project-design` 派生的 verified artifact 最多保留 outcome 的 10 条 `verification_claims`；在该上限内会先保留 source implementation contract 每个必需 entrypoint 的首条 claim，再用其余 claims 填充，避免排在后面的必需映射被同一 entrypoint 的重复声明挤掉。successor `source_continuation` 会继续暴露这些命令到完成声明的映射与数量；历史 outcome 没有 claims 或缺少 source implementation contract 要求的任一 claim 映射时仍可读取、不做状态迁移，但 successor plan 会保持 `needs_attention`。
 artifact 的 `verification_commands` 继续保留 iteration 声明命令与 outcome 记录命令的合并视图，`outcome_verification_commands` 单独给出实际 outcome 证据视图；verified source 的命令数量和 required-entrypoint 映射只认后者，因此执行前声明过的命令不能冒充 outcome 执行证据。这只校验元数据血缘，不会执行命令或证明命令结果。
@@ -80,7 +80,7 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段；只继承最小 runtime 环境，不透传任意父进程环境变量。
 - `done` 不能静默忽略任何失败的 harness 工具结果：失败的只读、可逆、写入或命令结果都会使 `tool_result_outcomes` 失败；若 tool-result event 的 `ok` 未知，replay 保持 warning 而不会静默通过。replay 仅用事件元数据复算该门禁，不读取工具产物正文。
 - `delegate_agent`：每个 model round 最多分发一个有界分析子任务，payload 只能包含 `task/context`，输出只能是 `summary/findings_text`；固定 subagent instruction 也要求只使用本次 delegated request 的 Task/Context 文本和其中已有的 named evidence refs，并且只能返回一个 strict JSON object，不允许 Markdown 代码块、包装文案或额外字段，key 只能是 `summary/findings_text`；`completion_claim.verification_refs` 最多 32 条，每条必须包含非空白内容且不超过 512 字符，纯空白或首尾带空白的输入会在进入 completion report、trace 或 replay 前被 schema 拒绝，而不是自动 trim 或改写 ref 身份；委派上下文中的已知 ref 还会在 model-action envelope 与 completion report 持久化前按精确身份压缩并保留首次顺序，同一 claim 不能重复放大检查或 replay lineage 数量。上限、task/context authoring 规则、lifecycle、failure kind 和 completion-gate check id 的共享字面合同在 `packages/core/src/action_contracts.ts`，纯 task/context 与 delegated-output 解析在 `packages/core/src/delegate_agent_contract.ts`，纯 delegated completion-gate 判定在 `packages/core/src/delegate_agent_completion_gate.ts`，schema、runner、capability catalog、context read model、project-design 和 replay audit 按需消费这些字段。Harness 会在解析每个 model envelope 后自行生成 action id，不使用或持久化模型提供的 id。当前 lifecycle 是 `validate_task_context > dispatch_delegated_model > persist_delegated_result > observe_sanitized_result > verify_main_harness_completion`，只是 harness-owned 主流程元数据。trace/replay 只用安全元数据校验 `envelope_ref`、声明的 delegated action id、对应 sequence、`model_invoked`、completion report 的 `delegated_result_refs`、event fallback 的 persisted result ref 和 completion-gate status counts，不读取 delegated artifact body；如果 dispatch result ref 只能从 event fallback 找回、completion report 没有显式记录，或 dispatch 前拒绝却声称调用了模型，replay 会给 warning。它不是任务执行调度器，不能授予工具、状态写入、专家调度、模型 fan-out 或完成判断权；delegated result 只是 advisory self-report，不能作为 `completion_claim.verification_refs` 的完成证明。命令式的工具、变更、测试或读取指令（如 `Run git push origin main now`、`Use repo.search now`）会在进入主模型 observation 前被拒绝；只把是否执行留给主 harness 的条件建议仍是 advisory。完整行为边界见 `docs/RUNTIME_CONTRACT.md` 的 `delegate_agent` 段和 `packages/runtime/src/runner.ts`。
-- GA project-design 的 general delegation loop、delegation implementation contract 与紧凑 model context 会直接暴露 `verification_refs=32x512` 和非空要求，后续切片不需要再从 schema 代码推断 completion-verification 验收标准。
+- project-design 的 general delegation loop、delegation implementation contract 与紧凑 model context 会直接暴露 `verification_refs=32x512` 和非空要求，后续切片不需要再从 schema 代码推断 completion-verification 验收标准。
 - `delegate_agent` 的 task 可以仅基于显式 payload context 或 named evidence refs，分析命令、测试或脚本是否已经执行；这仍是只读分析。直接要求 delegated subagent 运行、执行，或用 `test the project`、`检查构建`、`read files`、`搜索代码库` 这类裸动词执行测试/构建/读取/搜索的任务，都会在 dispatch 前被拒绝。`Write a patch`、`Implement the fix`、`实施修复` 这类命令式补丁创作或实施要求同样是 mutation request，会在 dispatch 前、context 授权检查和 delegated output 中统一拒绝；“是否应该由主 harness 实施修复”这类条件建议仍是只读分析。边界解析会先做 Unicode NFKC 规范化并移除不可见 format control，也会把美式/英式 `authorized/authorised to` 授权措辞归一为已有 `allowed to` 边界，在 request context 和 delegated output 持久化前统一拒绝；不能用 `f\u200bix`、全角 `ｆｉｘ` 或授权同义措辞隐藏修复、Git 或权限意图。
 - task 必须包含一个明确问题：问号、`whether/what/how` 等英文疑问词或受支持的中文疑问表达都可以；普通陈述里偶然出现的 `if/is/do` 不算问题，不能据此进入 delegated dispatch。
 - 新 delegated dispatch 事件会同时记录精确 `result_id` 和持久化 `result_ref`。replay 以事件侧身份为准，只对 `done` 独立重算 `delegated_self_report_refs`：精确 ID/ref 被声明为完成证明时，即使 completion report 自称 pass 也会失败；substring lookalike 不算 delegated identity。每个声明的 delegated action 也必须在同一 round 精确对应一个 dispatch；缺失、额外或重复 dispatch 都保持 warning/unknown，即使其他 audit check 也能间接观察到异常。重复或缺失的 `result_id/result_ref` 同样保持 warning/unknown；历史事件仍可读取，不猜成 clean，也不读取 artifact body。
@@ -90,7 +90,7 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 - Replay 还会独立重算 `delegated_independent_evidence`：`done` 且没有委派时为 skipped；成功委派必须有晚于最新 dispatch、被 claim 且唯一绑定 event 的普通证据；失败委派还必须同时有更晚的普通验证和 event-owned write/run recovery。report 伪造 pass 不能掩盖预期失败，合法 pass 被降级时保持 attention，相关历史元数据缺失时为 unknown；非 `done` 不应携带该检查。该判定只读有界元数据，不读取 artifact body，也不迁移历史状态。
 - Replay 从持久化的最终 model-action envelope 读取真正的 `completion_claim.verification_refs`，再与 completion report 对账；独立/恢复 marker 由该 claim 与唯一绑定的 tool-result event 重新推导。report 里的 claim refs、gate status 和 `counts_as_*` 只作为 parity metadata：verified trace 上伪造正向 marker 会失败，保守降级保持 attention，相关 legacy 元数据保持 unknown；non-`done` 仍按同一公式审计 marker，但不要求 delegated independent completion gate。
 - Replay 同样以最终 model-action envelope 的 `completion_claim.status` 作为 completion tuple 和所有 done-only delegated gate 的权威；trace 同时暴露 report/final status、final status 是否存在以及二者是否一致。最终 envelope 为非 `done` 而 report 声称 verified `done` 时必须 fail，report 保守降级只保持 attention，缺失 final status 则保持 unknown/attention，不回退猜成 clean，也不读取 raw model artifact。
-- 若 model diagnostic artifact 无法读取，trace/replay 会保留其安全 ref 并标为 attention，而不是伪装成 `unknown` diagnostic；不会展示原始正文、读取错误或 provider 数据。GA 项目设计把这项审计固定为 `model_diagnostic_integrity`，供后续委派迭代复用。若其他 session 的 model-action event 反向绑定当前 session envelope，trace 也会保留安全 event identity 并进入 attention；外部绑定不能掩盖当前 session 中断于 event 前的零事件 round。跨 session envelope 或 delegated-result 的安全 ref 同时进入对应 check 与 audit 顶层 refs，供后续有界上下文保留身份告警，而不读取 artifact 正文。
+- 若 model diagnostic artifact 无法读取，trace/replay 会保留其安全 ref 并标为 attention，而不是伪装成 `unknown` diagnostic；不会展示原始正文、读取错误或 provider 数据。项目设计 项目设计把这项审计固定为 `model_diagnostic_integrity`，供后续委派迭代复用。若其他 session 的 model-action event 反向绑定当前 session envelope，trace 也会保留安全 event identity 并进入 attention；外部绑定不能掩盖当前 session 中断于 event 前的零事件 round。跨 session envelope 或 delegated-result 的安全 ref 同时进入对应 check 与 audit 顶层 refs，供后续有界上下文保留身份告警，而不读取 artifact 正文。
 - 迭代审计只会把这一个 check 视为允许的 contract 增量；安全 ref 说明仍由项目设计与回归断言固定。任何既有边界替换、删除、顺序改变或其他新增项仍是 contract drift，必须阻塞 outcome。
 - Replay 还会强制 delegated completion-gate 的精确基数：现代报告必须恰好包含一条 `delegated_results`；`done` 报告必须各有一条 self-report、claimed-binding 和 independent-evidence 检查，非 `done` 报告不得携带这三条 done-only 检查。缺失、重复或非预期出现都会保持 attention；`delegated_results.refs` 也只能包含事件侧 result id 和独立绑定的失败委派 recovery ref，混入其他 ref 会进入 attention，不能伪装成恢复证据；历史记录缺最终状态时仍是 unknown，不猜成 clean。
 - 模型看到的 Output Contract 会直接从同一份共享 authoring contract 生成 `delegate_agent` 的 task/context 示例和长度上限，不再展示可能诱导宽泛委托的泛化占位符。
@@ -107,6 +107,35 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 主 live runner 与 StageRunner 的 `done` 都必须产生非空 `respond.payload.markdown` 或 `text`；空、纯空白或纯结构化 payload 不会伪造成最终回复或 stage output。
 
 ## 常用命令
+
+发布候选必须同时经过开发环境回归和隔离新环境验收；已有 `.runtime`、ignored
+本地配置和当前常驻服务不能作为正式发布门禁。先执行不访问外部服务的结构验收：
+
+```bash
+pnpm run release:verify
+```
+
+该命令只复制版本化且未被 ignore 的工作区文件，使用全新的 `HOME` 和
+`LOCAL_RUNTIME_HOME`，完成 frozen install、完整检查、模板模型/IM 配置 doctor、
+前台 `--no-im` daemon 和 localhost Web API 探测。它使用占位 auth，不调用真实模型，
+也不发送 IM；失败时会保留临时证据目录。
+
+随后再使用另一套全新本地 home，把 `config/models.jsonl`、
+`config/settings.jsonl` 和 `config/auth.example.jsonl` 作为模板复制到该 home 的
+`config/` 下，并把 `config/release-smoke.example.jsonl` 复制为隔离配置层的
+`config.jsonl`，确保验收任务不会把一次性 SOP/skill 晋升进 active vault。填写测试模型
+地址、model id、model key 和 IM 测试应用凭据，执行一次
+真实 `live` 小任务和一次 IM 私聊请求/回复闭环。同一套 IM 应用凭据不能同时被两个
+resident consumer 使用：优先使用独立测试应用，否则先停止当前常驻服务。macOS
+launchd service label 在同一用户下固定，因此常驻验收要么使用独立测试用户，要么
+临时停止当前服务、验收候选、再恢复上一稳定服务。
+
+发布顺序固定为：
+
+```text
+develop -> v0.1.0-rc.1 -> 结构 clean-room -> 真实 model/IM smoke
+        -> 常驻重启/回滚 smoke -> main -> v0.1.0
+```
 
 安装依赖：
 
@@ -242,23 +271,23 @@ pending/unassigned session；绑定方式是在群里发送 `/session use <profi
 可以用 `pnpm run runtime -- memory dream --state-root .runtime/state`
 记录长期能力方向快照，再用 `pnpm run runtime -- memory dreams --state-root .runtime/state`
 查看。dream 快照会吸收已接受语义记忆、近期自我迭代契约、最新已验证 outcome、能力目录和 backlog 压力，
-用于保持核心 GA 设计、基础 runtime、通用 delegation、SOP/skill/memory 和 dream 的方向一致；专家和多 agent 调度保持后置。
+用于保持核心项目设计、基础 runtime、通用 delegation、SOP/skill/memory 和 dream 的方向一致；专家和多 agent 调度保持后置。
 这里的 dream 是“带来源版本的长期方向投影”，不是自由反思、原始会话摘要、隐藏推理、持久身份或自动执行计划。
 它输出能力轴、时间跨度、非目标、下一步候选和来源 lineage；只有当同一 state root 中内嵌的 verified outcome
 与当前最新 verified outcome 完全一致时才是 current，否则必须显示 stale/missing，并由操作者显式刷新。
 设计目标是把运行证据压缩为可追溯、可比较、可否决的长期方向候选，帮助下一轮选择“强化什么、暂缓什么”，
-而不是赋予后台代理新的行动权。Codex、Hermes、GA 等只作为机制参考；本地运行时的判断标准仍是本地证据、
+而不是赋予后台代理新的行动权。外部 agent 实现只作为机制参考；本地运行时的判断标准仍是本地证据、
 核心/基础能力增益、可逆性和操作者边界。
 可以用 `pnpm run runtime -- governance scorecard --state-root .runtime/state`
 只读查看核心能力、基础能力、通用 delegation、SOP/skill/memory 和 dream 的当前成熟度。
-core-GA dimension 与 architect lens 的 summary 会保留 derived artifact 总数，但只暴露最新 `limit` 条 artifact refs，避免 verified iteration 持续累积导致 scorecard JSON 无界增长。
+core project-design dimension 与 architect lens 的 summary 会保留 derived artifact 总数，但只暴露最新 `limit` 条 artifact refs，避免 verified iteration 持续累积导致 scorecard JSON 无界增长。
 scorecard 当前把 `general_agent_delegation` 当作通用 agent 主流程基线；expert 和 multi-agent scheduling 仍是后置 advisory scope；
 当 `basic_runtime_substrate` 有最新基础入口迭代时，live context 会显示该迭代的 id、ref 和 outcome status，
 用于提醒未闭环的基础能力切片，不把它当完成证明。
 scorecard 还会输出 `default_next_slice`、`next_core_basic_slice` 和 `next_slices`：
 默认下一步走 core/basic 出口，`next_slices` 只是按阶段、分数和层级给出的全维度只读排序，
 不会写 backlog 或执行推荐，也不能把 SOP/local-learning 跟进误当成核心能力方向。
-已验证的 delegation baseline 会回到 GA design；后续 verified GA-design successor
+已验证的 delegation baseline 会回到 project design；后续 verified project-design successor
 本身不会再次打开 stable delegation。只有新的负面证据或未来明确的方向决策才能重新选择
 delegation hardening；attention 与未关闭 iteration 仍优先。
 每个新的 project-design implementation contract 都会带目标相关的 `intent`，让后续
@@ -284,10 +313,10 @@ Opportunity Backlog 按每个 skill 的最新 outcome 判断当前 attention，�
 `pnpm run runtime -- governance act-next` 不带 `--opportunity` 时只走自动安全项；
 manual local、external adapter 或 local-learning follow-up 必须显式选择 opportunity。
 可以用 `pnpm run runtime -- governance project-design --state-root .runtime/state`
-只读查看核心 GA 项目设计契约：它把目标 intake、能力分层、契约设计、执行计划、
+只读查看核心 项目设计 项目设计契约：它把目标 intake、能力分层、契约设计、执行计划、
 验证复核和学习沉淀固定成同一个循环，不会创建项目、执行工具或证明完成。
 该视图也会从已验证的 self-evolution iteration outcome 派生只读 project-design
-artifacts，用来复用 GA 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
+artifacts，用来复用 项目设计 设计经验，但不会写 memory、起草 SOP、晋升 skill 或证明未来完成；
 当 source iteration 带有 implementation-contract SHA-256 时，artifact admission 会先重算并核对；不匹配的记录不会派生为可复用 artifact，也不能成为 successor plan 来源。旧的无指纹 iteration 仍保持可读和可复用；该检查不迁移或修复 state、不读取文件正文，也不把摘要当作签名；
 派生 successor plan 时会折叠历史 completed-source non-goals，避免下一轮 seed 递归膨胀。
 Replay audit 会根据 `completion_status` 和有界 failed-check ids 重算完成验证 tuple：非 `done` 必须是 `skipped/false`，存在失败检查的 `done` 必须是 `failed/false`，没有失败检查的 `done` 才能是 `passed/true`；与这些输入矛盾却自称 passed 或 verified 的报告会 replay fail，语义一致的 failed/skipped 仍保持 attention。对 delegated `delegated_results` gate，replay 还会根据 delegated result 数量、`ok=false` dispatch round、completion status，以及能唯一绑定 tool-result event、artifact 和 round 的后续 claimed 成功 write/run 证据独立重算 pass/warning/fail/skipped；dispatch metadata 不完整时保持 attention，不猜测为 pass；独立推导出的 fail 不会被 report 降级，report 用 pass 掩盖预期 warning 也会 replay fail，其他状态漂移保持 attention。Replay 还会检查 delegated dispatch metadata、`model_invoked`、`dispatch_failure_kind`、`result_failure_kind`、两层失败类型语义配对和每轮 active delegate 上限；`ok=true` 必须对应 `contract_status=passed`，`ok=false` 必须对应 `contract_status=failed`，任一矛盾 tuple 都会成为 warning，而 runner 写入的 failed-delegation recovery 语义仍以 `ok` 为准；`done` 或 `blocked` terminal envelope 中的委派会在调用子模型前以 `terminal_completion_claim` 拒绝，同一 envelope 已有 `respond` 时则以 `terminal_response_action` 拒绝；缺少失败分类字段、合法枚举但配对错误，或 input-contract / terminal-completion / terminal-response / round-limit 拒绝却记录 `model_invoked=true`，也会被标记为 warning，显式 `none` 才表示该层没有失败；新的 runner result 和主模型 observation 会在 schema 边界拒绝矛盾的 `ok`、`contract_status`、`model_invoked` 与 failure-kind tuple，而 replay 仍保留对历史或损坏 event metadata 的 warning；同一 round 内重复声明 delegated action id 会使 action-id 到 sequence 的持久化映射歧义，也保持 attention，不能被覆盖率检查静默视为已满足；delegated completion-gate 的失败会在 replay check 中保持为 `fail`，顶层 replay report 仍以 `attention` 表示存在非 pass 检查。该检查只读取有界 trace metadata，不读取 raw delegated task/context/findings/output。Replay JSON 会保留完整 delegated dispatch metadata 用于覆盖率审计；Markdown 或 context 展示可以只显示前几条并给出 omitted 计数。
@@ -297,7 +326,7 @@ live runner 会拒绝一个 envelope 中存在多个 `respond` action 的模型�
 delegated 的 `result_ref` 还必须同时匹配该 delegated event 的 `session_id/result_id`、属于该 event 的 persisted JSON artifact，且该文件存在；只修改 metadata、completion report 或 event artifact 列表指向幽灵路径或其他既存 artifact 也只能得到 attention。该核对只看身份、artifact 成员关系和文件存在性，不读取 delegated artifact 内容。
 历史 iteration evidence refs 也会在 successor planning 中折叠，只保留当前 source artifact 和直接证据。
 其中 `artifact_count` 是可复用 artifact 总数，`listed_artifact_count` 是当前 limit 下实际列出的数量。
-可以用 `pnpm run runtime -- governance project-design --artifact ga_design_artifact_iteration_contract_... --state-root .runtime/state`
+可以用 `pnpm run runtime -- governance project-design --artifact project_design_artifact_iteration_contract_... --state-root .runtime/state`
 单独查看一个 artifact；也可以传 source iteration id 或 state ref。这个包只说明它是否是当前
 `next_core_basic_plan` 的来源，并在命中当前来源时带上同一个完整只读 planning packet：plan schema/identity/boundary、`iteration_focus`、`capability_stage_plan`
 、source/proposed slice 边界、`next_iteration_seed`、`non_goals`、`scorecard_basis`、`layer_decision`、`selection_checks`、带 `forbidden_shortcuts` 的 `phase_gates`、`completion_audit_seeds`、`verification_commands`
@@ -319,9 +348,9 @@ plan 顶层 `verification_commands` 与 `next_iteration_seed.verification_comman
 `source_artifact_warning`。缺 source contract 时无法核对验收、范围、required entrypoints 和回滚，因此 successor plan 必须保持 `needs_attention`；历史 artifact 仍可读取且不会迁移。warning 不会执行验证或成为 iteration completion gate；
 同一组检查也会显示 `source_artifact_warning_thresholds`，避免调阈值时必须读源码；
 source implementation contract 声明 required verification entrypoints 时，artifact 的有界 verification command identity 必须逐项覆盖；缺项会产生 `source_artifact_warning=missing_verification_command; entrypoint=<id>` 并让 successor 保持 `needs_attention`。这只是结构化命令覆盖，不会执行命令或证明结果；
-compact GA Project Design Plan context 仍保持三条 check 上限：保留 source 验证、证据数量和一条可操作 warning；若缺少必需 verification claim 映射，会优先显示具体 entrypoint，而不是更抽象的薄证据 warning 或阈值摘要；完整 plan 仍保留全部 warning 和阈值；
+compact Project Design Plan context 仍保持三条 check 上限：保留 source 验证、证据数量和一条可操作 warning；若缺少必需 verification claim 映射，会优先显示具体 entrypoint，而不是更抽象的薄证据 warning 或阈值摘要；完整 plan 仍保留全部 warning 和阈值；
 也会独立显示 `fresh_successor_slice`，让重复已完成 slice 的风险在 handoff 时可见；
-同时会独立显示 `target_layer` 和 `owner_surface`，避免 application slice 被误认为核心 GA 设计工作；
+同时会独立显示 `target_layer` 和 `owner_surface`，避免 application slice 被误认为核心 项目设计 设计工作；
 `selection_reasons` 会用 `source_kind=verified_artifact|fresh_bootstrap` 和
 `source_artifact_quality=ok|attention` 摘要 source 类型与 warning，
 compact context 也会按稳定 reason 前缀优先级保留 `source_kind`、`source_status`
@@ -336,7 +365,7 @@ compact context 还可以显示 `verify_commands`，用短摘要保留 project-d
 其中 `runtime_observability:attention_guard` 表示它要守住 service health attention 的可见性，不代表 resident service 已健康；
 `runtime_guard` 会把 runtime_observability 的 attention 状态、下一步和 outcome 命名标准放进 handoff，避免把 runtime 注意事项藏到应用进展里；真正健康证据仍以 `service health` 为准；
 `current_state` audit seed 会要求在 resident runtime 相关变更时记录 service health 的 status/reasons；如果 service health 不是 healthy，verified outcome 不能省略 runtime attention reasons；
-如果 verification command 里要求了 service health，`current_state` audit seed 也会要求 outcome 引用 service-health status/reasons，即使本轮只是只读 GA design 切片；
+如果 verification command 里要求了 service health，`current_state` audit seed 也会要求 outcome 引用 service-health status/reasons，即使本轮只是只读 project design 切片；
 当 service health 不是 healthy 时，`current_state` audit seed 还会要求把 runtime attention 分类为 `acceptable`、`repair_needed` 或 `verification_blocker`；只写原因、不分类，不足以作为 outcome 证据；
 完成分类后还必须写 handling policy：`acceptable` 为什么对当前 claim 安全，`repair_needed` 后续修什么，或 `verification_blocker` 为什么阻止 verified outcome；
 如果分类是 `repair_needed`，handling policy 必须写 follow-up action，或说明为什么不需要 follow-up；只分类、不追踪，不够；
@@ -344,7 +373,7 @@ iteration audit 会用 `runtime_attention_outcome_coverage` 对这些要求做�
 iteration audit 也会用 `workspace_outcome_coverage` 对当前 worktree 做结构化检查：如果固定 `git status` 显示 dirty，`workspace:` verification claim 必须包含 `status=dirty` 和每个 changed path；如果变更列表被截断，completion gate 会继续阻塞；
 `verification_scope` audit seed 会要求 outcome 说明每条 verification command 支撑哪个 completion claim；只有命令列表、没有 claim coverage，不足以作为 verified outcome 证据；
 它还要求每个 required verification entrypoint 都精确映射到带非空正文的 completion claim；裸 `check:`、`entrypoint=check` 或 `entrypoint=checklist` 这类空 marker/前缀碰撞不能覆盖 `check`，也不能在 derived project-design artifact 中挤掉后面的有效必需 claim；遗漏任一入口的 claim coverage，不能作为 verified outcome；
-`layer_decision` 会明确把 GA 项目设计识别为核心能力，并把外部工具
+`layer_decision` 会明确把 项目设计 项目设计识别为核心能力，并把外部工具
 默认留在应用切片，除非它们沉淀成可复用 runtime contract。这仍然只是计划上下文，不会执行。
 多 agent / 多专家调度属于 core/basic 稳定和 learning-persistence gate 之后的调度层；当前阶段只保留 advisory contract，不把它当作与 core/basic 并列的当前目标。
 `layer_guard` 会保留 decision stage 和 source -> selected layer/owner 连续性，避免只靠 slice id 判断 core/basic 继承关系；
@@ -370,8 +399,8 @@ compact context 也可以显示 `review_gate`，用于提示 open iteration 仍�
 `acceptance` 会按 `goal_scope`、`current_state`、`verification_scope`、`learning_persistence` 各保留一条，并额外保留 fresh successor、external adapter 边界和 rollback-strategy 验收；完整 `acceptance_trace` 与 compact handoff 都会要求 outcome 前明确 implementation scope、deferred scope、delivery standard 和 rollback strategy；
 `goal_scope` 会直接保留 operator objective、owner surface、source of truth 和 success evidence；它只用于目标定向，不执行、不证明完成；
 `goal_scope` audit seed 还会要求 outcome 核对这些结构化证据，并拒绝无法区分 completed source slice 与 successor slice 的 success evidence；
-`implementation_contract` 会在执行前说明本轮只允许一个可复用 GA design contract/read-model 改进、哪些外部工具/local-learning/专家调度范围要递延、交付标准和显式 `rollback_strategy` 是什么；回滚默认撤销单个 bounded implementation commit，不改写既有 iteration evidence；service-facing 改动还要重启 resident runtime，并重新执行 targeted、完整和 service-health 检查；matching open iteration 可以补齐该字段，新合同缺失或漂移会阻塞 contract coverage，未声明该字段的历史合同仍可读取；当 slice 是 `general_agent_delegation`，字面合同的 source of truth 是 `packages/core/src/action_contracts.ts`，纯解析边界在 `packages/core/src/delegate_agent_contract.ts`，纯 completion-gate 边界在 `packages/core/src/delegate_agent_completion_gate.ts`，task/context authoring 规则、schema、runner、Live Run Trace、replay audit、context read model、project-design/scorecard 按需消费其中字段做校验、执行和审计对齐；它是边界提示，不执行、不调度、不提升学习资产、不证明完成；
-当 slice 是 `general_agent_delegation`，`implementation_contract` 还必须直接写明允许改动的 `delegate_agent` task/context/result/trace/replay/completion verification surface，并排除 delegated tool/write/mutation authority、delegated completion authority、model fan-out、自主 scheduler 和 expert persona；其中结构化 `delegation_contract` 直接派生自共享 GA delegation loop，保留 payload/output keys、限制、failure kinds、recovery 要求、replay checks 和 main-harness 完成权；
+`implementation_contract` 会在执行前说明本轮只允许一个可复用 project design contract/read-model 改进、哪些外部工具/local-learning/专家调度范围要递延、交付标准和显式 `rollback_strategy` 是什么；回滚默认撤销单个 bounded implementation commit，不改写既有 iteration evidence；service-facing 改动还要重启 resident runtime，并重新执行 targeted、完整和 service-health 检查；matching open iteration 可以补齐该字段，新合同缺失或漂移会阻塞 contract coverage，未声明该字段的历史合同仍可读取；当 slice 是 `general_agent_delegation`，字面合同的 source of truth 是 `packages/core/src/action_contracts.ts`，纯解析边界在 `packages/core/src/delegate_agent_contract.ts`，纯 completion-gate 边界在 `packages/core/src/delegate_agent_completion_gate.ts`，task/context authoring 规则、schema、runner、Live Run Trace、replay audit、context read model、project-design/scorecard 按需消费其中字段做校验、执行和审计对齐；它是边界提示，不执行、不调度、不提升学习资产、不证明完成；
+当 slice 是 `general_agent_delegation`，`implementation_contract` 还必须直接写明允许改动的 `delegate_agent` task/context/result/trace/replay/completion verification surface，并排除 delegated tool/write/mutation authority、delegated completion authority、model fan-out、自主 scheduler 和 expert persona；其中结构化 `delegation_contract` 直接派生自共享 项目设计 delegation loop，保留 payload/output keys、限制、failure kinds、recovery 要求、replay checks 和 main-harness 完成权；
 由 project-design plan 打开的 iteration record 会持久化同一份 `implementation_contract`，matching open iteration 可以补齐新派生的 `delegation_contract` 字段；后续审计会同时对比当前 plan 和共享权威构造器，即使 plan/state 一起漂移也不能通过，缺失或不一致会阻塞 contract coverage；旧的无该字段历史记录不会因只读检查被追溯迁移；
 `current_state` audit seed 会要求后续 outcome 说明实际改动如何留在 `implementation_scope` 内、没有进入 `deferred_scope`，并保持 selected layer、owner surface 和 delivery standard 一致；
 `stage_exit` 会按每个 core/basic capability stage 各保留一条退出标准；
@@ -453,7 +482,7 @@ pnpm run runtime -- deployment history --state-root <state-root>
 ```
 
 监督器要求候选 heartbeat 与 commit 一致，并等待配置中的 Web/IM 入口就绪；启动最长等待
-90 秒，通过后进入 60 秒观察期。启动超时、连续三次本机硬健康失败，或 Evi 主动提交带证据的
+90 秒，通过后进入 60 秒观察期。启动超时、连续三次本机硬健康失败，或本地 agent 主动提交带证据的
 失败信号都会自动回滚：
 
 ```bash

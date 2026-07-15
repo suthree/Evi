@@ -143,6 +143,8 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorRepo
   await checkIm(checks, {
     configDir,
     stateRoot: options.stateRoot,
+    activeModelId: config.model.id,
+    requireAuth: options.requireAuth,
     requireIm: options.requireIm,
     provider: options.provider,
     authDiagnostics: await safeRuntimeAuthDiagnostics({
@@ -325,7 +327,7 @@ async function checkSkills(checks: DoctorCheck[], store: AgentStore, vaultRoot: 
 
 async function checkIm(
   checks: DoctorCheck[],
-  options: { configDir: string; stateRoot?: string; requireIm?: boolean; provider?: ImProvider; authDiagnostics?: RuntimeAuthDiagnostics | null }
+  options: { configDir: string; stateRoot?: string; activeModelId?: string; requireAuth?: boolean; requireIm?: boolean; provider?: ImProvider; authDiagnostics?: RuntimeAuthDiagnostics | null }
 ): Promise<void> {
   if (options.requireIm === false) {
     checks.push({
@@ -342,6 +344,20 @@ async function checkIm(
       stateRoot: options.stateRoot,
       provider: options.provider
     });
+    await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      modelId: scenario.modelId,
+      skipAuth: true
+    });
+    if (options.requireAuth !== false && scenario.modelId !== options.activeModelId) {
+      await loadConfig({
+        configDir: options.configDir,
+        stateRoot: options.stateRoot,
+        modelId: scenario.modelId,
+        skipAuth: false
+      });
+    }
     assertRuntimeImAdapterSupported(scenario);
     if (scenario.provider === "feishu") assertFeishuConfigReady(scenario.channel);
     if (scenario.provider === "telegram") assertTelegramConfigReady(scenario.channel);
@@ -359,6 +375,7 @@ async function checkIm(
         provider: scenario.provider,
         scenario_id: scenario.id,
         channel_id: scenario.channelId,
+        model_id: scenario.modelId,
         discipline: scenario.discipline,
         reply_policy: scenario.replyPolicy,
         ...(scenario.provider === "feishu" ? {
