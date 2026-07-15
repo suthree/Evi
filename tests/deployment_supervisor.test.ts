@@ -9,6 +9,7 @@ import { requestLocalDeployment } from "../packages/runtime/src/deployment.js";
 import { buildRuntimeServiceDefinition, isCurrentRuntimeKnownGood } from "../packages/runtime/src/service.js";
 import {
   checkRuntimeReadiness,
+  recordOperatorServiceRollback,
   runSupervisorOnce,
   type DeploymentRecord,
   type SupervisorManifest
@@ -82,6 +83,54 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
     assert.equal(recovered.deployment?.status, "recovered");
     assert.match(await readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), /Repair a failed local runtime deployment/);
     assert.match(await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/stderr.log`), "utf8"), /candidate error/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("operator service rollback restores prior stable deployment state without marking the candidate failed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-operator-rollback-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  try {
+    const stable = {
+      ...deploymentRecord("stable-commit", "stable"),
+      id: "deployment_stable",
+      release_id: "stable-commit:stable-digest",
+      updated_at: "2026-07-15T00:00:00.000Z"
+    };
+    const candidate = {
+      ...deploymentRecord("candidate-commit", "rollback_failed"),
+      id: "deployment_candidate",
+      release_id: "candidate-commit:candidate-digest",
+      previous_source_commit: "stable-commit",
+      updated_at: "2026-07-15T00:01:00.000Z"
+    };
+    await mkdir(paths.historyRoot, { recursive: true });
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(resolve(paths.historyRoot, `${candidate.id}.json`), candidate);
+    await writeJson(paths.current, candidate);
+    await writeJson(paths.failure, {
+      schema_version: 1,
+      deployment_id: candidate.id,
+      reason: "stale failure",
+      evidence_refs: [],
+      reported_at: "2026-07-15T00:01:01.000Z"
+    });
+
+    const restored = await recordOperatorServiceRollback(manifest.state_root, {
+      restoredCommit: "stable-commit",
+      replacedCommit: "candidate-commit",
+      now: new Date("2026-07-15T00:02:00.000Z")
+    });
+    const current = JSON.parse(await readFile(paths.current, "utf8")) as DeploymentRecord;
+    const rolledBack = JSON.parse(await readFile(resolve(paths.historyRoot, `${candidate.id}.json`), "utf8")) as DeploymentRecord;
+
+    assert.equal(restored?.source_commit, "stable-commit");
+    assert.equal(current.status, "stable");
+    assert.equal(current.previous_source_commit, "candidate-commit");
+    assert.equal(rolledBack.status, "rolled_back");
+    await assert.rejects(readFile(paths.failure, "utf8"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -244,7 +293,12 @@ function buildManifest(root: string): SupervisorManifest {
 
 function deploymentPaths(manifest: SupervisorManifest) {
   const root = resolve(manifest.state_root, "deployments");
-  return { request: resolve(root, "request.json"), failure: resolve(root, "failure.json") };
+  return {
+    request: resolve(root, "request.json"),
+    current: resolve(root, "current.json"),
+    failure: resolve(root, "failure.json"),
+    historyRoot: resolve(root, "history")
+  };
 }
 
 function deploymentRecord(commit: string, status: DeploymentRecord["status"]): DeploymentRecord {

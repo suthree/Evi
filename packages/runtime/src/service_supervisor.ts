@@ -1,6 +1,6 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -17,6 +17,7 @@ export type DeploymentStatus =
   | "rolling_back"
   | "recovering"
   | "recovered"
+  | "rolled_back"
   | "rollback_failed";
 
 export interface SupervisorManifest {
@@ -66,6 +67,7 @@ export interface DeploymentRecord {
   stable_at?: string;
   failed_at?: string;
   recovered_at?: string;
+  rolled_back_at?: string;
   readiness_deadline?: string;
   failure_count?: number;
   failure_reason?: string;
@@ -94,6 +96,64 @@ export interface ReadinessResult {
 export interface SupervisorDeps {
   now?: () => Date;
   runLaunchctl?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+}
+
+export async function recordOperatorServiceRollback(
+  stateRoot: string,
+  args: { restoredCommit: string; replacedCommit: string; now?: Date }
+): Promise<DeploymentRecord | null> {
+  const root = resolve(stateRoot, "deployments");
+  const currentPath = resolve(root, "current.json");
+  const historyRoot = resolve(root, "history");
+  const current = await readJson<DeploymentRecord>(currentPath);
+  if (!current) return null;
+  if (current.source_commit !== args.replacedCommit) {
+    throw new Error(`deployment state commit ${current.source_commit} does not match replaced runtime ${args.replacedCommit}`);
+  }
+  if (!["stable", "recovered", "rollback_failed"].includes(current.status)) {
+    throw new Error(`deployment ${current.id} cannot be operator-rolled-back while ${current.status}`);
+  }
+
+  const names = await readdir(historyRoot).catch(() => [] as string[]);
+  const history = (await Promise.all(names
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => readJson<DeploymentRecord>(resolve(historyRoot, name)))))
+    .filter((record): record is DeploymentRecord => Boolean(record?.id));
+  const prior = history
+    .filter((record) => record.source_commit === args.restoredCommit && ["stable", "rolled_back"].includes(record.status))
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
+  if (!prior) throw new Error(`no supervisor-stable deployment record exists for rollback commit ${args.restoredCommit}`);
+
+  const now = args.now ?? new Date();
+  const rolledBack: DeploymentRecord = {
+    ...current,
+    status: "rolled_back",
+    rolled_back_at: now.toISOString(),
+    readiness_deadline: undefined,
+    failure_count: 0,
+    failure_reason: "operator-requested service rollback",
+    updated_at: now.toISOString()
+  };
+  const restored: DeploymentRecord = {
+    ...prior,
+    status: "stable",
+    stable_at: now.toISOString(),
+    previous_source_commit: args.replacedCommit,
+    readiness_deadline: undefined,
+    failure_count: 0,
+    failure_reason: undefined,
+    failure_refs: undefined,
+    failed_at: undefined,
+    recovered_at: undefined,
+    rolled_back_at: undefined,
+    updated_at: now.toISOString()
+  };
+  await mkdir(historyRoot, { recursive: true });
+  await writeJsonAtomic(resolve(historyRoot, `${rolledBack.id}.json`), rolledBack);
+  await writeJsonAtomic(resolve(historyRoot, `${restored.id}.json`), restored);
+  await writeJsonAtomic(currentPath, restored);
+  await rm(resolve(root, "failure.json"), { force: true });
+  return restored;
 }
 
 export async function runSupervisorOnce(

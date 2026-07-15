@@ -468,6 +468,10 @@ pnpm run runtime -- service logs --target runtime --limit 40
 state evidence、context manifest 或 episode archive。`bootout` 后的 launchd
 异步卸载窗口通过有界指数重试吸收，单次瞬态 bootstrap error 不会直接放弃启动。
 
+安装了部署监督器时，人工执行 `service rollback` 还会同步 deployment state：被替换版本
+归档为 `rolled_back`，恢复版本重新成为 `stable`。监督器重启后会维持回退结果，不会把
+这次有意的 commit 变化误判成候选故障并自动拉回；回退演练后仍可重新请求同一候选提交。
+
 `service start` / `service restart` 还会安装独立的
 `local.runtime.runtime.supervisor`。它位于可替换 runtime bundle 之外，只负责本机
 `next/current/previous` 切换、readiness、短观察期、自动回滚、失败证据和修复任务入队，

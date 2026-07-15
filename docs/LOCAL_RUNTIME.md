@@ -1261,6 +1261,14 @@ reverse the rollback. `service status` exposes both `runtime` and
 retry after `bootout` so the asynchronous unload window cannot leave a
 successfully swapped runtime stopped after one transient error.
 
+When a deployment supervisor is installed, an operator-requested
+`service rollback` also reconciles deployment state before the supervisor is
+restarted. The replaced deployment is archived as `rolled_back`, the restored
+commit regains its prior `stable` record, and the supervisor therefore keeps
+the restored version running instead of interpreting the intentional commit
+change as a candidate failure. A later clean commit, including the same
+candidate during a deliberate rollback drill, may be requested again.
+
 ### Transactional self-deployment
 
 `service start` and `service restart` also install and start a small independent

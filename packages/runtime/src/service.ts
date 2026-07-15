@@ -15,6 +15,7 @@ import type { ContentFeedbackRefreshLoopStatus } from "./content_feedback_refres
 import type { ReviewTickLoopStatus } from "./review_tick_service.js";
 import type { DisciplineMode } from "./runner.js";
 import type { RuntimeTaskQueueWorkerStatus } from "./runtime_task_queue_worker.js";
+import { recordOperatorServiceRollback } from "./service_supervisor.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
 const execFile = promisify(execFileCallback);
@@ -299,7 +300,22 @@ export async function runServiceCommand(
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     await rotateServiceLogs(definition);
+    const [replacedBuild, restoredBuild] = await Promise.all([
+      readRuntimeBuild(definition),
+      readPreviousRuntimeBuild(definition)
+    ]);
     await rollbackServiceRuntimeBundle(definition);
+    try {
+      if (replacedBuild?.source_commit && restoredBuild?.source_commit) {
+        await recordOperatorServiceRollback(definition.stateRoot, {
+          restoredCommit: restoredBuild.source_commit,
+          replacedCommit: replacedBuild.source_commit
+        });
+      }
+    } catch (error) {
+      await rollbackServiceRuntimeBundle(definition).catch(() => undefined);
+      throw error;
+    }
     await startLaunchd(definition, run);
     // Bind the supervisor restart to this service installation rather than to a
     // same-label plist that may belong to another test or local checkout.
