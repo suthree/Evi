@@ -473,7 +473,8 @@ async function completeRecovery(
     `Evidence refs: ${(current.evidence_refs ?? []).join(", ") || "none"}`,
     "Inspect only the cited evidence first, reproduce the failure, fix forward on the current repository source, run targeted checks and pnpm run check, create a new clean commit, then request a new deployment.",
     `Redeploy command: pnpm run runtime -- deployment request --repair-of ${current.id} --state-root ${manifest.state_root}`,
-    "Do not redeploy the same failed commit. Do not reset the repository to the old runtime bundle."
+    "Do not redeploy the same failed commit. Do not reset the repository to the old runtime bundle.",
+    "Do not respond, propose an SOP, or claim completion before the new deployment request succeeds; the queue validates this postcondition and will continue an incomplete attempt at most three times."
   ].join("\n");
   const queuedAt = new Date(now.getTime() - 61_000).toISOString();
   await mkdir(resolve(manifest.state_root, "runs"), { recursive: true });

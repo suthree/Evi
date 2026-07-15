@@ -330,7 +330,10 @@ for hard local failures, bounded failure evidence, and one fix-forward task in
 the existing local runtime task queue. It must not invoke a model, edit source,
 infer failure from ordinary log text, accept incompatible state migration,
 perform remote deployment, or coordinate another machine. Failed commits are
-not redeployed and one repair chain has a bounded automatic-attempt limit.
+not redeployed and one repair chain has a bounded automatic-attempt limit. A
+repair queue item is complete only when state contains a distinct verified
+deployment request linked by `repair_of`; diagnosis-only model output is
+continued at most three times and cannot be recorded as a successful repair.
 
 The service may attach a configurable local review tick loop for self-evolution
 inbox materialization. It is disabled by default, reports status under the

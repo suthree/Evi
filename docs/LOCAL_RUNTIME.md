@@ -1265,7 +1265,11 @@ previous build passes readiness, the supervisor appends one local runtime repair
 task. The recovered build fixes forward on the repository's failed source
 commit, runs verification, creates a new clean commit, and requests deployment
 with `--repair-of <deployment-id>`. The same failed commit cannot be redeployed,
-and a repair chain stops after two automatic attempts.
+and a repair chain stops after two automatic attempts. The task queue does not
+accept a model session's `done` status by itself: it verifies that a distinct
+repair deployment record with the expected `repair_of`, next repair-attempt
+number, and verification refs exists. An incomplete diagnosis is requeued up to
+three worker attempts, then fails visibly instead of becoming a false success.
 
 A supervisor record that reaches `stable` is also commit-bound known-good
 evidence for the next autonomous deployment. This closes the next iteration

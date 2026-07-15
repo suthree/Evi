@@ -463,7 +463,9 @@ pnpm run runtime -- deployment fail --reason "确定性运行回归" --failure-r
 回滚前只保存本次部署开始后产生的 stdout/stderr（每个最多 1 MiB）、最后 heartbeat 和失败摘要。
 旧版本恢复 readiness 后，现有 runtime task queue 会收到一条 fix-forward 修复任务；修复必须生成
 新的干净 commit，并使用 `--repair-of <deployment-id>` 再次部署。同一失败 commit 禁止重发，
-同一修复链最多自动尝试两次。v0.1 只允许 `state_schema_version=1` 的向后兼容追加式状态变更；
+同一修复链最多自动尝试两次。队列不会仅凭模型会话返回 `done` 就判定修复完成：必须存在指向
+原失败部署的 `repair_of`、递增 attempt 和验证证据的新部署记录；只完成诊断的会话最多续跑三次，
+之后显式失败，不能形成假闭环。v0.1 只允许 `state_schema_version=1` 的向后兼容追加式状态变更；
 不兼容状态迁移会阻止无人值守部署，而不是自动恢复整份状态并丢失观察期数据。
 监督器观察期达到 `stable` 后，该 commit-bound 记录也可作为下一次无人值守部署的
 known-good 证据；显式 `verify-entrypoints` 仍保留为更完整的版本验收审计。

@@ -1255,7 +1255,11 @@ model, edit repository source, infer semantic failure from ordinary log text,
 publish or communicate externally, perform remote deployment, coordinate other
 machines, or accept an incompatible state-schema migration. A failed commit is
 not eligible for redeployment, and an automatic repair chain is bounded before
-operator attention is required.
+operator attention is required. A deployment-repair queue item may reach `done`
+only after a distinct verified deployment request names the failed deployment
+through `repair_of`; diagnostic prose or model completion confidence is not a
+completion signal. Incomplete repair sessions may be continued only through a
+small bounded retry count.
 
 ### Local Learning
 

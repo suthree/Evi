@@ -122,6 +122,26 @@ export async function completeRuntimeTask(
   });
 }
 
+export async function requeueRuntimeTask(
+  store: AgentStore,
+  args: {
+    id: string;
+    error: string;
+    runnerTask?: string;
+    now?: string;
+  }
+): Promise<RuntimeTaskQueueEntry | null> {
+  const current = await getRuntimeTaskQueueEntry(store, args.id);
+  if (!current || current.status !== "running") return null;
+  return appendRuntimeTaskQueueEntry(store, {
+    ...current,
+    runner_task: args.runnerTask ?? current.runner_task,
+    status: "queued",
+    error: args.error,
+    updated_at: args.now ?? utcNow()
+  });
+}
+
 export async function failRuntimeTask(
   store: AgentStore,
   args: {

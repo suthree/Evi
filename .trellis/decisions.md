@@ -2749,3 +2749,11 @@ existing state schema only. A failed commit is blacklisted from redeployment,
 repair is fix-forward under a new commit, and the automatic repair chain stops
 after two attempts so the last known-good runtime remains available for
 operator inspection.
+
+## 2026-07-15 Deployment Repair Completion Is State-Bound
+
+A deployment-repair task is not complete because one model session returned a
+final response. The runtime task queue requires a distinct deployment record
+whose `repair_of` points to the failed deployment, whose repair attempt is the
+next bounded attempt, and whose verification refs are present. Diagnosis-only
+sessions are requeued at most three times; exhaustion is an explicit failure.

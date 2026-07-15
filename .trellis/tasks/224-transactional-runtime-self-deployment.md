@@ -44,6 +44,8 @@ task.
   commit and evidence refs.
 - A repaired new commit can request another deployment through the same state
   machine.
+- A diagnosis-only repair session is requeued and cannot be recorded as `done`
+  without a distinct verified `repair_of` deployment request.
 - Existing manual start, restart, rollback, logs, and health surfaces remain
   available.
 
@@ -62,3 +64,10 @@ task.
 - The marker intentionally makes this commit distinct from the known-good
   baseline; the live drill will submit an explicit failure signal instead of
   introducing an uncontrolled runtime defect.
+- Live deployment `deployment_20260715025241_9e7ef057cfc0` reached probation,
+  captured deployment-scoped evidence, and automatically recovered the
+  `dab27f828ba02152ccdfc2df095411ce757506f1` known-good build.
+- The queued repair session diagnosed the signal but stopped before fixing or
+  redeploying while the queue recorded `done`. The repair completion gate added
+  in the fix-forward commit turns that observed false-success path into bounded
+  continuation and explicit exhaustion.
