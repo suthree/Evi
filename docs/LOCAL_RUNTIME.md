@@ -1204,8 +1204,10 @@ the copied runtime path.
 
 Before replacing `current`, the service compares its build commit with the
 commit-bound `governance/capability-acceptance/basic-entrypoints.json` record.
-Only a clean build with a `verified` commit, repo root, and state-root match is
-promoted to `previous`; an unverified or dirty current build
+Only a clean build with commit-bound known-good evidence, from either the
+`verified` basic-entrypoint record or a supervisor-stable deployment with the
+same commit, repo root, and state root, is promoted to `previous`; an
+unverified or dirty current build
 never overwrites the last known-good slot. `service rollback` stops launchd,
 validates both bundles, swaps `current` and `previous`, and starts the same job
 again. The replaced build remains in `previous`, so the same command can
@@ -1213,6 +1215,71 @@ reverse the rollback. `service status` exposes both `runtime` and
 `previous_runtime` build metadata. Launchd bootstrap uses a bounded exponential
 retry after `bootout` so the asynchronous unload window cannot leave a
 successfully swapped runtime stopped after one transient error.
+
+### Transactional self-deployment
+
+`service start` and `service restart` also install and start a small independent
+launchd job named `local.runtime.runtime.supervisor`. Its copied entrypoint lives
+under `<LOCAL_RUNTIME_HOME>/service/supervisor/`; it does not run from
+`current`, so a candidate runtime crash cannot remove the rollback controller.
+The supervisor only manages local deployment state, launchd lifecycle, bundle
+slots, readiness, bounded failure evidence, and repair-task enqueueing. It does
+not invoke a model, edit repository source, inspect ordinary logs for semantic
+judgment, communicate externally, or perform remote deployment.
+
+After targeted checks and `pnpm run check`, a clean, distinct commit may be
+staged without stopping the resident runtime:
+
+```bash
+pnpm run runtime -- deployment request \
+  --verification-ref "pnpm run check" \
+  --state-root <state-root>
+pnpm run runtime -- deployment status --state-root <state-root>
+pnpm run runtime -- deployment history --state-root <state-root>
+```
+
+The request copies the candidate into `next`, binds the release id to its Git
+commit and a bounded bundle digest, and writes `deployments/request.json`. The
+supervisor then moves the verified current build to `previous`, activates
+`next`, and waits up to 90 seconds for a fresh heartbeat with the candidate
+commit plus the configured Web and IM entrypoints. A passing candidate enters a
+60-second local probation window. Three consecutive hard local readiness
+failures, a startup timeout, or an explicit evidence-bound failure signal cause
+automatic rollback. Ordinary error-log text and post-start external IM
+connectivity alone are not rollback signals.
+
+When the running agent identifies a deterministic regression, it can request
+rollback without terminating itself:
+
+```bash
+pnpm run runtime -- deployment fail \
+  --reason "deterministic runtime regression" \
+  --failure-ref <state-evidence-ref> \
+  --state-root <state-root>
+```
+
+Before rollback, the supervisor captures only the stdout/stderr bytes written
+since activation, capped at 1 MiB per stream, plus the last heartbeat and a
+typed failure summary under `deployments/evidence/<deployment-id>/`. After the
+previous build passes readiness, the supervisor appends one local runtime repair
+task. The recovered build fixes forward on the repository's failed source
+commit, runs verification, creates a new clean commit, and requests deployment
+with `--repair-of <deployment-id>`. The same failed commit cannot be redeployed,
+and a repair chain stops after two automatic attempts. The task queue does not
+accept a model session's `done` status by itself: it verifies that a distinct
+repair deployment record with the expected `repair_of`, next repair-attempt
+number, and verification refs exists. An incomplete diagnosis is requeued up to
+three worker attempts, then fails visibly instead of becoming a false success.
+
+A supervisor record that reaches `stable` is also commit-bound known-good
+evidence for the next autonomous deployment. This closes the next iteration
+without requiring a separate operator verifier while preserving the explicit
+basic-entrypoint acceptance record as the broader release audit.
+
+The v0.1 autonomous path accepts `state_schema_version=1` only. Candidate
+changes must keep one-version backward-compatible, additive state writes. An
+incompatible state migration is rejected instead of attempting broad state
+snapshot restoration or lossy automatic rollback.
 
 Service stdout and stderr logs rotate after the job is stopped and before a
 start, restart, install, or rollback. Each active log is capped at 2 MiB with

@@ -157,11 +157,18 @@ import { runSopLoopRehearsal } from "../../../packages/runtime/src/sop_loop_rehe
 import { listContextManifests, repairContextManifest, showContextManifest } from "../../../packages/runtime/src/context_manifest.js";
 import { LiveAgentRunner, type DisciplineMode } from "../../../packages/runtime/src/runner.js";
 import {
+  resolveServiceDefinition,
   resolveServiceConfigSelectors,
   runServiceCommand,
   type ServiceAction,
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
+import {
+  getLocalDeploymentStatus,
+  listLocalDeployments,
+  reportLocalDeploymentFailure,
+  requestLocalDeployment
+} from "../../../packages/runtime/src/deployment.js";
 import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
 import { startRuntimeWebConsole } from "../../../packages/runtime/src/web_console.js";
@@ -190,6 +197,11 @@ interface CliOptions {
   imAction?: "serve";
   daemonAction?: "serve";
   serviceAction?: ServiceAction | "health";
+  deploymentAction?: "request" | "status" | "fail" | "history";
+  deploymentId?: string;
+  deploymentRepairOf?: string;
+  deploymentVerificationRefs: string[];
+  deploymentEvidenceRefs: string[];
   capabilitiesAction?: "catalog" | "acceptance" | "verify-entrypoints";
   workspaceAction?: "status" | "runtime";
   notifyAction?: "queue" | "list";
@@ -1574,6 +1586,57 @@ export async function main(): Promise<number> {
     return result.ok ? 0 : 1;
   }
 
+  if (options.command === "deployment") {
+    const action = options.deploymentAction ?? "status";
+    const selectors = await resolveServiceConfigSelectors({
+      target: options.serviceTarget,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
+    if (action === "request") {
+      const definition = await resolveServiceDefinition({
+        action: "restart",
+        target: options.serviceTarget,
+        configDir: options.configDir,
+        repoRoot: options.repoRoot,
+        stateRoot: selectors.stateRoot,
+        provider: options.imProvider,
+        channelId: options.channelId,
+        scenarioId: options.scenarioId,
+        discipline: options.discipline,
+        enableIm: options.requireIm,
+        enableWeb: options.webEnabled,
+        webHost: options.webHost,
+        webPort: options.webPort
+      }, true);
+      const result = await requestLocalDeployment(definition, {
+        verificationRefs: options.deploymentVerificationRefs,
+        repairOf: options.deploymentRepairOf
+      });
+      console.log(JSON.stringify({ action, ...result }, null, 2));
+      return 0;
+    }
+    if (action === "fail") {
+      const result = await reportLocalDeploymentFailure(selectors.stateRoot, {
+        deploymentId: options.deploymentId,
+        reason: required(options.reason, "deployment fail requires --reason"),
+        evidenceRefs: options.deploymentEvidenceRefs
+      });
+      console.log(JSON.stringify({ action, ...result }, null, 2));
+      return 0;
+    }
+    if (action === "history") {
+      console.log(JSON.stringify({
+        action,
+        boundary: "read-only local deployment history",
+        deployments: await listLocalDeployments(selectors.stateRoot, options.limit)
+      }, null, 2));
+      return 0;
+    }
+    console.log(JSON.stringify({ action, ...await getLocalDeploymentStatus(selectors.stateRoot) }, null, 2));
+    return 0;
+  }
+
   if (options.command === "daemon") {
     if (options.daemonAction !== "serve") throw new Error("daemon requires an action: serve");
     if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
@@ -2928,6 +2991,8 @@ export function parseArgs(argv: string[]): CliOptions {
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
     notifyRefs: [],
+    deploymentVerificationRefs: [],
+    deploymentEvidenceRefs: [],
     sourceUrls: [],
     tickers: []
   };
@@ -2937,6 +3002,7 @@ export function parseArgs(argv: string[]): CliOptions {
     if (options.command === "im" && arg === "serve") options.imAction = arg;
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
     else if (options.command === "service" && isCliServiceAction(arg)) options.serviceAction = arg;
+    else if (options.command === "deployment" && isDeploymentAction(arg)) options.deploymentAction = arg;
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
@@ -3065,6 +3131,10 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--text") options.notifyText = required(rest[++index], "--text requires a value");
     else if (arg === "--source") options.notifySource = required(rest[++index], "--source requires a value");
     else if (arg === "--notification-ref") options.notifyRefs.push(required(rest[++index], "--notification-ref requires a value"));
+    else if (arg === "--verification-ref") options.deploymentVerificationRefs.push(required(rest[++index], "--verification-ref requires a value"));
+    else if (arg === "--failure-ref") options.deploymentEvidenceRefs.push(required(rest[++index], "--failure-ref requires a value"));
+    else if (arg === "--deployment") options.deploymentId = required(rest[++index], "--deployment requires a value");
+    else if (arg === "--repair-of") options.deploymentRepairOf = required(rest[++index], "--repair-of requires a value");
     else if (arg === "--target") options.serviceTarget = parseServiceTarget(required(rest[++index], "--target requires a value"));
     else if (arg === "--provider") options.imProvider = parseImProvider(required(rest[++index], "--provider requires a value"));
     else if (arg === "--channel") options.channelId = required(rest[++index], "--channel requires a value");
@@ -3437,6 +3507,10 @@ function isCliServiceAction(value: string): value is ServiceAction | "health" {
   return value === "health" || isServiceAction(value);
 }
 
+function isDeploymentAction(value: string): value is "request" | "status" | "fail" | "history" {
+  return value === "request" || value === "status" || value === "fail" || value === "history";
+}
+
 function parseServiceTarget(value: string): ServiceTarget {
   if (value === "runtime") return value;
   throw new Error(`Unsupported service target: ${value}`);
@@ -3482,6 +3556,9 @@ function printUsage(): void {
   pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root .runtime/state]
   pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- service install|start|stop|restart|rollback|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- deployment request --verification-ref "pnpm run check" [--repair-of deployment_...] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- deployment status|history [--limit 20] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- deployment fail --reason "..." [--deployment deployment_...] [--failure-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]
   pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime/state]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]

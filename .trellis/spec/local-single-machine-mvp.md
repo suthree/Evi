@@ -323,6 +323,18 @@ the local home/state roots, and be restarted after local development changes.
 It must not introduce remote deployment, multi-user queueing, cross-machine
 state, or production service governance.
 
+The local service runtime may install one stable deployment supervisor outside
+the replaceable current runtime bundle. It may manage only the local
+next/current/previous slots, readiness and probation state, automatic rollback
+for hard local failures, bounded failure evidence, and one fix-forward task in
+the existing local runtime task queue. It must not invoke a model, edit source,
+infer failure from ordinary log text, accept incompatible state migration,
+perform remote deployment, or coordinate another machine. Failed commits are
+not redeployed and one repair chain has a bounded automatic-attempt limit. A
+repair queue item is complete only when state contains a distinct verified
+deployment request linked by `repair_of`; diagnosis-only model output is
+continued at most three times and cannot be recorded as a successful repair.
+
 The service may attach a configurable local review tick loop for self-evolution
 inbox materialization. It is disabled by default, reports status under the
 state root, and must preserve the same no-execution/no-active-vault boundary as
@@ -429,6 +441,9 @@ The MVP is healthy when:
 - resident daemon queue worker can consume stale queued/running task queue
   entries and expose worker status for service inspection
 - local service status reports a running IM process and heartbeat when enabled
+- local deployment status reports the stable supervisor, commit-bound candidate
+  transaction, probation, rollback evidence, recovery, and bounded repair chain
+  without adding a hosted control plane or remote deployment
 - local `service health` returns bounded resident IM health and resident
   deployment status without inspecting launchd, reading logs, restarting
   services, invoking the model, reading source bodies, running shell commands,

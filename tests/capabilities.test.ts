@@ -83,6 +83,9 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(feishuSession?.summary.includes("Feishu groups"), true);
   assert.equal(feishuSession?.boundaries?.some((boundary) => boundary.includes("unknown groups")), true);
   assert.equal(runtimeService?.capabilities.some((capability) => capability.id === "service.content_feedback_refresh_loop"), true);
+  const transactionalDeployment = runtimeService?.capabilities.find((capability) => capability.id === "service.transactional_deployment");
+  assert.equal(transactionalDeployment?.refs?.includes("packages/runtime/src/service_supervisor.ts"), true);
+  assert.equal(transactionalDeployment?.boundaries?.some((boundary) => boundary.includes("same failed commit")), true);
   const webConsole = entrypoints?.capabilities.find((capability) => capability.id === "web.console");
   assert.equal(webConsole?.commands?.includes("pnpm run runtime -- web --host 127.0.0.1 --port 8765"), true);
   assert.equal(webConsole?.refs?.includes("packages/runtime/src/web_console.ts"), true);

@@ -211,6 +211,40 @@ test("service command parses runtime target and web host options", () => {
   assert.equal(options.requireIm, false);
 });
 
+test("deployment commands parse autonomous release, repair, and failure evidence", () => {
+  const request = parseArgs([
+    "deployment",
+    "request",
+    "--verification-ref",
+    "pnpm run check",
+    "--verification-ref",
+    "tests/deployment_supervisor.test.ts",
+    "--repair-of",
+    "deployment_failed_1",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(request.command, "deployment");
+  assert.equal(request.deploymentAction, "request");
+  assert.deepEqual(request.deploymentVerificationRefs, ["pnpm run check", "tests/deployment_supervisor.test.ts"]);
+  assert.equal(request.deploymentRepairOf, "deployment_failed_1");
+
+  const fail = parseArgs([
+    "deployment",
+    "fail",
+    "--deployment",
+    "deployment_candidate_1",
+    "--reason",
+    "runtime regression",
+    "--failure-ref",
+    "memory/episodes/failure.json"
+  ]);
+  assert.equal(fail.deploymentAction, "fail");
+  assert.equal(fail.deploymentId, "deployment_candidate_1");
+  assert.equal(fail.reason, "runtime regression");
+  assert.deepEqual(fail.deploymentEvidenceRefs, ["memory/episodes/failure.json"]);
+});
+
 test("governance project-design command parses core design read model", () => {
   const options = parseArgs(["governance", "project-design", "--state-root", ".runtime/state"]);
 

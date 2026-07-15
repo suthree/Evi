@@ -888,7 +888,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
   return {
     id: "runtime_service",
     title: "Resident local service",
-    summary: "Single-user macOS launchd runtime for channel adapters, Feishu IM intake, local Web console, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
+    summary: "Single-user macOS launchd runtime with a stable local deployment supervisor, channel adapters, Feishu IM intake, local Web console, optional review tick status, optional daily active-exploration jobs, and optional post-publish feedback loops.",
     status: "implemented",
     layer: "basic_entrypoint",
     capabilities: [
@@ -899,7 +899,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         status: "implemented",
         commands: ["pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime"],
         refs: ["packages/runtime/src/service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "docs/LOCAL_RUNTIME.md"],
-        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon and owns resident channel adapters", "only a current build matching verified basic-entrypoint acceptance may replace the previous last known-good slot", "rollback swaps current and previous so one-step reversal remains available", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
+        boundaries: ["local single-user launchd service only; not hosted service design", "`runtime` target starts the unified daemon and owns resident channel adapters", "only a current build matching verified basic-entrypoint acceptance or a supervisor-stable commit-bound deployment may replace the previous last known-good slot", "rollback swaps current and previous so one-step reversal remains available", "lifecycle results expose health_command for bounded runtime/channel health instead of embedding health semantics in service status"]
       },
       {
         id: "service.health",
@@ -909,6 +909,32 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         commands: ["pnpm run runtime -- service health --target runtime", "/health", "/status"],
         refs: ["packages/core/src/service_health.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/message_gateway.ts", "tests/service_health.test.ts", "tests/runtime_daemon.test.ts"],
         boundaries: ["defaults to the same service state root as service restart unless --state-root is explicit", "layered status reasons are read-model explanation only and do not change service lifecycle behavior", "reads state plus .git/HEAD/refs only; does not call launchctl, restart services, run git or shell commands, read source file bodies, invoke the model, fetch platform state, publish externally, or mutate state"]
+      },
+      {
+        id: "service.transactional_deployment",
+        title: "Transactional local deployment",
+        summary: "Stage one clean commit as a local candidate, let a stable launchd supervisor enforce commit-bound readiness and probation, automatically roll back hard local failures, preserve bounded failure evidence, and queue one fix-forward repair task for the recovered runtime.",
+        status: "implemented",
+        commands: [
+          "pnpm run runtime -- deployment request --verification-ref \"pnpm run check\"",
+          "pnpm run runtime -- deployment status",
+          "pnpm run runtime -- deployment fail --reason <reason>",
+          "pnpm run runtime -- deployment history"
+        ],
+        refs: [
+          "packages/runtime/src/deployment.ts",
+          "packages/runtime/src/service_supervisor.ts",
+          "packages/runtime/src/service.ts",
+          "tests/deployment_supervisor.test.ts",
+          "docs/LOCAL_RUNTIME.md"
+        ],
+        boundaries: [
+          "single-machine current/previous/next bundles only; no containers, remote deployment, hosted control plane, or multi-node coordination",
+          "the supervisor never invokes a model, edits repository source, publishes externally, or guesses failure from ordinary error log text",
+          "automatic rollback uses process/heartbeat/commit/local-entrypoint readiness or an explicit evidence-bound deployment failure signal",
+          "v0.1 autonomous deployment accepts state_schema_version=1 only and rejects incompatible state migrations",
+          "the same failed commit cannot be redeployed; repair proceeds as a new clean commit and a repair chain stops after two automatic attempts"
+        ]
       },
       {
         id: "service.content_daily_loop",

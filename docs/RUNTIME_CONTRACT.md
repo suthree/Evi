@@ -1244,6 +1244,23 @@ Local service runtime must not introduce hosted service design, multi-user
 queues, remote deployment, cross-machine state, or production daemon
 governance.
 
+The resident service may install one stable local deployment supervisor outside
+the replaceable runtime bundle. This supervisor may stage and atomically switch
+the local `next`, `current`, and `previous` slots; enforce bounded
+commit/heartbeat/Web/IM startup readiness and local probation; accept an
+explicit evidence-bound failure signal; roll back hard local failures; preserve
+bounded deployment evidence; and append one fix-forward task to the existing
+local runtime task queue after the previous build recovers. It must not invoke a
+model, edit repository source, infer semantic failure from ordinary log text,
+publish or communicate externally, perform remote deployment, coordinate other
+machines, or accept an incompatible state-schema migration. A failed commit is
+not eligible for redeployment, and an automatic repair chain is bounded before
+operator attention is required. A deployment-repair queue item may reach `done`
+only after a distinct verified deployment request names the failed deployment
+through `repair_of`; diagnostic prose or model completion confidence is not a
+completion signal. Incomplete repair sessions may be continued only through a
+small bounded retry count.
+
 ### Local Learning
 
 SOP and skill promotion are local learning experiments. They operate on local
