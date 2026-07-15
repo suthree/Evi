@@ -57,5 +57,5 @@ export interface TelegramTransport {
 }
 
 export interface TaskRunner {
-  runTask(task: string): Promise<RunResult>;
+  runTask(task: string, options?: { recallQuery?: string }): Promise<RunResult>;
 }

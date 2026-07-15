@@ -55,6 +55,46 @@ test("live SOP flow promotes into user vault then reuses recalled skill", async 
   }
 });
 
+test("live SOP flow rejects a one-off acknowledgement before durable learning writes", async () => {
+  const root = await mkdirTemp();
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const activeVault = join(root, "agent-home/vault");
+  await mkdir(join(repoRoot, "vault/skills"), { recursive: true });
+  await mkdir(join(repoRoot, "skills"), { recursive: true });
+
+  const runner = new LiveAgentRunner({
+    repoRoot,
+    stateRoot,
+    config: testConfig({ stateRoot, activeVault }),
+    model: new OneOffAcknowledgementSopModel(),
+    discipline: "query_todo"
+  });
+
+  try {
+    const result = await runner.runTask([
+      "Feishu private chat message received.",
+      "Recent conversation context:",
+      "A prior unrelated Git workflow was discussed.",
+      "User message:",
+      "IM_RC_OK"
+    ].join("\n"), { recallQuery: "IM_RC_OK" });
+    const events = await readJsonl(join(stateRoot, "memory/episodes/events.jsonl"));
+
+    assert.equal(result.verdict, "no_sop");
+    assert.equal(result.sop_ref, null);
+    assert.equal(result.audit_ref, null);
+    assert.equal(result.skill_ref, null);
+    assert.equal(events.some((event) => String(event.summary).includes("Rejected one-off acknowledgement SOP proposal")), true);
+    assert.equal(events.some((event) => String(event.summary).includes("Drafted live SOP candidate")), false);
+    assert.equal(existsSync(join(activeVault, "skills/handle-fixed-acknowledgement-marker/SKILL.md")), false);
+    assert.equal(existsSync(join(activeVault, "sop/promoted")), true);
+    assert.equal(existsSync(join(activeVault, "registry/skills.jsonl")), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 class DeterministicSopModel implements ModelClient {
   private calls = 0;
 
@@ -67,6 +107,21 @@ class DeterministicSopModel implements ModelClient {
       api: "responses",
       model: "deterministic-sop-model",
       responseId: `response-${this.calls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
+
+class OneOffAcknowledgementSopModel implements ModelClient {
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    const hasToolObservations = request.input.includes("## Tool Observations");
+    const outputText = JSON.stringify(hasToolObservations ? oneOffAcknowledgementEnvelope() : toolEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "one-off-acknowledgement-sop-model",
+      responseId: hasToolObservations ? "response-one-off-final" : "response-one-off-tool",
       outputText,
       raw: { outputText }
     };
@@ -121,6 +176,41 @@ function finalEnvelope(): Record<string, unknown> {
           failure_modes: [
             "If the skill is written into a repo seed vault, rollback the write and revise the resolver configuration.",
             "If recall misses the promoted skill, archive or revise the skill trigger before trusting the SOP."
+          ]
+        }
+      }
+    ],
+    completion_claim: {
+      status: "done",
+      verification_refs: []
+    }
+  };
+}
+
+function oneOffAcknowledgementEnvelope(): Record<string, unknown> {
+  return {
+    summary: "Return a fixed acknowledgement while proposing an unnecessary SOP.",
+    actions: [
+      {
+        type: "respond",
+        rationale: "The current message only needs a bounded acknowledgement.",
+        payload: { markdown: "IM_RC_OK" }
+      },
+      {
+        type: "propose_sop",
+        rationale: "Try to preserve a one-off acknowledgement as a reusable procedure.",
+        payload: {
+          title: "Handle fixed acknowledgement marker",
+          trigger: "Use this when an operator sends a fixed acknowledgement marker that needs no lookup, mutation, command, or explanation.",
+          procedure: [
+            "Read the fixed acknowledgement marker.",
+            "Write the query/todo state for the acknowledgement.",
+            "Return the marker without unrelated work."
+          ],
+          required_tools: ["file.write_state"],
+          verification: "Confirm the final response contains the fixed acknowledgement marker and no unrelated task output.",
+          failure_modes: [
+            "If the message includes a real task, revise or retire this acknowledgement procedure."
           ]
         }
       }

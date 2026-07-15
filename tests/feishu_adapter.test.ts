@@ -335,6 +335,7 @@ test("private text message includes bounded local conversation history", async (
     assert.doesNotMatch(runner.tasks[0], /无 chat_id 回复不应该进入上下文/);
     assert.doesNotMatch(runner.tasks[0], /不应该出现在当前上下文/);
     assert.match(runner.tasks[0], /User message:\n现在呢？/);
+    assert.equal(runner.recallQueries[0], "现在呢？");
 
     const outbound = JSON.parse(
       await readFile(join(fixture.stateRoot, "channels/feishu/outbound/om_followup.json"), "utf8")
@@ -5128,14 +5129,16 @@ class MockFeishuTransport implements FeishuTransport {
 
 class StubRunner implements TaskRunner {
   readonly tasks: string[] = [];
+  readonly recallQueries: Array<string | undefined> = [];
 
   constructor(
     private readonly store: AgentStore,
     private readonly finalText: string
   ) {}
 
-  async runTask(task: string): Promise<RunResult> {
+  async runTask(task: string, options: { recallQuery?: string } = {}): Promise<RunResult> {
     this.tasks.push(task);
+    this.recallQueries.push(options.recallQuery);
     const finalRef = "memory/episodes/session_test-final-response.md";
     await this.store.writeText(finalRef, this.finalText);
     return {

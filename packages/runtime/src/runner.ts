@@ -156,6 +156,10 @@ interface EpisodeRecallPlan {
   pressure_ref?: string;
 }
 
+export interface LiveRunOptions {
+  recallQuery?: string;
+}
+
 export class LiveAgentRunner {
   private readonly store: AgentStore;
   private readonly config: RuntimeConfig;
@@ -178,9 +182,10 @@ export class LiveAgentRunner {
     this.discipline = args.discipline ?? "none";
   }
 
-  async runTask(task: string): Promise<RunResult> {
+  async runTask(task: string, options: LiveRunOptions = {}): Promise<RunResult> {
     await this.store.ensureLayout();
     await ensureVaultLayout(this.store, this.config.vault);
+    const recallQuery = options.recallQuery?.trim() || task;
     const discipline = this.discipline === "query_todo"
       ? await this.initializeQueryTodoDiscipline(task)
       : null;
@@ -201,9 +206,9 @@ export class LiveAgentRunner {
     });
     await this.store.appendJsonl("autonomy/opportunities.jsonl", opportunity);
 
-    const recalledSkills = await recallSkills(this.store, task, 2, this.config.vault);
+    const recalledSkills = await recallSkills(this.store, recallQuery, 2, this.config.vault);
     const episodeRecallPlan = await resolveEpisodeRecallPlan(this.store);
-    const recalledEpisodes = await recallEpisodeMemory(this.store, task, episodeRecallPlan.limit);
+    const recalledEpisodes = await recallEpisodeMemory(this.store, recallQuery, episodeRecallPlan.limit);
     const snapshot = await buildTurnSnapshot(this.store, trigger, task, opportunity, {
       memory_hits: recalledEpisodes,
       skill_refs: recalledSkills.map((skill) => skill.instructions_ref),
@@ -726,7 +731,11 @@ export class LiveAgentRunner {
     evidenceRefs.push(completionEvent.id);
     await this.store.appendJsonl("memory/episodes/events.jsonl", completionEvent);
 
-    const sop = completionVerification.verified ? buildSopFromEnvelope(envelope, evidenceRefs) : null;
+    const proposedSop = completionVerification.verified ? buildSopFromEnvelope(envelope, evidenceRefs) : null;
+    const rejectedOneOffSop = proposedSop && isOneOffAcknowledgementSop(recallQuery, proposedSop)
+      ? proposedSop
+      : null;
+    const sop = rejectedOneOffSop ? null : proposedSop;
     let sopRef: string | null = null;
     let vaultSopDraftRef: string | null = null;
     let vaultSopPromotedRef: string | null = null;
@@ -737,6 +746,24 @@ export class LiveAgentRunner {
       : completionVerification.ok
         ? "no_sop"
         : "completion_unverified";
+
+    if (rejectedOneOffSop) {
+      const rejectionEvent = evidenceEventSchema.parse({
+        session_id: snapshot.session_id,
+        turn_id: snapshot.id,
+        kind: "report",
+        summary: `Rejected one-off acknowledgement SOP proposal before draft, audit, or promotion: ${rejectedOneOffSop.title}`,
+        artifact_refs: [envelopeRef, completionReportRef]
+      });
+      evidenceRefs.push(rejectionEvent.id);
+      await this.store.appendJsonl("memory/episodes/events.jsonl", rejectionEvent);
+      if (discipline) {
+        markTodo(discipline, "sop_audit", "done");
+        markTodo(discipline, "skill_decision", "done");
+        discipline.iteration_log.push("Rejected a one-off acknowledgement SOP proposal before durable learning writes.");
+        await this.writeDisciplineTodo(discipline);
+      }
+    }
 
     if (sop) {
       if (discipline) {
@@ -842,7 +869,7 @@ export class LiveAgentRunner {
         discipline.iteration_log.push(`No skill promotion; runtime promotion enabled=${this.config.runtime.promotion_enabled}, audit verdict=${audit.verdict}.`);
         await this.writeDisciplineTodo(discipline);
       }
-    } else if (discipline) {
+    } else if (discipline && !rejectedOneOffSop) {
       markTodo(discipline, "sop_audit", "blocked");
       markTodo(discipline, "skill_decision", "blocked");
       discipline.iteration_log.push(completionVerification.ok
@@ -1917,6 +1944,14 @@ function buildSopFromEnvelope(envelope: ModelActionEnvelope, evidenceRefs: strin
     failure_modes: payload.failure_modes ?? [],
     evidence_refs: evidenceRefs
   });
+}
+
+function isOneOffAcknowledgementSop(recallQuery: string, sop: SOPDraft): boolean {
+  const query = recallQuery.trim();
+  if (!query || query.length > 120) return false;
+  if (sop.required_tools.some((tool) => tool !== "file.write_state")) return false;
+  const candidate = [sop.title, sop.trigger, ...sop.procedure, sop.verification].join(" ");
+  return /fixed\s+(?:acknowledg(?:e)?ment|confirmation|marker|reply|response)|confirmation\s+(?:marker|token|message)|echo\s+(?:marker|token|request)|one[- ]off\s+acknowledg(?:e)?ment|固定确认|确认标记|确认消息|原样(?:固定标记)?回复|固定回显|回显标记|最小确认/i.test(candidate);
 }
 
 async function recallEpisodeMemory(store: AgentStore, task: string, limit: number): Promise<MemoryRecallHit[]> {

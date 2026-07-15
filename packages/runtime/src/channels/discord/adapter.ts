@@ -194,7 +194,7 @@ export class DiscordBotAdapter implements RuntimeChannelAdapter {
         source,
         taskText,
         runnerTask: task,
-        runTask: (runnerTask) => this.runner.runTask(runnerTask)
+        runTask: (runnerTask) => this.runner.runTask(runnerTask, { recallQuery: taskText })
       });
       const finalText = await this.finalTextForRun(executed.result);
       const sends = await this.sendChunks(message, finalText);

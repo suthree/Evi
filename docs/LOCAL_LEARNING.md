@@ -137,12 +137,21 @@ Reject SOP or skill promotion when any of these are true:
 - an existing command, adapter, delegated surface, SOP, skill, or documented
   workflow already covers the need
 - the task was one-off, exploratory, or mainly project-specific
+- the proposal merely turns a short acknowledgement, fixed marker, or echo
+  response into durable procedural memory
 - the candidate has no clear future trigger
 - the candidate cannot name bounded steps and required inputs
 - the candidate has no verification command or acceptance evidence
 - the candidate has no known failure mode, rollback, or retirement rule
 - promotion would bypass context, harness, completion, or operator-inspection
   gates
+
+Channel adapters pass only the current user message into skill and episode
+retrieval. Bounded conversation history remains available to model cognition,
+but it must not inflate recall scores or select skills for an unrelated current
+message. The live harness also rejects one-off acknowledgement SOP proposals
+before writing a draft, audit, promoted SOP, skill candidate, active skill, or
+registry entry.
 
 Self-iteration work that improves context assembly, harness validation, tool
 boundaries, evidence capture, completion checks, recovery, or operator

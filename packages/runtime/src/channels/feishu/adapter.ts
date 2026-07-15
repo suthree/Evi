@@ -682,7 +682,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       });
       inboundRef = await this.recordInbound(message);
       await this.sendChunksToMessage(message, this.config.ackText);
-      const result = await this.runner.runTask(task);
+      const result = await this.runner.runTask(task, { recallQuery: taskText });
       await completeRuntimeTask(this.store, {
         id: queued.id,
         status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
@@ -789,7 +789,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       inboundRef = await this.recordInbound(normalized);
       await this.sendChunks(normalized.openId, this.config.ackText);
       const task = renderAgentTask(normalized, history);
-      const result = await this.runner.runTask(task);
+      const result = await this.runner.runTask(task, { recallQuery: normalized.text });
       const finalText = await this.finalTextForRun(result);
       const outbound = await this.sendChunks(normalized.openId, finalText);
       outboundRef = await this.recordOutbound(normalized, result, finalText, outbound, {
