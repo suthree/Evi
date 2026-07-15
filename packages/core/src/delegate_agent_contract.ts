@@ -1,0 +1,1495 @@
+import { createHash } from "node:crypto";
+import { delegateAgentAuthoringContract } from "./action_contracts.js";
+import {
+  DELEGATE_AGENT_CONTEXT_MAX_CHARS,
+  DELEGATE_AGENT_TASK_MAX_CHARS,
+  DELEGATED_AGENT_FINDINGS_MAX_CHARS,
+  DELEGATED_AGENT_SUMMARY_MAX_CHARS,
+  delegatedAgentOutputSchema,
+  delegateAgentPayloadSchema
+} from "./schemas.js";
+
+export interface DelegateAgentActionInput {
+  payload: unknown;
+  rationale: string;
+}
+
+export type ParseDelegationRequestResult = {
+  ok: true;
+  task: string;
+  context: string;
+} | {
+  ok: false;
+  task: string;
+  context: string;
+  input_task?: string;
+  task_chars: number;
+  context_chars: number;
+  error: string;
+};
+
+export interface DelegationInputMetadata {
+  input_contract_valid: boolean;
+  task_chars: number;
+  context_chars: number;
+  input_digest: string;
+}
+
+export interface DelegatedOutputSource {
+  task: string;
+  context: string;
+}
+
+export type ParseDelegatedOutputResult = {
+  ok: true;
+  summary: string;
+  findings_text: string;
+} | {
+  ok: false;
+  error: string;
+  safe_raw_output_preview?: string;
+};
+
+export function parseDelegationRequest(action: DelegateAgentActionInput): ParseDelegationRequestResult {
+  const payload = action.payload;
+  const fallbackTask = action.rationale.trim();
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      context: "",
+      task_chars: fallbackTask.length,
+      context_chars: 0,
+      error: "delegate_agent.payload must be an object with non-empty task and context strings."
+    };
+  }
+  const record = payload as Record<string, unknown>;
+  const task = typeof record.task === "string" ? record.task.trim() : "";
+  const context = typeof record.context === "string" ? record.context.trim() : "";
+  const parsed = delegateAgentPayloadSchema.safeParse(record);
+  if (parsed.success) {
+    const taskBoundaryError = validateDelegationTaskBoundary(parsed.data.task);
+    if (taskBoundaryError) {
+      return {
+        ok: false,
+        task: parsed.data.task,
+        context: parsed.data.context,
+        task_chars: parsed.data.task.length,
+        context_chars: parsed.data.context.length,
+        error: taskBoundaryError
+      };
+    }
+    const boundaryError = validateDelegationContextBoundary(parsed.data.context);
+    if (!boundaryError) return { ok: true, ...parsed.data };
+    return {
+      ok: false,
+      task: parsed.data.task,
+      context: parsed.data.context,
+      task_chars: parsed.data.task.length,
+      context_chars: parsed.data.context.length,
+      error: boundaryError
+    };
+  }
+  if (!task) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      context,
+      task_chars: fallbackTask.length,
+      context_chars: context.length,
+      error: "delegate_agent.payload.task must be a non-empty string."
+    };
+  }
+  if (task.length > DELEGATE_AGENT_TASK_MAX_CHARS) {
+    return {
+      ok: false,
+      task: fallbackTask,
+      context,
+      input_task: task,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: `delegate_agent.payload.task must be at most ${DELEGATE_AGENT_TASK_MAX_CHARS} chars.`
+    };
+  }
+  if (!context) {
+    return {
+      ok: false,
+      task,
+      context: "",
+      task_chars: task.length,
+      context_chars: 0,
+      error: "delegate_agent.payload.context must be a non-empty string."
+    };
+  }
+  if (context.length > DELEGATE_AGENT_CONTEXT_MAX_CHARS) {
+    return {
+      ok: false,
+      task,
+      context,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: `delegate_agent.payload.context must be at most ${DELEGATE_AGENT_CONTEXT_MAX_CHARS} chars.`
+    };
+  }
+  const unsupportedKeys = Object.keys(record).filter((key) => key !== "task" && key !== "context");
+  if (unsupportedKeys.length > 0) {
+    return {
+      ok: false,
+      task,
+      context,
+      task_chars: task.length,
+      context_chars: context.length,
+      error: "delegate_agent.payload may only include task and context."
+    };
+  }
+  return {
+    ok: false,
+    task,
+    context,
+    task_chars: task.length,
+    context_chars: context.length,
+    error: "delegate_agent.payload failed schema validation."
+  };
+}
+
+export function delegationInputMetadata(request: ParseDelegationRequestResult): DelegationInputMetadata {
+  const task = request.ok ? request.task : request.input_task ?? request.task;
+  const context = request.context;
+  return {
+    input_contract_valid: request.ok,
+    task_chars: request.ok ? task.length : request.task_chars,
+    context_chars: request.ok ? context.length : request.context_chars,
+    input_digest: createHash("sha256")
+      .update(["delegate_agent_input_v1", String(task.length), task, String(context.length), context].join("\u0000"))
+      .digest("hex")
+  };
+}
+
+export function parseDelegatedOutput(
+  outputText: string,
+  source: DelegatedOutputSource
+): ParseDelegatedOutputResult {
+  const trimmed = outputText.trim();
+  if (!trimmed) {
+    return { ok: false, error: "Delegated model returned empty output." };
+  }
+  const fullOutputBoundaryFailure = delegatedOutputBoundaryFailure(trimmed, source);
+  if (fullOutputBoundaryFailure) return fullOutputBoundaryFailure;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (error) {
+    return { ok: false, error: `Delegated model output was not valid JSON: ${errorMessage(error)}` };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, error: "Delegated model output was not a JSON object." };
+  }
+  const record = parsed as Record<string, unknown>;
+  const unsupportedKeys = Object.keys(record).filter((key) => key !== "summary" && key !== "findings_text");
+  const contract = delegatedAgentOutputSchema.safeParse(record);
+  if (!contract.success) {
+    const summary = typeof record.summary === "string" ? record.summary.trim() : "";
+    const findingsText = typeof record.findings_text === "string" ? record.findings_text.trim() : "";
+    if (!summary) {
+      return { ok: false, error: "Delegated model output missing non-empty summary." };
+    }
+    if (!findingsText) {
+      return { ok: false, error: "Delegated model output missing non-empty findings_text." };
+    }
+    if (summary.length > DELEGATED_AGENT_SUMMARY_MAX_CHARS) {
+      return { ok: false, error: `Delegated model output.summary must be at most ${DELEGATED_AGENT_SUMMARY_MAX_CHARS} chars.` };
+    }
+    if (findingsText.length > DELEGATED_AGENT_FINDINGS_MAX_CHARS) {
+      return { ok: false, error: `Delegated model output.findings_text must be at most ${DELEGATED_AGENT_FINDINGS_MAX_CHARS} chars.` };
+    }
+    if (unsupportedKeys.length > 0) {
+      return {
+        ok: false,
+        error: "Delegated model output may only include summary and findings_text.",
+        safe_raw_output_preview: "Delegated model output included unsupported fields; raw output preview suppressed."
+      };
+    }
+    return { ok: false, error: "Delegated model output failed schema validation." };
+  }
+  const { summary, findings_text: findingsText } = contract.data;
+  if (delegatedOutputClaimsAuthority(summary, findingsText)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
+    };
+  }
+  if (delegatedTextIssuesExecutionDirective(`${summary}\n${findingsText}`)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not issue tool, mutation, command/test, or read directives.",
+      safe_raw_output_preview: "Delegated model output issued an execution directive; raw output preview suppressed."
+    };
+  }
+  if (delegatedOutputClaimsForbiddenSource(summary, findingsText)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.",
+      safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
+    };
+  }
+  const rawEcho = delegatedOutputRawEcho(summary, findingsText, source);
+  if (rawEcho) {
+    return {
+      ok: false,
+      error: `Delegated model output echoed raw delegated ${rawEcho.source_field}; return summarized analysis without raw task/context.`,
+      safe_raw_output_preview: `Delegated model output echoed raw delegated ${rawEcho.source_field}; raw output preview suppressed.`
+    };
+  }
+  return {
+    ok: true,
+    summary,
+    findings_text: findingsText
+  };
+}
+
+function validateDelegationTaskBoundary(task: string): string | null {
+  if (delegationTextAttemptsControlPlaneOverride(task)) {
+    return "delegate_agent.payload.task must not contain control-plane instruction overrides or role changes.";
+  }
+  const text = normalizeBoundaryText(task);
+  const hasBoundedAnalysisIntent = hasAnyPhrase(text, DELEGATE_TASK_ANALYSIS_TERMS);
+  const hasConcreteQuestion = hasConcreteDelegationQuestion(task, text);
+  const asksToolOrMutation =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TOOL_AUTHORITY_TERMS)
+    || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, TASK_WRITE_MUTATION_TERMS);
+  const asksDirectMutation = hasDirectTaskMutationIntent(task, text);
+  const asksCompletion =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_AUTHORITY_TERMS)
+    || hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, COMPLETION_TERMS);
+  const asksCommandOrTestExecution = hasDirectTaskCommandExecutionIntent(task)
+    || hasPrefixedGitCommand(text, DELEGATE_TASK_REQUEST_TERMS)
+    || hasDirectGitCommandIntent(task);
+  const asksDirectReadTool = hasDirectTaskReadToolIntent(task);
+  const asksExpertScheduling =
+    hasNearbyBoundary(text, DELEGATE_TASK_REQUEST_TERMS, EXPERT_SCHEDULING_TERMS)
+    || hasNearbyBoundary(text, EXPERT_SCHEDULING_TERMS, SCHEDULING_TERMS);
+  if (!hasBoundedAnalysisIntent || !hasConcreteQuestion || asksToolOrMutation || asksDirectMutation || asksCommandOrTestExecution || asksDirectReadTool || asksCompletion || asksExpertScheduling) {
+    return delegateAgentAuthoringContract.task.validation_error;
+  }
+  return null;
+}
+
+function validateDelegationContextBoundary(context: string): string | null {
+  if (delegationTextAttemptsControlPlaneOverride(context)) {
+    return "delegate_agent.payload.context must not contain control-plane instruction overrides or role changes.";
+  }
+  const text = normalizeBoundaryText(context);
+  const rawText = context.toLowerCase();
+  const deniesToolAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, TOOL_AUTHORITY_TERMS);
+  const deniesWriteOrMutationAuthority = hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, WRITE_MUTATION_TERMS);
+  const keepsCompletionWithMainHarness =
+    hasNearbyBoundary(text, COMPLETION_TERMS, MAIN_HARNESS_TERMS)
+    || hasNearbyBoundary(text, AUTHORITY_DENIAL_TERMS, COMPLETION_AUTHORITY_TERMS);
+  if (!deniesToolAuthority || !deniesWriteOrMutationAuthority || !keepsCompletionWithMainHarness) {
+    return delegateAgentAuthoringContract.context.errors.authority;
+  }
+  if (!namesDelegatedOutputShape(rawText, text)) {
+    return delegateAgentAuthoringContract.context.errors.output_shape;
+  }
+  if (!namesDelegatedSourceBoundary(text)) {
+    return delegateAgentAuthoringContract.context.errors.source_boundary;
+  }
+  if (grantsDelegatedAuthority(text)) {
+    return delegateAgentAuthoringContract.context.errors.authority_grant;
+  }
+  if (reliesOnForbiddenDelegationSource(text)) {
+    return delegateAgentAuthoringContract.context.errors.forbidden_source;
+  }
+  return null;
+}
+
+function namesDelegatedOutputShape(rawText: string, normalizedText: string): boolean {
+  return hasAnyPhrase(normalizedText, ["summary"]) && rawText.includes("findings_text");
+}
+
+function namesDelegatedSourceBoundary(text: string): boolean {
+  return hasAnyPhrase(text, DELEGATE_CONTEXT_SOURCE_LIMIT_TERMS)
+    && hasAnyPhrase(text, DELEGATE_CONTEXT_EXPLICIT_CONTEXT_TERMS)
+    && hasAnyPhrase(text, DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS);
+}
+
+const AUTHORITY_DENIAL_TERMS = [
+  "no",
+  "not",
+  "without",
+  "cannot",
+  "can't",
+  "can not",
+  "must not",
+  "unavailable",
+  "read only",
+  "没有",
+  "无",
+  "不能",
+  "不可",
+  "不得",
+  "不会",
+  "不具备",
+  "只读"
+];
+
+const DELEGATE_TASK_REQUEST_TERMS = [
+  "run",
+  "execute",
+  "call",
+  "invoke",
+  "use",
+  "write",
+  "mutate",
+  "modify",
+  "decide",
+  "prove",
+  "mark",
+  "declare",
+  "schedule",
+  "orchestrate",
+  "spawn",
+  "fan out",
+  "delegate",
+  "publish",
+  "调用",
+  "执行",
+  "使用",
+  "写入",
+  "修改",
+  "决定",
+  "证明",
+  "标记",
+  "调度",
+  "编排",
+  "生成",
+  "发布"
+];
+
+const DELEGATE_TASK_ANALYSIS_TERMS = [
+  "analysis",
+  "analyze",
+  "critique",
+  "review",
+  "inspect",
+  "inspection",
+  "summarize",
+  "summary",
+  "compare",
+  "comparison",
+  "assess",
+  "assessment",
+  "evaluate",
+  "evaluation",
+  "identify",
+  "locate",
+  "find",
+  "explain",
+  "reason",
+  "diagnose",
+  "audit",
+  "分析",
+  "审查",
+  "评审",
+  "批评",
+  "检查",
+  "总结",
+  "对比",
+  "比较",
+  "评估",
+  "识别",
+  "定位",
+  "查找",
+  "解释",
+  "诊断",
+  "审计"
+];
+
+const DELEGATE_CONTEXT_SOURCE_LIMIT_TERMS = [
+  "use only",
+  "only use",
+  "may use only",
+  "must use only",
+  "limited to",
+  "restricted to",
+  "bounded to",
+  "只能使用",
+  "仅使用",
+  "只使用"
+];
+
+const DELEGATE_CONTEXT_EXPLICIT_CONTEXT_TERMS = [
+  "explicit payload context",
+  "this explicit payload context",
+  "provided payload context",
+  "provided context",
+  "explicit context",
+  "this context",
+  "显式 payload context",
+  "显式上下文",
+  "提供的上下文"
+];
+
+const DELEGATE_CONTEXT_NAMED_EVIDENCE_TERMS = [
+  "named evidence ref",
+  "named evidence refs",
+  "named evidence reference",
+  "named evidence references",
+  "evidence ref",
+  "evidence refs",
+  "evidence reference",
+  "evidence references",
+  "证据引用"
+];
+
+const DIRECT_TASK_MUTATION_PATTERNS = [
+  /^(?:please\s+)?(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
+  /^(?:please\s+)?apply\s+(?:a\s+)?patch\b/,
+  /\b(?:and|then|also|or)\s+(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/,
+  /\b(?:and|then|also|or)\s+apply\s+(?:a\s+)?patch\b/,
+  /(?:并|然后|和|以及|并且|同时|，|、|。)(?:修复|更新|编辑|修改|修补|打补丁|实施|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u
+];
+
+const DIRECT_TASK_MUTATION_SENTENCE_PATTERNS = [
+  /[.!?;:]\s*(?:please\s+)?(?:fix|repair|update|edit|patch|implement|commit|change|modify|revise|delete|remove|erase|unlink|drop|destroy|push|merge|deploy|publish|release)\b/i,
+  /(?:^|[\n.!?;:。！？；：，、]\s*)(?:请\s*)?(?:修复|更新|编辑|修改|修补|打补丁|实施|改代码|改文件|删除|移除|清除|推送|合并|部署|发布|上线)/u,
+  /(?:^|[.!?;:]\s*)(?:please\s+)?(?:write|create)\s+(?:a\s+)?patch\b/i,
+  /(?:^|[.!?;:。！？；：，、]\s*)(?:请\s*)?(?:写|创建)(?:一个|一份)?补丁/u
+];
+
+const DIRECT_TASK_COMMAND_EXECUTION_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:run|execute|call|invoke|use)\s+(?:(?:the|a)\s+)?(?:test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|lint|build|commands?|shell|terminal|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/i,
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:test|check|lint|build|verify)\s+(?:(?:the|a)\s+)?(?:project|repo(?:sitory)?|codebase|test(?:s|\s+suite)?|unit tests?|integration tests?|checks?|build|package)\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|调用|使用)\s*(?:命令|终端|测试|单测|集成测试|检查|构建|pnpm\b|npm\b|yarn\b|pytest\b|tsc\b)/iu,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:测试|检查|构建|校验|验证)\s*(?:项目|仓库|代码库|测试|单测|集成测试|检查|构建)/u
+];
+
+const DIRECT_TASK_READ_TOOL_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:read|inspect|search|fetch|browse)\s+(?:(?:the|a)\s+)?(?:files?|raw files?|source files?|repo(?:sitory)?|workspace|state|urls?|web|website|pages?|browser)\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:读取|检查|搜索|抓取|浏览)\s*(?:文件|原始文件|源码文件|仓库|代码库|工作区|状态|网址|url\b|网页|浏览器)/iu
+];
+
+const DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS = [
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:run|execute|use)\s+)?git\s+(?:push|merge|rebase|cherry(?:-|\s+)pick|reset|tag)\b/i,
+  /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:create|open|submit|raise)\s+(?:a\s+)?pull request\b/i,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:(?:执行|运行|使用)\s*)?git\s+(?:push|merge|rebase|cherry(?:-|\s+)pick|reset|tag)\b/iu,
+  /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:创建|新建|打开|提交)\s*(?:pull request\b|拉取请求)/iu
+];
+
+const DIRECT_TASK_MUTATION_PHRASES = [
+  "并修复",
+  "然后修复",
+  "并更新",
+  "然后更新",
+  "并编辑",
+  "然后编辑",
+  "并修改",
+  "然后修改",
+  "并修补",
+  "然后修补",
+  "并打补丁",
+  "然后打补丁",
+  "并改代码",
+  "然后改代码",
+  "并改文件",
+  "然后改文件",
+  "并提交",
+  "然后提交",
+  "并删除",
+  "然后删除",
+  "并移除",
+  "然后移除",
+  "并清除",
+  "然后清除",
+  "并推送",
+  "然后推送",
+  "并合并",
+  "然后合并",
+  "并部署",
+  "然后部署",
+  "并发布",
+  "然后发布",
+  "并上线",
+  "然后上线"
+];
+
+const DIRECT_TASK_MUTATION_PREFIXES = [
+  "修复",
+  "更新",
+  "编辑",
+  "提交",
+  "修改",
+  "修补",
+  "打补丁",
+  "实施",
+  "改代码",
+  "改文件",
+  "删除",
+  "移除",
+  "清除",
+  "推送",
+  "合并",
+  "部署",
+  "发布",
+  "上线"
+];
+
+const TOOL_AUTHORITY_TERMS = [
+  "tool",
+  "tools",
+  "use tool",
+  "tool access",
+  "tool call",
+  "工具",
+  "调用工具",
+  "工具权限"
+];
+
+const WRITE_MUTATION_TERMS = [
+  "write",
+  "writes",
+  "write repo",
+  "file write repo",
+  "state write",
+  "mutation",
+  "mutate",
+  "mutates",
+  "side effect",
+  "side effects",
+  "external write",
+  "写入",
+  "状态写入",
+  "仓库写入",
+  "外部写入",
+  "修改",
+  "突变",
+  "副作用"
+];
+
+const TASK_WRITE_MUTATION_TERMS = [
+  "write repo",
+  "write repository",
+  "repo write",
+  "file write repo",
+  "file write",
+  "write file",
+  "write files",
+  "state write",
+  "write state",
+  "memory write",
+  "write memory",
+  "mutation",
+  "mutate",
+  "mutates",
+  "side effect",
+  "side effects",
+  "external write",
+  "写入状态",
+  "状态写入",
+  "写入仓库",
+  "仓库写入",
+  "写入文件",
+  "文件写入",
+  "外部写入",
+  "修改状态",
+  "突变",
+  "副作用"
+];
+
+const TASK_COMMAND_EXECUTION_TERMS = [
+  "command",
+  "commands",
+  "shell",
+  "terminal",
+  "run test",
+  "run tests",
+  "execute test",
+  "execute tests",
+  "call test",
+  "invoke test",
+  "test command",
+  "test suite",
+  "unit test",
+  "unit tests",
+  "integration test",
+  "integration tests",
+  "run lint",
+  "execute lint",
+  "lint command",
+  "lint script",
+  "run build",
+  "execute build",
+  "build command",
+  "build script",
+  "pnpm",
+  "npm",
+  "yarn",
+  "pytest",
+  "tsc",
+  "命令",
+  "终端",
+  "测试",
+  "单测",
+  "集成测试",
+  "构建"
+];
+
+const COMPLETION_TERMS = [
+  "completion",
+  "done claim",
+  "final success",
+  "success verified",
+  "prove completion",
+  "完成",
+  "完成判断",
+  "最终成功",
+  "成功判断",
+  "验收"
+];
+
+const COMPLETION_AUTHORITY_TERMS = [
+  "completion authority",
+  "decide completion",
+  "prove completion",
+  "final success",
+  "完成权",
+  "完成判断",
+  "证明完成"
+];
+
+const MAIN_HARNESS_TERMS = [
+  "main harness",
+  "main thread",
+  "main model",
+  "operator",
+  "verified outcome",
+  "主 harness",
+  "主流程",
+  "主线程",
+  "主模型",
+  "操作员",
+  "用户",
+  "验证 outcome"
+];
+
+const EXPERT_SCHEDULING_TERMS = [
+  "expert",
+  "expert persona",
+  "specialist",
+  "multi agent",
+  "multi-agent",
+  "fan out",
+  "scheduler",
+  "orchestration",
+  "autonomous agent",
+  "专家",
+  "专家角色",
+  "多 agent",
+  "多智能体",
+  "调度器",
+  "自主 agent"
+];
+
+const SCHEDULING_TERMS = [
+  "schedule",
+  "scheduling",
+  "orchestrate",
+  "orchestration",
+  "spawn",
+  "fan out",
+  "fan-out",
+  "delegate",
+  "调度",
+  "编排",
+  "生成",
+  "分发"
+];
+
+function normalizeBoundaryText(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\p{Cf}/gu, "")
+    .replace(/\bauthori[sz]ed to\b/g, "allowed to")
+    .replace(/[._/;:(),-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasDirectTaskMutationIntent(task: string, text: string): boolean {
+  const taskCommand = text.replace(/^(?:please\s+|请\s*)+/, "");
+  if (DIRECT_TASK_MUTATION_PATTERNS.some((pattern) => pattern.test(taskCommand))) return true;
+  if (DIRECT_TASK_MUTATION_PHRASES.some((phrase) => taskCommand.includes(phrase))) return true;
+  return DIRECT_TASK_MUTATION_PREFIXES.some((term) => taskCommand.startsWith(term))
+    || DIRECT_TASK_MUTATION_SENTENCE_PATTERNS.some((pattern) => pattern.test(task))
+    || DIRECT_TASK_REPOSITORY_MUTATION_PATTERNS.some((pattern) => pattern.test(task));
+}
+
+function grantsDelegatedAuthority(text: string): boolean {
+  return hasAnyPhrase(text, DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES)
+    || hasNearbyBoundary(text, AUTHORITY_COMMAND_GRANT_PREFIXES, TASK_COMMAND_EXECUTION_TERMS, 80)
+    || grantsGitCommandAuthority(text)
+    || hasNearbyBoundary(text, AUTHORITY_TOOL_GRANT_PREFIXES, DELEGATED_TOOL_SURFACE_TERMS, 80)
+    || hasNearbyBoundary(text, AUTHORITY_READ_TOOL_GRANT_PREFIXES, DELEGATED_READ_TOOL_SURFACE_TERMS, 80)
+    || hasNearbyBoundary(text, AUTHORITY_MUTATION_GRANT_PREFIXES, DIRECT_MUTATION_TERMS, 80);
+}
+
+function reliesOnForbiddenDelegationSource(text: string): boolean {
+  return DELEGATE_CONTEXT_FORBIDDEN_SOURCE_PHRASES.some((phrase) => hasUndeniedPhrase(text, phrase));
+}
+
+function hasUndeniedPhrase(text: string, phrase: string, denialWindow = 48): boolean {
+  let index = text.indexOf(phrase);
+  while (index !== -1) {
+    const start = Math.max(0, index - denialWindow);
+    const end = Math.min(text.length, index + phrase.length + denialWindow);
+    const nearby = text.slice(start, end);
+    if (!hasAnyPhrase(nearby, SOURCE_DENIAL_TERMS)) return true;
+    index = text.indexOf(phrase, index + phrase.length);
+  }
+  return false;
+}
+
+function hasAnyPhrase(text: string, phrases: readonly string[]): boolean {
+  return phrases.some((phrase) => text.includes(phrase));
+}
+
+function hasPrefixedGitCommand(text: string, prefixes: readonly string[]): boolean {
+  return prefixes.some((prefix) => {
+    let index = text.indexOf(prefix);
+    while (index !== -1) {
+      if (/^git\s+[a-z][a-z0-9-]*/iu.test(text.slice(index + prefix.length).trimStart())) return true;
+      index = text.indexOf(prefix, index + prefix.length);
+    }
+    return false;
+  });
+}
+
+function grantsGitCommandAuthority(text: string): boolean {
+  return hasPrefixedGitCommand(text, AUTHORITY_COMMAND_GRANT_PREFIXES)
+    || /(?:可以|允许|授权).{0,80}(?:运行|执行|使用)\s+git\s+[a-z][a-z0-9-]*/iu.test(text);
+}
+
+function hasDirectGitCommandIntent(task: string): boolean {
+  return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:(?:run|execute|use)\s+)?git\s+[a-z][a-z0-9-]*/iu.test(task)
+    || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:(?:执行|运行|使用)\s*)?git\s+[a-z][a-z0-9-]*/iu.test(task);
+}
+
+function hasDirectTaskCommandExecutionIntent(task: string): boolean {
+  return DIRECT_TASK_COMMAND_EXECUTION_PATTERNS.some((pattern) => pattern.test(task));
+}
+
+function hasDirectTaskReadToolIntent(task: string): boolean {
+  return DIRECT_TASK_READ_TOOL_PATTERNS.some((pattern) => pattern.test(task));
+}
+
+function hasConcreteDelegationQuestion(rawText: string, normalizedText: string): boolean {
+  return /[?？]/.test(rawText)
+    || /\b(whether|which|what|why|how|where|when|who)\b/.test(normalizedText)
+    || ["是否", "能否", "可否", "哪", "什么", "为什么", "如何", "怎么", "哪里", "何时", "谁", "吗"].some((term) => rawText.includes(term));
+}
+
+function hasNearbyBoundary(text: string, firstTerms: readonly string[], secondTerms: readonly string[], window = 160): boolean {
+  for (const first of firstTerms) {
+    for (const second of secondTerms) {
+      if (termsAreNearby(text, first, second, window) || termsAreNearby(text, second, first, window)) return true;
+    }
+  }
+  return false;
+}
+
+const DELEGATE_CONTEXT_AUTHORITY_GRANT_PHRASES = [
+  "can use tool",
+  "can use tools",
+  "may use tool",
+  "may use tools",
+  "allowed to use tool",
+  "allowed to use tools",
+  "tool access allowed",
+  "grant tool access",
+  "grants tool access",
+  "can write",
+  "may write",
+  "allowed to write",
+  "write access allowed",
+  "grant write access",
+  "grants write access",
+  "can run command",
+  "may run command",
+  "allowed to run command",
+  "can execute command",
+  "may execute command",
+  "allowed to execute command",
+  "can run test",
+  "may run test",
+  "allowed to run test",
+  "can run tests",
+  "may run tests",
+  "allowed to run tests",
+  "can execute test",
+  "may execute test",
+  "allowed to execute test",
+  "can execute tests",
+  "may execute tests",
+  "allowed to execute tests",
+  "can run pnpm test",
+  "may run pnpm test",
+  "can run npm test",
+  "may run npm test",
+  "can run pytest",
+  "may run pytest",
+  "can run build",
+  "may run build",
+  "can run pnpm build",
+  "may run pnpm build",
+  "can run npm build",
+  "may run npm build",
+  "can mutate",
+  "may mutate",
+  "allowed to mutate",
+  "mutation authority allowed",
+  "can decide completion",
+  "may decide completion",
+  "allowed to decide completion",
+  "completion authority allowed",
+  "delegated completion authority",
+  "can schedule expert",
+  "may schedule expert",
+  "allowed to schedule expert",
+  "can schedule specialist",
+  "may schedule specialist",
+  "can orchestrate multi agent",
+  "may orchestrate multi agent",
+  "can orchestrate multi-agent",
+  "may orchestrate multi-agent",
+  "can fan out",
+  "may fan out",
+  "allowed to fan out",
+  "can use model fan out",
+  "may use model fan out",
+  "allowed to use model fan out",
+  "model fan out allowed",
+  "can spawn autonomous agent",
+  "may spawn autonomous agent",
+  "allowed to spawn autonomous agent",
+  "可以调用工具",
+  "允许调用工具",
+  "授予工具权限",
+  "可以写入",
+  "允许写入",
+  "授予写入权限",
+  "可以运行命令",
+  "允许运行命令",
+  "可以执行命令",
+  "允许执行命令",
+  "可以运行测试",
+  "允许运行测试",
+  "可以执行测试",
+  "允许执行测试",
+  "可以运行构建",
+  "允许运行构建",
+  "可以修改",
+  "允许修改",
+  "可以决定完成",
+  "允许决定完成",
+  "授予完成权",
+  "可以调度专家",
+  "允许调度专家",
+  "可以编排多 agent",
+  "允许编排多 agent",
+  "可以编排多智能体",
+  "允许编排多智能体"
+];
+
+const AUTHORITY_COMMAND_GRANT_PREFIXES = [
+  "can run",
+  "may run",
+  "allowed to run",
+  "permission to run",
+  "authority to run",
+  "can execute",
+  "may execute",
+  "allowed to execute",
+  "permission to execute",
+  "authority to execute",
+  "can call",
+  "may call",
+  "allowed to call",
+  "can invoke",
+  "may invoke",
+  "allowed to invoke",
+  "可以运行",
+  "允许运行",
+  "可以执行",
+  "允许执行",
+  "可以调用",
+  "允许调用"
+];
+
+const AUTHORITY_MUTATION_GRANT_PREFIXES = [
+  "can",
+  "may",
+  "allowed to",
+  "permission to",
+  "authority to",
+  "可以",
+  "允许",
+  "授权"
+];
+
+const DIRECT_MUTATION_TERMS = [
+  "implement",
+  "delete",
+  "remove",
+  "erase",
+  "unlink",
+  "drop",
+  "destroy",
+  "push",
+  "merge",
+  "deploy",
+  "publish",
+  "release",
+  "rebase",
+  "cherry pick",
+  "reset",
+  "tag",
+  "pull request",
+  "实施",
+  "删除",
+  "移除",
+  "清除",
+  "推送",
+  "合并",
+  "部署",
+  "发布",
+  "上线",
+  "变基",
+  "拣选",
+  "重置",
+  "标签",
+  "拉取请求"
+];
+
+const AUTHORITY_TOOL_GRANT_PREFIXES = [
+  "can use",
+  "may use",
+  "allowed to use",
+  "permission to use",
+  "authority to use",
+  "can call",
+  "may call",
+  "allowed to call",
+  "can invoke",
+  "may invoke",
+  "allowed to invoke",
+  "可以使用",
+  "允许使用",
+  "可以调用",
+  "允许调用"
+];
+
+const AUTHORITY_READ_TOOL_GRANT_PREFIXES = [
+  "can read",
+  "may read",
+  "allowed to read",
+  "permission to read",
+  "authority to read",
+  "can inspect",
+  "may inspect",
+  "allowed to inspect",
+  "can search",
+  "may search",
+  "allowed to search",
+  "can fetch",
+  "may fetch",
+  "allowed to fetch",
+  "can browse",
+  "may browse",
+  "allowed to browse",
+  "可以读取",
+  "允许读取",
+  "可以检查",
+  "允许检查",
+  "可以搜索",
+  "允许搜索",
+  "可以抓取",
+  "允许抓取",
+  "可以浏览",
+  "允许浏览"
+];
+
+const DELEGATED_TOOL_SURFACE_TERMS = [
+  "tool",
+  "tools",
+  "repo search",
+  "http fetch",
+  "command run",
+  "code execute node",
+  "file read",
+  "file write",
+  "file write repo",
+  "file write state",
+  "state write",
+  "工具",
+  "仓库搜索",
+  "命令执行",
+  "文件读取",
+  "文件写入",
+  "状态写入"
+];
+
+const DELEGATED_READ_TOOL_SURFACE_TERMS = [
+  "file",
+  "files",
+  "raw file",
+  "raw files",
+  "source file",
+  "source files",
+  "repo",
+  "repository",
+  "workspace",
+  "state",
+  "url",
+  "urls",
+  "http",
+  "https",
+  "web",
+  "website",
+  "page",
+  "pages",
+  "browser",
+  "browsing",
+  "文件",
+  "原始文件",
+  "源码文件",
+  "仓库",
+  "工作区",
+  "状态",
+  "网址",
+  "网页",
+  "浏览器"
+];
+
+const SOURCE_DENIAL_TERMS = [
+  "no",
+  "not",
+  "do not",
+  "don't",
+  "without",
+  "cannot",
+  "can't",
+  "can not",
+  "does not",
+  "must not",
+  "never",
+  "exclude",
+  "excludes",
+  "excluded",
+  "excluding",
+  "suppressed",
+  "unavailable",
+  "not available",
+  "不可用",
+  "不使用",
+  "不要",
+  "禁止",
+  "排除"
+];
+
+const DELEGATE_CONTEXT_FORBIDDEN_SOURCE_PHRASES = [
+  "hidden memory",
+  "private memory",
+  "implicit memory",
+  "memory persistence",
+  "persistent memory",
+  "unstated repo state",
+  "unstated state",
+  "raw delegated artifact",
+  "raw delegated artifacts",
+  "raw delegated artifact body",
+  "raw delegated artifact bodies",
+  "raw artifact body",
+  "raw artifact bodies",
+  "delegated artifact body",
+  "delegated artifact bodies",
+  "raw delegated output",
+  "raw output preview",
+  "raw task context",
+  "full transcript",
+  "expand context",
+  "context expansion",
+  "invent evidence",
+  "invent ref",
+  "invent refs",
+  "invent verification ref",
+  "invent verification refs",
+  "隐藏记忆",
+  "隐式记忆",
+  "未声明状态",
+  "原始委托产物",
+  "原始委托 artifact",
+  "扩展上下文",
+  "编造证据",
+  "编造 ref",
+  "编造 verification refs"
+];
+
+function termsAreNearby(text: string, first: string, second: string, window: number): boolean {
+  let index = text.indexOf(first);
+  while (index !== -1) {
+    const nextIndex = text.indexOf(second, index);
+    if (nextIndex !== -1 && nextIndex - index <= window) return true;
+    index = text.indexOf(first, index + first.length);
+  }
+  return false;
+}
+
+function delegatedOutputBoundaryFailure(
+  text: string,
+  source: DelegatedOutputSource
+): {
+  ok: false;
+  error: string;
+  safe_raw_output_preview: string;
+} | null {
+  if (delegatedTextClaimsAuthority(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority.",
+      safe_raw_output_preview: "Delegated model output claimed tool/write/mutation, command/test execution, completion, expert, multi-agent, or model fan-out authority; raw output preview suppressed."
+    };
+  }
+  if (delegatedTextIssuesExecutionDirective(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not issue tool, mutation, command/test, or read directives.",
+      safe_raw_output_preview: "Delegated model output issued an execution directive; raw output preview suppressed."
+    };
+  }
+  if (delegatedTextClaimsForbiddenSource(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not claim hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs.",
+      safe_raw_output_preview: "Delegated model output claimed hidden memory, raw delegated artifacts, unstated repo state, context expansion, or invented evidence refs; raw output preview suppressed."
+    };
+  }
+  if (delegationTextAttemptsControlPlaneOverride(text)) {
+    return {
+      ok: false,
+      error: "Delegated model output must not contain control-plane instruction overrides or role changes.",
+      safe_raw_output_preview: "Delegated model output contained a control-plane instruction override or role change; raw output preview suppressed."
+    };
+  }
+  const rawEcho = delegatedOutputRawEcho(text, "", source);
+  if (rawEcho) {
+    return {
+      ok: false,
+      error: `Delegated model output echoed raw delegated ${rawEcho.source_field}; return summarized analysis without raw task/context.`,
+      safe_raw_output_preview: `Delegated model output echoed raw delegated ${rawEcho.source_field}; raw output preview suppressed.`
+    };
+  }
+  return null;
+}
+
+function delegatedOutputClaimsAuthority(summary: string, findingsText: string): boolean {
+  return delegatedTextClaimsAuthority(`${summary}\n${findingsText}`);
+}
+
+function delegatedOutputClaimsForbiddenSource(summary: string, findingsText: string): boolean {
+  return delegatedTextClaimsForbiddenSource(`${summary}\n${findingsText}`);
+}
+
+function delegatedTextClaimsAuthority(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return hasAnyPhrase(text, DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES)
+    || grantsDelegatedAuthority(text)
+    || delegatedTextClaimsDestructiveMutation(text)
+    || delegatedTextClaimsGitCommandExecution(text)
+    || delegatedTextClaimsGenericCommandOrTestExecution(text)
+    || hasPrefixedGitCommand(text, DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES)
+    || hasNearbyBoundary(
+      text,
+      DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES,
+      DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS,
+      80
+    )
+    || hasNearbyBoundary(
+      text,
+      DELEGATED_OUTPUT_READ_TOOL_CLAIM_PREFIXES,
+      DELEGATED_READ_TOOL_SURFACE_TERMS,
+      80
+    );
+}
+
+function delegatedTextClaimsDestructiveMutation(text: string): boolean {
+  return /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:delete(?:d)?|remove(?:d)?|eras(?:e|ed)|unlink(?:ed)?|drop(?:ped)?|destroy(?:ed)?)\b/.test(text)
+    || /\b(?:[a-z0-9][a-z0-9_-]*\s+){1,10}(?:was|were|has been|have been)\s+(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
+    || /^(?:deleted|removed|erased|unlinked|dropped|destroyed)\b/.test(text)
+    || /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:push(?:ed)?|merge(?:d)?|rebas(?:e|ed)|cherry picked|reset|tag(?:ged)?)\b/.test(text)
+    || /\b(?:i|we|(?:the\s+)?delegated(?:\s+sub)?agent|(?:the\s+)?subagent|(?:the\s+)?agent)\s+(?:have\s+|has\s+)?(?:created|opened|submitted|raised)\s+(?:a\s+)?pull request\b/.test(text)
+    || /\b(?:[a-z0-9][a-z0-9_-]*\s+){1,10}(?:was|were|has been|have been)\s+(?:pushed|merged|rebased|cherry picked|reset|tagged)\b/.test(text)
+    || /\b(?:a\s+)?pull request\s+(?:was|were|has been|have been)\s+(?:created|opened|submitted|raised)\b/.test(text)
+    || /^(?:pushed|merged|rebased|cherry picked|reset|tagged|created|opened|submitted|raised)\b/.test(text)
+    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:删除|移除|清除)/u.test(text)
+    || /(?:已经|已)被(?:删除|移除|清除)/u.test(text)
+    || /^(?:已经|已)(?:删除|移除|清除)/u.test(text)
+    || /(?:我|子代理|委托子代理)(?:已经|已)?(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text)
+    || /(?:拉取请求)(?:已经|已)?(?:被)?(?:创建|打开|提交)/u.test(text)
+    || /^(?:已经|已)(?:推送|合并|变基|拣选|重置|打标签|创建(?:了)?拉取请求)/u.test(text);
+}
+
+function delegatedTextClaimsGitCommandExecution(text: string): boolean {
+  return /\bgit\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/.test(text)
+    || /^(?:ran|executed)\s+git\s+[a-z][a-z0-9-]*/.test(text)
+    || /git\s+[a-z][a-z0-9-]*(?:\s+[a-z0-9._/-]+){0,8}\s+(?:已经|已)(?:被)?(?:运行|执行)/u.test(text);
+}
+
+function delegatedTextClaimsGenericCommandOrTestExecution(text: string): boolean {
+  return DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function delegatedTextClaimsForbiddenSource(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return reliesOnForbiddenDelegationSource(text);
+}
+
+function delegatedTextIssuesExecutionDirective(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return hasDirectTaskMutationIntent(value, text)
+    || hasDirectTaskCommandExecutionIntent(value)
+    || hasDirectTaskReadToolIntent(value)
+    || hasDirectGitCommandDirective(value)
+    || hasDirectHarnessToolDirective(value);
+}
+
+function hasDirectGitCommandDirective(value: string): boolean {
+  return /(?:^|[.!?;:]|\b(?:and|then|also|or)\b)\s*(?:please\s+)?(?:run|execute|use)\s+git\s+[a-z][a-z0-9-]*/iu.test(value)
+    || /(?:^|[。！？；：，、]|并|然后|以及|并且|同时)\s*(?:请\s*)?(?:运行|执行|使用)\s*git\s+[a-z][a-z0-9-]*/iu.test(value);
+}
+
+function hasDirectHarnessToolDirective(value: string): boolean {
+  return value.split(/[\n!?;:]+/u).some((sentence) => {
+    const text = normalizeBoundaryText(sentence);
+    return DELEGATE_TASK_REQUEST_TERMS.some((term) => text.startsWith(`${term} `))
+      && DELEGATED_TOOL_SURFACE_TERMS.some((term) => text.includes(term));
+  });
+}
+
+function delegationTextAttemptsControlPlaneOverride(value: string): boolean {
+  const text = normalizeBoundaryText(value);
+  return CONTROL_PLANE_INSTRUCTION_OVERRIDE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+const DELEGATED_OUTPUT_AUTHORITY_CLAIM_PHRASES = [
+  "i used tool",
+  "i used tools",
+  "i used repo search",
+  "i used http fetch",
+  "i used command run",
+  "i used code execute node",
+  "i called tool",
+  "i called repo search",
+  "i called http fetch",
+  "i called command run",
+  "i called file write repo",
+  "i executed command run",
+  "i executed test",
+  "i executed tests",
+  "i executed pnpm test",
+  "i executed npm test",
+  "i executed pytest",
+  "i ran command run",
+  "i ran test",
+  "i ran tests",
+  "i ran pnpm test",
+  "i ran npm test",
+  "i ran pytest",
+  "i ran build",
+  "i ran builds",
+  "i ran pnpm build",
+  "i ran npm build",
+  "i wrote state",
+  "i wrote repo",
+  "i wrote file",
+  "i wrote files",
+  "i mutated state",
+  "i decided completion",
+  "i proved completion",
+  "i verified completion",
+  "i verified final success",
+  "delegated subagent used tool",
+  "delegated subagent called tool",
+  "delegated subagent wrote state",
+  "delegated subagent verified completion",
+  "delegated subagent scheduled expert",
+  "delegated subagent scheduled experts",
+  "delegated subagent orchestrated expert",
+  "delegated subagent orchestrated experts",
+  "delegated subagent orchestrated multi agent",
+  "delegated subagent orchestrated multi agents",
+  "delegated subagent ran model fan out",
+  "delegated subagent used model fan out",
+  "subagent used tool",
+  "subagent called tool",
+  "subagent wrote state",
+  "subagent verified completion",
+  "subagent scheduled expert",
+  "subagent scheduled experts",
+  "subagent orchestrated expert",
+  "subagent orchestrated experts",
+  "subagent orchestrated multi agent",
+  "subagent orchestrated multi agents",
+  "subagent ran model fan out",
+  "subagent used model fan out",
+  "i scheduled expert",
+  "i scheduled experts",
+  "i scheduled expert reviewer",
+  "i scheduled expert reviewers",
+  "i orchestrated expert",
+  "i orchestrated experts",
+  "i orchestrated multi agent",
+  "i orchestrated multi agents",
+  "i ran model fan out",
+  "i used model fan out",
+  "i spawned subagent",
+  "i spawned subagents",
+  "i spawned expert",
+  "i spawned experts",
+  "completion is proven",
+  "final success is proven",
+  "我调用了工具",
+  "调用了工具",
+  "我运行了测试",
+  "运行了测试",
+  "我完成了验证",
+  "完成了验证",
+  "最终成功已经证明",
+  "最终成功已证明",
+  "我写入了状态",
+  "写入了状态",
+  "我调度了专家",
+  "调度了专家",
+  "编排了多 agent",
+  "编排了多智能体",
+  "运行了模型 fan out",
+  "使用了模型 fan out"
+];
+
+const DELEGATED_OUTPUT_COMMAND_EXECUTION_CLAIM_PREFIXES = [
+  "i ran",
+  "i have run",
+  "i executed",
+  "i have executed",
+  "i called",
+  "i invoked",
+  "i used",
+  "delegated subagent ran",
+  "delegated subagent executed",
+  "delegated subagent called",
+  "delegated subagent invoked",
+  "delegated subagent used",
+  "subagent ran",
+  "subagent executed",
+  "subagent called",
+  "subagent invoked",
+  "subagent used",
+  "我运行了",
+  "运行了",
+  "我执行了",
+  "执行了",
+  "我调用了",
+  "调用了"
+];
+
+const DELEGATED_OUTPUT_READ_TOOL_CLAIM_PREFIXES = [
+  "i read",
+  "i have read",
+  "i inspected",
+  "i have inspected",
+  "i searched",
+  "i have searched",
+  "i fetched",
+  "i have fetched",
+  "i browsed",
+  "i have browsed",
+  "delegated subagent read",
+  "delegated subagent inspected",
+  "delegated subagent searched",
+  "delegated subagent fetched",
+  "delegated subagent browsed",
+  "subagent read",
+  "subagent inspected",
+  "subagent searched",
+  "subagent fetched",
+  "subagent browsed",
+  "我读取了",
+  "读取了",
+  "我检查了",
+  "检查了",
+  "我搜索了",
+  "搜索了",
+  "我抓取了",
+  "抓取了",
+  "我浏览了",
+  "浏览了"
+];
+
+const DELEGATED_OUTPUT_COMMAND_EXECUTION_TERMS = [
+  ...TASK_COMMAND_EXECUTION_TERMS,
+  "test",
+  "tests",
+  "check",
+  "checks",
+  "suite",
+  "suites",
+  "测试",
+  "检查"
+];
+
+const DELEGATED_OUTPUT_GENERIC_COMMAND_EXECUTION_CLAIM_PATTERNS = [
+  /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:was|were|has been|have been)\s+(?:run|executed)\b/,
+  /(?:^|[.!?;:\n]\s*)(?:(?:the\s+)?(?:test(?:s|\s+suite)?|checks?|lint|build|commands?|shell|terminal|pnpm(?:\s+[a-z0-9_-]+){0,6}|npm(?:\s+[a-z0-9_-]+){0,6}|yarn(?:\s+[a-z0-9_-]+){0,6}|pytest(?:\s+[a-z0-9_-]+){0,6}))\s+(?:ran|executed)\b/,
+  /(?:^|[。！？；：\n]\s*)(?:测试|检查|命令|构建|编译|脚本|pnpm|npm|yarn)(?:\s+[\p{L}\p{N}_.-]+){0,6}(?:已经|已)?(?:被)?(?:运行|执行)(?:完成|通过)?/u
+];
+
+const CONTROL_PLANE_INSTRUCTION_OVERRIDE_PATTERNS = [
+  /\b(?:ignore|disregard|override|bypass|forget)\s+(?:all\s+)?(?:previous|prior|above|system|developer)?\s*(?:instructions?|rules?|prompts?|messages?)\b/,
+  /\b(?:act as|roleplay as|you are now)\s+(?:the\s+)?(?:system|developer|administrator|root)\b/,
+  /\b(?:switch|change)\s+(?:to|into)\s+(?:the\s+)?(?:system|developer|administrator|root)\s+(?:role|mode)\b/,
+  /忽略(?:先前|此前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
+  /忘记(?:先前|此前|之前|上文|以上|所有)*(?:的)?(?:指令|说明|规则|提示|消息)/u,
+  /(?:覆盖|绕过)(?:系统|开发者|上文|以上)?(?:指令|规则|提示|消息)/u,
+  /(?:你现在是|扮演|作为)(?:系统|开发者|管理员|根用户|root)(?:角色|身份)?/u
+];
+
+function delegatedOutputRawEcho(
+  summary: string,
+  findingsText: string,
+  source: DelegatedOutputSource
+): { source_field: "task" | "context" } | null {
+  const output = normalizeRawEchoText(`${summary}\n${findingsText}`);
+  if (sourceEchoes(output, source.task)) return { source_field: "task" };
+  if (sourceEchoes(output, source.context)) return { source_field: "context" };
+  return null;
+}
+
+function sourceEchoes(normalizedOutput: string, sourceText: string): boolean {
+  const source = normalizeRawEchoText(sourceText);
+  if (normalizedOutput.includes(source)) return true;
+  if (source.length < 40) return false;
+  return source
+    .split(/[.!?;。！？；\n]/)
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length >= 40)
+    .some((chunk) => normalizedOutput.includes(chunk));
+}
+
+function normalizeRawEchoText(value: string): string {
+  return value.normalize("NFKC").toLowerCase().replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

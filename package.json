@@ -1,0 +1,36 @@
+{
+  "name": "local-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous self-growing agent runtime.",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "pnpm run build && pnpm run test && pnpm run skills:validate && pnpm run naming:validate",
+    "runtime": "tsx apps/cli/src/main.ts",
+    "doctor": "tsx apps/cli/src/main.ts doctor",
+    "skills:validate": "tsx apps/cli/src/main.ts skills --action validate",
+    "skills:sync": "tsx apps/cli/src/main.ts skills --action sync",
+    "naming:validate": "node scripts/check-neutral-naming.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "smoke:vault": "tsx apps/cli/src/main.ts live --query-todo --task \"Verify the active vault SOP-to-skill promotion loop.\" --state-root .runtime/smoke/vault",
+    "show:events": "tsx apps/cli/src/main.ts show-events --state-root .runtime/smoke/vault",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.66.0",
+    "zod": "^4.1.13"
+  },
+  "overrides": {
+    "axios": "1.18.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

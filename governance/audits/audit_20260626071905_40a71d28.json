@@ -1,0 +1,16 @@
+{
+  "id": "audit_20260626071905_40a71d28",
+  "target_type": "sop",
+  "target_ref": "vault/sop/promoted/sop_20260626071905_b2808a99.md",
+  "checks": {
+    "evidence": "pass",
+    "trigger_clarity": "pass",
+    "verification": "pass",
+    "failure_modes": "pass",
+    "rollback_or_retirement": "pass",
+    "seed_policy": "pass"
+  },
+  "verdict": "promote",
+  "reason": "Seed SOP references repository documentation and has clear trigger, verification, failure, and retirement rules.",
+  "created_at": "2026-06-26T07:19:05Z"
+}

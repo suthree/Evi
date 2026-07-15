@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.runtime/
+config/auth.jsonl
+config/*.local.jsonl
+.trellis/blobs/
+.trellis/worktrees/
+.trellis/state.json
+.trellis/*.bak
+.trellis/**/*.log

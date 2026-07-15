@@ -1,0 +1,12 @@
+{
+  "version": "1.0",
+  "generatedBy": "trellis init",
+  "context": {
+    "domain": "local single-machine self-growing agent runtime",
+    "framework": "node",
+    "ecosystem": "node",
+    "projectName": "runtime",
+    "confidence": "high"
+  },
+  "features": []
+}

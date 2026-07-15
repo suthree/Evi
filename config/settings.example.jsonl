@@ -1,0 +1,6 @@
+{"type":"channel","id":"feishu-main","kind":"feishu","transport":"websocket","auth_id":"feishu-main","domain":"feishu","mode":"private_chat","allowed_open_ids":[]}
+{"type":"scenario","id":"im-feishu","channel_id":"feishu-main","model_id":"default-text-model","discipline":"query_todo","reply_policy":"final_response","concurrency":"per_sender"}
+{"type":"channel","id":"telegram-main","kind":"telegram","transport":"long_poll","auth_id":"telegram-main","mode":"bot","allowed_user_ids":[]}
+{"type":"scenario","id":"im-telegram","channel_id":"telegram-main","model_id":"default-text-model","discipline":"query_todo","reply_policy":"final_response","concurrency":"per_sender"}
+{"type":"channel","id":"discord-main","kind":"discord","transport":"gateway","auth_id":"discord-main","mode":"bot","bot_user_id":"<discord-bot-user-id>","allowed_user_ids":[],"allowed_guild_ids":[]}
+{"type":"scenario","id":"im-discord","channel_id":"discord-main","model_id":"default-text-model","discipline":"query_todo","reply_policy":"final_response","concurrency":"per_sender"}
