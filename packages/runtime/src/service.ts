@@ -79,6 +79,8 @@ export interface ServiceDefinition {
   configDir: string;
   stateRoot: string;
   homeRoot: string;
+  enableIm: boolean;
+  enableWeb: boolean;
   runtimeRoot: string;
   runtimeCurrentRoot: string;
   runtimePreviousRoot: string;
@@ -96,6 +98,14 @@ export interface ServiceDefinition {
   contentFeedbackRefreshStatusPath: string;
   contentCreatorMetricsStatusPath: string;
   autonomyPausePath: string;
+  supervisorLabel: string;
+  supervisorPlistPath: string;
+  supervisorManifestPath: string;
+  supervisorRoot: string;
+  supervisorEntryPath: string;
+  supervisorStdoutPath: string;
+  supervisorStderrPath: string;
+  supervisorProgramArguments: string[];
   runnerFiles: string[];
   programArguments: string[];
   environment: Record<string, string>;
@@ -119,6 +129,7 @@ export interface ServiceCommandResult {
     stderr_tail?: string;
   };
   launchd?: LaunchdStatus;
+  supervisor?: LaunchdStatus;
   runtime?: ServiceRuntimeBuild | null;
   previous_runtime?: ServiceRuntimeBuild | null;
   heartbeat?: ServiceHeartbeat | null;
@@ -202,10 +213,12 @@ export async function runServiceCommand(
   }
 
   if (action === "install") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     await writeServiceFiles(definition);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -220,11 +233,14 @@ export async function runServiceCommand(
   }
 
   if (action === "start") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     await writeServiceFiles(definition);
     await startLaunchd(definition, run);
+    await startSupervisor(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -239,9 +255,11 @@ export async function runServiceCommand(
   }
 
   if (action === "stop") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -256,11 +274,14 @@ export async function runServiceCommand(
   }
 
   if (action === "restart") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     await writeServiceFiles(definition);
     await startLaunchd(definition, run);
+    await startSupervisor(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -275,12 +296,15 @@ export async function runServiceCommand(
   }
 
   if (action === "rollback") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     await rotateServiceLogs(definition);
     await rollbackServiceRuntimeBundle(definition);
     await startLaunchd(definition, run);
+    if (existsSync(definition.supervisorPlistPath)) await startSupervisor(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -295,9 +319,11 @@ export async function runServiceCommand(
   }
 
   if (action === "uninstall") {
+    await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -314,6 +340,7 @@ export async function runServiceCommand(
   if (action === "logs") {
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
+      supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
       taskQueue: await readTaskQueueStatus(definition),
@@ -330,6 +357,7 @@ export async function runServiceCommand(
 
   return buildResult(action, definition, {
     launchd: await inspectLaunchd(definition, run),
+    supervisor: await inspectSupervisor(definition, run),
     heartbeat: await readHeartbeat(definition),
     reviewTick: await readReviewTickStatus(definition),
     taskQueue: await readTaskQueueStatus(definition),
@@ -465,6 +493,10 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   const stderrPath = resolve(logDir, `${target}.err.log`);
   const runtimeCliEntry = resolve(runtimeCurrentRoot, "dist/apps/cli/src/main.js");
   const runtimeNodeModules = resolve(runtimeCurrentRoot, "node_modules");
+  const supervisorLabel = `${label}.supervisor`;
+  const supervisorRoot = resolve(serviceDir, "supervisor");
+  const supervisorEntryPath = resolve(supervisorRoot, "service_supervisor.js");
+  const supervisorManifestPath = resolve(supervisorRoot, "manifest.json");
   const serviceArgs = [
     "daemon",
     "serve",
@@ -497,6 +529,8 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
     configDir: runtimeConfigDir,
     stateRoot,
     homeRoot,
+    enableIm: input.enableIm !== false,
+    enableWeb: input.enableWeb !== false,
     runtimeRoot,
     runtimeCurrentRoot,
     runtimePreviousRoot,
@@ -514,6 +548,19 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
     contentFeedbackRefreshStatusPath: resolve(stateRoot, `services/${target}/content_feedback_refresh.json`),
     contentCreatorMetricsStatusPath: resolve(stateRoot, `services/${target}/content_creator_metrics.json`),
     autonomyPausePath: resolve(stateRoot, "autonomy/runs/pause_signal.json"),
+    supervisorLabel,
+    supervisorPlistPath: resolve(homedir(), "Library/LaunchAgents", `${supervisorLabel}.plist`),
+    supervisorManifestPath,
+    supervisorRoot,
+    supervisorEntryPath,
+    supervisorStdoutPath: resolve(logDir, `${target}.supervisor.out.log`),
+    supervisorStderrPath: resolve(logDir, `${target}.supervisor.err.log`),
+    supervisorProgramArguments: [
+      input.nodePath ?? process.execPath,
+      supervisorEntryPath,
+      "--manifest",
+      supervisorManifestPath
+    ],
     runnerFiles: [runtimeCliEntry, runtimeNodeModules],
     programArguments: [
       input.nodePath ?? process.execPath,
@@ -570,12 +617,76 @@ export function renderLaunchdPlist(definition: ServiceDefinition): string {
   ].join("\n");
 }
 
+export function renderSupervisorLaunchdPlist(definition: ServiceDefinition): string {
+  return renderPlist({
+    label: definition.supervisorLabel,
+    programArguments: definition.supervisorProgramArguments,
+    workingDirectory: definition.workingDirectory,
+    environment: definition.environment,
+    stdoutPath: definition.supervisorStdoutPath,
+    stderrPath: definition.supervisorStderrPath
+  });
+}
+
+function renderPlist(input: {
+  label: string;
+  programArguments: string[];
+  workingDirectory: string;
+  environment: Record<string, string>;
+  stdoutPath: string;
+  stderrPath: string;
+}): string {
+  return [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">`,
+    `<plist version="1.0">`,
+    `<dict>`,
+    `  <key>Label</key>`,
+    `  <string>${escapeXml(input.label)}</string>`,
+    `  <key>ProgramArguments</key>`,
+    `  <array>`,
+    ...input.programArguments.map((arg) => `    <string>${escapeXml(arg)}</string>`),
+    `  </array>`,
+    `  <key>WorkingDirectory</key>`,
+    `  <string>${escapeXml(input.workingDirectory)}</string>`,
+    `  <key>EnvironmentVariables</key>`,
+    `  <dict>`,
+    ...Object.entries(input.environment).flatMap(([key, value]) => [
+      `    <key>${escapeXml(key)}</key>`,
+      `    <string>${escapeXml(value)}</string>`
+    ]),
+    `  </dict>`,
+    `  <key>LimitLoadToSessionType</key>`,
+    `  <array>`,
+    `    <string>Aqua</string>`,
+    `    <string>Background</string>`,
+    `  </array>`,
+    `  <key>RunAtLoad</key>`,
+    `  <true/>`,
+    `  <key>KeepAlive</key>`,
+    `  <true/>`,
+    `  <key>StandardOutPath</key>`,
+    `  <string>${escapeXml(input.stdoutPath)}</string>`,
+    `  <key>StandardErrorPath</key>`,
+    `  <string>${escapeXml(input.stderrPath)}</string>`,
+    `</dict>`,
+    `</plist>`,
+    ``
+  ].join("\n");
+}
+
 async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
   if (!existsSync(definition.programArguments[0])) {
     throw new Error(`node executable not found: ${definition.programArguments[0]}`);
   }
   await rotateServiceLogs(definition);
   await syncServiceRuntimeBundle(definition);
+  const sourceSupervisorEntry = resolve(definition.repoRoot, "dist/packages/runtime/src/service_supervisor.js");
+  if (!existsSync(sourceSupervisorEntry)) {
+    throw new Error(`Built service supervisor not found: ${sourceSupervisorEntry}; run pnpm run build before service install/start.`);
+  }
+  await mkdir(definition.supervisorRoot, { recursive: true });
+  await cp(sourceSupervisorEntry, definition.supervisorEntryPath, { force: true });
   for (const file of definition.runnerFiles) {
     if (!existsSync(file)) throw new Error(`Local Runtime service runner file not found: ${file}`);
   }
@@ -583,6 +694,31 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
   await mkdir(definition.logDir, { recursive: true });
   await mkdir(dirname(definition.manifestPath), { recursive: true });
   await writeFile(definition.plistPath, renderLaunchdPlist(definition), "utf8");
+  await writeFile(definition.supervisorPlistPath, renderSupervisorLaunchdPlist(definition), "utf8");
+  await writeFile(definition.supervisorManifestPath, `${JSON.stringify({
+    schema_version: 1,
+    poll_interval_ms: 5_000,
+    startup_timeout_ms: 90_000,
+    probation_ms: 60_000,
+    heartbeat_max_age_ms: 30_000,
+    max_repair_attempts: 2,
+    domain: definition.domain,
+    runtime_label: definition.label,
+    runtime_plist_path: definition.plistPath,
+    runtime_current_root: definition.runtimeCurrentRoot,
+    runtime_previous_root: definition.runtimePreviousRoot,
+    runtime_next_root: definition.runtimeNextRoot,
+    runtime_build_path: definition.runtimeBuildPath,
+    runtime_previous_build_path: definition.runtimePreviousBuildPath,
+    heartbeat_path: definition.heartbeatPath,
+    stdout_path: definition.stdoutPath,
+    stderr_path: definition.stderrPath,
+    state_root: definition.stateRoot,
+    repo_root: definition.repoRoot,
+    expect_im: definition.enableIm,
+    expect_web: definition.enableWeb,
+    updated_at: new Date().toISOString()
+  }, null, 2)}\n`, "utf8");
   await writeFile(definition.manifestPath, `${JSON.stringify({
     target: definition.target,
     label: definition.label,
@@ -607,6 +743,12 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     content_feedback_refresh_status_path: definition.contentFeedbackRefreshStatusPath,
     content_creator_metrics_status_path: definition.contentCreatorMetricsStatusPath,
     autonomy_pause_path: definition.autonomyPausePath,
+    supervisor_label: definition.supervisorLabel,
+    supervisor_plist_path: definition.supervisorPlistPath,
+    supervisor_manifest_path: definition.supervisorManifestPath,
+    supervisor_entry_path: definition.supervisorEntryPath,
+    supervisor_stdout_path: definition.supervisorStdoutPath,
+    supervisor_stderr_path: definition.supervisorStderrPath,
     runner_files: definition.runnerFiles,
     program_arguments: definition.programArguments,
     updated_at: new Date().toISOString()
@@ -614,6 +756,11 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
 }
 
 export async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
+  await stageServiceRuntimeBundle(definition);
+  await activateStagedServiceRuntimeBundle(definition);
+}
+
+export async function stageServiceRuntimeBundle(definition: ServiceDefinition): Promise<ServiceRuntimeBuild> {
   const sourceDist = resolve(definition.repoRoot, "dist");
   const sourceCliEntry = resolve(sourceDist, "apps/cli/src/main.js");
   const sourceNodeModules = resolve(definition.repoRoot, "node_modules");
@@ -636,8 +783,9 @@ export async function syncServiceRuntimeBundle(definition: ServiceDefinition): P
     force: true
   });
   await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
+  const build = await buildServiceRuntimeBuild(definition);
   await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
-    await buildServiceRuntimeBuild(definition),
+    build,
     null,
     2
   )}\n`, "utf8");
@@ -645,8 +793,19 @@ export async function syncServiceRuntimeBundle(definition: ServiceDefinition): P
     private: true,
     type: "module"
   }, null, 2)}\n`, "utf8");
+  return build;
+}
+
+export async function activateStagedServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
+  await assertRuntimeBundleUsable(definition.runtimeNextRoot, "staged runtime", false);
+  const [currentBuild, nextBuild] = await Promise.all([
+    readRuntimeBuild(definition),
+    readServiceRuntimeBuild(resolve(definition.runtimeNextRoot, "build.json"))
+  ]);
   const preserveCurrent = await isCurrentRuntimeKnownGood(definition);
-  if (preserveCurrent) {
+  const preserveDistinctCurrent = preserveCurrent
+    && currentBuild?.source_commit !== nextBuild?.source_commit;
+  if (preserveDistinctCurrent) {
     await rm(definition.runtimePreviousRoot, { recursive: true, force: true });
     await rename(definition.runtimeCurrentRoot, definition.runtimePreviousRoot);
   } else {
@@ -655,7 +814,7 @@ export async function syncServiceRuntimeBundle(definition: ServiceDefinition): P
   try {
     await rename(definition.runtimeNextRoot, definition.runtimeCurrentRoot);
   } catch (error) {
-    if (preserveCurrent && existsSync(definition.runtimePreviousRoot) && !existsSync(definition.runtimeCurrentRoot)) {
+    if (preserveDistinctCurrent && existsSync(definition.runtimePreviousRoot) && !existsSync(definition.runtimeCurrentRoot)) {
       await rename(definition.runtimePreviousRoot, definition.runtimeCurrentRoot);
     } else if (existsSync(definition.runtimePreviousRoot) && !existsSync(definition.runtimeCurrentRoot)) {
       await cp(definition.runtimePreviousRoot, definition.runtimeCurrentRoot, { recursive: true, force: true });
@@ -683,7 +842,7 @@ export async function rollbackServiceRuntimeBundle(definition: ServiceDefinition
   }
 }
 
-async function isCurrentRuntimeKnownGood(definition: ServiceDefinition): Promise<boolean> {
+export async function isCurrentRuntimeKnownGood(definition: ServiceDefinition): Promise<boolean> {
   if (!existsSync(definition.runtimeCurrentRoot)) return false;
   const build = await readRuntimeBuild(definition);
   if (!build?.source_commit || build.source_is_dirty !== false) return false;
@@ -692,19 +851,33 @@ async function isCurrentRuntimeKnownGood(definition: ServiceDefinition): Promise
       resolve(definition.stateRoot, "governance/capability-acceptance/basic-entrypoints.json"),
       "utf8"
     )) as unknown;
-    return isRecord(raw)
+    if (isRecord(raw)
       && raw.status === "verified"
       && typeof raw.source_commit === "string"
       && raw.source_commit === build.source_commit
       && raw.repo_root === definition.repoRoot
       && raw.state_root === definition.stateRoot
+      && build.repo_root === definition.repoRoot) return true;
+  } catch {
+    // A supervisor-stable deployment record is the second commit-bound source.
+  }
+  try {
+    const deployment = JSON.parse(await readFile(
+      resolve(definition.stateRoot, "deployments/current.json"),
+      "utf8"
+    )) as unknown;
+    return isRecord(deployment)
+      && deployment.status === "stable"
+      && deployment.source_commit === build.source_commit
+      && deployment.repo_root === definition.repoRoot
+      && deployment.state_root === definition.stateRoot
       && build.repo_root === definition.repoRoot;
   } catch {
     return false;
   }
 }
 
-async function assertRuntimeBundleUsable(root: string, label: string): Promise<void> {
+async function assertRuntimeBundleUsable(root: string, label: string, requireCommit = true): Promise<void> {
   const required = [
     resolve(root, "build.json"),
     resolve(root, "dist/apps/cli/src/main.js"),
@@ -716,7 +889,7 @@ async function assertRuntimeBundleUsable(root: string, label: string): Promise<v
     throw new Error(`${label} is unavailable or incomplete: ${missing.join(", ")}`);
   }
   const build = await readServiceRuntimeBuild(resolve(root, "build.json"));
-  if (!build?.source_commit) throw new Error(`${label} build metadata is missing a source commit: ${root}`);
+  if (requireCommit && !build?.source_commit) throw new Error(`${label} build metadata is missing a source commit: ${root}`);
 }
 
 export async function rotateServiceLogs(
@@ -772,21 +945,40 @@ async function gitText(repoRoot: string, args: string[]): Promise<string | null>
 }
 
 async function startLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<void> {
-  const current = await inspectLaunchd(definition, run);
+  await startLaunchdJob({
+    domain: definition.domain,
+    label: definition.label,
+    plistPath: definition.plistPath
+  }, run);
+}
+
+async function startSupervisor(definition: ServiceDefinition, run: CommandRunner): Promise<void> {
+  await startLaunchdJob({
+    domain: definition.domain,
+    label: definition.supervisorLabel,
+    plistPath: definition.supervisorPlistPath
+  }, run);
+}
+
+async function startLaunchdJob(
+  job: { domain: string; label: string; plistPath: string },
+  run: CommandRunner
+): Promise<void> {
+  const current = await inspectLaunchdJob(job, run);
   if (current.loaded) {
-    const bootout = await run("launchctl", ["bootout", `${definition.domain}/${definition.label}`], { timeoutMs: 30000 });
+    const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
     if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed before start: ${bootout.stderr || bootout.stdout}`);
   }
   let bootstrap: CommandResult | null = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    bootstrap = await run("launchctl", ["bootstrap", definition.domain, definition.plistPath], { timeoutMs: 30000 });
-    if (bootstrap.exitCode === 0 || (await inspectLaunchd(definition, run)).loaded) break;
+    bootstrap = await run("launchctl", ["bootstrap", job.domain, job.plistPath], { timeoutMs: 30000 });
+    if (bootstrap.exitCode === 0 || (await inspectLaunchdJob(job, run)).loaded) break;
     if (attempt < 4) await delay(250 * (2 ** attempt));
   }
-  if (!bootstrap || (bootstrap.exitCode !== 0 && !(await inspectLaunchd(definition, run)).loaded)) {
+  if (!bootstrap || (bootstrap.exitCode !== 0 && !(await inspectLaunchdJob(job, run)).loaded)) {
     throw new Error(`launchctl bootstrap failed after bounded retry: ${bootstrap?.stderr || bootstrap?.stdout || "unknown error"}`);
   }
-  const kickstart = await run("launchctl", ["kickstart", "-k", `${definition.domain}/${definition.label}`], { timeoutMs: 30000 });
+  const kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
   if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr || kickstart.stdout}`);
 }
 
@@ -795,15 +987,46 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 async function stopLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<void> {
-  const current = await inspectLaunchd(definition, run);
+  await stopLaunchdJob({ domain: definition.domain, label: definition.label, plistPath: definition.plistPath }, run);
+}
+
+async function stopSupervisor(definition: ServiceDefinition, run: CommandRunner): Promise<void> {
+  if (!existsSync(definition.supervisorPlistPath)) return;
+  await stopLaunchdJob({
+    domain: definition.domain,
+    label: definition.supervisorLabel,
+    plistPath: definition.supervisorPlistPath
+  }, run);
+}
+
+async function stopLaunchdJob(
+  job: { domain: string; label: string; plistPath: string },
+  run: CommandRunner
+): Promise<void> {
+  const current = await inspectLaunchdJob(job, run);
   if (!current.loaded) return;
-  const bootout = await run("launchctl", ["bootout", `${definition.domain}/${definition.label}`], { timeoutMs: 30000 });
+  const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
   if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed: ${bootout.stderr || bootout.stdout}`);
 }
 
 async function inspectLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<LaunchdStatus> {
-  const installed = existsSync(definition.plistPath);
-  const result = await run("launchctl", ["print", `${definition.domain}/${definition.label}`], { timeoutMs: 10000 });
+  return inspectLaunchdJob({ domain: definition.domain, label: definition.label, plistPath: definition.plistPath }, run);
+}
+
+async function inspectSupervisor(definition: ServiceDefinition, run: CommandRunner): Promise<LaunchdStatus> {
+  return inspectLaunchdJob({
+    domain: definition.domain,
+    label: definition.supervisorLabel,
+    plistPath: definition.supervisorPlistPath
+  }, run);
+}
+
+async function inspectLaunchdJob(
+  job: { domain: string; label: string; plistPath: string },
+  run: CommandRunner
+): Promise<LaunchdStatus> {
+  const installed = existsSync(job.plistPath);
+  const result = await run("launchctl", ["print", `${job.domain}/${job.label}`], { timeoutMs: 10000 });
   if (result.exitCode !== 0) {
     return {
       supported: true,
@@ -933,6 +1156,7 @@ function buildResult(
   definition: ServiceDefinition,
   args: {
     launchd?: LaunchdStatus;
+    supervisor?: LaunchdStatus;
     heartbeat?: ServiceHeartbeat | null;
     reviewTick?: ReviewTickLoopStatus | null;
     taskQueue?: RuntimeTaskQueueWorkerStatus | null;
@@ -965,6 +1189,7 @@ function buildResult(
       stderr_tail: args.stderrTail
     },
     launchd: args.launchd,
+    supervisor: args.supervisor,
     runtime: args.runtime,
     previous_runtime: args.previousRuntime,
     heartbeat: args.heartbeat,

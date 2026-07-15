@@ -7,6 +7,7 @@ import {
   buildRuntimeServiceDefinition,
   parseLaunchdPid,
   renderLaunchdPlist,
+  renderSupervisorLaunchdPlist,
   rollbackServiceRuntimeBundle,
   resolveServiceDefinition,
   resolveServiceConfigSelectors,
@@ -78,6 +79,25 @@ test("runtime service definition starts the unified daemon with configurable cha
   assert.match(plist, /<string>127\.0\.0\.1<\/string>/);
   assert.match(plist, /<string>--port<\/string>/);
   assert.match(plist, /<string>9876<\/string>/);
+  assert.doesNotMatch(plist, /api_key|app_secret|sk-test|cli_secret/i);
+});
+
+test("deployment supervisor launchd job uses the stable copied controller without secrets", () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    provider: "feishu",
+    channelId: "feishu-main",
+    scenarioId: "im-default",
+    nodePath: "/usr/local/bin/node"
+  });
+  const plist = renderSupervisorLaunchdPlist(definition);
+  assert.match(plist, /local\.runtime\.runtime\.supervisor/);
+  assert.match(plist, /\/home\/user\/\.local-runtime\/service\/supervisor\/service_supervisor\.js/);
+  assert.match(plist, /\/home\/user\/\.local-runtime\/service\/supervisor\/manifest\.json/);
+  assert.doesNotMatch(plist, /runtime\/current\/dist\/apps\/cli/);
   assert.doesNotMatch(plist, /api_key|app_secret|sk-test|cli_secret/i);
 });
 

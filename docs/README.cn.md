@@ -439,6 +439,35 @@ pnpm run runtime -- service logs --target runtime --limit 40
 state evidence、context manifest 或 episode archive。`bootout` 后的 launchd
 异步卸载窗口通过有界指数重试吸收，单次瞬态 bootstrap error 不会直接放弃启动。
 
+`service start` / `service restart` 还会安装独立的
+`local.runtime.runtime.supervisor`。它位于可替换 runtime bundle 之外，只负责本机
+`next/current/previous` 切换、readiness、短观察期、自动回滚、失败证据和修复任务入队，
+不调用模型、不修改源码、不根据普通错误日志猜测业务故障，也不进行远端发布。
+
+完成 targeted checks 和 `pnpm run check` 后，干净且不同的 commit 可请求本机事务部署：
+
+```bash
+pnpm run runtime -- deployment request --verification-ref "pnpm run check" --state-root <state-root>
+pnpm run runtime -- deployment status --state-root <state-root>
+pnpm run runtime -- deployment history --state-root <state-root>
+```
+
+监督器要求候选 heartbeat 与 commit 一致，并等待配置中的 Web/IM 入口就绪；启动最长等待
+90 秒，通过后进入 60 秒观察期。启动超时、连续三次本机硬健康失败，或 Evi 主动提交带证据的
+失败信号都会自动回滚：
+
+```bash
+pnpm run runtime -- deployment fail --reason "确定性运行回归" --failure-ref <state-ref> --state-root <state-root>
+```
+
+回滚前只保存本次部署开始后产生的 stdout/stderr（每个最多 1 MiB）、最后 heartbeat 和失败摘要。
+旧版本恢复 readiness 后，现有 runtime task queue 会收到一条 fix-forward 修复任务；修复必须生成
+新的干净 commit，并使用 `--repair-of <deployment-id>` 再次部署。同一失败 commit 禁止重发，
+同一修复链最多自动尝试两次。v0.1 只允许 `state_schema_version=1` 的向后兼容追加式状态变更；
+不兼容状态迁移会阻止无人值守部署，而不是自动恢复整份状态并丢失观察期数据。
+监督器观察期达到 `stable` 后，该 commit-bound 记录也可作为下一次无人值守部署的
+known-good 证据；显式 `verify-entrypoints` 仍保留为更完整的版本验收审计。
+
 `service health` 会保留顶层 `status`，同时给出 `runtime_substrate` 和
 `application_slices` 的分层状态和原因码，避免把 resident runtime 的基础健康
 和内容发布、反馈刷新这类应用切片压力混为一谈。

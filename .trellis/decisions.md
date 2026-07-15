@@ -2726,3 +2726,26 @@ Drift is an unresolved consecutive attention streak after the most recent
 verified pass, not an all-time failure count. This keeps history available for
 inspection and recall tuning while allowing later verified use to demonstrate
 recovery.
+
+## 2026-07-15 Transactional Single-Machine Self-Deployment
+
+Autonomous local runtime deployment uses one stable launchd supervisor outside
+the replaceable runtime bundle. The supervisor is a deliberately small control
+plane over the existing next/current/previous slots. It owns deployment request
+processing, commit-bound startup readiness, bounded probation, hard local
+failure rollback, deployment-scoped evidence, recovery readiness, and one
+fix-forward task in the existing runtime task queue.
+
+The runtime does not restart itself directly after accepting a task. It stages a
+clean distinct commit and writes a deployment request; the supervisor performs
+the later process transition. The supervisor never invokes a model, edits the
+repository, performs remote deployment, or treats ordinary error-log text as a
+rollback decision. External channel failure alone is not a continuous rollback
+signal after startup.
+
+The v0.1 path preserves one-version state compatibility instead of adding a
+general state migration or snapshot platform. Autonomous deployment accepts the
+existing state schema only. A failed commit is blacklisted from redeployment,
+repair is fix-forward under a new commit, and the automatic repair chain stops
+after two attempts so the last known-good runtime remains available for
+operator inspection.
