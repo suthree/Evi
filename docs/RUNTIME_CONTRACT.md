@@ -250,6 +250,7 @@ Core execution is the tool layer:
 - `repo.search`
 - `http.fetch`
 - `command.run`
+- `codex.run`
 - `code.execute_node`
 
 Current implementation status: the first-version core execution surface is
@@ -2464,6 +2465,41 @@ Required policy:
 
 `command.run` is how the agent should run `pnpm run check`, `rg`, `git diff
 --check`, and local scripts.
+
+### `codex.run`
+
+Runs one typed Codex CLI coding execution as an independent core tool above
+generic `command.run`; it is not an arbitrary command or argument passthrough.
+
+Required policy:
+
+- allow only model `gpt-5.6-sol`, profile `fast`, reasoning `xhigh`, service
+  tier `fast`, sandbox `read-only` or `workspace-write`, and approval `never`
+- live-validate a registered sibling isolated worktree under the configured Git
+  common directory, together with its repository root, base, branch, and cwd;
+  reject non-repositories, other common directories, unregistered worktrees,
+  main checkouts, and drift
+- bind execution authority, mode, thread handle, prompt/output-schema digest,
+  and timeout/output/context/tool/retry budgets in an immutable digest
+- construct allowlisted argv without shell concatenation; prohibit
+  danger-full-access, bypass flags, add-dir, and search
+- support one bounded `new` execution or `resume <thread-id>` bound to the same
+  authority snapshot, without another worktree, fan-out, scheduler, or
+  automatic retry
+- parse bounded JSONL metadata and strict structured `done|blocked|failed`
+  output; spawn, exit, timeout, budget, invalid JSONL, invalid schema, or
+  invalid structured output failures cannot claim completion
+- on POSIX, run in an independent process group and clean up the whole group
+  with TERM followed by bounded KILL
+- derive tracked and untracked changed paths from fixed live pre/post Git
+  status evidence; never return reasoning bodies or secrets
+- side effect: `local_write`
+
+`codex.run` returns execution evidence only. Review, independent diff and test
+verification, permissions, commit, pull request, merge, deploy, and completion
+authority remain exclusively with `main_harness`. The tool is strictly separate
+from advisory-only `delegate_agent` and does not change its payload, result,
+tool, write, or completion authority.
 
 ### `code.execute_node`
 

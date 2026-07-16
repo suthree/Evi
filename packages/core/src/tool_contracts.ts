@@ -77,6 +77,34 @@ export const coreToolContracts: ToolContract[] = [
     }
   },
   {
+    tool: "codex.run",
+    side_effect_level: "local_write",
+    rationale: "need one bounded typed Codex CLI coding execution inside an isolated worktree",
+    arguments: {
+      mode: "new | resume",
+      prompt: "bounded coding task",
+      base_commit: "full Git commit SHA (new only)",
+      branch: "isolated branch (new only)",
+      worktree: "isolated worktree path (new only)",
+      cwd: "cwd inside the isolated worktree (new only)",
+      model: "gpt-5.6-sol (new only)",
+      profile: "fast (new only)",
+      reasoning_effort: "xhigh (new only)",
+      service_tier: "fast (new only)",
+      sandbox: "read-only | workspace-write (new only)",
+      approval_policy: "never (new only)",
+      budgets: {
+        timeout_ms: 300000,
+        max_output_chars: 200000,
+        max_context_chars: 40000,
+        max_tool_calls: 32,
+        max_retries: 0
+      },
+      thread_id: "UUID (resume only)",
+      authority_digest: "prior authority SHA-256 (resume only)"
+    }
+  },
+  {
     tool: "code.execute_node",
     side_effect_level: "local_reversible",
     rationale: "need bounded JavaScript execution",

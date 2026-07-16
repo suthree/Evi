@@ -1,6 +1,20 @@
-import { spawn } from "node:child_process";
-import { readdir } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { execFile, spawn } from "node:child_process";
+import { readdir, realpath } from "node:fs/promises";
+import { basename, relative, resolve } from "node:path";
+import {
+  blockedCodexStructuredResult,
+  buildCodexRunArgv,
+  CODEX_RUN_TOOL,
+  CODEX_STRUCTURED_RESULT_SCHEMA_TEXT,
+  codexAuthorityDigest,
+  createCodexAuthoritySnapshot,
+  failedCodexStructuredResult,
+  parseCodexRunRequest,
+  parseCodexStructuredResult,
+  type CodexAuthoritySnapshot,
+  type CodexRunRequest,
+  type CodexStructuredResult
+} from "../../core/src/codex_run_contract.js";
 import { newId, utcNow } from "../../core/src/ids.js";
 import type { ActionProposal } from "../../core/src/schemas.js";
 import type { AgentStore } from "../../core/src/store.js";
@@ -21,6 +35,15 @@ export interface ToolResult {
 
 type ToolFailureKind =
   | "fetch_error"
+  | "codex_authority_mismatch"
+  | "codex_blocked"
+  | "codex_failed"
+  | "codex_invalid_jsonl"
+  | "codex_invalid_request"
+  | "codex_invalid_structured_result"
+  | "codex_isolation_failed"
+  | "codex_output_budget_exceeded"
+  | "codex_tool_budget_exceeded"
   | "http_status"
   | "invalid_request"
   | "nonzero_exit"
@@ -57,6 +80,9 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
   }
   if (tool === "command.run") {
     return runCommandRun(args, context);
+  }
+  if (tool === CODEX_RUN_TOOL) {
+    return runCodexRun(args, context);
   }
   if (tool === "code.execute_node") {
     return runCodeExecuteNode(args, context);
@@ -324,6 +350,540 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     stderr: result.stderr
   }, sideEffectLevel, ok ? undefined : processFailureKind(result));
 }
+
+interface CodexGitAuthority {
+  repoRoot: string;
+  gitCommonDir: string;
+  headCommit: string;
+  branch: string;
+  worktree: string;
+  cwd: string;
+}
+
+interface CodexThreadAuthorityRecord {
+  schema_version: 1;
+  thread_id: string;
+  authority_digest: string;
+  authority: CodexAuthoritySnapshot;
+  updated_at: string;
+}
+
+interface CodexProcessResult {
+  exitCode: number | null;
+  timedOut: boolean;
+  outputBudgetExceeded: boolean;
+  toolBudgetExceeded: boolean;
+  invalidJsonl: boolean;
+  spawnError: boolean;
+  threadId: string | null;
+  lastAgentMessage: string | null;
+  stdoutCharsObserved: number;
+  stderrCharsObserved: number;
+  eventCount: number;
+  eventTypes: Record<string, number>;
+  itemTypes: Record<string, number>;
+  toolCallsObserved: number;
+}
+
+interface CodexWorkspaceChanges {
+  available: boolean;
+  changedPaths: string[];
+}
+
+async function runCodexRun(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
+  let request: CodexRunRequest;
+  try {
+    request = parseCodexRunRequest(args);
+  } catch (error) {
+    return codexFailure("codex_invalid_request", errorMessage(error), failedCodexStructuredResult(
+      "Codex request was rejected before execution.",
+      errorMessage(error),
+      "Correct the typed codex.run request and retry through the main harness."
+    ));
+  }
+
+  let prior: CodexThreadAuthorityRecord | null = null;
+  let authority: CodexGitAuthority;
+  try {
+    if (request.mode === "resume") {
+      prior = await context.store.readStateJson<CodexThreadAuthorityRecord>(codexThreadRecordPath(request.thread_id));
+      if (!prior || prior.thread_id !== request.thread_id || prior.authority_digest !== request.authority_digest) {
+        throw new CodexAuthorityError("Resume handle does not match the latest persisted Codex authority snapshot.");
+      }
+      authority = await inspectCodexGitAuthority(context.store.repoRoot, prior.authority.isolated_worktree, prior.authority.cwd);
+      assertPersistedAuthority(prior.authority, authority);
+    } else {
+      authority = await inspectCodexGitAuthority(context.store.repoRoot, request.worktree, request.cwd);
+      if (authority.branch !== request.branch) throw new Error(`Expected branch ${request.branch}, found ${authority.branch}.`);
+      await assertCodexBase(authority.repoRoot, request.base_commit, authority.headCommit);
+    }
+  } catch (error) {
+    const failureKind = error instanceof CodexAuthorityError ? "codex_authority_mismatch" : "codex_isolation_failed";
+    return codexFailure(failureKind, errorMessage(error), failedCodexStructuredResult(
+      "Codex authority or isolated worktree validation failed.",
+      errorMessage(error),
+      "Restore the recorded repo/base/branch/worktree/cwd authority before retrying."
+    ));
+  }
+
+  let workspaceBefore: CodexWorkspaceChanges;
+  try {
+    workspaceBefore = await inspectCodexWorkspaceChanges(authority.repoRoot);
+  } catch (error) {
+    return codexFailure("codex_isolation_failed", errorMessage(error), failedCodexStructuredResult(
+      "Codex pre-run workspace inspection failed.",
+      errorMessage(error),
+      "Restore fixed Git status inspection before retrying."
+    ));
+  }
+
+  const inherited = prior?.authority;
+  const budgets = request.mode === "new" ? request.budgets : inherited!.budgets;
+  const prompt = codexExecutionPrompt(request.prompt, authority, budgets);
+  if (prompt.length > budgets.max_context_chars) {
+    return codexFailure("codex_invalid_request", "Bounded Codex prompt exceeds max_context_chars after harness instructions.", failedCodexStructuredResult(
+      "Codex request exceeded its context budget before execution.",
+      "The prompt plus fixed main-harness authority instructions exceeds max_context_chars.",
+      "Shorten the prompt or issue a new bounded request with an adequate context budget."
+    ));
+  }
+
+  const provisional = createCodexAuthoritySnapshot({
+    repo_root: authority.repoRoot,
+    git_common_dir: authority.gitCommonDir,
+    base_commit: request.mode === "new" ? request.base_commit : inherited!.base_commit,
+    head_commit: authority.headCommit,
+    branch: authority.branch,
+    isolated_worktree: authority.worktree,
+    cwd: authority.cwd,
+    model: request.mode === "new" ? request.model : inherited!.model,
+    profile: request.mode === "new" ? request.profile : inherited!.profile,
+    reasoning_effort: request.mode === "new" ? request.reasoning_effort : inherited!.reasoning_effort,
+    service_tier: request.mode === "new" ? request.service_tier : inherited!.service_tier,
+    sandbox: request.mode === "new" ? request.sandbox : inherited!.sandbox,
+    approval_policy: request.mode === "new" ? request.approval_policy : inherited!.approval_policy,
+    mode: request.mode,
+    thread_id: request.mode === "resume" ? request.thread_id : null,
+    prompt,
+    budgets
+  });
+  const schemaRef = await context.store.writeText("codex/schema/structured-result-v1.json", CODEX_STRUCTURED_RESULT_SCHEMA_TEXT);
+  const schemaPath = context.store.statePath(schemaRef);
+  const argv = buildCodexRunArgv(provisional, schemaPath);
+  const processResult = await runCodexProcess(argv, prompt, provisional);
+  const workspaceAfter = await inspectCodexWorkspaceChanges(authority.repoRoot).catch(() => ({
+    available: false,
+    changedPaths: []
+  }));
+  const threadId = request.mode === "resume" ? request.thread_id : processResult.threadId;
+  const finalAuthority = threadId
+    ? createCodexAuthoritySnapshot({ ...provisional, thread_id: threadId, prompt })
+    : provisional;
+  const authorityDigest = codexAuthorityDigest(finalAuthority);
+  if (threadId) {
+    await context.store.writeJson(codexThreadRecordPath(threadId), {
+      schema_version: 1,
+      thread_id: threadId,
+      authority_digest: authorityDigest,
+      authority: finalAuthority,
+      updated_at: utcNow()
+    } satisfies CodexThreadAuthorityRecord);
+  }
+
+  const metadata = codexExecutionMetadata(finalAuthority, authorityDigest, threadId, processResult, workspaceBefore, workspaceAfter);
+  if (request.mode === "resume" && processResult.threadId && processResult.threadId !== request.thread_id) {
+    return codexFailure("codex_authority_mismatch", "Codex resume emitted a different thread id.", failedCodexStructuredResult(
+      "Codex resume authority mismatch.",
+      "The resumed process emitted a thread id different from the persisted handle.",
+      "Inspect the persisted handle and retry only the same Codex thread."
+    ), metadata);
+  }
+  if (processResult.spawnError) {
+    return codexFailure("spawn_error", "Codex CLI failed to start.", failedCodexStructuredResult(
+      "Codex CLI failed to start.",
+      "The allowlisted codex binary could not be spawned.",
+      "Restore the local Codex CLI and resume through the same main-harness task."
+    ), metadata);
+  }
+  if (processResult.timedOut || processResult.outputBudgetExceeded || processResult.toolBudgetExceeded) {
+    const kind = processResult.timedOut
+      ? "timeout"
+      : processResult.outputBudgetExceeded
+        ? "codex_output_budget_exceeded"
+        : "codex_tool_budget_exceeded";
+    return codexFailure(kind, "Codex execution stopped at a bounded harness limit.", blockedCodexStructuredResult(
+      "Codex execution stopped before a valid terminal result.",
+      processResult.timedOut ? "timeout budget exceeded" : processResult.outputBudgetExceeded ? "output budget exceeded" : "tool-call budget exceeded",
+      threadId ? "Resume this exact Codex thread with its returned authority handle." : "Start a new bounded Codex run after reviewing the budget."
+    ), metadata);
+  }
+  if (processResult.invalidJsonl) {
+    return codexFailure("codex_invalid_jsonl", "Codex emitted invalid JSONL event data.", failedCodexStructuredResult(
+      "Codex JSONL could not be validated.",
+      "A JSONL event was malformed or violated the minimal event schema.",
+      "Inspect the local Codex version and retry only after restoring valid JSONL output."
+    ), metadata);
+  }
+  if (processResult.exitCode !== 0) {
+    return codexFailure("nonzero_exit", `Codex exited with code ${processResult.exitCode ?? "unknown"}.`, failedCodexStructuredResult(
+      "Codex process did not exit successfully.",
+      `Codex exit code was ${processResult.exitCode ?? "unknown"}.`,
+      threadId ? "Resume the exact thread after the main harness reviews the failure." : "Correct the local Codex failure and start a new bounded run."
+    ), metadata);
+  }
+  if (!threadId || !processResult.lastAgentMessage) {
+    return codexFailure("codex_invalid_structured_result", "Codex did not emit a thread handle and structured final message.", failedCodexStructuredResult(
+      "Codex returned no valid structured result.",
+      "The successful process lacked a thread id or final agent message.",
+      "Retry through the typed harness after checking the local Codex JSONL contract."
+    ), metadata);
+  }
+
+  let structured: CodexStructuredResult;
+  try {
+    structured = parseCodexStructuredResult(processResult.lastAgentMessage);
+    const after = await inspectCodexGitAuthority(context.store.repoRoot, finalAuthority.isolated_worktree, finalAuthority.cwd);
+    assertPersistedAuthority(finalAuthority, after);
+  } catch (error) {
+    return codexFailure("codex_invalid_structured_result", errorMessage(error), failedCodexStructuredResult(
+      "Codex structured result or post-run authority was invalid.",
+      errorMessage(error),
+      "Let the main harness inspect the worktree and retry or resume without claiming completion."
+    ), metadata);
+  }
+
+  const ok = structured.status === "done";
+  return toolResult(CODEX_RUN_TOOL, ok, `Codex execution evidence status=${structured.status}; completion authority remains with the main harness.`, {
+    ...metadata,
+    status: structured.status,
+    result: structured
+  }, "local_write", ok ? undefined : structured.status === "blocked" ? "codex_blocked" : "codex_failed");
+}
+
+function codexFailure(
+  failureKind: ToolFailureKind,
+  summary: string,
+  result: CodexStructuredResult,
+  metadata: Record<string, unknown> = {}
+): ToolResult {
+  return toolResult(CODEX_RUN_TOOL, false, summary, {
+    ...metadata,
+    status: result.status,
+    result
+  }, "local_write", failureKind);
+}
+
+function codexExecutionMetadata(
+  authority: CodexAuthoritySnapshot,
+  authorityDigest: string,
+  threadId: string | null,
+  result: CodexProcessResult,
+  workspaceBefore: CodexWorkspaceChanges,
+  workspaceAfter: CodexWorkspaceChanges
+): Record<string, unknown> {
+  const before = new Set(workspaceBefore.changedPaths);
+  return {
+    authority,
+    authority_digest: authorityDigest,
+    resume_handle: threadId ? { thread_id: threadId, authority_digest: authorityDigest } : null,
+    process: {
+      exit_code: result.exitCode,
+      timed_out: result.timedOut,
+      stdout_chars_observed: result.stdoutCharsObserved,
+      stderr_chars_observed: result.stderrCharsObserved,
+      output_budget_exceeded: result.outputBudgetExceeded,
+      tool_budget_exceeded: result.toolBudgetExceeded
+    },
+    events: {
+      count: result.eventCount,
+      types: result.eventTypes,
+      item_types: result.itemTypes,
+      tool_calls_observed: result.toolCallsObserved
+    },
+    workspace_changes: {
+      available: workspaceBefore.available && workspaceAfter.available,
+      before_changed_paths: workspaceBefore.changedPaths,
+      after_changed_paths: workspaceAfter.changedPaths,
+      introduced_changed_paths: workspaceAfter.changedPaths.filter((path) => !before.has(path)),
+      boundary: "fixed live git status --porcelain=v1 -z snapshots; includes tracked and untracked paths without reading file bodies"
+    },
+    boundary: "Codex output is bounded execution evidence only; the main harness independently owns diff, tests, permissions, commit, PR, merge, deploy, and completion."
+  };
+}
+
+async function inspectCodexGitAuthority(repoRoot: string, requestedWorktree: string, requestedCwd: string): Promise<CodexGitAuthority> {
+  const configuredRoot = await realpath(repoRoot);
+  const configuredCommonDir = await realpath(await gitText(configuredRoot, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
+  const worktree = await realpath(resolve(configuredRoot, requestedWorktree));
+  const cwd = await realpath(resolve(worktree, requestedCwd));
+  const cwdRelative = relative(worktree, cwd);
+  if (cwdRelative.startsWith("..") || cwdRelative.startsWith("/")) throw new Error("codex.run cwd must stay inside the isolated worktree.");
+
+  const actualRoot = await gitText(worktree, ["rev-parse", "--show-toplevel"]);
+  if (await realpath(actualRoot) !== worktree) throw new Error("codex.run repo root does not match the isolated worktree.");
+  const gitCommonDir = await realpath(await gitText(worktree, ["rev-parse", "--path-format=absolute", "--git-common-dir"]));
+  if (gitCommonDir !== configuredCommonDir) throw new Error("codex.run target worktree belongs to a different Git common root.");
+  const gitDir = await realpath(await gitText(worktree, ["rev-parse", "--path-format=absolute", "--git-dir"]));
+  if (gitCommonDir === resolve(worktree, ".git") || !gitDir.startsWith(`${gitCommonDir}/worktrees/`)) {
+    throw new Error("codex.run requires a linked isolated Git worktree.");
+  }
+  const worktrees = await gitText(configuredRoot, ["worktree", "list", "--porcelain"]);
+  const registeredWorktrees = worktrees.split(/\r?\n/)
+    .filter((line) => line.startsWith("worktree "))
+    .map((line) => line.slice("worktree ".length));
+  if (!registeredWorktrees.includes(worktree)) throw new Error("codex.run worktree is not registered in the common Git root.");
+  if (registeredWorktrees[0] === worktree) throw new Error("codex.run refuses the main checkout; an isolated linked worktree is required.");
+  return {
+    repoRoot: actualRoot,
+    gitCommonDir,
+    headCommit: await gitText(worktree, ["rev-parse", "HEAD"]),
+    branch: await gitText(worktree, ["branch", "--show-current"]),
+    worktree,
+    cwd
+  };
+}
+
+async function inspectCodexWorkspaceChanges(repoRoot: string): Promise<CodexWorkspaceChanges> {
+  const output = await gitOutput(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+  const entries = output.split("\0");
+  const paths = new Set<string>();
+  for (let index = 0; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (!entry || entry.length < 4) continue;
+    const status = entry.slice(0, 2);
+    const path = entry.slice(3);
+    if (path) paths.add(path);
+    if (/[RC]/.test(status) && entries[index + 1]) {
+      paths.add(entries[index + 1]);
+      index += 1;
+    }
+  }
+  return { available: true, changedPaths: [...paths].sort().slice(0, 200) };
+}
+
+async function assertCodexBase(repoRoot: string, baseCommit: string, headCommit: string): Promise<void> {
+  const exists = await gitExit(repoRoot, ["cat-file", "-e", `${baseCommit}^{commit}`]);
+  if (exists !== 0) throw new Error("codex.run base_commit does not exist in the common Git repository.");
+  const ancestor = await gitExit(repoRoot, ["merge-base", "--is-ancestor", baseCommit, headCommit]);
+  if (ancestor !== 0) throw new Error("codex.run base_commit is not an ancestor of HEAD.");
+}
+
+function assertPersistedAuthority(expected: CodexAuthoritySnapshot, actual: CodexGitAuthority): void {
+  if (expected.repo_root !== actual.repoRoot
+    || expected.git_common_dir !== actual.gitCommonDir
+    || expected.branch !== actual.branch
+    || expected.isolated_worktree !== actual.worktree
+    || expected.cwd !== actual.cwd
+    || expected.head_commit !== actual.headCommit) {
+    throw new CodexAuthorityError("Persisted Codex repo/common-root/branch/worktree/cwd/HEAD authority no longer matches the actual worktree.");
+  }
+}
+
+function codexExecutionPrompt(task: string, authority: CodexGitAuthority, budgets: CodexAuthoritySnapshot["budgets"]): string {
+  return [
+    "The main harness grants one bounded Codex CLI execution in the recorded isolated worktree.",
+    `Repository root: ${authority.repoRoot}`,
+    `Branch: ${authority.branch}`,
+    `Cwd: ${authority.cwd}`,
+    `Budgets: timeout_ms=${budgets.timeout_ms}, max_output_chars=${budgets.max_output_chars}, max_context_chars=${budgets.max_context_chars}, max_tool_calls=${budgets.max_tool_calls}, max_retries=${budgets.max_retries}.`,
+    "Do not create worktrees, commit, push, create a pull request, merge, deploy, use web search, add writable directories, bypass approvals, or bypass the sandbox.",
+    "Return only the required structured result. Its status is execution evidence; completion_authority must remain main_harness.",
+    "Task:",
+    task
+  ].join("\n");
+}
+
+function runCodexProcess(argv: readonly string[], prompt: string, authority: CodexAuthoritySnapshot): Promise<CodexProcessResult> {
+  return new Promise((resolveProcess) => {
+    const child = spawn("codex", [...argv], {
+      cwd: authority.cwd,
+      env: codexEnv(),
+      stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32"
+    });
+    let stdoutBuffer = "";
+    let stdoutCharsObserved = 0;
+    let stderrCharsObserved = 0;
+    let timedOut = false;
+    let outputBudgetExceeded = false;
+    let toolBudgetExceeded = false;
+    let invalidJsonl = false;
+    let spawnError = false;
+    let threadId: string | null = null;
+    let lastAgentMessage: string | null = null;
+    let eventCount = 0;
+    const eventTypes: Record<string, number> = {};
+    const itemTypes: Record<string, number> = {};
+    const countedToolItems = new Set<string>();
+    let settled = false;
+    let cleanupStarted = false;
+    let cleanupKillTimer: NodeJS.Timeout | null = null;
+
+    const stop = (): void => {
+      if (cleanupStarted) return;
+      cleanupStarted = true;
+      signalCodexProcessTree(child.pid, "SIGTERM", () => child.kill("SIGTERM"));
+      cleanupKillTimer = setTimeout(() => {
+        signalCodexProcessTree(child.pid, "SIGKILL", () => child.kill("SIGKILL"));
+      }, 100);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      stop();
+    }, authority.budgets.timeout_ms);
+
+    const consumeLine = (line: string): void => {
+      if (!line.trim() || invalidJsonl) return;
+      let event: unknown;
+      try {
+        event = JSON.parse(line);
+      } catch {
+        invalidJsonl = true;
+        stop();
+        return;
+      }
+      if (!isPlainRecord(event) || typeof event.type !== "string" || !/^[a-z][a-z0-9_.-]{0,80}$/.test(event.type)) {
+        invalidJsonl = true;
+        stop();
+        return;
+      }
+      eventCount += 1;
+      eventTypes[event.type] = (eventTypes[event.type] ?? 0) + 1;
+      if (event.type === "thread.started") {
+        if (typeof event.thread_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.thread_id)) {
+          invalidJsonl = true;
+          stop();
+          return;
+        }
+        threadId = event.thread_id;
+      }
+      if ((event.type === "item.started" || event.type === "item.completed") && isPlainRecord(event.item)) {
+        const itemType = typeof event.item.type === "string" ? event.item.type : "unknown";
+        itemTypes[itemType] = (itemTypes[itemType] ?? 0) + 1;
+        const itemId = typeof event.item.id === "string" ? event.item.id : `${eventCount}:${itemType}`;
+        if (event.type === "item.completed" && itemType === "agent_message" && typeof event.item.text === "string") {
+          lastAgentMessage = event.item.text;
+        }
+        if (isCodexToolItem(itemType) && !countedToolItems.has(itemId)) {
+          countedToolItems.add(itemId);
+          if (countedToolItems.size > authority.budgets.max_tool_calls) {
+            toolBudgetExceeded = true;
+            stop();
+          }
+        }
+      }
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      const text = chunk.toString("utf8");
+      stdoutCharsObserved += text.length;
+      if (stdoutCharsObserved + stderrCharsObserved > authority.budgets.max_output_chars) {
+        outputBudgetExceeded = true;
+        stop();
+        return;
+      }
+      stdoutBuffer += text;
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() ?? "";
+      for (const line of lines) consumeLine(line);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrCharsObserved += chunk.toString("utf8").length;
+      if (stdoutCharsObserved + stderrCharsObserved > authority.budgets.max_output_chars) {
+        outputBudgetExceeded = true;
+        stop();
+      }
+    });
+    child.on("error", () => {
+      spawnError = true;
+    });
+    child.on("close", (exitCode) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (cleanupKillTimer) clearTimeout(cleanupKillTimer);
+      if (stdoutBuffer.trim()) consumeLine(stdoutBuffer);
+      resolveProcess({
+        exitCode,
+        timedOut,
+        outputBudgetExceeded,
+        toolBudgetExceeded,
+        invalidJsonl,
+        spawnError,
+        threadId,
+        lastAgentMessage,
+        stdoutCharsObserved,
+        stderrCharsObserved,
+        eventCount,
+        eventTypes,
+        itemTypes,
+        toolCallsObserved: countedToolItems.size
+      });
+    });
+    child.stdin.on("error", () => {});
+    child.stdin.end(prompt);
+  });
+}
+
+function signalCodexProcessTree(pid: number | undefined, signal: NodeJS.Signals, fallback: () => boolean): void {
+  if (process.platform !== "win32" && pid) {
+    try {
+      process.kill(-pid, signal);
+      return;
+    } catch {
+      // Fall through to the direct child signal when the group no longer exists.
+    }
+  }
+  try {
+    fallback();
+  } catch {
+    // Cleanup is best effort after a bounded stop condition has already been recorded.
+  }
+}
+
+function isCodexToolItem(type: string): boolean {
+  return ["command_execution", "file_change", "mcp_tool_call", "tool_call", "dynamic_tool_call", "web_search"].includes(type);
+}
+
+function codexEnv(): NodeJS.ProcessEnv {
+  const env = minimalEnv();
+  if (process.env.CODEX_HOME) env.CODEX_HOME = process.env.CODEX_HOME;
+  return env;
+}
+
+function codexThreadRecordPath(threadId: string): string {
+  return `codex/threads/${threadId}.json`;
+}
+
+function gitText(cwd: string, args: string[]): Promise<string> {
+  return gitOutput(cwd, args).then((output) => output.trim());
+}
+
+function gitOutput(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolveText, reject) => {
+    execFile("git", args, { cwd, env: { ...minimalEnv(), LANG: "C", LC_ALL: "C" }, encoding: "utf8", maxBuffer: 1_000_000 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`Fixed Git authority check failed: ${String(stderr || error.message).trim().slice(0, 300)}`));
+        return;
+      }
+      resolveText(String(stdout));
+    });
+  });
+}
+
+function gitExit(cwd: string, args: string[]): Promise<number> {
+  return new Promise((resolveExit) => {
+    execFile("git", args, { cwd, env: { ...minimalEnv(), LANG: "C", LC_ALL: "C" } }, (error) => {
+      resolveExit(error && typeof error.code === "number" ? error.code : error ? 1 : 0);
+    });
+  });
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+class CodexAuthorityError extends Error {}
 
 async function runCodeExecuteNode(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
   const code = stringValue(args.code);

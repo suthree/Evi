@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -587,6 +587,134 @@ test("command.run records timeout failures", async () => {
   }
 });
 
+test("codex.run routes through a sibling isolated worktree and reports live tracked plus untracked paths", async () => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  try {
+    await writeFakeCodex(fixture.binRoot, `
+const fs = await import("node:fs");
+const path = await import("node:path");
+let prompt = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { prompt += chunk; });
+process.stdin.on("end", () => {
+  fs.appendFileSync(path.join(process.cwd(), "README.md"), "tracked change\\n");
+  fs.writeFileSync(path.join(process.cwd(), "codex-untracked.txt"), "created by fake codex\\n");
+  console.log(JSON.stringify({ type: "thread.started", thread_id: "019fabcd-1234-7abc-8def-0123456789ab" }));
+  console.log(JSON.stringify({
+    type: "item.completed",
+    item: {
+      id: "item-final",
+      type: "agent_message",
+      text: JSON.stringify({
+        status: "done",
+        summary: "Fake Codex completed its bounded execution.",
+        changed_files: [],
+        tests: ["fake focused test passed"],
+        blockers: [],
+        next_action: "The main harness verifies the live diff and tests.",
+        completion_authority: "main_harness"
+      })
+    }
+  }));
+});
+`);
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    const result = await executeTool(useTool("codex.run", codexNewArguments(fixture)), { store: fixture.store });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tool, "codex.run");
+    assert.equal(result.output.status, "done");
+    const authority = result.output.authority as Record<string, unknown>;
+    assert.equal(authority.repo_root, await realpath(fixture.worktreeRoot));
+    assert.equal(authority.isolated_worktree, await realpath(fixture.worktreeRoot));
+    assert.equal(authority.git_common_dir, await realpath(join(fixture.mainRoot, ".git")));
+    const workspace = result.output.workspace_changes as Record<string, unknown>;
+    assert.deepEqual(workspace.before_changed_paths, []);
+    assert.deepEqual(workspace.after_changed_paths, ["README.md", "codex-untracked.txt"]);
+    assert.deepEqual(workspace.introduced_changed_paths, ["README.md", "codex-untracked.txt"]);
+    const structured = result.output.result as Record<string, unknown>;
+    assert.deepEqual(structured.changed_files, []);
+    assert.equal(structured.completion_authority, "main_harness");
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
+test("codex.run rejects main checkout and other-repository targets before spawn", async () => {
+  const fixture = await createCodexFixture();
+  const otherRoot = join(fixture.root, "other");
+  try {
+    await mkdir(otherRoot, { recursive: true });
+    await initGitFixture(otherRoot);
+    await writeFile(join(otherRoot, "README.md"), "other\n", "utf8");
+    await runGit(otherRoot, ["add", "README.md"]);
+    await runGit(otherRoot, ["commit", "-m", "other"]);
+
+    for (const target of [fixture.mainRoot, otherRoot]) {
+      const result = await executeTool(useTool("codex.run", {
+        ...codexNewArguments(fixture),
+        worktree: target,
+        cwd: target
+      }), { store: fixture.store });
+      assert.equal(result.ok, false);
+      assert.equal(result.output.failure_kind, "codex_isolation_failed");
+      assert.equal((result.output.result as Record<string, unknown>).status, "failed");
+    }
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("codex.run returns strict failure for invalid JSONL and stops the full POSIX process group on timeout", async (t) => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  try {
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    await writeFakeCodex(fixture.binRoot, `process.stdout.write("not-json\\n");`);
+    const invalid = await executeTool(useTool("codex.run", codexNewArguments(fixture)), { store: fixture.store });
+    assert.equal(invalid.ok, false);
+    assert.equal(invalid.output.failure_kind, "codex_invalid_jsonl");
+    assert.equal((invalid.output.result as Record<string, unknown>).status, "failed");
+
+    if (process.platform === "win32") {
+      t.diagnostic("POSIX process-group assertion skipped on Windows.");
+      return;
+    }
+    const marker = join(fixture.root, "grandchild-term.txt");
+    await writeFakeCodex(fixture.binRoot, `
+const { spawn } = await import("node:child_process");
+const childCode = ${JSON.stringify(`
+  const fs = require("node:fs");
+  process.on("SIGTERM", () => fs.writeFileSync(${JSON.stringify("__MARKER__")}, "term"));
+  setInterval(() => {}, 1000);
+`)}.replace("__MARKER__", ${JSON.stringify(marker)});
+console.log(JSON.stringify({ type: "thread.started", thread_id: "019fabcd-1234-7abc-8def-0123456789ab" }));
+spawn(process.execPath, ["-e", childCode], { stdio: "ignore" });
+setInterval(() => {}, 1000);
+`);
+    const timedOut = await executeTool(useTool("codex.run", {
+      ...codexNewArguments(fixture),
+      budgets: {
+        timeout_ms: 100,
+        max_output_chars: 4000,
+        max_context_chars: 8000,
+        max_tool_calls: 2,
+        max_retries: 0
+      }
+    }), { store: fixture.store });
+    assert.equal(timedOut.ok, false);
+    assert.equal(timedOut.output.failure_kind, "timeout");
+    assert.equal((timedOut.output.result as Record<string, unknown>).status, "blocked");
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    assert.equal(await readFile(marker, "utf8"), "term");
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
 test("code.execute_node executes bounded JavaScript in the state root", async () => {
   const fixture = await createFixture();
   try {
@@ -711,6 +839,7 @@ test("tool contract renderer covers the core tool surface", () => {
     "repo.search",
     "http.fetch",
     "command.run",
+    "codex.run",
     "code.execute_node"
   ]);
 
@@ -741,6 +870,23 @@ test("tool contract renderer covers the core tool surface", () => {
     "max_output_chars",
     "side_effect_level",
     "timeout_ms"
+  ]);
+  assert.deepEqual(Object.keys(contractsByTool.get("codex.run")?.arguments ?? {}).sort(), [
+    "approval_policy",
+    "authority_digest",
+    "base_commit",
+    "branch",
+    "budgets",
+    "cwd",
+    "mode",
+    "model",
+    "profile",
+    "prompt",
+    "reasoning_effort",
+    "sandbox",
+    "service_tier",
+    "thread_id",
+    "worktree"
   ]);
   assert.deepEqual(Object.keys(contractsByTool.get("code.execute_node")?.arguments ?? {}).sort(), [
     "code",
@@ -801,6 +947,68 @@ async function createFixture(): Promise<{
   };
 }
 
+async function createCodexFixture(): Promise<{
+  root: string;
+  mainRoot: string;
+  worktreeRoot: string;
+  stateRoot: string;
+  binRoot: string;
+  baseCommit: string;
+  store: AgentStore;
+  cleanup: () => Promise<void>;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "agent-codex-tool-"));
+  const mainRoot = join(root, "main");
+  const worktreeRoot = join(root, "worktree");
+  const stateRoot = join(root, "state");
+  const binRoot = join(root, "bin");
+  await mkdir(mainRoot, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  await mkdir(binRoot, { recursive: true });
+  await initGitFixture(mainRoot);
+  await writeFile(join(mainRoot, "README.md"), "fixture\n", "utf8");
+  await runGit(mainRoot, ["add", "README.md"]);
+  await runGit(mainRoot, ["commit", "-m", "fixture base"]);
+  const baseCommit = await gitValue(mainRoot, ["rev-parse", "HEAD"]);
+  await runGit(mainRoot, ["worktree", "add", "-b", "codex/test", worktreeRoot]);
+  const store = new AgentStore(mainRoot, stateRoot);
+  await store.ensureLayout();
+  return {
+    root,
+    mainRoot,
+    worktreeRoot,
+    stateRoot,
+    binRoot,
+    baseCommit,
+    store,
+    cleanup: () => rm(root, { recursive: true, force: true })
+  };
+}
+
+function codexNewArguments(fixture: Awaited<ReturnType<typeof createCodexFixture>>): Record<string, unknown> {
+  return {
+    mode: "new",
+    prompt: "Perform the bounded fake change.",
+    base_commit: fixture.baseCommit,
+    branch: "codex/test",
+    worktree: fixture.worktreeRoot,
+    cwd: fixture.worktreeRoot,
+    budgets: {
+      timeout_ms: 2000,
+      max_output_chars: 8000,
+      max_context_chars: 8000,
+      max_tool_calls: 4,
+      max_retries: 0
+    }
+  };
+}
+
+async function writeFakeCodex(binRoot: string, source: string): Promise<void> {
+  const path = join(binRoot, "codex");
+  await writeFile(path, `#!/usr/bin/env node\n${source}\n`, "utf8");
+  await chmod(path, 0o755);
+}
+
 async function initGitFixture(repoRoot: string): Promise<void> {
   await runGit(repoRoot, ["init"]);
   await runGit(repoRoot, ["config", "user.name", "Local Runtime Test"]);
@@ -816,6 +1024,18 @@ function runGit(cwd: string, args: string[]): Promise<void> {
         return;
       }
       resolve();
+    });
+  });
+}
+
+function gitValue(cwd: string, args: string[]): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile("git", args, { cwd }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`git ${args.join(" ")} failed: ${stderr || stdout || error.message}`));
+        return;
+      }
+      resolve(String(stdout).trim());
     });
   });
 }
