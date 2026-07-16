@@ -22,6 +22,28 @@ missing evidence still prevents autonomous merge to `develop`. GitHub rulesets
 and CI should enforce the policy when those repository controls are added; the
 policy applies even before enforcement exists.
 
+## 2026-07-16 Dynamic Authority And Decision Owner Boundary
+
+The operator confirms that Evi's permissions and boundaries are dynamic. They
+are not a permanent allow/deny table: the appropriate Decision Owner may adapt
+local boundaries as tasks, evidence, risk, reversibility, and recommended
+practice change.
+
+A model proposal or successful outcome is evidence for that decision, not the
+decision itself. Every material boundary override must identify its Decision
+Owner, authority basis, superseded rule or task constraint, bounded scope,
+evidence and risk, verification, rollback or retirement path, and re-evaluation
+or expiry condition. Missing lineage means the override is unresolved; it does
+not prove that the action is permanently forbidden or silently authorized.
+
+Local, reversible evolution remains autonomous under the standing local
+mission. Mission changes, unresolved operator ownership, secret/private-data
+egress, public or out-of-flow external communication, and destructive remote
+or otherwise irreversible effects remain operator-owned. Runtime enforcement
+may be implemented incrementally, but stable soul, repository instructions,
+runtime contracts, and local-learning guidance must all preserve this dynamic
+Decision Owner rule.
+
 ## 2026-07-16 v0.2 Multi-Node Evolution And LuBan Registry
 
 The operator accepts v0.2 as a federated, single-user, multi-node evolution

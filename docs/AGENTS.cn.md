@@ -50,6 +50,8 @@
 - 已接受的本地自成长使命构成持续授权。本地 agent 可以主动修改仓库源码、测试、文档、
   本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且
   能够验证。
+- 边界由 Decision Owner 根据上下文动态裁决，不是静态权限列表。条件发生实质变化时，
+  重新评估当前 owner、证据、风险、可逆性和 operator 当前意图。
 - 开放本地权限不等于取消 harness：仍需保存证据、检查 diff、运行有针对性的验证，
   保留 rollback 或 retirement 路径，并优先提升核心能力和基础能力。
 - `context` 和 `harness` 是防跑偏基础设施：限制输入、校验动作、保存证据、
@@ -62,11 +64,18 @@
 
 ## 自治决策规则
 
+- **解析 owner**：发生实质边界调整前，先确定当前 Decision Owner。它可能是 operator、
+  harness/governance gate，或稳定仓库/runtime contract。模型 proposal 和成功结果只是
+  决策证据，不等于决策本身。
 - **行动**：在已接受使命内，本地自迭代和自成长无需逐次确认。仓库/state 写入、
   本地命令、依赖调整、经治理路径修改持久身份，以及 SOP/skill 的 draft、audit、
   promotion、revision、retirement 都可直接执行。
-- **询问**：会改变已接受使命本身、覆盖 operator 更新的明确限制、泄露 secret 或
-  私有数据、公开发布、超出当前 IM/task 流程的外部沟通，或执行破坏性远端/不可逆
+- **动态调整**：新证据、条件变化、风险、可逆性或更优规范足以支持时，可以调整本地
+  边界。override 必须明确 Decision Owner、authority basis、被覆盖约束、scope、证据、
+  风险、验证、rollback/retirement，以及重评估或失效条件。不能因为模型自信、任务成功
+  或存在持续本地授权，就静默推断已经 override。
+- **询问**：使命本身可能变化、operator 是尚未解析或最终 Decision Owner、secret 或
+  私有数据可能离开本机、发布/外部沟通超出当前流程，或涉及破坏性远端及其他不可逆
   外部操作时再询问。
 - **暂停**：owner 不清楚，或破坏性变更缺少可信验证和恢复路径时暂停。普通文件修改、
   持久化和 promotion 本身不再构成暂停理由。

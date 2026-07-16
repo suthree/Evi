@@ -47,6 +47,13 @@ manifest 会记录原始/实际长度、截断 section 与省略 section，`/con
 
 模型能力是底层智能来源，但模型本身是黑盒，不能只靠“相信模型”保证输出质量。本仓库要交付的是模型外层的工程化能力：用 prompt、context、harness、loop、证据、验证和标准化输出，把模型产出约束成可检查、可复用、可迭代的结果。
 
+权限和边界不是静态黑白名单，而是由当前 Decision Owner 根据已接受使命、operator
+当前意图、稳定 contract、live evidence、风险和可逆性动态裁决。边界可以随条件变化
+而调整，但实质 override 必须明确 owner、authority basis、被覆盖约束、scope、验证、
+rollback/retirement 和重评估条件；模型自信、任务成功或持续本地授权本身都不能构成
+隐式 override。详细合同见 `docs/RUNTIME_CONTRACT.md` 的
+`Dynamic Authority And Decision Ownership`。
+
 当前自迭代按这个顺序判断能力边界：
 
 1. 模型基座：负责推理和生成；交付标准是关键输出必须被 prompt、context、schema、检查或证据约束。

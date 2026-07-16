@@ -200,6 +200,46 @@ specs, decisions, and command-maintained agent context. It is not runtime
 state, durable memory, the active vault, the skill promotion gate, or the
 authority for current runtime behavior.
 
+### Dynamic Authority And Decision Ownership
+
+Runtime boundaries are context-sensitive decisions, not a frozen permission
+matrix. Before a material boundary change, the responsible Decision Owner must
+resolve the accepted mission, the latest operator intent, stable core and
+repository contracts, the current task contract, live evidence, risk, and
+reversibility. Depending on scope, the owner may be the operator, a named
+harness or governance gate, or a stable runtime contract. A model proposal,
+successful tool call, or verified completion is decision evidence; none of
+them is an authority decision by itself.
+
+The allowed decision outcomes are `allow`, `defer`, `ask`, `deny`, and
+`override`. A material `override` must preserve enough bounded provenance to
+answer all of the following:
+
+- `decision_owner`: who owns this decision for the affected scope
+- `authority_basis`: which mission, operator instruction, contract, or gate
+  authorizes the owner
+- `supersedes`: which earlier rule or task constraint is being replaced
+- `scope`: which actions, artifacts, runtime, task, and time window are covered
+- `evidence_refs` and risk: what changed and why the override is justified
+- verification and rollback or retirement: how the effect is checked and
+  safely reversed
+- re-evaluation or expiry: which condition makes the decision stale
+
+Local, reversible effects may be decided autonomously by their current owner.
+Mission changes, unresolved operator ownership, secret or private-data
+egress, public communication outside the requested flow, and destructive
+remote or otherwise irreversible external effects remain operator-owned.
+Earlier local rules may evolve, but no boundary is silently widened because a
+model was confident, a task succeeded, or standing local authority exists.
+
+Authority must be re-evaluated when the task changes, new evidence invalidates
+an assumption, risk or reversibility changes, a newer operator instruction
+arrives, or the recorded expiry condition is reached. Until the runtime
+persists a first-class Decision Owner record for every material override, the
+episode/action/evidence lineage is the minimum audit trail; missing lineage
+means the override is unproven, not automatically accepted or permanently
+forbidden.
+
 ### Core Execution
 
 Core execution is the tool layer:

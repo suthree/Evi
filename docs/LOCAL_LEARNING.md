@@ -82,6 +82,30 @@ and a rollback or retirement path. Explicitly read-only commands remain
 read-only. Secrets, public publishing, private-data disclosure, and destructive
 remote operations are outside this standing local authority.
 
+## Decision Owner For Learning Effects
+
+Local-learning boundaries are dynamic decisions, not a rule that every
+verified `done` run should promote a reusable-looking procedure. The model may
+identify a candidate, but the current learning Decision Owner must resolve the
+task constraint, standing mission, existing skill coverage, evidence quality,
+risk, reversibility, and operator intent before draft, audit, promotion,
+revision, or retirement effects are accepted.
+
+That owner may choose `allow`, `defer`, `ask`, `deny`, or `override`. If a
+current task says not to create or promote learning assets, the default is to
+defer the learning effect. An autonomous override remains possible inside the
+standing local mission, but only when the responsible owner records the
+authority basis, the exact constraint being superseded, bounded scope,
+evidence, verification, rollback or retirement, and a re-evaluation or expiry
+condition. `runtime.promotion_enabled`, a model `propose_sop` action, or task
+success alone is not sufficient override provenance.
+
+If an effect occurs without that decision lineage, preserve the episode and
+append-only event evidence, then retire or roll back the active learning
+artifact through the existing governance path. Until first-class dynamic
+authority records are implemented, treat implicit promotion as unproven and
+use the bounded action/evidence lineage for diagnosis and recovery.
+
 ## Local Active Vault
 
 The active local vault lives under `LOCAL_RUNTIME_HOME`:
