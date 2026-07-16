@@ -52,6 +52,22 @@ semantic summaries may become LuBan knowledge packs. See
 `docs/V0.2_MULTI_NODE_EVOLUTION.md` for the target lifecycle and acceptance
 contract.
 
+### Implemented v0.2 slice: deterministic skill source conflicts
+
+Skill discovery now checks the node-local active vault, repository seed roots,
+and configured project skill roots together. Same-name packages with identical
+raw-content SHA-256 hashes resolve to one deterministic registry entry and keep
+every source, path, and hash in `provenance`. Same-name packages with different
+hashes fail closed with a diagnostic that identifies each source and path.
+Neither modification timestamps nor filesystem discovery order select a
+winner.
+
+This slice does not parse the LuBan typed catalog or distinguish accepted,
+inbox, and retired LuBan lifecycle paths. A project skill root must therefore
+be a read-only projection containing only already-selected consumable skill
+packages; the LuBan repository root is not a safe direct discovery root yet.
+Local promotion continues to write only to the node-local active vault.
+
 ## Standing Local Evolution Authority
 
 Within the accepted local self-growing mission, the runtime may write state,
