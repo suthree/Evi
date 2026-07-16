@@ -181,21 +181,26 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   contentFeedbackRefreshLoop.start();
   contentCreatorMetricsLoop.start();
 
-  let stopped = false;
+  let stopPromise: Promise<void> | null = null;
   return {
     gateway,
     stop: async () => {
-      if (stopped) return;
-      stopped = true;
-      contentCreatorMetricsLoop.stop();
-      contentFeedbackRefreshLoop.stop();
-      contentDailyLoop.stop();
-      reviewTickLoop.stop();
-      taskQueueWorker.stop();
-      heartbeat.stop();
-      await heartbeat.write("stopping");
-      await gateway.stop();
-      await heartbeat.write("stopped");
+      if (!stopPromise) {
+        stopPromise = (async () => {
+          contentCreatorMetricsLoop.stop();
+          contentFeedbackRefreshLoop.stop();
+          contentDailyLoop.stop();
+          reviewTickLoop.stop();
+          await Promise.all([
+            taskQueueWorker.stop(),
+            heartbeat.stop()
+          ]);
+          await heartbeat.write("stopping");
+          await gateway.stop();
+          await heartbeat.write("stopped");
+        })();
+      }
+      await stopPromise;
     }
   };
 }
@@ -267,13 +272,16 @@ function createServiceHeartbeat(
   }
 ): {
   start: () => void;
-  stop: () => void;
+  stop: () => Promise<void>;
   write: (state: HeartbeatState, error?: string) => Promise<void>;
 } {
   const startedAt = new Date().toISOString();
   let timer: NodeJS.Timeout | null = null;
+  let started = false;
+  let stopPromise: Promise<void> | null = null;
+  const inflightWrites = new Set<Promise<void>>();
 
-  const write = async (state: HeartbeatState, error?: string): Promise<void> => {
+  const write = (state: HeartbeatState, error?: string): Promise<void> => {
     const payload: Record<string, unknown> = {
       service: args.target,
       state,
@@ -288,26 +296,49 @@ function createServiceHeartbeat(
     };
     if (args.runtimeBuild) payload.runtime_build = args.runtimeBuild;
     if (error) payload.error = error;
-    await store.writeJson(serviceRef(args.target, "heartbeat.json"), payload);
+    const promise = store.writeJson(serviceRef(args.target, "heartbeat.json"), payload).then(() => undefined);
+    inflightWrites.add(promise);
+    void promise.then(
+      () => inflightWrites.delete(promise),
+      () => inflightWrites.delete(promise)
+    );
+    return promise;
   };
 
   return {
     start: () => {
-      if (timer) return;
+      if (started || stopPromise) return;
+      started = true;
       void write("running").catch((error: unknown) => {
         console.error(error instanceof Error ? error.message : String(error));
       });
       timer = setInterval(() => {
+        if (!started) return;
         void write("running").catch((error: unknown) => {
           console.error(error instanceof Error ? error.message : String(error));
         });
       }, 30000);
       timer.unref();
     },
-    stop: () => {
-      if (!timer) return;
-      clearInterval(timer);
-      timer = null;
+    stop: async () => {
+      if (stopPromise) return stopPromise;
+      started = false;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      stopPromise = (async () => {
+        while (inflightWrites.size > 0) {
+          const results = await Promise.allSettled(Array.from(inflightWrites));
+          const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+          if (rejected) throw rejected.reason;
+        }
+      })();
+      try {
+        await stopPromise;
+      } finally {
+        stopPromise = null;
+      }
     },
     write
   };

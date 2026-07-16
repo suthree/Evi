@@ -4,6 +4,20 @@ import type { AgentStore } from "./store.js";
 const COMMAND = "git status --porcelain=v1 -b";
 const BOUNDARY = "read-only fixed local git status diagnostic; runs `git status --porcelain=v1 -b` with no user-supplied argv; does not read file bodies, stage, commit, reset, checkout, mutate state, invoke the model, or write the active vault";
 const DEFAULT_CHANGE_LIMIT = 20;
+const TRANSIENT_SPAWN_RESOURCE_ERRORS = new Set(["EAGAIN", "EMFILE", "ENFILE"]);
+
+export interface FixedGitStatusResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  error?: string;
+  spawnErrorCode?: string;
+}
+
+export type FixedGitStatusAttempt = (
+  cwd: string,
+  env: NodeJS.ProcessEnv
+) => Promise<FixedGitStatusResult>;
 
 export type WorkspaceStatus = "clean" | "dirty" | "not_git_repo" | "error";
 
@@ -189,15 +203,26 @@ function clampLimit(value: number): number {
   return Math.min(Math.max(Math.trunc(value), 1), 200);
 }
 
-function runFixedGitStatus(cwd: string): Promise<{
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  error?: string;
-}> {
+export async function runFixedGitStatus(
+  cwd: string,
+  attempt: FixedGitStatusAttempt = executeFixedGitStatusAttempt
+): Promise<FixedGitStatusResult> {
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    LANG: "C",
+    LC_ALL: "C"
+  };
+  const first = await attempt(cwd, env);
+  return first.spawnErrorCode && TRANSIENT_SPAWN_RESOURCE_ERRORS.has(first.spawnErrorCode)
+    ? attempt(cwd, env)
+    : first;
+}
+
+function executeFixedGitStatusAttempt(cwd: string, env: NodeJS.ProcessEnv): Promise<FixedGitStatusResult> {
   return new Promise((resolve) => {
     execFile("git", ["status", "--porcelain=v1", "-b"], {
       cwd,
+      env,
       timeout: 10_000,
       maxBuffer: 2_000_000
     }, (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => {
@@ -205,7 +230,8 @@ function runFixedGitStatus(cwd: string): Promise<{
         exitCode: typeof error?.code === "number" ? error.code : error ? 1 : 0,
         stdout: String(stdout),
         stderr: String(stderr),
-        error: error?.message
+        error: error?.message,
+        spawnErrorCode: typeof error?.code === "string" ? error.code : undefined
       });
     });
   });

@@ -200,6 +200,46 @@ specs, decisions, and command-maintained agent context. It is not runtime
 state, durable memory, the active vault, the skill promotion gate, or the
 authority for current runtime behavior.
 
+### Dynamic Authority And Decision Ownership
+
+Runtime boundaries are context-sensitive decisions, not a frozen permission
+matrix. Before a material boundary change, the responsible Decision Owner must
+resolve the accepted mission, the latest operator intent, stable core and
+repository contracts, the current task contract, live evidence, risk, and
+reversibility. Depending on scope, the owner may be the operator, a named
+harness or governance gate, or a stable runtime contract. A model proposal,
+successful tool call, or verified completion is decision evidence; none of
+them is an authority decision by itself.
+
+The allowed decision outcomes are `allow`, `defer`, `ask`, `deny`, and
+`override`. A material `override` must preserve enough bounded provenance to
+answer all of the following:
+
+- `decision_owner`: who owns this decision for the affected scope
+- `authority_basis`: which mission, operator instruction, contract, or gate
+  authorizes the owner
+- `supersedes`: which earlier rule or task constraint is being replaced
+- `scope`: which actions, artifacts, runtime, task, and time window are covered
+- `evidence_refs` and risk: what changed and why the override is justified
+- verification and rollback or retirement: how the effect is checked and
+  safely reversed
+- re-evaluation or expiry: which condition makes the decision stale
+
+Local, reversible effects may be decided autonomously by their current owner.
+Mission changes, unresolved operator ownership, secret or private-data
+egress, public communication outside the requested flow, and destructive
+remote or otherwise irreversible external effects remain operator-owned.
+Earlier local rules may evolve, but no boundary is silently widened because a
+model was confident, a task succeeded, or standing local authority exists.
+
+Authority must be re-evaluated when the task changes, new evidence invalidates
+an assumption, risk or reversibility changes, a newer operator instruction
+arrives, or the recorded expiry condition is reached. Until the runtime
+persists a first-class Decision Owner record for every material override, the
+episode/action/evidence lineage is the minimum audit trail; missing lineage
+means the override is unproven, not automatically accepted or permanently
+forbidden.
+
 ### Core Execution
 
 Core execution is the tool layer:
@@ -323,6 +363,40 @@ stale queued or stale running entries and writes `services/<target>/task_queue.j
 status. This is local durability and best-effort recovery for self-contained
 runner tasks, not a remote broker, cancellation system, or multi-process
 scheduler.
+
+Queue-worker shutdown clears future ticks, rejects new runs, waits for the
+startup/current run and every accepted status write, then persists `stopped`
+before its stop promise resolves. Runtime-daemon shutdown awaits that promise.
+Heartbeat shutdown likewise drains an already-started heartbeat write before
+the daemon writes its final `stopping` and `stopped` states, so these components
+do not append or replace state after daemon stop returns.
+
+Queue completion is derived only from the structured live-run
+`completion_status` and `verification_status`; verdict prose never changes a
+task to `done`, `blocked`, or `failed`. A verified structured `done` completes
+the task, a structured `done` with failed or skipped verification fails it,
+and `not_done` or `blocked` remains unfinished. An unfinished Web or IM run
+retains the same task id, runtime session id, worktree, first live session id,
+working-checkpoint ref, and latest concrete `next_action`. It requeues that same
+entry for a later stale-queue resume and stops after at most three claimed
+attempts; it never enqueues a replacement continuation task. A resumed runner
+prompt names those stable fields and the attempt bound. When the selected
+checkpoint carries a non-empty actual `worktree`, settlement updates the queue
+to that path before resume; when it is absent, including for legacy checkpoints,
+the existing queue worktree is retained. Terminal or exhausted
+entries are not recoverable, so repeated worker ticks do not execute them
+again.
+
+For a live engineering run whose structured completion is `not_done` or
+`blocked`, a valid checkpoint emitted through `update_working_state` remains
+the current checkpoint, including its model- or harness-authored
+`next_action`. Post-run selected-skill telemetry is recorded separately and
+must not overwrite that engineering continuation. If the unfinished run did
+not emit a valid checkpoint, the harness writes a bounded resume fallback
+instead of a skill-telemetry next action. `RunResult` carries the structured
+completion and verification statuses plus the selected checkpoint ref and
+next action, and the checkpoint's optional actual worktree, so the local queue
+can persist continuity without reading verdict text.
 
 Outbound task communication also has a provider-neutral local ledger under
 `channels/outbox.jsonl`. Feishu final/error replies, web-console final/error
@@ -594,8 +668,11 @@ Current acceptance guidance tracks proposal-only and explicit gated slices:
 The CLI exposes `workspace status` as a fixed read-only workspace diagnostic.
 Feishu mirrors it through `/workspace` and `/workspace status`. This surface
 may run only fixed `git status --porcelain=v1 -b` argv against the configured
-repo root. It summarizes branch, upstream, ahead/behind, dirty-file counts, and
-bounded path/status entries. It must not accept shell text, read file bodies,
+repo root with `LANG=C` and `LC_ALL=C`. A failed spawn is retried exactly once
+only when its resource error is `EAGAIN`, `EMFILE`, or `ENFILE`; ordinary git
+failures and every other spawn error are returned without retry or relabeling.
+It summarizes branch, upstream, ahead/behind, dirty-file counts, and bounded
+path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 

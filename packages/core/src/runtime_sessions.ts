@@ -9,6 +9,7 @@ import {
 } from "./runtime_channel_messages.js";
 import type { RunResult } from "./schemas.js";
 import { AgentStore } from "./store.js";
+import { runtimeTaskTerminalStatusFromResult } from "./runtime_task_queue.js";
 
 export type RuntimeSessionStatus = "pending" | "active" | "archived";
 export type RuntimeSessionSourceKind = RuntimeChannelKind | "local" | "runtime";
@@ -353,10 +354,7 @@ async function readJsonlRecords<T extends { type?: string }>(store: AgentStore, 
 }
 
 export function runtimeTaskRunStatusFromResult(result: RunResult | null): RuntimeTaskRunRecord["status"] {
-  if (!result) return "done";
-  if (result.verdict.includes("blocked")) return "blocked";
-  if (result.verdict.includes("failed") || result.verdict.includes("unverified")) return "failed";
-  return "done";
+  return runtimeTaskTerminalStatusFromResult(result);
 }
 
 function defaultRuntimeSessionTitle(source: RuntimeSessionSource): string {

@@ -920,9 +920,15 @@ export class LiveAgentRunner {
     });
     evidenceRefs.push(...skillUsageEventIds);
 
-    const checkpoint: WorkingCheckpoint = workingCheckpointSchema.parse({
+    const genuineCheckpoint = completionReport.completion_status !== "done"
+      ? await latestHarnessWorkingCheckpoint(this.store, harnessActionResults)
+      : null;
+    const checkpoint: WorkingCheckpoint = genuineCheckpoint ?? workingCheckpointSchema.parse({
       goal: task,
-      current_step: "save_point",
+      current_step: completionReport.completion_status === "done"
+        ? "save_point"
+        : `unfinished_${completionReport.completion_status}`,
+      worktree: this.store.repoRoot,
       known_constraints: [
         "This run used a live model response, but harness validation and promotion stayed outside the model.",
         `Model response artifact: ${basename(modelResponseRef)}`,
@@ -930,12 +936,14 @@ export class LiveAgentRunner {
       ],
       recent_evidence_refs: evidenceRefs,
       open_questions: [],
-      next_action: recalledSkills.length > 0
-        ? "Inspect whether the recalled skill improved the model action; keep or revise it based on later telemetry."
-        : "Recall the generated skill on a similar task and append usage telemetry.",
+      next_action: completionReport.completion_status === "done"
+        ? recalledSkills.length > 0
+          ? "Inspect whether the recalled skill improved the model action; keep or revise it based on later telemetry."
+          : "Recall the generated skill on a similar task and append usage telemetry."
+        : `Resume this ${completionReport.completion_status} run from its completion report and latest evidence.`,
       created_at: utcNow()
     });
-    await this.store.writeJson("memory/working/current.json", checkpoint);
+    const workingCheckpointRef = await this.store.writeJson("memory/working/current.json", checkpoint);
 
     return runResultSchema.parse({
       trigger_id: trigger.id,
@@ -957,6 +965,11 @@ export class LiveAgentRunner {
         query_ref: discipline.refs.query_ref,
         todo_ref: discipline.refs.todo_ref
       } : null,
+      completion_status: completionReport.completion_status,
+      verification_status: completionReport.verification_status,
+      worktree: checkpoint.worktree ?? null,
+      working_checkpoint_ref: workingCheckpointRef,
+      next_action: checkpoint.next_action,
       verdict
     });
   }
@@ -1123,6 +1136,7 @@ export class LiveAgentRunner {
     const checkpoint = workingCheckpointSchema.parse({
       goal: firstString(rawCheckpoint.goal, "Model working checkpoint for current live run."),
       current_step: firstString(rawCheckpoint.current_step, rawCheckpoint.step, action.rationale),
+      worktree: firstString(rawCheckpoint.worktree) || undefined,
       known_constraints: stringArray(rawCheckpoint.known_constraints ?? rawCheckpoint.open_constraints).slice(0, 20),
       recent_evidence_refs: stringArray(rawCheckpoint.recent_evidence_refs).slice(0, 50),
       open_questions: stringArray(rawCheckpoint.open_questions).slice(0, 20),
@@ -2355,6 +2369,22 @@ function modelActionInputEventMetadata(delegatedResults: DelegatedResult[]) {
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {
   return [...new Set(compactRefs(refs))];
+}
+
+async function latestHarnessWorkingCheckpoint(
+  store: AgentStore,
+  results: HarnessActionResult[]
+): Promise<WorkingCheckpoint | null> {
+  for (const result of [...results].reverse()) {
+    if (result.action_type !== "update_working_state") continue;
+    const checkpointRef = result.artifact_refs.find((ref) =>
+      ref.startsWith("memory/working/") && ref.endsWith(".json")
+    );
+    if (!checkpointRef) continue;
+    const parsed = workingCheckpointSchema.safeParse(await store.readStateJson<unknown>(checkpointRef));
+    if (parsed.success) return parsed.data;
+  }
+  return null;
 }
 
 function isHarnessStateAction(action: ActionProposal, completionStatus = "not_done"): action is ActionProposal & { type: HarnessActionResult["action_type"] } {

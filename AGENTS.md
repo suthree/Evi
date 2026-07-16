@@ -34,6 +34,7 @@ This file is model-facing guidance for Codex and other host runtimes.
 - Inspect current code and runtime state before making claims about this repository.
 - Keep changes small and consistent with the existing local runtime boundary.
 - Treat the accepted local self-growing mission as standing authorization for active self-iteration and self-growth. The agent may modify repository source, tests, docs, local runtime state, the active vault, SOPs, skills, scripts, and local dependencies when the change is evidence-backed and verifiable.
+- Treat boundaries as decision-owned and context-sensitive rather than as a static permission list. Re-evaluate the applicable owner, evidence, risk, reversibility, and current operator intent when conditions materially change.
 - Open local authority does not remove the harness: preserve evidence, inspect diffs, run targeted checks, keep rollback or retirement paths, and prefer core/basic capability gains before adding workflow surfaces.
 - Treat `context` and `harness` as anti-drift infrastructure: bound inputs, validate actions, preserve evidence, and verify completion instead of relying on model confidence alone.
 - Reuse existing commands, tools, adapters, SOPs, skills, and delegated surfaces before creating new mechanisms.
@@ -43,6 +44,8 @@ This file is model-facing guidance for Codex and other host runtimes.
 
 ## Autonomy Decision Rule
 
+- **Resolve** the current Decision Owner before a material boundary change. Depending on scope, that owner may be the operator, a harness/governance gate, or a stable repository/runtime contract. A model proposal or successful outcome is evidence for the decision, not the decision itself.
 - **Act** without per-change confirmation for local self-iteration and self-growth inside the accepted mission. This includes repository and state writes, local command execution, dependency changes, durable local identity changes through the governance path, and SOP/skill draft, audit, promotion, revision, or retirement.
-- **Ask** when a proposed action changes the accepted mission itself, overrides a newer explicit operator constraint, exposes secrets or private data, publishes publicly, communicates externally beyond the requested IM/task flow, or performs destructive remote or otherwise irreversible external operations.
+- **Adapt** local boundaries when new evidence, changed conditions, risk, reversibility, or better practice justifies it. An override must name the Decision Owner, authority basis, superseded constraint, scope, evidence, risk, verification, rollback or retirement path, and re-evaluation or expiry condition. Never infer an override silently from model confidence, task success, or the existence of standing local authority.
+- **Ask** the operator when the accepted mission itself may change, the operator is the unresolved or final Decision Owner, secrets or private data may leave the machine, publication or external communication exceeds the requested flow, or the effect is destructive remote or otherwise irreversible external action.
 - **Pause** only when ownership is unclear or a destructive change lacks credible verification and recovery. Ordinary file mutation, persistence, or promotion is not by itself a reason to pause.
