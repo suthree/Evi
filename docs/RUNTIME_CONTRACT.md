@@ -324,6 +324,40 @@ status. This is local durability and best-effort recovery for self-contained
 runner tasks, not a remote broker, cancellation system, or multi-process
 scheduler.
 
+Queue-worker shutdown clears future ticks, rejects new runs, waits for the
+startup/current run and every accepted status write, then persists `stopped`
+before its stop promise resolves. Runtime-daemon shutdown awaits that promise.
+Heartbeat shutdown likewise drains an already-started heartbeat write before
+the daemon writes its final `stopping` and `stopped` states, so these components
+do not append or replace state after daemon stop returns.
+
+Queue completion is derived only from the structured live-run
+`completion_status` and `verification_status`; verdict prose never changes a
+task to `done`, `blocked`, or `failed`. A verified structured `done` completes
+the task, a structured `done` with failed or skipped verification fails it,
+and `not_done` or `blocked` remains unfinished. An unfinished Web or IM run
+retains the same task id, runtime session id, worktree, first live session id,
+working-checkpoint ref, and latest concrete `next_action`. It requeues that same
+entry for a later stale-queue resume and stops after at most three claimed
+attempts; it never enqueues a replacement continuation task. A resumed runner
+prompt names those stable fields and the attempt bound. When the selected
+checkpoint carries a non-empty actual `worktree`, settlement updates the queue
+to that path before resume; when it is absent, including for legacy checkpoints,
+the existing queue worktree is retained. Terminal or exhausted
+entries are not recoverable, so repeated worker ticks do not execute them
+again.
+
+For a live engineering run whose structured completion is `not_done` or
+`blocked`, a valid checkpoint emitted through `update_working_state` remains
+the current checkpoint, including its model- or harness-authored
+`next_action`. Post-run selected-skill telemetry is recorded separately and
+must not overwrite that engineering continuation. If the unfinished run did
+not emit a valid checkpoint, the harness writes a bounded resume fallback
+instead of a skill-telemetry next action. `RunResult` carries the structured
+completion and verification statuses plus the selected checkpoint ref and
+next action, and the checkpoint's optional actual worktree, so the local queue
+can persist continuity without reading verdict text.
+
 Outbound task communication also has a provider-neutral local ledger under
 `channels/outbox.jsonl`. Feishu final/error replies, web-console final/error
 responses, and daemon recovery final/error outcomes append rows with source
@@ -594,8 +628,11 @@ Current acceptance guidance tracks proposal-only and explicit gated slices:
 The CLI exposes `workspace status` as a fixed read-only workspace diagnostic.
 Feishu mirrors it through `/workspace` and `/workspace status`. This surface
 may run only fixed `git status --porcelain=v1 -b` argv against the configured
-repo root. It summarizes branch, upstream, ahead/behind, dirty-file counts, and
-bounded path/status entries. It must not accept shell text, read file bodies,
+repo root with `LANG=C` and `LC_ALL=C`. A failed spawn is retried exactly once
+only when its resource error is `EAGAIN`, `EMFILE`, or `ENFILE`; ordinary git
+failures and every other spawn error are returned without retry or relabeling.
+It summarizes branch, upstream, ahead/behind, dirty-file counts, and bounded
+path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 

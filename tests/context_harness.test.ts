@@ -42,6 +42,12 @@ import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { getLiveRunTrace } from "../packages/core/src/live_run_trace.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
 import {
+  claimRuntimeTask,
+  enqueueRuntimeTask,
+  listRuntimeTaskQueue,
+  settleRuntimeTaskFromResult
+} from "../packages/core/src/runtime_task_queue.js";
+import {
   DELEGATE_AGENT_CONTEXT_MAX_CHARS,
   DELEGATE_AGENT_MAX_ACTIONS_PER_ROUND,
   DELEGATE_AGENT_TASK_MAX_CHARS,
@@ -57,6 +63,7 @@ import { AgentStore } from "../packages/core/src/store.js";
 import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import type { ModelClient, ModelRequest, ModelResponse } from "../packages/runtime/src/model.js";
 import { LiveAgentRunner } from "../packages/runtime/src/runner.js";
+import { runRuntimeTaskQueueOnce } from "../packages/runtime/src/runtime_task_queue_worker.js";
 
 test("context attention profiles route normal, governance, and recovery tasks deterministically", () => {
   assert.equal(selectContextAttentionProfile("Answer a simple local question.", {
@@ -7538,6 +7545,89 @@ test("live runner executes state-only harness actions and feeds observations bac
   }
 });
 
+test("blocked engineering runs retain the genuine harness checkpoint next action", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new EngineeringCheckpointThenBlockedModel(fixture.repoRoot),
+      discipline: "query_todo"
+    });
+
+    const result = await runner.runTask("Continue a bounded engineering change until its explicit blocker.");
+    const checkpoint = JSON.parse(await readFile(
+      join(fixture.stateRoot, "memory/working/current.json"),
+      "utf8"
+    )) as {
+      current_step: string;
+      worktree?: string;
+      known_constraints: string[];
+      next_action: string;
+    };
+
+    assert.equal(result.completion_status, "blocked");
+    assert.equal(result.verification_status, "skipped");
+    assert.equal(result.worktree, fixture.repoRoot);
+    assert.equal(result.working_checkpoint_ref, "memory/working/current.json");
+    assert.equal(result.next_action, "rerun the focused continuity test after fixing the lease guard");
+    assert.equal(checkpoint.current_step, "lease guard is implemented; focused test is blocked");
+    assert.equal(checkpoint.worktree, fixture.repoRoot);
+    assert.deepEqual(checkpoint.known_constraints, ["keep the existing task id", "no external writes"]);
+    assert.equal(checkpoint.next_action, "rerun the focused continuity test after fixing the lease guard");
+    assert.doesNotMatch(checkpoint.next_action, /skill|telemetry/i);
+
+    const staleWorktree = `${fixture.repoRoot}-stale`;
+    const queued = await enqueueRuntimeTask(fixture.store, {
+      task: "Continue a bounded engineering change until its explicit blocker.",
+      runnerTask: "Continue the same bounded engineering change.",
+      worktree: staleWorktree,
+      now: "2026-07-16T00:00:00.000Z"
+    });
+    await claimRuntimeTask(fixture.store, {
+      id: queued.id,
+      now: "2026-07-16T00:00:01.000Z"
+    });
+    const settlement = await settleRuntimeTaskFromResult(fixture.store, {
+      id: queued.id,
+      result,
+      now: "2026-07-16T00:00:02.000Z"
+    });
+    assert.equal(settlement?.action, "requeued");
+    assert.equal((await listRuntimeTaskQueue(fixture.store))[0]?.worktree, fixture.repoRoot);
+
+    let resumedPrompt = "";
+    const resumed = await runRuntimeTaskQueueOnce({
+      store: fixture.store,
+      queuedStaleMs: 0,
+      clock: () => new Date("2026-07-16T00:01:00.000Z"),
+      runTask: async (task) => {
+        resumedPrompt = task;
+        return {
+          ...result,
+          session_id: "live_session_second_attempt",
+          completion_status: "done",
+          verification_status: "passed",
+          worktree: null,
+          working_checkpoint_ref: null,
+          next_action: null,
+          verdict: "done"
+        };
+      }
+    });
+    assert.equal(resumed.completed_count, 1);
+    assert.equal(resumedPrompt.includes(`Worktree: ${fixture.repoRoot}`), true);
+    assert.equal(resumedPrompt.includes(staleWorktree), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("live runner records memory proposals and audit requests as state-only governance actions", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -10369,6 +10459,27 @@ class HarnessStateActionsThenDoneModel implements ModelClient {
   }
 }
 
+class EngineeringCheckpointThenBlockedModel implements ModelClient {
+  private calls = 0;
+
+  constructor(private readonly worktree: string) {}
+
+  async create(): Promise<ModelResponse> {
+    this.calls += 1;
+    const outputText = JSON.stringify(this.calls === 1
+      ? engineeringCheckpointEnvelope(this.worktree)
+      : blockedEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "engineering-checkpoint-then-blocked",
+      responseId: `response-engineering-checkpoint-${this.calls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
+
 class GovernanceActionsThenDoneModel implements ModelClient {
   private calls = 0;
   sawGovernanceObservations = false;
@@ -11005,6 +11116,30 @@ function harnessStateActionsEnvelope(): Record<string, unknown> {
         }
       }
     ],
+    completion_claim: {
+      status: "not_done",
+      verification_refs: []
+    }
+  };
+}
+
+function engineeringCheckpointEnvelope(worktree: string): Record<string, unknown> {
+  return {
+    summary: "Persist the exact engineering checkpoint before reporting the blocker.",
+    actions: [{
+      type: "update_working_state",
+      rationale: "The next run must resume from the concrete failed verification step.",
+      payload: {
+        checkpoint: {
+          goal: "Complete the bounded continuity slice.",
+          current_step: "lease guard is implemented; focused test is blocked",
+          worktree,
+          known_constraints: ["keep the existing task id", "no external writes"],
+          open_questions: [],
+          next_action: "rerun the focused continuity test after fixing the lease guard"
+        }
+      }
+    }],
     completion_claim: {
       status: "not_done",
       verification_refs: []

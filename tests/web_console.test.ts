@@ -153,6 +153,46 @@ test("runtime web console profile-binds provider-neutral channel sessions", asyn
   }
 });
 
+test("runtime web console persists unfinished task continuity for bounded resume", async () => {
+  const fixture = await createFixture();
+  const handle = await startRuntimeWebConsole({
+    store: fixture.store,
+    port: 0,
+    runTask: async (task, args) => ({
+      ...stubRunResult(task, args.runtimeSessionId),
+      session_id: "live_session_web_continuity",
+      completion_status: "not_done",
+      verification_status: "skipped",
+      worktree: fixture.repoRoot,
+      working_checkpoint_ref: "memory/working/current.json",
+      next_action: "resume the exact unfinished web step"
+    })
+  });
+  try {
+    const run = await postJson(`${handle.url}/api/runs`, {
+      runtime_session_id: "runtime_session_web_continuity",
+      task: "continue a local engineering task"
+    });
+    assert.equal(run.run.status, "blocked");
+    const tasks = await listRuntimeTaskQueue(fixture.store);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0]?.id, run.run.id);
+    assert.equal(tasks[0]?.status, "queued");
+    assert.equal(tasks[0]?.attempt, 1);
+    assert.equal(tasks[0]?.runtime_session_id, "runtime_session_web_continuity");
+    assert.equal(tasks[0]?.live_session_id, "live_session_web_continuity");
+    assert.equal(tasks[0]?.worktree, fixture.repoRoot);
+    assert.equal(tasks[0]?.working_checkpoint_ref, "memory/working/current.json");
+    assert.equal(tasks[0]?.next_action, "resume the exact unfinished web step");
+    assert.equal(tasks[0]?.max_attempts, 3);
+    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
+    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "queued"]);
+  } finally {
+    await handle.close();
+    await fixture.cleanup();
+  }
+});
+
 async function getJson(url: string): Promise<any> {
   const response = await fetch(url);
   assert.equal(response.ok, true);
@@ -187,6 +227,11 @@ function stubRunResult(task: string, runtimeSessionId: string | null): RunResult
     final_response_ref: null,
     completion_report_ref: null,
     discipline_refs: null,
+    completion_status: "done",
+    verification_status: "passed",
+    worktree: null,
+    working_checkpoint_ref: null,
+    next_action: null,
     verdict: "done"
   };
 }

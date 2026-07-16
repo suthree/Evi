@@ -252,6 +252,31 @@ recovery 结果会以 queued outbound row 写入统一 `channels/outbox.jsonl`�
 发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不属于当前
 channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询反复处理。
 
+daemon 停止时，queue worker 会先拒绝新 tick，等待 startup/current run 与已开始的
+status 写入完成，再同步落盘 `stopped`；daemon 会等待该 stop promise。heartbeat
+若已有写入进行中，也会先等待该写入，再落盘最终 `stopping`/`stopped`，避免 stop
+返回后出现延迟的 queue-worker 或 heartbeat 状态写入。
+
+任务状态只读取 live run 的结构化 `completion_status` 与
+`verification_status`，不会再从 verdict 文本中搜索 `blocked`、`failed` 或
+`unverified`。结构化 `not_done`/`blocked` 的 Web/IM 任务会保留同一个 task id、
+runtime session、worktree、首次 live session、working-checkpoint ref 和最新
+`next_action`，并把同一条 queue entry 重新排队；不会创建替代 continuation
+任务。checkpoint 带有非空实际 `worktree` 时，settlement 会先用它更新 queue；
+checkpoint 缺失该字段（包括旧记录）时则保留 queue 现有路径。daemon resume
+prompt 会携带更新后的稳定字段和当前 attempt，最多领取三次；
+第三次仍未完成时进入终态 `blocked`，后续 tick 不再重复执行。
+
+固定 workspace git 诊断会为 `git status --porcelain=v1 -b` 强制设置
+`LANG=C` 与 `LC_ALL=C`。只有 spawn 资源错误 `EAGAIN`、`EMFILE`、`ENFILE`
+会且只会重试一次；普通 git 失败和其他 spawn 错误保持原样，不会被重试或改写。
+
+工程运行若通过 `update_working_state` 写入了真实 checkpoint，且最终结构化状态
+为 `not_done` 或 `blocked`，`memory/working/current.json` 会保留该 checkpoint
+及其具体 `next_action`；可选 `worktree` 字段用于记录后续 resume 的真实本地路径。
+selected-skill usage telemetry 仍单独记录，但不得覆盖这条
+工程续作指令；没有有效 checkpoint 时，harness 才写入有界的 resume fallback。
+
 Feishu 群会映射到本地 runtime session。未知群只有授权 operator 的消息能创建
 pending/unassigned session；绑定方式是在群里发送 `/session use <profile>`，
 或在 Web console 里选中 session 后绑定 profile。普通群消息只进入 inbox；

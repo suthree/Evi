@@ -200,6 +200,11 @@ class StubRunner implements TaskRunner {
       final_response_ref: null,
       completion_report_ref: null,
       discipline_refs: null,
+      completion_status: "done",
+      verification_status: "passed",
+      worktree: null,
+      working_checkpoint_ref: null,
+      next_action: null,
       verdict: "discord done"
     };
   }

@@ -61,6 +61,75 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
   }
 });
 
+test("runtime daemon stop awaits an inflight heartbeat write and leaves stopped as the final state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-daemon-stop-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const heartbeatPath = join(stateRoot, "services/runtime/heartbeat.json");
+  const runningWriteStarted = deferred<void>();
+  const releaseRunningWrite = deferred<void>();
+  const originalWriteJson = AgentStore.prototype.writeJson;
+  let blockRunningWrite = true;
+  let stateWriteCompletions = 0;
+  let handle: Awaited<ReturnType<typeof startRuntimeDaemon>> | null = null;
+
+  AgentStore.prototype.writeJson = async function (rel: string, value: unknown): Promise<string> {
+    const record = value as Record<string, unknown>;
+    if (
+      this.stateRoot === stateRoot
+      && rel === "services/runtime/heartbeat.json"
+      && record.state === "running"
+      && blockRunningWrite
+    ) {
+      blockRunningWrite = false;
+      runningWriteStarted.resolve();
+      await releaseRunningWrite.promise;
+    }
+    const ref = await originalWriteJson.call(this, rel, value);
+    if (this.stateRoot === stateRoot) stateWriteCompletions += 1;
+    return ref;
+  };
+
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    handle = await startRuntimeDaemon({
+      repoRoot,
+      config: runtimeConfig({ stateRoot, homeRoot }),
+      target: "runtime",
+      web: {
+        enabled: true,
+        host: "127.0.0.1",
+        port: 0
+      }
+    });
+    await runningWriteStarted.promise;
+
+    let stopReturned = false;
+    const stopping = handle.stop().then(() => {
+      stopReturned = true;
+    });
+    await delay(20);
+    assert.equal(stopReturned, false);
+
+    releaseRunningWrite.resolve();
+    await stopping;
+    const stopped = JSON.parse(await readFile(heartbeatPath, "utf8")) as Record<string, unknown>;
+    assert.equal(stopped.state, "stopped");
+
+    const writesAtStop = stateWriteCompletions;
+    await delay(40);
+    assert.equal(stateWriteCompletions, writesAtStop);
+    const stillStopped = JSON.parse(await readFile(heartbeatPath, "utf8")) as Record<string, unknown>;
+    assert.equal(stillStopped.state, "stopped");
+  } finally {
+    releaseRunningWrite.resolve();
+    await handle?.stop().catch(() => undefined);
+    AgentStore.prototype.writeJson = originalWriteJson;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runtime daemon writes gateway error heartbeat when channel startup fails", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-daemon-"));
   const repoRoot = join(root, "repo");
@@ -188,5 +257,19 @@ function runtimeConfig(args: { stateRoot: string; homeRoot: string }): RuntimeCo
       json_object: true,
       api_key: "test-key"
     }
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value?: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: (value) => resolve(value as T | PromiseLike<T>)
   };
 }

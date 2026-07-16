@@ -3434,6 +3434,7 @@ State-only harness actions:
     "checkpoint": {
       "goal": "...",
       "current_step": "...",
+      "worktree": "optional actual local worktree path",
       "known_constraints": ["..."],
       "recent_evidence_refs": ["optional existing evidence ids or refs"],
       "open_questions": ["..."],
@@ -3442,6 +3443,7 @@ State-only harness actions:
   }
 }
 
+When update_working_state includes worktree, use the actual current local worktree path; omit it rather than guessing.
 State-only harness actions write selected state evidence only; they do not mutate the repo, active vault, external systems, or verify done claims.
 
 State-only governance actions:

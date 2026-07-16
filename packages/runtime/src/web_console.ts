@@ -6,8 +6,7 @@ import {
   listRuntimeSessionBindings,
   listRuntimeSessions,
   listRuntimeTaskRuns,
-  recordRuntimeTaskRun,
-  runtimeTaskRunStatusFromResult
+  recordRuntimeTaskRun
 } from "../../core/src/runtime_sessions.js";
 import { recordRuntimeChannelOutbound } from "../../core/src/runtime_channel_outbox.js";
 import {
@@ -17,10 +16,9 @@ import {
 } from "../../core/src/runtime_channel_messages.js";
 import {
   claimRuntimeTask,
-  completeRuntimeTask,
   enqueueRuntimeTask,
   failRuntimeTask,
-  type RuntimeTaskQueueTerminalStatus
+  settleRuntimeTaskFromResult
 } from "../../core/src/runtime_task_queue.js";
 import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
@@ -198,10 +196,8 @@ async function handleRequest(
         });
         throw error;
       }
-      await completeRuntimeTask(options.store, {
-        id: queued.id,
-        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
-      });
+      const settlement = await settleRuntimeTaskFromResult(options.store, { id: queued.id, result });
+      if (!settlement) throw new Error(`runtime task ${queued.id} could not be settled`);
       const run = await recordRuntimeTaskRun(options.store, {
         id: queued.id,
         createdAt: queued.created_at,

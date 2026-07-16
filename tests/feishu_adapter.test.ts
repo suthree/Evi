@@ -5156,6 +5156,11 @@ class StubRunner implements TaskRunner {
       recalled_skill_refs: [],
       final_response_ref: finalRef,
       discipline_refs: null,
+      completion_status: "done",
+      verification_status: "passed",
+      worktree: null,
+      working_checkpoint_ref: null,
+      next_action: null,
       verdict: "no_sop"
     };
   }
@@ -5189,6 +5194,11 @@ class BlockingRunner implements TaskRunner {
       recalled_skill_refs: [],
       final_response_ref: finalRef,
       discipline_refs: null,
+      completion_status: "done",
+      verification_status: "passed",
+      worktree: null,
+      working_checkpoint_ref: null,
+      next_action: null,
       verdict: "no_sop"
     };
   }

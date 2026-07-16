@@ -5,7 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { AgentStore } from "../packages/core/src/store.js";
-import { getWorkspaceStatus, parseGitStatusOutput } from "../packages/core/src/workspace_status.js";
+import {
+  getWorkspaceStatus,
+  parseGitStatusOutput,
+  runFixedGitStatus
+} from "../packages/core/src/workspace_status.js";
 
 test("workspace status reports clean and dirty git worktrees without reading file bodies", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-workspace-status-"));
@@ -87,6 +91,68 @@ test("workspace status parser extracts branch tracking and change categories", (
     "untracked",
     "conflict"
   ]);
+});
+
+test("fixed git status forces C locale and retries resource-limited spawn exactly once", async () => {
+  for (const code of ["EAGAIN", "EMFILE", "ENFILE"]) {
+    const environments: NodeJS.ProcessEnv[] = [];
+    let attempts = 0;
+    const result = await runFixedGitStatus("/tmp/workspace", async (_cwd, env) => {
+      attempts += 1;
+      environments.push(env);
+      return attempts === 1
+        ? {
+          exitCode: 1,
+          stdout: "",
+          stderr: "",
+          error: `spawn git ${code}`,
+          spawnErrorCode: code
+        }
+        : {
+          exitCode: 0,
+          stdout: "## develop\n",
+          stderr: ""
+        };
+    });
+
+    assert.equal(attempts, 2, code);
+    assert.equal(result.exitCode, 0, code);
+    assert.deepEqual(environments.map((env) => [env.LC_ALL, env.LANG]), [
+      ["C", "C"],
+      ["C", "C"]
+    ], code);
+  }
+});
+
+test("fixed git status does not retry normal failures or retry a transient error more than once", async () => {
+  let normalAttempts = 0;
+  const normalFailure = await runFixedGitStatus("/tmp/workspace", async () => {
+    normalAttempts += 1;
+    return {
+      exitCode: 128,
+      stdout: "",
+      stderr: "fatal: bad revision",
+      error: "git exited with 128"
+    };
+  });
+  assert.equal(normalAttempts, 1);
+  assert.equal(normalFailure.exitCode, 128);
+  assert.equal(normalFailure.stderr, "fatal: bad revision");
+  assert.equal(normalFailure.error, "git exited with 128");
+
+  let transientAttempts = 0;
+  const repeatedTransient = await runFixedGitStatus("/tmp/workspace", async () => {
+    transientAttempts += 1;
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: "",
+      error: "spawn git EAGAIN",
+      spawnErrorCode: "EAGAIN"
+    };
+  });
+  assert.equal(transientAttempts, 2);
+  assert.equal(repeatedTransient.spawnErrorCode, "EAGAIN");
 });
 
 async function initGitRepo(repoRoot: string): Promise<void> {

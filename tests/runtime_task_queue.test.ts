@@ -95,6 +95,38 @@ test("runtime task queue lists queued and stale running tasks for recovery", asy
   }
 });
 
+test("runtime task queue normalizes legacy rows without continuity fields", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.store.appendJsonl("runs/task_queue.jsonl", {
+      type: "runtime_task_queue",
+      id: "runtime_task_legacy",
+      runtime_session_id: null,
+      source_kind: "local",
+      source_route_key: null,
+      source_key: null,
+      task: "resume a legacy queue record",
+      runner_task: null,
+      status: "queued",
+      attempt: 0,
+      error: null,
+      created_at: "2026-07-07T00:00:00.000Z",
+      updated_at: "2026-07-07T00:00:00.000Z",
+      boundary: "legacy test row"
+    });
+
+    const tasks = await listRuntimeTaskQueue(fixture.store);
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0]?.worktree, fixture.repoRoot);
+    assert.equal(tasks[0]?.live_session_id, null);
+    assert.equal(tasks[0]?.working_checkpoint_ref, null);
+    assert.equal(tasks[0]?.next_action, null);
+    assert.equal(tasks[0]?.max_attempts, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 async function readJsonl(path: string): Promise<Array<Record<string, any>>> {
   const text = await readFile(path, "utf8");
   return text

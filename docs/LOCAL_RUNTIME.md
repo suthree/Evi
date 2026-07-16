@@ -1775,6 +1775,31 @@ for `service status`. It records final task-run status and can queue
 Feishu/Telegram/Discord provider replies for adapter replay; it is still not a remote broker,
 cancellation system, or cross-process scheduler.
 
+On shutdown, the queue worker rejects new ticks, waits for its startup/current
+run and inflight status writes, and persists `stopped` before returning. The
+daemon awaits that stop promise. It also waits for any heartbeat write already
+in progress before writing the terminal heartbeat states, preventing a late
+queue-worker or heartbeat write after daemon stop returns.
+
+The queue reads `completion_status` and `verification_status` from the live
+run result; operator-facing verdict text is communication only. A `not_done` or
+`blocked` Web/IM result keeps the same queue task and runtime session, persists
+the worktree, first live session id, current checkpoint ref, and latest
+`next_action`, then requeues the same id. The daemon resume prompt carries
+those fields and the current attempt. A non-empty actual worktree from the
+selected checkpoint replaces a stale queued path; if the checkpoint omits it,
+including legacy checkpoints, settlement retains the existing queue path. The shared limit is three claimed
+attempts; the third unfinished result becomes terminal `blocked`, and later
+worker ticks skip it. This provides bounded local continuation without a
+replacement task, unbounded retries, or a second execution after terminal
+state.
+
+When an unfinished engineering run emitted an `update_working_state`
+checkpoint, `memory/working/current.json` preserves that checkpoint and its
+concrete next action. The optional checkpoint `worktree` records the actual
+local path for a later queue resume. Selected-skill usage telemetry does not replace it. If no
+valid run checkpoint exists, the harness records a bounded resume fallback.
+
 Task communication results are also mirrored into the provider-neutral
 `channels/outbox.jsonl` ledger. Feishu records real delivery refs and provider
 message ids for final/error replies; Web records local console final/error
@@ -1991,7 +2016,10 @@ this queue.
 
 `workspace status` and Feishu `/workspace` expose a fixed local git status
 diagnostic for the configured repo root. They summarize branch, upstream,
-ahead/behind, dirty-file counts, and bounded path/status entries. They do not
+ahead/behind, dirty-file counts, and bounded path/status entries. The fixed
+command uses `LANG=C` and `LC_ALL=C`; only spawn resource failures `EAGAIN`,
+`EMFILE`, or `ENFILE` receive one retry. Normal git failures and other spawn
+errors are preserved without retry. These diagnostics do not
 read file bodies, stage, commit, reset, checkout, mutate state, invoke the
 model, write the repo, or write the active vault.
 `workspace runtime` is the companion repo-local runtime workspace diagnostic.

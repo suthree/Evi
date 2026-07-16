@@ -97,7 +97,6 @@ import {
 } from "../../../../core/src/sop_evolution_ledger.js";
 import {
   recordRuntimeTaskRun,
-  runtimeTaskRunStatusFromResult,
   type RuntimeSessionSource,
   type RuntimeSessionRecord
 } from "../../../../core/src/runtime_sessions.js";
@@ -113,11 +112,10 @@ import {
 } from "../../../../core/src/runtime_channel_messages.js";
 import {
   claimRuntimeTask,
-  completeRuntimeTask,
   enqueueRuntimeTask,
   failRuntimeTask,
-  type RuntimeTaskQueueEntry,
-  type RuntimeTaskQueueTerminalStatus
+  settleRuntimeTaskFromResult,
+  type RuntimeTaskQueueEntry
 } from "../../../../core/src/runtime_task_queue.js";
 import {
   getPipelineRun,
@@ -683,10 +681,8 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       inboundRef = await this.recordInbound(message);
       await this.sendChunksToMessage(message, this.config.ackText);
       const result = await this.runner.runTask(task, { recallQuery: taskText });
-      await completeRuntimeTask(this.store, {
-        id: queued.id,
-        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
-      });
+      const settlement = await settleRuntimeTaskFromResult(this.store, { id: queued.id, result });
+      if (!settlement) throw new Error(`runtime task ${queued.id} could not be settled`);
       await recordRuntimeTaskRun(this.store, {
         id: queued.id,
         createdAt: queued.created_at,
