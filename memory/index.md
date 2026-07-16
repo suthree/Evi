@@ -10,6 +10,7 @@ This file is the compact resident index for the agent. It should stay small enou
 - Runtime object contract, on demand: `docs/RUNTIME_CONTRACT.md`
 - Runtime/reference boundary: `core/runtimes.md`
 - Shared vocabulary: `CONTEXT.md`
+- Approved v0.2 multi-node asset direction: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
 
 ## Seed Durable Facts
 

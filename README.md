@@ -1,8 +1,10 @@
 # Local Runtime
 
-Local Runtime is a local-first, single-machine runtime for a self-growing agent. It
-turns a local task or IM message into bounded context, validated actions,
-evidence, verification, and a response.
+Local Runtime v0.1 is a local-first, single-machine runtime for a self-growing
+agent. It turns a local task or IM message into bounded context, validated
+actions, evidence, verification, and a response. The approved v0.2 direction
+adds private, Git-backed reusable asset distribution without sharing runtime
+state or turning Evi into a hosted multi-user control plane.
 
 ## Start here
 
@@ -18,6 +20,9 @@ evidence, verification, and a response.
   [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md)
 - SOP, skill, and active-vault boundaries:
   [docs/LOCAL_LEARNING.md](docs/LOCAL_LEARNING.md)
+- Approved v0.2 multi-node evolution target:
+  [docs/V0.2_MULTI_NODE_EVOLUTION.md](docs/V0.2_MULTI_NODE_EVOLUTION.md) and
+  [docs/V0.2_MULTI_NODE_EVOLUTION.cn.md](docs/V0.2_MULTI_NODE_EVOLUTION.cn.md)
 
 The linked documents are authoritative for their own subjects. Keep this file
 as the short entrypoint; do not duplicate detailed command references,
@@ -25,15 +30,17 @@ contracts, or historical decisions here.
 
 ## Scope
 
-The runtime is intentionally narrow:
+The implemented v0.1 runtime is intentionally narrow:
 
 - one local user and one machine;
 - bounded repo/state actions through the harness;
 - CLI, localhost web console, and local IM adapters;
 - evidence-backed verification and explicit learning gates.
 
-It is not a hosted, multi-user, multi-machine, marketplace, or autonomous
-rewrite system.
+The v0.2 target keeps execution, raw memory, and runtime state node-local while
+allowing selected reusable assets to move through a private LuBan Git
+repository. It is still not a hosted multi-user service, public marketplace,
+shared runtime-state system, or autonomous rewrite system.
 
 ## Development flow
 
@@ -60,7 +67,8 @@ Trellis is the source of truth for bounded iteration work:
 
 | Need | Source |
 | --- | --- |
-| Current scope | [.trellis/spec/local-single-machine-mvp.md](.trellis/spec/local-single-machine-mvp.md) |
+| Implemented v0.1 scope | [.trellis/spec/local-single-machine-mvp.md](.trellis/spec/local-single-machine-mvp.md) |
+| Approved v0.2 target | [.trellis/spec/v0.2-multi-node-evolution.md](.trellis/spec/v0.2-multi-node-evolution.md) |
 | Work slices | [.trellis/tasks/](.trellis/tasks/) |
 | Direction decisions | [.trellis/decisions.md](.trellis/decisions.md) |
 | Trellis agent context | [.trellis/agents/](.trellis/agents/) |

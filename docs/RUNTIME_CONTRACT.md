@@ -1,12 +1,21 @@
 # Runtime Contract
 
-This document defines the first-version local agent runtime contract.
+This document defines the implemented first-version local agent runtime
+contract.
 
 The contract is local-first and single-machine. It intentionally rejects
 compatibility design for open-source distribution, multi-user hosting,
 multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
 runtime for resident channel intake and a localhost operator web console.
+
+The approved v0.2 target is specified separately in
+`docs/V0.2_MULTI_NODE_EVOLUTION.md`. That target adds private Git-backed asset
+distribution and per-node activation while preserving node-local execution,
+raw memory, state, and failure isolation. Until a v0.2 Trellis task is
+implemented and verified, this document remains the authority for current
+runtime behavior and the v0.2 document must not be used to claim that a
+multi-node capability already exists.
 
 ## Scope
 

@@ -4,9 +4,9 @@
 
 ## 项目定位
 
-本仓库实现一个本地优先、单机运行的自成长 agent runtime。第一版目标很窄：证明一个本地 runtime 可以读取上下文、执行受控工具、调用模型、保留证据、验证完成状态，并通过 CLI 或单用户本地 IM 服务接收任务。
+本仓库的 v0.1 实现一个本地优先、单机运行的自成长 agent runtime。第一版目标很窄：证明一个本地 runtime 可以读取上下文、执行受控工具、调用模型、保留证据、验证完成状态，并通过 CLI 或单用户本地 IM 服务接收任务。
 
-它不是托管服务、多用户 bot、公开 marketplace、跨机器技能同步系统，也不是面向生产部署的分布式平台。
+已经确认的 v0.2 方向会通过私有 LuBan Git 仓库分发经过晋升的可复用 Agent 资产，但执行、原始记忆和 runtime state 继续保留在节点本地。它仍不是托管服务、多用户 bot、公开 marketplace 或共享 runtime state 的分布式平台。详细方案见 [`V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md)。
 
 ## 第一版闭环
 

@@ -27,6 +27,31 @@ The first version does not support:
 - cross-node conflict handling
 - compatibility promises for external runtimes
 
+## Approved v0.2 Extension
+
+v0.2 does not turn the local active vault into a shared vault. It adds a
+separate promotion boundary:
+
+```text
+node-local evidence and active vault
+  -> sanitized reusable candidate
+  -> LuBan branch or pull request
+  -> accepted private LuBan commit
+  -> independent node selection and activation
+```
+
+LuBan owns accepted reusable assets; each node continues to own its active
+vault, raw episode memory, semantic-memory working set, usage telemetry, and
+activation state. Local promotion means usable on the current node. Shared
+promotion is a distinct external Git effect with provenance, sensitivity,
+compatibility, verification, and retirement evidence.
+
+Raw episodes, conversations, checkpoints, queues, secrets, and runtime
+databases must never be exported. Only deliberately scoped and redacted
+semantic summaries may become LuBan knowledge packs. See
+`docs/V0.2_MULTI_NODE_EVOLUTION.md` for the target lifecycle and acceptance
+contract.
+
 ## Standing Local Evolution Authority
 
 Within the accepted local self-growing mission, the runtime may write state,
