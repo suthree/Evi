@@ -20,6 +20,9 @@ state or turning Evi into a hosted multi-user control plane.
   [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md)
 - SOP, skill, and active-vault boundaries:
   [docs/LOCAL_LEARNING.md](docs/LOCAL_LEARNING.md)
+- Accepted long-term product and gated evolution vision:
+  [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) and
+  [docs/PRODUCT_VISION.cn.md](docs/PRODUCT_VISION.cn.md)
 - Approved v0.2 multi-node evolution target:
   [docs/V0.2_MULTI_NODE_EVOLUTION.md](docs/V0.2_MULTI_NODE_EVOLUTION.md) and
   [docs/V0.2_MULTI_NODE_EVOLUTION.cn.md](docs/V0.2_MULTI_NODE_EVOLUTION.cn.md)

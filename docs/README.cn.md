@@ -8,6 +8,8 @@
 
 已经确认的 v0.2 方向会通过私有 LuBan Git 仓库分发经过晋升的可复用 Agent 资产，但执行、原始记忆和 runtime state 继续保留在节点本地。它仍不是托管服务、多用户 bot、公开 marketplace 或共享 runtime state 的分布式平台。详细方案见 [`V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md)。
 
+更长期的产品、多 Session、Context、Harness、Capability Manager 和 LuBan 边界见 [`PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md)。该愿景不代表相关功能已经实现；在自进化、自迭代基础闭环和当前目标 gate 完成前，不启动大范围新产品面。
+
 ## 第一版闭环
 
 ```text
@@ -525,6 +527,8 @@ pnpm run runtime -- notify list --status queued --state-root ~/.local-runtime/st
 - `docs/RUNTIME_CONTRACT.md`：第一版 runtime 合同和权威边界。
 - `docs/LOCAL_RUNTIME.md`：本地启动、命令和服务边界。
 - `docs/LOCAL_LEARNING.md`：SOP、技能和 active vault 的本地学习层。
+- `docs/PRODUCT_VISION.cn.md`：长期产品、多 Session、Context、Harness、Capability Manager 和有门槛的演进方向。
+- `docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`：当前已接受的 v0.2 多节点资产演进目标。
 - `docs/ACTIVE_EXPLORATION.md`：只在 active exploration、内容发布、图像生成、小红书 adapter 或反馈采集任务里按需读取。
 - `.trellis/`：repo-local 规划和治理记录，不是 runtime state、active vault 或 durable memory。
 
