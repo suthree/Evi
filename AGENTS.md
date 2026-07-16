@@ -17,7 +17,7 @@ This file is model-facing guidance for Codex and other host runtimes.
 - Start with `README.md`, `docs/INDEX.md`, and `memory/index.md`. Route from the compact indexes, search headings or identifiers first, and read only the task-relevant sections of `docs/RUNTIME_CONTRACT.md`, `docs/LOCAL_RUNTIME.md`, or `docs/LOCAL_LEARNING.md`. Use `docs/INDEX.cn.md`, `docs/README.cn.md`, and `docs/AGENTS.cn.md` as fast Simplified Chinese operator-facing overviews.
 - Treat long documents, raw logs, episodes, and archives as on-demand evidence stores rather than resident prompt context. Keep the current goal, working checkpoint, selected refs, and verification evidence hotter than historical bodies.
 - Read `docs/ACTIVE_EXPLORATION.md` only for active-exploration, content publishing, image-generation, Xiaohongshu adapter, or feedback-capture work.
-- Read `.trellis/agents/AGENTS.md`, `.trellis/spec/local-single-machine-mvp.md`, and `.trellis/decisions.md` only when changing Trellis integration, project direction, or task governance.
+- Read `.trellis/agents/AGENTS.md`, `.trellis/spec/engineering-delivery-contract.md`, the applicable version spec, and `.trellis/decisions.md` only when changing Trellis integration, project direction, or task governance.
 
 ## Instruction Ownership
 
@@ -32,12 +32,15 @@ This file is model-facing guidance for Codex and other host runtimes.
 ## Work Discipline
 
 - Inspect current code and runtime state before making claims about this repository.
+- For material engineering work, follow `.trellis/spec/engineering-delivery-contract.md`: activate accepted direction through a GitHub Issue and one bounded Trellis task per repository, then use an isolated branch/worktree and evidence-linked completion. Record the permitted reason when an Issue is intentionally not used.
 - Keep changes small and consistent with the existing local runtime boundary.
 - Treat the accepted local self-growing mission as standing authorization for active self-iteration and self-growth. The agent may modify repository source, tests, docs, local runtime state, the active vault, SOPs, skills, scripts, and local dependencies when the change is evidence-backed and verifiable.
 - Treat boundaries as decision-owned and context-sensitive rather than as a static permission list. Re-evaluate the applicable owner, evidence, risk, reversibility, and current operator intent when conditions materially change.
 - Open local authority does not remove the harness: preserve evidence, inspect diffs, run targeted checks, keep rollback or retirement paths, and prefer core/basic capability gains before adding workflow surfaces.
 - Treat `context` and `harness` as anti-drift infrastructure: bound inputs, validate actions, preserve evidence, and verify completion instead of relying on model confidence alone.
 - Reuse existing commands, tools, adapters, SOPs, skills, and delegated surfaces before creating new mechanisms.
+- Prefer the simplest architecture-consistent design, keep the Evi core compact, and treat external projects as references rather than standards.
+- Never invent repository state, external data, test evidence, or completion. Label fixtures, mocks, synthetic data, estimates, and inference explicitly.
 - Let Trellis maintain Trellis-owned agent context through Trellis commands and generated files. Keep manual project direction in stable docs and decisions, outside generated Trellis output.
 - Preserve unrelated worktree changes.
 - Run targeted checks when code or contract behavior changes.
