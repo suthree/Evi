@@ -1,6 +1,6 @@
 # Task 225: Deterministic Skill Source Conflict Guard
 
-Status: implemented; pull request checkpoint pending
+Status: implemented; operator checkpoint
 
 ## Owner And Linkage
 
@@ -94,7 +94,9 @@ operator-inspectable failure before any candidate is selected for recall.
 - Cross-repo boundary: Evi must consume a selected read-only skill projection,
   not the LuBan repository root, until a later typed catalog/selection slice can
   exclude inbox and retired content and verify catalog hashes.
-- Evi commit and pull request refs: pending
+- Evi implementation commit:
+  `66728035558bd8a033f6a871477f7e0b5cd9b209`
+- Evi draft pull request: `https://github.com/suthree/Evi/pull/16`
 
 ## Result
 
@@ -115,3 +117,6 @@ operator-inspectable failure before any candidate is selected for recall.
 Stop after implementation, tests, Trellis evidence, commit, push, and pull
 request creation. Report the branch, commit, pull request, verification results,
 and remaining dependencies. Do not start the next v0.2 slice automatically.
+
+Checkpoint reached on branch
+`codex/issue-13-skill-source-conflict-guard`. PR #16 remains draft and unmerged.
