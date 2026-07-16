@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-07-16 Develop Autonomy And Main Release Gate
+
+The operator authorizes Evi to complete the full local and integration loop for
+accepted work: create and maintain a feature branch, commit, push, open a pull
+request, and merge the verified pull request into `develop` without a separate
+per-merge approval. `develop` remains pull-request-only so Issue, Trellis, diff,
+verification, and merge evidence stay connected; direct push, force push, and
+branch deletion are not authorized.
+
+`main` remains the only human merge gate. Evi may prepare a release pull request
+from `develop` to `main`, but merging it requires an explicit operator
+instruction for that release. Direct push, automatic merge, Agent bypass,
+force push, and deletion remain prohibited. Version tags and GitHub Releases
+also require explicit operator authorization after the release verification
+contract passes.
+
+This decision changes delivery authority, not runtime mutation authority or
+completion standards. A failed check, unresolved blocker, scope drift, or
+missing evidence still prevents autonomous merge to `develop`. GitHub rulesets
+and CI should enforce the policy when those repository controls are added; the
+policy applies even before enforcement exists.
+
 ## 2026-07-16 v0.2 Multi-Node Evolution And LuBan Registry
 
 The operator accepts v0.2 as a federated, single-user, multi-node evolution
