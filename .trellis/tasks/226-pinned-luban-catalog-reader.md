@@ -1,6 +1,6 @@
 # Task 226: Pinned Local LuBan Catalog Reader
 
-Status: implemented; operator checkpoint pending publication
+Status: implemented; operator checkpoint
 
 ## Owner And Linkage
 
@@ -109,7 +109,9 @@ metadata without treating the whole repository as a project skill root.
   and `ponytail` with the catalog-declared tree hashes and vendor provenance.
 - Repository isolation: the source LuBan worktree remained clean on its
   existing branch and HEAD `9b374a119c794c67ceb690da223b416c6c749155`.
-- Evi implementation commit and pull request: pending publication.
+- Evi implementation commit:
+  `fc269d944c179aadb7416266b1658aa522a37326`
+- Evi draft pull request: `https://github.com/suthree/Evi/pull/17`
 
 ## Result
 
@@ -133,3 +135,7 @@ Stop after implementation, tests, Trellis evidence, commit, push, and Evi pull
 request creation. Report the branch, commit, pull request, verification results,
 and remaining v0.2 dependencies. Do not start projection, selection-lock,
 activation, or another v0.2 slice automatically.
+
+Checkpoint reached on branch
+`codex/issue-13-pinned-luban-catalog-reader`. PR #17 remains draft and
+unmerged.
