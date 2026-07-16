@@ -56,6 +56,7 @@ test("codex.run builds fixed new and resume argv without shell or forbidden flag
     "--disable", "web_search", "--json"
   ]);
   assert.equal(freshArgv.includes("resume"), false);
+  assert.equal(freshArgv.includes("--strict-config"), false);
 
   const resumed = snapshot("resume", threadId);
   const resumeArgv = buildCodexRunArgv(resumed, "/tmp/result-schema.json");

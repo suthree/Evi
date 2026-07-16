@@ -198,9 +198,11 @@ export function buildCodexRunArgv(snapshot: CodexAuthoritySnapshot, outputSchema
     "--cd", snapshot.cwd,
     "--disable", "web_search"
   ];
+  // Authority-bearing settings remain explicit below. Do not strict-validate
+  // unrelated user config fields: Codex versions may accept them leniently
+  // while --strict-config aborts before a thread can be created.
   const bounded = [
     "--json",
-    "--strict-config",
     "--model", snapshot.model,
     "--config", `model_reasoning_effort=\"${snapshot.reasoning_effort}\"`,
     "--config", `service_tier=\"${snapshot.service_tier}\"`,
