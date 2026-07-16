@@ -183,13 +183,18 @@ export interface AutonomyPauseStatus {
 
 export async function runServiceCommand(
   options: ServiceCommandOptions,
-  deps: { run?: CommandRunner; platform?: NodeJS.Platform } = {}
+  deps: {
+    run?: CommandRunner;
+    platform?: NodeJS.Platform;
+    recordRollback?: typeof recordOperatorServiceRollback;
+  } = {}
 ): Promise<ServiceCommandResult> {
   const action = options.action;
   const validateRuntime = action === "install" || action === "start" || action === "restart";
   const definition = await resolveServiceDefinition(options, validateRuntime);
   const run = deps.run ?? runCommand;
   const platform = deps.platform ?? process.platform;
+  const recordRollback = deps.recordRollback ?? recordOperatorServiceRollback;
 
   if (platform !== "darwin") {
     if (action === "status" || action === "logs") return buildResult(action, definition, {
@@ -307,13 +312,17 @@ export async function runServiceCommand(
     await rollbackServiceRuntimeBundle(definition);
     try {
       if (replacedBuild?.source_commit && restoredBuild?.source_commit) {
-        await recordOperatorServiceRollback(definition.stateRoot, {
+        await recordRollback(definition.stateRoot, {
           restoredCommit: restoredBuild.source_commit,
           replacedCommit: replacedBuild.source_commit
         });
       }
     } catch (error) {
       await rollbackServiceRuntimeBundle(definition).catch(() => undefined);
+      await startLaunchd(definition, run).catch(() => undefined);
+      if (existsSync(definition.supervisorManifestPath)) {
+        await startSupervisor(definition, run).catch(() => undefined);
+      }
       throw error;
     }
     await startLaunchd(definition, run);

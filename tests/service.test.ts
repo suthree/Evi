@@ -201,6 +201,59 @@ test("service rollback retries transient launchd bootstrap failure after bundle 
   }
 });
 
+test("service rollback restores identities and service attempts when reconciliation fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-rollback-reconcile-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  const reconciliationError = new Error("rollback ledger reconciliation rejected");
+  const bootstrapPaths: string[] = [];
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot })
+    ].join("\n") + "\n", "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "current-commit");
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "stable-commit");
+    await mkdir(definition.supervisorRoot, { recursive: true });
+    await writeFile(definition.supervisorManifestPath, "{}\n", "utf8");
+
+    await assert.rejects(runServiceCommand({
+      action: "rollback",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot
+    }, {
+      platform: "darwin",
+      recordRollback: async () => {
+        throw reconciliationError;
+      },
+      run: async (_command, args) => {
+        const action = args[0];
+        if (action === "print") return { stdout: "", stderr: "not loaded", exitCode: 1 };
+        if (action === "bootstrap") {
+          bootstrapPaths.push(args[2]);
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        if (action === "kickstart" && args[2]?.endsWith("/local.runtime.runtime")) {
+          return { stdout: "", stderr: "runtime restart failed", exitCode: 1 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    }), (error: unknown) => error === reconciliationError);
+
+    assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "current-commit");
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "stable-commit");
+    assert.deepEqual(bootstrapPaths, [definition.plistPath, definition.supervisorPlistPath]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service logs rotate at the lifecycle size cap and retain bounded history", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-log-"));
   const stdoutPath = join(root, "runtime.out.log");
