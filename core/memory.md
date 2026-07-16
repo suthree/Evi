@@ -25,6 +25,12 @@ Durable facts, operator-provided preferences, project conventions, known pitfall
 **Procedural Memory**:
 Reusable methods: SOPs, skills, scripts, playbooks, templates, evaluation cases, and known workflows. These belong in `skills/` or supporting references when they become executable.
 
+**Shared Knowledge Pack (v0.2 target)**:
+A deliberately promoted, scoped, redacted semantic summary stored as a
+versioned LuBan asset. It is imported as bounded read-only context. It is not a
+copy of raw episodes, a MemoryStore database merge, or a replacement for
+project-owned documentation.
+
 ## Promotion Criteria
 
 A memory signal should be promoted only when it satisfies most of these:
@@ -80,6 +86,8 @@ Do not store:
 - unverified model guesses
 - broad summaries that erase the evidence needed to audit them
 - project rules that should instead be committed to project documentation or `AGENTS.md`
+- raw episodes, conversations, working checkpoints, or node runtime state
+  intended only for cross-node convenience
 
 ## Relationship to Skills
 

@@ -148,6 +148,32 @@ _Avoid_: Every configured seed root, all available skills
 The selection layer that chooses which skills from seeds, installed public sources, personal vaults, and project overlays enter a run. It preserves provenance and avoids treating every available skill as prompt context.
 _Avoid_: Loading all skills, single flat skill folder
 
+**Agent Asset Registry**:
+A private, Git-backed canonical source for accepted reusable agent assets and
+their typed metadata, provenance, version, and retirement history. LuBan fills
+this role in v0.2. It does not select assets for a task, install them, or own
+runtime state.
+_Avoid_: Shared runtime home, installer daemon, marketplace, orchestration service
+
+**Asset Selection Lock**:
+The node-local record that binds a selected asset set to an Agent Asset
+Registry commit, typed asset identities, content hashes, profile, and
+compatibility result. It makes activation reproducible without turning the
+registry into mutable runtime state.
+_Avoid_: Mutable branch name, global latest version, catalog recommendation
+
+**Activation Receipt**:
+A node-local evidence record for staging, validation, atomic activation,
+probation, and rollback of one asset selection. It proves only the named node's
+result.
+_Avoid_: Global deployment status, model confidence, registry acceptance
+
+**Shared Knowledge Pack**:
+A scoped, redacted, versioned semantic-memory summary deliberately promoted for
+cross-node reuse. It enters context read-only and never merges raw episode or
+MemoryStore state.
+_Avoid_: Raw memory sync, conversation archive, project documentation copy
+
 ## Example Dialogue
 
 Dev: Is Codex a tool inside the agent?

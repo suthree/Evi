@@ -1,5 +1,35 @@
 # Decisions
 
+## 2026-07-16 v0.2 Multi-Node Evolution And LuBan Registry
+
+The operator accepts v0.2 as a federated, single-user, multi-node evolution
+direction. Runtime execution, raw memory, secrets, queues, working state, and
+activation state remain node-local. Multi-node does not mean shared runtime
+state or a hosted control plane.
+
+LuBan will become a private Git repository and the canonical registry for
+accepted reusable agent assets, including skills, prompts, reusable SOPs,
+profiles, instruction templates, governed identity overlays, shared knowledge
+packs, and cross-agent policies. LuBan stores typed bodies, metadata,
+provenance, and version history. It does not decide usage, install assets,
+orchestrate nodes, or own runtime state.
+
+Evi is the primary v0.2 agent. Evi owns local incubation, autonomous
+evidence-backed review, LuBan proposals, compatibility and selection judgment,
+node-local activation, outcome observation, revision, retirement, and rollback.
+`skill-manager` remains a reference for implementation techniques only and is
+not a standard or required dependency.
+
+GitHub Issues and Projects are the direction and Kanban surface. Trellis owns
+bounded implementation tasks after direction is accepted. Evi's web console
+owns runtime/evidence inspection and must not duplicate GitHub planning.
+
+This decision supersedes the v0.1 prohibition on designing multi-machine skill
+sharing for v0.2 work only. It does not rewrite the released v0.1 contract or
+claim that v0.2 is implemented. The implementation boundary is
+`.trellis/spec/v0.2-multi-node-evolution.md` and the stable design is
+`docs/V0.2_MULTI_NODE_EVOLUTION.md`.
+
 ## 2026-06-29 Scope Grilling
 
 1. The first version is local-only and single-machine.

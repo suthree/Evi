@@ -1,5 +1,9 @@
 # Local Single-Machine MVP
 
+Status: implemented v0.1 scope. Preserve this document as the v0.1 contract;
+the approved v0.2 direction is defined in
+`.trellis/spec/v0.2-multi-node-evolution.md`.
+
 ## Purpose
 
 The first version is a local single-machine self-growing agent runtime. It

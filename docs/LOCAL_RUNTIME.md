@@ -1,8 +1,15 @@
 # Local Runtime
 
-The first version is a local single-machine runtime. It is not a hosted
-service, a multi-user bot, or a deployment target. It may run a single-user
-local service process for channel adapters and IM intake.
+The implemented first version is a local single-machine runtime. It is not a
+hosted service or a multi-user bot. It may run a single-user local service
+process for channel adapters and IM intake.
+
+The approved v0.2 direction allows the same single-user runtime to be deployed
+to multiple independently operated nodes. It does not introduce shared runtime
+state or a hosted control plane. Target topology, LuBan asset identity, and
+node activation are defined in `docs/V0.2_MULTI_NODE_EVOLUTION.md`; current
+commands below remain the v0.1 command contract until corresponding Trellis
+tasks are implemented and verified.
 
 ## Owner Process
 
@@ -16,6 +23,19 @@ Foreground commands own one run. The local service process owns resident
 channel adapters and IM intake. Runtime state is written under the selected
 state root. Learned local procedures are written under the configured local
 agent home and active vault.
+
+## Remote Node Deployment Gap
+
+The current SSR resident process was not installed through the intended
+immutable deployment supervisor contract and does not reliably expose a
+commit-bound build identity. Treat it as a documented migration gap, not as the
+v0.2 deployment standard.
+
+The target production-node contract uses a stable supervisor plus immutable
+`next/current/previous` releases. Readiness and activation receipts bind the
+Evi commit, LuBan commit, selected profile, and asset-selection lock. Probation
+must pass before acceptance, and rollback must not depend on a mutable source
+checkout. Host credentials and runtime state remain outside both repositories.
 
 ## Package Manager
 
