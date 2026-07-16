@@ -1,6 +1,6 @@
 # Task 229: Read-Only Fetch And Candidate Export
 
-Status: verifying
+Status: completed
 
 ## Owner And Linkage
 
@@ -58,4 +58,5 @@ Status: verifying
   bounded sensitive-material scan returned no matches.
 - Operator checkpoint: publish/merge the Evi PR, then continue only through a
   separately owned LuBan acceptance task/PR using the exported candidate.
-- Implementation commit and PR: pending.
+- Implementation commit: `53a1fa67ad3ce3bbdf9482009fbe51ea490313dc`.
+- Review handoff: `https://github.com/suthree/Evi/pull/20`.
