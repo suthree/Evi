@@ -1,0 +1,134 @@
+name: Engineering change
+description: Activate a bounded Evi implementation or architecture change.
+title: "[Change]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for material engineering work. After acceptance, link one
+        Trellis task per repository and follow
+        `.trellis/spec/engineering-delivery-contract.md`.
+
+  - type: input
+    id: target
+    attributes:
+      label: Target version or milestone
+      description: Name the accepted version, milestone, or repository-governance scope.
+      placeholder: v0.2 / milestone name
+    validations:
+      required: true
+
+  - type: dropdown
+    id: capability_layer
+    attributes:
+      label: Capability layer
+      options:
+        - core
+        - basic-entrypoint
+        - local-learning
+        - application-slice
+        - governance
+        - boundary
+    validations:
+      required: true
+
+  - type: input
+    id: delivery_owner
+    attributes:
+      label: Owner repository and delivery owner
+      description: Name the repository that owns the diff and the person or agent responsible for integration.
+      placeholder: suthree/Evi; Evi / Codex / named maintainer
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem_evidence
+    attributes:
+      label: Problem and evidence
+      description: Describe the observed problem and cite current code, runtime, user, or research evidence.
+      placeholder: What is wrong or missing, and what proves it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: desired_outcome
+    attributes:
+      label: Desired outcome and acceptance
+      description: State observable acceptance criteria; do not describe implementation as already complete.
+      placeholder: "- [ ] Observable acceptance condition"
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope_non_goals
+    attributes:
+      label: Scope and non-goals
+      description: Bound the change and name what must remain untouched.
+      placeholder: |
+        Scope:
+        - ...
+
+        Non-goals:
+        - ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: architecture_reuse
+    attributes:
+      label: Architecture and reuse assessment
+      description: Identify owner surfaces, existing mechanisms to reuse, and why any new mechanism is necessary.
+      placeholder: Existing owner/tool/adapter/skill; simplest coherent design; reference versions if used.
+    validations:
+      required: true
+
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and cross-repository links
+      description: Link blockers, predecessor Issues, repositories, and required external readiness.
+      placeholder: None, or linked Issue/repository/readiness evidence.
+    validations:
+      required: true
+
+  - type: textarea
+    id: authority_effects
+    attributes:
+      label: Decision Owner, authority, and external effects
+      description: Name the Decision Owner and any secret, private-data, communication, publication, destructive, or irreversible effect.
+      placeholder: Owner; authority basis; override lineage; external-effect gate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification plan
+      description: List targeted, repository-wide, live, and claim-specific verification.
+      placeholder: Command or evidence -> completion claim it supports.
+    validations:
+      required: true
+
+  - type: textarea
+    id: recovery_delivery
+    attributes:
+      label: Migration, rollback, and delivery plan
+      description: Describe migration/compatibility, rollback, deploy/restart/probation, and release implications; write not applicable with a reason when appropriate.
+      placeholder: Migration; rollback; deploy/restart; live smoke; release gate.
+    validations:
+      required: true
+
+  - type: textarea
+    id: delivery_refs
+    attributes:
+      label: Delivery references
+      description: Fill during execution with the Trellis task, branch/worktree, commit, pull request, checks, and runtime evidence.
+      placeholder: Trellis task; branch/worktree; PR/commit; checks; runtime receipt.
+
+  - type: checkboxes
+    id: contract_ack
+    attributes:
+      label: Contract acknowledgement
+      options:
+        - label: I will keep planning claims separate from implemented facts and link one Trellis task per repository.
+          required: true

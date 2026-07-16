@@ -30,8 +30,8 @@
 - 只有在处理 active-exploration、内容发布、图像生成、小红书适配器或反馈采集时，
   才读取 `docs/ACTIVE_EXPLORATION.md`。
 - 只有在修改 Trellis 集成、项目方向或任务治理时，才读取
-  `.trellis/agents/AGENTS.md`、`.trellis/spec/local-single-machine-mvp.md`
-  和 `.trellis/decisions.md`。
+  `.trellis/agents/AGENTS.md`、`.trellis/spec/engineering-delivery-contract.md`、
+  适用的版本 spec 和 `.trellis/decisions.md`。
 
 ## 指令归属
 
@@ -46,6 +46,9 @@
 ## 工作纪律
 
 - 对本仓库做判断前，先检查当前代码和 runtime 状态。
+- 实质性工程工作遵循 `.trellis/spec/engineering-delivery-contract.md`：
+  已接受方向通过 GitHub Issue 和每仓库一个有边界 Trellis task 激活，再使用隔离
+  branch/worktree，并以证据闭环完成。若明确不使用 Issue，必须记录允许原因。
 - 改动保持小、局部，并符合现有 local runtime 边界。
 - 已接受的本地自成长使命构成持续授权。本地 agent 可以主动修改仓库源码、测试、文档、
   本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且
@@ -57,6 +60,9 @@
 - `context` 和 `harness` 是防跑偏基础设施：限制输入、校验动作、保存证据、
   验证完成，不把模型自信当成完成证明。
 - 新建机制前，先复用已有命令、工具、adapter、SOP、skill 和 delegated surface。
+- 优先选择最简单且架构一致的设计，保持 Evi 核心精简；外部项目只是参考，不是标准。
+- 不得编造仓库状态、外部数据、测试证据或完成结论；fixture、mock、synthetic data、
+  estimate 和 inference 必须显式标注。
 - Trellis 负责维护 Trellis 自己生成的 agent context。相关文件应通过 Trellis
   命令刷新；人工维护的项目方向应写在稳定文档和 decision 记录中。
 - 保留无关 worktree 改动，不要顺手覆盖。

@@ -1,5 +1,37 @@
 # Decisions
 
+## 2026-07-16 Engineering Governance And Delivery Truth
+
+Evi uses subject-specific sources of truth instead of one document that tries
+to own every layer. Accepted product vision owns the long-term north star;
+version specifications and GitHub Issues/Projects own accepted direction,
+milestones, priority, and delivery status; Trellis decisions, specifications,
+and tasks own bounded repository implementation; code, tests, and live runtime
+evidence own current implemented fact. A planning artifact must never be used
+as proof that a capability exists.
+
+Material engineering work starts from an accepted GitHub Issue and one linked
+Trellis task per repository. The task binds scope, non-goals, owner, Decision
+Owner, authority, dependencies, branch/worktree, acceptance, verification,
+rollback, and evidence. A direct Trellis task is allowed for an explicitly
+operator-directed governance bootstrap, an urgent repair, or a truly small
+maintenance change, but it must say why no Issue exists and must not silently
+expand product direction.
+
+The default engineering strategy is the smallest architecture-consistent
+change: inspect real code and runtime state, reuse existing tools and adapters,
+avoid duplicate mechanisms and invented data, and keep Evi's core compact.
+GenericAgent and projects under `Common/github_evi` are evidence-bearing
+references, not standards. Their ideas must be evaluated against Evi's current
+contract, provenance, maintenance cost, and verification surface before reuse.
+
+The full task contract and delivery gates are defined in
+`.trellis/spec/engineering-delivery-contract.md`. Stable policies belong in
+that specification and this decision log; transient progress stays in the
+linked Issue, Trellis task, branch, pull request, checks, and runtime evidence.
+Codex or other implementation skills may execute this contract by reference,
+but must not copy it into a competing policy source.
+
 ## 2026-07-16 Develop Autonomy And Main Release Gate
 
 The operator authorizes Evi to complete the full local and integration loop for
