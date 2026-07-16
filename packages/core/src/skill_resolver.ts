@@ -61,8 +61,8 @@ export function resolveSkillResolver(input: SkillResolverLike = "vault"): SkillR
 
   return {
     active_root: activeRoot,
-    seed_roots: unique(seedRoots),
-    project_roots: unique(projectRoots),
+    seed_roots: unique(seedRoots).sort(),
+    project_roots: unique(projectRoots).sort(),
     search_roots: dedupeSearchRoots(searchRoots)
   };
 }
@@ -91,13 +91,23 @@ function dedupeSearchRoots(roots: SkillSearchRoot[]): SkillSearchRoot[] {
   const seen = new Set<string>();
   const result: SkillSearchRoot[] = [];
   for (const root of roots) {
-    if (seen.has(root.skills_dir)) continue;
-    seen.add(root.skills_dir);
+    const key = `${root.source}\0${root.skills_dir}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     result.push(root);
   }
-  return result;
+  return result.sort((left, right) =>
+    sourceRank(left.source) - sourceRank(right.source)
+    || left.skills_dir.localeCompare(right.skills_dir)
+  );
 }
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function sourceRank(source: SkillSearchRoot["source"]): number {
+  if (source === "personal") return 0;
+  if (source === "seed") return 1;
+  return 2;
 }
