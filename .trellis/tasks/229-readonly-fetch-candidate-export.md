@@ -58,5 +58,5 @@ Status: completed
   bounded sensitive-material scan returned no matches.
 - Operator checkpoint: publish/merge the Evi PR, then continue only through a
   separately owned LuBan acceptance task/PR using the exported candidate.
-- Implementation commit: `53a1fa67ad3ce3bbdf9482009fbe51ea490313dc`.
+- Implementation commit: `53a1fa610ae85f22a2bf93b859b56745c54397d9`.
 - Review handoff: `https://github.com/suthree/Evi/pull/20`.
