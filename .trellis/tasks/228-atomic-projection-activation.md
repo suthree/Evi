@@ -60,4 +60,6 @@ Status: completed
   rolled back to the verified predecessor.
 - Persisted runtime protocol uses neutral `runtime_commit`; it binds the Evi
   build commit without embedding the repository name in runtime identifiers.
-- Commit and PR: pending publication.
+- Evi implementation commit:
+  `5977be75ef2ed3f5421c26892bbe156fb7ff7196`
+- Evi pull request: `https://github.com/suthree/Evi/pull/19`
