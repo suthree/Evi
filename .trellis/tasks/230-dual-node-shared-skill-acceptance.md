@@ -60,6 +60,8 @@ Status: completed; operator checkpoint
   handoff, and conflict tests passed: 32 tests.
 - Full `pnpm run check` passed: TypeScript build, 848 tests, active/seed skill
   validation, and neutral naming validation across 123 implementation files.
+- Evidence commit: `c13668c2039c83c45df98544043176901ad175b2`.
+- Review handoff: `https://github.com/suthree/Evi/pull/21`.
 
 ## External Effects And Rollback
 
