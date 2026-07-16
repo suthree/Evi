@@ -1,6 +1,6 @@
 # Task 227: Asset Selection Lock And Immutable Projection
 
-Status: implemented; publication pending
+Status: completed
 
 ## Owner And Linkage
 
@@ -102,7 +102,11 @@ skill roots.
   `ba83ac6c86c6cd8f42320b011d599577f3926e7bcd10ada2f83f7a5e8fe1659f`
   and staged into a disposable projection with no `current` pointer.
 - LuBan source worktree remained clean and unchanged.
-- Evi commit and pull request: pending publication.
+- Evi implementation commit:
+  `31b95d4e1bf4b539a4160cc615550a8bcd43b136`
+- Evi pull request: `https://github.com/suthree/Evi/pull/18`
+- Operator authorized verified develop merges and continuation through the
+  remaining v0.2 integration slices.
 
 ## Result
 
