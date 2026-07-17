@@ -64,17 +64,18 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "command.run",
     side_effect_level: "local_reversible",
-    rationale: "need to run a bounded local command",
+    rationale: "bounded command",
     arguments: {
       command: "pnpm",
       args: ["run", "check"],
-      cwd: "repo | state",
+      cwd: "repo|state",
+      purpose: "execute|verification",
       timeout_ms: 120000,
       max_output_chars: 12000,
-      side_effect_level: "none | local_reversible | local_write | external_write",
-      env_allowlist: ["NODE_ENV"],
+      side_effect_level: "none|local_reversible|local_write|external_write",
+      env_allowlist: ["X"],
       env: {
-        NODE_ENV: "test"
+        X: "test"
       }
     }
   },

@@ -36,7 +36,7 @@ const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
 const DEFAULT_TOOL_CALLS_PER_CONTINUE = 4;
 const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
-const MAX_OUTCOME_CHANGES = 256;
+const MAX_OUTCOME_CHANGES = MAX_CODEX_CANONICAL_CHANGES * 2;
 const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
 const MAX_OUTCOME_EVIDENCE_EVENTS = (MAX_CHANGE_EVIDENCE_EVENTS * 2) + RECENT_OUTCOME_EVIDENCE_EVENTS;
@@ -273,6 +273,8 @@ const actionObservedEventSchema = z.object({
   effect_id: safeIdSchema,
   action_digest: z.string().regex(/^[a-f0-9]{64}$/),
   effect_intent: effectIntentSchema,
+  evidence_semantics: z.literal("verification_role_v1").optional(),
+  evidence_role: z.literal("local_verification").optional(),
   result: toolResultSchema,
   checkpoint: goalCheckpointSchema,
   usage_delta: goalUsageSchema
@@ -406,6 +408,8 @@ export interface GoalEvidenceView {
   effect_decision?: EffectDecision["outcome"];
   tool?: string;
   ok?: boolean;
+  evidence_semantics?: "verification_role_v1";
+  evidence_role?: "local_verification";
   change?: GoalChangeIdentity;
   changes?: GoalChangeIdentity[];
   details?: string;
@@ -679,7 +683,7 @@ export class GoalRuntime {
         return this.verifyOutcome(events, state, command, commandDigest, cognition.outcome, modelUsage);
       }
 
-      const action = parseEffectAction(cognition.action);
+      const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
       const actionDigest = digestAction(action);
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
@@ -709,7 +713,7 @@ export class GoalRuntime {
       const lineage = goalChangeLineage(events, command.goal_id);
       const reservedChanges = maxPotentialTypedChanges(action, effectDecision.intent);
       if (effectDecision.outcome !== "deny"
-        && effectMayEmitTypedChange(effectDecision.intent)
+        && reservedChanges > 0
         && (lineage.changes.length + reservedChanges > MAX_OUTCOME_CHANGES
           || lineage.eventIds.length + 1 > MAX_CHANGE_EVIDENCE_EVENTS)) {
         const summary = "Goal change lineage is at receipt capacity; the proposed mutating effect was not dispatched.";
@@ -832,6 +836,7 @@ export class GoalRuntime {
       };
     }
     const boundedResult = boundedToolResult(result);
+    const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
     const toolUsage = normalizeUsage({
       tool_calls: 1,
       elapsed_ms: elapsedSince(toolStarted, this.nowMs())
@@ -855,6 +860,8 @@ export class GoalRuntime {
       effect_id: pending.effect_id,
       action_digest: pending.action_digest,
       effect_intent: pending.effect_decision.intent,
+      evidence_semantics: "verification_role_v1",
+      ...(evidenceRole ? { evidence_role: evidenceRole } : {}),
       result: boundedResult,
       checkpoint,
       usage_delta: toolUsage
@@ -1120,9 +1127,7 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         && evidenceChanges(item).some((observed) => observed.kind === change.kind
           && observed.identity === change.identity));
       return changeObservationIndex < 0 || !input.evidence.some((item, index) => index > changeObservationIndex
-        && item.kind === "observation"
-        && item.ok === true
-        && item.operation === "run_local_verification");
+        && isSuccessfulLocalVerification(item));
     });
     const checks: GoalVerificationResult["checks"] = [{
       id: "canonical_evidence",
@@ -1284,6 +1289,17 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
         }
         if (pending.decision === "confirm" && !event.authorization_event_id) {
           throw new Error(`GoalRuntime confirmed effect lacks authorization event: ${event.id}`);
+        }
+        const expectedEvidenceRole = observationEvidenceRole(pending.action, event.result);
+        const versionedCommandPurpose = pending.action.tool === "command.run"
+          && (pending.action.arguments.purpose === "execute"
+            || pending.action.arguments.purpose === "verification");
+        if ((versionedCommandPurpose && event.evidence_semantics !== "verification_role_v1")
+          || (event.evidence_semantics === "verification_role_v1" && event.evidence_role !== expectedEvidenceRole)
+          || (event.evidence_semantics === undefined
+            && event.evidence_role !== undefined
+            && event.evidence_role !== expectedEvidenceRole)) {
+          throw new Error(`GoalRuntime observation evidence role does not match its planned action and harness result: ${event.id}`);
         }
         status = "active";
         pending = null;
@@ -1463,6 +1479,8 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         refs: toolResultRefs(event.result),
         occurred_at: event.occurred_at,
         operation: event.effect_intent.operation,
+        ...(event.evidence_semantics ? { evidence_semantics: event.evidence_semantics } : {}),
+        ...(event.evidence_role ? { evidence_role: event.evidence_role } : {}),
         tool: event.result.tool,
         ok: event.result.ok,
         ...(change ? { change } : {}),
@@ -1520,8 +1538,7 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, c
       || !observedChanges(changeEvent.result).some((change) => change.kind === "git_commit"
         || change.kind === "workspace_path")) return [];
     const verification = eligible.slice(changeIndex + 1).find((event) => event.event_type === "goal_action_observed"
-      && event.result.ok
-      && event.effect_intent.operation === "run_local_verification");
+      && isSuccessfulLocalVerificationEvent(event));
     return verification ? [verification.id] : [];
   });
   const selected = new Set([
@@ -1789,6 +1806,8 @@ function boundedToolResult(value: ToolResult): ToolResult {
     if (change.success) controlFields.change = change.data;
     const changes = z.array(changeIdentitySchema).max(MAX_CODEX_CANONICAL_CHANGES).safeParse(cloned.output.changes);
     if (changes.success) controlFields.changes = changes.data;
+    const verification = localVerificationMarker(cloned.output.verification);
+    if (verification) controlFields.verification = verification;
     for (const key of ["failure_kind", "path", "ref", "artifact_ref", "worktree"] as const) {
       const field = cloned.output[key];
       if (typeof field === "string" && field.length <= 2_000) controlFields[key] = field;
@@ -1900,6 +1919,110 @@ function uniqueChangeIdentities(changes: GoalChangeIdentity[]): GoalChangeIdenti
   });
 }
 
+function observationEvidenceRole(
+  action: EffectAction,
+  result: ToolResult
+): "local_verification" | undefined {
+  if (!result.ok) return undefined;
+  if (action.tool !== "command.run" || action.arguments.purpose !== "verification") return undefined;
+  const verification = localVerificationMarker(result.output.verification);
+  return verification && successfulLocalVerificationMarker(verification)
+    ? "local_verification"
+    : undefined;
+}
+
+function normalizeGoalEffectAction(action: EffectAction): EffectAction {
+  if (action.tool !== "command.run" || action.arguments.purpose !== undefined) return action;
+  return {
+    ...action,
+    arguments: {
+      ...action.arguments,
+      purpose: "execute"
+    }
+  };
+}
+
+interface LocalVerificationSnapshot {
+  head_commit: string;
+  status_sha256: string;
+  workspace_sha256: string;
+}
+
+interface LocalVerificationMarker {
+  purpose: "verification";
+  status: "passed" | "failed";
+  process_succeeded: boolean;
+  workspace_unchanged: boolean | null;
+  before: LocalVerificationSnapshot | null;
+  after: LocalVerificationSnapshot | null;
+}
+
+function localVerificationMarker(value: unknown): LocalVerificationMarker | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const marker = value as Record<string, unknown>;
+  if (marker.purpose !== "verification"
+    || (marker.status !== "passed" && marker.status !== "failed")
+    || typeof marker.process_succeeded !== "boolean"
+    || (typeof marker.workspace_unchanged !== "boolean" && marker.workspace_unchanged !== null)) return null;
+  const before = localVerificationSnapshot(marker.before);
+  const after = localVerificationSnapshot(marker.after);
+  if ((marker.before !== null && !before) || (marker.after !== null && !after)) return null;
+  return {
+    purpose: marker.purpose,
+    status: marker.status,
+    process_succeeded: marker.process_succeeded,
+    workspace_unchanged: marker.workspace_unchanged,
+    before,
+    after
+  };
+}
+
+function localVerificationSnapshot(value: unknown): LocalVerificationSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const snapshot = value as Record<string, unknown>;
+  if (typeof snapshot.head_commit !== "string"
+    || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(snapshot.head_commit)
+    || typeof snapshot.status_sha256 !== "string"
+    || !/^[a-f0-9]{64}$/.test(snapshot.status_sha256)
+    || typeof snapshot.workspace_sha256 !== "string"
+    || !/^[a-f0-9]{64}$/.test(snapshot.workspace_sha256)) return null;
+  return {
+    head_commit: snapshot.head_commit,
+    status_sha256: snapshot.status_sha256,
+    workspace_sha256: snapshot.workspace_sha256
+  };
+}
+
+function successfulLocalVerificationMarker(marker: LocalVerificationMarker): boolean {
+  return marker.status === "passed"
+    && marker.process_succeeded
+    && marker.workspace_unchanged === true
+    && marker.before !== null
+    && marker.after !== null
+    && marker.before.head_commit === marker.after.head_commit
+    && marker.before.status_sha256 === marker.after.status_sha256
+    && marker.before.workspace_sha256 === marker.after.workspace_sha256;
+}
+
+function isSuccessfulLocalVerification(item: GoalEvidenceView): boolean {
+  return item.kind === "observation"
+    && item.ok === true
+    && (item.evidence_role === "local_verification"
+      || (item.evidence_semantics === undefined
+        && item.evidence_role === undefined
+        && item.operation === "run_local_verification"));
+}
+
+function isSuccessfulLocalVerificationEvent(
+  event: Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }>
+): boolean {
+  return event.result.ok
+    && (event.evidence_role === "local_verification"
+      || (event.evidence_semantics === undefined
+        && event.evidence_role === undefined
+        && event.effect_intent.operation === "run_local_verification"));
+}
+
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {
   if (intent.operation === "read_local" || intent.operation === "read_public_network") return "none";
   if (intent.operation === "run_local_verification") return "local_reversible";
@@ -1914,6 +2037,9 @@ function effectMayEmitTypedChange(intent: EffectIntent): boolean {
 }
 
 function maxPotentialTypedChanges(action: EffectAction, intent: EffectIntent): number {
+  if (action.tool === "command.run" && action.arguments.purpose === "verification") {
+    return MAX_CODEX_CANONICAL_CHANGES;
+  }
   if (!effectMayEmitTypedChange(intent)) return 0;
   return action.tool === "codex.run" ? MAX_CODEX_CANONICAL_CHANGES : 1;
 }

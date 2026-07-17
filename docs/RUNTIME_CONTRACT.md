@@ -397,14 +397,34 @@ An empty set therefore means that no typed canonical change observation exists.
 This complete change lineage is independent from the recent
 model-evidence window and is also retained by an abandonment receipt, so partial
 effects remain visible after a direction is retired. Receipt capacity is
-256 canonical identities. One atomic `codex.run` reserves 201 slots before
-dispatch: at most 200 status paths plus one post-run HEAD identity. A
+402 canonical identities: one 201-identity execution envelope plus one
+201-identity verification recovery envelope. One atomic `codex.run` reserves
+201 slots before dispatch: at most 200 status paths plus one post-run HEAD identity. A
+verification-purpose `command.run` reserves the same recovery envelope because
+a command that violates its unchanged-workspace contract may expose those
+typed paths and commit while failing verification. A
 potentially mutating effect that would cross the remaining capacity is blocked before
 dispatch, leaving the existing Goal completeable or abandonable instead of
 dropping early observations. Every Git commit and delegated `workspace_path`
 additionally requires a later successful local-verification observation. That
 satisfying observation is pinned with the change lineage and cannot age out of
-the recent evidence window. Diagnostic tool output may be truncated, but typed
+the recent evidence window. Effect classification does not define this
+correctness role: EffectPolicy still decides whether the actual action is
+allowed, confirmed, or denied, while GoalRuntime consumes a harness-authored
+`local_verification` observation role. For `command.run`, verification purpose
+alone is not proof. The process must succeed and fixed pre/post Git HEAD plus
+bounded semantic-index and Git-visible content fingerprints must remain
+identical. The content snapshot includes tracked and untracked files, so
+rewriting an already-dirty path is detected even when porcelain status is
+unchanged. Snapshot inspection is bounded to 10,000 files, 1,000 changed paths,
+and 64 MiB of content; unavailable, unsupported, or over-limit snapshots fail
+closed. Dynamic code keeps
+its exact-effect confirmation even when the resulting unchanged observation is
+eligible as verification evidence. New observations carry
+`verification_role_v1` semantics whether or not a role is granted, so a new
+execute-purpose known verification command cannot inherit correctness from its
+safety classification. Historical known `run_local_verification` observations
+without that marker remain compatible. Diagnostic tool output may be truncated, but typed
 control fields such as `change`, plural `changes`,
 failure kind, and bounded refs survive truncation. Free-text substring matches and a model proposal
 without decisive observation or fail-closed policy evidence cannot create an
@@ -2661,6 +2681,14 @@ Required policy:
 - max output chars
 - environment allowlist
 - side-effect label declared before execution
+- bounded purpose: ordinary execution or verification. Purpose never grants
+  execution authority and cannot override EffectPolicy
+- verification purpose requires the repo cwd, process success, and unchanged
+  harness-owned pre/post Git HEAD plus bounded semantic-index and
+  tracked/untracked content fingerprints. Missing, unsupported, over-limit, or
+  changed snapshots fail the verification and expose newly observed typed
+  paths/commit where available. The strict snapshots survive diagnostic output
+  truncation and are rechecked during event replay
 - command and exit code recorded as evidence
 
 `command.run` is how the agent should run `pnpm run check`, `rg`, `git diff

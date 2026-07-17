@@ -716,6 +716,7 @@ test("command.run records output truncation metadata", async () => {
       timeout_ms: 1000,
       max_output_chars: 1000,
       cwd: "state",
+      purpose: "execute",
       side_effect_level: "none"
     });
     assert.deepEqual(audit.effective, {
@@ -723,6 +724,7 @@ test("command.run records output truncation metadata", async () => {
       timeout_ms: 1000,
       max_output_chars: 1000,
       cwd: "state",
+      purpose: "execute",
       side_effect_level: "none"
     });
     assert.equal(audit.cwd_boundary, "state_root");
@@ -771,6 +773,116 @@ test("command.run rejects invalid command requests", async () => {
     assert.equal(missingSideEffect.ok, false);
     assert.match(missingSideEffect.summary, /valid side_effect_level/);
     assertFailureKind(missingSideEffect, "invalid_request");
+
+    const invalidPurpose = await executeTool(useTool("command.run", {
+      command: "node",
+      purpose: "prove",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(invalidPurpose.ok, false);
+    assert.match(invalidPurpose.summary, /purpose must be execute or verification/);
+    assertFailureKind(invalidPurpose, "invalid_request");
+
+    const stateVerification = await executeTool(useTool("command.run", {
+      command: "node",
+      cwd: "state",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(stateVerification.ok, false);
+    assert.match(stateVerification.summary, /requires cwd=repo/);
+    assertFailureKind(stateVerification, "invalid_request");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("command.run verification purpose requires process success and unchanged harness Git snapshots", async () => {
+  const fixture = await createFixture();
+  try {
+    await initGitFixture(fixture.repoRoot);
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "base\n", "utf8");
+    await runGit(fixture.repoRoot, ["add", "tracked.txt"]);
+    await runGit(fixture.repoRoot, ["commit", "-m", "base"]);
+    await writeFile(join(fixture.repoRoot, "probe.txt"), "verified\n", "utf8");
+
+    const verified = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "const fs=require('node:fs'); if(fs.readFileSync('probe.txt','utf8')!=='verified\\n') process.exit(7)"],
+      cwd: "repo",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(verified.ok, true);
+    const passed = verified.output.verification as Record<string, unknown>;
+    assert.equal(passed.status, "passed");
+    assert.equal(passed.process_succeeded, true);
+    assert.equal(passed.workspace_unchanged, true);
+    assert.equal((passed.before as Record<string, unknown>).head_commit, (passed.after as Record<string, unknown>).head_commit);
+    assert.equal((passed.before as Record<string, unknown>).status_sha256, (passed.after as Record<string, unknown>).status_sha256);
+    assert.equal((passed.before as Record<string, unknown>).workspace_sha256, (passed.after as Record<string, unknown>).workspace_sha256);
+
+    const mutated = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "require('node:fs').writeFileSync('unexpected.txt','mutation\\n')"],
+      cwd: "repo",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(mutated.ok, false);
+    assert.match(mutated.summary, /changed the Git-visible workspace/);
+    const failed = mutated.output.verification as Record<string, unknown>;
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.process_succeeded, true);
+    assert.equal(failed.workspace_unchanged, false);
+    assert.deepEqual(mutated.output.changes, [{ kind: "workspace_path", identity: "unexpected.txt" }]);
+    assertFailureKind(mutated, "verification_failed");
+
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "dirty-before\n", "utf8");
+    const rewroteDirtyTracked = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "require('node:fs').writeFileSync('tracked.txt','dirty-after\\n')"],
+      cwd: "repo",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(rewroteDirtyTracked.ok, false);
+    assert.equal((rewroteDirtyTracked.output.verification as Record<string, unknown>).workspace_unchanged, false);
+    assert.deepEqual(rewroteDirtyTracked.output.changes, [{ kind: "workspace_path", identity: "tracked.txt" }]);
+    assertFailureKind(rewroteDirtyTracked, "verification_failed");
+
+    await writeFile(join(fixture.repoRoot, "existing-untracked.txt"), "before\n", "utf8");
+    const rewroteUntracked = await executeTool(useTool("command.run", {
+      command: "node",
+      args: ["-e", "require('node:fs').writeFileSync('existing-untracked.txt','after\\n')"],
+      cwd: "repo",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(rewroteUntracked.ok, false);
+    assert.equal((rewroteUntracked.output.verification as Record<string, unknown>).workspace_unchanged, false);
+    assert.deepEqual(rewroteUntracked.output.changes, [{ kind: "workspace_path", identity: "existing-untracked.txt" }]);
+    assertFailureKind(rewroteUntracked, "verification_failed");
+
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "base\n", "utf8");
+    const hidTrackedMutationFromStatus = await executeTool(useTool("command.run", {
+      command: "sh",
+      args: ["-c", "git update-index --assume-unchanged tracked.txt && printf 'hidden-after\\n' > tracked.txt"],
+      cwd: "repo",
+      purpose: "verification",
+      side_effect_level: "none"
+    }), { store: fixture.store });
+
+    assert.equal(hidTrackedMutationFromStatus.ok, false);
+    assert.equal((hidTrackedMutationFromStatus.output.verification as Record<string, unknown>).workspace_unchanged, false);
+    assert.deepEqual(hidTrackedMutationFromStatus.output.changes, [{ kind: "workspace_path", identity: "tracked.txt" }]);
+    assertFailureKind(hidTrackedMutationFromStatus, "verification_failed");
   } finally {
     await fixture.cleanup();
   }
@@ -1516,6 +1628,7 @@ test("tool contract renderer covers the core tool surface", () => {
     "env",
     "env_allowlist",
     "max_output_chars",
+    "purpose",
     "side_effect_level",
     "timeout_ms"
   ]);

@@ -43,9 +43,11 @@ but cannot be silently rebound for mutation.
 Nested `codex.run` is narrower than shared-common-root isolation: its resolved
 new target or persisted resume authority must equal the Goal worktree, common
 directory, branch, and start-HEAD base before a pending effect exists, and the
-tool rechecks immediately before spawn. Canonical receipt capacity is 256
-identities; one atomic delegated envelope reserves 201 of them for 200 status
-paths plus one post-run HEAD identity.
+tool rechecks immediately before spawn. Canonical receipt capacity is 402
+identities: one 201-identity delegated envelope plus one 201-identity
+verification recovery envelope. This lets the largest accepted delegated
+change set still enter fail-closed post-change verification without dropping
+recovery attribution.
 
 Its external interface is intentionally small:
 

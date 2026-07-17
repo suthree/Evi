@@ -64,6 +64,15 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
       side_effect_level: "external_write"
     }
   });
+  const dynamicVerification = policy.decide({
+    tool: "command.run",
+    arguments: {
+      command: "sh",
+      args: ["-c", "test -f README.md"],
+      purpose: "verification",
+      side_effect_level: "none"
+    }
+  });
   assert.deepEqual([read.outcome, external.outcome, destructive.outcome, check.outcome], [
     "allow",
     "confirm",
@@ -72,6 +81,8 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
   ]);
   assert.equal(read.intent.operation, "read_local");
   assert.equal(external.intent.operation, "write_external");
+  assert.equal(dynamicVerification.outcome, "confirm");
+  assert.equal(dynamicVerification.intent.operation, "execute_dynamic_code");
   assert.equal(policy.decide({
     tool: "command.run",
     arguments: { command: "sed", args: ["-i", "", "s/a/b/", "goals/events.jsonl"], cwd: "state" }

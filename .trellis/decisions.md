@@ -163,6 +163,42 @@ isolation, effect confirmation, prompt and authority digests, JSONL evidence,
 Git change attribution, later local verification, or main-harness completion
 ownership. No capability registry, cache parser, or model fallback is added.
 
+## 2026-07-18 Separate Effect Safety From Verification Evidence
+
+Issue #80 repairs a measured owner coupling from the original Issue #76 live
+Goal. Evi obtained a successful exact post-change assertion after correcting a
+Git untracked-directory display assumption, but outcome acceptance still
+failed because GoalRuntime recognized verification only when EffectPolicy had
+classified the command as `run_local_verification`. The bounded shell was
+correctly classified as `execute_dynamic_code` for safety, so a safety label
+incorrectly controlled correctness evidence.
+
+EffectPolicy remains the only owner of allow, confirm, or deny based on the
+actual command, target, reversibility, and exposure. A command purpose or
+model-declared side-effect label never widens that authority; dynamic code
+still requires exact-effect confirmation. Correctness evidence is now a
+separate harness-owned observation role. `command.run` verification purpose
+creates `local_verification` only when the process succeeds and fixed pre/post
+Git HEAD plus bounded semantic-index and Git-visible content fingerprints are
+identical. The content snapshot includes tracked and untracked files, so a
+rewrite of an already-dirty path cannot pass merely because porcelain status is
+unchanged. Missing, over-limit, unsupported, or changed snapshots fail closed,
+and newly observed Git paths or commits remain typed recovery evidence where
+available. Dispatch reserves the existing
+200-path-plus-one-commit recovery envelope before this potentially dynamic
+command. Purpose or command output alone is not proof.
+
+GoalRuntime uses that role for post-change acceptance and evidence pinning.
+New observations carry `verification_role_v1` semantics even when no role is
+granted; EffectPolicy classification can no longer write correctness evidence.
+Historical observations without that marker and already classified as
+`run_local_verification` remain compatible without rewriting event history.
+Bounded receipt capacity becomes 402 identities, exactly one maximum
+execution envelope plus one maximum recovery envelope; retaining 256 would
+deadlock a valid 200-path Codex result before its required verification. This
+decision adds no verifier service, evidence graph, shell parser, command
+authority, or approval bypass.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

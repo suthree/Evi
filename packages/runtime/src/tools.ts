@@ -1,7 +1,8 @@
 import { execFile, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { createReadStream } from "node:fs";
-import { readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readlink, readdir, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { basename, relative, resolve } from "node:path";
@@ -66,7 +67,10 @@ type ToolFailureKind =
   | "search_error"
   | "spawn_error"
   | "timeout"
-  | "unsupported_tool";
+  | "unsupported_tool"
+  | "verification_failed";
+
+type CommandPurpose = "execute" | "verification";
 
 export interface ToolExecutionContext {
   store: AgentStore;
@@ -82,6 +86,9 @@ const FILE_READ_MAX_START_LINE = 1_000_000;
 const FILE_READ_MAX_SCAN_BYTES = 4 * 1024 * 1024;
 export const MAX_CODEX_WORKSPACE_PATH_CHANGES = 200;
 export const MAX_CODEX_CANONICAL_CHANGES = MAX_CODEX_WORKSPACE_PATH_CHANGES + 1;
+const MAX_VERIFICATION_CHANGED_PATHS = 1_000;
+const MAX_VERIFICATION_SNAPSHOT_FILES = 10_000;
+const MAX_VERIFICATION_SNAPSHOT_BYTES = 64 * 1024 * 1024;
 
 export async function executeTool(action: ActionProposal, context: ToolExecutionContext): Promise<ToolResult> {
   const payload = action.payload as Record<string, unknown>;
@@ -823,6 +830,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   const timeoutMs = Math.min(Math.max(requestedTimeoutMs, 1000), 300000);
   const maxOutputChars = Math.min(Math.max(requestedMaxOutputChars, 1000), 50000);
   const sideEffectLevel = parseSideEffectLevel(args.side_effect_level);
+  const purpose = parseCommandPurpose(args.purpose);
   const envResult = buildCommandEnv(args);
 
   if (!command.trim()) {
@@ -836,6 +844,12 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   }
   if (!sideEffectLevel) {
     return toolResult("command.run", false, "command.run requires a valid side_effect_level.", { side_effect_level: args.side_effect_level }, "none", "invalid_request");
+  }
+  if (!purpose) {
+    return toolResult("command.run", false, "command.run purpose must be execute or verification.", { purpose: args.purpose }, sideEffectLevel, "invalid_request");
+  }
+  if (purpose === "verification" && cwdScope !== "repo") {
+    return toolResult("command.run", false, "command.run verification purpose requires cwd=repo for harness-owned Git snapshots.", { purpose, cwd: cwdScope }, sideEffectLevel, "invalid_request");
   }
   if (!envResult.ok) {
     return toolResult("command.run", false, envResult.summary, envResult.output, sideEffectLevel, "invalid_request");
@@ -851,6 +865,17 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   }
 
   const commandCwd = cwdScope === "repo" ? context.store.repoRoot : context.store.stateRoot;
+  let verificationBefore: GitWorkspaceChanges | null = null;
+  if (purpose === "verification") {
+    try {
+      verificationBefore = await inspectGitWorkspaceChanges(commandCwd);
+    } catch (error) {
+      return toolResult("command.run", false, "command.run verification could not capture the pre-run Git workspace snapshot.", {
+        purpose,
+        error: errorMessage(error)
+      }, sideEffectLevel, "verification_failed");
+    }
+  }
   const commitBefore = gitCommitRequested
     ? await gitText(commandCwd, ["rev-parse", "HEAD"]).catch(() => null)
     : null;
@@ -862,21 +887,39 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   });
   const envAudit = envResult.audit;
   const commandSucceeded = result.exitCode === 0 && !result.timedOut;
+  const verificationAfter = purpose === "verification"
+    ? await inspectGitWorkspaceChanges(commandCwd).catch(() => null)
+    : null;
+  const verificationWorkspaceUnchanged = purpose === "verification"
+    ? verificationAfter !== null
+      && verificationBefore!.headCommit === verificationAfter.headCommit
+      && verificationBefore!.workspaceSha256 === verificationAfter.workspaceSha256
+    : null;
+  const verificationPassed = purpose !== "verification"
+    || (commandSucceeded && verificationWorkspaceUnchanged === true);
   const commitAfter = commandSucceeded && gitCommitRequested
     ? await gitText(commandCwd, ["rev-parse", "HEAD"]).catch(() => null)
     : null;
   const commitCreated = !gitCommitRequested || (commitAfter !== null && commitAfter !== commitBefore);
-  const ok = commandSucceeded && commitCreated;
-  const observedChange = ok && gitCommitRequested
+  const ok = commandSucceeded && commitCreated && verificationPassed;
+  const observedChange = commandSucceeded && commitCreated && gitCommitRequested
     ? { kind: "git_commit" as const, identity: commitAfter! }
     : null;
-  const summary = commandSucceeded && gitCommitRequested && !commitCreated
-    ? "git commit exited successfully but did not create a new commit."
-    : result.summary;
+  const verificationChanges = purpose === "verification" && verificationAfter
+    ? commandVerificationChanges(verificationBefore!, verificationAfter)
+    : [];
+  const summary = purpose === "verification" && verificationAfter === null
+    ? "command.run verification could not capture the post-run Git workspace snapshot."
+    : purpose === "verification" && commandSucceeded && verificationWorkspaceUnchanged === false
+      ? "command.run verification changed the Git-visible workspace and cannot count as verification evidence."
+      : commandSucceeded && gitCommitRequested && !commitCreated
+        ? "git commit exited successfully but did not create a new commit."
+        : result.summary;
   return toolResult("command.run", ok, summary, {
     command,
     args: commandArgs,
     cwd: cwdScope,
+    purpose,
     timeout_ms: timeoutMs,
     max_output_chars: maxOutputChars,
     exitCode: result.exitCode,
@@ -894,6 +937,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
         timeout_ms: requestedTimeoutMs,
         max_output_chars: requestedMaxOutputChars,
         cwd: cwdScope,
+        purpose: args.purpose ?? "execute",
         side_effect_level: args.side_effect_level
       },
       effective: {
@@ -901,6 +945,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
         timeout_ms: timeoutMs,
         max_output_chars: maxOutputChars,
         cwd: cwdScope,
+        purpose,
         side_effect_level: sideEffectLevel
       },
       truncation: {
@@ -914,12 +959,36 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
       cwd_boundary: cwdScope === "repo" ? "repo_root" : "state_root",
       env_boundary: envAudit
     },
+    ...(purpose === "verification" ? {
+      verification: {
+        purpose,
+        status: verificationPassed ? "passed" : "failed",
+        process_succeeded: commandSucceeded,
+        workspace_unchanged: verificationWorkspaceUnchanged,
+        before: verificationBefore ? {
+          head_commit: verificationBefore.headCommit,
+          status_sha256: verificationBefore.statusSha256,
+          workspace_sha256: verificationBefore.workspaceSha256
+        } : null,
+        after: verificationAfter ? {
+          head_commit: verificationAfter.headCommit,
+          status_sha256: verificationAfter.statusSha256,
+          workspace_sha256: verificationAfter.workspaceSha256
+        } : null,
+        boundary: "Harness-owned process result plus fixed pre/post Git HEAD and bounded Git-visible content fingerprints; purpose alone is not verification evidence."
+      },
+      ...(verificationChanges.length > 0 ? { changes: verificationChanges } : {})
+    } : {}),
     ...(observedChange ? { change: observedChange } : {}),
     stdout: result.stdout,
     stderr: result.stderr
-  }, sideEffectLevel, ok ? undefined : commandSucceeded && gitCommitRequested
-    ? "change_not_observed"
-    : processFailureKind(result));
+  }, sideEffectLevel, ok ? undefined : !commandSucceeded
+    ? processFailureKind(result)
+    : !verificationPassed
+      ? "verification_failed"
+      : commandSucceeded && gitCommitRequested
+        ? "change_not_observed"
+        : processFailureKind(result));
 }
 
 interface CodexGitAuthority {
@@ -988,10 +1057,13 @@ interface CodexOutputCapture {
   suffix: string;
 }
 
-interface CodexWorkspaceChanges {
+interface GitWorkspaceChanges {
   available: boolean;
   changedPaths: string[];
   headCommit: string | null;
+  statusSha256: string;
+  workspaceSha256: string;
+  pathSha256: Record<string, string>;
 }
 
 export async function assertGoalBoundToolAuthority(
@@ -1101,7 +1173,7 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     ));
   }
 
-  let workspaceBefore: CodexWorkspaceChanges;
+  let workspaceBefore: GitWorkspaceChanges;
   try {
     workspaceBefore = await inspectCodexWorkspaceChanges(authority.repoRoot);
   } catch (error) {
@@ -1163,7 +1235,10 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
   const workspaceAfter = await inspectCodexWorkspaceChanges(authority.repoRoot).catch(() => ({
     available: false,
     changedPaths: [],
-    headCommit: null
+    headCommit: null,
+    statusSha256: "",
+    workspaceSha256: "",
+    pathSha256: {}
   }));
   const threadId = request.mode === "resume" ? request.thread_id : processResult.threadId;
   const finalAuthority = threadId
@@ -1339,8 +1414,8 @@ function codexExecutionMetadata(
   authorityDigest: string,
   threadId: string | null,
   result: CodexProcessResult,
-  workspaceBefore: CodexWorkspaceChanges,
-  workspaceAfter: CodexWorkspaceChanges,
+  workspaceBefore: GitWorkspaceChanges,
+  workspaceAfter: GitWorkspaceChanges,
   outputCaptureLimitSource: string,
   authorityVerifiability: CodexAuthorityVerifiability
 ): Record<string, unknown> {
@@ -1445,7 +1520,56 @@ async function inspectCodexGitAuthority(repoRoot: string, requestedWorktree: str
   };
 }
 
-async function inspectCodexWorkspaceChanges(repoRoot: string): Promise<CodexWorkspaceChanges> {
+async function inspectGitWorkspaceChanges(repoRoot: string): Promise<GitWorkspaceChanges> {
+  const { output, allPaths } = await inspectGitStatusPaths(repoRoot);
+  if (allPaths.length > MAX_VERIFICATION_CHANGED_PATHS) {
+    throw new Error(`Git workspace snapshot exceeds ${MAX_VERIFICATION_CHANGED_PATHS} changed paths.`);
+  }
+  const visibleOutput = await gitOutput(
+    repoRoot,
+    ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+    4 * 1024 * 1024
+  );
+  const visiblePaths = [...new Set(visibleOutput.split("\0").filter(Boolean))].sort();
+  if (visiblePaths.length > MAX_VERIFICATION_SNAPSHOT_FILES) {
+    throw new Error(`Git workspace snapshot exceeds ${MAX_VERIFICATION_SNAPSHOT_FILES} Git-visible files.`);
+  }
+  const indexSha256 = await gitStreamSha256(repoRoot, ["ls-files", "--stage", "-v", "-z"], MAX_VERIFICATION_SNAPSHOT_BYTES);
+  const workspace = createHash("sha256");
+  const statusSha256 = sha256(output);
+  workspace.update(`status\0${statusSha256}\0index\0${indexSha256}\0`);
+  const pathSha256: Record<string, string> = Object.create(null);
+  let observedBytes = 0;
+  for (const path of visiblePaths) {
+    const fingerprint = await gitVisiblePathSha256(repoRoot, path, MAX_VERIFICATION_SNAPSHOT_BYTES - observedBytes);
+    observedBytes += fingerprint.bytes;
+    pathSha256[path] = fingerprint.sha256;
+    workspace.update(`path\0${JSON.stringify(path)}\0${fingerprint.sha256}\0`);
+  }
+  return {
+    available: true,
+    changedPaths: allPaths.slice(0, MAX_CODEX_WORKSPACE_PATH_CHANGES),
+    headCommit: await gitText(repoRoot, ["rev-parse", "HEAD"]),
+    statusSha256,
+    workspaceSha256: workspace.digest("hex"),
+    pathSha256
+  };
+}
+
+async function inspectCodexWorkspaceChanges(repoRoot: string): Promise<GitWorkspaceChanges> {
+  const { output, allPaths } = await inspectGitStatusPaths(repoRoot);
+  const statusSha256 = sha256(output);
+  return {
+    available: true,
+    changedPaths: allPaths.slice(0, MAX_CODEX_WORKSPACE_PATH_CHANGES),
+    headCommit: await gitText(repoRoot, ["rev-parse", "HEAD"]),
+    statusSha256,
+    workspaceSha256: statusSha256,
+    pathSha256: {}
+  };
+}
+
+async function inspectGitStatusPaths(repoRoot: string): Promise<{ output: string; allPaths: string[] }> {
   const output = await gitOutput(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
   const entries = output.split("\0");
   const paths = new Set<string>();
@@ -1460,11 +1584,106 @@ async function inspectCodexWorkspaceChanges(repoRoot: string): Promise<CodexWork
       index += 1;
     }
   }
-  return {
-    available: true,
-    changedPaths: [...paths].sort().slice(0, MAX_CODEX_WORKSPACE_PATH_CHANGES),
-    headCommit: await gitText(repoRoot, ["rev-parse", "HEAD"])
-  };
+  const allPaths = [...paths].sort();
+  return { output, allPaths };
+}
+
+async function gitVisiblePathSha256(
+  repoRoot: string,
+  path: string,
+  remainingBytes: number
+): Promise<{ sha256: string; bytes: number }> {
+  const absolutePath = resolve(repoRoot, path);
+  const withinRepo = relative(repoRoot, absolutePath);
+  if (withinRepo.startsWith("..") || withinRepo.startsWith("/")) {
+    throw new Error("Git workspace snapshot path escaped the repository root.");
+  }
+  let metadata;
+  try {
+    metadata = await lstat(absolutePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { sha256: sha256("missing"), bytes: 0 };
+    }
+    throw error;
+  }
+  if (metadata.isSymbolicLink()) {
+    const target = await readlink(absolutePath);
+    return { sha256: sha256(`symlink\0${target}`), bytes: Buffer.byteLength(target) };
+  }
+  if (!metadata.isFile()) {
+    throw new Error(`Git workspace snapshot refuses non-file changed path: ${path}`);
+  }
+  const hash = createHash("sha256");
+  hash.update(`file\0${metadata.mode & 0o777}\0`);
+  let bytes = 0;
+  for await (const chunk of createReadStream(absolutePath)) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buffer.length;
+    if (bytes > remainingBytes) {
+      throw new Error(`Git workspace snapshot exceeds ${MAX_VERIFICATION_SNAPSHOT_BYTES} content bytes.`);
+    }
+    hash.update(buffer);
+  }
+  return { sha256: hash.digest("hex"), bytes };
+}
+
+function gitStreamSha256(cwd: string, args: string[], maxBytes: number): Promise<string> {
+  return new Promise((resolveDigest, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...minimalEnv(), LANG: "C", LC_ALL: "C" }
+    });
+    const hash = createHash("sha256");
+    let observedBytes = 0;
+    let stderr = "";
+    let limitError: Error | null = null;
+    child.stdout.on("data", (chunk: Buffer) => {
+      observedBytes += chunk.length;
+      if (observedBytes > maxBytes) {
+        limitError = new Error(`Fixed Git snapshot output exceeds ${maxBytes} bytes.`);
+        child.kill("SIGKILL");
+        return;
+      }
+      hash.update(chunk);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr = (stderr + chunk.toString("utf8")).slice(0, 300);
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode) => {
+      if (limitError) {
+        reject(limitError);
+        return;
+      }
+      if (exitCode !== 0) {
+        reject(new Error(`Fixed Git snapshot failed: ${stderr.trim() || `exit ${exitCode}`}`));
+        return;
+      }
+      resolveDigest(hash.digest("hex"));
+    });
+  });
+}
+
+function commandVerificationChanges(
+  before: GitWorkspaceChanges,
+  after: GitWorkspaceChanges
+): Array<{ kind: "git_commit" | "workspace_path"; identity: string }> {
+  const contentChanged = after.workspaceSha256 !== before.workspaceSha256;
+  const visiblePaths = [...new Set([...Object.keys(before.pathSha256), ...Object.keys(after.pathSha256)])];
+  const changedPaths = visiblePaths.filter((path) => before.pathSha256[path] !== after.pathSha256[path]);
+  const attributablePaths = changedPaths.length > 0 || !contentChanged
+    ? changedPaths
+    : [...new Set([...before.changedPaths, ...after.changedPaths])];
+  return [
+    ...(after.headCommit && after.headCommit !== before.headCommit
+      ? [{ kind: "git_commit" as const, identity: after.headCommit }]
+      : []),
+    ...attributablePaths
+      .slice(0, MAX_CODEX_WORKSPACE_PATH_CHANGES)
+      .map((path) => ({ kind: "workspace_path" as const, identity: path }))
+  ];
 }
 
 async function assertCodexBase(repoRoot: string, baseCommit: string, headCommit: string): Promise<void> {
@@ -1888,9 +2107,9 @@ function gitText(cwd: string, args: string[]): Promise<string> {
   return gitOutput(cwd, args).then((output) => output.trim());
 }
 
-function gitOutput(cwd: string, args: string[]): Promise<string> {
+function gitOutput(cwd: string, args: string[], maxBuffer = 1_000_000): Promise<string> {
   return new Promise((resolveText, reject) => {
-    execFile("git", args, { cwd, env: { ...minimalEnv(), LANG: "C", LC_ALL: "C" }, encoding: "utf8", maxBuffer: 1_000_000 }, (error, stdout, stderr) => {
+    execFile("git", args, { cwd, env: { ...minimalEnv(), LANG: "C", LC_ALL: "C" }, encoding: "utf8", maxBuffer }, (error, stdout, stderr) => {
       if (error) {
         reject(new Error(`Fixed Git authority check failed: ${String(stderr || error.message).trim().slice(0, 300)}`));
         return;
@@ -2381,6 +2600,12 @@ function parseSideEffectLevel(value: unknown): ToolResult["side_effect_level"] |
   if (value === "none" || value === "local_reversible" || value === "local_write" || value === "external_write") {
     return value;
   }
+  return null;
+}
+
+function parseCommandPurpose(value: unknown): CommandPurpose | null {
+  if (value === undefined || value === "execute") return "execute";
+  if (value === "verification") return value;
   return null;
 }
 
