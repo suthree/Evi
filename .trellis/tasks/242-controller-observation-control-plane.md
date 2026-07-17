@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: accepted; governance prepared; implementation pending
+Status: implementation verified locally; commit, PR integration, and live acceptance pending
 
 ## Identity And Ownership
 
@@ -123,3 +123,20 @@ release, publication, or resumption of the stopped legacy goal.
 - Completion requires Issue #57, Task 242, branch/worktree, commit/PR/checks,
   controller handoff, deployment, live health/probation, and rollback/recovery
   evidence. Planning artifacts alone do not prove implementation.
+
+## 2026-07-17 Implementation Checkpoint
+
+- Deployment request now uses one shared stable-controller identity reader and
+  returns typed `controller_handoff_required` guidance before candidate build,
+  pending-request creation, or slot mutation.
+- Recovery writes an immutable failure/recovery observation plus a latest read
+  model, restores the stable ledger, and records `goal_action: none` without
+  creating a queue item.
+- The deployment-specific runtime-task completion gate and continuation prompt
+  were removed; historical deployment/task fields remain readable.
+- Interface-focused build and 108 selected tests passed after the final identity
+  refactor. Repository-wide `pnpm run check` passed with 889 tests, skill
+  validation, and neutral naming validation. `git diff --check` also passed.
+- Commit, push, PR review/integration, installed controller handoff, candidate
+  deployment, live health/probation, and rollback/recovery drill remain pending
+  and are not claimed by this checkpoint.

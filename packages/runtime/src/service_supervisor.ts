@@ -1,7 +1,7 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -83,6 +83,8 @@ export interface DeploymentRecord {
   previous_source_commit?: string;
   log_offsets?: { stdout: number; stderr: number };
   evidence_refs?: string[];
+  failure_observation_ref?: string;
+  /** Historical compatibility only. New deployment recovery never creates repair tasks. */
   repair_task_id?: string;
   adopted_at?: string;
   adoption_reason?: string;
@@ -132,6 +134,40 @@ export interface DeploymentFailureSignal {
   reason: string;
   evidence_refs: string[];
   reported_at: string;
+}
+
+export interface DeploymentFailureObservation {
+  schema_version: 1;
+  type: "local_runtime_deployment_observation";
+  id: string;
+  kind: "deployment_failed_recovered";
+  deployment_id: string;
+  candidate: {
+    release_id: string;
+    source_commit: string;
+    source_branch?: string;
+  };
+  stable_runtime: {
+    deployment_id: string;
+    source_commit: string;
+  };
+  controller: {
+    installed_source_commit?: string;
+    stable_runtime_source_commit: string;
+    candidate_runtime_source_commit: string;
+    activation_status?: ControllerAssessment["status"];
+  };
+  failure: {
+    reason: string;
+    evidence_refs: string[];
+  };
+  recovery: {
+    status: "known_good_restored";
+    recovered_at: string;
+  };
+  goal_action: "none";
+  observed_at: string;
+  boundary: string;
 }
 
 export interface ReadinessResult {
@@ -652,49 +688,59 @@ async function completeRecovery(
   now: Date
 ): Promise<DeploymentRecord> {
   const restored = await restoredStableDeployment(manifest, current, now);
-  const taskId = `runtime_task_deployment_repair_${current.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-  const repairTask = [
-    "Repair a failed local runtime deployment after automatic rollback.",
-    `Deployment: ${current.id}`,
-    `Failed commit: ${current.source_commit}`,
-    `Last known-good commit: ${current.previous_source_commit ?? "unknown"}`,
-    `Failure: ${current.failure_reason ?? "unknown"}`,
-    `Evidence refs: ${(current.evidence_refs ?? []).join(", ") || "none"}`,
-    "Inspect only the cited evidence first, reproduce the failure, fix forward on the current repository source, run targeted checks and pnpm run check, create a new clean commit, then request a new deployment.",
-    `Redeploy command: pnpm run runtime -- deployment request --repair-of ${current.id} --state-root ${manifest.state_root}`,
-    "Do not redeploy the same failed commit. Do not reset the repository to the old runtime bundle.",
-    "Do not respond, propose an SOP, or claim completion before the new deployment request succeeds; the queue validates this postcondition and will continue an incomplete attempt at most three times."
-  ].join("\n");
-  const queuedAt = new Date(now.getTime() - 61_000).toISOString();
-  await mkdir(resolve(manifest.state_root, "runs"), { recursive: true });
-  await appendFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), `${JSON.stringify({
-    type: "runtime_task_queue",
-    id: taskId,
-    runtime_session_id: null,
-    source_kind: "runtime",
-    source_route_key: null,
-    source_key: `deployment:${current.id}`,
-    task: `Repair failed deployment ${current.id}`,
-    runner_task: repairTask,
-    status: "queued",
-    attempt: 0,
-    error: null,
-    created_at: queuedAt,
-    updated_at: queuedAt,
-    boundary: "local runtime task queue ledger; single-machine JSONL state, not a remote broker"
-  })}\n`, "utf8");
+  const observation: DeploymentFailureObservation = {
+    schema_version: 1,
+    type: "local_runtime_deployment_observation",
+    id: `deployment_observation_${current.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`,
+    kind: "deployment_failed_recovered",
+    deployment_id: current.id,
+    candidate: {
+      release_id: current.release_id,
+      source_commit: current.source_commit,
+      ...(current.source_branch ? { source_branch: current.source_branch } : {})
+    },
+    stable_runtime: {
+      deployment_id: restored.id,
+      source_commit: restored.source_commit
+    },
+    controller: {
+      ...(current.controller_assessment?.installed_source_commit
+        ? { installed_source_commit: current.controller_assessment.installed_source_commit }
+        : {}),
+      stable_runtime_source_commit: restored.source_commit,
+      candidate_runtime_source_commit: current.source_commit,
+      ...(current.controller_assessment?.status
+        ? { activation_status: current.controller_assessment.status }
+        : {})
+    },
+    failure: {
+      reason: current.failure_reason ?? "unknown deployment failure",
+      evidence_refs: current.evidence_refs ?? []
+    },
+    recovery: {
+      status: "known_good_restored",
+      recovered_at: now.toISOString()
+    },
+    goal_action: "none",
+    observed_at: now.toISOString(),
+    boundary: "local deployment failure observation only; does not create, resume, enqueue, or select a goal"
+  };
+  const paths = deploymentPaths(manifest);
+  const observationRef = `deployments/observations/${observation.id}.json`;
+  await writeJsonAtomic(resolve(manifest.state_root, observationRef), observation);
   const recoveredCandidate: DeploymentRecord = {
     ...current,
     status: "recovered",
     recovered_at: now.toISOString(),
     readiness_deadline: undefined,
-    repair_task_id: taskId,
+    failure_observation_ref: observationRef,
+    repair_task_id: undefined,
     updated_at: now.toISOString()
   };
-  const paths = deploymentPaths(manifest);
   await writeJsonAtomic(resolve(paths.historyRoot, `${recoveredCandidate.id}.json`), recoveredCandidate);
   await writeJsonAtomic(resolve(paths.historyRoot, `${restored.id}.json`), restored);
   await writeJsonAtomic(paths.current, restored);
+  await writeJsonAtomic(paths.latestObservation, observation);
   return restored;
 }
 
@@ -1045,6 +1091,7 @@ function deploymentPaths(manifest: SupervisorManifest) {
     current: resolve(root, "current.json"),
     failure: resolve(root, "failure.json"),
     supervisor: resolve(root, "supervisor.json"),
+    latestObservation: resolve(root, "observations/latest.json"),
     historyRoot: resolve(root, "history"),
     evidenceRoot: resolve(root, "evidence"),
     lockRoot: resolve(root, ".supervisor-lock")

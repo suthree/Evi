@@ -1350,17 +1350,18 @@ the replaceable runtime bundle. This supervisor may stage and atomically switch
 the local `next`, `current`, and `previous` slots; enforce bounded
 commit/heartbeat/Web/IM startup readiness and local probation; accept an
 explicit evidence-bound failure signal; roll back hard local failures; preserve
-bounded deployment evidence; and append one fix-forward task to the existing
-local runtime task queue after the previous build recovers. It must not invoke a
-model, edit repository source, infer semantic failure from ordinary log text,
+bounded deployment evidence; and emit one typed failure/recovery observation
+after the previous build recovers. A deployment request must first verify that
+the installed copied controller matches the canonical stable runtime controller;
+a mismatch returns `controller_handoff_required` before candidate build or slot
+mutation. The supervisor must not create, enqueue, resume, or select a repair
+goal. It must not invoke a model, edit repository source, infer semantic failure
+from ordinary log text,
 publish or communicate externally, perform remote deployment, coordinate other
 machines, or accept an incompatible state-schema migration. A failed commit is
-not eligible for redeployment, and an automatic repair chain is bounded before
-operator attention is required. A deployment-repair queue item may reach `done`
-only after a distinct verified deployment request names the failed deployment
-through `repair_of`; diagnostic prose or model completion confidence is not a
-completion signal. Incomplete repair sessions may be continued only through a
-small bounded retry count.
+not eligible for redeployment. An operator or the future GoalRuntime may later
+choose a distinct verified fix-forward deployment linked through `repair_of`,
+but controller recovery itself has no authority to make that goal decision.
 
 Repository source reaches the installed runtime through one commit-bound
 transaction. A deployment request must freshly build one unchanged clean commit

@@ -164,6 +164,7 @@ import {
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
 import {
+  DeploymentControllerHandoffRequiredError,
   getLocalDeploymentStatus,
   handoffDeploymentController,
   listLocalDeployments,
@@ -1611,12 +1612,22 @@ export async function main(): Promise<number> {
         webHost: options.webHost,
         webPort: options.webPort
       }, true);
-      const result = await requestLocalDeployment(definition, {
-        verificationRefs: options.deploymentVerificationRefs,
-        repairOf: options.deploymentRepairOf
-      });
-      console.log(JSON.stringify({ action, ...result }, null, 2));
-      return 0;
+      try {
+        const result = await requestLocalDeployment(definition, {
+          verificationRefs: options.deploymentVerificationRefs,
+          repairOf: options.deploymentRepairOf
+        });
+        console.log(JSON.stringify({ action, ...result }, null, 2));
+        return 0;
+      } catch (error) {
+        if (!(error instanceof DeploymentControllerHandoffRequiredError)) throw error;
+        console.log(JSON.stringify({
+          action,
+          code: error.code,
+          controller_readiness: error.readiness
+        }, null, 2));
+        return 1;
+      }
     }
     if (action === "reconcile") {
       const definition = await resolveServiceDefinition({

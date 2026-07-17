@@ -535,7 +535,7 @@ state evidence、context manifest 或 episode archive。`bootout` 后的 launchd
 
 `service start` / `service restart` 还会安装独立的
 `local.runtime.runtime.supervisor`。它位于可替换 runtime bundle 之外，只负责本机
-`next/current/previous` 切换、readiness、短观察期、自动回滚、失败证据和修复任务入队，
+`next/current/previous` 切换、readiness、短观察期、自动回滚、失败证据和 typed observation，
 不调用模型、不修改源码、不根据普通错误日志猜测业务故障，也不进行远端发布。
 
 完成 targeted checks 和 `pnpm run check` 后，干净且不同的 commit 可请求本机事务部署：
@@ -546,7 +546,10 @@ pnpm run runtime -- deployment status --state-root <state-root>
 pnpm run runtime -- deployment history --state-root <state-root>
 ```
 
-请求会重新执行 `pnpm run build`，并确认构建前后仍是同一个干净 commit，再把产物复制到
+请求会先比较独立安装的控制器与 canonical stable runtime 中的控制器。若不一致，会返回 typed
+`controller_handoff_required` 和明确的 handoff 命令；此时不构建候选、不写 pending request、
+也不修改任何 bundle slot。只有 `deployment controller-handoff` 完成重启后的身份核验，才会
+继续执行 `pnpm run build`，并确认构建前后仍是同一个干净 commit，再把产物复制到
 `next`；`build.json` 会记录构建命令。构建失败或 source identity 漂移不会改动 `current`，
 也不会创建 pending request。
 
@@ -573,11 +576,12 @@ pnpm run runtime -- deployment fail --reason "确定性运行回归" --failure-r
 ```
 
 回滚前只保存本次部署开始后产生的 stdout/stderr（每个最多 1 MiB）、最后 heartbeat 和失败摘要。
-旧版本恢复 readiness 后，现有 runtime task queue 会收到一条 fix-forward 修复任务；修复必须生成
-新的干净 commit，并使用 `--repair-of <deployment-id>` 再次部署。同一失败 commit 禁止重发，
-同一修复链最多自动尝试两次。队列不会仅凭模型会话返回 `done` 就判定修复完成：必须存在指向
-原失败部署的 `repair_of`、递增 attempt 和验证证据的新部署记录；只完成诊断的会话最多续跑三次，
-之后显式失败，不能形成假闭环。v0.1 只允许 `state_schema_version=1` 的向后兼容追加式状态变更；
+旧版本恢复 readiness 后，监督器只在 `deployments/observations/` 写入一条 typed failure/recovery
+observation，并恢复 canonical stable ledger；它不会创建、恢复或入队任何修复 Goal。后续是否
+fix-forward 由 operator 或未来的 GoalRuntime 决定；若决定修复，仍须生成新的干净 commit，并可
+显式使用 `--repair-of <deployment-id>` 维持部署 lineage。同一失败 commit 禁止重发。
+`deployment status` 会展示最新 observation，但不会把它变成第二个 goal owner。
+v0.1 只允许 `state_schema_version=1` 的向后兼容追加式状态变更；
 不兼容状态迁移会阻止无人值守部署，而不是自动恢复整份状态并丢失观察期数据。
 监督器观察期达到 `stable` 后，该 commit-bound 记录也可作为下一次无人值守部署的
 known-good 证据；显式 `verify-entrypoints` 仍保留为更完整的版本验收审计。

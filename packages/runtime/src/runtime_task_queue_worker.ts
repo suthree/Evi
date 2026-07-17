@@ -3,7 +3,6 @@ import {
   completeRuntimeTask,
   failRuntimeTask,
   listRecoverableRuntimeTasks,
-  requeueRuntimeTask,
   settleRuntimeTaskFromResult,
   type RuntimeTaskQueueEntry,
 } from "../../core/src/runtime_task_queue.js";
@@ -17,7 +16,6 @@ import {
 import { recordRuntimeChannelOutbound } from "../../core/src/runtime_channel_outbox.js";
 import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
-import type { DeploymentRecord } from "./service_supervisor.js";
 
 type RuntimeTaskQueueWorkerState = "idle" | "running" | "ok" | "skipped" | "error" | "stopped";
 
@@ -67,7 +65,6 @@ const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_LIMIT = 1;
 const DEFAULT_QUEUED_STALE_MS = 60_000;
 const DEFAULT_RUNNING_STALE_MS = 6 * 60 * 60 * 1000;
-const MAX_DEPLOYMENT_REPAIR_TASK_ATTEMPTS = 3;
 
 export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOptions): RuntimeTaskQueueWorkerHandle {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
@@ -265,30 +262,6 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
 
     try {
       const result = await options.runTask(renderRunnerTask(claimed), claimed);
-      const completion = await validateRuntimeTaskCompletion(options.store, claimed);
-      if (!completion.complete) {
-        const message = `runtime task completion gate failed: ${completion.reason}`;
-        if (isDeploymentRepairTask(claimed) && claimed.attempt < MAX_DEPLOYMENT_REPAIR_TASK_ATTEMPTS) {
-          await requeueRuntimeTask(options.store, {
-            id: claimed.id,
-            error: message,
-            runnerTask: renderDeploymentRepairContinuation(claimed, result.verdict, completion.reason),
-            now
-          });
-          await recordRuntimeTaskRun(options.store, {
-            id: claimed.id,
-            createdAt: claimed.created_at,
-            runtimeSessionId: claimed.runtime_session_id,
-            sourceKind: claimed.source_kind,
-            sourceKey: claimed.source_key,
-            task: claimed.task,
-            status: "blocked"
-          });
-          requeuedCount += 1;
-          continue;
-        }
-        throw new Error(message);
-      }
       const settlement = await settleRuntimeTaskFromResult(options.store, {
         id: claimed.id,
         result,
@@ -357,68 +330,6 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
     failed_count: failedCount,
     task_ids: taskIds
   };
-}
-
-async function validateRuntimeTaskCompletion(
-  store: AgentStore,
-  entry: RuntimeTaskQueueEntry
-): Promise<{ complete: boolean; reason: string }> {
-  if (!isDeploymentRepairTask(entry)) return { complete: true, reason: "not a deployment repair task" };
-  const deploymentId = entry.source_key!.slice("deployment:".length);
-  if (!/^[a-zA-Z0-9_-]+$/.test(deploymentId)) {
-    return { complete: false, reason: "deployment repair source id is invalid" };
-  }
-  const prior = await readDeploymentRecord(store, `deployments/history/${deploymentId}.json`);
-  if (!prior || prior.id !== deploymentId) {
-    return { complete: false, reason: `failed deployment ${deploymentId} is unavailable` };
-  }
-  for (const ref of await store.listStateFiles("deployments/history")) {
-    const repair = await readDeploymentRecord(store, ref);
-    if (!repair || repair.repair_of !== deploymentId) continue;
-    if (repair.source_commit === prior.source_commit) continue;
-    if (repair.repair_attempt !== prior.repair_attempt + 1) continue;
-    if (repair.repair_chain_id !== prior.repair_chain_id) continue;
-    if (!Array.isArray(repair.verification_refs) || !repair.verification_refs.length) continue;
-    return { complete: true, reason: `repair deployment ${repair.id} was requested` };
-  }
-  return {
-    complete: false,
-    reason: `no clean distinct deployment request with repair_of=${deploymentId} exists`
-  };
-}
-
-function isDeploymentRepairTask(entry: RuntimeTaskQueueEntry): boolean {
-  return entry.source_kind === "runtime" && Boolean(entry.source_key?.startsWith("deployment:"));
-}
-
-async function readDeploymentRecord(store: AgentStore, ref: string): Promise<DeploymentRecord | null> {
-  try {
-    const value = JSON.parse(await store.readStateText(ref)) as DeploymentRecord;
-    return value?.type === "local_runtime_deployment" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function renderDeploymentRepairContinuation(
-  entry: RuntimeTaskQueueEntry,
-  verdict: string,
-  reason: string
-): string {
-  const original = boundContinuationText(entry.runner_task ?? entry.task, 8_000);
-  return [
-    original,
-    "",
-    `Previous attempt ${entry.attempt} stopped before the repair completion gate.`,
-    `Gate failure: ${reason}`,
-    `Previous response: ${boundContinuationText(verdict, 2_000)}`,
-    "Continue the repair now. Do not respond, propose an SOP, or claim completion until a new clean distinct commit has passed targeted checks and pnpm run check and the required deployment request with --repair-of has succeeded."
-  ].join("\n");
-}
-
-function boundContinuationText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n[truncated by deployment repair continuation bound]`;
 }
 
 function renderRunnerTask(entry: RuntimeTaskQueueEntry): string {
