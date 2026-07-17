@@ -101,6 +101,41 @@ This slice restores a usable cognition bootstrap before broadening ingress. It
 does not yet authorize `codex.run` engineering effects, move IM/Web/daemon,
 adopt changes, start asynchronous learning, or delete legacy orchestration.
 
+## 2026-07-18 Goal-Bound Delegated Workspace Attribution
+
+Issue #76 makes repository placement part of executable Goal identity. A new
+Goal start records the real Git worktree, Git common directory, branch, and
+start HEAD. Continue and exact-effect dispatch must validate that authority
+before cognition or tool execution. The start HEAD is provenance and may move
+forward only through descendant commits. Historical starts without this field
+remain readable, pausable, and abandonable, but may not acquire mutation
+authority through an inferred or first-reader binding.
+
+`codex.run` change authority comes only from its fixed pre/post live Git status
+snapshots. Introduced repository-relative paths are emitted as plural
+`workspace_path` identities even when Codex fails after mutation. The
+structured `changed_files` list is compared for diagnostics but never owns
+attribution. A missing post-run snapshot fails the tool result rather than
+turning absence of evidence into an empty change set.
+
+The Goal owner also validates the actual nested coding target, not only the
+checkout used by the Goal CLI. A new target or persisted resume handle must
+match the Goal worktree, common directory, branch, and start-HEAD base before
+planning and again before dispatch. Fixed pre/post HEAD snapshots emit the
+post-run `git_commit` when HEAD changes, including a clean-status commit that is
+later rejected as Codex authority drift. Receipt capacity is 256 identities;
+the runtime reserves 201 slots for the full 200-path-plus-one-commit atomic
+envelope before dispatch instead of discovering overflow after mutation.
+
+GoalRuntime consumes plural changes through its existing observation, lineage,
+candidate, verifier, and OutcomeReceipt surfaces. Existing singular typed
+changes remain compatible. Git commits and delegated workspace paths require a
+later successful local-verification observation under the bound Goal
+authority. This decision supersedes the assumption that only successful
+singular tool observations can represent changes; it does not grant Codex
+completion, commit, PR, merge, deployment, external-write, or release
+authority.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

@@ -85,9 +85,9 @@ export const coreToolContracts: ToolContract[] = [
     arguments: {
       mode: "new|resume",
       prompt: "task",
-      base_commit: "SHA,new",
-      branch: "new",
-      worktree: "isolated,new",
+      base_commit: "bound start HEAD,new",
+      branch: "bound branch,new",
+      worktree: "GoalRuntime: bound linked worktree only; standalone harness: sibling,new",
       cwd: "within worktree,new",
       model: "safe token,new,required",
       profile: "fast,new",

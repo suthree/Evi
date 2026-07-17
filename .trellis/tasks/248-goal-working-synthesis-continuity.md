@@ -1,6 +1,6 @@
 # Task 248: Goal Working Synthesis Continuity
 
-Status: active
+Status: complete
 
 ## Identity And Ownership
 
@@ -78,6 +78,23 @@ store, counter, checkpoint file, or second evidence system is added.
   It must stop rereading identical windows merely because earlier facts left the
   recent event horizon, then produce its architecture outcome or a different
   measured blocker. No successor Goal can satisfy acceptance.
+
+## Completion Evidence
+
+- PR #75 merged to `develop` at
+  `f8eb089527564815da8f92cb33e20cbae58575df` after independent Spec and
+  Standards reviews passed.
+- Targeted checks passed and `pnpm run check` passed with 935/935 tests, skill
+  validation, and naming validation.
+- Deployment `deployment_20260717202021_f8eb08952756` became stable and healthy
+  with matching service and controller source identity.
+- The same installed Goal `goal_20260717190203_ec82a197` continued from sequence
+  110 to sequence 157 and completed with accepted receipt
+  `goal_receipt_20260717202714_913dc41e`.
+- The live receipt identified the next measured core gap: GoalRuntime does not
+  yet bind `codex.run`'s actual `introduced_changed_paths` to one repository
+  authority and a later verification. That distinct gap is owned by Issue #76
+  and Task249 rather than hidden in this task.
 
 ## Scope And Stable Owners
 

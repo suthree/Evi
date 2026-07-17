@@ -295,6 +295,16 @@ to the same canonical event stream, and the verifier alone may accept the
 outcome. The model does not author evidence-id matrices or parallel completion
 documents.
 
+Each new Goal persists its real worktree, Git common directory, branch, and
+start HEAD. Continue validates this authority before cognition; exact-effect
+Resume validates it before dispatch. HEAD may advance only through descendants.
+For `codex.run`, GoalRuntime additionally resolves the proposed new target or
+persisted resume handle and requires its actual worktree, common directory,
+branch, and delegated base to equal the Goal authority before it records a
+pending effect. The tool rechecks the same authority immediately before spawn.
+Historical starts without the field remain readable, pausable, and abandonable,
+but cannot Continue or dispatch. Use the same `--repo-root` throughout.
+
 Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
 Pause, Resume, and Abandon construct the local control plane without resolving
 a model. Continue lazily resolves exactly one `goal_cognition` provider from
@@ -379,17 +389,23 @@ effects may change authorized repo or task state, but the foreground control
 path writes no legacy queue, opportunity, episode, working-checkpoint,
 completion, iteration, SOP, skill, deployment, or learning-promotion state.
 GoalRuntime derives the accepted receipt's complete, ordered, deduplicated
-`changes[]` from every typed successful tool observation; the model neither
-declares nor copies change identities. An empty set therefore means that no such
-observation exists. This complete change lineage is independent from the recent
+`changes[]` from typed canonical tool observations; the model neither declares
+nor copies change identities. Existing singular `change` fields count only on a
+successful observation. Harness-authored plural changes remain canonical even
+when a delegated worker fails after mutation, so partial effects cannot vanish.
+An empty set therefore means that no typed canonical change observation exists.
+This complete change lineage is independent from the recent
 model-evidence window and is also retained by an abandonment receipt, so partial
 effects remain visible after a direction is retired. Receipt capacity is
-bounded; a potentially mutating effect that would cross it is blocked before
+256 canonical identities. One atomic `codex.run` reserves 201 slots before
+dispatch: at most 200 status paths plus one post-run HEAD identity. A
+potentially mutating effect that would cross the remaining capacity is blocked before
 dispatch, leaving the existing Goal completeable or abandonable instead of
-dropping early observations. Every Git commit additionally requires a later successful
-verification observation. That satisfying observation is pinned with the
-commit lineage and cannot age out of the recent evidence window. Diagnostic
-tool output may be truncated, but typed control fields such as `change`,
+dropping early observations. Every Git commit and delegated `workspace_path`
+additionally requires a later successful local-verification observation. That
+satisfying observation is pinned with the change lineage and cannot age out of
+the recent evidence window. Diagnostic tool output may be truncated, but typed
+control fields such as `change`, plural `changes`,
 failure kind, and bounded refs survive truncation. Free-text substring matches and a model proposal
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.
@@ -397,8 +413,8 @@ accepted receipt.
 Current cutover is intentionally limited to the explicit local `goal` CLI:
 
 ```bash
-pnpm run runtime -- goal start --task "..."
-pnpm run runtime -- goal continue --goal goal_...
+pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree]
+pnpm run runtime -- goal continue --goal goal_... [--repo-root /same/absolute/worktree]
 pnpm run runtime -- goal read --goal goal_...
 pnpm run runtime -- goal pause --goal goal_... --reason "..."
 pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...]
@@ -2695,7 +2711,14 @@ Required policy:
 - on POSIX, run in an independent process group and clean up the whole group
   with TERM followed by bounded KILL
 - derive tracked and untracked changed paths from fixed live pre/post Git
-  status evidence; never return reasoning bodies or secrets
+  status evidence and derive commit identity from fixed pre/post HEAD evidence;
+  fail the execution result when the post-run snapshot is
+  unavailable; expose those paths as canonical plural `workspace_path` changes
+  even when Codex fails after mutation, and expose the post-run `git_commit`
+  identity when HEAD changed even if both status snapshots are clean
+- compare the observed introduced paths with structured `changed_files` and
+  retain matched, missing, and unobserved-claim diagnostics; the structured
+  list is model self-report and never grants change authority
 - reuse tool-result/episode metadata to record selection, requested plan,
   capture, tool-call and timeout facts, structured result, both prompt digests,
   and authority verifiability; requested workstreams and model self-report are

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +120,13 @@ test("local goal lifecycle remains usable when the selected active model is miss
   await mkdir(stateRoot, { recursive: true });
   await mkdir(repoRoot, { recursive: true });
   try {
+    await runGit(repoRoot, ["init", "-b", "develop"]);
+    await runGit(repoRoot, ["config", "user.name", "Goal CLI Test"]);
+    await runGit(repoRoot, ["config", "user.email", "goal-cli@example.test"]);
+    await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await writeFile(join(repoRoot, "README.md"), "goal CLI fixture\n", "utf8");
+    await runGit(repoRoot, ["add", "README.md"]);
+    await runGit(repoRoot, ["commit", "-m", "fixture base"]);
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "state", root: stateRoot }),
       JSON.stringify({ type: "active_model", model_id: "primary-model" })
@@ -167,3 +175,15 @@ test("local goal lifecycle remains usable when the selected active model is miss
     await rm(root, { recursive: true, force: true });
   }
 });
+
+function runGit(cwd: string, args: string[]): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", args, { cwd }, (error, _stdout, stderr) => {
+      if (error) {
+        reject(new Error(`git ${args.join(" ")} failed: ${stderr}`));
+        return;
+      }
+      resolvePromise();
+    });
+  });
+}
