@@ -31,6 +31,12 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
     assert.equal(result.ok, true);
     assert.equal(result.side_effect_level, "none");
     assert.equal(result.output.text, "hello repo");
+    assert.equal(result.output.start_line, 1);
+    assert.equal(result.output.end_line, 1);
+    assert.equal(result.output.max_lines, 200);
+    assert.equal(result.output.truncated, false);
+    assert.equal(result.output.has_more, false);
+    assert.equal(result.output.next_start_line, null);
 
     const invalid = await executeTool(useTool("file.read", {
       scope: "repo",
@@ -57,6 +63,237 @@ test("file.read reads repo files and rejects unsafe paths", async () => {
 
     assert.equal(stateScope.ok, true);
     assert.equal(stateScope.output.text, "state trace");
+
+    const missing = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "missing.txt"
+    }), { store: fixture.store });
+
+    assert.equal(missing.ok, false);
+    assertFailureKind(missing, "not_found");
+
+    await mkdir(join(fixture.repoRoot, "folder"));
+    const notFile = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "folder"
+    }), { store: fixture.store });
+
+    assert.equal(notFile.ok, false);
+    assert.match(notFile.summary, /not a regular file/);
+    assertFailureKind(notFile, "invalid_request");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("file.read serves bounded deep line windows with explicit continuation metadata", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, "deep.ts"), [
+      "line one",
+      "line two",
+      "line three",
+      "line four",
+      "line five",
+      "line six"
+    ].join("\n"), "utf8");
+
+    const middle = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "deep.ts",
+      start_line: 3,
+      max_lines: 2,
+      max_chars: 100
+    }), { store: fixture.store });
+
+    assert.equal(middle.ok, true);
+    assert.equal(middle.output.text, "line three\nline four\n");
+    assert.equal(middle.output.start_line, 3);
+    assert.equal(middle.output.end_line, 4);
+    assert.equal(middle.output.max_lines, 2);
+    assert.equal(middle.output.truncated, true);
+    assert.equal(middle.output.truncation_reason, "max_lines");
+    assert.equal(middle.output.line_truncated, false);
+    assert.equal(middle.output.has_more, true);
+    assert.equal(middle.output.next_start_line, 5);
+    assert.match(middle.summary, /lines 3-4/);
+    assert.match(middle.summary, /continue at line 5/);
+
+    const final = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "deep.ts",
+      start_line: 5,
+      max_lines: 10,
+      max_chars: 100
+    }), { store: fixture.store });
+
+    assert.equal(final.ok, true);
+    assert.equal(final.output.text, "line five\nline six");
+    assert.equal(final.output.end_line, 6);
+    assert.equal(final.output.truncated, false);
+    assert.equal(final.output.has_more, false);
+    assert.equal(final.output.next_start_line, null);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("file.read preserves exact continuation when the next full line exceeds max_chars", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, "bounded.txt"), "first\nsecond\nthird", "utf8");
+
+    const result = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "bounded.txt",
+      start_line: 1,
+      max_lines: 3,
+      max_chars: 8
+    }), { store: fixture.store });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.output.text, "first\n");
+    assert.equal(result.output.end_line, 1);
+    assert.equal(result.output.truncated, true);
+    assert.equal(result.output.truncation_reason, "max_chars");
+    assert.equal(result.output.line_truncated, false);
+    assert.equal(result.output.has_more, true);
+    assert.equal(result.output.next_start_line, 2);
+
+    await writeFile(join(fixture.repoRoot, "long-line.txt"), "x".repeat(20), "utf8");
+    const longLine = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "long-line.txt",
+      max_lines: 3,
+      max_chars: 8
+    }), { store: fixture.store });
+
+    assert.equal(longLine.ok, true);
+    assert.equal(longLine.output.text, "xxxxxxxx");
+    assert.equal(longLine.output.end_line, 1);
+    assert.equal(longLine.output.truncated, true);
+    assert.equal(longLine.output.truncation_reason, "max_chars");
+    assert.equal(longLine.output.line_truncated, true);
+    assert.equal(longLine.output.has_more, true);
+    assert.equal(longLine.output.next_start_line, null);
+    assert.match(longLine.summary, /no lossless line continuation/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("file.read keeps Unicode code points and CRLF newline tokens intact", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, "unicode.txt"), "😀x\r\nnext", "utf8");
+
+    const splitLine = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "unicode.txt",
+      max_lines: 2,
+      max_chars: 1
+    }), { store: fixture.store });
+
+    assert.equal(splitLine.ok, true);
+    assert.equal(splitLine.output.text, "😀");
+    assert.deepEqual(Array.from(String(splitLine.output.text)), ["😀"]);
+    assert.equal(splitLine.output.line_truncated, true);
+    assert.equal(splitLine.output.next_start_line, null);
+
+    await writeFile(join(fixture.repoRoot, "crlf.txt"), "a\r\nb", "utf8");
+    const firstLine = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "crlf.txt",
+      max_lines: 2,
+      max_chars: 2
+    }), { store: fixture.store });
+
+    assert.equal(firstLine.ok, true);
+    assert.equal(firstLine.output.text, "a\r\n");
+    assert.equal(firstLine.output.chars_returned, 2);
+    assert.equal(firstLine.output.line_truncated, false);
+    assert.equal(firstLine.output.next_start_line, 2);
+
+    for (const [path, contents] of [
+      ["lf-boundary.txt", "a\nb"],
+      ["crlf-boundary.txt", "a\r\nb"]
+    ] as const) {
+      await writeFile(join(fixture.repoRoot, path), contents, "utf8");
+      const boundary = await executeTool(useTool("file.read", {
+        scope: "repo",
+        path,
+        max_lines: 2,
+        max_chars: 1
+      }), { store: fixture.store });
+      assert.equal(boundary.ok, true);
+      assert.equal(boundary.output.text, "a");
+      assert.equal(boundary.output.line_truncated, true);
+      assert.equal(boundary.output.has_more, true);
+      assert.equal(boundary.output.next_start_line, null);
+    }
+
+    const secondLine = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "crlf.txt",
+      start_line: 2,
+      max_lines: 1,
+      max_chars: 10
+    }), { store: fixture.store });
+    assert.equal(secondLine.ok, true);
+    assert.equal(secondLine.output.text, "b");
+    assert.equal(secondLine.output.has_more, false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("file.read bounds bytes scanned before a deep start line", async () => {
+  const fixture = await createFixture();
+  try {
+    const maxScanBytes = 4 * 1024 * 1024;
+    await writeFile(join(fixture.repoRoot, "huge-line.txt"), Buffer.alloc(maxScanBytes + 64 * 1024, 0x61));
+
+    const result = await executeTool(useTool("file.read", {
+      scope: "repo",
+      path: "huge-line.txt",
+      start_line: 2,
+      max_lines: 1,
+      max_chars: 10
+    }), { store: fixture.store });
+
+    assert.equal(result.ok, false);
+    assertFailureKind(result, "scan_limit_exceeded");
+    assert.equal(result.output.scanned_bytes, maxScanBytes);
+    assert.equal(result.output.max_scan_bytes, maxScanBytes);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("file.read fails closed on invalid or over-limit window arguments", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, "notes.md"), "safe", "utf8");
+
+    for (const arguments_ of [
+      { start_line: 0 },
+      { start_line: 1.5 },
+      { start_line: 1_000_001 },
+      { max_lines: 0 },
+      { max_lines: "2" },
+      { max_lines: 401 },
+      { max_chars: 0 },
+      { max_chars: 50_001 }
+    ]) {
+      const result = await executeTool(useTool("file.read", {
+        scope: "repo",
+        path: "notes.md",
+        ...arguments_
+      }), { store: fixture.store });
+
+      assert.equal(result.ok, false, JSON.stringify(arguments_));
+      assertFailureKind(result, "invalid_request");
+    }
   } finally {
     await fixture.cleanup();
   }
@@ -1134,6 +1371,13 @@ test("tool contract renderer covers the core tool surface", () => {
     assert.match(rendered, new RegExp(`"tool"\\s*:\\s*"${escapeRegExp(toolName)}"`));
   }
   const contractsByTool = new Map(coreToolContracts.map((contract) => [contract.tool, contract]));
+  assert.deepEqual(Object.keys(contractsByTool.get("file.read")?.arguments ?? {}).sort(), [
+    "max_chars",
+    "max_lines",
+    "path",
+    "scope",
+    "start_line"
+  ]);
   assert.deepEqual(Object.keys(contractsByTool.get("repo.search")?.arguments ?? {}).sort(), [
     "globs",
     "max_output_chars",

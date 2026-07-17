@@ -133,7 +133,12 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 
 ## 核心能力
 
-- `file.read`：读取仓库或状态文件。
+- `file.read`：读取仓库或状态文件；默认从第 1 行进行有界前缀读取，也可用
+  `start_line + max_lines` 直接读取 `repo.search` 命中的深层行窗口。结果会明确
+  返回实际行区间、截断原因和 `next_start_line`，避免反复读取文件前缀；行数、
+  Unicode 字符数、起始行和定位扫描字节数均有硬上限，CRLF 与 emoji 不会被
+  从中切断；缺失文件不会伪装成成功的空读取。超长首行只能返回有界前缀时会
+  明确标记无法无损续读，不会伪造下一行游标。
 - `file.write_state`：只写入所选 state root 下的 runtime 产物。
 - `file.write_repo`：在 harness 路径策略内写仓库文件。
 - `repo.search`：搜索仓库文本，优先使用 `rg`。
