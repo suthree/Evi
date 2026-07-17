@@ -2,14 +2,25 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { newId, utcNow } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
+import {
+  EffectPolicy,
+  parseEffectAction,
+  type EffectAction,
+  type EffectDecision,
+  type EffectIntent
+} from "./effect_policy.js";
+import type { ToolResult } from "./tools.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
 const RECEIPT_ROOT = "goals/receipts";
 const GOAL_BOUNDARY =
-  "GoalRuntime canonical lifecycle; raw events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
+  "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
 const ABANDON_VERIFICATION_SUMMARY = "Goal was explicitly abandoned; completion verification was not run.";
 const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
+const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
+const DEFAULT_TOOL_CALLS_PER_CONTINUE = 4;
+const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
 
 interface StateRootMutationQueue {
   tail: Promise<void>;
@@ -37,15 +48,9 @@ const goalUsageSchema = z.object({
 }).strict();
 
 const goalSoftBudgetSchema = z.object({
-  max_model_rounds: z.number().int().positive().nullable(),
-  max_tool_calls: z.number().int().positive().nullable(),
-  max_elapsed_ms: z.number().int().positive().nullable()
-}).strict();
-
-const goalObservationSchema = z.object({
-  kind: safeIdSchema,
-  summary: shortTextSchema,
-  refs: z.array(refSchema).max(32)
+  max_model_rounds: z.number().int().positive().max(20),
+  max_tool_calls: z.number().int().positive().max(40),
+  max_elapsed_ms: z.number().int().positive().max(3_600_000)
 }).strict();
 
 const changeIdentitySchema = z.object({
@@ -53,17 +58,24 @@ const changeIdentitySchema = z.object({
   identity: shortTextSchema
 }).strict();
 
-const runtimeResultSchema = z.object({
+const runtimeResultProposalSchema = z.object({
   status: z.enum(["healthy", "degraded", "not_applicable"]),
-  summary: shortTextSchema,
+  summary: shortTextSchema
+}).strict();
+
+const runtimeResultSchema = runtimeResultProposalSchema.extend({
   evidence_event_ids: z.array(safeIdSchema).max(64)
 }).strict();
 
-const outcomeCandidateSchema = z.object({
+const outcomeProposalSchema = z.object({
   summary: textSchema,
   change: changeIdentitySchema,
+  runtime_result: runtimeResultProposalSchema,
+  residual_risks: z.array(shortTextSchema).max(32)
+}).strict();
+
+const outcomeCandidateSchema = outcomeProposalSchema.extend({
   runtime_result: runtimeResultSchema,
-  residual_risks: z.array(shortTextSchema).max(32),
   evidence_event_ids: z.array(safeIdSchema).min(1).max(64)
 }).strict();
 
@@ -102,6 +114,70 @@ const outcomeReceiptSchema = z.object({
   boundary: z.literal(GOAL_BOUNDARY)
 }).strict();
 
+const effectActionSchema = z.object({
+  tool: z.string().trim().min(1).max(128),
+  arguments: z.record(z.string(), z.unknown()).default({})
+}).strict();
+
+const effectIntentSchema = z.object({
+  operation: z.enum([
+    "read_local",
+    "read_public_network",
+    "write_local_state",
+    "write_local_repo",
+    "run_local_verification",
+    "delegate_local_code",
+    "execute_dynamic_code",
+    "write_external",
+    "mutate_local_runtime",
+    "destructive_local",
+    "unknown"
+  ]),
+  target: z.string().trim().min(1).max(2_000),
+  reversibility: z.enum(["read_only", "reversible", "conditional", "irreversible", "unknown"]),
+  data_exposure: z.enum(["none", "public_response_to_model", "local_content_to_model", "private_or_secret", "unknown"]),
+  authority: z.literal("standing_local_evolution")
+}).strict();
+
+const effectDecisionSchema = z.object({
+  outcome: z.enum(["allow", "confirm", "deny"]),
+  reason: shortTextSchema,
+  intent: effectIntentSchema
+}).strict();
+
+const toolResultSchema = z.object({
+  id: safeIdSchema,
+  tool: z.string().trim().min(1).max(128),
+  ok: z.boolean(),
+  summary: shortTextSchema,
+  output: z.record(z.string(), z.unknown()),
+  side_effect_level: z.enum(["none", "local_reversible", "local_write", "external_write"]),
+  created_at: z.string().min(1)
+}).strict();
+
+const cognitionActionSchema = z.object({
+  type: z.literal("action"),
+  summary: shortTextSchema,
+  action: effectActionSchema
+}).strict();
+
+const cognitionOutcomeSchema = z.object({
+  type: z.literal("outcome"),
+  outcome: outcomeProposalSchema
+}).strict();
+
+const cognitionBlockedSchema = z.object({
+  type: z.literal("blocked"),
+  summary: shortTextSchema,
+  next_action: shortTextSchema
+}).strict();
+
+const goalCognitionResultSchema = z.discriminatedUnion("type", [
+  cognitionActionSchema,
+  cognitionOutcomeSchema,
+  cognitionBlockedSchema
+]);
+
 const startCommandSchema = z.object({
   type: z.literal("start"),
   command_id: safeIdSchema,
@@ -113,11 +189,7 @@ const startCommandSchema = z.object({
 const continueCommandSchema = z.object({
   type: z.literal("continue"),
   command_id: safeIdSchema,
-  goal_id: safeIdSchema,
-  checkpoint: goalCheckpointSchema.optional(),
-  usage_delta: goalUsageSchema.partial().optional(),
-  observations: z.array(goalObservationSchema).max(32).optional(),
-  candidate: outcomeCandidateSchema.optional()
+  goal_id: safeIdSchema
 }).strict();
 
 const pauseCommandSchema = z.object({
@@ -130,7 +202,8 @@ const pauseCommandSchema = z.object({
 const resumeCommandSchema = z.object({
   type: z.literal("resume"),
   command_id: safeIdSchema,
-  goal_id: safeIdSchema
+  goal_id: safeIdSchema,
+  confirm_effect_id: safeIdSchema.optional()
 }).strict();
 
 const abandonCommandSchema = z.object({
@@ -149,7 +222,7 @@ const goalCommandSchema = z.discriminatedUnion("type", [
 ]);
 
 const baseEventFields = {
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
   type: z.literal("goal_runtime_event"),
   id: safeIdSchema,
   goal_id: safeIdSchema,
@@ -160,12 +233,6 @@ const baseEventFields = {
   boundary: z.literal(GOAL_BOUNDARY)
 };
 
-const progressEventFields = {
-  checkpoint: goalCheckpointSchema,
-  usage_delta: goalUsageSchema,
-  observations: z.array(goalObservationSchema).max(32)
-};
-
 const startedEventSchema = z.object({
   ...baseEventFields,
   event_type: z.literal("goal_started"),
@@ -174,26 +241,70 @@ const startedEventSchema = z.object({
   checkpoint: goalCheckpointSchema
 }).strict();
 
-const continuedEventSchema = z.object({
+const actionPlannedEventSchema = z.object({
   ...baseEventFields,
-  ...progressEventFields,
-  event_type: z.literal("goal_continued")
+  event_type: z.literal("goal_action_planned"),
+  model_summary: shortTextSchema,
+  action: effectActionSchema,
+  action_redacted: z.boolean(),
+  action_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  effect_id: safeIdSchema,
+  effect_decision: effectDecisionSchema,
+  usage_delta: goalUsageSchema
+}).strict();
+
+const effectConfirmedEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_effect_confirmed"),
+  intent_event_id: safeIdSchema,
+  effect_id: safeIdSchema,
+  action_digest: z.string().regex(/^[a-f0-9]{64}$/)
+}).strict();
+
+const actionObservedEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_action_observed"),
+  intent_event_id: safeIdSchema,
+  authorization_event_id: safeIdSchema.nullable(),
+  effect_id: safeIdSchema,
+  action_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  effect_intent: effectIntentSchema,
+  result: toolResultSchema,
+  checkpoint: goalCheckpointSchema,
+  usage_delta: goalUsageSchema
+}).strict();
+
+const budgetCheckpointEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_soft_budget_checkpoint"),
+  checkpoint: goalCheckpointSchema
+}).strict();
+
+const blockedEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_blocked"),
+  summary: shortTextSchema,
+  next_action: shortTextSchema,
+  checkpoint: goalCheckpointSchema,
+  usage_delta: goalUsageSchema
 }).strict();
 
 const verificationFailedEventSchema = z.object({
   ...baseEventFields,
-  ...progressEventFields,
   event_type: z.literal("goal_verification_failed"),
   candidate: outcomeCandidateSchema,
-  verification: verificationResultSchema
+  verification: verificationResultSchema,
+  checkpoint: goalCheckpointSchema,
+  usage_delta: goalUsageSchema
 }).strict();
 
 const completedEventSchema = z.object({
   ...baseEventFields,
-  ...progressEventFields,
   event_type: z.literal("goal_completed"),
   candidate: outcomeCandidateSchema,
   verification: verificationResultSchema,
+  checkpoint: goalCheckpointSchema,
+  usage_delta: goalUsageSchema,
   receipt: outcomeReceiptSchema
 }).strict();
 
@@ -217,7 +328,11 @@ const abandonedEventSchema = z.object({
 
 const goalRuntimeEventSchema = z.discriminatedUnion("event_type", [
   startedEventSchema,
-  continuedEventSchema,
+  actionPlannedEventSchema,
+  effectConfirmedEventSchema,
+  actionObservedEventSchema,
+  budgetCheckpointEventSchema,
+  blockedEventSchema,
   verificationFailedEventSchema,
   completedEventSchema,
   pausedEventSchema,
@@ -229,14 +344,31 @@ export type GoalCommand = z.infer<typeof goalCommandSchema>;
 export type GoalCheckpoint = z.infer<typeof goalCheckpointSchema>;
 export type GoalUsage = z.infer<typeof goalUsageSchema>;
 export type GoalSoftBudget = z.infer<typeof goalSoftBudgetSchema>;
-export type GoalObservation = z.infer<typeof goalObservationSchema>;
 export type OutcomeCandidate = z.infer<typeof outcomeCandidateSchema>;
+export type GoalOutcomeProposal = z.infer<typeof outcomeProposalSchema>;
+export type GoalCognitionResult = z.infer<typeof goalCognitionResultSchema>;
 export type GoalVerificationResult = z.infer<typeof verificationResultSchema>;
 export type OutcomeReceipt = z.infer<typeof outcomeReceiptSchema>;
 type GoalRuntimeEvent = z.infer<typeof goalRuntimeEventSchema>;
 export type GoalStatus = "active" | "paused" | "completed" | "abandoned";
-export type GoalContinuationReason = "soft_budget_reached" | "verification_failed" | "paused";
-export type GoalEvidenceKind = "intent" | "progress" | "verification_failure" | "pause" | "resume";
+export type GoalContinuationReason =
+  | "soft_budget_reached"
+  | "verification_failed"
+  | "blocked"
+  | "paused"
+  | "effect_confirmation_required"
+  | "effect_outcome_unknown";
+export type GoalEvidenceKind = "intent" | "action" | "observation" | "verification_failure" | "pause" | "resume";
+
+export interface GoalPendingEffect {
+  effect_id: string;
+  action_digest: string;
+  decision: "allow" | "confirm";
+  state: "awaiting_confirmation" | "outcome_unknown";
+  operation: EffectIntent["operation"];
+  target: string;
+  reason: string;
+}
 
 export interface GoalView {
   goal_id: string;
@@ -249,17 +381,11 @@ export interface GoalView {
   continuation_required: boolean;
   continuation_reasons: GoalContinuationReason[];
   next_action: string | null;
+  pending_effect: GoalPendingEffect | null;
   last_event_id: string;
   last_command_id: string;
   receipt: OutcomeReceipt | null;
   boundary: typeof GOAL_BOUNDARY;
-}
-
-export interface GoalVerificationInput {
-  goal: GoalView;
-  candidate: OutcomeCandidate;
-  observations: GoalObservation[];
-  evidence: GoalEvidenceView[];
 }
 
 export interface GoalEvidenceView {
@@ -268,6 +394,30 @@ export interface GoalEvidenceView {
   summary: string;
   refs: string[];
   occurred_at: string;
+  operation?: EffectIntent["operation"];
+  effect_decision?: EffectDecision["outcome"];
+  tool?: string;
+  ok?: boolean;
+  details?: string;
+}
+
+export interface GoalCognitionInput {
+  goal: GoalView;
+  evidence: GoalEvidenceView[];
+}
+
+export interface GoalCognition {
+  next(input: GoalCognitionInput): Promise<GoalCognitionResult>;
+}
+
+export interface GoalToolExecutor {
+  execute(action: EffectAction, decision: EffectDecision): Promise<ToolResult>;
+}
+
+export interface GoalVerificationInput {
+  goal: GoalView;
+  candidate: OutcomeCandidate;
+  evidence: GoalEvidenceView[];
 }
 
 export interface GoalVerifier {
@@ -277,20 +427,49 @@ export interface GoalVerifier {
 export interface GoalRuntimeOptions {
   store: AgentStore;
   verifier: GoalVerifier;
+  cognition?: GoalCognition;
+  toolExecutor?: GoalToolExecutor;
+  effectPolicy?: EffectPolicy;
   now?: () => string;
+  nowMs?: () => number;
   idFactory?: (prefix: string) => string;
+}
+
+interface PendingEffectInternal {
+  event_id: string;
+  effect_id: string;
+  action_digest: string;
+  action: EffectAction;
+  decision: "allow" | "confirm";
+  state: "awaiting_confirmation" | "outcome_unknown";
+  effect_decision: EffectDecision;
+  authorization_event_id: string | null;
+}
+
+interface DerivedGoalState {
+  view: GoalView;
+  pending: PendingEffectInternal | null;
+  manualPause: boolean;
 }
 
 export class GoalRuntime {
   private readonly store: AgentStore;
   private readonly verifier: GoalVerifier;
+  private readonly cognition?: GoalCognition;
+  private readonly toolExecutor?: GoalToolExecutor;
+  private readonly effectPolicy: EffectPolicy;
   private readonly now: () => string;
+  private readonly nowMs: () => number;
   private readonly idFactory: (prefix: string) => string;
 
   constructor(options: GoalRuntimeOptions) {
     this.store = options.store;
     this.verifier = options.verifier;
+    this.cognition = options.cognition;
+    this.toolExecutor = options.toolExecutor;
+    this.effectPolicy = options.effectPolicy ?? new EffectPolicy();
     this.now = options.now ?? utcNow;
+    this.nowMs = options.nowMs ?? Date.now;
     this.idFactory = options.idFactory ?? newId;
   }
 
@@ -302,71 +481,57 @@ export class GoalRuntime {
     const parsedGoalId = safeIdSchema.safeParse(goalId);
     if (!parsedGoalId.success) throw new Error(`Invalid GoalRuntime goal id: ${goalId}`);
     await waitForStateRootMutations(this.store.stateRoot);
-    return deriveGoalView(await this.readCanonicalEvents(), parsedGoalId.data);
+    return deriveGoalState(await this.readCanonicalEvents(), parsedGoalId.data).view;
   }
 
   private async handleUnlocked(input: GoalCommand): Promise<GoalView> {
     const parsed = goalCommandSchema.safeParse(input);
-    if (!parsed.success) {
-      throw new Error(`Invalid GoalRuntime command: ${z.prettifyError(parsed.error)}`);
-    }
+    if (!parsed.success) throw new Error(`Invalid GoalRuntime command: ${z.prettifyError(parsed.error)}`);
     const command = parsed.data;
     const commandDigest = digestCommand(command);
-    const events = await this.readCanonicalEvents();
-    const replay = events.find((event) => event.command_id === command.command_id);
-    if (replay) {
-      if (replay.command_digest !== commandDigest) {
-        throw new Error(`GoalRuntime command id conflict: ${command.command_id}`);
+    let events = await this.readCanonicalEvents();
+    const replayEvents = events.filter((event) => event.command_id === command.command_id);
+    if (replayEvents.length > 0) {
+      assertCommandReplay(replayEvents, commandDigest);
+      const replayGoalId = replayEvents[0]!.goal_id;
+      const replayState = deriveGoalState(eventsUpTo(events, replayGoalId, replayEvents.at(-1)!.sequence), replayGoalId);
+      if (command.type !== "continue" || commandOperationFinal(replayEvents) || replayState.view.status === "paused") {
+        await this.writeProjections(replayState.view, replayEvents.at(-1)!.occurred_at);
+        return replayState.view;
       }
-      const current = deriveGoalView(events, replay.goal_id);
-      const currentEvent = events.filter((event) => event.goal_id === replay.goal_id).at(-1)!;
-      await this.writeProjections(current, currentEvent.occurred_at);
-      return deriveGoalView(
-        events.filter((event) => event.goal_id !== replay.goal_id || event.sequence <= replay.sequence),
-        replay.goal_id
-      );
     }
 
-    if (command.type === "start") {
-      return this.startGoal(events, command, commandDigest);
-    }
+    if (command.type === "start") return this.startGoal(events, command, commandDigest);
 
-    const current = deriveGoalView(events, command.goal_id);
-    const goalEvents = events.filter((event) => event.goal_id === command.goal_id);
-    if (current.status === "completed" || current.status === "abandoned") {
-      throw new Error(`GoalRuntime goal is terminal: ${command.goal_id} (${current.status})`);
+    const currentState = deriveGoalState(events, command.goal_id);
+    if (currentState.view.status === "completed" || currentState.view.status === "abandoned") {
+      throw new Error(`GoalRuntime goal is terminal: ${command.goal_id} (${currentState.view.status})`);
     }
 
     switch (command.type) {
       case "continue":
-        return this.continueGoal(events, goalEvents, current, command, commandDigest);
+        return this.continueGoal(events, currentState, command, commandDigest);
       case "pause":
-        if (current.status !== "active") {
-          throw new Error(`GoalRuntime goal cannot pause from ${current.status}: ${command.goal_id}`);
+        if (currentState.view.status !== "active") {
+          throw new Error(`GoalRuntime goal cannot pause from ${currentState.view.status}: ${command.goal_id}`);
         }
-        return this.appendAndProject(events, {
-          ...this.eventBase(current, command, commandDigest),
+        return (await this.appendEvent(events, {
+          ...this.eventBase(currentState.view, command, commandDigest),
           event_type: "goal_paused",
           reason: command.reason
-        });
+        })).view;
       case "resume":
-        if (current.status !== "paused") {
-          throw new Error(`GoalRuntime goal cannot resume from ${current.status}: ${command.goal_id}`);
-        }
-        return this.appendAndProject(events, {
-          ...this.eventBase(current, command, commandDigest),
-          event_type: "goal_resumed"
-        });
+        return this.resumeGoal(events, currentState, command, commandDigest);
       case "abandon": {
         const eventId = this.nextSafeId("goal_event");
         const occurredAt = this.now();
-        const receipt = this.abandonmentReceipt(current, command.reason, eventId, occurredAt);
-        return this.appendAndProject(events, {
-          ...this.eventBase(current, command, commandDigest, eventId, occurredAt),
+        const receipt = this.abandonmentReceipt(currentState.view, command.reason, eventId, occurredAt);
+        return (await this.appendEvent(events, {
+          ...this.eventBase(currentState.view, command, commandDigest, eventId, occurredAt),
           event_type: "goal_abandoned",
           reason: command.reason,
           receipt
-        });
+        })).view;
       }
     }
   }
@@ -380,8 +545,8 @@ export class GoalRuntime {
     if (events.some((event) => event.goal_id === goalId)) {
       throw new Error(`GoalRuntime generated duplicate goal id: ${goalId}`);
     }
-    const event: GoalRuntimeEvent = {
-      schema_version: 1,
+    return (await this.appendEvent(events, {
+      schema_version: 2,
       type: "goal_runtime_event",
       event_type: "goal_started",
       id: this.nextSafeId("goal_event"),
@@ -394,66 +559,289 @@ export class GoalRuntime {
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
       boundary: GOAL_BOUNDARY
-    };
-    return this.appendAndProject(events, event);
+    })).view;
   }
 
   private async continueGoal(
-    allEvents: GoalRuntimeEvent[],
-    goalEvents: GoalRuntimeEvent[],
-    current: GoalView,
+    initialEvents: GoalRuntimeEvent[],
+    initialState: DerivedGoalState,
     command: z.infer<typeof continueCommandSchema>,
     commandDigest: string
   ): Promise<GoalView> {
-    if (current.status !== "active") {
-      throw new Error(`GoalRuntime goal cannot continue from ${current.status}: ${command.goal_id}`);
+    if (initialState.view.status !== "active") {
+      throw new Error(`GoalRuntime goal cannot continue from ${initialState.view.status}: ${command.goal_id}`);
     }
-    const checkpoint = command.checkpoint ?? current.checkpoint;
-    const usageDelta = normalizeUsage(command.usage_delta);
-    const observations = command.observations ?? [];
-    const progress = { checkpoint, usage_delta: usageDelta, observations };
+    if (!this.cognition || !this.toolExecutor) {
+      throw new Error("GoalRuntime Continue requires cognition and tool execution adapters");
+    }
 
-    if (!command.candidate) {
-      return this.appendAndProject(allEvents, {
-        ...this.eventBase(current, command, commandDigest),
-        ...progress,
-        event_type: "goal_continued"
+    let events = initialEvents;
+    let state = initialState;
+    let operationUsage = usageForCommand(events, command.command_id);
+
+    while (true) {
+      if (budgetReached(operationUsage, state.view.budget)) {
+        const checkpoint = normalizeCheckpoint({
+          ...state.view.checkpoint,
+          next_action: "Continue the same goal with another soft execution tranche."
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_soft_budget_checkpoint",
+          checkpoint
+        })).view;
+      }
+
+      const cognitionStarted = this.nowMs();
+      let cognition: GoalCognitionResult;
+      try {
+        cognition = parseGoalCognitionResult(await this.cognition.next({
+          goal: structuredClone(state.view),
+          evidence: structuredClone(buildCognitionEvidence(events, command.goal_id))
+        }));
+      } catch (error) {
+        const elapsed = elapsedSince(cognitionStarted, this.nowMs());
+        const usageDelta = normalizeUsage({ model_rounds: 1, elapsed_ms: elapsed });
+        const summary = `Goal cognition failed: ${errorMessage(error)}`.slice(0, 2_000);
+        const checkpoint = normalizeCheckpoint({
+          ...state.view.checkpoint,
+          summary,
+          next_action: "Repair the cognition adapter or model response and continue the same goal."
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: checkpoint.next_action!,
+          checkpoint,
+          usage_delta: usageDelta
+        })).view;
+      }
+
+      const cognitionElapsed = elapsedSince(cognitionStarted, this.nowMs());
+      const modelUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
+      operationUsage = addUsage(operationUsage, modelUsage);
+
+      if (cognition.type === "blocked") {
+        const checkpoint = normalizeCheckpoint({
+          cursor: "blocked",
+          summary: cognition.summary,
+          next_action: cognition.next_action,
+          selected_refs: state.view.checkpoint.selected_refs
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary: cognition.summary,
+          next_action: cognition.next_action,
+          checkpoint,
+          usage_delta: modelUsage
+        })).view;
+      }
+
+      if (cognition.type === "outcome") {
+        return this.verifyOutcome(events, state, command, commandDigest, cognition.outcome, modelUsage);
+      }
+
+      const action = parseEffectAction(cognition.action);
+      const actionDigest = digestAction(action);
+      const effectId = this.nextSafeId("goal_effect");
+      const rawDecision = this.effectPolicy.decide(structuredClone(action));
+      const effectDecision = effectDecisionSchema.parse(rawDecision);
+      const persistedAction = effectDecision.outcome === "deny" ? redactedDeniedAction(action) : action;
+      const planned = await this.appendEvent(events, {
+        ...this.eventBase(state.view, command, commandDigest),
+        event_type: "goal_action_planned",
+        model_summary: cognition.summary,
+        action: persistedAction,
+        action_redacted: effectDecision.outcome === "deny",
+        action_digest: actionDigest,
+        effect_id: effectId,
+        effect_decision: effectDecision,
+        usage_delta: modelUsage
+      });
+      events = planned.events;
+      state = planned.state;
+
+      if (effectDecision.outcome === "confirm") return state.view;
+      if (effectDecision.outcome === "deny") {
+        if (budgetReached(operationUsage, state.view.budget)) continue;
+        continue;
+      }
+
+      const observed = await this.executePendingEffect(events, state, command, commandDigest, null);
+      events = observed.events;
+      state = observed.state;
+      operationUsage = usageForCommand(events, command.command_id);
+    }
+  }
+
+  private async resumeGoal(
+    events: GoalRuntimeEvent[],
+    state: DerivedGoalState,
+    command: z.infer<typeof resumeCommandSchema>,
+    commandDigest: string
+  ): Promise<GoalView> {
+    if (state.view.status !== "paused") {
+      throw new Error(`GoalRuntime goal cannot resume from ${state.view.status}: ${command.goal_id}`);
+    }
+    if (!state.pending) {
+      if (command.confirm_effect_id) throw new Error("Manual GoalRuntime pause has no pending effect to confirm");
+      return (await this.appendEvent(events, {
+        ...this.eventBase(state.view, command, commandDigest),
+        event_type: "goal_resumed"
+      })).view;
+    }
+    if (state.pending.state === "outcome_unknown") {
+      throw new Error(`GoalRuntime effect outcome is unknown and will not be repeated: ${state.pending.effect_id}`);
+    }
+    if (!command.confirm_effect_id) {
+      throw new Error(`GoalRuntime resume requires --confirm-effect ${state.pending.effect_id}`);
+    }
+    if (command.confirm_effect_id !== state.pending.effect_id) {
+      throw new Error(`GoalRuntime confirmation does not match pending effect: ${state.pending.effect_id}`);
+    }
+    if (!this.toolExecutor) throw new Error("GoalRuntime confirmed effect requires a tool execution adapter");
+
+    const confirmed = await this.appendEvent(events, {
+      ...this.eventBase(state.view, command, commandDigest),
+      event_type: "goal_effect_confirmed",
+      intent_event_id: state.pending.event_id,
+      effect_id: state.pending.effect_id,
+      action_digest: state.pending.action_digest
+    });
+    return (await this.executePendingEffect(
+      confirmed.events,
+      confirmed.state,
+      command,
+      commandDigest,
+      confirmed.events.at(-1)!.id
+    )).view;
+  }
+
+  private async executePendingEffect(
+    events: GoalRuntimeEvent[],
+    state: DerivedGoalState,
+    command: z.infer<typeof continueCommandSchema> | z.infer<typeof resumeCommandSchema>,
+    commandDigest: string,
+    authorizationEventId: string | null
+  ): Promise<{ events: GoalRuntimeEvent[]; state: DerivedGoalState; view: GoalView }> {
+    if (!state.pending) throw new Error("GoalRuntime has no pending effect to execute");
+    if (!this.toolExecutor) throw new Error("GoalRuntime effect execution requires a tool adapter");
+    const pending = state.pending;
+    const toolStarted = this.nowMs();
+    let result: ToolResult;
+    try {
+      result = await this.toolExecutor.execute(
+        structuredClone(pending.action),
+        structuredClone(pending.effect_decision)
+      );
+    } catch (error) {
+      result = {
+        id: this.nextSafeId("tool_result"),
+        tool: pending.action.tool,
+        ok: false,
+        summary: `Tool execution failed: ${errorMessage(error)}`.slice(0, 2_000),
+        output: { failure_kind: "tool_adapter_error" },
+        side_effect_level: effectSideEffectLevel(pending.effect_decision.intent),
+        created_at: this.now()
+      };
+    }
+    const boundedResult = boundedToolResult(result);
+    const toolUsage = normalizeUsage({
+      tool_calls: 1,
+      elapsed_ms: elapsedSince(toolStarted, this.nowMs())
+    });
+    const checkpoint = normalizeCheckpoint({
+      cursor: `effect:${pending.effect_id}:observed`,
+      summary: boundedResult.summary,
+      next_action: boundedResult.ok
+        ? "Evaluate the canonical observation and continue toward an outcome."
+        : "Recover from the failed tool observation before proposing completion.",
+      selected_refs: toolResultRefs(boundedResult)
+    });
+    return this.appendEvent(events, {
+      ...this.eventBase(state.view, command, commandDigest),
+      event_type: "goal_action_observed",
+      intent_event_id: pending.event_id,
+      authorization_event_id: authorizationEventId,
+      effect_id: pending.effect_id,
+      action_digest: pending.action_digest,
+      effect_intent: pending.effect_decision.intent,
+      result: boundedResult,
+      checkpoint,
+      usage_delta: toolUsage
+    });
+  }
+
+  private async verifyOutcome(
+    events: GoalRuntimeEvent[],
+    state: DerivedGoalState,
+    command: z.infer<typeof continueCommandSchema>,
+    commandDigest: string,
+    proposal: GoalOutcomeProposal,
+    usageDelta: GoalUsage
+  ): Promise<GoalView> {
+    const evidenceEventIds = candidateEvidenceEventIds(events, command.goal_id);
+    const candidate = outcomeCandidateSchema.parse({
+      ...proposal,
+      runtime_result: {
+        ...proposal.runtime_result,
+        evidence_event_ids: evidenceEventIds
+      },
+      evidence_event_ids: evidenceEventIds
+    });
+    const evidence = buildEvidenceViews(events, command.goal_id, evidenceEventIds);
+    let verification: GoalVerificationResult;
+    try {
+      verification = parseVerificationResult(await this.verifier.verify({
+        goal: structuredClone(state.view),
+        candidate: structuredClone(candidate),
+        evidence: structuredClone(evidence)
+      }));
+    } catch (error) {
+      verification = parseVerificationResult({
+        status: "failed",
+        summary: `Outcome verification failed: ${errorMessage(error)}`.slice(0, 2_000),
+        checks: [{
+          id: "verifier_adapter",
+          status: "failed",
+          summary: "The verifier adapter did not return a valid decision.",
+          evidence_event_ids: [evidenceEventIds.at(-1)!]
+        }],
+        next_action: "Repair the verifier or evidence and continue the same goal."
       });
     }
-
-    const candidate = outcomeCandidateSchema.parse(command.candidate);
-    assertCandidateEvidence(candidate, goalEvents);
-    const rawVerification = await this.verifier.verify({
-      goal: structuredClone(current),
-      candidate: structuredClone(candidate),
-      observations: structuredClone(observations),
-      evidence: structuredClone(buildEvidenceViews(goalEvents, candidate.evidence_event_ids))
-    });
-    const verification = parseVerificationResult(rawVerification);
     assertVerificationEvidence(verification, candidate);
+    const checkpoint = normalizeCheckpoint({
+      cursor: verification.status === "passed" ? "completed" : "verification_failed",
+      summary: verification.summary,
+      next_action: verification.next_action,
+      selected_refs: state.view.checkpoint.selected_refs
+    });
     const eventId = this.nextSafeId("goal_event");
     const occurredAt = this.now();
-    const base = this.eventBase(current, command, commandDigest, eventId, occurredAt);
-
+    const base = this.eventBase(state.view, command, commandDigest, eventId, occurredAt);
     if (verification.status === "failed") {
-      return this.appendAndProject(allEvents, {
+      return (await this.appendEvent(events, {
         ...base,
-        ...progress,
         event_type: "goal_verification_failed",
         candidate,
-        verification
-      });
+        verification,
+        checkpoint,
+        usage_delta: usageDelta
+      })).view;
     }
-
-    const receipt = this.acceptedReceipt(current, candidate, verification, eventId, occurredAt);
-    return this.appendAndProject(allEvents, {
+    const receipt = this.acceptedReceipt(state.view, candidate, verification, eventId, occurredAt);
+    return (await this.appendEvent(events, {
       ...base,
-      ...progress,
       event_type: "goal_completed",
       candidate,
       verification,
+      checkpoint,
+      usage_delta: usageDelta,
       receipt
-    });
+    })).view;
   }
 
   private eventBase(
@@ -464,7 +852,7 @@ export class GoalRuntime {
     occurredAt = this.now()
   ) {
     return {
-      schema_version: 1 as const,
+      schema_version: 2 as const,
       type: "goal_runtime_event" as const,
       id: eventId,
       goal_id: current.goal_id,
@@ -521,18 +909,22 @@ export class GoalRuntime {
     });
   }
 
-  private async appendAndProject(events: GoalRuntimeEvent[], event: GoalRuntimeEvent): Promise<GoalView> {
+  private async appendEvent(
+    events: GoalRuntimeEvent[],
+    event: GoalRuntimeEvent
+  ): Promise<{ events: GoalRuntimeEvent[]; state: DerivedGoalState; view: GoalView }> {
     const parsed = goalRuntimeEventSchema.parse(event);
     assertNewEventIdentities(events, parsed);
-    const view = deriveGoalView([...events, parsed], parsed.goal_id);
+    const nextEvents = [...events, parsed];
+    const state = deriveGoalState(nextEvents, parsed.goal_id);
     await this.store.appendJsonl(EVENTS_REF, parsed);
-    await this.writeProjections(view, parsed.occurred_at);
-    return view;
+    await this.writeProjections(state.view, parsed.occurred_at);
+    return { events: nextEvents, state, view: state.view };
   }
 
   private async writeProjections(view: GoalView, updatedAt: string): Promise<void> {
     await writeJsonProjectionIfChanged(this.store, `${CHECKPOINT_ROOT}/${view.goal_id}.json`, {
-      schema_version: 1,
+      schema_version: 2,
       type: "goal_checkpoint_projection",
       goal_id: view.goal_id,
       sequence: view.sequence,
@@ -543,6 +935,7 @@ export class GoalRuntime {
       continuation_required: view.continuation_required,
       continuation_reasons: view.continuation_reasons,
       next_action: view.next_action,
+      pending_effect: view.pending_effect,
       last_event_id: view.last_event_id,
       updated_at: updatedAt,
       boundary: GOAL_BOUNDARY
@@ -557,7 +950,6 @@ export class GoalRuntime {
     if (!raw.trim()) return [];
     const events: GoalRuntimeEvent[] = [];
     const eventIds = new Set<string>();
-    const commandIds = new Set<string>();
     const receiptIds = new Set<string>();
     for (const [index, line] of raw.split(/\r?\n/).entries()) {
       if (!line.trim()) continue;
@@ -571,14 +963,8 @@ export class GoalRuntime {
       if (!parsed.success) {
         throw new Error(`Malformed GoalRuntime canonical event at line ${index + 1}: ${z.prettifyError(parsed.error)}`);
       }
-      if (eventIds.has(parsed.data.id)) {
-        throw new Error(`Duplicate GoalRuntime event id: ${parsed.data.id}`);
-      }
-      if (commandIds.has(parsed.data.command_id)) {
-        throw new Error(`Duplicate GoalRuntime command id: ${parsed.data.command_id}`);
-      }
+      if (eventIds.has(parsed.data.id)) throw new Error(`Duplicate GoalRuntime event id: ${parsed.data.id}`);
       eventIds.add(parsed.data.id);
-      commandIds.add(parsed.data.command_id);
       if ("receipt" in parsed.data) {
         if (receiptIds.has(parsed.data.receipt.id)) {
           throw new Error(`Duplicate GoalRuntime receipt id: ${parsed.data.receipt.id}`);
@@ -587,9 +973,8 @@ export class GoalRuntime {
       }
       events.push(parsed.data);
     }
-    for (const goalId of new Set(events.map((event) => event.goal_id))) {
-      deriveGoalView(events, goalId);
-    }
+    assertCommandEventGroups(events);
+    for (const goalId of new Set(events.map((event) => event.goal_id))) deriveGoalState(events, goalId);
     return events;
   }
 
@@ -599,10 +984,67 @@ export class GoalRuntime {
     if (!parsed.success) throw new Error(`GoalRuntime id factory returned unsafe ${prefix} id: ${value}`);
     return parsed.data;
   }
-
 }
 
-function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView {
+/** Minimal deterministic verifier for the local CLI ingress. */
+export class CanonicalGoalVerifier implements GoalVerifier {
+  async verify(input: GoalVerificationInput): Promise<GoalVerificationResult> {
+    const lastObservation = input.evidence.filter((item) => item.kind === "observation").at(-1);
+    const mutatingObservation = input.evidence.some((item) => item.kind === "observation"
+      && item.ok === true
+      && item.operation !== undefined
+      && !["read_local", "read_public_network"].includes(item.operation));
+    const checks: GoalVerificationResult["checks"] = [{
+      id: "canonical_evidence",
+      status: input.evidence.length > 0 ? "passed" : "failed",
+      summary: input.evidence.length > 0
+        ? "The outcome is bound to canonical same-goal events."
+        : "The outcome has no canonical same-goal evidence.",
+      evidence_event_ids: [input.candidate.evidence_event_ids.at(-1)!]
+    }];
+    if (lastObservation?.ok === false) {
+      checks.push({
+        id: "latest_tool_observation",
+        status: "failed",
+        summary: "The latest tool observation failed and has not been repaired.",
+        evidence_event_ids: [lastObservation.event_id]
+      });
+    }
+    if (input.candidate.runtime_result.status === "degraded") {
+      checks.push({
+        id: "runtime_result",
+        status: "failed",
+        summary: "A degraded runtime result cannot be accepted.",
+        evidence_event_ids: input.candidate.runtime_result.evidence_event_ids
+      });
+    }
+    if (input.candidate.change.kind !== "none" && !mutatingObservation) {
+      checks.push({
+        id: "change_observation",
+        status: "failed",
+        summary: "A claimed change requires a successful mutating observation.",
+        evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    const failed = checks.some((check) => check.status === "failed");
+    return {
+      status: failed ? "failed" : "passed",
+      summary: failed
+        ? "Canonical evidence does not yet support outcome acceptance."
+        : "Canonical evidence supports the bounded local outcome.",
+      checks,
+      next_action: failed ? "Address the failed canonical check and continue the same goal." : null
+    };
+  }
+}
+
+export function parseGoalCognitionResult(value: GoalCognitionResult): GoalCognitionResult {
+  const parsed = goalCognitionResultSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`Invalid GoalRuntime cognition result: ${z.prettifyError(parsed.error)}`);
+  return parsed.data;
+}
+
+function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): DerivedGoalState {
   const events = allEvents.filter((event) => event.goal_id === goalId);
   if (events.length === 0) throw new Error(`GoalRuntime goal not found: ${goalId}`);
   const started = events[0];
@@ -614,16 +1056,18 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
   let checkpoint = started.checkpoint;
   let usage = normalizeUsage();
   let verificationFailed = false;
-  let nextAction: string | null = null;
+  let blocked = false;
+  let softBudgetReached = false;
+  let nextAction: string | null = checkpoint.next_action;
   let receipt: OutcomeReceipt | null = null;
+  let pending: PendingEffectInternal | null = null;
+  let manualPause = false;
 
   for (const [index, event] of events.entries()) {
     if (event.sequence !== index + 1) {
       throw new Error(`Non-contiguous GoalRuntime sequence for ${goalId}: expected ${index + 1}, received ${event.sequence}`);
     }
-    if (index > 0 && event.event_type === "goal_started") {
-      throw new Error(`Duplicate GoalRuntime start event: ${goalId}`);
-    }
+    if (index > 0 && event.event_type === "goal_started") throw new Error(`Duplicate GoalRuntime start event: ${goalId}`);
     if (status === "completed" || status === "abandoned") {
       throw new Error(`GoalRuntime history mutates terminal goal: ${goalId}`);
     }
@@ -631,10 +1075,90 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
     switch (event.event_type) {
       case "goal_started":
         break;
-      case "goal_continued":
+      case "goal_action_planned": {
+        assertReplayStatus(status, "active", event);
+        if (event.action_redacted && event.effect_decision.outcome !== "deny") {
+          throw new Error(`GoalRuntime executable action cannot be redacted: ${event.id}`);
+        }
+        if (!event.action_redacted && event.action_digest !== digestAction(event.action)) {
+          throw new Error(`GoalRuntime action digest mismatch: ${event.id}`);
+        }
+        usage = addUsage(usage, event.usage_delta);
+        softBudgetReached = false;
+        verificationFailed = false;
+        blocked = false;
+        if (event.effect_decision.outcome === "deny") {
+          nextAction = event.effect_decision.reason;
+          break;
+        }
+        pending = {
+          event_id: event.id,
+          effect_id: event.effect_id,
+          action_digest: event.action_digest,
+          action: event.action,
+          decision: event.effect_decision.outcome,
+          state: event.effect_decision.outcome === "confirm" ? "awaiting_confirmation" : "outcome_unknown",
+          effect_decision: event.effect_decision,
+          authorization_event_id: null
+        };
+        status = "paused";
+        manualPause = false;
+        nextAction = event.effect_decision.outcome === "confirm"
+          ? `Confirm exact effect ${event.effect_id} or abandon the goal.`
+          : `Inspect the unknown outcome of effect ${event.effect_id}; it will not be repeated automatically.`;
+        break;
+      }
+      case "goal_effect_confirmed":
+        if (status !== "paused" || !pending || pending.state !== "awaiting_confirmation") {
+          throw new Error(`GoalRuntime effect confirmation has no matching pending effect: ${event.id}`);
+        }
+        if (event.intent_event_id !== pending.event_id
+          || event.effect_id !== pending.effect_id
+          || event.action_digest !== pending.action_digest) {
+          throw new Error(`GoalRuntime effect confirmation does not match its intent: ${event.id}`);
+        }
+        pending = {
+          ...(pending as PendingEffectInternal),
+          state: "outcome_unknown",
+          authorization_event_id: event.id
+        };
+        nextAction = `Inspect the unknown outcome of confirmed effect ${event.effect_id}; it will not be repeated automatically.`;
+        break;
+      case "goal_action_observed":
+        if (status !== "paused" || !pending || pending.state !== "outcome_unknown") {
+          throw new Error(`GoalRuntime tool observation has no pending effect: ${event.id}`);
+        }
+        if (event.intent_event_id !== pending.event_id
+          || event.effect_id !== pending.effect_id
+          || event.action_digest !== pending.action_digest
+          || canonicalJson(event.effect_intent) !== canonicalJson(pending.effect_decision.intent)
+          || event.authorization_event_id !== pending.authorization_event_id) {
+          throw new Error(`GoalRuntime tool observation does not match its effect intent: ${event.id}`);
+        }
+        if (pending.decision === "confirm" && !event.authorization_event_id) {
+          throw new Error(`GoalRuntime confirmed effect lacks authorization event: ${event.id}`);
+        }
+        status = "active";
+        pending = null;
+        checkpoint = event.checkpoint;
+        usage = addUsage(usage, event.usage_delta);
+        nextAction = checkpoint.next_action;
+        softBudgetReached = false;
+        manualPause = false;
+        break;
+      case "goal_soft_budget_checkpoint":
+        assertReplayStatus(status, "active", event);
+        checkpoint = event.checkpoint;
+        nextAction = checkpoint.next_action;
+        softBudgetReached = true;
+        break;
+      case "goal_blocked":
         assertReplayStatus(status, "active", event);
         checkpoint = event.checkpoint;
         usage = addUsage(usage, event.usage_delta);
+        nextAction = event.next_action;
+        blocked = true;
+        softBudgetReached = false;
         break;
       case "goal_verification_failed":
         assertReplayStatus(status, "active", event);
@@ -646,6 +1170,8 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
         checkpoint = event.checkpoint;
         usage = addUsage(usage, event.usage_delta);
         verificationFailed = true;
+        blocked = false;
+        softBudgetReached = false;
         nextAction = event.verification.next_action;
         break;
       case "goal_completed":
@@ -660,16 +1186,24 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
         usage = addUsage(usage, event.usage_delta);
         status = "completed";
         verificationFailed = false;
+        blocked = false;
+        softBudgetReached = false;
         nextAction = null;
         receipt = event.receipt;
         break;
       case "goal_paused":
         assertReplayStatus(status, "active", event);
         status = "paused";
+        manualPause = true;
+        nextAction = event.reason;
         break;
       case "goal_resumed":
-        assertReplayStatus(status, "paused", event);
+        if (status !== "paused" || !manualPause || pending) {
+          throw new Error(`Invalid GoalRuntime replay transition ${event.event_type} from non-manual pause`);
+        }
         status = "active";
+        manualPause = false;
+        nextAction = checkpoint.next_action;
         break;
       case "goal_abandoned":
         if (status !== "active" && status !== "paused") {
@@ -678,17 +1212,33 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
         assertAbandonmentReceipt(started, event);
         status = "abandoned";
         receipt = event.receipt;
+        pending = null;
+        manualPause = false;
         nextAction = null;
         break;
     }
   }
 
   const reasons: GoalContinuationReason[] = [];
-  if (budgetReached(usage, started.budget)) reasons.push("soft_budget_reached");
+  if (softBudgetReached) reasons.push("soft_budget_reached");
   if (verificationFailed) reasons.push("verification_failed");
-  if (status === "paused") reasons.push("paused");
+  if (blocked) reasons.push("blocked");
+  if (status === "paused") {
+    if (pending?.state === "awaiting_confirmation") reasons.push("effect_confirmation_required");
+    else if (pending?.state === "outcome_unknown") reasons.push("effect_outcome_unknown");
+    else reasons.push("paused");
+  }
   const last = events.at(-1)!;
-  return {
+  const pendingView: GoalPendingEffect | null = pending ? {
+    effect_id: pending.effect_id,
+    action_digest: pending.action_digest,
+    decision: pending.decision,
+    state: pending.state,
+    operation: pending.effect_decision.intent.operation,
+    target: pending.effect_decision.intent.target,
+    reason: pending.effect_decision.reason
+  } : null;
+  const view: GoalView = {
     goal_id: goalId,
     objective: started.objective,
     status,
@@ -696,24 +1246,119 @@ function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView
     budget: started.budget,
     usage,
     checkpoint,
-    continuation_required: status === "active" && reasons.some((reason) => reason !== "paused"),
+    continuation_required: status === "active" && reasons.length > 0,
     continuation_reasons: reasons,
     next_action: nextAction,
+    pending_effect: pendingView,
     last_event_id: last.id,
     last_command_id: last.command_id,
     receipt,
     boundary: GOAL_BOUNDARY
   };
+  return { view, pending, manualPause };
 }
 
-function assertReplayStatus(
-  actual: GoalStatus,
-  expected: GoalStatus,
-  event: GoalRuntimeEvent
-): void {
-  if (actual !== expected) {
-    throw new Error(`Invalid GoalRuntime replay transition ${event.event_type} from ${actual}`);
+function buildCognitionEvidence(events: GoalRuntimeEvent[], goalId: string): GoalEvidenceView[] {
+  const goalEvents = events.filter((event) => event.goal_id === goalId);
+  const selected = goalEvents.filter((event) => event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned").slice(-16);
+  return selected.map(evidenceView);
+}
+
+function buildEvidenceViews(events: GoalRuntimeEvent[], goalId: string, requestedIds: string[]): GoalEvidenceView[] {
+  const byId = new Map(events.filter((event) => event.goal_id === goalId).map((event) => [event.id, event]));
+  return requestedIds.map((id) => evidenceView(byId.get(id)!));
+}
+
+function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
+  switch (event.event_type) {
+    case "goal_started":
+      return {
+        event_id: event.id,
+        kind: "intent",
+        summary: event.objective,
+        refs: event.checkpoint.selected_refs,
+        occurred_at: event.occurred_at
+      };
+    case "goal_action_planned":
+      return {
+        event_id: event.id,
+        kind: "action",
+        summary: `${event.model_summary} Policy: ${event.effect_decision.outcome}; ${event.effect_decision.reason}`,
+        refs: [],
+        occurred_at: event.occurred_at,
+        operation: event.effect_decision.intent.operation,
+        effect_decision: event.effect_decision.outcome,
+        tool: event.action.tool,
+        details: boundedDetails({
+          effect_id: event.effect_id,
+          action: event.action,
+          intent: event.effect_decision.intent
+        })
+      };
+    case "goal_effect_confirmed":
+      return {
+        event_id: event.id,
+        kind: "resume",
+        summary: `Exact effect ${event.effect_id} was confirmed.`,
+        refs: [],
+        occurred_at: event.occurred_at
+      };
+    case "goal_action_observed": {
+      return {
+        event_id: event.id,
+        kind: "observation",
+        summary: event.result.summary,
+        refs: toolResultRefs(event.result),
+        occurred_at: event.occurred_at,
+        operation: event.effect_intent.operation,
+        tool: event.result.tool,
+        ok: event.result.ok,
+        details: boundedDetails(event.result)
+      };
+    }
+    case "goal_soft_budget_checkpoint":
+      return {
+        event_id: event.id,
+        kind: "pause",
+        summary: event.checkpoint.summary || "Soft execution budget reached.",
+        refs: event.checkpoint.selected_refs,
+        occurred_at: event.occurred_at
+      };
+    case "goal_blocked":
+      return {
+        event_id: event.id,
+        kind: "pause",
+        summary: event.summary,
+        refs: event.checkpoint.selected_refs,
+        occurred_at: event.occurred_at
+      };
+    case "goal_verification_failed":
+      return {
+        event_id: event.id,
+        kind: "verification_failure",
+        summary: event.verification.summary,
+        refs: event.checkpoint.selected_refs,
+        occurred_at: event.occurred_at
+      };
+    case "goal_paused":
+      return { event_id: event.id, kind: "pause", summary: event.reason, refs: [], occurred_at: event.occurred_at };
+    case "goal_resumed":
+      return { event_id: event.id, kind: "resume", summary: "Goal execution resumed.", refs: [], occurred_at: event.occurred_at };
+    case "goal_completed":
+    case "goal_abandoned":
+      throw new Error(`GoalRuntime terminal event cannot be evidence input: ${event.id}`);
   }
+}
+
+function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string): string[] {
+  const eligible = events.filter((event) => event.goal_id === goalId && [
+    "goal_started",
+    "goal_action_planned",
+    "goal_effect_confirmed",
+    "goal_action_observed",
+    "goal_verification_failed"
+  ].includes(event.event_type));
+  return eligible.slice(-64).map((event) => event.id);
 }
 
 function parseVerificationResult(value: GoalVerificationResult): GoalVerificationResult {
@@ -828,60 +1473,186 @@ function buildAbandonmentReceipt(args: {
   });
 }
 
-function buildEvidenceViews(events: GoalRuntimeEvent[], requestedIds: string[]): GoalEvidenceView[] {
-  const byId = new Map(events.map((event) => [event.id, event]));
-  return requestedIds.map((id) => evidenceView(byId.get(id)!));
-}
-
-function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
-  switch (event.event_type) {
-    case "goal_started":
-      return {
-        event_id: event.id,
-        kind: "intent",
-        summary: event.objective,
-        refs: event.checkpoint.selected_refs,
-        occurred_at: event.occurred_at
-      };
-    case "goal_continued":
-      return progressEvidenceView(event, "progress", event.checkpoint.summary || "Goal execution progressed.");
-    case "goal_verification_failed":
-      return progressEvidenceView(event, "verification_failure", event.verification.summary);
-    case "goal_paused":
-      return { event_id: event.id, kind: "pause", summary: event.reason, refs: [], occurred_at: event.occurred_at };
-    case "goal_resumed":
-      return { event_id: event.id, kind: "resume", summary: "Goal execution resumed.", refs: [], occurred_at: event.occurred_at };
-    case "goal_completed":
-    case "goal_abandoned":
-      throw new Error(`GoalRuntime terminal event cannot be candidate evidence: ${event.id}`);
-  }
-}
-
-function progressEvidenceView(
-  event: z.infer<typeof continuedEventSchema> | z.infer<typeof verificationFailedEventSchema>,
-  kind: "progress" | "verification_failure",
-  summary: string
-): GoalEvidenceView {
-  return {
-    event_id: event.id,
-    kind,
-    summary,
-    refs: unique([
-      ...event.checkpoint.selected_refs,
-      ...event.observations.flatMap((observation) => observation.refs)
-    ]),
-    occurred_at: event.occurred_at
-  };
+function assertReplayStatus(actual: GoalStatus, expected: GoalStatus, event: GoalRuntimeEvent): void {
+  if (actual !== expected) throw new Error(`Invalid GoalRuntime replay transition ${event.event_type} from ${actual}`);
 }
 
 function assertNewEventIdentities(events: GoalRuntimeEvent[], event: GoalRuntimeEvent): void {
   if (events.some((existing) => existing.id === event.id)) {
     throw new Error(`Duplicate GoalRuntime event id before append: ${event.id}`);
   }
+  if (event.event_type === "goal_action_planned") {
+    const duplicate = events.some((existing) => existing.event_type === "goal_action_planned" && existing.effect_id === event.effect_id);
+    if (duplicate) throw new Error(`Duplicate GoalRuntime effect id before append: ${event.effect_id}`);
+  }
   if ("receipt" in event) {
     const duplicate = events.some((existing) => "receipt" in existing && existing.receipt.id === event.receipt.id);
     if (duplicate) throw new Error(`Duplicate GoalRuntime receipt id before append: ${event.receipt.id}`);
   }
+}
+
+function assertCommandEventGroups(events: GoalRuntimeEvent[]): void {
+  const seenClosed = new Set<string>();
+  let previousCommandId: string | null = null;
+  const metadata = new Map<string, { digest: string; goalId: string }>();
+  for (const event of events) {
+    if (previousCommandId !== event.command_id) {
+      if (seenClosed.has(event.command_id)) {
+        throw new Error(`Non-contiguous GoalRuntime command event group: ${event.command_id}`);
+      }
+      if (previousCommandId) seenClosed.add(previousCommandId);
+      previousCommandId = event.command_id;
+    }
+    const prior = metadata.get(event.command_id);
+    if (prior && (prior.digest !== event.command_digest || prior.goalId !== event.goal_id)) {
+      throw new Error(`GoalRuntime command group identity mismatch: ${event.command_id}`);
+    }
+    metadata.set(event.command_id, { digest: event.command_digest, goalId: event.goal_id });
+  }
+}
+
+function assertCommandReplay(events: GoalRuntimeEvent[], commandDigest: string): void {
+  if (events.some((event) => event.command_digest !== commandDigest)) {
+    throw new Error(`GoalRuntime command id conflict: ${events[0]!.command_id}`);
+  }
+}
+
+function commandOperationFinal(events: GoalRuntimeEvent[]): boolean {
+  const last = events.at(-1)!;
+  return last.event_type === "goal_started"
+    || last.event_type === "goal_soft_budget_checkpoint"
+    || last.event_type === "goal_blocked"
+    || last.event_type === "goal_verification_failed"
+    || last.event_type === "goal_completed"
+    || last.event_type === "goal_paused"
+    || last.event_type === "goal_resumed"
+    || last.event_type === "goal_abandoned"
+    || (last.event_type === "goal_action_planned" && last.effect_decision.outcome === "confirm");
+}
+
+function eventsUpTo(events: GoalRuntimeEvent[], goalId: string, sequence: number): GoalRuntimeEvent[] {
+  return events.filter((event) => event.goal_id !== goalId || event.sequence <= sequence);
+}
+
+function usageForCommand(events: GoalRuntimeEvent[], commandId: string): GoalUsage {
+  return events.filter((event) => event.command_id === commandId).reduce((usage, event) => {
+    return "usage_delta" in event ? addUsage(usage, event.usage_delta) : usage;
+  }, normalizeUsage());
+}
+
+function normalizeCheckpoint(value: Partial<GoalCheckpoint> = {}): GoalCheckpoint {
+  return goalCheckpointSchema.parse({
+    cursor: value.cursor ?? null,
+    summary: value.summary ?? "",
+    next_action: value.next_action ?? null,
+    selected_refs: value.selected_refs ?? []
+  });
+}
+
+function normalizeUsage(value: Partial<GoalUsage> = {}): GoalUsage {
+  return goalUsageSchema.parse({
+    model_rounds: value.model_rounds ?? 0,
+    tool_calls: value.tool_calls ?? 0,
+    elapsed_ms: value.elapsed_ms ?? 0
+  });
+}
+
+function normalizeBudget(value: Partial<GoalSoftBudget> = {}): GoalSoftBudget {
+  return goalSoftBudgetSchema.parse({
+    max_model_rounds: value.max_model_rounds ?? DEFAULT_MODEL_ROUNDS_PER_CONTINUE,
+    max_tool_calls: value.max_tool_calls ?? DEFAULT_TOOL_CALLS_PER_CONTINUE,
+    max_elapsed_ms: value.max_elapsed_ms ?? DEFAULT_ELAPSED_MS_PER_CONTINUE
+  });
+}
+
+function addUsage(left: GoalUsage, right: GoalUsage): GoalUsage {
+  return {
+    model_rounds: left.model_rounds + right.model_rounds,
+    tool_calls: left.tool_calls + right.tool_calls,
+    elapsed_ms: left.elapsed_ms + right.elapsed_ms
+  };
+}
+
+function budgetReached(usage: GoalUsage, budget: GoalSoftBudget): boolean {
+  return usage.model_rounds >= budget.max_model_rounds
+    || usage.tool_calls >= budget.max_tool_calls
+    || usage.elapsed_ms >= budget.max_elapsed_ms;
+}
+
+function boundedToolResult(value: ToolResult): ToolResult {
+  const cloned = structuredClone(value);
+  const serialized = JSON.stringify(cloned.output);
+  if (serialized.length > 80_000) {
+    cloned.output = {
+      truncated: true,
+      original_chars: serialized.length,
+      preview: serialized.slice(0, 76_000)
+    };
+  }
+  cloned.summary = cloned.summary.slice(0, 2_000);
+  return toolResultSchema.parse(cloned);
+}
+
+function toolResultRefs(result: ToolResult): string[] {
+  const refs: string[] = [];
+  for (const key of ["path", "ref", "artifact_ref", "worktree"] as const) {
+    const value = result.output[key];
+    if (typeof value === "string" && value.trim() && value.length <= 1_000) refs.push(value.trim());
+  }
+  return unique(refs).slice(0, 32);
+}
+
+function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {
+  if (intent.operation === "read_local" || intent.operation === "read_public_network") return "none";
+  if (intent.operation === "run_local_verification") return "local_reversible";
+  if (intent.operation === "write_external") return "external_write";
+  return "local_write";
+}
+
+function elapsedSince(started: number, ended: number): number {
+  return Math.max(0, Math.round(ended - started));
+}
+
+function digestCommand(command: GoalCommand): string {
+  return createHash("sha256").update(canonicalJson(command)).digest("hex");
+}
+
+function digestAction(action: EffectAction): string {
+  return createHash("sha256").update(canonicalJson(action)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function boundedDetails(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  return serialized.length <= 40_000 ? serialized : `${serialized.slice(0, 39_900)}...[truncated]`;
+}
+
+function redactedDeniedAction(action: EffectAction): EffectAction {
+  return {
+    tool: action.tool,
+    arguments: {
+      redacted: true,
+      argument_keys: Object.keys(action.arguments).sort().slice(0, 64)
+    }
+  };
+}
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function writeJsonProjectionIfChanged(store: AgentStore, ref: string, value: unknown): Promise<void> {
@@ -913,62 +1684,4 @@ async function withStateRootMutationLock<T>(stateRoot: string, operation: () => 
 
 async function waitForStateRootMutations(stateRoot: string): Promise<void> {
   await stateRootMutationQueues.get(stateRoot)?.tail;
-}
-
-function normalizeCheckpoint(value: Partial<GoalCheckpoint> = {}): GoalCheckpoint {
-  return goalCheckpointSchema.parse({
-    cursor: value.cursor ?? null,
-    summary: value.summary ?? "",
-    next_action: value.next_action ?? null,
-    selected_refs: value.selected_refs ?? []
-  });
-}
-
-function normalizeUsage(value: Partial<GoalUsage> = {}): GoalUsage {
-  return goalUsageSchema.parse({
-    model_rounds: value.model_rounds ?? 0,
-    tool_calls: value.tool_calls ?? 0,
-    elapsed_ms: value.elapsed_ms ?? 0
-  });
-}
-
-function normalizeBudget(value: Partial<GoalSoftBudget> = {}): GoalSoftBudget {
-  return goalSoftBudgetSchema.parse({
-    max_model_rounds: value.max_model_rounds ?? null,
-    max_tool_calls: value.max_tool_calls ?? null,
-    max_elapsed_ms: value.max_elapsed_ms ?? null
-  });
-}
-
-function addUsage(left: GoalUsage, right: GoalUsage): GoalUsage {
-  return {
-    model_rounds: left.model_rounds + right.model_rounds,
-    tool_calls: left.tool_calls + right.tool_calls,
-    elapsed_ms: left.elapsed_ms + right.elapsed_ms
-  };
-}
-
-function budgetReached(usage: GoalUsage, budget: GoalSoftBudget): boolean {
-  return (budget.max_model_rounds !== null && usage.model_rounds >= budget.max_model_rounds)
-    || (budget.max_tool_calls !== null && usage.tool_calls >= budget.max_tool_calls)
-    || (budget.max_elapsed_ms !== null && usage.elapsed_ms >= budget.max_elapsed_ms);
-}
-
-function digestCommand(command: GoalCommand): string {
-  return createHash("sha256").update(canonicalJson(command)).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  if (value && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, item]) => item !== undefined)
-      .sort(([left], [right]) => left.localeCompare(right));
-    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canonicalJson(item)}`).join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)];
 }

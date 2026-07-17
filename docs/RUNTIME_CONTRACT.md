@@ -283,6 +283,59 @@ Runtime control is the minimal control plane:
 Runtime control is first-version infrastructure. It must not grow into a broad
 agent framework before core execution is reliable.
 
+### GoalRuntime Local Control Plane
+
+New goals created through the local `goal` CLI are owned by `GoalRuntime` from
+their first intent event through one terminal `OutcomeReceipt`. The public
+runtime boundary remains `handle(command)` and `read(goalId)`. A Continue
+command runs a bounded internal execution tranche: cognition proposes one
+action or outcome at a time, `EffectPolicy` decides the semantic effect, the
+runtime records the action intent before dispatch, the tool observation returns
+to the same canonical event stream, and the verifier alone may accept the
+outcome. The model does not author evidence-id matrices or parallel completion
+documents.
+
+`EffectPolicy` classifies operation, target, data exposure, and reversibility.
+It does not trust a model-provided `side_effect_level` to grant authority. Safe
+bounded local reads, public reads, reversible repo/state writes, and known local
+verification commands may run under standing local-evolution authority.
+Secrets and private egress, destructive local effects, unknown tools, and
+foreground writes into GoalRuntime, queue, episode, working-memory, SOP, skill,
+deployment, service, channel, or governance-owned state fail closed. External,
+irreversible, runtime-mutating, dynamic-code, and nested coding effects require
+confirmation of the exact effect identity and digest.
+
+An allowed effect is written as an intent before dispatch and as an observation
+after dispatch. If the process stops between them, the same goal is exposed as
+`effect_outcome_unknown`; command replay never guesses that the effect is safe
+to repeat. A confirmation decision pauses the same goal with one pending effect
+instead of creating a confirmation-document chain. Local `goal resume
+--confirm-effect <effect-id>` authorizes only that stored action. Manual pause,
+resume, abandon, soft-budget continuation, verification failure, and later
+repair retain the original goal identity.
+
+Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
+`goals/receipts/<goal-id>.json` are rebuildable projections. Intended tool
+effects may change authorized repo or task state, but the foreground control
+path writes no legacy queue, opportunity, episode, working-checkpoint,
+completion, iteration, SOP, skill, deployment, or learning-promotion state.
+
+Current cutover is intentionally limited to the explicit local `goal` CLI:
+
+```bash
+pnpm run runtime -- goal start --task "..."
+pnpm run runtime -- goal continue --goal goal_...
+pnpm run runtime -- goal read --goal goal_...
+pnpm run runtime -- goal pause --goal goal_... --reason "..."
+pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...]
+pnpm run runtime -- goal abandon --goal goal_... --reason "..."
+```
+
+`live`, Web, IM, daemon, and resident task-queue work remain on the legacy
+runner in this bounded slice. They cannot address or dual-write a GoalRuntime
+goal. Their later cutover must happen by whole goal identity; foreground
+learning remains deferred to a receipt-driven asynchronous `LearningRuntime`.
+
 ### Basic Entrypoints
 
 The local CLI is the primary foreground entrypoint.
