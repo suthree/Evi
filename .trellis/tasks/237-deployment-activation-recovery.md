@@ -1,6 +1,6 @@
 # Deployment Activation Recovery
 
-Status: independently reviewed; full repository gate passed; commit, PR, deployment, controller handoff, live probation, and rollback verification pending
+Status: ready PR #45; implementation commit and independent/repository review evidence recorded; ordinary merge, deployment, resident controller handoff, live probation, and rollback verification pending
 
 ## Identity And Ownership
 
@@ -62,12 +62,14 @@ Status: independently reviewed; full repository gate passed; commit, PR, deploym
 - Patch integrity: `git diff --check` proves whitespace integrity.
 - Repository gate: this session ran `pnpm --dir /Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/43-deployment-activation-recovery run check`; it exited 0 on 2026-07-17. The command completed `build`, `test`, `skills:validate`, and `naming:validate`.
 - Independent review: session `session_20260717045137_8eae2bd6` passed independent candidate review before this full repository gate.
-- Commit / PR refs: not applicable; commit remains pending and PR is explicitly not claimed.
+- Implementation commit: `bda126412a97a5d4aa9d18c363769f06dfaeb59e`.
+- Ready PR: [#45](https://github.com/suthree/Evi/pull/45) is OPEN, non-draft, MERGEABLE, with base `develop` and head `codex/issue-43-deployment-activation-recovery`.
 - Deploy / restart / live smoke / probation / rollback evidence: not performed and not claimable. Resident controller handoff and live acceptance remain explicitly pending an independently reviewed deployment, service health/heartbeat/Web/Feishu probation, and an exercised rollback under main-harness authority.
 
 ## Completion And Independent Review
 
 - Independent review session `session_20260717045137_8eae2bd6` passed focused tests 28/28; this session subsequently passed the full `pnpm run check` repository gate.
+- The implementation commit `bda126412a97a5d4aa9d18c363769f06dfaeb59e` is published as ready PR [#45](https://github.com/suthree/Evi/pull/45), OPEN, non-draft, and MERGEABLE into `develop` from `codex/issue-43-deployment-activation-recovery`.
 - Rollback acceptance: the source diff can be reverted without mutating runtime state or the canonical deployment ledger.
 - Live acceptance: an independent reviewer must confirm controller-version identity, deploy through the authorized path, observe healthy candidate probation, and verify bounded known-good recovery; this task alone cannot satisfy those gates.
-- Pending next action: make one bounded commit on `codex/issue-43-deployment-activation-recovery` only after the required diff and workspace-status re-checks pass.
+- Pending next action: conduct independent PR #45 review, then perform the ordinary merge only if accepted; deployment, resident controller handoff, live probation, and rollback verification remain pending afterward.
