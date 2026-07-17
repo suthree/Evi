@@ -107,6 +107,11 @@ commands and mutations belong to different worktrees.
 - Canonical delegated changes are repository-relative paths from bounded live
   `git status --porcelain=v1 -z` before/after snapshots. They do not read file
   bodies and retain the existing 200-path observation bound.
+- GoalRuntime validates the resolved new target or persisted resume handle
+  against the Goal worktree authority before planning and before dispatch.
+  Fixed pre/post HEAD snapshots add one canonical commit identity when Codex
+  advances HEAD; the 256-identity receipt reserves a 201-slot atomic envelope
+  for 200 paths plus that possible commit.
 - Model `changed_files` is untrusted diagnostic input. Fixture and mock Git
   responses in tests are labeled synthetic; live acceptance uses a real linked
   worktree.

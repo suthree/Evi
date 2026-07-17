@@ -12,7 +12,11 @@ import {
   type EffectDecision,
   type EffectIntent
 } from "./effect_policy.js";
-import type { ToolResult } from "./tools.js";
+import {
+  assertGoalBoundToolAuthority,
+  MAX_CODEX_CANONICAL_CHANGES,
+  type ToolResult
+} from "./tools.js";
 import {
   assertGoalRepositoryAuthority,
   goalRepositoryAuthoritySchema,
@@ -32,7 +36,7 @@ const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
 const DEFAULT_TOOL_CALLS_PER_CONTINUE = 4;
 const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
-const MAX_OUTCOME_CHANGES = 64;
+const MAX_OUTCOME_CHANGES = 256;
 const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
 const MAX_OUTCOME_EVIDENCE_EVENTS = (MAX_CHANGE_EVIDENCE_EVENTS * 2) + RECENT_OUTCOME_EVIDENCE_EVENTS;
@@ -680,11 +684,34 @@ export class GoalRuntime {
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
       const effectDecision = effectDecisionSchema.parse(rawDecision);
+      if (effectDecision.outcome !== "deny") {
+        try {
+          await assertGoalBoundToolAuthority(action, state.view.repository_authority!, this.store);
+        } catch (error) {
+          const summary = `Goal action authority validation failed: ${errorMessage(error)}`.slice(0, 2_000);
+          const nextAction = "Keep the proposed action inside the Goal's bound repository authority and continue the same goal.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "action_authority_mismatch",
+            summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: modelUsage
+          })).view;
+        }
+      }
       const lineage = goalChangeLineage(events, command.goal_id);
+      const reservedChanges = maxPotentialTypedChanges(action, effectDecision.intent);
       if (effectDecision.outcome !== "deny"
         && effectMayEmitTypedChange(effectDecision.intent)
-        && (lineage.changes.length >= MAX_OUTCOME_CHANGES
-          || lineage.eventIds.length >= MAX_CHANGE_EVIDENCE_EVENTS)) {
+        && (lineage.changes.length + reservedChanges > MAX_OUTCOME_CHANGES
+          || lineage.eventIds.length + 1 > MAX_CHANGE_EVIDENCE_EVENTS)) {
         const summary = "Goal change lineage is at receipt capacity; the proposed mutating effect was not dispatched.";
         const nextAction = "Propose the current bounded outcome or abandon this goal before starting more mutating work.";
         const checkpoint = normalizeCheckpoint({
@@ -757,6 +784,7 @@ export class GoalRuntime {
       throw new Error(`GoalRuntime confirmation does not match pending effect: ${state.pending.effect_id}`);
     }
     if (!this.toolExecutor) throw new Error("GoalRuntime confirmed effect requires a tool execution adapter");
+    await assertGoalBoundToolAuthority(state.pending.action, state.view.repository_authority!, this.store);
 
     const confirmed = await this.appendEvent(events, {
       ...this.eventBase(state.view, command, commandDigest),
@@ -787,6 +815,7 @@ export class GoalRuntime {
     const toolStarted = this.nowMs();
     let result: ToolResult;
     try {
+      await assertGoalBoundToolAuthority(pending.action, state.view.repository_authority!, this.store);
       result = await this.toolExecutor.execute(
         structuredClone(pending.action),
         structuredClone(pending.effect_decision)
@@ -1758,7 +1787,7 @@ function boundedToolResult(value: ToolResult): ToolResult {
     const controlFields: Record<string, unknown> = {};
     const change = changeIdentitySchema.safeParse(cloned.output.change);
     if (change.success) controlFields.change = change.data;
-    const changes = z.array(changeIdentitySchema).max(200).safeParse(cloned.output.changes);
+    const changes = z.array(changeIdentitySchema).max(MAX_CODEX_CANONICAL_CHANGES).safeParse(cloned.output.changes);
     if (changes.success) controlFields.changes = changes.data;
     for (const key of ["failure_kind", "path", "ref", "artifact_ref", "worktree"] as const) {
       const field = cloned.output[key];
@@ -1815,7 +1844,7 @@ function observedChange(result: ToolResult): GoalChangeIdentity | null {
 }
 
 function observedChanges(result: ToolResult): GoalChangeIdentity[] {
-  const plural = z.array(changeIdentitySchema).max(200).safeParse(result.output.changes);
+  const plural = z.array(changeIdentitySchema).max(MAX_CODEX_CANONICAL_CHANGES).safeParse(result.output.changes);
   const changes = plural.success ? [...plural.data] : [];
   const singular = observedChange(result);
   if (result.ok && singular) changes.push(singular);
@@ -1882,6 +1911,11 @@ function effectMayEmitTypedChange(intent: EffectIntent): boolean {
   return intent.operation !== "read_local"
     && intent.operation !== "read_public_network"
     && intent.operation !== "run_local_verification";
+}
+
+function maxPotentialTypedChanges(action: EffectAction, intent: EffectIntent): number {
+  if (!effectMayEmitTypedChange(intent)) return 0;
+  return action.tool === "codex.run" ? MAX_CODEX_CANONICAL_CHANGES : 1;
 }
 
 function elapsedSince(started: number, ended: number): number {

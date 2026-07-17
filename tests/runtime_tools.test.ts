@@ -12,7 +12,8 @@ import {
 import type { ActionProposal } from "../packages/core/src/schemas.js";
 import { coreToolContracts, renderCoreToolExamples } from "../packages/core/src/tool_contracts.js";
 import { AgentStore } from "../packages/core/src/store.js";
-import { executeTool } from "../packages/runtime/src/tools.js";
+import { inspectGoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
+import { assertGoalBoundToolAuthority, executeTool } from "../packages/runtime/src/tools.js";
 
 test("file.read reads repo files and rejects unsafe paths", async () => {
   const fixture = await createFixture();
@@ -979,6 +980,58 @@ process.stdin.on("end", () => {
   }
 });
 
+test("failed codex.run still exposes a commit created before authority drift is rejected", async () => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  try {
+    await writeFakeCodex(fixture.binRoot, `
+const fs = await import("node:fs");
+const { execFileSync } = await import("node:child_process");
+process.stdin.resume();
+process.stdin.on("end", () => {
+  fs.writeFileSync("committed-by-codex.txt", "committed before main-harness acceptance\\n");
+  execFileSync("git", ["add", "committed-by-codex.txt"]);
+  execFileSync("git", ["commit", "-m", "synthetic codex commit"]);
+  console.log(JSON.stringify({ type: "thread.started", thread_id: "019fabcd-1234-7abc-8def-0123456789ab" }));
+  console.log(JSON.stringify({
+    type: "item.completed",
+    item: {
+      id: "item-final",
+      type: "agent_message",
+      text: JSON.stringify({
+        status: "done",
+        summary: "Synthetic Codex committed before the harness rejected HEAD drift.",
+        changed_files: ["committed-by-codex.txt"],
+        tests: [],
+        blockers: [],
+        next_action: "The main harness attributes the commit and decides recovery.",
+        completion_authority: "main_harness"
+      })
+    }
+  }));
+});
+`);
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    const result = await executeTool(useTool("codex.run", codexNewArguments(fixture)), { store: fixture.store });
+    const afterHead = await gitValue(fixture.worktreeRoot, ["rev-parse", "HEAD"]);
+
+    assert.equal(result.ok, false);
+    assertFailureKind(result, "codex_invalid_structured_result");
+    assert.notEqual(afterHead, fixture.baseCommit);
+    assert.deepEqual(result.output.changes, [
+      { kind: "git_commit", identity: afterHead }
+    ]);
+    const workspace = result.output.workspace_changes as Record<string, unknown>;
+    assert.equal(workspace.head_before, fixture.baseCommit);
+    assert.equal(workspace.head_after, afterHead);
+    assert.equal(workspace.head_changed, true);
+    assert.deepEqual(workspace.after_changed_paths, []);
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
 test("codex.run injects parallel supervision, records attributable spawn evidence, inherits strategy on resume, and rejects legacy snapshots", async () => {
   const fixture = await createCodexFixture();
   const previousPath = process.env.PATH;
@@ -1048,6 +1101,19 @@ process.stdin.on("end", () => {
     ]);
 
     const resumeHandle = result.output.resume_handle as Record<string, unknown>;
+    const otherGoalRoot = join(fixture.root, "other-goal-worktree");
+    await runGit(fixture.mainRoot, ["worktree", "add", "-b", "codex/other-goal", otherGoalRoot]);
+    const otherGoalAuthority = await inspectGoalRepositoryAuthority(otherGoalRoot);
+    await assert.rejects(assertGoalBoundToolAuthority({
+      tool: "codex.run",
+      arguments: {
+        mode: "resume",
+        prompt: "Do not resume a thread owned by another Goal worktree.",
+        thread_id: resumeHandle.thread_id,
+        authority_digest: resumeHandle.authority_digest
+      }
+    }, otherGoalAuthority, fixture.store), /Goal's bound repository\/worktree authority/i);
+
     const strategyDrift = await executeTool(useTool("codex.run", {
       mode: "resume",
       prompt: "Continue with a different strategy.",

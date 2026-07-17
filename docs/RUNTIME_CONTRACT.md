@@ -298,6 +298,10 @@ documents.
 Each new Goal persists its real worktree, Git common directory, branch, and
 start HEAD. Continue validates this authority before cognition; exact-effect
 Resume validates it before dispatch. HEAD may advance only through descendants.
+For `codex.run`, GoalRuntime additionally resolves the proposed new target or
+persisted resume handle and requires its actual worktree, common directory,
+branch, and delegated base to equal the Goal authority before it records a
+pending effect. The tool rechecks the same authority immediately before spawn.
 Historical starts without the field remain readable, pausable, and abandonable,
 but cannot Continue or dispatch. Use the same `--repo-root` throughout.
 
@@ -393,7 +397,9 @@ An empty set therefore means that no typed canonical change observation exists.
 This complete change lineage is independent from the recent
 model-evidence window and is also retained by an abandonment receipt, so partial
 effects remain visible after a direction is retired. Receipt capacity is
-bounded; a potentially mutating effect that would cross it is blocked before
+256 canonical identities. One atomic `codex.run` reserves 201 slots before
+dispatch: at most 200 status paths plus one post-run HEAD identity. A
+potentially mutating effect that would cross the remaining capacity is blocked before
 dispatch, leaving the existing Goal completeable or abandonable instead of
 dropping early observations. Every Git commit and delegated `workspace_path`
 additionally requires a later successful local-verification observation. That
@@ -2705,9 +2711,11 @@ Required policy:
 - on POSIX, run in an independent process group and clean up the whole group
   with TERM followed by bounded KILL
 - derive tracked and untracked changed paths from fixed live pre/post Git
-  status evidence; fail the execution result when the post-run snapshot is
+  status evidence and derive commit identity from fixed pre/post HEAD evidence;
+  fail the execution result when the post-run snapshot is
   unavailable; expose those paths as canonical plural `workspace_path` changes
-  even when Codex fails after mutation
+  even when Codex fails after mutation, and expose the post-run `git_commit`
+  identity when HEAD changed even if both status snapshots are clean
 - compare the observed introduced paths with structured `changed_files` and
   retain matched, missing, and unobserved-claim diagnostics; the structured
   list is model self-report and never grants change authority

@@ -30,7 +30,8 @@ import {
   getWorkspaceStatus,
   type WorkspaceStatusResult
 } from "../../core/src/workspace_status.js";
-import { isPrivateNetworkHost } from "./effect_policy.js";
+import { isPrivateNetworkHost, type EffectAction } from "./effect_policy.js";
+import type { GoalRepositoryAuthority } from "./repository_authority.js";
 
 export interface ToolResult {
   id: string;
@@ -79,6 +80,8 @@ const FILE_READ_DEFAULT_MAX_LINES = 200;
 const FILE_READ_MAX_LINES = 400;
 const FILE_READ_MAX_START_LINE = 1_000_000;
 const FILE_READ_MAX_SCAN_BYTES = 4 * 1024 * 1024;
+export const MAX_CODEX_WORKSPACE_PATH_CHANGES = 200;
+export const MAX_CODEX_CANONICAL_CHANGES = MAX_CODEX_WORKSPACE_PATH_CHANGES + 1;
 
 export async function executeTool(action: ActionProposal, context: ToolExecutionContext): Promise<ToolResult> {
   const payload = action.payload as Record<string, unknown>;
@@ -988,6 +991,62 @@ interface CodexOutputCapture {
 interface CodexWorkspaceChanges {
   available: boolean;
   changedPaths: string[];
+  headCommit: string | null;
+}
+
+export async function assertGoalBoundToolAuthority(
+  action: EffectAction,
+  expected: GoalRepositoryAuthority,
+  store: AgentStore
+): Promise<void> {
+  if (action.tool !== CODEX_RUN_TOOL) return;
+  const request = parseCodexRunRequest(action.arguments);
+  if (request.mode === "new") {
+    const actual = await inspectCodexGitAuthority(store.repoRoot, request.worktree, request.cwd);
+    assertCodexGoalAuthority(expected, {
+      repoRoot: actual.repoRoot,
+      gitCommonDir: actual.gitCommonDir,
+      worktree: actual.worktree,
+      branch: actual.branch,
+      baseCommit: request.base_commit
+    });
+    return;
+  }
+
+  const prior = parseVerifiableCodexThreadRecord(
+    await store.readStateJson<unknown>(codexThreadRecordPath(request.thread_id))
+  );
+  if (!prior
+    || prior.thread_id !== request.thread_id
+    || prior.authority_digest !== request.authority_digest) {
+    throw new Error("codex.run resume handle is not a verifiable persisted authority record.");
+  }
+  assertCodexGoalAuthority(expected, {
+    repoRoot: prior.authority.repo_root,
+    gitCommonDir: prior.authority.git_common_dir,
+    worktree: prior.authority.isolated_worktree,
+    branch: prior.authority.branch,
+    baseCommit: prior.authority.base_commit
+  });
+}
+
+function assertCodexGoalAuthority(
+  expected: GoalRepositoryAuthority,
+  actual: {
+    repoRoot: string;
+    gitCommonDir: string;
+    worktree: string;
+    branch: string;
+    baseCommit: string;
+  }
+): void {
+  if (actual.repoRoot !== expected.repo_root
+    || actual.gitCommonDir !== expected.git_common_dir
+    || actual.worktree !== expected.worktree
+    || actual.branch !== expected.branch
+    || actual.baseCommit !== expected.start_head_commit) {
+    throw new Error("codex.run target does not match the Goal's bound repository/worktree authority and start HEAD.");
+  }
 }
 
 async function runCodexRun(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -1095,7 +1154,8 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
   const processResult = await runCodexProcess(argv, effectivePrompt, provisional);
   const workspaceAfter = await inspectCodexWorkspaceChanges(authority.repoRoot).catch(() => ({
     available: false,
-    changedPaths: []
+    changedPaths: [],
+    headCommit: null
   }));
   const threadId = request.mode === "resume" ? request.thread_id : processResult.threadId;
   const finalAuthority = threadId
@@ -1231,6 +1291,9 @@ function codexAttributedOutput(
   const workspace = isPlainRecord(metadata.workspace_changes) ? metadata.workspace_changes : null;
   if (!workspace) return { ...metadata, status: result.status, result };
   const observed = stringArrayValue(workspace.introduced_changed_paths);
+  const headBefore = typeof workspace.head_before === "string" ? workspace.head_before : null;
+  const headAfter = typeof workspace.head_after === "string" ? workspace.head_after : null;
+  const headChanged = workspace.head_changed === true && headAfter !== null;
   const claimed = [...new Set(result.changed_files)].sort();
   const observedSet = new Set(observed);
   const claimedSet = new Set(claimed);
@@ -1239,7 +1302,10 @@ function codexAttributedOutput(
   const unobservedClaims = claimed.filter((path) => !observedSet.has(path));
   return {
     ...metadata,
-    changes: observed.map((path) => ({ kind: "workspace_path", identity: path })),
+    changes: [
+      ...(headChanged ? [{ kind: "git_commit", identity: headAfter }] : []),
+      ...observed.map((path) => ({ kind: "workspace_path", identity: path }))
+    ],
     workspace_change_attribution: {
       status: !available
         ? "unavailable"
@@ -1250,7 +1316,10 @@ function codexAttributedOutput(
       claimed_changed_paths: claimed,
       missing_from_claim: missingFromClaim,
       unobserved_claims: unobservedClaims,
-      authority: "Only fixed live Git status snapshots create canonical workspace_path changes; Codex changed_files is an untrusted diagnostic claim."
+      head_before: headBefore,
+      head_after: headAfter,
+      head_changed: headChanged,
+      authority: "Only fixed live Git status and HEAD snapshots create canonical workspace_path or git_commit changes; Codex changed_files is an untrusted diagnostic claim."
     },
     status: result.status,
     result
@@ -1325,7 +1394,12 @@ function codexExecutionMetadata(
       before_changed_paths: workspaceBefore.changedPaths,
       after_changed_paths: workspaceAfter.changedPaths,
       introduced_changed_paths: workspaceAfter.changedPaths.filter((path) => !before.has(path)),
-      boundary: "fixed live git status --porcelain=v1 -z snapshots; includes tracked and untracked paths without reading file bodies"
+      head_before: workspaceBefore.headCommit,
+      head_after: workspaceAfter.headCommit,
+      head_changed: workspaceBefore.headCommit !== null
+        && workspaceAfter.headCommit !== null
+        && workspaceBefore.headCommit !== workspaceAfter.headCommit,
+      boundary: "fixed live git status --porcelain=v1 -z and HEAD snapshots; includes tracked and untracked paths without reading file bodies"
     },
     boundary: "Codex output is bounded execution evidence only; the main harness independently owns diff, tests, permissions, commit, PR, merge, deploy, and completion."
   };
@@ -1378,7 +1452,11 @@ async function inspectCodexWorkspaceChanges(repoRoot: string): Promise<CodexWork
       index += 1;
     }
   }
-  return { available: true, changedPaths: [...paths].sort().slice(0, 200) };
+  return {
+    available: true,
+    changedPaths: [...paths].sort().slice(0, MAX_CODEX_WORKSPACE_PATH_CHANGES),
+    headCommit: await gitText(repoRoot, ["rev-parse", "HEAD"])
+  };
 }
 
 async function assertCodexBase(repoRoot: string, baseCommit: string, headCommit: string): Promise<void> {

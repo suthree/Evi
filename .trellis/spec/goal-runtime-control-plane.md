@@ -40,6 +40,12 @@ not caller ambience. A new start records the real Git worktree, common
 directory, branch, and start HEAD. Continue and exact-effect dispatch validate
 that authority before execution. Historical starts without it remain readable
 but cannot be silently rebound for mutation.
+Nested `codex.run` is narrower than shared-common-root isolation: its resolved
+new target or persisted resume authority must equal the Goal worktree, common
+directory, branch, and start-HEAD base before a pending effect exists, and the
+tool rechecks immediately before spawn. Canonical receipt capacity is 256
+identities; one atomic delegated envelope reserves 201 of them for 200 status
+paths plus one post-run HEAD identity.
 
 Its external interface is intentionally small:
 

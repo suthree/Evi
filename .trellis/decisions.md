@@ -118,6 +118,15 @@ structured `changed_files` list is compared for diagnostics but never owns
 attribution. A missing post-run snapshot fails the tool result rather than
 turning absence of evidence into an empty change set.
 
+The Goal owner also validates the actual nested coding target, not only the
+checkout used by the Goal CLI. A new target or persisted resume handle must
+match the Goal worktree, common directory, branch, and start-HEAD base before
+planning and again before dispatch. Fixed pre/post HEAD snapshots emit the
+post-run `git_commit` when HEAD changes, including a clean-status commit that is
+later rejected as Codex authority drift. Receipt capacity is 256 identities;
+the runtime reserves 201 slots for the full 200-path-plus-one-commit atomic
+envelope before dispatch instead of discovering overflow after mutation.
+
 GoalRuntime consumes plural changes through its existing observation, lineage,
 candidate, verifier, and OutcomeReceipt surfaces. Existing singular typed
 changes remain compatible. Git commits and delegated workspace paths require a

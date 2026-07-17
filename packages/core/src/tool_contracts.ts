@@ -87,7 +87,7 @@ export const coreToolContracts: ToolContract[] = [
       prompt: "task",
       base_commit: "bound start HEAD,new",
       branch: "bound branch,new",
-      worktree: ". if bound linked worktree; else sibling,new",
+      worktree: "GoalRuntime: bound linked worktree only; standalone harness: sibling,new",
       cwd: "within worktree,new",
       model: "safe token,new,required",
       profile: "fast,new",
