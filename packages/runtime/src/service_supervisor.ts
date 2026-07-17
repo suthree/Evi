@@ -101,6 +101,7 @@ export interface LaunchctlStartEvidence {
   kickstart_attempts: number;
   kickstart_attempt_limit: number;
   kickstart_failures: LaunchctlKickstartFailureEvidence[];
+  rebootstrap_attempts?: LaunchctlRebootstrapEvidence[];
   kickstart_exhausted?: true;
 }
 
@@ -109,6 +110,13 @@ export interface LaunchctlKickstartFailureEvidence {
   exit_code: number;
   detail: string;
   retry_delay_ms: number | null;
+}
+
+export interface LaunchctlRebootstrapEvidence {
+  after_kickstart_attempt: number;
+  job_inspection_exit_code: number;
+  job_inspection_detail: string;
+  bootstrap_attempts: number;
 }
 
 export interface ControllerAssessment {
@@ -890,6 +898,7 @@ async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps):
   const bootstrapAttempts = await launchctlWithRetry(manifest, ["bootstrap", manifest.domain, manifest.runtime_plist_path], deps);
   const maxAttempts = positiveInteger(manifest.launchctl_start_attempts, DEFAULT_LAUNCHCTL_START_ATTEMPTS);
   const failures: LaunchctlKickstartFailureEvidence[] = [];
+  const rebootstrapAttempts: LaunchctlRebootstrapEvidence[] = [];
   let kickstart = { stdout: "", stderr: "", exitCode: 1 };
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     kickstart = await runLaunchctl(["kickstart", "-k", `${manifest.domain}/${manifest.runtime_label}`], deps);
@@ -898,7 +907,8 @@ async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps):
         bootstrap_attempts: bootstrapAttempts,
         kickstart_attempts: attempt,
         kickstart_attempt_limit: maxAttempts,
-        kickstart_failures: failures
+        kickstart_failures: failures,
+        ...(rebootstrapAttempts.length ? { rebootstrap_attempts: rebootstrapAttempts } : {})
       };
     }
     const retryDelayMs = attempt < maxAttempts
@@ -910,13 +920,26 @@ async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps):
       detail: kickstart.stderr || kickstart.stdout || "unknown error",
       retry_delay_ms: retryDelayMs
     });
-    if (retryDelayMs !== null) await (deps.delay ?? delay)(retryDelayMs);
+    if (retryDelayMs !== null) {
+      const inspection = await runLaunchctl(["print", `${manifest.domain}/${manifest.runtime_label}`], deps);
+      if (inspection.exitCode !== 0) {
+        const attempts = await launchctlWithRetry(manifest, ["bootstrap", manifest.domain, manifest.runtime_plist_path], deps);
+        rebootstrapAttempts.push({
+          after_kickstart_attempt: attempt,
+          job_inspection_exit_code: inspection.exitCode,
+          job_inspection_detail: inspection.stderr || inspection.stdout || "job missing",
+          bootstrap_attempts: attempts
+        });
+      }
+      await (deps.delay ?? delay)(retryDelayMs);
+    }
   }
   const evidence: LaunchctlStartEvidence = {
     bootstrap_attempts: bootstrapAttempts,
     kickstart_attempts: maxAttempts,
     kickstart_attempt_limit: maxAttempts,
     kickstart_failures: failures,
+    ...(rebootstrapAttempts.length ? { rebootstrap_attempts: rebootstrapAttempts } : {}),
     kickstart_exhausted: true
   };
   const detail = kickstart.stderr || kickstart.stdout || "unknown error";
