@@ -14,6 +14,7 @@ import {
 } from "./service.js";
 import {
   checkRuntimeReadiness,
+  type DeploymentFailureObservation,
   type DeploymentFailureSignal,
   type DeploymentRecord,
   type SupervisorManifest
@@ -48,6 +49,67 @@ export interface ControllerHandoffResult {
 
 const CONTROLLER_HANDOFF_BOUNDARY = "canonical-stable local supervisor controller handoff only; no runtime restart, build, slot mutation, model invocation, remote deployment, or resource creation";
 
+export interface DeploymentControllerReadiness {
+  schema_version: 1;
+  action: "deployment_request_preflight";
+  ok: boolean;
+  status: "matched" | "controller_handoff_required";
+  stable_source_commit: string;
+  installed_source_commit?: string;
+  stable_controller_digest: string;
+  installed_controller_digest?: string;
+  reason: string;
+  handoff_command?: string;
+  boundary: string;
+}
+
+export class DeploymentControllerHandoffRequiredError extends Error {
+  readonly code = "controller_handoff_required";
+
+  constructor(readonly readiness: DeploymentControllerReadiness) {
+    super(readiness.reason);
+    this.name = "DeploymentControllerHandoffRequiredError";
+  }
+}
+
+export async function inspectDeploymentControllerReadiness(
+  definition: ServiceDefinition
+): Promise<DeploymentControllerReadiness> {
+  const identity = await readDeploymentControllerIdentity(definition);
+  const matched = identity.installedDigest === identity.stableDigest
+    && identity.manifest.controller_source_commit === identity.build.source_commit;
+  const boundary = "read-only controller identity preflight before candidate build or deployment slot mutation";
+  if (matched) {
+    return {
+      schema_version: 1,
+      action: "deployment_request_preflight",
+      ok: true,
+      status: "matched",
+      stable_source_commit: identity.build.source_commit,
+      installed_source_commit: identity.manifest.controller_source_commit,
+      stable_controller_digest: identity.stableDigest,
+      installed_controller_digest: identity.installedDigest,
+      reason: "installed deployment controller matches the canonical stable runtime controller",
+      boundary
+    };
+  }
+  return {
+    schema_version: 1,
+    action: "deployment_request_preflight",
+    ok: false,
+    status: "controller_handoff_required",
+    stable_source_commit: identity.build.source_commit,
+    ...(identity.manifest.controller_source_commit
+      ? { installed_source_commit: identity.manifest.controller_source_commit }
+      : {}),
+    stable_controller_digest: identity.stableDigest,
+    ...(identity.installedDigest ? { installed_controller_digest: identity.installedDigest } : {}),
+    reason: "installed deployment controller does not match the canonical stable runtime controller; complete controller handoff before requesting a candidate",
+    handoff_command: `pnpm run runtime -- deployment controller-handoff --state-root ${JSON.stringify(definition.stateRoot)}`,
+    boundary
+  };
+}
+
 export async function handoffDeploymentController(
   definition: ServiceDefinition,
   deps: {
@@ -71,28 +133,16 @@ export async function handoffDeploymentController(
     ...extra
   });
 
-  const [current, pending, build, manifest] = await Promise.all([
-    readJson<DeploymentRecord>(paths.current),
-    readJson<DeploymentRecord>(paths.request),
-    readServiceRuntimeBuild(definition.runtimeBuildPath),
-    readJson<SupervisorManifest>(definition.supervisorManifestPath)
-  ]);
-  if (!current || current.status !== "stable") return fail("precondition", "canonical current deployment is not stable");
+  let identity: DeploymentControllerIdentity;
+  try {
+    identity = await readDeploymentControllerIdentity(definition);
+  } catch (error) {
+    return fail("precondition", error);
+  }
+  const pending = await readJson<DeploymentRecord>(paths.request);
   if (pending) return fail("precondition", `deployment request ${pending.id} is still present`);
-  if (!build?.source_commit || build.source_is_dirty !== false) return fail("precondition", "current runtime build is not bound to a clean source commit");
-  if (current.source_commit !== build.source_commit) return fail("precondition", "current runtime build does not match the stable deployment ledger");
-  if (current.repo_root !== definition.repoRoot || current.state_root !== definition.stateRoot
-    || build.repo_root !== definition.repoRoot || resolve(build.runtime_current_root) !== definition.runtimeCurrentRoot) {
-    return fail("precondition", "stable ledger or current runtime build does not match the repository boundary");
-  }
-  if (!manifest || manifest.repo_root !== definition.repoRoot || manifest.state_root !== definition.stateRoot
-    || manifest.runtime_current_root !== definition.runtimeCurrentRoot) {
-    return fail("precondition", "installed supervisor manifest does not match the current runtime boundary");
-  }
-  const sourceController = resolve(definition.runtimeCurrentRoot, "dist/packages/runtime/src/service_supervisor.js");
-  if (!existsSync(sourceController)) return fail("precondition", `current-runtime controller is missing: ${sourceController}`);
   if (!existsSync(definition.supervisorPlistPath) || !existsSync(definition.supervisorEntryPath)
-    || !existsSync(definition.supervisorManifestPath)) {
+    || !existsSync(definition.supervisorManifestPath) || !identity.installedDigest) {
     return fail("precondition", "deployment supervisor is not installed");
   }
 
@@ -116,17 +166,15 @@ export async function handoffDeploymentController(
     });
   }
 
-  const [sourceDigest, installedDigest] = await Promise.all([
-    fileDigest(sourceController),
-    fileDigest(definition.supervisorEntryPath)
-  ]);
-  if (sourceDigest === installedDigest && manifest.controller_source_commit === build.source_commit) {
+  const sourceDigest = identity.stableDigest;
+  const installedDigest = identity.installedDigest;
+  if (sourceDigest === installedDigest && identity.manifest.controller_source_commit === identity.build.source_commit) {
     return {
       ok: true,
       action: "controller_handoff",
       outcome: "already_matched",
       stage: "verify",
-      source_commit: build.source_commit,
+      source_commit: identity.build.source_commit,
       controller_digest: sourceDigest,
       supervisor_before: supervisorBefore,
       supervisor_after: supervisorBefore,
@@ -136,7 +184,7 @@ export async function handoffDeploymentController(
   }
 
   const stamp = (deps.now?.() ?? new Date()).toISOString().replace(/[^0-9]/g, "");
-  const backupRoot = resolve(definition.supervisorRoot, "backups", `${stamp}-${build.source_commit.slice(0, 12)}-${supervisorBefore.pid}`);
+  const backupRoot = resolve(definition.supervisorRoot, "backups", `${stamp}-${identity.build.source_commit.slice(0, 12)}-${supervisorBefore.pid}`);
   const backup = {
     root: backupRoot,
     controller: resolve(backupRoot, "service_supervisor.js"),
@@ -148,16 +196,16 @@ export async function handoffDeploymentController(
     await copyFile(definition.supervisorEntryPath, backup.controller);
     await copyFile(definition.supervisorManifestPath, backup.manifest);
   } catch (error) {
-    return fail("backup", error, { source_commit: build.source_commit, supervisor_before: supervisorBefore, backup });
+    return fail("backup", error, { source_commit: identity.build.source_commit, supervisor_before: supervisorBefore, backup });
   }
 
   let stage: ControllerHandoffStage = "install";
   try {
-    await replaceFileAtomic(sourceController, definition.supervisorEntryPath);
+    await replaceFileAtomic(identity.sourceController, definition.supervisorEntryPath);
     stage = "manifest";
     await writeJsonAtomic(definition.supervisorManifestPath, {
-      ...manifest,
-      controller_source_commit: build.source_commit,
+      ...identity.manifest,
+      controller_source_commit: identity.build.source_commit,
       updated_at: (deps.now?.() ?? new Date()).toISOString()
     });
     stage = "restart";
@@ -172,7 +220,7 @@ export async function handoffDeploymentController(
       fileDigest(definition.supervisorEntryPath),
       readJson<SupervisorManifest>(definition.supervisorManifestPath)
     ]);
-    if (verifiedDigest !== sourceDigest || verifiedManifest?.controller_source_commit !== build.source_commit) {
+    if (verifiedDigest !== sourceDigest || verifiedManifest?.controller_source_commit !== identity.build.source_commit) {
       throw new Error("replacement controller or manifest identity does not match the canonical current runtime");
     }
     return {
@@ -180,7 +228,7 @@ export async function handoffDeploymentController(
       action: "controller_handoff",
       outcome: "updated",
       stage,
-      source_commit: build.source_commit,
+      source_commit: identity.build.source_commit,
       controller_digest: sourceDigest,
       backup,
       supervisor_before: supervisorBefore,
@@ -206,7 +254,7 @@ export async function handoffDeploymentController(
       rollbackError = rollbackFailure instanceof Error ? rollbackFailure.message : String(rollbackFailure);
     }
     return fail(stage, error, {
-      source_commit: build.source_commit,
+      source_commit: identity.build.source_commit,
       controller_digest: sourceDigest,
       backup,
       supervisor_before: supervisorBefore,
@@ -254,6 +302,10 @@ export async function requestLocalDeployment(
   const stateSchemaVersion = args.stateSchemaVersion ?? 1;
   if (stateSchemaVersion !== 1) {
     throw new Error("autonomous deployment rejects incompatible state schema changes in v0.1");
+  }
+  const controllerReadiness = await inspectDeploymentControllerReadiness(definition);
+  if (!controllerReadiness.ok) {
+    throw new DeploymentControllerHandoffRequiredError(controllerReadiness);
   }
 
   let repairAttempt = 0;
@@ -436,20 +488,23 @@ export async function getLocalDeploymentStatus(stateRoot: string): Promise<{
   pending: DeploymentRecord | null;
   supervisor: Record<string, unknown> | null;
   failure: DeploymentFailureSignal | null;
+  latest_observation: DeploymentFailureObservation | null;
 }> {
   const paths = deploymentPaths(stateRoot);
-  const [current, pending, supervisor, failure] = await Promise.all([
+  const [current, pending, supervisor, failure, latestObservation] = await Promise.all([
     readJson<DeploymentRecord>(paths.current),
     readJson<DeploymentRecord>(paths.request),
     readJson<Record<string, unknown>>(paths.supervisor),
-    readJson<DeploymentFailureSignal>(paths.failure)
+    readJson<DeploymentFailureSignal>(paths.failure),
+    readJson<DeploymentFailureObservation>(paths.latestObservation)
   ]);
   return {
     boundary: "read-only local deployment status; does not stage builds, manage services, read logs, invoke the model, or mutate state",
     current,
     pending,
     supervisor,
-    failure
+    failure,
+    latest_observation: latestObservation
   };
 }
 
@@ -468,6 +523,59 @@ export async function listLocalDeployments(stateRoot: string, limit = 20): Promi
   return records
     .sort((left, right) => right.requested_at.localeCompare(left.requested_at) || right.id.localeCompare(left.id))
     .slice(0, Math.max(1, limit));
+}
+
+interface DeploymentControllerIdentity {
+  build: ServiceRuntimeBuild & { source_commit: string; source_is_dirty: false };
+  manifest: SupervisorManifest;
+  sourceController: string;
+  stableDigest: string;
+  installedDigest?: string;
+}
+
+async function readDeploymentControllerIdentity(
+  definition: ServiceDefinition
+): Promise<DeploymentControllerIdentity> {
+  const paths = deploymentPaths(definition.stateRoot);
+  const [current, build, manifest] = await Promise.all([
+    readJson<DeploymentRecord>(paths.current),
+    readServiceRuntimeBuild(definition.runtimeBuildPath),
+    readJson<SupervisorManifest>(definition.supervisorManifestPath)
+  ]);
+  if (!current || current.status !== "stable") {
+    throw new Error("canonical current deployment is not stable");
+  }
+  if (!build?.source_commit || build.source_is_dirty !== false) {
+    throw new Error("current runtime build is not bound to a clean source commit");
+  }
+  if (current.source_commit !== build.source_commit) {
+    throw new Error("current runtime build does not match the stable deployment ledger");
+  }
+  if (current.repo_root !== definition.repoRoot || current.state_root !== definition.stateRoot
+    || build.repo_root !== definition.repoRoot || resolve(build.runtime_current_root) !== definition.runtimeCurrentRoot) {
+    throw new Error("stable ledger or current runtime build does not match the repository boundary");
+  }
+  if (!manifest || manifest.repo_root !== definition.repoRoot || manifest.state_root !== definition.stateRoot
+    || manifest.runtime_current_root !== definition.runtimeCurrentRoot) {
+    throw new Error("installed supervisor manifest does not match the current runtime boundary");
+  }
+  const sourceController = resolve(definition.runtimeCurrentRoot, "dist/packages/runtime/src/service_supervisor.js");
+  if (!existsSync(sourceController)) {
+    throw new Error(`current-runtime controller is missing: ${sourceController}`);
+  }
+  const [stableDigest, installedDigest] = await Promise.all([
+    fileDigest(sourceController),
+    existsSync(definition.supervisorEntryPath)
+      ? fileDigest(definition.supervisorEntryPath)
+      : Promise.resolve(undefined)
+  ]);
+  return {
+    build: build as ServiceRuntimeBuild & { source_commit: string; source_is_dirty: false },
+    manifest,
+    sourceController,
+    stableDigest,
+    installedDigest
+  };
 }
 
 async function candidateBundleDigest(definition: ServiceDefinition): Promise<string> {
@@ -495,6 +603,7 @@ function deploymentPaths(stateRoot: string) {
     current: resolve(root, "current.json"),
     failure: resolve(root, "failure.json"),
     supervisor: resolve(root, "supervisor.json"),
+    latestObservation: resolve(root, "observations/latest.json"),
     historyRoot: resolve(root, "history"),
     evidenceRoot: resolve(root, "evidence")
   };

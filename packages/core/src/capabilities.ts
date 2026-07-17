@@ -913,10 +913,11 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       {
         id: "service.transactional_deployment",
         title: "Transactional local deployment",
-        summary: "Stage one clean commit as a local candidate, let a stable launchd supervisor enforce commit-bound readiness and probation, automatically roll back hard local failures, preserve bounded failure evidence, and queue one fix-forward repair task for the recovered runtime.",
+        summary: "Require the installed controller to match the canonical stable runtime before staging one clean candidate, enforce commit-bound readiness and probation, roll back hard local failures, and emit a typed observation without creating a repair goal.",
         status: "implemented",
         commands: [
           "pnpm run runtime -- deployment request --verification-ref \"pnpm run check\"",
+          "pnpm run runtime -- deployment controller-handoff",
           "pnpm run runtime -- deployment status",
           "pnpm run runtime -- deployment fail --reason <reason>",
           "pnpm run runtime -- deployment history"
@@ -931,9 +932,11 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         boundaries: [
           "single-machine current/previous/next bundles only; no containers, remote deployment, hosted control plane, or multi-node coordination",
           "the supervisor never invokes a model, edits repository source, publishes externally, or guesses failure from ordinary error log text",
+          "a stale installed controller returns controller_handoff_required before candidate build or bundle-slot mutation",
           "automatic rollback uses process/heartbeat/commit/local-entrypoint readiness or an explicit evidence-bound deployment failure signal",
           "v0.1 autonomous deployment accepts state_schema_version=1 only and rejects incompatible state migrations",
-          "the same failed commit cannot be redeployed; repair proceeds as a new clean commit and a repair chain stops after two automatic attempts"
+          "recovery restores known-good runtime state and emits an operator-visible observation but never creates, resumes, or enqueues a repair goal",
+          "the same failed commit cannot be redeployed; any later repair is an explicit new clean commit linked through repair_of"
         ]
       },
       {

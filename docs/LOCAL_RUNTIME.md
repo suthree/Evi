@@ -1299,9 +1299,9 @@ launchd job named `local.runtime.runtime.supervisor`. Its copied entrypoint live
 under `<LOCAL_RUNTIME_HOME>/service/supervisor/`; it does not run from
 `current`, so a candidate runtime crash cannot remove the rollback controller.
 The supervisor only manages local deployment state, launchd lifecycle, bundle
-slots, readiness, bounded failure evidence, and repair-task enqueueing. It does
-not invoke a model, edit repository source, inspect ordinary logs for semantic
-judgment, communicate externally, or perform remote deployment.
+slots, readiness, bounded failure evidence, and typed failure observations. It
+does not invoke a model, edit repository source, inspect ordinary logs for
+semantic judgment, communicate externally, or perform remote deployment.
 
 After targeted checks and `pnpm run check`, a clean, distinct commit may be
 built and staged without stopping the resident runtime:
@@ -1314,8 +1314,15 @@ pnpm run runtime -- deployment status --state-root <state-root>
 pnpm run runtime -- deployment history --state-root <state-root>
 ```
 
-The request first runs `pnpm run build` and verifies that the repository remains
-on the same clean commit. It then copies that exact candidate into `next`, binds
+Before the build, the request compares the installed copied controller with the
+controller in the canonical stable runtime. A mismatch returns the typed
+`controller_handoff_required` result and the exact bounded handoff command; it
+does not build a candidate, write a pending request, or mutate any bundle slot.
+Run the existing `deployment controller-handoff` transaction and repeat the
+request only after its post-restart identity check succeeds.
+
+The matched request then runs `pnpm run build` and verifies that the repository
+remains on the same clean commit. It then copies that exact candidate into `next`, binds
 the release id to its Git commit and a bounded bundle digest, records the build
 command in `build.json`, and writes `deployments/request.json`. A failed build or
 source-identity change leaves `current` untouched and creates no request. The
@@ -1358,15 +1365,14 @@ pnpm run runtime -- deployment fail \
 Before rollback, the supervisor captures only the stdout/stderr bytes written
 since activation, capped at 1 MiB per stream, plus the last heartbeat and a
 typed failure summary under `deployments/evidence/<deployment-id>/`. After the
-previous build passes readiness, the supervisor appends one local runtime repair
-task. The recovered build fixes forward on the repository's failed source
-commit, runs verification, creates a new clean commit, and requests deployment
-with `--repair-of <deployment-id>`. The same failed commit cannot be redeployed,
-and a repair chain stops after two automatic attempts. The task queue does not
-accept a model session's `done` status by itself: it verifies that a distinct
-repair deployment record with the expected `repair_of`, next repair-attempt
-number, and verification refs exists. An incomplete diagnosis is requeued up to
-three worker attempts, then fails visibly instead of becoming a false success.
+previous build passes readiness, the supervisor writes one typed immutable
+observation under `deployments/observations/`, updates `latest.json`, restores
+the canonical stable ledger, and takes no goal action. In particular, recovery
+does not enqueue, resume, or synthesize a runtime repair task. A later operator
+or GoalRuntime decision may fix forward with a new clean commit and explicitly
+request deployment with `--repair-of <deployment-id>`; the same failed commit
+still cannot be redeployed. Deployment status exposes the latest observation
+without turning it into a second lifecycle owner.
 
 A supervisor record that reaches `stable` is also commit-bound known-good
 evidence for the next autonomous deployment. This closes the next iteration

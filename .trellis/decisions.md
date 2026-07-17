@@ -1,5 +1,50 @@
 # Decisions
 
+## 2026-07-17 Persistent GoalRuntime And Observation-Only Execution Controllers
+
+The operator accepts replacing Evi's chained runtime-task, completion-reference,
+and synchronous-learning orchestration with a persistent GoalRuntime control
+plane. This decision activates GitHub parent Issue #56 and is implemented one
+bounded child Issue and Trellis task at a time. It refines the accepted One
+Persistent Self direction: Evi remains the owner of durable goals, outcome
+acceptance, and learning judgment, while Codex Goal is an external engineering
+orchestrator for this migration and never becomes a second Evi self.
+
+GoalRuntime is the single owner of goal lifecycle, continuity, checkpoints,
+pause and resume, outcome verification, and the canonical OutcomeReceipt.
+EffectPolicy owns only action-effect decisions through a small allow, confirm,
+or deny interface. LearningRuntime consumes completed receipts asynchronously
+and cannot block or mutate a foreground goal. Evidence persistence and outcome
+verification are internal GoalRuntime seams rather than public orchestration
+modules.
+
+Execution controllers such as deployment own their transaction state and emit
+typed observations. They must not create, resume, or synthesize goals. In
+particular, deployment recovery may restore the known-good runtime and record a
+failure observation, but it may not enqueue a repair task. The active
+GoalRuntime decides whether a failure means continue, pause, repair, or stop.
+
+Migration cuts over by complete goal identity. Legacy queue, iteration,
+completion, and learning records remain readable as historical evidence, but a
+new goal must not dual-write those stores. Operator views, scorecards, and
+learning signals derive from raw goal events and one OutcomeReceipt. The old
+orchestration and its implementation-shaped tests must be retired after the
+new interface passes local, integration, deployment, rollback, and recovery
+acceptance.
+
+The first child, Issue #57, repairs the deployment seam that currently permits
+candidate activation under a stale copied controller and then creates a repair
+task after rollback. It does not implement GoalRuntime. Later child work is
+activated from measured evidence under Issue #56 instead of being pre-created
+as a fixed backlog.
+
+This decision supersedes any implementation assumption that runtime task queue
+entries, working checkpoint files, completion-reference graphs, deployment
+repair tasks, or synchronous SOP proposals may independently own goal
+continuity. It does not weaken secret handling, repository/worktree isolation,
+operator authority over irreversible external effects, the `main` release
+gate, verified deployment, or rollback requirements.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

@@ -3,7 +3,12 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { handoffDeploymentController } from "../packages/runtime/src/deployment.js";
+import {
+  DeploymentControllerHandoffRequiredError,
+  handoffDeploymentController,
+  inspectDeploymentControllerReadiness,
+  requestLocalDeployment
+} from "../packages/runtime/src/deployment.js";
 import { buildRuntimeServiceDefinition, type LaunchdStatus, type ServiceDefinition } from "../packages/runtime/src/service.js";
 import type { DeploymentRecord, SupervisorManifest } from "../packages/runtime/src/service_supervisor.js";
 
@@ -19,6 +24,11 @@ test("controller handoff backs up, installs, records, restarts only supervisor, 
   const fixture = await createFixture("old-commit", "old controller\n", "new controller\n");
   let restarts = 0;
   try {
+    const before = await inspectDeploymentControllerReadiness(fixture.definition);
+    assert.equal(before.status, "controller_handoff_required");
+    assert.equal(before.stable_source_commit, "stable-commit");
+    assert.equal(before.installed_source_commit, "old-commit");
+
     const result = await handoffDeploymentController(fixture.definition, {
       inspectSupervisor: async () => running(101),
       restartSupervisor: async () => { restarts += 1; return running(202); },
@@ -32,6 +42,9 @@ test("controller handoff backs up, installs, records, restarts only supervisor, 
     assert.equal(JSON.parse(await readFile(fixture.definition.supervisorManifestPath, "utf8")).controller_source_commit, "stable-commit");
     assert.equal(await readFile(result.backup!.controller, "utf8"), "old controller\n");
     assert.equal(JSON.parse(await readFile(result.backup!.manifest, "utf8")).controller_source_commit, "old-commit");
+    const after = await inspectDeploymentControllerReadiness(fixture.definition);
+    assert.equal(after.ok, true);
+    assert.equal(after.status, "matched");
 
     const noop = await handoffDeploymentController(fixture.definition, {
       inspectSupervisor: async () => running(202),
@@ -41,6 +54,34 @@ test("controller handoff backs up, installs, records, restarts only supervisor, 
     assert.equal(noop.ok, true);
     assert.equal(noop.outcome, "already_matched");
     assert.equal(restarts, 1);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("deployment request returns typed controller handoff guidance before candidate build or slot mutation", async () => {
+  const fixture = await createFixture("old-commit", "old controller\n", "new controller\n");
+  let prepared = false;
+  try {
+    await assert.rejects(requestLocalDeployment(fixture.definition, {
+      verificationRefs: ["focused controller preflight"]
+    }, {
+      prepareCandidate: async () => {
+        prepared = true;
+        throw new Error("candidate preparation must not run");
+      }
+    }), (error: unknown) => {
+      assert.equal(error instanceof DeploymentControllerHandoffRequiredError, true);
+      const typed = error as DeploymentControllerHandoffRequiredError;
+      assert.equal(typed.code, "controller_handoff_required");
+      assert.equal(typed.readiness.status, "controller_handoff_required");
+      assert.match(typed.readiness.handoff_command ?? "", /deployment controller-handoff/);
+      return true;
+    });
+    assert.equal(prepared, false);
+    await assert.rejects(readFile(resolve(fixture.definition.runtimeNextRoot, "build.json"), "utf8"), { code: "ENOENT" });
+    await assert.rejects(readFile(resolve(fixture.definition.stateRoot, "deployments/request.json"), "utf8"), { code: "ENOENT" });
+    assert.equal(JSON.parse(await readFile(resolve(fixture.definition.stateRoot, "deployments/current.json"), "utf8")).source_commit, "stable-commit");
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }

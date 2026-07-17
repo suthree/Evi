@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
 import {
+  getLocalDeploymentStatus,
   reconcileLocalDeploymentBaseline,
   requestLocalDeployment
 } from "../packages/runtime/src/deployment.js";
@@ -14,13 +15,14 @@ import {
   checkRuntimeReadiness,
   recordOperatorServiceRollback,
   runSupervisorOnce,
+  type DeploymentFailureObservation,
   type DeploymentRecord,
   type SupervisorManifest
 } from "../packages/runtime/src/service_supervisor.js";
 
 const execFile = promisify(execFileCallback);
 
-test("deployment supervisor activates, rolls back, preserves evidence, and queues repair", async () => {
+test("deployment supervisor activates, rolls back, preserves evidence, and emits an observation without queue repair", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-supervisor-"));
   const manifest = buildManifest(root);
   const paths = deploymentPaths(manifest);
@@ -123,8 +125,21 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
     assert.equal(recoveredCandidate.status, "recovered");
     assert.equal(recoveredCandidate.failure_reason, "candidate task failed deterministically");
     assert.ok(recoveredCandidate.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
-    assert.equal(recoveredCandidate.repair_task_id?.includes(request.id), true);
-    assert.match(await readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), /Repair a failed local runtime deployment/);
+    assert.equal(recoveredCandidate.repair_task_id, undefined);
+    assert.match(recoveredCandidate.failure_observation_ref ?? "", /deployments\/observations\/deployment_observation_/);
+    const observation = JSON.parse(await readFile(paths.latestObservation, "utf8")) as DeploymentFailureObservation;
+    assert.equal(observation.kind, "deployment_failed_recovered");
+    assert.equal(observation.deployment_id, request.id);
+    assert.equal(observation.candidate.source_commit, "candidate-commit");
+    assert.equal(observation.stable_runtime.source_commit, "stable-commit");
+    assert.equal(observation.controller.installed_source_commit, "stable-commit");
+    assert.equal(observation.controller.candidate_runtime_source_commit, "candidate-commit");
+    assert.equal(observation.failure.reason, "candidate task failed deterministically");
+    assert.ok(observation.failure.evidence_refs.some((ref) => ref.endsWith("failure.json")));
+    assert.equal(observation.recovery.status, "known_good_restored");
+    assert.equal(observation.goal_action, "none");
+    assert.equal((await getLocalDeploymentStatus(manifest.state_root)).latest_observation?.id, observation.id);
+    await assert.rejects(readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), { code: "ENOENT" });
     assert.match(await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/stderr.log`), "utf8"), /candidate error/);
 
     const baseDefinition = buildRuntimeServiceDefinition({
@@ -149,6 +164,7 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
     await execFile("git", ["commit", "-qm", "next verified candidate"], { cwd: manifest.repo_root });
     const nextCommit = (await execFile("git", ["rev-parse", "HEAD"], { cwd: manifest.repo_root })).stdout.trim();
     await writeJson(definition.supervisorManifestPath, manifest);
+    await writeFile(definition.supervisorEntryPath, controllerSource("stable-commit"), "utf8");
     await writeFile(definition.supervisorPlistPath, "plist", "utf8");
     const nextRequest = await requestLocalDeployment(definition, {
       verificationRefs: ["focused deployment supervisor regression"],
@@ -468,6 +484,25 @@ test("candidate activation persists typed evidence and a precise error when kick
       result.deployment?.failure_reason,
       "candidate activation failed: launchctl kickstart exhausted 7/7 attempts for gui/501/local.runtime.runtime; last exit_code=5; last_error=Kickstart failed: 5: throttled"
     );
+    assert.ok(result.deployment?.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
+
+    await writeHeartbeat(manifest, "stable-commit", "2026-07-15T00:00:01.000Z");
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:02.000Z"),
+      runLaunchctl
+    });
+    assert.equal(recovered.action, "recovered");
+    const observation = JSON.parse(await readFile(paths.latestObservation, "utf8")) as DeploymentFailureObservation;
+    assert.equal(observation.kind, "deployment_failed_recovered");
+    assert.equal(observation.deployment_id, request.id);
+    assert.equal(observation.candidate.source_commit, "candidate-commit");
+    assert.equal(observation.stable_runtime.source_commit, "stable-commit");
+    assert.ok(observation.failure.evidence_refs.some((ref) => ref.endsWith("failure.json")));
+    assert.match(
+      await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/failure.json`), "utf8"),
+      /candidate activation failed/
+    );
+    await assert.rejects(readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -738,8 +773,32 @@ test("deployment request requires a clean distinct commit and stages an immutabl
       repo_root: repoRoot,
       state_root: stateRoot
     });
+    await writeJson(resolve(stateRoot, "deployments/current.json"), {
+      ...deploymentRecord(stableCommit, "stable"),
+      id: "deployment_request_stable",
+      repo_root: repoRoot,
+      state_root: stateRoot,
+      stable_at: "2026-07-14T23:59:00.000Z"
+    });
     await mkdir(definition.supervisorRoot, { recursive: true });
-    await writeFile(definition.supervisorManifestPath, `${JSON.stringify({ max_repair_attempts: 2 })}\n`, "utf8");
+    await writeJson(definition.supervisorManifestPath, {
+      ...buildManifest(root),
+      controller_source_commit: stableCommit,
+      domain: definition.domain,
+      runtime_label: definition.label,
+      runtime_plist_path: definition.plistPath,
+      runtime_current_root: definition.runtimeCurrentRoot,
+      runtime_previous_root: definition.runtimePreviousRoot,
+      runtime_next_root: definition.runtimeNextRoot,
+      runtime_build_path: definition.runtimeBuildPath,
+      runtime_previous_build_path: definition.runtimePreviousBuildPath,
+      heartbeat_path: definition.heartbeatPath,
+      stdout_path: definition.stdoutPath,
+      stderr_path: definition.stderrPath,
+      state_root: definition.stateRoot,
+      repo_root: definition.repoRoot
+    });
+    await writeFile(definition.supervisorEntryPath, controllerSource(stableCommit), "utf8");
     await writeFile(definition.supervisorPlistPath, "plist", "utf8");
 
     const preparedReceipt = (sourceCommit: string) => ({
@@ -904,6 +963,7 @@ function deploymentPaths(manifest: SupervisorManifest) {
     request: resolve(root, "request.json"),
     current: resolve(root, "current.json"),
     failure: resolve(root, "failure.json"),
+    latestObservation: resolve(root, "observations/latest.json"),
     historyRoot: resolve(root, "history")
   };
 }
@@ -931,9 +991,11 @@ function deploymentRecord(commit: string, status: DeploymentRecord["status"]): D
 
 async function writeRuntimeBundle(root: string, commit: string, repoRoot = "/work/repo"): Promise<void> {
   await mkdir(resolve(root, "dist/apps/cli/src"), { recursive: true });
+  await mkdir(resolve(root, "dist/packages/runtime/src"), { recursive: true });
   await mkdir(resolve(root, "node_modules"), { recursive: true });
   await mkdir(resolve(root, "config"), { recursive: true });
   await writeFile(resolve(root, "dist/apps/cli/src/main.js"), `export const commit = ${JSON.stringify(commit)};\n`, "utf8");
+  await writeFile(resolve(root, "dist/packages/runtime/src/service_supervisor.js"), controllerSource(commit), "utf8");
   await writeJson(resolve(root, "build.json"), {
     schema_version: 1,
     target: "runtime",
@@ -944,6 +1006,10 @@ async function writeRuntimeBundle(root: string, commit: string, repoRoot = "/wor
     built_at: "2026-07-15T00:00:00.000Z",
     node_version: process.version
   });
+}
+
+function controllerSource(commit: string): string {
+  return `export const controllerCommit = ${JSON.stringify(commit)};\n`;
 }
 
 async function writeHeartbeat(manifest: SupervisorManifest, commit: string, updatedAt: string): Promise<void> {
