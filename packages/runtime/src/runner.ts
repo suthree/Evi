@@ -2337,12 +2337,18 @@ function taskExecutionContractBlockReason(
     return `tool requested side_effect_level=${requestedEffect} above ceiling=${contract.side_effect_ceiling}`;
   }
   const payload = action.payload as Record<string, unknown>;
+  if (contract.side_effect_ceiling === "external_write" && payload.tool === "code.execute_node") {
+    return "external-write task execution contracts forbid code.execute_node as an indirect command carrier";
+  }
   if (payload.tool !== "command.run") return null;
   const args = isPlainRecord(payload.arguments) ? payload.arguments : {};
   const command = typeof args.command === "string" ? args.command : "";
   const commandArgs = Array.isArray(args.args)
     ? args.args.filter((item): item is string => typeof item === "string")
     : [];
+  if (contract.side_effect_ceiling === "external_write" && isIndirectCommandCarrier(command, commandArgs)) {
+    return `external-write task execution contracts forbid indirect command carrier ${command}; use direct binary argv`;
+  }
   const externalWriteCommand = command === "gh" || (command === "git" && gitCommandName(commandArgs) === "push");
   if (externalWriteCommand && requestedEffect !== "external_write") {
     return `external command ${command} must declare side_effect_level=external_write`;
@@ -2357,6 +2363,32 @@ function taskExecutionContractBlockReason(
   return forbidden
     ? `external command argument ${forbidden} is forbidden by the task execution contract`
     : null;
+}
+
+function isIndirectCommandCarrier(command: string, args: readonly string[]): boolean {
+  if (new Set([
+    "bash",
+    "bun",
+    "dash",
+    "env",
+    "fish",
+    "ksh",
+    "node",
+    "nodejs",
+    "npx",
+    "perl",
+    "php",
+    "python",
+    "python3",
+    "ruby",
+    "sh",
+    "xargs",
+    "zsh"
+  ]).has(command)) return true;
+  const subcommand = args[0] ?? "";
+  return (command === "pnpm" && (subcommand === "exec" || subcommand === "dlx"))
+    || (command === "npm" && subcommand === "exec")
+    || (command === "yarn" && subcommand === "dlx");
 }
 
 function gitCommandName(args: readonly string[]): string {

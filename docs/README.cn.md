@@ -290,7 +290,10 @@ append-only queue row 持久化，在同步执行和 daemon resume 中保持同�
 
 runner 会把同一快照写入 turn context，并在工具执行前硬拦超过 ceiling、超过
 tool-call 预算、未进入外部命令 allowlist 或带禁止参数的动作。拦截结果是失败的
-harness tool evidence，不能支撑虚假 `done`。外层 task contract 不会削弱
+harness tool evidence，不能支撑虚假 `done`。带 `external_write` ceiling 的任务还会
+fail closed 拒绝 shell、通用解释器、`code.execute_node` 以及 package-manager exec/dlx
+等间接命令载体；外部操作必须使用直接 binary argv，不能把 `gh` 或 `git push` 藏在
+脚本字符串中。外层 task contract 不会削弱
 `codex.run` 自己的 immutable worktree/model/sandbox/budget authority snapshot，最终
 完成判断仍属于 `main_harness`。未提交 `execution_contract` 的旧客户端保持原有本地
 任务行为，也不会自动获得 external-write 权限；完整 JSON 形状见

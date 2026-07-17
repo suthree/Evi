@@ -1825,7 +1825,11 @@ for direct execution and resume, adds a SHA-256 `authority_digest`, and fails
 closed if a stored digest no longer matches; live context renders it as
 `execution_contract`. The runner enforces its model-round/tool-call budgets and
 blocks over-ceiling tools, non-allowlisted external commands, and forbidden
-command arguments before execution. The snapshot expires with that queue task
+command arguments before execution. A contract with an `external_write`
+ceiling also fails closed on shell/interpreter carriers, `code.execute_node`,
+and package-manager exec/dlx indirection; authorized external operations must
+use direct binary argv rather than hiding `gh` or `git push` in script text.
+The snapshot expires with that queue task
 and is not a reusable role or global grant. Omit the object for the existing
 default local task behavior. Task prose alone cannot grant external writes.
 
