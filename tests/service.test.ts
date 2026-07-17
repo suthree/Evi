@@ -112,7 +112,7 @@ test("parseLaunchdPid reads launchctl print output", () => {
   assert.equal(parseLaunchdPid("state = waiting\n"), null);
 });
 
-test("supervisor restart re-bootstraps a job lost during transient kickstart failure", async () => {
+test("supervisor restart kickstarts a loaded job without unloading it", async () => {
   const definition = buildRuntimeServiceDefinition({
     repoRoot: "/work/runtime",
     configDir: "/work/runtime/config",
@@ -121,7 +121,53 @@ test("supervisor restart re-bootstraps a job lost during transient kickstart fai
     nodePath: "/usr/local/bin/node"
   });
   let loaded = true;
+  let removalPending = false;
   let pid = 101;
+  let kickstartAttempts = 0;
+  let bootoutAttempts = 0;
+  let bootstrapAttempts = 0;
+  const status = await restartServiceSupervisor(definition, async (_command, args) => {
+    const action = args[0];
+    if (action === "print") return loaded
+      ? { stdout: `state = running\npid = ${pid}\n`, stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (action === "bootout") {
+      bootoutAttempts += 1;
+      loaded = false;
+      removalPending = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "bootstrap") {
+      bootstrapAttempts += 1;
+      if (!removalPending) loaded = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "kickstart") {
+      kickstartAttempts += 1;
+      if (!loaded) return { stdout: "", stderr: "Could not find service", exitCode: 113 };
+      pid = 202;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    throw new Error(`unexpected launchctl action: ${action}`);
+  });
+
+  assert.equal(bootoutAttempts, 0);
+  assert.equal(bootstrapAttempts, 0);
+  assert.equal(kickstartAttempts, 1);
+  assert.equal(status.loaded, true);
+  assert.equal(status.pid, 202);
+});
+
+test("supervisor restart starts the job when it is not loaded", async () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    nodePath: "/usr/local/bin/node"
+  });
+  let loaded = false;
+  let pid: number | null = null;
   let bootstrapAttempts = 0;
   let kickstartAttempts = 0;
   const status = await restartServiceSupervisor(definition, async (_command, args) => {
@@ -129,32 +175,24 @@ test("supervisor restart re-bootstraps a job lost during transient kickstart fai
     if (action === "print") return loaded
       ? { stdout: `state = running\npid = ${pid}\n`, stderr: "", exitCode: 0 }
       : { stdout: "", stderr: "Could not find service", exitCode: 113 };
-    if (action === "bootout") {
-      loaded = false;
-      return { stdout: "", stderr: "", exitCode: 0 };
-    }
     if (action === "bootstrap") {
       bootstrapAttempts += 1;
+      assert.equal(args[2], definition.supervisorPlistPath);
       loaded = true;
       return { stdout: "", stderr: "", exitCode: 0 };
     }
     if (action === "kickstart") {
       kickstartAttempts += 1;
-      if (kickstartAttempts === 1) {
-        loaded = false;
-        return { stdout: "", stderr: "Could not find service", exitCode: 113 };
-      }
-      loaded = true;
-      pid = 202;
+      pid = 303;
       return { stdout: "", stderr: "", exitCode: 0 };
     }
     throw new Error(`unexpected launchctl action: ${action}`);
   });
 
-  assert.equal(bootstrapAttempts, 2);
-  assert.equal(kickstartAttempts, 2);
+  assert.equal(bootstrapAttempts, 1);
+  assert.equal(kickstartAttempts, 1);
   assert.equal(status.loaded, true);
-  assert.equal(status.pid, 202);
+  assert.equal(status.pid, 303);
 });
 
 test("service runtime rollback swaps current and previous bundles reversibly", async () => {
@@ -299,9 +337,7 @@ test("service rollback restores identities and service attempts when reconciliat
 
     assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "current-commit");
     assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "stable-commit");
-    assert.equal(bootstrapPaths.filter((path) => path === definition.plistPath).length, 5);
-    assert.equal(bootstrapPaths.filter((path) => path === definition.supervisorPlistPath).length, 1);
-    assert.deepEqual([...new Set(bootstrapPaths)], [definition.plistPath, definition.supervisorPlistPath]);
+    assert.deepEqual(bootstrapPaths, [definition.plistPath, definition.supervisorPlistPath]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
