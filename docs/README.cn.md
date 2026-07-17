@@ -41,11 +41,23 @@ spawn 前再次校验；同一 common dir 下的 sibling worktree 也不能借�
 模型不声明或复制 change identity；GoalRuntime 会从类型化 canonical observation 自动生成有序去重的完整
 `changes[]`。旧的单数 `change` 仍只在成功 observation 中生效；由 harness 固定生成的复数
 变更即使来自失败后的部分 mutation 也不会消失。Git commit 和 delegated `workspace_path`
-都必须有其后的成功本地验证 observation。
+都必须有其后的成功本地验证 observation。EffectPolicy 的 operation 只负责实际动作的
+安全决策，不再兼任正确性标签；GoalRuntime 使用 harness 写入的
+`local_verification` evidence role。`command.run` 的 `purpose=verification` 只是用途，
+不会扩大权限：动态 shell 仍需精确 effect 确认，且只有进程成功、前后 Git HEAD 与完整
+语义 index、tracked/untracked 文件内容指纹都不变时才能成为验证证据。即使已有 dirty path
+的 porcelain status 不变，内容改写也会被发现。快照最多覆盖 10,000 个文件、1,000 个
+changed path 和 64 MiB 内容；缺失、不支持、超限或变化都会 fail-closed。新 observation
+无论是否获得 role 都带 `verification_role_v1` 语义，因此新的 execute-purpose 已知验证命令
+不能再从安全分类继承正确性；只有缺少该标记的历史 `run_local_verification` observation
+继续兼容。
 完整 change lineage 不受近期模型上下文窗口影响；Goal 被 abandon 时也会保留已经发生的
-部分变更。receipt 上限为 256 个 canonical identity；一次原子 `codex.run` 会在 dispatch 前
-预留 201 个位置，对应最多 200 个 status path 加 1 个 post-run HEAD identity，不会
-静默丢弃早期 observation。可能突破容量的
+部分变更。receipt 上限为 402 个 canonical identity，即一个 201-identity 执行 envelope
+加一个 201-identity 验证恢复 envelope；一次原子 `codex.run` 会在 dispatch 前预留 201 个
+位置，对应最多 200 个 status path 加 1 个 post-run HEAD identity，不会
+静默丢弃早期 observation。verification purpose 的 `command.run` 也预留同一 recovery
+envelope，因为违反“不改变 workspace”契约的命令仍可能产生必须保留的 path/commit。
+可能突破容量的
 mutating effect 会在 dispatch 前被阻止，因此既有 Goal 仍可完成或
 abandon，不会在副作用发生后进入不可终止状态。
 commit/workspace path 的满足性 verification 会随 change lineage 固定，不会因后续事件增多
@@ -163,7 +175,7 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 - `file.write_repo`：在 harness 路径策略内写仓库文件。
 - `repo.search`：搜索仓库文本，优先使用 `rg`。
 - `http.fetch`：抓取 HTTP(S) 内容，要求响应大小上限和 timeout。
-- `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记和环境变量 allowlist。
+- `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记、`execute|verification` purpose 和环境变量 allowlist。purpose 不授予权限；verification 还要求 repo cwd、进程成功以及 harness 固定的前后 Git HEAD、语义 index 与 tracked/untracked 内容指纹一致；严格快照在诊断输出截断后仍会保留并参与 replay 校验。
 - `codex.run`：位于通用 `command.run` 之上的独立 typed coding execution tool。每个 new request 都必须记录 model/reasoning selection；普通 GoalRuntime 委派对两者显式使用 `auto`，由具名 Codex profile 解析当前 provider model 和 reasoning，并从 CLI argv 省略这两个 override。Goal-owned authority seam 会在 action planning/dispatch 前拒绝显式 pin 的 new request，以及历史 explicit pin thread 的 resume；同一个 Goal 应新开 auto-selected thread。只有具备外部证据的 standalone main harness 才显式 pin 安全 model token 与 `minimal|low|medium|high|xhigh` 之一的有界 reasoning，历史 explicit v2 thread 也继续可由 standalone harness 解析和 resume。`auto` 不是隐藏默认、缓存解析、模型 fallback 或自动重试；immutable authority 会记录本 thread 由 profile 负责解析。每次请求仍提交 `selection_rationale`、`task_shape` 和 immutable `delegation_strategy`；profile/service tier 限定为 `fast`，sandbox 为 `read-only|workspace-write`，approval 为 `never`。strategy 只能是 `single`（0 个 subagent、无 workstream）或 `parallel`（2..3 个 subagent、2..max_subagents 个唯一独立 workstream、`main_codex_thread` 负责集成）；parallel 会在 effective prompt 注入有界监督块，并以明确 `collab_tool_call/spawn_agent` JSONL 证据约束实际数量。runtime 会实时校验 sibling isolated worktree、base、branch 和 cwd，以 v2 immutable digest 绑定 selection、strategy、new/resume authority、原始 user prompt digest、effective prompt digest 和 budgets；GoalRuntime 内的调用还必须精确匹配该 Goal 的 worktree authority，不能指向同 common dir 的另一个 sibling。standalone resume 继承 `auto` 或显式 selection 及 strategy，任何重提漂移都会被 strict request 拒绝；GoalRuntime 只 resume auto-selected thread。缺少新 authority 字段的 v1 snapshot 会 fail-closed，要求新开有界 request。固定的前后 Git status 会把真实 introduced paths 输出为 canonical 复数 `workspace_path` changes；固定的前后 HEAD 会在发生变化时输出 post-run `git_commit` identity，因此 Codex 即使提交后因 authority drift 失败、status 已恢复 clean，commit 也不会丢失。post-run snapshot 不可用时整个结果失败。结构化 `changed_files` 只与真实路径做 matched/missing/extra 诊断，自报内容永不授予变更权威。metadata 复用既有 tool result/episode surface 记录 selection、plan、capture/tool-call/timeout、structured result、双 digest、authority verifiability 和仅由 JSONL 支持的 subagent facts；requested plan 或 model self-report 不算 subagent evidence。`max_output_chars` 仍只限制证据保留，不终止有效进程。一次性已验证的 `gpt-5.6-sol` / `xhigh` / `fast` profile 和 tier 只是当前 compatibility evidence，不是未来默认。
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段；只继承最小 runtime 环境，不透传任意父进程环境变量。
 - `done` 不能静默忽略任何失败的 harness 工具结果：失败的只读、可逆、写入或命令结果都会使 `tool_result_outcomes` 失败；若 tool-result event 的 `ok` 未知，replay 保持 warning 而不会静默通过。replay 仅用事件元数据复算该门禁，不读取工具产物正文。

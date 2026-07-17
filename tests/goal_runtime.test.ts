@@ -721,6 +721,30 @@ test("Canonical verifier requires later local verification for delegated workspa
       }]
     });
     assert.equal(verified.status, "passed");
+
+    const dynamicVerification = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate: {
+        ...candidate,
+        runtime_result: {
+          ...candidate.runtime_result,
+          evidence_event_ids: ["goal_event_workspace_change", "goal_event_dynamic_verify"]
+        },
+        evidence_event_ids: ["goal_event_workspace_change", "goal_event_dynamic_verify"]
+      },
+      evidence: [changeEvidence, {
+        event_id: "goal_event_dynamic_verify",
+        kind: "observation",
+        summary: "Confirmed dynamic assertion passed without changing the workspace.",
+        refs: [],
+        occurred_at: "2026-07-17T00:00:03.000Z",
+        operation: "execute_dynamic_code",
+        evidence_role: "local_verification",
+        tool: "command.run",
+        ok: true
+      }]
+    });
+    assert.equal(dynamicVerification.status, "passed");
   } finally {
     await fixture.cleanup();
   }
@@ -752,8 +776,11 @@ test("GoalRuntime carries plural delegated paths into one receipt after verifica
           tool: effectAction.tool,
           ok: true,
           summary: "Synthetic post-change verification passed.",
-          output: {},
-          side_effect_level: "local_reversible",
+          output: {
+            verification: passedVerificationMarker(),
+            diagnostic: "v".repeat(90_000)
+          },
+          side_effect_level: "local_write",
           created_at: "2026-07-17T00:00:02.000Z"
         };
       }
@@ -762,10 +789,11 @@ test("GoalRuntime carries plural delegated paths into one receipt after verifica
       action("file.write_repo", { path: "docs/delegated.md", text: "bounded" }, "Delegate one bounded workspace change."),
       outcome("委派结果尚待变更后验证。"),
       action("command.run", {
-        command: "pnpm",
-        args: ["run", "build"],
+        command: "sh",
+        args: ["-c", "test -f docs/delegated.md"],
         cwd: "repo",
-        side_effect_level: "local_reversible"
+        purpose: "verification",
+        side_effect_level: "none"
       }, "Run a later local verification over the attributed workspace."),
       outcome("委派变更已经后续本地验证。")
     ]);
@@ -800,6 +828,205 @@ test("GoalRuntime carries plural delegated paths into one receipt after verifica
       { kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" },
       { kind: "workspace_path", identity: "tests/goal_runtime.test.ts" }
     ]);
+    const events = await readEvents(fixture.stateRoot);
+    const verification = events.find((event) => event.event_type === "goal_action_observed"
+      && (event.result as { id?: string } | undefined)?.id === "tool_result_delegated_verify");
+    assert.equal(verification?.evidence_role, "local_verification");
+    assert.equal(verification?.evidence_semantics, "verification_role_v1");
+    assert.equal((verification?.effect_intent as { operation?: string } | undefined)?.operation, "execute_dynamic_code");
+    assert.equal((verification?.result as { output?: { truncated?: boolean } } | undefined)?.output?.truncated, true);
+    const retainedMarker = (verification?.result as {
+      output?: { verification?: { before?: unknown; after?: unknown } };
+    } | undefined)?.output?.verification;
+    assert.ok(retainedMarker?.before);
+    assert.ok(retainedMarker?.after);
+
+    const tampered = events.map((event) => event.id === verification?.id
+      ? Object.fromEntries(Object.entries(event).filter(([key]) => key !== "evidence_role" && key !== "evidence_semantics"))
+      : event);
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${tampered.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+    await assert.rejects(runtime.read(started.goal_id), /evidence role does not match/i);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime does not let safety classification write new correctness evidence", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.write_repo", { path: "docs/new-semantics.md", text: "change" }, "Observe one bounded change."),
+        action("command.run", {
+          command: "pnpm",
+          args: ["run", "check"],
+          cwd: "repo",
+          purpose: "execute",
+          side_effect_level: "local_reversible"
+        }, "Run a known verification command without declaring verification evidence intent."),
+        outcome("Safety classification alone must not satisfy the post-change gate.")
+      ]),
+      tools: {
+        async execute(effectAction) {
+          return effectAction.tool === "file.write_repo"
+            ? {
+                id: "tool_result_new_semantics_change",
+                tool: effectAction.tool,
+                ok: true,
+                summary: "Synthetic repo change.",
+                output: { change: { kind: "workspace_path", identity: "docs/new-semantics.md" } },
+                side_effect_level: "local_write",
+                created_at: "2026-07-17T00:00:01.000Z"
+              }
+            : {
+                id: "tool_result_execute_only_check",
+                tool: effectAction.tool,
+                ok: true,
+                summary: "Synthetic command success without harness verification marker.",
+                output: {},
+                side_effect_level: "local_reversible",
+                created_at: "2026-07-17T00:00:02.000Z"
+              };
+        }
+      },
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("new_semantics_start", "Keep safety and correctness ownership separate."));
+    const paused = await runtime.handle({
+      type: "continue",
+      command_id: "new_semantics_plan",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(paused.continuation_reasons, ["effect_confirmation_required"]);
+    await runtime.handle({
+      type: "resume",
+      command_id: "new_semantics_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: paused.pending_effect!.effect_id
+    });
+    const failed = await runtime.handle({
+      type: "continue",
+      command_id: "new_semantics_outcome",
+      goal_id: started.goal_id
+    });
+
+    assert.deepEqual(failed.continuation_reasons, ["verification_failed"]);
+    const observations = (await readEvents(fixture.stateRoot))
+      .filter((event) => event.event_type === "goal_action_observed");
+    const commandObservation = observations.at(-1)!;
+    assert.equal((commandObservation.effect_intent as { operation?: string }).operation, "run_local_verification");
+    assert.equal(commandObservation.evidence_semantics, "verification_role_v1");
+    assert.equal(commandObservation.evidence_role, undefined);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects purpose markers without equal harness snapshots", async () => {
+  const fixture = await createFixture();
+  try {
+    const marker = passedVerificationMarker() as {
+      before: Record<string, unknown>;
+      after: Record<string, unknown>;
+    };
+    marker.after.workspace_sha256 = "d".repeat(64);
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("command.run", {
+          command: "sh",
+          args: ["-c", "true"],
+          cwd: "repo",
+          purpose: "verification",
+          side_effect_level: "none"
+        }, "Exercise strict verification marker validation.")
+      ]),
+      tools: {
+        async execute(effectAction) {
+          return {
+            id: "tool_result_mismatched_marker",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Synthetic inconsistent harness marker.",
+            output: { verification: marker },
+            side_effect_level: "local_reversible",
+            created_at: "2026-07-17T00:00:01.000Z"
+          };
+        }
+      },
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("strict_marker_start", "Reject incomplete or inconsistent proof markers."));
+    const paused = await runtime.handle({
+      type: "continue",
+      command_id: "strict_marker_plan",
+      goal_id: started.goal_id
+    });
+    await runtime.handle({
+      type: "resume",
+      command_id: "strict_marker_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: paused.pending_effect!.effect_id
+    });
+    const observation = (await readEvents(fixture.stateRoot)).at(-1)!;
+    assert.equal(observation.event_type, "goal_action_observed");
+    assert.equal(observation.evidence_semantics, "verification_role_v1");
+    assert.equal(observation.evidence_role, undefined);
+
+    const missingRuntime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("command.run", {
+          command: "sh",
+          args: ["-c", "true"],
+          cwd: "repo",
+          purpose: "verification",
+          side_effect_level: "none"
+        }, "Exercise missing verification snapshot validation.")
+      ]),
+      tools: {
+        async execute(effectAction) {
+          return {
+            id: "tool_result_missing_marker_snapshots",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Synthetic marker omits harness snapshots.",
+            output: {
+              verification: {
+                purpose: "verification",
+                status: "passed",
+                process_succeeded: true,
+                workspace_unchanged: true
+              }
+            },
+            side_effect_level: "local_reversible",
+            created_at: "2026-07-17T00:00:02.000Z"
+          };
+        }
+      },
+      verifier: new CanonicalGoalVerifier()
+    }, "missing_marker");
+    const missingStarted = await missingRuntime.handle(start(
+      "missing_marker_start",
+      "Reject verification proof without authoritative snapshots."
+    ));
+    const missingPaused = await missingRuntime.handle({
+      type: "continue",
+      command_id: "missing_marker_plan",
+      goal_id: missingStarted.goal_id
+    });
+    await missingRuntime.handle({
+      type: "resume",
+      command_id: "missing_marker_confirm",
+      goal_id: missingStarted.goal_id,
+      confirm_effect_id: missingPaused.pending_effect!.effect_id
+    });
+    const missingObservation = (await readEvents(fixture.stateRoot))
+      .find((event) => (event.result as { id?: string } | undefined)?.id === "tool_result_missing_marker_snapshots")!;
+    assert.equal(missingObservation.evidence_semantics, "verification_role_v1");
+    assert.equal(missingObservation.evidence_role, undefined);
   } finally {
     await fixture.cleanup();
   }
@@ -832,7 +1059,7 @@ test("GoalRuntime accepts one bounded 200-path codex.run lineage after later ver
               tool: effectAction.tool,
               ok: true,
               summary: "Synthetic post-change verification passed.",
-              output: {},
+              output: { verification: passedVerificationMarker() },
               side_effect_level: "local_reversible",
               created_at: "2026-07-17T00:00:02.000Z"
             };
@@ -872,6 +1099,7 @@ test("GoalRuntime accepts one bounded 200-path codex.run lineage after later ver
         command: "pnpm",
         args: ["run", "build"],
         cwd: "repo",
+        purpose: "verification",
         side_effect_level: "local_reversible"
       }, "Verify all attributed paths in the bound worktree."),
       outcome("200 个有界路径均已归因并完成后续本地验证。")
@@ -938,7 +1166,7 @@ test("GoalRuntime preserves a large commit control field and pins its later veri
               }
             : effectAction.tool === "file.read"
               ? { path: effectAction.arguments.path, text: "bounded fixture content" }
-              : { observed: true },
+              : { verification: passedVerificationMarker() },
           side_effect_level: isCommit ? "local_write" : effectAction.tool === "file.read" ? "none" : "local_reversible",
           created_at: `2026-07-17T00:20:${String(calls.length).padStart(2, "0")}.000Z`
         } satisfies ToolResult;
@@ -948,7 +1176,12 @@ test("GoalRuntime preserves a large commit control field and pins its later veri
     const runtime = createRuntime(fixture.store, {
       cognition: sequenceCognition([
         action("command.run", { command: "git", args: ["commit", "-m", "bounded"], cwd: "repo" }, "Create one bounded commit."),
-        action("command.run", { command: "pnpm", args: ["run", "check"], cwd: "repo" }, "Verify the commit."),
+        action("command.run", {
+          command: "pnpm",
+          args: ["run", "check"],
+          cwd: "repo",
+          purpose: "verification"
+        }, "Verify the commit."),
         ...trailingReads.map((path) => action("file.read", { scope: "repo", path }, `Read ${path}.`)),
         outcome("大型 commit observation 与其后验证均被完整绑定。")
       ]),
@@ -1116,10 +1349,11 @@ test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains 
     const boundRoot = join(fixture.root, "capacity-guard-worktree");
     await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-capacity-guard", boundRoot]);
     const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
-    const retainedChanges = Array.from({ length: 56 }, (_, index) => ({
+    const retainedChanges = Array.from({ length: 201 }, (_, index) => ({
       kind: "state_change" as const,
       identity: `docs/capacity-retained-${String(index).padStart(2, "0")}.md`
     }));
+    const retainedChange = { kind: "git_commit" as const, identity: "capacity-overflow-probe" };
     const calls: EffectAction[] = [];
     const tools: GoalToolExecutor = {
       async execute(effectAction) {
@@ -1129,7 +1363,7 @@ test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains 
           tool: effectAction.tool,
           ok: true,
           summary: "Synthetic harness observation retained 56 bounded identities.",
-          output: { changes: retainedChanges },
+          output: { changes: retainedChanges, change: retainedChange },
           side_effect_level: "local_write",
           created_at: "2026-07-17T00:00:01.000Z"
         };
@@ -1193,7 +1427,62 @@ test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains 
       reason: "Capacity boundary preserved all prior effects."
     });
     assert.equal(abandoned.status, "abandoned");
-    assert.deepEqual(abandoned.receipt?.changes, retainedChanges);
+    assert.deepEqual(abandoned.receipt?.changes, [...retainedChanges, retainedChange]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime reserves the full recovery envelope for known verification command dispatch", async () => {
+  const fixture = await createFixture();
+  try {
+    const retainedChanges = Array.from({ length: 201 }, (_, index) => ({
+      kind: "state_change" as const,
+      identity: `docs/verification-capacity-${String(index).padStart(2, "0")}.md`
+    }));
+    const retainedChange = { kind: "git_commit" as const, identity: "verification-capacity-overflow-probe" };
+    const calls: EffectAction[] = [];
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.write_repo", { path: "docs/verification-seed.md", text: "seed" }, "Seed bounded canonical lineage."),
+        action("command.run", {
+          command: "pnpm",
+          args: ["run", "check"],
+          cwd: "repo",
+          purpose: "verification",
+          side_effect_level: "none"
+        }, "Attempt a verification command whose failed mutation must remain attributable.")
+      ]),
+      tools: {
+        async execute(effectAction) {
+          calls.push(structuredClone(effectAction));
+          return {
+            id: "tool_result_verification_capacity_seed",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Synthetic harness observation retained 56 bounded identities.",
+            output: { changes: retainedChanges, change: retainedChange },
+            side_effect_level: "local_write",
+            created_at: "2026-07-17T00:00:01.000Z"
+          };
+        }
+      },
+      verifier: new CanonicalGoalVerifier()
+    });
+    let view = await runtime.handle(start("verification_capacity_start", "Reserve recovery lineage before verification."));
+    let command = 0;
+    while (!view.continuation_reasons.includes("blocked")) {
+      view = await runtime.handle({
+        type: "continue",
+        command_id: `verification_capacity_continue_${command}`,
+        goal_id: view.goal_id
+      });
+      command += 1;
+      assert.ok(command < 5, "verification capacity guard should stop within bounded continuations");
+    }
+
+    assert.equal(calls.length, 1);
+    assert.equal(view.checkpoint.cursor, "change_lineage_capacity");
   } finally {
     await fixture.cleanup();
   }
@@ -1231,6 +1520,7 @@ test("Effect confirmation pauses one goal and executes only the exact confirmed 
         command: "git",
         args: ["push", "origin", "feature"],
         cwd: "repo",
+        purpose: "execute",
         side_effect_level: "none"
       }, "Push would write externally."),
       outcome("精确确认后的本地观察已记录。")
@@ -1256,6 +1546,7 @@ test("Effect confirmation pauses one goal and executes only the exact confirmed 
         command: "git",
         args: ["push", "origin", "feature"],
         cwd: "repo",
+        purpose: "execute",
         side_effect_level: "none"
       }
     });
@@ -1769,4 +2060,20 @@ function goalGitValue(cwd: string, args: string[]): Promise<string> {
       resolvePromise(stdout.trim());
     });
   });
+}
+
+function passedVerificationMarker(): Record<string, unknown> {
+  const snapshot = {
+    head_commit: "a".repeat(40),
+    status_sha256: "b".repeat(64),
+    workspace_sha256: "c".repeat(64)
+  };
+  return {
+    purpose: "verification",
+    status: "passed",
+    process_succeeded: true,
+    workspace_unchanged: true,
+    before: snapshot,
+    after: { ...snapshot }
+  };
 }
