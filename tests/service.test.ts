@@ -417,6 +417,10 @@ test("service restart preserves installed current and previous bundles", async (
     assert.equal(result.previous_runtime?.source_commit, "previous-commit");
     assert.equal(result.plist_path, isolatedDefinition.plistPath);
     assert.match(await readFile(isolatedDefinition.plistPath, "utf8"), /local\.runtime\.runtime/);
+    const supervisorManifest = JSON.parse(await readFile(isolatedDefinition.supervisorManifestPath, "utf8")) as Record<string, unknown>;
+    assert.equal(supervisorManifest.controller_source_commit, "installed-commit");
+    assert.equal(supervisorManifest.launchctl_start_attempts, 3);
+    assert.equal(supervisorManifest.recovery_max_attempts, 6);
     assert.match(result.message ?? "", /repository source was not deployed/);
   } finally {
     await rm(root, { recursive: true, force: true });
