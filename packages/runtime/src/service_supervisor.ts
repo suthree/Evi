@@ -8,7 +8,9 @@ import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
 const MAX_EVIDENCE_LOG_BYTES = 1024 * 1024;
-const DEFAULT_LAUNCHCTL_START_ATTEMPTS = 3;
+const DEFAULT_LAUNCHCTL_START_ATTEMPTS = 7;
+const LAUNCHCTL_RETRY_BASE_DELAY_MS = 250;
+const LAUNCHCTL_RETRY_MAX_DELAY_MS = 8_000;
 const DEFAULT_RECOVERY_ATTEMPTS = 6;
 
 export type DeploymentStatus =
@@ -97,6 +99,16 @@ export interface DeploymentRecord {
 export interface LaunchctlStartEvidence {
   bootstrap_attempts: number;
   kickstart_attempts: number;
+  kickstart_attempt_limit: number;
+  kickstart_failures: LaunchctlKickstartFailureEvidence[];
+  kickstart_exhausted?: true;
+}
+
+export interface LaunchctlKickstartFailureEvidence {
+  attempt: number;
+  exit_code: number;
+  detail: string;
+  retry_delay_ms: number | null;
 }
 
 export interface ControllerAssessment {
@@ -123,6 +135,14 @@ export interface ReadinessResult {
 export interface SupervisorDeps {
   now?: () => Date;
   runLaunchctl?: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+  delay?: (milliseconds: number) => Promise<void>;
+}
+
+class LaunchctlStartError extends Error {
+  constructor(message: string, readonly evidence: LaunchctlStartEvidence) {
+    super(message);
+    this.name = "LaunchctlStartError";
+  }
 }
 
 export async function recordOperatorServiceRollback(
@@ -251,6 +271,7 @@ export async function runSupervisorOnce(
           ...attempting,
           status: exhausted ? "rollback_failed" : "recovering",
           recovery_last_error: detail,
+          recovery_start: launchctlStartEvidence(error) ?? attempting.recovery_start,
           ...(exhausted ? { failure_reason: recoveryExhaustionReason(attempting, readiness, attempt, maxAttempts, detail) } : {}),
           updated_at: now.toISOString()
         });
@@ -440,6 +461,7 @@ async function activateDeployment(
     try {
       recoveryStart = await restoreAndStartKnownGood(manifest, activating, deps);
     } catch (recoveryFailure) {
+      recoveryStart = launchctlStartEvidence(recoveryFailure);
       recoveryError = errorMessage(recoveryFailure);
     }
     return updateDeployment(manifest, {
@@ -447,6 +469,7 @@ async function activateDeployment(
       status: "recovering",
       failed_at: now.toISOString(),
       failure_reason: `candidate activation failed: ${errorMessage(error)}`,
+      activation_start: launchctlStartEvidence(error),
       readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
       recovery_attempts: 1,
       recovery_last_attempt_at: now.toISOString(),
@@ -483,6 +506,7 @@ async function resumeActivation(
       try {
         recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
       } catch (recoveryFailure) {
+        recoveryStart = launchctlStartEvidence(recoveryFailure);
         recoveryError = errorMessage(recoveryFailure);
       }
       return updateDeployment(manifest, {
@@ -490,6 +514,7 @@ async function resumeActivation(
         status: "recovering",
         failed_at: now.toISOString(),
         failure_reason: `candidate activation resume failed: ${errorMessage(error)}`,
+        activation_start: launchctlStartEvidence(error),
         readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
         recovery_attempts: 1,
         recovery_last_attempt_at: now.toISOString(),
@@ -509,6 +534,7 @@ async function resumeActivation(
     try {
       recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
     } catch (error) {
+      recoveryStart = launchctlStartEvidence(error);
       recoveryError = errorMessage(error);
     }
     return updateDeployment(manifest, {
@@ -863,13 +889,41 @@ async function bundleCommit(root: string): Promise<string | undefined> {
 async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<LaunchctlStartEvidence> {
   const bootstrapAttempts = await launchctlWithRetry(manifest, ["bootstrap", manifest.domain, manifest.runtime_plist_path], deps);
   const maxAttempts = positiveInteger(manifest.launchctl_start_attempts, DEFAULT_LAUNCHCTL_START_ATTEMPTS);
+  const failures: LaunchctlKickstartFailureEvidence[] = [];
   let kickstart = { stdout: "", stderr: "", exitCode: 1 };
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     kickstart = await runLaunchctl(["kickstart", "-k", `${manifest.domain}/${manifest.runtime_label}`], deps);
-    if (kickstart.exitCode === 0) return { bootstrap_attempts: bootstrapAttempts, kickstart_attempts: attempt };
-    if (attempt < maxAttempts) await delay(250 * (2 ** (attempt - 1)));
+    if (kickstart.exitCode === 0) {
+      return {
+        bootstrap_attempts: bootstrapAttempts,
+        kickstart_attempts: attempt,
+        kickstart_attempt_limit: maxAttempts,
+        kickstart_failures: failures
+      };
+    }
+    const retryDelayMs = attempt < maxAttempts
+      ? Math.min(LAUNCHCTL_RETRY_BASE_DELAY_MS * (2 ** (attempt - 1)), LAUNCHCTL_RETRY_MAX_DELAY_MS)
+      : null;
+    failures.push({
+      attempt,
+      exit_code: kickstart.exitCode,
+      detail: kickstart.stderr || kickstart.stdout || "unknown error",
+      retry_delay_ms: retryDelayMs
+    });
+    if (retryDelayMs !== null) await (deps.delay ?? delay)(retryDelayMs);
   }
-  throw new Error(`launchctl kickstart failed after ${maxAttempts} attempts: ${kickstart.stderr || kickstart.stdout || "unknown error"}`);
+  const evidence: LaunchctlStartEvidence = {
+    bootstrap_attempts: bootstrapAttempts,
+    kickstart_attempts: maxAttempts,
+    kickstart_attempt_limit: maxAttempts,
+    kickstart_failures: failures,
+    kickstart_exhausted: true
+  };
+  const detail = kickstart.stderr || kickstart.stdout || "unknown error";
+  throw new LaunchctlStartError(
+    `launchctl kickstart exhausted ${maxAttempts}/${maxAttempts} attempts for ${manifest.domain}/${manifest.runtime_label}; last exit_code=${kickstart.exitCode}; last_error=${detail}`,
+    evidence
+  );
 }
 
 async function stopRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<void> {
@@ -890,7 +944,7 @@ async function launchctlWithRetry(
     if (result.exitCode === 0) return attempt + 1;
     const print = await runLaunchctl(["print", `${manifest.domain}/${manifest.runtime_label}`], deps);
     if (print.exitCode === 0) return attempt + 1;
-    if (attempt < 4) await delay(250 * (2 ** attempt));
+    if (attempt < 4) await (deps.delay ?? delay)(250 * (2 ** attempt));
   }
   throw new Error(`launchctl bootstrap failed after bounded retry: ${result.stderr || result.stdout}`);
 }
@@ -932,6 +986,10 @@ function recoveryExhaustionReason(
 
 function positiveInteger(value: number | undefined, fallback: number): number {
   return Number.isInteger(value) && (value ?? 0) > 0 ? value as number : fallback;
+}
+
+function launchctlStartEvidence(error: unknown): LaunchctlStartEvidence | undefined {
+  return error instanceof LaunchctlStartError ? error.evidence : undefined;
 }
 
 function errorMessage(error: unknown): string {
