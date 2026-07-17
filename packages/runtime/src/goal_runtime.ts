@@ -8,6 +8,15 @@ const CHECKPOINT_ROOT = "goals/checkpoints";
 const RECEIPT_ROOT = "goals/receipts";
 const GOAL_BOUNDARY =
   "GoalRuntime canonical lifecycle; raw events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
+const ABANDON_VERIFICATION_SUMMARY = "Goal was explicitly abandoned; completion verification was not run.";
+const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
+
+interface StateRootMutationQueue {
+  tail: Promise<void>;
+  pending: number;
+}
+
+const stateRootMutationQueues = new Map<string, StateRootMutationQueue>();
 
 const safeIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const textSchema = z.string().trim().min(1).max(8_000);
@@ -224,9 +233,10 @@ export type GoalObservation = z.infer<typeof goalObservationSchema>;
 export type OutcomeCandidate = z.infer<typeof outcomeCandidateSchema>;
 export type GoalVerificationResult = z.infer<typeof verificationResultSchema>;
 export type OutcomeReceipt = z.infer<typeof outcomeReceiptSchema>;
-export type GoalRuntimeEvent = z.infer<typeof goalRuntimeEventSchema>;
+type GoalRuntimeEvent = z.infer<typeof goalRuntimeEventSchema>;
 export type GoalStatus = "active" | "paused" | "completed" | "abandoned";
 export type GoalContinuationReason = "soft_budget_reached" | "verification_failed" | "paused";
+export type GoalEvidenceKind = "intent" | "progress" | "verification_failure" | "pause" | "resume";
 
 export interface GoalView {
   goal_id: string;
@@ -249,7 +259,15 @@ export interface GoalVerificationInput {
   goal: GoalView;
   candidate: OutcomeCandidate;
   observations: GoalObservation[];
-  canonical_events: readonly GoalRuntimeEvent[];
+  evidence: GoalEvidenceView[];
+}
+
+export interface GoalEvidenceView {
+  event_id: string;
+  kind: GoalEvidenceKind;
+  summary: string;
+  refs: string[];
+  occurred_at: string;
 }
 
 export interface GoalVerifier {
@@ -268,7 +286,6 @@ export class GoalRuntime {
   private readonly verifier: GoalVerifier;
   private readonly now: () => string;
   private readonly idFactory: (prefix: string) => string;
-  private mutationTail: Promise<void> = Promise.resolve();
 
   constructor(options: GoalRuntimeOptions) {
     this.store = options.store;
@@ -278,13 +295,13 @@ export class GoalRuntime {
   }
 
   async handle(command: GoalCommand): Promise<GoalView> {
-    return this.withMutationLock(() => this.handleUnlocked(command));
+    return withStateRootMutationLock(this.store.stateRoot, () => this.handleUnlocked(command));
   }
 
   async read(goalId: string): Promise<GoalView> {
     const parsedGoalId = safeIdSchema.safeParse(goalId);
     if (!parsedGoalId.success) throw new Error(`Invalid GoalRuntime goal id: ${goalId}`);
-    await this.mutationTail;
+    await waitForStateRootMutations(this.store.stateRoot);
     return deriveGoalView(await this.readCanonicalEvents(), parsedGoalId.data);
   }
 
@@ -302,7 +319,8 @@ export class GoalRuntime {
         throw new Error(`GoalRuntime command id conflict: ${command.command_id}`);
       }
       const current = deriveGoalView(events, replay.goal_id);
-      await this.writeProjections(current);
+      const currentEvent = events.filter((event) => event.goal_id === replay.goal_id).at(-1)!;
+      await this.writeProjections(current, currentEvent.occurred_at);
       return deriveGoalView(
         events.filter((event) => event.goal_id !== replay.goal_id || event.sequence <= replay.sequence),
         replay.goal_id
@@ -393,45 +411,46 @@ export class GoalRuntime {
     const checkpoint = command.checkpoint ?? current.checkpoint;
     const usageDelta = normalizeUsage(command.usage_delta);
     const observations = command.observations ?? [];
-    const eventId = this.nextSafeId("goal_event");
-    const occurredAt = this.now();
-    const base = this.eventBase(current, command, commandDigest, eventId, occurredAt);
     const progress = { checkpoint, usage_delta: usageDelta, observations };
 
     if (!command.candidate) {
       return this.appendAndProject(allEvents, {
-        ...base,
+        ...this.eventBase(current, command, commandDigest),
         ...progress,
         event_type: "goal_continued"
       });
     }
 
-    assertCandidateEvidence(command.candidate, goalEvents);
+    const candidate = outcomeCandidateSchema.parse(command.candidate);
+    assertCandidateEvidence(candidate, goalEvents);
     const rawVerification = await this.verifier.verify({
-      goal: current,
-      candidate: command.candidate,
-      observations,
-      canonical_events: goalEvents
+      goal: structuredClone(current),
+      candidate: structuredClone(candidate),
+      observations: structuredClone(observations),
+      evidence: structuredClone(buildEvidenceViews(goalEvents, candidate.evidence_event_ids))
     });
     const verification = parseVerificationResult(rawVerification);
-    assertVerificationEvidence(verification, command.candidate);
+    assertVerificationEvidence(verification, candidate);
+    const eventId = this.nextSafeId("goal_event");
+    const occurredAt = this.now();
+    const base = this.eventBase(current, command, commandDigest, eventId, occurredAt);
 
     if (verification.status === "failed") {
       return this.appendAndProject(allEvents, {
         ...base,
         ...progress,
         event_type: "goal_verification_failed",
-        candidate: command.candidate,
+        candidate,
         verification
       });
     }
 
-    const receipt = this.acceptedReceipt(current, command.candidate, verification, eventId, occurredAt);
+    const receipt = this.acceptedReceipt(current, candidate, verification, eventId, occurredAt);
     return this.appendAndProject(allEvents, {
       ...base,
       ...progress,
       event_type: "goal_completed",
-      candidate: command.candidate,
+      candidate,
       verification,
       receipt
     });
@@ -492,42 +511,27 @@ export class GoalRuntime {
     terminalEventId: string,
     createdAt: string
   ): OutcomeReceipt {
-    return outcomeReceiptSchema.parse({
-      schema_version: 1,
-      type: "goal_outcome_receipt",
-      id: this.nextSafeId("goal_receipt"),
-      goal_id: current.goal_id,
+    return buildAbandonmentReceipt({
+      receiptId: this.nextSafeId("goal_receipt"),
+      goalId: current.goal_id,
       objective: current.objective,
-      decision: "abandoned",
-      summary: reason,
-      change: { kind: "none", identity: "none" },
-      verification: {
-        status: "not_run",
-        summary: "Goal was explicitly abandoned; completion verification was not run.",
-        checks: []
-      },
-      runtime_result: {
-        status: "not_applicable",
-        summary: "No accepted outcome was activated.",
-        evidence_event_ids: []
-      },
-      residual_risks: [reason],
-      evidence_event_ids: [terminalEventId],
-      created_at: createdAt,
-      boundary: GOAL_BOUNDARY
+      reason,
+      terminalEventId,
+      createdAt
     });
   }
 
   private async appendAndProject(events: GoalRuntimeEvent[], event: GoalRuntimeEvent): Promise<GoalView> {
     const parsed = goalRuntimeEventSchema.parse(event);
-    await this.store.appendJsonl(EVENTS_REF, parsed);
+    assertNewEventIdentities(events, parsed);
     const view = deriveGoalView([...events, parsed], parsed.goal_id);
-    await this.writeProjections(view);
+    await this.store.appendJsonl(EVENTS_REF, parsed);
+    await this.writeProjections(view, parsed.occurred_at);
     return view;
   }
 
-  private async writeProjections(view: GoalView): Promise<void> {
-    await this.store.writeJson(`${CHECKPOINT_ROOT}/${view.goal_id}.json`, {
+  private async writeProjections(view: GoalView, updatedAt: string): Promise<void> {
+    await writeJsonProjectionIfChanged(this.store, `${CHECKPOINT_ROOT}/${view.goal_id}.json`, {
       schema_version: 1,
       type: "goal_checkpoint_projection",
       goal_id: view.goal_id,
@@ -540,11 +544,11 @@ export class GoalRuntime {
       continuation_reasons: view.continuation_reasons,
       next_action: view.next_action,
       last_event_id: view.last_event_id,
-      updated_at: this.now(),
+      updated_at: updatedAt,
       boundary: GOAL_BOUNDARY
     });
     if (view.receipt) {
-      await this.store.writeJson(`${RECEIPT_ROOT}/${view.goal_id}.json`, view.receipt);
+      await writeJsonProjectionIfChanged(this.store, `${RECEIPT_ROOT}/${view.goal_id}.json`, view.receipt);
     }
   }
 
@@ -596,19 +600,6 @@ export class GoalRuntime {
     return parsed.data;
   }
 
-  private async withMutationLock<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.mutationTail;
-    let release!: () => void;
-    this.mutationTail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    try {
-      return await operation();
-    } finally {
-      release();
-    }
-  }
 }
 
 function deriveGoalView(allEvents: GoalRuntimeEvent[], goalId: string): GoalView {
@@ -737,6 +728,9 @@ function parseVerificationResult(value: GoalVerificationResult): GoalVerificatio
   if (parsed.data.status === "failed" && !parsed.data.next_action) {
     throw new Error("GoalRuntime failed verification requires a next action");
   }
+  if (parsed.data.status === "passed" && parsed.data.next_action) {
+    throw new Error("GoalRuntime passed verification cannot require a next action");
+  }
   return parsed.data;
 }
 
@@ -787,18 +781,138 @@ function assertAbandonmentReceipt(
   event: z.infer<typeof abandonedEventSchema>
 ): void {
   const receipt = event.receipt;
-  if (receipt.goal_id !== event.goal_id
-    || receipt.objective !== started.objective
-    || receipt.decision !== "abandoned"
-    || receipt.summary !== event.reason
-    || receipt.change.kind !== "none"
-    || receipt.change.identity !== "none"
-    || receipt.verification.status !== "not_run"
-    || receipt.runtime_result.status !== "not_applicable"
-    || receipt.created_at !== event.occurred_at
-    || canonicalJson(receipt.evidence_event_ids) !== canonicalJson([event.id])) {
+  const expected = buildAbandonmentReceipt({
+    receiptId: receipt.id,
+    goalId: event.goal_id,
+    objective: started.objective,
+    reason: event.reason,
+    terminalEventId: event.id,
+    createdAt: event.occurred_at
+  });
+  if (canonicalJson(receipt) !== canonicalJson(expected)) {
     throw new Error(`GoalRuntime abandonment receipt does not match its terminal event: ${receipt.id}`);
   }
+}
+
+function buildAbandonmentReceipt(args: {
+  receiptId: string;
+  goalId: string;
+  objective: string;
+  reason: string;
+  terminalEventId: string;
+  createdAt: string;
+}): OutcomeReceipt {
+  return outcomeReceiptSchema.parse({
+    schema_version: 1,
+    type: "goal_outcome_receipt",
+    id: args.receiptId,
+    goal_id: args.goalId,
+    objective: args.objective,
+    decision: "abandoned",
+    summary: args.reason,
+    change: { kind: "none", identity: "none" },
+    verification: {
+      status: "not_run",
+      summary: ABANDON_VERIFICATION_SUMMARY,
+      checks: []
+    },
+    runtime_result: {
+      status: "not_applicable",
+      summary: ABANDON_RUNTIME_SUMMARY,
+      evidence_event_ids: []
+    },
+    residual_risks: [],
+    evidence_event_ids: [args.terminalEventId],
+    created_at: args.createdAt,
+    boundary: GOAL_BOUNDARY
+  });
+}
+
+function buildEvidenceViews(events: GoalRuntimeEvent[], requestedIds: string[]): GoalEvidenceView[] {
+  const byId = new Map(events.map((event) => [event.id, event]));
+  return requestedIds.map((id) => evidenceView(byId.get(id)!));
+}
+
+function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
+  switch (event.event_type) {
+    case "goal_started":
+      return {
+        event_id: event.id,
+        kind: "intent",
+        summary: event.objective,
+        refs: event.checkpoint.selected_refs,
+        occurred_at: event.occurred_at
+      };
+    case "goal_continued":
+      return progressEvidenceView(event, "progress", event.checkpoint.summary || "Goal execution progressed.");
+    case "goal_verification_failed":
+      return progressEvidenceView(event, "verification_failure", event.verification.summary);
+    case "goal_paused":
+      return { event_id: event.id, kind: "pause", summary: event.reason, refs: [], occurred_at: event.occurred_at };
+    case "goal_resumed":
+      return { event_id: event.id, kind: "resume", summary: "Goal execution resumed.", refs: [], occurred_at: event.occurred_at };
+    case "goal_completed":
+    case "goal_abandoned":
+      throw new Error(`GoalRuntime terminal event cannot be candidate evidence: ${event.id}`);
+  }
+}
+
+function progressEvidenceView(
+  event: z.infer<typeof continuedEventSchema> | z.infer<typeof verificationFailedEventSchema>,
+  kind: "progress" | "verification_failure",
+  summary: string
+): GoalEvidenceView {
+  return {
+    event_id: event.id,
+    kind,
+    summary,
+    refs: unique([
+      ...event.checkpoint.selected_refs,
+      ...event.observations.flatMap((observation) => observation.refs)
+    ]),
+    occurred_at: event.occurred_at
+  };
+}
+
+function assertNewEventIdentities(events: GoalRuntimeEvent[], event: GoalRuntimeEvent): void {
+  if (events.some((existing) => existing.id === event.id)) {
+    throw new Error(`Duplicate GoalRuntime event id before append: ${event.id}`);
+  }
+  if ("receipt" in event) {
+    const duplicate = events.some((existing) => "receipt" in existing && existing.receipt.id === event.receipt.id);
+    if (duplicate) throw new Error(`Duplicate GoalRuntime receipt id before append: ${event.receipt.id}`);
+  }
+}
+
+async function writeJsonProjectionIfChanged(store: AgentStore, ref: string, value: unknown): Promise<void> {
+  const contents = `${JSON.stringify(value, null, 2)}\n`;
+  if (await store.readStateText(ref) === contents) return;
+  await store.writeText(ref, contents);
+}
+
+async function withStateRootMutationLock<T>(stateRoot: string, operation: () => Promise<T>): Promise<T> {
+  const queue = stateRootMutationQueues.get(stateRoot) ?? { tail: Promise.resolve(), pending: 0 };
+  stateRootMutationQueues.set(stateRoot, queue);
+  const previous = queue.tail;
+  let release!: () => void;
+  queue.tail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  queue.pending += 1;
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+    queue.pending -= 1;
+    if (queue.pending === 0 && stateRootMutationQueues.get(stateRoot) === queue) {
+      stateRootMutationQueues.delete(stateRoot);
+    }
+  }
+}
+
+async function waitForStateRootMutations(stateRoot: string): Promise<void> {
+  await stateRootMutationQueues.get(stateRoot)?.tail;
 }
 
 function normalizeCheckpoint(value: Partial<GoalCheckpoint> = {}): GoalCheckpoint {

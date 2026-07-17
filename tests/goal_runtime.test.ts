@@ -94,8 +94,18 @@ test("GoalRuntime keeps one identity across soft budget continuation and pause/r
     assert.equal(continuedAgain.continuation_required, true);
 
     const replayedStart = await runtime.handle(startCommand);
+    const stateBeforeReplay = await snapshotFiles(fixture.stateRoot);
+    const replayedContinue = await runtime.handle({
+      type: "continue",
+      command_id: "command_continue_2",
+      goal_id: started.goal_id,
+      usage_delta: { model_rounds: 1 }
+    });
+    const stateAfterReplay = await snapshotFiles(fixture.stateRoot);
     assert.equal(replayedStart.goal_id, started.goal_id);
     assert.equal(replayedStart.sequence, 1);
+    assert.equal(replayedContinue.sequence, continuedAgain.sequence);
+    assert.deepEqual(stateAfterReplay, stateBeforeReplay);
     assert.equal((await runtime.read(started.goal_id)).sequence, 5);
     assert.equal((await readEvents(fixture.stateRoot)).length, 5);
   } finally {
@@ -283,6 +293,7 @@ test("GoalRuntime command ids are content-bound and concurrent calls serialize",
       /command id conflict/
     );
 
+    const secondRuntime = createRuntime(fixture.store, passingVerifier(), "second");
     const results = await Promise.all([
       runtime.handle({
         type: "continue",
@@ -290,7 +301,7 @@ test("GoalRuntime command ids are content-bound and concurrent calls serialize",
         goal_id: started.goal_id,
         usage_delta: { tool_calls: 1 }
       }),
-      runtime.handle({
+      secondRuntime.handle({
         type: "continue",
         command_id: "concurrency_two",
         goal_id: started.goal_id,
@@ -301,6 +312,83 @@ test("GoalRuntime command ids are content-bound and concurrent calls serialize",
     assert.equal((await runtime.read(started.goal_id)).usage.tool_calls, 2);
   } finally {
     await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects event and receipt id collisions before canonical append", async () => {
+  const fixture = await createFixture();
+  try {
+    let goalCount = 0;
+    const collidingEvents = new GoalRuntime({
+      store: fixture.store,
+      verifier: passingVerifier(),
+      now: () => "2026-07-17T00:00:00.000Z",
+      idFactory(prefix) {
+        if (prefix === "goal") return `goal_${++goalCount}`;
+        if (prefix === "goal_event") return "goal_event_collision";
+        return `${prefix}_1`;
+      }
+    });
+    const started = await collidingEvents.handle({
+      type: "start",
+      command_id: "collision_start",
+      objective: "Reject event id collision."
+    });
+    await assert.rejects(
+      collidingEvents.handle({
+        type: "continue",
+        command_id: "collision_continue",
+        goal_id: started.goal_id
+      }),
+      /Duplicate GoalRuntime event id before append/
+    );
+    assert.equal((await readEvents(fixture.stateRoot)).length, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+
+  const receiptFixture = await createFixture();
+  try {
+    const counts = new Map<string, number>();
+    const collidingReceipts = new GoalRuntime({
+      store: receiptFixture.store,
+      verifier: passingVerifier(),
+      now: () => "2026-07-17T00:00:00.000Z",
+      idFactory(prefix) {
+        if (prefix === "goal_receipt") return "goal_receipt_collision";
+        const count = (counts.get(prefix) ?? 0) + 1;
+        counts.set(prefix, count);
+        return `${prefix}_${count}`;
+      }
+    });
+    const first = await collidingReceipts.handle({
+      type: "start",
+      command_id: "receipt_first_start",
+      objective: "First receipt."
+    });
+    await collidingReceipts.handle({
+      type: "abandon",
+      command_id: "receipt_first_abandon",
+      goal_id: first.goal_id,
+      reason: "First direction retired."
+    });
+    const second = await collidingReceipts.handle({
+      type: "start",
+      command_id: "receipt_second_start",
+      objective: "Second receipt."
+    });
+    await assert.rejects(
+      collidingReceipts.handle({
+        type: "abandon",
+        command_id: "receipt_second_abandon",
+        goal_id: second.goal_id,
+        reason: "Second direction retired."
+      }),
+      /Duplicate GoalRuntime receipt id before append/
+    );
+    assert.equal((await readEvents(receiptFixture.stateRoot)).length, 3);
+  } finally {
+    await receiptFixture.cleanup();
   }
 });
 
@@ -454,6 +542,69 @@ test("GoalRuntime fails closed on a parseable but semantically mismatched receip
   }
 });
 
+test("GoalRuntime isolates canonical state from verifier input mutation", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      async verify(input) {
+        const evidenceEventId = input.candidate.evidence_event_ids[0]!;
+        input.candidate.evidence_event_ids[0] = "goal_event_foreign";
+        input.candidate.summary = "Verifier-mutated candidate.";
+        input.evidence[0]!.summary = "Verifier-mutated evidence view.";
+        return passingResult(evidenceEventId);
+      }
+    });
+    const started = await runtime.handle({
+      type: "start",
+      command_id: "isolation_start",
+      objective: "Protect canonical state from injected verifier mutation."
+    });
+    const observed = await runtime.handle({
+      type: "continue",
+      command_id: "isolation_observed",
+      goal_id: started.goal_id,
+      observations: [{ kind: "test", summary: "Evidence exists.", refs: [] }]
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "isolation_complete",
+      goal_id: started.goal_id,
+      candidate: candidate(observed.last_event_id, "Original candidate.", "healthy")
+    });
+    assert.equal(completed.receipt?.summary, "Original candidate.");
+    assert.deepEqual(completed.receipt?.evidence_event_ids, [observed.last_event_id, completed.last_event_id]);
+    assert.equal((await runtime.read(started.goal_id)).sequence, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime fails closed on abandonment receipt semantic corruption", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, passingVerifier());
+    const started = await runtime.handle({
+      type: "start",
+      command_id: "abandon_corruption_start",
+      objective: "Reject abandonment receipt corruption."
+    });
+    await runtime.handle({
+      type: "abandon",
+      command_id: "abandon_corruption_terminal",
+      goal_id: started.goal_id,
+      reason: "Direction retired."
+    });
+    const eventRef = join(fixture.stateRoot, "goals/events.jsonl");
+    const events = await readEvents(fixture.stateRoot);
+    const receipt = events[1]!.receipt as Record<string, unknown>;
+    receipt.residual_risks = ["Forged residual risk."];
+    await writeFile(eventRef, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
+    await assert.rejects(runtime.read(started.goal_id), /abandonment receipt does not match its terminal event/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 function candidate(
   evidenceEventId: string,
   summary: string,
@@ -494,7 +645,7 @@ function passingResult(eventId: string): GoalVerificationResult {
   };
 }
 
-function createRuntime(store: AgentStore, verifier: GoalVerifier): GoalRuntime {
+function createRuntime(store: AgentStore, verifier: GoalVerifier, namespace = ""): GoalRuntime {
   const counts = new Map<string, number>();
   let tick = 0;
   return new GoalRuntime({
@@ -503,7 +654,7 @@ function createRuntime(store: AgentStore, verifier: GoalVerifier): GoalRuntime {
     idFactory(prefix) {
       const count = (counts.get(prefix) ?? 0) + 1;
       counts.set(prefix, count);
-      return `${prefix}_${count}`;
+      return namespace ? `${prefix}_${namespace}_${count}` : `${prefix}_${count}`;
     },
     now() {
       tick += 1;

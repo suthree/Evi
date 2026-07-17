@@ -139,11 +139,18 @@ deployment, publication, or stopped-goal resumption.
   verifier decision consistency, receipt-to-goal/candidate/event binding, and
   duplicate event, command, or receipt ids. Projections are ignored for
   authority and can be rebuilt by idempotent command handling.
-- Seven focused interface tests pass, including failed verification followed by
+- Ten focused interface tests pass, including failed verification followed by
   success on the same goal, soft-budget continuation, pause/resume, concurrent
-  calls, foreign evidence, semantic receipt corruption, and an exact state diff
-  proving legacy stores unchanged.
-- Repository-wide `pnpm run check` passes with 898 tests, skill validation, and
+  calls across runtime instances, pre-append identity collisions, foreign
+  evidence, accepted/abandoned receipt corruption, verifier input isolation,
+  and an exact state diff proving legacy stores unchanged.
+- Exact command replay now derives deterministic projections from canonical
+  event time and performs no write when they are healthy. The verifier receives
+  only candidate-scoped evidence views rather than the internal event schema.
+- Repository-wide `pnpm run check` passes with 901 tests, skill validation, and
   neutral naming validation. `git diff --check` also passes.
-- Standards/Spec review, PR integration, commit-bound deployment, and live
-  runtime/channel health remain pending and are not claimed here.
+- Initial Standards/Spec review findings on state-root locking, pre-append id
+  collisions, replay projection writes, abandonment receipt binding, and the
+  verifier seam are corrected. Re-review, PR integration, commit-bound
+  deployment, and live runtime/channel health remain pending and are not
+  claimed here.
