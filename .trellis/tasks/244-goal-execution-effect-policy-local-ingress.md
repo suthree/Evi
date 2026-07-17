@@ -1,6 +1,6 @@
 # Task 244: GoalRuntime Execution, EffectPolicy, And Local Ingress
 
-Status: active
+Status: complete
 
 ## Identity And Ownership
 
@@ -172,3 +172,38 @@ destructive remote action, or stopped-goal resumption.
 - The authoritative live Evi state root contained no GoalRuntime canonical
   events before this schema deepening, so no real v1 GoalRuntime history needs
   migration in this child. Historical legacy stores remain untouched.
+
+## 2026-07-18 Live Acceptance
+
+- PR #66 merged the implementation to `develop` at
+  `b55ddb4f1db79672dbc7e6e7484e2ac0514c5c42`. The root checkout is clean and
+  exactly matches `origin/develop`.
+- Deployment `deployment_20260717171248_b55ddb4f1db7` activated that exact
+  commit and became `stable` at `2026-07-17T17:14:37.390Z` with
+  `failure_count: 0`. The current bundle digest is
+  `d1559c474a4d4693791ee9d92e9a3b55433e1838f3c3d42eb1d2f04cf8a7eeb9`.
+- Bounded service health is `healthy`: runtime PID `83892` has a fresh
+  heartbeat carrying the exact deployed commit, Web is running on
+  `127.0.0.1:8765`, and the Feishu gateway is running with a connected inbound
+  transport. The copied supervisor controller handoff replaced PID `80288`
+  with PID `85743`; an exact repeat returned `already_matched` with matching
+  process identity and controller digest.
+- The copied installed entrypoint under
+  `/Users/agi00079/.local-runtime/service/runtime/current/dist/` executed
+  `goal start`, same-identity soft continuation, completion, and `goal read`
+  against an isolated state root. Goal
+  `goal_20260717172337_3bc6b0b6` completed with accepted schema-v2 receipt
+  `goal_receipt_20260717172503_cc637310`, canonical verification passed, and
+  `changes: []`. The isolated root contained only GoalRuntime events,
+  checkpoint, and receipt projections and was then moved to the system trash.
+- The installed-artifact cognition for this smoke used an explicitly labelled
+  deterministic local OpenAI-compatible fixture. The machine-local ignored
+  config currently selects missing model id `primary-model`; the ordinary
+  installed command therefore fails before GoalRuntime with
+  `Active model not found in configured models.jsonl layers: primary-model`.
+  This does not invalidate the installed code-path acceptance, but it is real
+  runtime-readiness evidence: the next parent-program child must restore one
+  verifiable cognition bootstrap before IM/Web/daemon cutover. It must not be
+  hidden by silently falling back to the neutral example model.
+- The stopped legacy self-evolution goal was not resumed, and the authoritative
+  live state root received no GoalRuntime smoke events or legacy dual-writes.
