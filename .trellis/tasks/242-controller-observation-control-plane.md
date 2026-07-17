@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: draft PR #58 under review; integration and live acceptance pending
+Status: PR #58 integrated; draft PR #59 fix-forward under review; live acceptance pending
 
 ## Identity And Ownership
 
@@ -11,9 +11,12 @@ Status: draft PR #58 under review; integration and live acceptance pending
 - Implementation owner: external Codex Goal operating directly in this isolated worktree; the stopped Evi legacy goal is not resumed.
 - Decision Owner / authority basis: the operator accepted the architecture direction and explicitly instructed Codex to start execution on 2026-07-17.
 - Capability layer: basic-entrypoint.
-- Base commit: `b366895862fe6fe03d37f626bff70734fe4b9510`.
-- Branch: `codex/issue-57-controller-observation-control-plane`.
-- Isolated worktree: `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-controller-observation-control-plane`.
+- Initial implementation base: `b366895862fe6fe03d37f626bff70734fe4b9510`.
+- Live fix-forward base: `60e3fbb53ef70dcdea1d70cded72b25bb3ec218f`.
+- Implementation branch/worktree: `codex/issue-57-controller-observation-control-plane`
+  at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-controller-observation-control-plane`.
+- Live fix-forward branch/worktree: `codex/issue-57-handoff-kickstart-recovery`
+  at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-handoff-kickstart-recovery`.
 
 ## Problem And Evidence
 
@@ -61,6 +64,37 @@ Non-goals: no GoalRuntime or EffectPolicy implementation, learning redesign,
 new retry/backoff branch, new controller service, dependency addition, broad
 queue rewrite, content workflow, LuBan change, remote deployment, `main`, tag,
 release, publication, or resumption of the stopped legacy goal.
+
+### Live Scope Override: Shared Launchd Lifecycle Recovery
+
+- Decision Owner: the operator's accepted Task 242 live-acceptance mandate,
+  implemented by the external Codex Goal under the repository Autonomy Decision
+  Rule.
+- Authority and evidence: the first post-PR #58 handoff failed closed after a
+  successful supervisor bootstrap because launchd no longer reported the job at
+  kickstart; manual re-bootstrap plus kickstart restored the supervisor while
+  the stable runtime, Web, and Feishu remained resident and healthy.
+- Superseded constraint: the initial `new retry/backoff branch` non-goal is
+  overridden only for the existing shared `startLaunchdJob` adapter. No new
+  controller-specific retry path or Goal/deployment owner is introduced.
+- Exact budget: at most five kickstart attempts, at most four missing-job
+  re-bootstrap attempts, per-command timeout of 30 seconds, inspection timeout
+  of 10 seconds, and delays of 250, 500, 1000, and 2000 milliseconds. A final
+  failure remains terminal and returns to the caller's existing rollback path.
+- Risk: a persistent launchd fault can take longer to surface, and a broad retry
+  could hide an incorrect plist or service identity. Re-bootstrap therefore
+  runs only after inspection reports the exact job missing; no retry follows a
+  successful kickstart.
+- Verification: injected regression at the shared service seam, focused
+  service/controller-handoff tests, full repository checks, then one real
+  handoff retry plus idempotency and runtime/channel health checks.
+- Rollback/retirement: revert fix-forward commit
+  `4cc0b3ce46382bbda914edb948855b07cecf4157` if the live retry does not recover
+  the observed missing-job race or causes service regression. Re-evaluate or
+  retire the retry if Task 242 live acceptance still fails, if observations show
+  a different failure class, or if the bounded attempts materially delay normal
+  service recovery. The override expires with Task 242; later scope expansion
+  requires a new accepted owner decision.
 
 ## Design Discipline
 
@@ -171,3 +205,5 @@ release, publication, or resumption of the stopped legacy goal.
   `git diff --check`, and the repository `pnpm run check` gate (890/890 tests,
   skill validation, and naming checks). These checks validate the bounded
   lifecycle behavior only; they do not yet claim live handoff acceptance.
+- Fix-forward commit `4cc0b3ce46382bbda914edb948855b07cecf4157` is pushed
+  through draft PR #59 to `develop`; review and live retry remain pending.
