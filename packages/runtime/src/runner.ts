@@ -546,7 +546,10 @@ export class LiveAgentRunner {
           : null;
         const toolResult = contractBlock
           ? blockedTaskExecutionToolResult(action, contractBlock)
-          : await executeTool(action, { store: this.store });
+          : await executeTool(action, {
+            store: this.store,
+            modelMaxOutputTokens: this.config.model.max_output_tokens
+          });
         toolResults.push(toolResult);
         const toolRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${toolResult.id}.json`, toolResult);
         toolArtifactRefs.push(toolRef);

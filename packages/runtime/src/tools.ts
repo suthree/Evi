@@ -8,6 +8,7 @@ import {
   CODEX_STRUCTURED_RESULT_SCHEMA_TEXT,
   codexAuthorityDigest,
   createCodexAuthoritySnapshot,
+  deriveCodexOutputCaptureChars,
   failedCodexStructuredResult,
   parseCodexRunRequest,
   parseCodexStructuredResult,
@@ -42,7 +43,6 @@ type ToolFailureKind =
   | "codex_invalid_request"
   | "codex_invalid_structured_result"
   | "codex_isolation_failed"
-  | "codex_output_budget_exceeded"
   | "codex_tool_budget_exceeded"
   | "http_status"
   | "invalid_request"
@@ -56,6 +56,7 @@ type ToolFailureKind =
 
 export interface ToolExecutionContext {
   store: AgentStore;
+  modelMaxOutputTokens?: number;
 }
 
 export async function executeTool(action: ActionProposal, context: ToolExecutionContext): Promise<ToolResult> {
@@ -371,18 +372,27 @@ interface CodexThreadAuthorityRecord {
 interface CodexProcessResult {
   exitCode: number | null;
   timedOut: boolean;
-  outputBudgetExceeded: boolean;
   toolBudgetExceeded: boolean;
   invalidJsonl: boolean;
   spawnError: boolean;
+  threadIdMismatch: boolean;
   threadId: string | null;
   lastAgentMessage: string | null;
   stdoutCharsObserved: number;
   stderrCharsObserved: number;
+  outputCapture: CodexOutputCapture;
   eventCount: number;
   eventTypes: Record<string, number>;
   itemTypes: Record<string, number>;
   toolCallsObserved: number;
+}
+
+interface CodexOutputCapture {
+  effectiveLimitChars: number;
+  retainedChars: number;
+  truncated: boolean;
+  prefix: string;
+  suffix: string;
 }
 
 interface CodexWorkspaceChanges {
@@ -392,8 +402,12 @@ interface CodexWorkspaceChanges {
 
 async function runCodexRun(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
   let request: CodexRunRequest;
+  const explicitOutputCaptureLimit = isPlainRecord(args.budgets)
+    && args.budgets.max_output_chars !== undefined;
   try {
-    request = parseCodexRunRequest(args);
+    request = parseCodexRunRequest(args, {
+      max_output_chars: deriveCodexOutputCaptureChars(context.modelMaxOutputTokens)
+    });
   } catch (error) {
     return codexFailure("codex_invalid_request", errorMessage(error), failedCodexStructuredResult(
       "Codex request was rejected before execution.",
@@ -439,6 +453,13 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
 
   const inherited = prior?.authority;
   const budgets = request.mode === "new" ? request.budgets : inherited!.budgets;
+  const outputCaptureLimitSource = request.mode === "resume"
+    ? "persisted_authority_snapshot"
+    : explicitOutputCaptureLimit
+      ? "request"
+      : context.modelMaxOutputTokens === undefined
+        ? "runtime_context_budget_default"
+        : "runtime_model_config.max_output_tokens";
   const prompt = codexExecutionPrompt(request.prompt, authority, budgets);
   if (prompt.length > budgets.max_context_chars) {
     return codexFailure("codex_invalid_request", "Bounded Codex prompt exceeds max_context_chars after harness instructions.", failedCodexStructuredResult(
@@ -490,7 +511,15 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     } satisfies CodexThreadAuthorityRecord);
   }
 
-  const metadata = codexExecutionMetadata(finalAuthority, authorityDigest, threadId, processResult, workspaceBefore, workspaceAfter);
+  const metadata = codexExecutionMetadata(
+    finalAuthority,
+    authorityDigest,
+    threadId,
+    processResult,
+    workspaceBefore,
+    workspaceAfter,
+    outputCaptureLimitSource
+  );
   if (request.mode === "resume" && processResult.threadId && processResult.threadId !== request.thread_id) {
     return codexFailure("codex_authority_mismatch", "Codex resume emitted a different thread id.", failedCodexStructuredResult(
       "Codex resume authority mismatch.",
@@ -505,15 +534,20 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
       "Restore the local Codex CLI and resume through the same main-harness task."
     ), metadata);
   }
-  if (processResult.timedOut || processResult.outputBudgetExceeded || processResult.toolBudgetExceeded) {
+  if (processResult.threadIdMismatch) {
+    return codexFailure("codex_authority_mismatch", "Codex emitted mismatched thread ids.", failedCodexStructuredResult(
+      "Codex thread authority mismatch.",
+      "The process emitted more than one distinct thread id.",
+      "Inspect the persisted handle and retry only one Codex thread."
+    ), metadata);
+  }
+  if (processResult.timedOut || processResult.toolBudgetExceeded) {
     const kind = processResult.timedOut
       ? "timeout"
-      : processResult.outputBudgetExceeded
-        ? "codex_output_budget_exceeded"
-        : "codex_tool_budget_exceeded";
+      : "codex_tool_budget_exceeded";
     return codexFailure(kind, "Codex execution stopped at a bounded harness limit.", blockedCodexStructuredResult(
       "Codex execution stopped before a valid terminal result.",
-      processResult.timedOut ? "timeout budget exceeded" : processResult.outputBudgetExceeded ? "output budget exceeded" : "tool-call budget exceeded",
+      processResult.timedOut ? "timeout budget exceeded" : "tool-call budget exceeded",
       threadId ? "Resume this exact Codex thread with its returned authority handle." : "Start a new bounded Codex run after reviewing the budget."
     ), metadata);
   }
@@ -579,7 +613,8 @@ function codexExecutionMetadata(
   threadId: string | null,
   result: CodexProcessResult,
   workspaceBefore: CodexWorkspaceChanges,
-  workspaceAfter: CodexWorkspaceChanges
+  workspaceAfter: CodexWorkspaceChanges,
+  outputCaptureLimitSource: string
 ): Record<string, unknown> {
   const before = new Set(workspaceBefore.changedPaths);
   return {
@@ -591,7 +626,18 @@ function codexExecutionMetadata(
       timed_out: result.timedOut,
       stdout_chars_observed: result.stdoutCharsObserved,
       stderr_chars_observed: result.stderrCharsObserved,
-      output_budget_exceeded: result.outputBudgetExceeded,
+      output_budget_exceeded: false,
+      output_capture: {
+        effective_limit_chars: result.outputCapture.effectiveLimitChars,
+        observed_chars: result.stdoutCharsObserved + result.stderrCharsObserved,
+        retained_chars: result.outputCapture.retainedChars,
+        truncated: result.outputCapture.truncated,
+        limit_source: outputCaptureLimitSource,
+        strategy: "bounded event-summary and redacted stderr prefix/suffix; terminal agent_message is parsed independently",
+        termination_boundary: "capture-only; exceeding this limit never signals the Codex process",
+        prefix: result.outputCapture.prefix,
+        suffix: result.outputCapture.suffix
+      },
       tool_budget_exceeded: result.toolBudgetExceeded
     },
     events: {
@@ -705,16 +751,17 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
     let stdoutCharsObserved = 0;
     let stderrCharsObserved = 0;
     let timedOut = false;
-    let outputBudgetExceeded = false;
     let toolBudgetExceeded = false;
     let invalidJsonl = false;
     let spawnError = false;
+    let threadIdMismatch = false;
     let threadId: string | null = null;
     let lastAgentMessage: string | null = null;
     let eventCount = 0;
     const eventTypes: Record<string, number> = {};
     const itemTypes: Record<string, number> = {};
     const countedToolItems = new Set<string>();
+    const outputCapture = new BoundedCodexOutputCapture(authority.budgets.max_output_chars);
     let settled = false;
     let cleanupStarted = false;
     let cleanupKillTimer: NodeJS.Timeout | null = null;
@@ -748,10 +795,15 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
         return;
       }
       eventCount += 1;
-      eventTypes[event.type] = (eventTypes[event.type] ?? 0) + 1;
+      incrementBoundedCounter(eventTypes, event.type);
       if (event.type === "thread.started") {
         if (typeof event.thread_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.thread_id)) {
           invalidJsonl = true;
+          stop();
+          return;
+        }
+        if (threadId && threadId !== event.thread_id) {
+          threadIdMismatch = true;
           stop();
           return;
         }
@@ -759,7 +811,7 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
       }
       if ((event.type === "item.started" || event.type === "item.completed") && isPlainRecord(event.item)) {
         const itemType = typeof event.item.type === "string" ? event.item.type : "unknown";
-        itemTypes[itemType] = (itemTypes[itemType] ?? 0) + 1;
+        incrementBoundedCounter(itemTypes, boundedDiagnosticToken(itemType));
         const itemId = typeof event.item.id === "string" ? event.item.id : `${eventCount}:${itemType}`;
         if (event.type === "item.completed" && itemType === "agent_message" && typeof event.item.text === "string") {
           lastAgentMessage = event.item.text;
@@ -772,27 +824,21 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
           }
         }
       }
+      outputCapture.append(summarizeCodexEvent(event));
     };
 
     child.stdout.on("data", (chunk: Buffer) => {
       const text = chunk.toString("utf8");
       stdoutCharsObserved += text.length;
-      if (stdoutCharsObserved + stderrCharsObserved > authority.budgets.max_output_chars) {
-        outputBudgetExceeded = true;
-        stop();
-        return;
-      }
       stdoutBuffer += text;
       const lines = stdoutBuffer.split(/\r?\n/);
       stdoutBuffer = lines.pop() ?? "";
       for (const line of lines) consumeLine(line);
     });
     child.stderr.on("data", (chunk: Buffer) => {
-      stderrCharsObserved += chunk.toString("utf8").length;
-      if (stdoutCharsObserved + stderrCharsObserved > authority.budgets.max_output_chars) {
-        outputBudgetExceeded = true;
-        stop();
-      }
+      const text = chunk.toString("utf8");
+      stderrCharsObserved += text.length;
+      outputCapture.append(`[stderr] ${redactCodexDiagnostic(text)}`);
     });
     child.on("error", () => {
       spawnError = true;
@@ -806,14 +852,15 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
       resolveProcess({
         exitCode,
         timedOut,
-        outputBudgetExceeded,
         toolBudgetExceeded,
         invalidJsonl,
         spawnError,
+        threadIdMismatch,
         threadId,
         lastAgentMessage,
         stdoutCharsObserved,
         stderrCharsObserved,
+        outputCapture: outputCapture.snapshot(stdoutCharsObserved + stderrCharsObserved),
         eventCount,
         eventTypes,
         itemTypes,
@@ -823,6 +870,71 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
     child.stdin.on("error", () => {});
     child.stdin.end(prompt);
   });
+}
+
+class BoundedCodexOutputCapture {
+  private readonly prefixLimit: number;
+  private readonly suffixLimit: number;
+  private prefix = "";
+  private suffix = "";
+
+  constructor(private readonly effectiveLimitChars: number) {
+    this.prefixLimit = Math.ceil(effectiveLimitChars / 2);
+    this.suffixLimit = Math.floor(effectiveLimitChars / 2);
+  }
+
+  append(value: string): void {
+    if (!value) return;
+    let remaining = value.endsWith("\n") ? value : `${value}\n`;
+    if (this.prefix.length < this.prefixLimit) {
+      const prefixPart = remaining.slice(0, this.prefixLimit - this.prefix.length);
+      this.prefix += prefixPart;
+      remaining = remaining.slice(prefixPart.length);
+    }
+    if (!remaining || this.suffixLimit === 0) return;
+    this.suffix = `${this.suffix}${remaining}`.slice(-this.suffixLimit);
+  }
+
+  snapshot(observedChars: number): CodexOutputCapture {
+    return {
+      effectiveLimitChars: this.effectiveLimitChars,
+      retainedChars: this.prefix.length + this.suffix.length,
+      truncated: observedChars > this.effectiveLimitChars,
+      prefix: this.prefix,
+      suffix: this.suffix
+    };
+  }
+}
+
+function summarizeCodexEvent(event: Record<string, unknown>): string {
+  const parts = [`event=${event.type}`];
+  if (event.type === "thread.started" && typeof event.thread_id === "string") {
+    parts.push(`thread_id=${boundedDiagnosticToken(event.thread_id)}`);
+  }
+  if ((event.type === "item.started" || event.type === "item.completed") && isPlainRecord(event.item)) {
+    if (typeof event.item.type === "string") parts.push(`item_type=${boundedDiagnosticToken(event.item.type)}`);
+    if (typeof event.item.id === "string") parts.push(`item_id=${boundedDiagnosticToken(event.item.id)}`);
+  }
+  return parts.join(" ");
+}
+
+function incrementBoundedCounter(counter: Record<string, number>, rawKey: string): void {
+  const key = boundedDiagnosticToken(rawKey);
+  if (key in counter || Object.keys(counter).length < 64) {
+    counter[key] = (counter[key] ?? 0) + 1;
+    return;
+  }
+  counter.__other__ = (counter.__other__ ?? 0) + 1;
+}
+
+function boundedDiagnosticToken(value: string): string {
+  return value.replace(/[^A-Za-z0-9_.:/-]/g, "_").slice(0, 120) || "unknown";
+}
+
+function redactCodexDiagnostic(value: string): string {
+  return value
+    .replace(/\b(?:sk-[A-Za-z0-9_-]{8,}|Bearer\s+\S+)/gi, "[REDACTED]")
+    .replace(/\b(?:api[_-]?key|token|password|secret)\s*[:=]\s*\S+/gi, "$1=[REDACTED]");
 }
 
 function signalCodexProcessTree(pid: number | undefined, signal: NodeJS.Signals, fallback: () => boolean): void {

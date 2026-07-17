@@ -368,7 +368,10 @@ export class StageRunner {
           continue;
         }
 
-        const result = await executeTool(action, { store: this.store });
+        const result = await executeTool(action, {
+          store: this.store,
+          modelMaxOutputTokens: this.config.model.max_output_tokens
+        });
         toolResults.push(result);
         stageEvidenceRefs.push(await this.persistToolResult({ runId: args.runId, root: args.root, artifactKey: args.artifactKey, result }));
       }
