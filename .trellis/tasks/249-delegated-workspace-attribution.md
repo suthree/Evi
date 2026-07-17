@@ -1,6 +1,6 @@
 # Task 249: Delegated Workspace Attribution
 
-Status: active
+Status: complete
 
 ## Identity And Ownership
 
@@ -150,3 +150,21 @@ commands and mutations belong to different worktrees.
   controller identity, then run a fresh Goal against a fresh linked worktree.
 - Rollback: revert through a normal PR and redeploy the previous stable commit.
   Additive events remain readable, and no history or worktree is deleted.
+
+## Completion Evidence
+
+- PR #77 merged to `develop` at
+  `177eafdfe15ce1273fe32c5cf778ce2beceaad20` after targeted/full checks and
+  independent Spec/Standards review passed.
+- The installed runtime later advanced through the bounded #78 and #80 repair
+  slices to stable deployment `deployment_20260717223617_b47681a2c131` at
+  source `b47681a2c131c59767ba3973b50a791d6394d44f`; service and controller
+  source identity matched and health was `healthy/current`.
+- The original Goal `goal_20260717211903_81851fca` retained its exact linked
+  worktree and canonical history, observed only
+  `docs/live/issue-76-evi-codex-probe.md` with unchanged HEAD, then completed at
+  sequence 26 with accepted receipt
+  `goal_receipt_20260717223926_322b9e56`.
+- Earlier provider-selection and verification failures remain in the same Goal
+  history; #78 and #80 own those measured repairs instead of rewriting this
+  task's evidence.

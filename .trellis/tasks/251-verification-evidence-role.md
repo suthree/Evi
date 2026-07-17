@@ -1,6 +1,6 @@
 # Task 251: Verification Evidence Role
 
-Status: verified; integration and live acceptance pending
+Status: complete
 
 ## Identity And Ownership
 
@@ -144,5 +144,18 @@ Separate the two decisions while retaining one canonical observation:
 - Independent Standards review: PASS after four P1 fixes; no remaining
   actionable finding across security, replay, compatibility, capacity,
   context, or mechanism complexity.
-- PR integration, exact-commit deployment, controller health, and
-  original-Goal live acceptance remain intentionally pending.
+- PR #81 merged to `develop` at
+  `b47681a2c131c59767ba3973b50a791d6394d44f`.
+- Deployment `deployment_20260717223617_b47681a2c131` became stable with exact
+  source `b47681a2c131c59767ba3973b50a791d6394d44f`; service health was
+  `healthy/current`, Web listened on `127.0.0.1:8765`, IM was connected, and
+  controller handoff matched the stable controller digest.
+- The same original Goal `goal_20260717211903_81851fca` proposed an explicit
+  verification-purpose command. Event
+  `goal_event_20260717223913_bdfe1172` retained the dynamic-code safety
+  operation while receiving harness-owned `local_verification` under
+  `verification_role_v1`; before/after HEAD, semantic index, status, and
+  workspace content fingerprints were unchanged.
+- GoalRuntime accepted the healthy outcome at sequence 26 with receipt
+  `goal_receipt_20260717223926_322b9e56`; both earlier failed assertions and
+  provider failures remain canonical.

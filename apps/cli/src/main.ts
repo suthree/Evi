@@ -182,7 +182,9 @@ import type {
   ReviewInboxDecisionStatus
 } from "../../../packages/runtime/src/background_review.js";
 import {
+  assertLocalLiveGoalRequest,
   createLocalGoalRuntime,
+  executeLocalLiveGoalRequest,
   executeLocalGoalRequest,
   isLocalGoalAction,
   type LocalGoalAction
@@ -1820,18 +1822,21 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "live") {
-    const config = await loadConfig({ configDir: options.configDir, stateRoot: options.stateRoot });
-    const stateRoot = config.state.root;
-    const model = new OpenAICompatibleClient(config.model);
-    const runner = new LiveAgentRunner({
-      repoRoot: resolve(options.repoRoot),
-      stateRoot,
-      config,
-      configDir: options.configDir,
-      model,
+    assertLocalLiveGoalRequest({
+      objective: options.task,
       discipline: options.discipline
     });
-    const result = await runner.runTask(required(options.task, "--task is required"));
+    const runtime = await createLocalGoalRuntime({
+      repoRoot: options.repoRoot,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
+    const result = await executeLocalLiveGoalRequest(runtime, {
+      objective: options.task,
+      discipline: options.discipline,
+      startCommandId: newId("goal_command"),
+      continueCommandId: newId("goal_command")
+    });
     console.log(JSON.stringify(result, null, 2));
     return 0;
   }
@@ -3621,7 +3626,7 @@ function printUsage(): void {
   pnpm run runtime -- capabilities [catalog|acceptance|audit|verify-entrypoints] [--state-root .runtime/state]
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root .runtime/state]
-  pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]
+  pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state]
   pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree] [--command-id goal_command_...] [--state-root .runtime/state]
   pnpm run runtime -- goal continue|read --goal goal_... [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root .runtime/state]
   pnpm run runtime -- goal pause|abandon --goal goal_... --reason "..." [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root .runtime/state]

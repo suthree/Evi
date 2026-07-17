@@ -199,6 +199,28 @@ deadlock a valid 200-path Codex result before its required verification. This
 decision adds no verifier service, evidence graph, shell parser, command
 authority, or approval bypass.
 
+## 2026-07-18 Standalone Live GoalRuntime Ingress
+
+Issue #82 activates the first legacy ingress after the explicit Goal CLI. The
+standalone `live --task` command now creates one GoalRuntime identity and issues
+exactly one bounded Continue to that same identity. It returns the canonical
+Goal view; soft budget, blocked cognition, verification failure, pause, or
+effect confirmation remains a state of the same Goal and is addressed through
+`goal continue` or `goal resume`.
+
+The live ingress owns no lifecycle, retry, completion, evidence, learning, or
+compatibility state. It does not convert GoalRuntime output into the legacy
+`RunResult` shape or invoke more tranches automatically. Query/todo discipline
+would write the legacy working/completion path, so explicit `--query-todo` or
+`--discipline query_todo` fails before GoalRuntime construction rather than
+being ignored or dual-written.
+
+This decision deliberately does not delete `LiveAgentRunner`: Web, IM, daemon,
+and the resident task worker still share that runner with runtime queue,
+session/run, and channel-outbox owners. Their later cutover must retire those
+orchestration seams by complete Goal identity; a compatibility mapper that
+writes both stores is not an acceptable intermediate architecture.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general
