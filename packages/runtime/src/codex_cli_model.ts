@@ -195,11 +195,12 @@ export class NodeCodexExecRunner implements CodexExecRunner {
 
       child.stdout.on("data", (chunk: Buffer) => {
         const text = chunk.toString("utf8");
-        inspectChunk(text);
         if (!stdout.append(text)) {
           outputExceeded = true;
           terminate();
+          return;
         }
+        inspectChunk(text);
       });
       child.stderr.on("data", (chunk: Buffer) => {
         if (!stderr.append(chunk.toString("utf8"))) {

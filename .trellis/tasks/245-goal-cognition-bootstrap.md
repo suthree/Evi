@@ -95,7 +95,9 @@ export, destructive remote action, or stopped-goal resumption.
   stream. `fast` is an explicit service tier, not a loaded user profile.
 - Process timeout/output settings now have schema maxima and an enumerated
   reasoning effort. The process runner clears its delayed SIGKILL timer on
-  every settle path.
+  every settle path. Its incremental JSONL tail is fed only after the total
+  stdout cap accepts a chunk, so a no-newline process that ignores SIGTERM
+  cannot grow a second unbounded parser buffer before SIGKILL.
 - Focused typecheck and 42 tests pass for config/readiness, lifecycle without a
   model, same-identity provider repair, Codex isolation, and process failure
   modes.

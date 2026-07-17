@@ -146,6 +146,20 @@ test("Node Codex process runner enforces timeout and output capture limits", asy
   assert.equal(overflow.outputExceeded, true);
   assert.equal(overflow.stdout.length, 100);
 
+  const resistantStarted = Date.now();
+  const resistantOverflow = await runner.run({
+    command: process.execPath,
+    args: ["-e", "process.on('SIGTERM',()=>{});setInterval(()=>process.stdout.write('x'.repeat(10000)),1)"],
+    cwd: process.cwd(),
+    stdin: "",
+    env: {},
+    timeoutMs: 5000,
+    maxOutputChars: 128
+  });
+  assert.equal(resistantOverflow.outputExceeded, true);
+  assert.equal(resistantOverflow.stdout.length, 128);
+  assert.ok(Date.now() - resistantStarted < 3000, "SIGKILL must bound a no-newline process that ignores SIGTERM");
+
   const forbidden = await runner.run({
     command: process.execPath,
     args: ["-e", `process.stdout.write(JSON.stringify({type:"item.started",item:{type:"command_execution"}})+"\\n");setInterval(()=>{},10000)`],
