@@ -757,7 +757,7 @@ async function writeServiceFiles(
     probation_ms: 60_000,
     heartbeat_max_age_ms: 30_000,
     max_repair_attempts: 2,
-    launchctl_start_attempts: 3,
+    launchctl_start_attempts: 7,
     recovery_max_attempts: 6,
     controller_source_commit: controllerBuild?.source_commit,
     domain: definition.domain,
