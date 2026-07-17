@@ -3,42 +3,44 @@ import { z } from "zod";
 
 const shortTextSchema = z.string().trim().min(1).max(2_000);
 const toolSchema = z.string().trim().min(1).max(128);
-const effectActionSchema = z.object({
+export const effectActionSchema = z.object({
   tool: toolSchema,
   arguments: z.record(z.string(), z.unknown()).default({})
 }).strict();
 
-export type EffectDecisionOutcome = "allow" | "confirm" | "deny";
-export type EffectOperation =
-  | "read_local"
-  | "read_public_network"
-  | "write_local_state"
-  | "write_local_repo"
-  | "run_local_verification"
-  | "delegate_local_code"
-  | "execute_dynamic_code"
-  | "write_external"
-  | "mutate_local_runtime"
-  | "destructive_local"
-  | "unknown";
-export type EffectReversibility = "read_only" | "reversible" | "conditional" | "irreversible" | "unknown";
-export type EffectDataExposure = "none" | "public_response_to_model" | "local_content_to_model" | "private_or_secret" | "unknown";
+export const effectIntentSchema = z.object({
+  operation: z.enum([
+    "read_local",
+    "read_public_network",
+    "write_local_state",
+    "write_local_repo",
+    "run_local_verification",
+    "delegate_local_code",
+    "execute_dynamic_code",
+    "write_external",
+    "mutate_local_runtime",
+    "destructive_local",
+    "unknown"
+  ]),
+  target: z.string().trim().min(1).max(2_000),
+  reversibility: z.enum(["read_only", "reversible", "conditional", "irreversible", "unknown"]),
+  data_exposure: z.enum(["none", "public_response_to_model", "local_content_to_model", "private_or_secret", "unknown"]),
+  authority: z.literal("standing_local_evolution")
+}).strict();
+
+export const effectDecisionSchema = z.object({
+  outcome: z.enum(["allow", "confirm", "deny"]),
+  reason: shortTextSchema,
+  intent: effectIntentSchema
+}).strict();
 
 export type EffectAction = z.infer<typeof effectActionSchema>;
-
-export interface EffectIntent {
-  operation: EffectOperation;
-  target: string;
-  reversibility: EffectReversibility;
-  data_exposure: EffectDataExposure;
-  authority: "standing_local_evolution";
-}
-
-export interface EffectDecision {
-  outcome: EffectDecisionOutcome;
-  reason: string;
-  intent: EffectIntent;
-}
+export type EffectIntent = z.infer<typeof effectIntentSchema>;
+export type EffectDecision = z.infer<typeof effectDecisionSchema>;
+export type EffectDecisionOutcome = EffectDecision["outcome"];
+export type EffectOperation = EffectIntent["operation"];
+export type EffectReversibility = EffectIntent["reversibility"];
+export type EffectDataExposure = EffectIntent["data_exposure"];
 
 export interface EffectEnvelope {
   authority: "standing_local_evolution";
@@ -171,7 +173,7 @@ function httpFetchIntent(rawUrl: string): EffectIntent {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return intent("unknown", target, "unknown", "unknown");
     }
-    if (url.username || url.password || privateNetworkHost(url.hostname) || [...url.searchParams.keys()].some(secretLikeToken)) {
+    if (url.username || url.password || isPrivateNetworkHost(url.hostname) || [...url.searchParams.keys()].some(secretLikeToken)) {
       return intent("read_public_network", target, "read_only", "private_or_secret");
     }
     return intent("read_public_network", target, "read_only", "public_response_to_model");
@@ -183,12 +185,18 @@ function httpFetchIntent(rawUrl: string): EffectIntent {
 function commandIntent(args: Record<string, unknown>): EffectIntent {
   const command = basename(stringValue(args.command));
   const argv = stringArray(args.args);
-  const containsSensitiveData = commandContainsSensitiveData(argv);
+  const cwd = stringValue(args.cwd) || "repo";
+  const containsSensitiveData = commandContainsSensitiveData(argv)
+    || argv.some((item) => sensitivePath(item))
+    || commandHasEnvironment(args);
   const target = containsSensitiveData
-    ? `command:${command || "(missing)"} [sensitive arguments redacted]`
-    : `command:${[command, ...argv].filter(Boolean).join(" ") || "(missing)"}`;
+    ? `command:${cwd}:${command || "(missing)"} [sensitive arguments redacted]`
+    : `command:${cwd}:${[command, ...argv].filter(Boolean).join(" ") || "(missing)"}`;
   if (!command) return intent("unknown", target, "unknown", "unknown");
-  if (argv.some((item) => sensitivePath(item)) || containsSensitiveData) {
+  if ((cwd !== "repo" && cwd !== "state") || commandEscapesWorkingRoot(argv)) {
+    return intent("unknown", target, "unknown", "unknown");
+  }
+  if (containsSensitiveData) {
     return intent("read_local", target, "unknown", "private_or_secret");
   }
   if (["rm", "shred", "rmdir", "mkfs", "diskutil"].includes(command)) {
@@ -200,40 +208,84 @@ function commandIntent(args: Record<string, unknown>): EffectIntent {
   if (["gh", "ssh", "scp", "sftp", "rsync", "curl", "wget"].includes(command)) {
     return intent("write_external", target, "conditional", "unknown");
   }
-  if (command === "git") return gitCommandIntent(argv, target);
-  if (["rg", "ls", "pwd", "sed", "head", "tail", "wc", "stat"].includes(command)) {
-    return intent("read_local", target, "read_only", "local_content_to_model");
+  let classified: EffectIntent;
+  if (command === "git") {
+    classified = gitCommandIntent(argv, target);
+  } else if (["ls", "pwd", "head", "tail", "wc", "stat"].includes(command)) {
+    classified = intent("read_local", target, "read_only", "local_content_to_model");
+  } else if (command === "rg") {
+    classified = rgCommandIntent(argv, target);
+  } else if (command === "sed") {
+    classified = sedCommandIntent(argv, target);
+  } else if (command === "find") {
+    classified = findCommandIntent(argv, target);
+  } else if (command === "pnpm") {
+    classified = pnpmCommandIntent(argv, target);
+  } else if (command === "npm" && argv[0] === "test") {
+    classified = intent("run_local_verification", target, "reversible", "local_content_to_model");
+  } else if (command === "node" && argv.includes("--test")) {
+    classified = intent("run_local_verification", target, "reversible", "local_content_to_model");
+  } else {
+    classified = intent("execute_dynamic_code", target, "unknown", "unknown");
   }
-  if (command === "find") {
-    return argv.some((item) => item === "-delete" || item === "-exec" || item === "-execdir")
-      ? intent("destructive_local", target, "conditional", "none")
-      : intent("read_local", target, "read_only", "local_content_to_model");
+  if (cwd === "state" && classified.operation !== "read_local") {
+    return intent("unknown", target, "unknown", classified.data_exposure);
   }
-  if (command === "pnpm") return pnpmCommandIntent(argv, target);
-  if (command === "npm" && argv[0] === "test") {
-    return intent("run_local_verification", target, "reversible", "local_content_to_model");
-  }
-  if (command === "node" && argv.includes("--test")) {
-    return intent("run_local_verification", target, "reversible", "local_content_to_model");
-  }
-  return intent("execute_dynamic_code", target, "unknown", "unknown");
+  return classified;
 }
 
 function gitCommandIntent(argv: string[], target: string): EffectIntent {
-  const subcommand = argv.find((item) => !item.startsWith("-")) ?? "";
+  const subcommand = argv[0] ?? "";
   if (["status", "diff", "log", "show", "rev-parse"].includes(subcommand)) {
+    if (argv.some(gitReadEscapeFlag)) return intent("execute_dynamic_code", target, "unknown", "unknown");
     return intent("read_local", target, "read_only", "local_content_to_model");
   }
   if (subcommand === "push" || subcommand === "fetch" || subcommand === "pull") {
     return intent("write_external", target, "conditional", "unknown");
   }
-  if (subcommand === "reset" || subcommand === "clean") {
+  if (["reset", "clean", "checkout", "restore"].includes(subcommand)) {
     return intent("destructive_local", target, "conditional", "none");
   }
-  if (["add", "commit", "worktree"].includes(subcommand)) {
+  if (subcommand === "add") {
     return intent("write_local_repo", target, "reversible", "none");
   }
+  if (subcommand === "commit") return intent("execute_dynamic_code", target, "conditional", "none");
+  if (subcommand === "worktree") {
+    const operation = argv[1] ?? "";
+    if (operation === "list") return intent("read_local", target, "read_only", "local_content_to_model");
+    if (operation === "remove" || operation === "prune") {
+      return intent("destructive_local", target, "conditional", "none");
+    }
+    return intent("mutate_local_runtime", target, "conditional", "none");
+  }
   return intent("execute_dynamic_code", target, "unknown", "unknown");
+}
+
+function rgCommandIntent(argv: string[], target: string): EffectIntent {
+  const canSpawn = argv.some((item) => item === "--pre"
+    || item.startsWith("--pre=")
+    || item === "--hostname-bin"
+    || item.startsWith("--hostname-bin="));
+  return canSpawn
+    ? intent("execute_dynamic_code", target, "unknown", "local_content_to_model")
+    : intent("read_local", target, "read_only", "local_content_to_model");
+}
+
+function sedCommandIntent(argv: string[], target: string): EffectIntent {
+  const inPlace = argv.some((item) => item === "-i"
+    || /^-i.+/.test(item)
+    || item === "--in-place"
+    || item.startsWith("--in-place="));
+  return inPlace
+    ? intent("destructive_local", target, "conditional", "none")
+    : intent("execute_dynamic_code", target, "unknown", "local_content_to_model");
+}
+
+function findCommandIntent(argv: string[], target: string): EffectIntent {
+  const changesState = argv.some((item) => ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"].includes(item));
+  return changesState
+    ? intent("destructive_local", target, "conditional", "none")
+    : intent("read_local", target, "read_only", "local_content_to_model");
 }
 
 function pnpmCommandIntent(argv: string[], target: string): EffectIntent {
@@ -324,12 +376,61 @@ function commandContainsSensitiveData(argv: string[]): boolean {
   });
 }
 
-function privateNetworkHost(hostname: string): boolean {
+function commandHasEnvironment(args: Record<string, unknown>): boolean {
+  return isRecord(args.env) && Object.keys(args.env).length > 0;
+}
+
+function commandEscapesWorkingRoot(argv: string[]): boolean {
+  return argv.some((item) => {
+    const candidate = item.startsWith("--") && item.includes("=")
+      ? item.slice(item.indexOf("=") + 1)
+      : item;
+    const normalized = candidate.replace(/\\/g, "/");
+    if (normalized.startsWith("/") || normalized.startsWith("~")) return true;
+    if (normalized.split("/").includes("..")) return true;
+    const first = normalized.replace(/^\.\//, "").split("/").filter(Boolean)[0] ?? "";
+    return first === ".git"
+      || first === ".runtime"
+      || first.startsWith(".runtime-")
+      || first.startsWith(".runtime_")
+      || first.startsWith(".local-runtime");
+  });
+}
+
+function gitReadEscapeFlag(value: string): boolean {
+  return value === "--ext-diff"
+    || value === "--textconv"
+    || value === "--exec-path"
+    || value.startsWith("--exec-path=")
+    || value === "--output"
+    || value.startsWith("--output=");
+}
+
+export function isPrivateNetworkHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (host === "localhost" || host === "::1" || host.endsWith(".local")) return true;
-  if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return true;
-  const match = /^172\.(\d{1,3})\./.exec(host);
-  return match ? Number(match[1]) >= 16 && Number(match[1]) <= 31 : false;
+  if (host === "localhost"
+    || host.endsWith(".localhost")
+    || host.endsWith(".local")
+    || host.endsWith(".internal")
+    || host.endsWith(".home")
+    || host.endsWith(".lan")) return true;
+  if (host === "::" || host === "::1" || host.startsWith("::ffff:")) return true;
+  if (/^(fc|fd|fe8|fe9|fea|feb|ff)[0-9a-f]*:/i.test(host) || host.startsWith("2001:db8:")) return true;
+  const octets = host.split(".");
+  if (octets.length !== 4 || octets.some((part) => !/^\d{1,3}$/.test(part))) return false;
+  const values = octets.map(Number);
+  if (values.some((value) => value > 255)) return true;
+  const [first, second] = values;
+  return first === 0
+    || first === 10
+    || first === 127
+    || (first === 100 && second! >= 64 && second! <= 127)
+    || (first === 169 && second === 254)
+    || (first === 172 && second! >= 16 && second! <= 31)
+    || (first === 192 && (second === 0 || second === 168))
+    || (first === 198 && (second === 18 || second === 19 || second === 51))
+    || (first === 203 && second === 0)
+    || first! >= 224;
 }
 
 function stringValue(value: unknown): string {
@@ -338,4 +439,8 @@ function stringValue(value: unknown): string {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

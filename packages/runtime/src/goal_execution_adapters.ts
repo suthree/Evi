@@ -72,6 +72,7 @@ export class RuntimeGoalToolExecutor implements GoalToolExecutor {
       }
     }, {
       store: this.store,
+      publicNetworkOnly: true,
       ...(this.modelMaxOutputTokens === undefined ? {} : { modelMaxOutputTokens: this.modelMaxOutputTokens })
     });
   }

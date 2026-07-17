@@ -72,6 +72,22 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
   ]);
   assert.equal(read.intent.operation, "read_local");
   assert.equal(external.intent.operation, "write_external");
+  assert.equal(policy.decide({
+    tool: "command.run",
+    arguments: { command: "sed", args: ["-i", "", "s/a/b/", "goals/events.jsonl"], cwd: "state" }
+  }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "command.run",
+    arguments: { command: "git", args: ["worktree", "remove", "--force", "other"] }
+  }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "command.run",
+    arguments: { command: "rg", args: ["--pre", "sh -c mutate", "needle"] }
+  }).outcome, "confirm");
+  assert.equal(policy.decide({
+    tool: "command.run",
+    arguments: { command: "pnpm", args: ["run", "check"], cwd: "state" }
+  }).outcome, "deny");
 });
 
 test("EffectPolicy permits public fetches and denies secret-bearing egress or unknown tools", () => {
@@ -88,6 +104,14 @@ test("EffectPolicy permits public fetches and denies secret-bearing egress or un
     tool: "http.fetch",
     arguments: { url: "http://127.0.0.1:8765/private" }
   }).outcome, "deny");
+  for (const url of [
+    "http://169.254.169.254/latest/meta-data/",
+    "http://0.0.0.0/private",
+    "http://[fd00::1]/private",
+    "http://[fe80::1]/private"
+  ]) {
+    assert.equal(policy.decide({ tool: "http.fetch", arguments: { url } }).outcome, "deny", url);
+  }
   assert.equal(policy.decide({
     tool: "unknown.tool",
     arguments: {}

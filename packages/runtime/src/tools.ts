@@ -1,4 +1,5 @@
 import { execFile, spawn } from "node:child_process";
+import { lookup } from "node:dns/promises";
 import { readdir, realpath } from "node:fs/promises";
 import { basename, relative, resolve } from "node:path";
 import {
@@ -26,6 +27,7 @@ import {
   getWorkspaceStatus,
   type WorkspaceStatusResult
 } from "../../core/src/workspace_status.js";
+import { isPrivateNetworkHost } from "./effect_policy.js";
 
 export interface ToolResult {
   id: string;
@@ -50,7 +52,9 @@ type ToolFailureKind =
   | "http_status"
   | "invalid_request"
   | "nonzero_exit"
+  | "private_network"
   | "protected_path"
+  | "redirect_blocked"
   | "runtime_state_path"
   | "search_error"
   | "spawn_error"
@@ -60,6 +64,7 @@ type ToolFailureKind =
 export interface ToolExecutionContext {
   store: AgentStore;
   modelMaxOutputTokens?: number;
+  publicNetworkOnly?: boolean;
 }
 
 export async function executeTool(action: ActionProposal, context: ToolExecutionContext): Promise<ToolResult> {
@@ -80,7 +85,7 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
     return runRepoSearch(args, context);
   }
   if (tool === "http.fetch") {
-    return runHttpFetch(args);
+    return runHttpFetch(args, context);
   }
   if (tool === "command.run") {
     return runCommandRun(args, context);
@@ -224,13 +229,22 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
   }, "none");
 }
 
-async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> {
+async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
   const url = stringValue(args.url);
   const responseType = stringValue(args.response_type) || "text";
   const maxChars = intValue(args.max_chars, 12000);
   const timeoutMs = Math.min(Math.max(intValue(args.timeout_ms, 30000), 1000), 300000);
   if (!url.startsWith("https://") && !url.startsWith("http://")) {
     return toolResult("http.fetch", false, "http.fetch requires an http(s) URL.", { url }, "none", "invalid_request");
+  }
+  if (context.publicNetworkOnly) {
+    const destination = await validatePublicNetworkDestination(url);
+    if (!destination.ok) {
+      return toolResult("http.fetch", false, destination.summary, {
+        url: publicUrlTarget(url),
+        resolved_address_count: destination.addressCount
+      }, "none", "private_network");
+    }
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -239,8 +253,17 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
       headers: {
         "User-Agent": "LocalAgent/0.1"
       },
+      redirect: context.publicNetworkOnly ? "manual" : "follow",
       signal: controller.signal
     });
+    if (context.publicNetworkOnly && response.status >= 300 && response.status < 400) {
+      return toolResult("http.fetch", false, `http.fetch refused an unverified redirect from ${publicUrlTarget(url)}.`, {
+        url: publicUrlTarget(url),
+        status: response.status,
+        status_text: response.statusText,
+        redirect_blocked: true
+      }, "none", "redirect_blocked");
+    }
     const text = await response.text();
     const bodyTruncated = text.length > maxChars;
     const body = bodyTruncated ? truncateOutput(text, maxChars) : text;
@@ -270,6 +293,39 @@ async function runHttpFetch(args: Record<string, unknown>): Promise<ToolResult> 
     }, "none", timedOut ? "timeout" : "fetch_error");
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function validatePublicNetworkDestination(url: string): Promise<{
+  ok: boolean;
+  summary: string;
+  addressCount: number;
+}> {
+  try {
+    const parsed = new URL(url);
+    if (isPrivateNetworkHost(parsed.hostname)) {
+      return { ok: false, summary: "http.fetch refused a private or special-use network destination.", addressCount: 0 };
+    }
+    const addresses = await lookup(parsed.hostname, { all: true, verbatim: true });
+    if (addresses.length === 0 || addresses.some((entry) => isPrivateNetworkHost(entry.address))) {
+      return {
+        ok: false,
+        summary: "http.fetch refused a hostname that does not resolve exclusively to public addresses.",
+        addressCount: addresses.length
+      };
+    }
+    return { ok: true, summary: "Destination resolves only to public addresses.", addressCount: addresses.length };
+  } catch {
+    return { ok: false, summary: "http.fetch could not verify the destination as public.", addressCount: 0 };
+  }
+}
+
+function publicUrlTarget(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+    return `${url.protocol}//${url.host}${url.pathname}`.slice(0, 2_000);
+  } catch {
+    return "(invalid URL)";
   }
 }
 

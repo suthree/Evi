@@ -131,11 +131,12 @@ destructive remote action, or stopped-goal resumption.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.
   Resident Web/IM/daemon paths remain explicitly legacy.
-- Eighteen focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
+- Twenty-two focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
   pass. They cover safe execution, automatic evidence binding, exact replay,
-  soft continuation, manual pause/resume, verification repair, confirmation,
-  denial, crash-gap ambiguity, redaction, projection recovery, state isolation,
-  command label normalization, and thin CLI translation.
+  non-contiguous replay refusal, soft continuation, manual pause/resume,
+  verification repair, observed change-identity binding, confirmation, denial,
+  crash-gap ambiguity, redaction, projection recovery, state isolation, command
+  label normalization, and thin CLI translation.
 - The first repository-wide run passed all 909 tests and skill validation. Its
   only failure was neutral naming in one production cognition string; that
   wording was corrected and the neutral naming check then passed across 127

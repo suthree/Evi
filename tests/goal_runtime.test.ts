@@ -113,11 +113,61 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
   }
 });
 
+test("GoalRuntime never resumes an incomplete Continue after a later command", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read once before an interrupted cognition turn.")
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("ordered_start", "Keep command history contiguous."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "ordered_incomplete",
+      goal_id: started.goal_id
+    });
+    assert.equal(tools.calls.length, 1);
+    const interruptedEvents = await readEvents(fixture.stateRoot);
+    assert.equal(interruptedEvents.at(-1)!.event_type, "goal_blocked");
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${interruptedEvents.slice(0, -1).map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+
+    const paused = await runtime.handle({
+      type: "pause",
+      command_id: "ordered_pause",
+      goal_id: started.goal_id,
+      reason: "Operator established a later boundary."
+    });
+    const replayed = await runtime.handle({
+      type: "continue",
+      command_id: "ordered_incomplete",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(replayed, paused);
+    assert.equal(tools.calls.length, 1);
+    assert.equal(cognition.calls.length, 2);
+    assert.deepEqual(await runtime.read(started.goal_id), paused);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime manual pause and resume preserve checkpoint and identity", async () => {
   const fixture = await createFixture();
   try {
     const runtime = createRuntime(fixture.store, {
-      cognition: sequenceCognition([outcome("恢复后的同一目标已完成。")]),
+      cognition: sequenceCognition([
+        action("file.read", { scope: "repo", path: "README.md" }, "Observe one bounded fact after resume."),
+        outcome("恢复后的同一目标已完成。")
+      ]),
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
@@ -190,6 +240,65 @@ test("GoalRuntime keeps verification failure and later success on one identity",
     assert.equal(completed.status, "completed");
     assert.equal(completed.goal_id, started.goal_id);
     assert.equal(verifierCalls, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Canonical verifier rejects a change identity absent from successful observations", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.write_repo", { path: "docs/result.md", text: "bounded" }, "Write one bounded file."),
+        {
+          type: "outcome",
+          outcome: {
+            summary: "Change identity does not match the observed path.",
+            change: { kind: "state_change", identity: "docs/other.md" },
+            runtime_result: { status: "healthy", summary: "Local runtime stayed healthy." },
+            residual_risks: []
+          }
+        }
+      ]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("identity_start", "Bind the accepted change identity to observation."));
+    const failed = await runtime.handle({
+      type: "continue",
+      command_id: "identity_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(failed.status, "active");
+    assert.deepEqual(failed.continuation_reasons, ["verification_failed"]);
+    const completedEvent = (await readEvents(fixture.stateRoot)).at(-1)!;
+    const verification = completedEvent.verification as { checks: Array<{ id: string; status: string }> };
+    assert.equal(verification.checks.some((check) => check.id === "change_identity" && check.status === "failed"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Canonical verifier rejects an intent-only no-change outcome", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([outcome("模型提议不能独立证明目标完成。")]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("intent_only_start", "Require observed evidence before completion."));
+    const failed = await runtime.handle({
+      type: "continue",
+      command_id: "intent_only_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(failed.status, "active");
+    assert.deepEqual(failed.continuation_reasons, ["verification_failed"]);
+    const completedEvent = (await readEvents(fixture.stateRoot)).at(-1)!;
+    const verification = completedEvent.verification as { checks: Array<{ id: string; status: string }> };
+    assert.equal(verification.checks.some((check) => check.id === "decisive_evidence" && check.status === "failed"), true);
   } finally {
     await fixture.cleanup();
   }
@@ -369,7 +478,10 @@ test("GoalRuntime writes no legacy orchestration or synchronous-learning state",
     }
     const before = await snapshotFiles(fixture.stateRoot);
     const runtime = createRuntime(fixture.store, {
-      cognition: sequenceCognition([outcome("无副作用目标已完成。")]),
+      cognition: sequenceCognition([
+        action("file.read", { scope: "repo", path: "README.md" }, "Observe without mutating legacy state."),
+        outcome("无副作用目标已完成。")
+      ]),
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
@@ -401,7 +513,10 @@ test("GoalRuntime projections are non-authoritative and canonical corruption fai
   const fixture = await createFixture();
   try {
     const runtime = createRuntime(fixture.store, {
-      cognition: sequenceCognition([outcome("投影可由事件恢复。")]),
+      cognition: sequenceCognition([
+        action("file.read", { scope: "repo", path: "README.md" }, "Observe before accepting the outcome."),
+        outcome("投影可由事件恢复。")
+      ]),
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
@@ -418,7 +533,7 @@ test("GoalRuntime projections are non-authoritative and canonical corruption fai
     );
     assert.deepEqual(await runtime.read(started.goal_id), completed);
     await appendFile(join(fixture.stateRoot, "goals/events.jsonl"), "not-json\n", "utf8");
-    await assert.rejects(runtime.read(started.goal_id), /canonical event JSON at line 3/);
+    await assert.rejects(runtime.read(started.goal_id), /canonical event JSON at line 5/);
   } finally {
     await fixture.cleanup();
   }
@@ -522,7 +637,9 @@ function recordingTools(): GoalToolExecutor & { calls: EffectAction[] } {
         summary: `Executed ${effectAction.tool}.`,
         output: effectAction.tool === "file.read"
           ? { path: effectAction.arguments.path, text: "bounded fixture content" }
-          : { observed: true },
+          : effectAction.tool === "file.write_repo" || effectAction.tool === "file.write_state"
+            ? { path: effectAction.arguments.path, observed: true }
+            : { observed: true },
         side_effect_level: effectAction.tool === "file.read" ? "none" : "local_write",
         created_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`
       } satisfies ToolResult;

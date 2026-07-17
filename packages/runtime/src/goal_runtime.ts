@@ -4,6 +4,9 @@ import { newId, utcNow } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
 import {
   EffectPolicy,
+  effectActionSchema,
+  effectDecisionSchema,
+  effectIntentSchema,
   parseEffectAction,
   type EffectAction,
   type EffectDecision,
@@ -112,37 +115,6 @@ const outcomeReceiptSchema = z.object({
   evidence_event_ids: z.array(safeIdSchema).min(1).max(128),
   created_at: z.string().min(1),
   boundary: z.literal(GOAL_BOUNDARY)
-}).strict();
-
-const effectActionSchema = z.object({
-  tool: z.string().trim().min(1).max(128),
-  arguments: z.record(z.string(), z.unknown()).default({})
-}).strict();
-
-const effectIntentSchema = z.object({
-  operation: z.enum([
-    "read_local",
-    "read_public_network",
-    "write_local_state",
-    "write_local_repo",
-    "run_local_verification",
-    "delegate_local_code",
-    "execute_dynamic_code",
-    "write_external",
-    "mutate_local_runtime",
-    "destructive_local",
-    "unknown"
-  ]),
-  target: z.string().trim().min(1).max(2_000),
-  reversibility: z.enum(["read_only", "reversible", "conditional", "irreversible", "unknown"]),
-  data_exposure: z.enum(["none", "public_response_to_model", "local_content_to_model", "private_or_secret", "unknown"]),
-  authority: z.literal("standing_local_evolution")
-}).strict();
-
-const effectDecisionSchema = z.object({
-  outcome: z.enum(["allow", "confirm", "deny"]),
-  reason: shortTextSchema,
-  intent: effectIntentSchema
 }).strict();
 
 const toolResultSchema = z.object({
@@ -495,9 +467,18 @@ export class GoalRuntime {
       assertCommandReplay(replayEvents, commandDigest);
       const replayGoalId = replayEvents[0]!.goal_id;
       const replayState = deriveGoalState(eventsUpTo(events, replayGoalId, replayEvents.at(-1)!.sequence), replayGoalId);
-      if (command.type !== "continue" || commandOperationFinal(replayEvents) || replayState.view.status === "paused") {
-        await this.writeProjections(replayState.view, replayEvents.at(-1)!.occurred_at);
-        return replayState.view;
+      const latestGoalEvent = events.filter((event) => event.goal_id === replayGoalId).at(-1)!;
+      const supersededIncompleteCommand = latestGoalEvent.command_id !== command.command_id;
+      if (command.type !== "continue"
+        || commandOperationFinal(replayEvents)
+        || replayState.view.status === "paused"
+        || supersededIncompleteCommand) {
+        const visibleState = supersededIncompleteCommand ? deriveGoalState(events, replayGoalId) : replayState;
+        const projectionTime = supersededIncompleteCommand
+          ? latestGoalEvent.occurred_at
+          : replayEvents.at(-1)!.occurred_at;
+        await this.writeProjections(visibleState.view, projectionTime);
+        return visibleState.view;
       }
     }
 
@@ -990,10 +971,29 @@ export class GoalRuntime {
 export class CanonicalGoalVerifier implements GoalVerifier {
   async verify(input: GoalVerificationInput): Promise<GoalVerificationResult> {
     const lastObservation = input.evidence.filter((item) => item.kind === "observation").at(-1);
-    const mutatingObservation = input.evidence.some((item) => item.kind === "observation"
-      && item.ok === true
-      && item.operation !== undefined
-      && !["read_local", "read_public_network"].includes(item.operation));
+    const successfulObservations = input.evidence.filter((item) => item.kind === "observation" && item.ok === true);
+    const deniedPolicyActions = input.evidence.filter((item) => item.kind === "action" && item.effect_decision === "deny");
+    const decisiveEvidence = [...successfulObservations, ...deniedPolicyActions];
+    let mutatingObservationIndex = -1;
+    for (let index = input.evidence.length - 1; index >= 0; index -= 1) {
+      const item = input.evidence[index]!;
+      if (item.kind === "observation"
+        && item.ok === true
+        && item.operation !== undefined
+        && !["read_local", "read_public_network"].includes(item.operation)) {
+        mutatingObservationIndex = index;
+        break;
+      }
+    }
+    const mutatingObservation = mutatingObservationIndex >= 0;
+    const changeIdentityBound = input.candidate.change.kind === "none" || successfulObservations.some((item) =>
+      item.refs.includes(input.candidate.change.identity)
+        || item.details?.includes(input.candidate.change.identity) === true);
+    const postMutationVerification = input.candidate.change.kind !== "git_commit"
+      || input.evidence.some((item, index) => index > mutatingObservationIndex
+        && item.kind === "observation"
+        && item.ok === true
+        && item.operation === "run_local_verification");
     const checks: GoalVerificationResult["checks"] = [{
       id: "canonical_evidence",
       status: input.evidence.length > 0 ? "passed" : "failed",
@@ -1002,6 +1002,14 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         : "The outcome has no canonical same-goal evidence.",
       evidence_event_ids: [input.candidate.evidence_event_ids.at(-1)!]
     }];
+    checks.push({
+      id: "decisive_evidence",
+      status: decisiveEvidence.length > 0 ? "passed" : "failed",
+      summary: decisiveEvidence.length > 0
+        ? "A successful observation or fail-closed policy decision supports the outcome."
+        : "An intent or model proposal alone cannot support an accepted outcome.",
+      evidence_event_ids: input.candidate.evidence_event_ids
+    });
     if (lastObservation?.ok === false) {
       checks.push({
         id: "latest_tool_observation",
@@ -1023,6 +1031,22 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         id: "change_observation",
         status: "failed",
         summary: "A claimed change requires a successful mutating observation.",
+        evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    if (input.candidate.change.kind !== "none" && !changeIdentityBound) {
+      checks.push({
+        id: "change_identity",
+        status: "failed",
+        summary: "The claimed change identity is not present in a successful canonical observation.",
+        evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    if (!postMutationVerification) {
+      checks.push({
+        id: "post_change_verification",
+        status: "failed",
+        summary: "A Git commit requires a later successful local verification observation.",
         evidence_event_ids: input.candidate.evidence_event_ids
       });
     }
