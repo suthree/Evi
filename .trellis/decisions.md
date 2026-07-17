@@ -76,6 +76,27 @@ and digest; it does not create a separate confirmation artifact chain. This
 decision does not yet move IM/Web/daemon ingress, deployment adoption,
 LearningRuntime, or historical legacy readers.
 
+## 2026-07-18 Explicit Goal Cognition Bootstrap
+
+Issue #68 activates the next measured foundation slice after Issue #65. Model
+configuration and authentication readiness do not own goal lifecycle: local
+Start, Read, Pause, Resume, and Abandon must work without resolving a model.
+Continue resolves one lazy GoalCognition provider inside the GoalRuntime path,
+so provider failure becomes a bounded same-goal observation rather than a CLI
+bootstrap exception or a successor goal.
+
+Provider selection is explicit. `active_model` keeps the existing
+OpenAI-compatible client. `codex_cli` is an operator-selected local cognition
+substrate, not a fallback: one ephemeral read-only `codex exec` turn receives
+only the bounded GoalRuntime input and must return the strict cognition schema.
+The adapter rejects Codex command, file-change, MCP, Web-search, and other tool
+events. GoalRuntime remains the only owner of action execution, semantic effect
+authority, evidence, verification, and receipts.
+
+This slice restores a usable cognition bootstrap before broadening ingress. It
+does not yet authorize `codex.run` engineering effects, move IM/Web/daemon,
+adopt changes, start asynchronous learning, or delete legacy orchestration.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general
