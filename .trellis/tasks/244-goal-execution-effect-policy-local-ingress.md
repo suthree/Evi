@@ -52,8 +52,9 @@ effect decision, verification, or receipt.
   irreversible effects, and writes to GoalRuntime-owned state are never
   silently allowed.
 - `allow` dispatches the action. `confirm` pauses the same goal with one exact
-  pending-effect identity and digest. `deny` records the refusal without
-  dispatch. This task adds no separate confirmation request/report chain.
+  pending-effect identity, digest, and visible proposed action. `deny` records
+  the refusal without dispatch. This task adds no separate confirmation
+  request/report chain.
 - Soft budget exhaustion returns the same active goal with a compact execution
   checkpoint. A later Continue command retains identity and history.
 - Production execution does not accept caller-authored observations or outcome
@@ -133,9 +134,10 @@ destructive remote action, or stopped-goal resumption.
   later DNS answer cannot redirect the connection. Redirects fail closed.
 - Repo-controlled verification commands are semantic verification effects but
   require exact confirmation because mutable tests/scripts can execute arbitrary
-  code. Accepted change identity comes only from a typed successful observation;
-  free-text substrings cannot support a receipt, and Git commits require a later
-  successful verification observation.
+  code. The model never declares a change identity; GoalRuntime derives the
+  receipt's complete ordered and deduplicated `changes[]` from typed successful
+  observations. Free-text substrings cannot support a receipt, and every Git
+  commit requires a later successful verification observation.
 - `goal start|continue|read|pause|resume|abandon` is a thin local CLI ingress.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.

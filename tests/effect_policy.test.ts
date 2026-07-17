@@ -82,6 +82,10 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
   }).outcome, "deny");
   assert.equal(policy.decide({
     tool: "command.run",
+    arguments: { command: "git", args: ["commit", "--dry-run", "-m", "probe"] }
+  }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "command.run",
     arguments: { command: "rg", args: ["--pre", "sh -c mutate", "needle"] }
   }).outcome, "confirm");
   assert.equal(policy.decide({
@@ -104,10 +108,12 @@ test("EffectPolicy permits public fetches and denies secret-bearing egress or un
     tool: "http.fetch",
     arguments: { url: "https://example.com/data?api_key=secret" }
   }).outcome, "deny");
-  assert.equal(policy.decide({
+  const queryFetch = policy.decide({
     tool: "http.fetch",
     arguments: { url: "https://example.com/collect?q=PRIVATE_LOCAL_TEXT" }
-  }).outcome, "confirm");
+  });
+  assert.equal(queryFetch.outcome, "confirm");
+  assert.equal(queryFetch.intent.target, "https://example.com/collect?q=PRIVATE_LOCAL_TEXT");
   assert.equal(policy.decide({
     tool: "http.fetch",
     arguments: { url: "http://127.0.0.1:8765/private" }

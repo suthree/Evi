@@ -51,6 +51,7 @@ type ToolFailureKind =
   | "codex_invalid_structured_result"
   | "codex_isolation_failed"
   | "codex_tool_budget_exceeded"
+  | "change_not_observed"
   | "http_status"
   | "invalid_request"
   | "nonzero_exit"
@@ -242,18 +243,22 @@ async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutio
     return toolResult("http.fetch", false, "http.fetch requires an http(s) URL.", { url }, "none", "invalid_request");
   }
   if (context.publicNetworkOnly) {
-    const destination = await validatePublicNetworkDestination(url);
+    const deadlineAt = Date.now() + timeoutMs;
+    const destination = await validatePublicNetworkDestination(url, deadlineAt);
     if (!destination.ok) {
       return toolResult("http.fetch", false, destination.summary, {
         url: publicUrlTarget(url),
-        resolved_address_count: destination.addressCount
-      }, "none", "private_network");
+        resolved_address_count: destination.addressCount,
+        timeout_ms: timeoutMs,
+        timed_out: destination.failureKind === "timeout"
+      }, "none", destination.failureKind);
     }
     return runPinnedPublicHttpFetch({
       url,
       responseType,
       maxChars,
       timeoutMs,
+      deadlineAt,
       address: destination.address
     });
   }
@@ -298,7 +303,7 @@ async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutio
   }
 }
 
-async function validatePublicNetworkDestination(url: string): Promise<{
+async function validatePublicNetworkDestination(url: string, deadlineAt: number): Promise<{
   ok: true;
   summary: string;
   addressCount: number;
@@ -307,18 +312,31 @@ async function validatePublicNetworkDestination(url: string): Promise<{
   ok: false;
   summary: string;
   addressCount: number;
+  failureKind: "private_network" | "timeout";
 }> {
   try {
     const parsed = new URL(url);
     if (isPrivateNetworkHost(parsed.hostname)) {
-      return { ok: false, summary: "http.fetch refused a private or special-use network destination.", addressCount: 0 };
+      return {
+        ok: false,
+        summary: "http.fetch refused a private or special-use network destination.",
+        addressCount: 0,
+        failureKind: "private_network"
+      };
     }
-    const addresses = await lookup(parsed.hostname, { all: true, verbatim: true });
+    const remainingMs = deadlineAt - Date.now();
+    if (remainingMs <= 0) throw new Error("public_network_lookup_timeout");
+    const addresses = await promiseWithTimeout(
+      lookup(parsed.hostname, { all: true, verbatim: true }),
+      remainingMs,
+      "public_network_lookup_timeout"
+    );
     if (addresses.length === 0 || addresses.some((entry) => isPrivateNetworkHost(entry.address))) {
       return {
         ok: false,
         summary: "http.fetch refused a hostname that does not resolve exclusively to public addresses.",
-        addressCount: addresses.length
+        addressCount: addresses.length,
+        failureKind: "private_network"
       };
     }
     return {
@@ -327,8 +345,16 @@ async function validatePublicNetworkDestination(url: string): Promise<{
       addressCount: addresses.length,
       address: addresses[0]!.address
     };
-  } catch {
-    return { ok: false, summary: "http.fetch could not verify the destination as public.", addressCount: 0 };
+  } catch (error) {
+    const timedOut = errorMessage(error) === "public_network_lookup_timeout";
+    return {
+      ok: false,
+      summary: timedOut
+        ? "http.fetch timed out while verifying the public network destination."
+        : "http.fetch could not verify the destination as public.",
+      addressCount: 0,
+      failureKind: timedOut ? "timeout" : "private_network"
+    };
   }
 }
 
@@ -337,17 +363,24 @@ function runPinnedPublicHttpFetch(args: {
   responseType: string;
   maxChars: number;
   timeoutMs: number;
+  deadlineAt: number;
   address: string;
 }): Promise<ToolResult> {
   return new Promise((resolveResult) => {
+    const remainingMs = args.deadlineAt - Date.now();
+    if (remainingMs <= 0) {
+      resolveResult(pinnedHttpTimeoutResult(args));
+      return;
+    }
     const url = new URL(args.url);
     const request = url.protocol === "https:" ? httpsRequest : httpRequest;
     let settled = false;
     let timedOut = false;
+    let timer: NodeJS.Timeout | undefined;
     const finish = (result: ToolResult): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       resolveResult(result);
     };
     const requestOptions = {
@@ -367,13 +400,14 @@ function runPinnedPublicHttpFetch(args: {
       const status = response.statusCode ?? 0;
       const statusText = response.statusMessage ?? "";
       if (status >= 300 && status < 400) {
-        response.resume();
         finish(toolResult("http.fetch", false, `http.fetch refused an unverified redirect from ${publicUrlTarget(args.url)}.`, {
           url: publicUrlTarget(args.url),
           status,
           status_text: statusText,
           redirect_blocked: true
         }, "none", "redirect_blocked"));
+        response.destroy();
+        clientRequest.destroy();
         return;
       }
       response.setEncoding("utf8");
@@ -416,10 +450,11 @@ function runPinnedPublicHttpFetch(args: {
         }, "none", "fetch_error"));
       });
     });
-    const timer = setTimeout(() => {
+    const requestRemainingMs = args.deadlineAt - Date.now();
+    timer = setTimeout(() => {
       timedOut = true;
       clientRequest.destroy(new Error(`http.fetch timed out after ${args.timeoutMs}ms.`));
-    }, args.timeoutMs);
+    }, Math.max(0, requestRemainingMs));
     clientRequest.on("error", (error) => {
       finish(toolResult("http.fetch", false, timedOut
         ? `http.fetch timed out after ${args.timeoutMs}ms.`
@@ -433,6 +468,30 @@ function runPinnedPublicHttpFetch(args: {
       }, "none", timedOut ? "timeout" : "fetch_error"));
     });
     clientRequest.end();
+  });
+}
+
+function pinnedHttpTimeoutResult(args: { url: string; responseType: string; maxChars: number; timeoutMs: number }): ToolResult {
+  return toolResult("http.fetch", false, `http.fetch timed out after ${args.timeoutMs}ms.`, {
+    url: publicUrlTarget(args.url),
+    response_type: args.responseType,
+    max_chars: args.maxChars,
+    timeout_ms: args.timeoutMs,
+    timed_out: true,
+    error: `http.fetch timed out after ${args.timeoutMs}ms.`
+  }, "none", "timeout");
+}
+
+function promiseWithTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const timer = setTimeout(() => rejectPromise(new Error(timeoutMessage)), timeoutMs);
+    promise.then((value) => {
+      clearTimeout(timer);
+      resolvePromise(value);
+    }, (error: unknown) => {
+      clearTimeout(timer);
+      rejectPromise(error);
+    });
   });
 }
 
@@ -473,20 +532,39 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     return toolResult("command.run", false, envResult.summary, envResult.output, sideEffectLevel, "invalid_request");
   }
 
+  const gitCommitRequested = command === "git" && commandArgs[0] === "commit";
+  if (gitCommitRequested && commandArgs.includes("--dry-run")) {
+    return toolResult("command.run", false, "command.run refuses git commit --dry-run because it cannot produce a commit change.", {
+      command,
+      args: commandArgs,
+      cwd: cwdScope
+    }, sideEffectLevel, "invalid_request");
+  }
+
+  const commandCwd = cwdScope === "repo" ? context.store.repoRoot : context.store.stateRoot;
+  const commitBefore = gitCommitRequested
+    ? await gitText(commandCwd, ["rev-parse", "HEAD"]).catch(() => null)
+    : null;
   const result = await runLocalCommand(command, commandArgs, {
-    cwd: cwdScope === "repo" ? context.store.repoRoot : context.store.stateRoot,
+    cwd: commandCwd,
     timeoutMs,
     maxOutputChars,
     env: envResult.env
   });
   const envAudit = envResult.audit;
-  const ok = result.exitCode === 0 && !result.timedOut;
-  const observedChange = ok && command === "git" && commandArgs[0] === "commit"
-    ? await gitText(context.store.repoRoot, ["rev-parse", "HEAD"])
-      .then((identity) => ({ kind: "git_commit" as const, identity }))
-      .catch(() => null)
+  const commandSucceeded = result.exitCode === 0 && !result.timedOut;
+  const commitAfter = commandSucceeded && gitCommitRequested
+    ? await gitText(commandCwd, ["rev-parse", "HEAD"]).catch(() => null)
     : null;
-  return toolResult("command.run", ok, result.summary, {
+  const commitCreated = !gitCommitRequested || (commitAfter !== null && commitAfter !== commitBefore);
+  const ok = commandSucceeded && commitCreated;
+  const observedChange = ok && gitCommitRequested
+    ? { kind: "git_commit" as const, identity: commitAfter! }
+    : null;
+  const summary = commandSucceeded && gitCommitRequested && !commitCreated
+    ? "git commit exited successfully but did not create a new commit."
+    : result.summary;
+  return toolResult("command.run", ok, summary, {
     command,
     args: commandArgs,
     cwd: cwdScope,
@@ -530,7 +608,9 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
     ...(observedChange ? { change: observedChange } : {}),
     stdout: result.stdout,
     stderr: result.stderr
-  }, sideEffectLevel, ok ? undefined : processFailureKind(result));
+  }, sideEffectLevel, ok ? undefined : commandSucceeded && gitCommitRequested
+    ? "change_not_observed"
+    : processFailureKind(result));
 }
 
 interface CodexGitAuthority {

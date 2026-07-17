@@ -42,7 +42,7 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
     assert.equal(completed.status, "completed");
     assert.equal(completed.goal_id, started.goal_id);
     assert.equal(completed.receipt?.decision, "accepted");
-    assert.equal(completed.receipt?.change.kind, "none");
+    assert.deepEqual(completed.receipt?.changes, []);
     assert.equal(tools.calls.length, 1);
     assert.equal(cognition.calls.length, 2);
     assert.deepEqual(completed.usage, { model_rounds: 2, tool_calls: 1, elapsed_ms: 30 });
@@ -245,36 +245,42 @@ test("GoalRuntime keeps verification failure and later success on one identity",
   }
 });
 
-test("Canonical verifier rejects a change identity that is only an observation substring", async () => {
+test("Canonical verifier rejects a change identity that is not an exact observation", async () => {
   const fixture = await createFixture();
   try {
     const runtime = createRuntime(fixture.store, {
-      cognition: sequenceCognition([
-        action("file.write_repo", { path: "docs/result.md", text: "bounded" }, "Write one bounded file."),
-        {
-          type: "outcome",
-          outcome: {
-            summary: "A generic JSON boolean is not a typed change identity.",
-            change: { kind: "state_change", identity: "true" },
-            runtime_result: { status: "healthy", summary: "Local runtime stayed healthy." },
-            residual_risks: []
-          }
-        }
-      ]),
+      cognition: sequenceCognition([]),
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
-    const started = await runtime.handle(start("identity_start", "Bind the accepted change identity to observation."));
-    const failed = await runtime.handle({
-      type: "continue",
-      command_id: "identity_continue",
-      goal_id: started.goal_id
+    const goal = await runtime.handle(start("identity_start", "Bind the accepted change identity to observation."));
+    const verification = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate: {
+        summary: "A generic JSON boolean is not a typed change identity.",
+        changes: [{ kind: "state_change", identity: "true" }],
+        runtime_result: {
+          status: "healthy",
+          summary: "The runtime stayed healthy.",
+          evidence_event_ids: ["goal_event_change"]
+        },
+        residual_risks: [],
+        evidence_event_ids: ["goal_event_change"]
+      },
+      evidence: [{
+        event_id: "goal_event_change",
+        kind: "observation",
+        summary: "Wrote one bounded file.",
+        refs: ["docs/result.md"],
+        occurred_at: "2026-07-17T00:00:01.000Z",
+        operation: "write_local_repo",
+        tool: "file.write_repo",
+        ok: true,
+        change: { kind: "state_change", identity: "docs/result.md" }
+      }]
     });
-    assert.equal(failed.status, "active");
-    assert.deepEqual(failed.continuation_reasons, ["verification_failed"]);
-    const completedEvent = (await readEvents(fixture.stateRoot)).at(-1)!;
-    const verification = completedEvent.verification as { checks: Array<{ id: string; status: string }> };
-    assert.equal(verification.checks.some((check) => check.id === "change_identity" && check.status === "failed"), true);
+    assert.equal(verification.status, "failed");
+    assert.equal(verification.checks.some((check) => check.id === "change_set" && check.status === "failed"), true);
   } finally {
     await fixture.cleanup();
   }
@@ -293,7 +299,7 @@ test("Canonical verifier accepts exact typed commit identity followed by verific
       goal,
       candidate: {
         summary: "The exact commit was followed by a successful verification.",
-        change: { kind: "git_commit", identity: "abc123" },
+        changes: [{ kind: "git_commit", identity: "abc123" }],
         runtime_result: {
           status: "healthy",
           summary: "The bounded verification passed.",
@@ -329,7 +335,7 @@ test("Canonical verifier accepts exact typed commit identity followed by verific
   }
 });
 
-test("Canonical verifier rejects change none after a typed mutation observation", async () => {
+test("Canonical verifier rejects an incomplete change set", async () => {
   const fixture = await createFixture();
   try {
     const runtime = createRuntime(fixture.store, {
@@ -337,34 +343,72 @@ test("Canonical verifier rejects change none after a typed mutation observation"
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
-    const goal = await runtime.handle(start("unreported_change_start", "Do not hide an observed mutation."));
+    const goal = await runtime.handle(start("unreported_change_start", "Do not hide any observed mutation."));
     const verification = await new CanonicalGoalVerifier().verify({
       goal,
       candidate: {
-        summary: "The candidate incorrectly reports no change.",
-        change: { kind: "none", identity: "none" },
+        summary: "The candidate incorrectly omits one change.",
+        changes: [{ kind: "state_change", identity: "docs/first.md" }],
         runtime_result: {
           status: "healthy",
           summary: "The runtime stayed healthy.",
-          evidence_event_ids: ["goal_event_change"]
+          evidence_event_ids: ["goal_event_first", "goal_event_second"]
         },
         residual_risks: [],
-        evidence_event_ids: ["goal_event_change"]
+        evidence_event_ids: ["goal_event_first", "goal_event_second"]
       },
       evidence: [{
-        event_id: "goal_event_change",
+        event_id: "goal_event_first",
         kind: "observation",
-        summary: "Wrote one bounded file.",
-        refs: ["docs/result.md"],
+        summary: "Wrote the first bounded file.",
+        refs: ["docs/first.md"],
         occurred_at: "2026-07-17T00:00:01.000Z",
         operation: "write_local_repo",
         tool: "file.write_repo",
         ok: true,
-        change: { kind: "state_change", identity: "docs/result.md" }
+        change: { kind: "state_change", identity: "docs/first.md" }
+      }, {
+        event_id: "goal_event_second",
+        kind: "observation",
+        summary: "Wrote the second bounded file.",
+        refs: ["docs/second.md"],
+        occurred_at: "2026-07-17T00:00:02.000Z",
+        operation: "write_local_repo",
+        tool: "file.write_repo",
+        ok: true,
+        change: { kind: "state_change", identity: "docs/second.md" }
       }]
     });
     assert.equal(verification.status, "failed");
-    assert.equal(verification.checks.some((check) => check.id === "unreported_change"), true);
+    assert.equal(verification.checks.some((check) => check.id === "change_set"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime derives every typed observation into one complete receipt change set", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.write_repo", { path: "docs/first.md", text: "first" }, "Write the first bounded file."),
+        action("file.write_repo", { path: "docs/second.md", text: "second" }, "Write the second bounded file."),
+        outcome("两个已观察写入都由 runtime 绑定到一个 receipt。")
+      ]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("complete_changes_start", "Preserve all observed change identities."));
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "complete_changes_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(completed.receipt?.changes, [
+      { kind: "state_change", identity: "docs/first.md" },
+      { kind: "state_change", identity: "docs/second.md" }
+    ]);
   } finally {
     await fixture.cleanup();
   }
@@ -421,6 +465,15 @@ test("Effect confirmation pauses one goal and executes only the exact confirmed 
     assert.equal(paused.status, "paused");
     assert.deepEqual(paused.continuation_reasons, ["effect_confirmation_required"]);
     assert.equal(paused.pending_effect?.operation, "write_external");
+    assert.deepEqual(paused.pending_effect?.proposed_action, {
+      tool: "command.run",
+      arguments: {
+        command: "git",
+        args: ["push", "origin", "feature"],
+        cwd: "repo",
+        side_effect_level: "none"
+      }
+    });
     assert.equal(tools.calls.length, 0);
 
     const replayed = await runtime.handle({
@@ -466,6 +519,35 @@ test("Effect confirmation pauses one goal and executes only the exact confirmed 
       goal_id: started.goal_id
     });
     assert.equal(completed.status, "completed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Query-bearing outbound confirmation exposes the exact proposed request", async () => {
+  const fixture = await createFixture();
+  try {
+    const url = "https://example.com/collect?q=bounded_value&limit=2";
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("http.fetch", { url, response_type: "json", max_chars: 1000 }, "Request one query-bearing public resource.")
+      ]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("query_confirm_start", "Require informed confirmation for query egress."));
+    const paused = await runtime.handle({
+      type: "continue",
+      command_id: "query_confirm_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(paused.status, "paused");
+    assert.equal(paused.pending_effect?.target, url);
+    assert.deepEqual(paused.pending_effect?.proposed_action, {
+      tool: "http.fetch",
+      arguments: { url, response_type: "json", max_chars: 1000 }
+    });
   } finally {
     await fixture.cleanup();
   }
@@ -690,7 +772,6 @@ function outcome(summary: string, runtimeStatus: "healthy" | "degraded" = "healt
     type: "outcome",
     outcome: {
       summary,
-      change: { kind: "none", identity: "none" },
       runtime_result: {
         status: runtimeStatus,
         summary: runtimeStatus === "healthy" ? "Bounded runtime result is healthy." : "Runtime result remains degraded."

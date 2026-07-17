@@ -172,7 +172,8 @@ function localWriteIntent(scope: "repo" | "state", path: string): EffectIntent {
 function httpFetchIntent(rawUrl: string): EffectIntent {
   try {
     const url = new URL(rawUrl);
-    const target = `${url.protocol}//${url.host}${url.pathname}`;
+    const publicTarget = `${url.protocol}//${url.host}${url.pathname}`;
+    const target = url.searchParams.size > 0 ? url.toString() : publicTarget;
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return intent("unknown", target, "unknown", "unknown");
     }
@@ -258,7 +259,10 @@ function gitCommandIntent(argv: string[], target: string): EffectIntent {
   if (subcommand === "add") {
     return intent("write_local_repo", target, "reversible", "none");
   }
-  if (subcommand === "commit") return intent("execute_dynamic_code", target, "conditional", "none");
+  if (subcommand === "commit") {
+    if (argv.includes("--dry-run")) return intent("unknown", target, "unknown", "none");
+    return intent("execute_dynamic_code", target, "conditional", "none");
+  }
   if (subcommand === "worktree") {
     const operation = argv[1] ?? "";
     if (operation === "list") return intent("read_local", target, "read_only", "local_content_to_model");

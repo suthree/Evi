@@ -312,7 +312,9 @@ An allowed effect is written as an intent before dispatch and as an observation
 after dispatch. If the process stops between them, the same goal is exposed as
 `effect_outcome_unknown`; command replay never guesses that the effect is safe
 to repeat. A confirmation decision pauses the same goal with one pending effect
-instead of creating a confirmation-document chain. Local `goal resume
+whose view exposes the complete proposed action together with its digest, so
+confirmation is informed rather than blind. It does not create a separate
+confirmation-document chain. Local `goal resume
 --confirm-effect <effect-id>` authorizes only that stored action. Manual pause,
 resume, abandon, soft-budget continuation, verification failure, and later
 repair retain the original goal identity.
@@ -322,12 +324,13 @@ Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
 effects may change authorized repo or task state, but the foreground control
 path writes no legacy queue, opportunity, episode, working-checkpoint,
 completion, iteration, SOP, skill, deployment, or learning-promotion state.
-Every typed change emitted by a successful tool observation must be represented
-by the accepted outcome; `change: none` is valid only when no such observation
-exists. A non-empty identity must match by kind and exact identity. A Git commit additionally requires a
-later successful verification observation; free-text substring matches and a
-model proposal without decisive observation or fail-closed policy evidence
-cannot create an accepted receipt.
+GoalRuntime derives the accepted receipt's complete, ordered, deduplicated
+`changes[]` from every typed successful tool observation; the model neither
+declares nor copies change identities. An empty set therefore means that no such
+observation exists. Every Git commit additionally requires a later successful
+verification observation; free-text substring matches and a model proposal
+without decisive observation or fail-closed policy evidence cannot create an
+accepted receipt.
 
 Current cutover is intentionally limited to the explicit local `goal` CLI:
 

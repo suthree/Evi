@@ -31,8 +31,11 @@
 observation event 是事实来源。安全的本地读、绑定实际公网地址的无 query 公网读和
 可逆写可在既有本地演化授权内执行；带 query 的请求和由仓库代码控制的验证命令会暂停
 同一 Goal，等待精确 effect 确认；secret/私有数据外发、破坏性 effect 和未知 effect
-会拒绝。成功 observation 一旦产生类型化 change，outcome 就不能再声称 `change: none`，
-且 kind 与 identity 必须精确匹配；Git commit 还必须有其后的成功验证 observation。
+会拒绝。模型不声明或复制 change identity；GoalRuntime 会从全部成功 observation 自动
+生成有序去重的完整 `changes[]`，没有类型化 change 时才为空；Git commit 还必须有其后
+的成功验证 observation。
+需要确认的 effect 会在同一个 Goal 上展示完整 `proposed_action` 及其 digest；带 query
+的外发请求不会要求操作者在看不到实际 key/value 的情况下盲确认。
 effect 已开始但 observation 未落盘时会进入
 `effect_outcome_unknown`，重放不会猜测并重复执行。
 
