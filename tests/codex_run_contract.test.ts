@@ -6,6 +6,7 @@ import {
   CODEX_STRUCTURED_RESULT_SCHEMA_SHA256,
   codexAuthorityDigest,
   createCodexAuthoritySnapshot,
+  deriveCodexOutputCaptureChars,
   parseCodexRunRequest,
   parseCodexStructuredResult
 } from "../packages/core/src/codex_run_contract.js";
@@ -31,6 +32,22 @@ test("codex.run request allowlist rejects unsafe argv and authority expansion", 
   assert.equal(valid.sandbox, "workspace-write");
   assert.equal(valid.approval_policy, "never");
   assert.equal(valid.budgets.max_retries, 0);
+  assert.equal(valid.budgets.max_output_chars, deriveCodexOutputCaptureChars());
+
+  const injected = parseCodexRunRequest({
+    mode: "new",
+    prompt: "Use the runtime-derived capture default.",
+    base_commit: baseCommit,
+    branch: "codex/issue-34-output-capture",
+    worktree: ".",
+    cwd: "."
+  }, { max_output_chars: 12_345 });
+  assert.equal(injected.mode === "new" && injected.budgets.max_output_chars, 12_345);
+  const explicit = parseCodexRunRequest({
+    ...injected,
+    budgets: { ...injected.budgets, max_output_chars: 23_456 }
+  }, { max_output_chars: 12_345 });
+  assert.equal(explicit.mode === "new" && explicit.budgets.max_output_chars, 23_456);
 
   for (const request of [
     { ...valid, model: "gpt-5.6" },
@@ -44,6 +61,12 @@ test("codex.run request allowlist rejects unsafe argv and authority expansion", 
   ]) {
     assert.throws(() => parseCodexRunRequest(request as Record<string, unknown>), /codex\.run/);
   }
+});
+
+test("codex.run derives output capture retention from configured model output tokens", () => {
+  assert.equal(deriveCodexOutputCaptureChars(2400), 9600);
+  assert.equal(deriveCodexOutputCaptureChars(1), 1000);
+  assert.equal(deriveCodexOutputCaptureChars(1_000_000), 1_000_000);
 });
 
 test("codex.run builds fixed new and resume argv without shell or forbidden flags", () => {

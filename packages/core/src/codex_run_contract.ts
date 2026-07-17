@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS } from "./context_budget.js";
 
 export const CODEX_RUN_TOOL = "codex.run" as const;
 export const CODEX_RUN_MODELS = ["gpt-5.6-sol"] as const;
@@ -18,6 +19,10 @@ export interface CodexRunBudgets {
   readonly max_context_chars: number;
   readonly max_tool_calls: number;
   readonly max_retries: 0;
+}
+
+export interface CodexRunBudgetDefaults {
+  readonly max_output_chars?: number;
 }
 
 export interface CodexAuthoritySnapshot {
@@ -77,13 +82,13 @@ export interface CodexResumeRequest {
 
 export type CodexRunRequest = CodexNewRequest | CodexResumeRequest;
 
-const DEFAULT_BUDGETS: CodexRunBudgets = Object.freeze({
+const DEFAULT_BUDGETS = Object.freeze({
   timeout_ms: 300_000,
-  max_output_chars: 200_000,
   max_context_chars: 40_000,
   max_tool_calls: 32,
   max_retries: 0
 });
+const ESTIMATED_CHARS_PER_MODEL_OUTPUT_TOKEN = 4;
 
 export const CODEX_STRUCTURED_RESULT_SCHEMA = Object.freeze({
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -134,7 +139,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/;
 
-export function parseCodexRunRequest(value: Record<string, unknown>): CodexRunRequest {
+export function parseCodexRunRequest(
+  value: Record<string, unknown>,
+  defaults: CodexRunBudgetDefaults = {}
+): CodexRunRequest {
   const mode = value.mode;
   if (mode !== "new" && mode !== "resume") throw new Error("codex.run mode must be new or resume.");
   assertOnlyKeys(value, mode === "new" ? NEW_KEYS : RESUME_KEYS, "codex.run");
@@ -155,7 +163,7 @@ export function parseCodexRunRequest(value: Record<string, unknown>): CodexRunRe
   const serviceTier = allowlisted(value.service_tier ?? "fast", CODEX_RUN_SERVICE_TIERS, "service_tier");
   const sandbox = allowlisted(value.sandbox ?? "workspace-write", CODEX_RUN_SANDBOXES, "sandbox");
   const approvalPolicy = allowlisted(value.approval_policy ?? "never", CODEX_RUN_APPROVAL_POLICIES, "approval_policy");
-  const budgets = parseBudgets(value.budgets);
+  const budgets = parseBudgets(value.budgets, defaults);
   if (prompt.length > budgets.max_context_chars) throw new Error("codex.run prompt exceeds max_context_chars.");
   return Object.freeze({
     mode,
@@ -269,14 +277,30 @@ export function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function parseBudgets(value: unknown): CodexRunBudgets {
-  if (value === undefined) return DEFAULT_BUDGETS;
+export function deriveCodexOutputCaptureChars(maxOutputTokens?: number | null): number {
+  if (typeof maxOutputTokens !== "number" || !Number.isInteger(maxOutputTokens) || maxOutputTokens <= 0) {
+    return DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS;
+  }
+  return Math.min(Math.max(maxOutputTokens * ESTIMATED_CHARS_PER_MODEL_OUTPUT_TOKEN, 1000), 1_000_000);
+}
+
+function parseBudgets(value: unknown, defaults: CodexRunBudgetDefaults): CodexRunBudgets {
+  const defaultMaxOutputChars = integer(
+    defaults.max_output_chars ?? deriveCodexOutputCaptureChars(),
+    "default max_output_chars",
+    1000,
+    1_000_000
+  );
+  if (value === undefined) return Object.freeze({
+    ...DEFAULT_BUDGETS,
+    max_output_chars: defaultMaxOutputChars
+  });
   if (!isRecord(value)) throw new Error("codex.run budgets must be an object.");
   assertOnlyKeys(value, BUDGET_KEYS, "codex.run budgets");
   const maxRetries = integer(value.max_retries ?? 0, "max_retries", 0, 0);
   return Object.freeze({
     timeout_ms: integer(value.timeout_ms ?? DEFAULT_BUDGETS.timeout_ms, "timeout_ms", 10, 900_000),
-    max_output_chars: integer(value.max_output_chars ?? DEFAULT_BUDGETS.max_output_chars, "max_output_chars", 1000, 1_000_000),
+    max_output_chars: integer(value.max_output_chars ?? defaultMaxOutputChars, "max_output_chars", 1000, 1_000_000),
     max_context_chars: integer(value.max_context_chars ?? DEFAULT_BUDGETS.max_context_chars, "max_context_chars", 1000, 100_000),
     max_tool_calls: integer(value.max_tool_calls ?? DEFAULT_BUDGETS.max_tool_calls, "max_tool_calls", 0, 64),
     max_retries: maxRetries as 0

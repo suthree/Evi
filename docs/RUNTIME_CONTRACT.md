@@ -2515,15 +2515,20 @@ Required policy:
   reject non-repositories, other common directories, unregistered worktrees,
   main checkouts, and drift
 - bind execution authority, mode, thread handle, prompt/output-schema digest,
-  and timeout/output/context/tool/retry budgets in an immutable digest
+  and timeout/output-capture/context/tool/retry budgets in an immutable digest
 - construct allowlisted argv without shell concatenation; prohibit
   danger-full-access, bypass flags, add-dir, and search
 - support one bounded `new` execution or `resume <thread-id>` bound to the same
   authority snapshot, without another worktree, fan-out, scheduler, or
   automatic retry
-- parse bounded JSONL metadata and strict structured `done|blocked|failed`
-  output; spawn, exit, timeout, budget, invalid JSONL, invalid schema, or
-  invalid structured output failures cannot claim completion
+- continue consuming and validating JSONL after the output-capture retention
+  limit is reached; retain only bounded event-summary/redacted-diagnostic
+  prefix and suffix evidence, and record observed, retained, truncated, and
+  effective-limit metadata
+- parse the terminal strict structured `done|blocked|failed` output separately
+  from diagnostic retention; spawn, nonzero exit, timeout, tool-call budget,
+  invalid JSONL, missing or mismatched thread authority, invalid schema, or
+  absent/invalid structured output failures cannot claim completion
 - on POSIX, run in an independent process group and clean up the whole group
   with TERM followed by bounded KILL
 - derive tracked and untracked changed paths from fixed live pre/post Git
@@ -2535,6 +2540,16 @@ verification, permissions, commit, pull request, merge, deploy, and completion
 authority remain exclusively with `main_harness`. The tool is strictly separate
 from advisory-only `delegate_agent` and does not change its payload, result,
 tool, write, or completion authority.
+
+`max_output_chars` is an evidence/diagnostic retention limit, not a process
+termination budget. An explicit caller value wins. When omitted for a new run,
+the runtime derives it from the active model's configured `max_output_tokens`
+through the typed tool-execution context; direct callers without model config
+use the existing context-budget fallback. Version-1 authority snapshots remain
+readable and resumes keep their persisted effective value. For migration,
+`process.output_budget_exceeded` remains present as `false`; consumers should
+use `process.output_capture.truncated` and its observed/retained/effective-limit
+fields instead.
 
 ### `code.execute_node`
 

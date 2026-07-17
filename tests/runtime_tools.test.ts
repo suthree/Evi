@@ -642,6 +642,84 @@ process.stdin.on("end", () => {
   }
 });
 
+test("codex.run truncates diagnostic retention without terminating valid JSONL or the final structured result", async () => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  const unexpectedTermMarker = join(fixture.root, "unexpected-output-limit-term.txt");
+  try {
+    await writeFakeCodex(fixture.binRoot, `
+const fs = await import("node:fs");
+process.on("SIGTERM", () => {
+  fs.writeFileSync(${JSON.stringify(unexpectedTermMarker)}, "terminated");
+  process.exit(143);
+});
+process.stdin.resume();
+process.stdin.on("end", () => {
+  console.log(JSON.stringify({ type: "thread.started", thread_id: "019fabcd-1234-7abc-8def-0123456789ab" }));
+  for (let index = 0; index < 80; index += 1) {
+    console.log(JSON.stringify({
+      type: "item.completed",
+      item: { id: \`diagnostic-\${index}\`, type: "reasoning", text: "x".repeat(200) }
+    }));
+  }
+  console.log(JSON.stringify({
+    type: "item.completed",
+    item: {
+      id: "item-final",
+      type: "agent_message",
+      text: JSON.stringify({
+        status: "done",
+        summary: "Valid structured result survived diagnostic truncation.",
+        changed_files: [],
+        tests: ["synthetic oversized JSONL regression passed"],
+        blockers: [],
+        next_action: "The main harness validates authority and diff evidence.",
+        completion_authority: "main_harness"
+      })
+    }
+  }));
+});
+`);
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    const result = await executeTool(useTool("codex.run", {
+      ...codexNewArguments(fixture),
+      budgets: {
+        timeout_ms: 2000,
+        max_output_chars: 1000,
+        max_context_chars: 8000,
+        max_tool_calls: 4,
+        max_retries: 0
+      }
+    }), { store: fixture.store, modelMaxOutputTokens: 2400 });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.output.status, "done");
+    assert.equal(result.output.failure_kind, undefined);
+    await assert.rejects(readFile(unexpectedTermMarker, "utf8"), /ENOENT/);
+    const processEvidence = result.output.process as Record<string, unknown>;
+    assert.equal(processEvidence.output_budget_exceeded, false);
+    const capture = processEvidence.output_capture as Record<string, unknown>;
+    assert.equal(capture.effective_limit_chars, 1000);
+    assert.equal(capture.limit_source, "request");
+    assert.equal(Number(capture.observed_chars) > 1000, true);
+    assert.equal(Number(capture.retained_chars) <= 1000, true);
+    assert.equal(capture.truncated, true);
+    assert.match(String(capture.termination_boundary), /never signals/);
+    assert.match(String(capture.suffix), /item_type=agent_message/);
+    const structured = result.output.result as Record<string, unknown>;
+    assert.equal(structured.summary, "Valid structured result survived diagnostic truncation.");
+    assert.equal(structured.completion_authority, "main_harness");
+    const resumeHandle = result.output.resume_handle as Record<string, unknown>;
+    assert.equal(resumeHandle.thread_id, "019fabcd-1234-7abc-8def-0123456789ab");
+    assert.equal(typeof resumeHandle.authority_digest, "string");
+    const workspace = result.output.workspace_changes as Record<string, unknown>;
+    assert.deepEqual(workspace.introduced_changed_paths, []);
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
 test("codex.run rejects main checkout and other-repository targets before spawn", async () => {
   const fixture = await createCodexFixture();
   const otherRoot = join(fixture.root, "other");
@@ -697,7 +775,7 @@ setInterval(() => {}, 1000);
     const timedOut = await executeTool(useTool("codex.run", {
       ...codexNewArguments(fixture),
       budgets: {
-        timeout_ms: 100,
+        timeout_ms: 500,
         max_output_chars: 4000,
         max_context_chars: 8000,
         max_tool_calls: 2,

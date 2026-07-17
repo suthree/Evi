@@ -197,3 +197,34 @@ external writes. This lets a continuation contract hard-block both another
 Focused context/runner checks passed 126/126. The full repository gate passed
 873/873 tests, active-vault skill validation, neutral naming across 123
 implementation files, and `git diff --check`.
+
+## Codex output-capture fix-forward evidence
+
+Issue #34 later exposed a narrower typed-runner defect on branch
+`codex/issue-34-codex-output-capture-20260717`: the persisted
+`max_output_chars` authority budget was enforced by terminating the Codex
+process as soon as accumulated stdout/stderr crossed the limit. That made a
+valid terminal `agent_message` unreachable even though output capture is only
+diagnostic evidence retention.
+
+The bounded fix keeps timeout, tool-call, spawn/nonzero-exit, JSONL, thread,
+authority, and structured-result failures unchanged while continuing to parse
+JSONL beyond the capture limit. It retains only bounded event-summary and
+redacted-stderr prefix/suffix evidence and records observed, retained,
+truncated, and effective-limit metadata. Explicit request budgets win; omitted
+new-run capture limits derive from active model `max_output_tokens` through the
+tool context, with the existing context-budget fallback for direct callers.
+Version-1 authority snapshots and resumes retain their persisted budget, and
+the legacy `output_budget_exceeded` metadata field remains present as `false`
+for compatible migration. `delegate_agent` remains unchanged and advisory
+only.
+
+The two focused files first passed 27/27 with `pnpm exec tsx --test
+tests/codex_run_contract.test.ts tests/runtime_tools.test.ts`. After the final
+contract-exemplar edit, the strictly scoped rerun passed 10/10 with `node
+--import tsx --test --test-name-pattern='codex\.run|tool contract renderer'
+tests/codex_run_contract.test.ts tests/runtime_tools.test.ts`. This includes
+synthetic JSONL whose total observed output exceeds the explicit capture limit
+before a valid final structured result. `pnpm exec tsc -p tsconfig.json --noEmit
+--pretty false` and `git diff --check` also passed. No live Codex, deployment,
+commit, push, PR, merge, or LuBan action is part of this fix-forward evidence.

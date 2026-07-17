@@ -79,7 +79,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "codex.run",
     side_effect_level: "local_write",
-    rationale: "need one bounded typed Codex CLI coding execution inside an isolated worktree",
+    rationale: "need one bounded typed Codex CLI coding execution inside an isolated worktree; max_output_chars is an optional capture-only override",
     arguments: {
       mode: "new | resume",
       prompt: "bounded coding task",
@@ -95,7 +95,7 @@ export const coreToolContracts: ToolContract[] = [
       approval_policy: "never (new only)",
       budgets: {
         timeout_ms: 300000,
-        max_output_chars: 200000,
+        max_output_chars: "optional explicit evidence-retention limit; omitted value derives from active model max_output_tokens",
         max_context_chars: 40000,
         max_tool_calls: 32,
         max_retries: 0
