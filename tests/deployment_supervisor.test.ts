@@ -34,13 +34,26 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
     return { stdout: "", stderr: "", exitCode: 0 };
   };
   try {
-    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit");
-    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit");
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
     await mkdir(resolve(manifest.state_root, "deployments/history"), { recursive: true });
     await mkdir(resolve(root, "logs"), { recursive: true });
     await writeFile(manifest.stdout_path, "old output\n", "utf8");
     await writeFile(manifest.stderr_path, "", "utf8");
-    const request = deploymentRecord("candidate-commit", "pending");
+    const stable = {
+      ...deploymentRecord("stable-commit", "stable"),
+      id: "deployment_test_stable",
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root,
+      stable_at: "2026-07-14T23:59:00.000Z"
+    };
+    const request = {
+      ...deploymentRecord("candidate-commit", "pending"),
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root
+    };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
     await writeJson(paths.request, request);
 
     const activated = await runSupervisorOnce(manifest, {
@@ -83,9 +96,107 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
       runLaunchctl
     });
     assert.equal(recovered.action, "recovered");
-    assert.equal(recovered.deployment?.status, "recovered");
+    assert.equal(recovered.deployment?.id, stable.id);
+    assert.equal(recovered.deployment?.source_commit, "stable-commit");
+    assert.equal(recovered.deployment?.status, "stable");
+    assert.equal(recovered.deployment?.previous_source_commit, "candidate-commit");
+    const canonical = JSON.parse(await readFile(paths.current, "utf8")) as DeploymentRecord;
+    const recoveredCandidate = JSON.parse(
+      await readFile(resolve(paths.historyRoot, `${request.id}.json`), "utf8")
+    ) as DeploymentRecord;
+    assert.equal(canonical.id, stable.id);
+    assert.equal(canonical.source_commit, "stable-commit");
+    assert.equal(canonical.status, "stable");
+    assert.equal(recoveredCandidate.source_commit, "candidate-commit");
+    assert.equal(recoveredCandidate.status, "recovered");
+    assert.equal(recoveredCandidate.failure_reason, "candidate task failed deterministically");
+    assert.ok(recoveredCandidate.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
+    assert.equal(recoveredCandidate.repair_task_id?.includes(request.id), true);
     assert.match(await readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), /Repair a failed local runtime deployment/);
     assert.match(await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/stderr.log`), "utf8"), /candidate error/);
+
+    const baseDefinition = buildRuntimeServiceDefinition({
+      repoRoot: manifest.repo_root,
+      configDir: resolve(manifest.repo_root, "config"),
+      stateRoot: manifest.state_root,
+      homeRoot: root,
+      nodePath: process.execPath
+    });
+    const definition = {
+      ...baseDefinition,
+      supervisorPlistPath: resolve(root, "supervisor.plist")
+    };
+    await mkdir(resolve(manifest.repo_root, "dist/apps/cli/src"), { recursive: true });
+    await mkdir(resolve(manifest.repo_root, "node_modules"), { recursive: true });
+    await mkdir(resolve(manifest.repo_root, "config"), { recursive: true });
+    await writeFile(resolve(manifest.repo_root, "dist/apps/cli/src/main.js"), "export const version = 2;\n", "utf8");
+    await execFile("git", ["init", "-q"], { cwd: manifest.repo_root });
+    await execFile("git", ["config", "user.email", "test@example.invalid"], { cwd: manifest.repo_root });
+    await execFile("git", ["config", "user.name", "Test"], { cwd: manifest.repo_root });
+    await execFile("git", ["add", "."], { cwd: manifest.repo_root });
+    await execFile("git", ["commit", "-qm", "next verified candidate"], { cwd: manifest.repo_root });
+    const nextCommit = (await execFile("git", ["rev-parse", "HEAD"], { cwd: manifest.repo_root })).stdout.trim();
+    await writeJson(definition.supervisorManifestPath, manifest);
+    await writeFile(definition.supervisorPlistPath, "plist", "utf8");
+    const nextRequest = await requestLocalDeployment(definition, {
+      verificationRefs: ["focused deployment supervisor regression"],
+      now: new Date("2026-07-15T00:00:07.000Z")
+    }, {
+      prepareCandidate: async () => ({
+        schema_version: 1,
+        target: "runtime",
+        runtime_current_root: definition.runtimeCurrentRoot,
+        repo_root: manifest.repo_root,
+        built_at: "2026-07-15T00:00:07.000Z",
+        node_version: process.version,
+        source_commit: nextCommit,
+        source_commit_short: nextCommit.slice(0, 12),
+        source_branch: "main",
+        source_is_dirty: false,
+        build_command: "pnpm run build"
+      })
+    });
+    assert.equal(nextRequest.status, "pending");
+    assert.equal(nextRequest.source_commit, nextCommit);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("automatic rollback creates a distinct stable ledger when the prior known-good source had no deployment record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-recovery-baseline-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_previous_root, "candidate-commit", manifest.repo_root);
+    await writeHeartbeat(manifest, "stable-commit", "2026-07-15T00:00:05.000Z");
+    const candidate = {
+      ...deploymentRecord("candidate-commit", "recovering"),
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root,
+      previous_source_commit: "stable-commit",
+      failure_reason: "candidate startup failed",
+      evidence_refs: ["deployments/evidence/deployment_test_candidate/failure.json"]
+    };
+    await writeJson(paths.current, candidate);
+    await writeJson(resolve(paths.historyRoot, `${candidate.id}.json`), candidate);
+
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:06.000Z")
+    });
+    const canonical = JSON.parse(await readFile(paths.current, "utf8")) as DeploymentRecord;
+    const recoveredCandidate = JSON.parse(
+      await readFile(resolve(paths.historyRoot, `${candidate.id}.json`), "utf8")
+    ) as DeploymentRecord;
+
+    assert.equal(recovered.action, "recovered");
+    assert.notEqual(canonical.id, candidate.id);
+    assert.equal(canonical.source_commit, "stable-commit");
+    assert.equal(canonical.status, "stable");
+    assert.equal(recoveredCandidate.source_commit, "candidate-commit");
+    assert.equal(recoveredCandidate.status, "recovered");
+    assert.equal(recoveredCandidate.failure_reason, "candidate startup failed");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
