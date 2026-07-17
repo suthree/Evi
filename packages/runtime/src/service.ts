@@ -741,6 +741,7 @@ async function writeServiceFiles(
   }
   await mkdir(definition.supervisorRoot, { recursive: true });
   await cp(sourceSupervisorEntry, definition.supervisorEntryPath, { force: true });
+  const controllerBuild = await readRuntimeBuild(definition);
   for (const file of definition.runnerFiles) {
     if (!existsSync(file)) throw new Error(`Local Runtime service runner file not found: ${file}`);
   }
@@ -756,6 +757,9 @@ async function writeServiceFiles(
     probation_ms: 60_000,
     heartbeat_max_age_ms: 30_000,
     max_repair_attempts: 2,
+    launchctl_start_attempts: 3,
+    recovery_max_attempts: 6,
+    controller_source_commit: controllerBuild?.source_commit,
     domain: definition.domain,
     runtime_label: definition.label,
     runtime_plist_path: definition.plistPath,

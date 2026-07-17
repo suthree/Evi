@@ -8,6 +8,8 @@ import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
 const MAX_EVIDENCE_LOG_BYTES = 1024 * 1024;
+const DEFAULT_LAUNCHCTL_START_ATTEMPTS = 3;
+const DEFAULT_RECOVERY_ATTEMPTS = 6;
 
 export type DeploymentStatus =
   | "pending"
@@ -28,6 +30,9 @@ export interface SupervisorManifest {
   probation_ms: number;
   heartbeat_max_age_ms: number;
   max_repair_attempts: number;
+  launchctl_start_attempts?: number;
+  recovery_max_attempts?: number;
+  controller_source_commit?: string;
   domain: string;
   runtime_label: string;
   runtime_plist_path: string;
@@ -80,7 +85,25 @@ export interface DeploymentRecord {
   adopted_at?: string;
   adoption_reason?: string;
   superseded_deployment_id?: string;
+  activation_start?: LaunchctlStartEvidence;
+  recovery_attempts?: number;
+  recovery_last_attempt_at?: string;
+  recovery_last_error?: string;
+  recovery_start?: LaunchctlStartEvidence;
+  controller_assessment?: ControllerAssessment;
   boundary: string;
+}
+
+export interface LaunchctlStartEvidence {
+  bootstrap_attempts: number;
+  kickstart_attempts: number;
+}
+
+export interface ControllerAssessment {
+  installed_source_commit?: string;
+  candidate_source_commit: string;
+  status: "matches_candidate" | "service_lifecycle_handoff_required" | "unknown";
+  reason: string;
 }
 
 export interface DeploymentFailureSignal {
@@ -194,16 +217,45 @@ export async function runSupervisorOnce(
         await rm(paths.failure, { force: true });
         return { action: "recovered", deployment: recovered, readiness };
       }
-      if (deadlineReached(current.readiness_deadline, now)) {
+      const attempts = current.recovery_attempts ?? 0;
+      const maxAttempts = positiveInteger(manifest.recovery_max_attempts, DEFAULT_RECOVERY_ATTEMPTS);
+      if (deadlineReached(current.readiness_deadline, now) || attempts >= maxAttempts) {
         const failed = await updateDeployment(manifest, {
           ...current,
           status: "rollback_failed",
-          failure_reason: `rollback readiness failed: ${readiness.reasons.join(", ")}`,
+          failure_reason: recoveryExhaustionReason(current, readiness, attempts, maxAttempts),
           updated_at: now.toISOString()
         });
         return { action: "rollback_failed", deployment: failed, readiness };
       }
-      return { action: "recovering", deployment: current, readiness };
+      const attempt = attempts + 1;
+      const attempting = await updateDeployment(manifest, {
+        ...current,
+        recovery_attempts: attempt,
+        recovery_last_attempt_at: now.toISOString(),
+        updated_at: now.toISOString()
+      });
+      try {
+        const recoveryStart = await restoreAndStartKnownGood(manifest, attempting, deps);
+        const recovering = await updateDeployment(manifest, {
+          ...attempting,
+          recovery_start: recoveryStart,
+          recovery_last_error: undefined,
+          updated_at: now.toISOString()
+        });
+        return { action: "recovery_attempted", deployment: recovering, readiness };
+      } catch (error) {
+        const detail = errorMessage(error);
+        const exhausted = attempt >= maxAttempts;
+        const failedAttempt = await updateDeployment(manifest, {
+          ...attempting,
+          status: exhausted ? "rollback_failed" : "recovering",
+          recovery_last_error: detail,
+          ...(exhausted ? { failure_reason: recoveryExhaustionReason(attempting, readiness, attempt, maxAttempts, detail) } : {}),
+          updated_at: now.toISOString()
+        });
+        return { action: exhausted ? "rollback_failed" : "recovery_retry", deployment: failedAttempt, readiness };
+      }
     }
 
     if (current && (current.status === "starting" || current.status === "probation" || current.status === "stable")) {
@@ -369,29 +421,40 @@ async function activateDeployment(
     log_offsets: logOffsets,
     readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
     failure_count: 0,
+    controller_assessment: assessController(manifest, request.source_commit),
     updated_at: now.toISOString()
   });
   try {
     await stopRuntime(manifest, deps);
     await activateSlots(manifest);
-    await startRuntime(manifest, deps);
+    const activationStart = await startRuntime(manifest, deps);
+    return updateDeployment(manifest, {
+      ...activating,
+      status: "starting",
+      activation_start: activationStart,
+      updated_at: now.toISOString()
+    });
   } catch (error) {
-    await restoreKnownGoodAfterActivationFailure(manifest, activating);
-    await startRuntime(manifest, deps).catch(() => undefined);
+    let recoveryStart: LaunchctlStartEvidence | undefined;
+    let recoveryError: string | undefined;
+    try {
+      recoveryStart = await restoreAndStartKnownGood(manifest, activating, deps);
+    } catch (recoveryFailure) {
+      recoveryError = errorMessage(recoveryFailure);
+    }
     return updateDeployment(manifest, {
       ...activating,
       status: "recovering",
       failed_at: now.toISOString(),
-      failure_reason: `candidate activation failed: ${error instanceof Error ? error.message : String(error)}`,
+      failure_reason: `candidate activation failed: ${errorMessage(error)}`,
       readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
+      recovery_attempts: 1,
+      recovery_last_attempt_at: now.toISOString(),
+      recovery_start: recoveryStart,
+      recovery_last_error: recoveryError,
       updated_at: now.toISOString()
     });
   }
-  return updateDeployment(manifest, {
-    ...activating,
-    status: "starting",
-    updated_at: now.toISOString()
-  });
 }
 
 async function resumeActivation(
@@ -406,17 +469,33 @@ async function resumeActivation(
   ]);
   if (currentCommit === current.source_commit) {
     try {
-      await startRuntime(manifest, deps);
-      return updateDeployment(manifest, { ...current, status: "starting", updated_at: now.toISOString() });
+      const activationStart = await startRuntime(manifest, deps);
+      return updateDeployment(manifest, {
+        ...current,
+        status: "starting",
+        activation_start: activationStart,
+        controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
+        updated_at: now.toISOString()
+      });
     } catch (error) {
-      await restoreKnownGoodAfterActivationFailure(manifest, current);
-      await startRuntime(manifest, deps).catch(() => undefined);
+      let recoveryStart: LaunchctlStartEvidence | undefined;
+      let recoveryError: string | undefined;
+      try {
+        recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
+      } catch (recoveryFailure) {
+        recoveryError = errorMessage(recoveryFailure);
+      }
       return updateDeployment(manifest, {
         ...current,
         status: "recovering",
         failed_at: now.toISOString(),
-        failure_reason: `candidate activation resume failed: ${error instanceof Error ? error.message : String(error)}`,
+        failure_reason: `candidate activation resume failed: ${errorMessage(error)}`,
         readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
+        recovery_attempts: 1,
+        recovery_last_attempt_at: now.toISOString(),
+        recovery_start: recoveryStart,
+        recovery_last_error: recoveryError,
+        controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
         updated_at: now.toISOString()
       });
     }
@@ -425,13 +504,24 @@ async function resumeActivation(
     return activateDeployment(manifest, { ...current, status: "pending" }, now, deps);
   }
   if (currentCommit === current.previous_source_commit) {
-    await startRuntime(manifest, deps).catch(() => undefined);
+    let recoveryStart: LaunchctlStartEvidence | undefined;
+    let recoveryError: string | undefined;
+    try {
+      recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
+    } catch (error) {
+      recoveryError = errorMessage(error);
+    }
     return updateDeployment(manifest, {
       ...current,
       status: "recovering",
       failed_at: now.toISOString(),
       failure_reason: "candidate activation could not be resumed because the staged bundle is unavailable",
       readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
+      recovery_attempts: 1,
+      recovery_last_attempt_at: now.toISOString(),
+      recovery_start: recoveryStart,
+      recovery_last_error: recoveryError,
+      controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
       updated_at: now.toISOString()
     });
   }
@@ -707,19 +797,31 @@ async function restorePreviousSlot(manifest: SupervisorManifest): Promise<void> 
   await rename(manifest.runtime_previous_root, manifest.runtime_current_root);
 }
 
-async function restoreKnownGoodAfterActivationFailure(
+async function restoreAndStartKnownGood(
   manifest: SupervisorManifest,
-  deployment: DeploymentRecord
-): Promise<void> {
+  deployment: DeploymentRecord,
+  deps: SupervisorDeps
+): Promise<LaunchctlStartEvidence> {
+  const expected = deployment.previous_source_commit;
+  if (!expected) throw new Error(`deployment ${deployment.id} has no last known-good commit`);
   const [currentCommit, previousCommit] = await Promise.all([
     bundleCommit(manifest.runtime_current_root),
     bundleCommit(manifest.runtime_previous_root)
   ]);
-  if (currentCommit === deployment.source_commit && previousCommit === deployment.previous_source_commit) {
-    await swapCurrentAndPrevious(manifest);
-    return;
+  if (currentCommit !== expected) {
+    if (currentCommit === deployment.source_commit && previousCommit === expected) {
+      await swapCurrentAndPrevious(manifest);
+    } else if (!currentCommit && previousCommit === expected) {
+      await restorePreviousSlot(manifest);
+    } else {
+      throw new Error(`known-good restoration refused: expected=${expected}, current=${currentCommit ?? "missing"}, previous=${previousCommit ?? "missing"}`);
+    }
   }
-  await restorePreviousSlot(manifest);
+  const restoredCommit = await bundleCommit(manifest.runtime_current_root);
+  if (restoredCommit !== expected) {
+    throw new Error(`known-good restoration verification failed: expected=${expected}, current=${restoredCommit ?? "missing"}`);
+  }
+  return startRuntime(manifest, deps);
 }
 
 async function swapCurrentAndPrevious(manifest: SupervisorManifest): Promise<void> {
@@ -758,10 +860,16 @@ async function bundleCommit(root: string): Promise<string | undefined> {
   return typeof build?.source_commit === "string" ? build.source_commit : undefined;
 }
 
-async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<void> {
-  await launchctlWithRetry(manifest, ["bootstrap", manifest.domain, manifest.runtime_plist_path], deps);
-  const kickstart = await runLaunchctl(["kickstart", "-k", `${manifest.domain}/${manifest.runtime_label}`], deps);
-  if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr || kickstart.stdout}`);
+async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<LaunchctlStartEvidence> {
+  const bootstrapAttempts = await launchctlWithRetry(manifest, ["bootstrap", manifest.domain, manifest.runtime_plist_path], deps);
+  const maxAttempts = positiveInteger(manifest.launchctl_start_attempts, DEFAULT_LAUNCHCTL_START_ATTEMPTS);
+  let kickstart = { stdout: "", stderr: "", exitCode: 1 };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    kickstart = await runLaunchctl(["kickstart", "-k", `${manifest.domain}/${manifest.runtime_label}`], deps);
+    if (kickstart.exitCode === 0) return { bootstrap_attempts: bootstrapAttempts, kickstart_attempts: attempt };
+    if (attempt < maxAttempts) await delay(250 * (2 ** (attempt - 1)));
+  }
+  throw new Error(`launchctl kickstart failed after ${maxAttempts} attempts: ${kickstart.stderr || kickstart.stdout || "unknown error"}`);
 }
 
 async function stopRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<void> {
@@ -775,16 +883,59 @@ async function launchctlWithRetry(
   manifest: SupervisorManifest,
   args: string[],
   deps: SupervisorDeps
-): Promise<void> {
+): Promise<number> {
   let result = { stdout: "", stderr: "", exitCode: 1 };
   for (let attempt = 0; attempt < 5; attempt += 1) {
     result = await runLaunchctl(args, deps);
-    if (result.exitCode === 0) return;
+    if (result.exitCode === 0) return attempt + 1;
     const print = await runLaunchctl(["print", `${manifest.domain}/${manifest.runtime_label}`], deps);
-    if (print.exitCode === 0) return;
+    if (print.exitCode === 0) return attempt + 1;
     if (attempt < 4) await delay(250 * (2 ** attempt));
   }
   throw new Error(`launchctl bootstrap failed after bounded retry: ${result.stderr || result.stdout}`);
+}
+
+function assessController(manifest: SupervisorManifest, candidateCommit: string): ControllerAssessment {
+  if (!manifest.controller_source_commit) {
+    return {
+      candidate_source_commit: candidateCommit,
+      status: "unknown",
+      reason: "installed supervisor controller source commit is not recorded; candidate activation does not prove controller handoff"
+    };
+  }
+  if (manifest.controller_source_commit === candidateCommit) {
+    return {
+      installed_source_commit: manifest.controller_source_commit,
+      candidate_source_commit: candidateCommit,
+      status: "matches_candidate",
+      reason: "installed copied supervisor controller already matches the candidate commit"
+    };
+  }
+  return {
+    installed_source_commit: manifest.controller_source_commit,
+    candidate_source_commit: candidateCommit,
+    status: "service_lifecycle_handoff_required",
+    reason: "candidate activation keeps the installed copied supervisor controller; a later explicit service lifecycle start or restart is required to activate the candidate controller"
+  };
+}
+
+function recoveryExhaustionReason(
+  deployment: DeploymentRecord,
+  readiness: ReadinessResult,
+  attempts: number,
+  maxAttempts: number,
+  lastError = deployment.recovery_last_error
+): string {
+  const root = deployment.failure_reason ?? "deployment recovery failed";
+  return `${root}; rollback recovery exhausted after ${attempts}/${maxAttempts} attempts: readiness=${readiness.reasons.join(",") || "not_ready"}; last_error=${lastError || "none"}`;
+}
+
+function positiveInteger(value: number | undefined, fallback: number): number {
+  return Number.isInteger(value) && (value ?? 0) > 0 ? value as number : fallback;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function runLaunchctl(args: string[], deps: SupervisorDeps): Promise<{ stdout: string; stderr: string; exitCode: number }> {
