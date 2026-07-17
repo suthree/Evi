@@ -1,11 +1,15 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   isCurrentRuntimeKnownGood,
+  inspectServiceSupervisor,
+  inspectServiceSupervisorProcessIdentity,
   prepareServiceRuntimeSource,
+  restartServiceSupervisor,
   stageServiceRuntimeBundle,
+  type LaunchdStatus,
   type ServiceDefinition
 } from "./service.js";
 import {
@@ -17,6 +21,205 @@ import {
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
 const DEPLOYMENT_BOUNDARY = "single-machine local runtime deployment transaction; no remote deployment, public release, model invocation, or incompatible state migration";
+
+export type ControllerHandoffStage = "precondition" | "backup" | "install" | "manifest" | "restart" | "verify";
+
+export interface ControllerHandoffResult {
+  ok: boolean;
+  action: "controller_handoff";
+  outcome: "updated" | "already_matched" | "failed";
+  stage: ControllerHandoffStage;
+  source_commit?: string;
+  controller_digest?: string;
+  backup?: { root: string; controller: string; manifest: string };
+  supervisor_before?: LaunchdStatus;
+  supervisor_after?: LaunchdStatus;
+  process_identity?: { matches: boolean; command: string };
+  rollback?: {
+    attempted: boolean;
+    controller_restored: boolean;
+    manifest_restored: boolean;
+    supervisor_restored: boolean;
+    error?: string;
+  };
+  error?: string;
+  boundary: string;
+}
+
+const CONTROLLER_HANDOFF_BOUNDARY = "canonical-stable local supervisor controller handoff only; no runtime restart, build, slot mutation, model invocation, remote deployment, or resource creation";
+
+export async function handoffDeploymentController(
+  definition: ServiceDefinition,
+  deps: {
+    inspectSupervisor?: typeof inspectServiceSupervisor;
+    restartSupervisor?: typeof restartServiceSupervisor;
+    inspectProcessIdentity?: typeof inspectServiceSupervisorProcessIdentity;
+    now?: () => Date;
+  } = {}
+): Promise<ControllerHandoffResult> {
+  const inspectSupervisor = deps.inspectSupervisor ?? inspectServiceSupervisor;
+  const restartSupervisor = deps.restartSupervisor ?? restartServiceSupervisor;
+  const inspectProcessIdentity = deps.inspectProcessIdentity ?? inspectServiceSupervisorProcessIdentity;
+  const paths = deploymentPaths(definition.stateRoot);
+  const fail = (stage: ControllerHandoffStage, error: unknown, extra: Partial<ControllerHandoffResult> = {}): ControllerHandoffResult => ({
+    ok: false,
+    action: "controller_handoff",
+    outcome: "failed",
+    stage,
+    error: error instanceof Error ? error.message : String(error),
+    boundary: CONTROLLER_HANDOFF_BOUNDARY,
+    ...extra
+  });
+
+  const [current, pending, build, manifest] = await Promise.all([
+    readJson<DeploymentRecord>(paths.current),
+    readJson<DeploymentRecord>(paths.request),
+    readServiceRuntimeBuild(definition.runtimeBuildPath),
+    readJson<SupervisorManifest>(definition.supervisorManifestPath)
+  ]);
+  if (!current || current.status !== "stable") return fail("precondition", "canonical current deployment is not stable");
+  if (pending) return fail("precondition", `deployment request ${pending.id} is still present`);
+  if (!build?.source_commit || build.source_is_dirty !== false) return fail("precondition", "current runtime build is not bound to a clean source commit");
+  if (current.source_commit !== build.source_commit) return fail("precondition", "current runtime build does not match the stable deployment ledger");
+  if (current.repo_root !== definition.repoRoot || current.state_root !== definition.stateRoot
+    || build.repo_root !== definition.repoRoot || resolve(build.runtime_current_root) !== definition.runtimeCurrentRoot) {
+    return fail("precondition", "stable ledger or current runtime build does not match the repository boundary");
+  }
+  if (!manifest || manifest.repo_root !== definition.repoRoot || manifest.state_root !== definition.stateRoot
+    || manifest.runtime_current_root !== definition.runtimeCurrentRoot) {
+    return fail("precondition", "installed supervisor manifest does not match the current runtime boundary");
+  }
+  const sourceController = resolve(definition.runtimeCurrentRoot, "dist/packages/runtime/src/service_supervisor.js");
+  if (!existsSync(sourceController)) return fail("precondition", `current-runtime controller is missing: ${sourceController}`);
+  if (!existsSync(definition.supervisorPlistPath) || !existsSync(definition.supervisorEntryPath)
+    || !existsSync(definition.supervisorManifestPath)) {
+    return fail("precondition", "deployment supervisor is not installed");
+  }
+
+  let supervisorBefore: LaunchdStatus;
+  try {
+    supervisorBefore = await inspectSupervisor(definition);
+  } catch (error) {
+    return fail("precondition", error);
+  }
+  if (!supervisorBefore.installed || !supervisorBefore.loaded || !supervisorBefore.pid) {
+    return fail("precondition", "installed deployment supervisor is not running with a verifiable PID", { supervisor_before: supervisorBefore });
+  }
+  const identityBefore = await inspectProcessIdentity(definition, supervisorBefore.pid).catch((error) => ({
+    matches: false,
+    command: error instanceof Error ? error.message : String(error)
+  }));
+  if (!identityBefore.matches) {
+    return fail("precondition", "running supervisor process identity does not match the installed controller", {
+      supervisor_before: supervisorBefore,
+      process_identity: identityBefore
+    });
+  }
+
+  const [sourceDigest, installedDigest] = await Promise.all([
+    fileDigest(sourceController),
+    fileDigest(definition.supervisorEntryPath)
+  ]);
+  if (sourceDigest === installedDigest && manifest.controller_source_commit === build.source_commit) {
+    return {
+      ok: true,
+      action: "controller_handoff",
+      outcome: "already_matched",
+      stage: "verify",
+      source_commit: build.source_commit,
+      controller_digest: sourceDigest,
+      supervisor_before: supervisorBefore,
+      supervisor_after: supervisorBefore,
+      process_identity: identityBefore,
+      boundary: CONTROLLER_HANDOFF_BOUNDARY
+    };
+  }
+
+  const stamp = (deps.now?.() ?? new Date()).toISOString().replace(/[^0-9]/g, "");
+  const backupRoot = resolve(definition.supervisorRoot, "backups", `${stamp}-${build.source_commit.slice(0, 12)}-${supervisorBefore.pid}`);
+  const backup = {
+    root: backupRoot,
+    controller: resolve(backupRoot, "service_supervisor.js"),
+    manifest: resolve(backupRoot, "manifest.json")
+  };
+  try {
+    await mkdir(resolve(definition.supervisorRoot, "backups"), { recursive: true });
+    await mkdir(backupRoot, { recursive: false });
+    await copyFile(definition.supervisorEntryPath, backup.controller);
+    await copyFile(definition.supervisorManifestPath, backup.manifest);
+  } catch (error) {
+    return fail("backup", error, { source_commit: build.source_commit, supervisor_before: supervisorBefore, backup });
+  }
+
+  let stage: ControllerHandoffStage = "install";
+  try {
+    await replaceFileAtomic(sourceController, definition.supervisorEntryPath);
+    stage = "manifest";
+    await writeJsonAtomic(definition.supervisorManifestPath, {
+      ...manifest,
+      controller_source_commit: build.source_commit,
+      updated_at: (deps.now?.() ?? new Date()).toISOString()
+    });
+    stage = "restart";
+    const supervisorAfter = await restartSupervisor(definition);
+    stage = "verify";
+    if (!supervisorAfter.installed || !supervisorAfter.loaded || !supervisorAfter.pid || supervisorAfter.pid === supervisorBefore.pid) {
+      throw new Error("replacement supervisor did not start with a new verifiable PID");
+    }
+    const processIdentity = await inspectProcessIdentity(definition, supervisorAfter.pid);
+    if (!processIdentity.matches) throw new Error("replacement supervisor process identity does not match the installed controller");
+    const [verifiedDigest, verifiedManifest] = await Promise.all([
+      fileDigest(definition.supervisorEntryPath),
+      readJson<SupervisorManifest>(definition.supervisorManifestPath)
+    ]);
+    if (verifiedDigest !== sourceDigest || verifiedManifest?.controller_source_commit !== build.source_commit) {
+      throw new Error("replacement controller or manifest identity does not match the canonical current runtime");
+    }
+    return {
+      ok: true,
+      action: "controller_handoff",
+      outcome: "updated",
+      stage,
+      source_commit: build.source_commit,
+      controller_digest: sourceDigest,
+      backup,
+      supervisor_before: supervisorBefore,
+      supervisor_after: supervisorAfter,
+      process_identity: processIdentity,
+      boundary: CONTROLLER_HANDOFF_BOUNDARY
+    };
+  } catch (error) {
+    let controllerRestored = false;
+    let manifestRestored = false;
+    let supervisorRestored = false;
+    let rollbackError: string | undefined;
+    try {
+      await replaceFileAtomic(backup.controller, definition.supervisorEntryPath);
+      controllerRestored = true;
+      await replaceFileAtomic(backup.manifest, definition.supervisorManifestPath);
+      manifestRestored = true;
+      const restored = await restartSupervisor(definition);
+      const restoredIdentity = restored.pid ? await inspectProcessIdentity(definition, restored.pid) : { matches: false, command: "missing PID" };
+      supervisorRestored = restored.loaded && Boolean(restored.pid) && restoredIdentity.matches;
+      if (!supervisorRestored) throw new Error("restored supervisor state could not be verified");
+    } catch (rollbackFailure) {
+      rollbackError = rollbackFailure instanceof Error ? rollbackFailure.message : String(rollbackFailure);
+    }
+    return fail(stage, error, {
+      source_commit: build.source_commit,
+      controller_digest: sourceDigest,
+      backup,
+      supervisor_before: supervisorBefore,
+      rollback: {
+        attempted: true,
+        controller_restored: controllerRestored,
+        manifest_restored: manifestRestored,
+        supervisor_restored: supervisorRestored,
+        ...(rollbackError ? { error: rollbackError } : {})
+      }
+    });
+  }
+}
 
 export async function requestLocalDeployment(
   definition: ServiceDefinition,
@@ -318,6 +521,21 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   const temp = `${path}.${process.pid}.tmp`;
   await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await rename(temp, path);
+}
+
+async function fileDigest(path: string): Promise<string> {
+  return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function replaceFileAtomic(source: string, destination: string): Promise<void> {
+  const temp = `${destination}.${process.pid}.handoff.tmp`;
+  await mkdir(dirname(destination), { recursive: true });
+  try {
+    await copyFile(source, temp);
+    await rename(temp, destination);
+  } finally {
+    await rm(temp, { force: true }).catch(() => undefined);
+  }
 }
 
 function safeId(value: string): string {

@@ -1139,6 +1139,36 @@ async function inspectSupervisor(definition: ServiceDefinition, run: CommandRunn
   }, run);
 }
 
+export async function inspectServiceSupervisor(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<LaunchdStatus> {
+  return inspectSupervisor(definition, run);
+}
+
+export async function restartServiceSupervisor(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<LaunchdStatus> {
+  await startSupervisor(definition, run);
+  return inspectSupervisor(definition, run);
+}
+
+export async function inspectServiceSupervisorProcessIdentity(
+  definition: ServiceDefinition,
+  pid: number,
+  run: CommandRunner = runCommand
+): Promise<{ matches: boolean; command: string }> {
+  const result = await run("ps", ["-p", String(pid), "-o", "command="], { timeoutMs: 10000 });
+  const command = result.stdout.trim();
+  return {
+    matches: result.exitCode === 0
+      && command.includes(definition.supervisorEntryPath)
+      && command.includes(definition.supervisorManifestPath),
+    command: command || (result.stderr || "process identity unavailable").trim()
+  };
+}
+
 async function inspectLaunchdJob(
   job: { domain: string; label: string; plistPath: string },
   run: CommandRunner
