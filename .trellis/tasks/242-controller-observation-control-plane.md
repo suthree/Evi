@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: PRs #58 and #59 integrated; restart-semantics correction in progress; live acceptance pending
+Status: PRs #58 and #59 integrated; draft PR #60 restart-semantics correction under review; live acceptance pending
 
 ## Identity And Ownership
 
@@ -261,4 +261,11 @@ release, publication, or resumption of the stopped legacy goal.
   passes 891/891 tests plus skill and naming validation, and `git diff --check`
   passes. Dual review, integration, and live acceptance remain pending.
 - Correction commit `7409e3bc443db0ea40391bf8e3b7e21b16acb69b`
-  records the root cause in its message; PR creation and review remain pending.
+  records the root cause in its message; checkpoint commit
+  `78a58f5cde86ae437d5c53c2d8e7b7199f93adea` records the pre-PR diagnosis.
+  Both are linked through draft PR #60; review and integration remain pending.
+- A minimal live probe then directly kickstarted the still-backed-up installed
+  supervisor without unloading it. The job changed from PID 58525 to PID 75144
+  on the first attempt; runtime PID 7316, Web, and Feishu remained healthy, with
+  `deployment_stale` as the only expected health attention. This confirms the
+  loaded-restart mechanism but does not yet claim controller handoff acceptance.
