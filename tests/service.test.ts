@@ -365,6 +365,11 @@ test("service restart preserves installed current and previous bundles", async (
   const stateRoot = join(root, "state");
   const homeRoot = join(root, "home");
   const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  const isolatedDefinition = {
+    ...definition,
+    plistPath: join(homeRoot, "LaunchAgents/local.runtime.runtime.plist"),
+    supervisorPlistPath: join(homeRoot, "LaunchAgents/local.runtime.runtime.supervisor.plist")
+  };
   try {
     await mkdir(configDir, { recursive: true });
     await writeFile(join(configDir, "config.jsonl"), [
@@ -393,6 +398,7 @@ test("service restart preserves installed current and previous bundles", async (
       enableIm: false
     }, {
       platform: "darwin",
+      resolveDefinition: async () => isolatedDefinition,
       prepareRuntimeSource: async () => {
         prepareCalls += 1;
         throw new Error("restart must not build repo source");
@@ -409,6 +415,8 @@ test("service restart preserves installed current and previous bundles", async (
     assert.equal(prepareCalls, 0);
     assert.equal(result.runtime?.source_commit, "installed-commit");
     assert.equal(result.previous_runtime?.source_commit, "previous-commit");
+    assert.equal(result.plist_path, isolatedDefinition.plistPath);
+    assert.match(await readFile(isolatedDefinition.plistPath, "utf8"), /local\.runtime\.runtime/);
     assert.match(result.message ?? "", /repository source was not deployed/);
   } finally {
     await rm(root, { recursive: true, force: true });

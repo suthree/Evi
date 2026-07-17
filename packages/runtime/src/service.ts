@@ -192,11 +192,12 @@ export async function runServiceCommand(
     platform?: NodeJS.Platform;
     recordRollback?: typeof recordOperatorServiceRollback;
     prepareRuntimeSource?: typeof prepareServiceRuntimeSource;
+    resolveDefinition?: typeof resolveServiceDefinition;
   } = {}
 ): Promise<ServiceCommandResult> {
   const action = options.action;
   const validateRuntime = action === "install" || action === "start" || action === "restart";
-  const definition = await resolveServiceDefinition(options, validateRuntime);
+  const definition = await (deps.resolveDefinition ?? resolveServiceDefinition)(options, validateRuntime);
   const run = deps.run ?? runCommand;
   const platform = deps.platform ?? process.platform;
   const recordRollback = deps.recordRollback ?? recordOperatorServiceRollback;
