@@ -1012,7 +1012,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       {
         id: "runtime.sessions",
         title: "Runtime sessions and task runs",
-        summary: "Map provider-neutral runtime channel messages such as Feishu groups, Telegram chats, or Discord channels to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, classify explicit run triggers, mirror local runtime task queue status into append-only task-run history, and record task final/error communication in a provider-neutral outbox.",
+        summary: "Map provider-neutral runtime channel messages such as Feishu groups, Telegram chats, or Discord channels to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, classify explicit IM run triggers, and mirror legacy IM queue execution into append-only task-run and provider-neutral outbox history.",
         status: "implemented",
         commands: ["pnpm run runtime -- web", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: [
@@ -1044,13 +1044,13 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "local append-only state under the configured state root; not a hosted session database",
           "channel source route keys are provider-neutral and keep provider-specific IDs inside source mappings",
           "provider adapters normalize inbound messages before the shared dispatcher handles session binding, inbox append, and run trigger classification",
-          "explicit IM and web task runs append local queue rows and task-run rows for queued, running, and final states with one shared id",
+          "explicit legacy IM task runs append local queue rows and task-run rows for queued, running, and final states with one shared id; new Web submissions start standalone canonical Goals and do not enter this queue",
           "the task queue is a single-machine JSONL ledger with recoverable-task inspection and a resident daemon worker for stale queued/running entries",
           "queue recovery records final run status for self-contained runner tasks; Feishu/Telegram/Discord-sourced recovery replies can be queued for adapter replay, but cross-process scheduling is not implemented",
           "task final/error outcomes append to channels/outbox.jsonl as a provider-neutral local communication ledger; adapters still own real delivery and provider SDK details",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
-          "ordinary bound group messages append inbox entries only; model execution requires explicit /run, explicit mention, or a local web-console run"
+          "ordinary bound group messages append inbox entries only; legacy IM model execution requires explicit /run or explicit mention, while local Web execution is owned separately by web.console Goal ingress"
         ]
       },
       {
@@ -1090,11 +1090,12 @@ function entrypointsCategory(): CapabilityCategoryDraft {
       {
         id: "cli.live.pipeline",
         title: "Live and pipeline runs",
-        summary: "Run direct tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
+        summary: "Run direct Goal tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
         status: "implemented",
         commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline runs --pipeline <ref>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
-        refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
+        refs: ["packages/runtime/src/goal_ingress.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
         boundaries: [
+          "live starts one GoalRuntime identity and executes one bounded Continue without writing legacy runner state",
           "pipeline history exposes bounded blocked-tool diagnostic metadata with failure_kind and evidence counts without reading raw stage output, prompt, model, or tool artifacts",
           "pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"
         ]
@@ -1108,8 +1109,9 @@ function entrypointsCategory(): CapabilityCategoryDraft {
         refs: ["packages/runtime/src/web_console.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/runtime_daemon.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts", "tests/message_gateway.test.ts"],
         boundaries: [
           "localhost operator surface only; not a hosted, multi-user, authenticated, or desktop GUI",
-          "reads and writes only local runtime session/task state except when the operator submits an explicit Run action",
-          "task submission uses the existing LiveAgentRunner and records a local task-run index entry"
+          "session, inbox, and historical task-run surfaces remain local read models",
+          "new task submission starts one canonical Goal, executes one bounded Continue, and writes no legacy queue, task-run, or channel-outbox row",
+          "legacy runtime_session_id and execution_contract fields fail closed instead of being mapped into Goal authority"
         ]
       },
       {
@@ -1123,9 +1125,9 @@ function entrypointsCategory(): CapabilityCategoryDraft {
           "local single-user daemon only; not hosted service governance",
           "provider-neutral IM config selection supports Feishu, Telegram, and Discord kinds; all three are implemented",
           "channel adapters own provider-specific IDs and SDK details",
-          "the shared dispatcher standardizes inbound session routing and leaves execution durability to the local runtime task queue",
-          "the daemon queue worker consumes stale queued/running entries and writes services/<target>/task_queue.json status",
-          "task results are mirrored into the provider-neutral channel outbox; Feishu, Telegram, and Discord adapters can drain queued provider rows without making the daemon a provider send adapter",
+          "the shared dispatcher standardizes inbound IM session routing and leaves legacy IM execution durability to the local runtime task queue",
+          "the daemon queue worker runs only for the legacy IM path, consumes stale queued/running entries, and writes services/<target>/task_queue.json status",
+          "legacy IM task results are mirrored into the provider-neutral channel outbox; Feishu, Telegram, and Discord adapters can drain queued provider rows without making the daemon a provider send adapter",
           "this slice standardizes lifecycle and status; it does not yet provide a retry broker, durable cross-process task scheduling, Telegram features beyond the long-polling Bot API adapter, or Discord features beyond the Gateway/REST bot adapter"
         ]
       },

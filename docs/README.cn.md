@@ -105,13 +105,18 @@ active Continue command 的 canonical events 临时推导，不新增持久化�
 `used` 与本轮上限比较，下一次 Continue 从零开始本轮用量，但不会清空全程累计历史。
 
 当前 cutover 已覆盖显式本地 `goal start|continue|read|pause|resume|abandon`
-生命周期和 standalone `live` 入口。`live` 会用一个 Goal 身份执行一次有界 Continue；
-Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个 GoalRuntime
-Goal 双写，并会在后续子任务中按完整 Goal 身份切换。foreground Goal 也不会同步生成
-SOP/skill，学习将由后续 receipt-driven LearningRuntime 异步处理。
+生命周期、standalone `live` 入口以及 standalone/daemon Web 入口。`live` 和每个新的
+Web 提交都只用同一个 Goal 身份执行一次 Start 加一次有界 Continue；Web 返回 canonical
+`GoalView`，显示 `goal_id` 并指引 operator 使用 `goal continue` 或 `goal resume`。
+新的 Web 请求不写 legacy task queue、task-run、channel-outbox、episode、iteration、SOP、
+skill 或 deployment state；旧的 `runtime_session_id` 和 `execution_contract` 字段会明确
+拒绝，不会静默映射成 Goal 权限。历史 run/queue 和 session/inbox 仍可只读查看。IM 和 resident
+task queue 仍走 legacy runner，不能与同一个 GoalRuntime Goal 双写，并会在后续子任务中按
+完整 Goal 身份切换。foreground Goal 也不会同步生成 SOP/skill，学习将由后续
+receipt-driven LearningRuntime 异步处理。
 详细合同见 `docs/RUNTIME_CONTRACT.md` 的 `GoalRuntime Local Control Plane`。
 
-仍由 Web、IM、daemon 和 resident worker 使用的 legacy `LiveAgentRunner` context
+仍由 IM、daemon resident worker 使用的 legacy `LiveAgentRunner` context
 在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
 `total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
 `focused`、`governance` 或 `recovery` 注意力 profile；普通 legacy runner 任务不再常驻加载治理、trace、
@@ -267,13 +272,14 @@ pnpm run runtime -- doctor --no-auth --no-im
 pnpm run runtime -- live --task "Verify the local agent runtime." --state-root .runtime/state
 ```
 
-`live` 现在会创建一个 GoalRuntime Goal，并在同一次命令中只执行一个有界
-Continue tranche。若返回 `active` 或 `paused`，应保留同一个 `goal_id`，再使用
-`goal continue` 或 `goal resume`；不能新建替代任务。`--query-todo` 属于旧 runner，
-在 `live` 上会在创建 Goal 前明确拒绝，避免同一个目标同时写入两套控制面。
-Web、IM、daemon 和 resident task queue 仍等待各自的完整入口切换。
+`live`、standalone `web` 和 daemon-hosted Web 现在都会创建一个 GoalRuntime Goal，并且
+每次新 Web 提交只执行一次 Start 加一个有界 Continue tranche。若返回 `active` 或
+`paused`，应保留同一个 `goal_id`，再使用 `goal continue` 或 `goal resume`；不能新建
+替代任务。Web 不写 legacy queue/task-run/channel-outbox state，但历史 run/queue 仍可查看。
+`--query-todo` 属于旧 runner，在 `live` 上会在创建 Goal 前明确拒绝，避免同一个目标同时
+写入两套控制面。IM 和 resident task queue 仍等待各自的完整入口切换。
 
-查看仍由 Web、IM、daemon 等 legacy runner 生成的最近 run trace：
+查看仍由 IM、daemon 等 legacy runner 生成的最近 run trace：
 
 ```bash
 pnpm run runtime -- review traces --state-root .runtime/state
@@ -354,15 +360,16 @@ route key、inbox 和 task run 都从这个结构派生，避免把 Feishu `chat
 `/session use`、pending session 创建、inbox append，以及 `/run` 或 mention
 触发分类。Adapter 只保留平台解析和回复发送。
 
-IM 或 Web console 触发的显式任务会先写入本地 runtime task queue，然后同步
-领取同一条任务并调用 runner。task-run index 会用同一个 id 追加 `queued`、
-`running` 和最终状态，供 Web GUI/history 展示；queue read model 也能列出
-queued 或 stale running 任务。常驻 daemon 已有一个有界 queue worker，会消费
-过期 queued/running 项并写回最终 task-run 状态。Feishu/Telegram/Discord 来源的
-recovery 结果会以 queued outbound row 写入统一 `channels/outbox.jsonl`，再由
-对应 Adapter 投递回原会话；Web 和直接 Adapter 回复会记录本地 sent row。真实
-发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不属于当前
-channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询反复处理。
+legacy IM 触发的显式任务会先写入本地 runtime task queue，然后同步领取同一条
+任务并调用 runner。task-run index 会用同一个 id 追加 `queued`、`running` 和最终
+状态，供 Web 查看历史；queue read model 也能列出 queued 或 stale running 任务。
+常驻 daemon 只在 legacy IM 启用时启动有界 queue worker，消费过期 queued/running
+项并写回最终 task-run 状态。Feishu/Telegram/Discord 来源的 recovery 结果会以
+queued outbound row 写入统一 `channels/outbox.jsonl`，再由对应 Adapter 投递回原
+会话；直接 Adapter 回复会记录本地 sent row。新的 Web Goal 不进入这条 queue 或
+outbox 链。真实发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不
+属于当前 channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询
+反复处理。
 
 daemon 停止时，queue worker 会先拒绝新 tick，等待 startup/current run 与已开始的
 status 写入完成，再同步落盘 `stopped`；daemon 会等待该 stop promise。heartbeat
@@ -371,7 +378,7 @@ status 写入完成，再同步落盘 `stopped`；daemon 会等待该 stop promi
 
 任务状态只读取 live run 的结构化 `completion_status` 与
 `verification_status`，不会再从 verdict 文本中搜索 `blocked`、`failed` 或
-`unverified`。结构化 `not_done`/`blocked` 的 Web/IM 任务会保留同一个 task id、
+`unverified`。结构化 `not_done`/`blocked` 的 legacy IM 任务会保留同一个 task id、
 runtime session、worktree、首次 live session、working-checkpoint ref 和最新
 `next_action`，并把同一条 queue entry 重新排队；不会创建替代 continuation
 任务。checkpoint 带有非空实际 `worktree` 时，settlement 会先用它更新 queue；
@@ -379,14 +386,17 @@ checkpoint 缺失该字段（包括旧记录）时则保留 queue 现有路径�
 prompt 会携带更新后的稳定字段和当前 attempt，最多领取三次；
 第三次仍未完成时进入终态 `blocked`，后续 tick 不再重复执行。
 
-localhost Web API 的 `POST /api/runs` 还可以为单个任务显式提交结构化
-`execution_contract`。它必须记录 operator Decision Owner、authority basis、允许/
+历史 legacy queue row 可能保留单任务结构化 `execution_contract`；这是 daemon
+recovery 的兼容读取能力，不是当前 ingress 可以创建的新授权入口。该快照必须记录
+operator Decision Owner、authority basis、允许/
 禁止效果、外部命令 allowlist、禁止参数、model-round/tool-call 预算、side-effect
 ceiling，并同时要求 `operator_confirmed=true`、`expires_with_task=true`。该快照会随
 append-only queue row 持久化，在同步执行和 daemon resume 中保持同一份身份；不会从
 自由文本推断权限，也不是全局角色或可复用授权。runtime 会计算 SHA-256
 `authority_digest`；持久化内容与 digest 不一致时，read model 会 fail closed，不保留该
-授权。
+授权。当前 IM enqueue 路径不接受或创建该快照；新的 Web `POST /api/runs` 也明确拒绝
+`execution_contract` 和 `runtime_session_id`，直接启动由 `GoalRuntime` 管理 effect
+confirmation 的独立 Goal。
 
 runner 会把同一快照写入 turn context，并在工具执行前硬拦超过 ceiling、超过
 tool-call 预算、任意直接 `command.run` 中的禁止参数，或未进入外部命令 allowlist
@@ -396,8 +406,8 @@ fail closed 拒绝 shell、通用解释器、`code.execute_node` 以及 package-
 等间接命令载体；外部操作必须使用直接 binary argv，不能把 `gh` 或 `git push` 藏在
 脚本字符串中。外层 task contract 不会削弱
 `codex.run` 自己的 immutable worktree/model/sandbox/budget authority snapshot，最终
-完成判断仍属于 `main_harness`。未提交 `execution_contract` 的旧客户端保持原有本地
-任务行为，也不会自动获得 external-write 权限；完整 JSON 形状见
+完成判断仍属于 `main_harness`。当前 IM 任务保持原有本地 runner 行为，也不会自动获得
+external-write 权限；历史兼容 JSON 形状见
 `docs/LOCAL_RUNTIME.md`。
 
 固定 workspace git 诊断会为 `git status --porcelain=v1 -b` 强制设置

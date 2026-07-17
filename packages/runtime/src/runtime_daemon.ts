@@ -13,6 +13,7 @@ import { createRuntimeImAdapter } from "./im_adapters.js";
 import type { ImScenarioConfig } from "./im_config.js";
 import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "./model.js";
 import { createReviewTickLoop } from "./review_tick_service.js";
+import { createConfiguredGoalIngress, type GoalIngressPort } from "./goal_ingress.js";
 import { LiveAgentRunner, type DisciplineMode } from "./runner.js";
 import { createRuntimeTaskQueueWorker } from "./runtime_task_queue_worker.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
@@ -54,21 +55,23 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   const target = args.target ?? "runtime";
   const repoRoot = resolve(args.repoRoot);
   const store = new AgentStore(repoRoot, args.config.state.root);
-  const model = new OpenAICompatibleClient(args.config.model);
-  const runner = new LiveAgentRunner({
-    repoRoot,
-    stateRoot: args.config.state.root,
-    config: args.config,
-    configDir: args.configDir,
-    model,
-    discipline: args.discipline ?? "query_todo"
-  });
+  const legacyImEnabled = args.im?.enabled !== false && Boolean(args.im?.scenario);
+  const legacyRunner = legacyImEnabled
+    ? new LiveAgentRunner({
+        repoRoot,
+        stateRoot: args.config.state.root,
+        config: args.config,
+        configDir: args.configDir,
+        model: new OpenAICompatibleClient(args.config.model),
+        discipline: args.discipline ?? "query_todo"
+      })
+    : null;
   const adapters: RuntimeChannelAdapter[] = [];
 
-  if (args.im?.enabled !== false && args.im?.scenario) {
+  if (legacyRunner && args.im?.scenario) {
     adapters.push(createRuntimeImAdapter({
       scenario: args.im.scenario,
-      runner,
+      runner: legacyRunner,
       store,
       vaultRoot: args.config.vault,
       homeRoot: args.config.home.root,
@@ -77,9 +80,14 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   }
 
   if (args.web?.enabled) {
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot,
+      configDir: args.configDir,
+      stateRoot: args.config.state.root
+    });
     adapters.push(createWebConsoleChannel({
       store,
-      runner,
+      goalIngress,
       host: args.web.host,
       port: args.web.port
     }));
@@ -161,13 +169,15 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     browserCdpPort: args.config.runtime.content_creator_metrics_browser_cdp_port,
     statusRef: serviceRef(target, "content_creator_metrics.json")
   });
-  const taskQueueWorker = createRuntimeTaskQueueWorker({
-    store,
-    runTask: async (task, entry) => runner.runTask(task, {
-      executionContract: entry.execution_contract ?? undefined
-    }),
-    statusRef: serviceRef(target, "task_queue.json")
-  });
+  const taskQueueWorker = legacyRunner
+    ? createRuntimeTaskQueueWorker({
+        store,
+        runTask: async (task, entry) => legacyRunner.runTask(task, {
+          executionContract: entry.execution_contract ?? undefined
+        }),
+        statusRef: serviceRef(target, "task_queue.json")
+      })
+    : null;
 
   await heartbeat.write("starting");
   try {
@@ -177,7 +187,7 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     throw error;
   }
   heartbeat.start();
-  taskQueueWorker.start();
+  taskQueueWorker?.start();
   reviewTickLoop.start();
   contentDailyLoop.start();
   contentFeedbackRefreshLoop.start();
@@ -194,7 +204,7 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
           contentDailyLoop.stop();
           reviewTickLoop.stop();
           await Promise.all([
-            taskQueueWorker.stop(),
+            ...(taskQueueWorker ? [taskQueueWorker.stop()] : []),
             heartbeat.stop()
           ]);
           await heartbeat.write("stopping");
@@ -216,7 +226,7 @@ export async function serveRuntimeDaemon(args: RuntimeDaemonOptions): Promise<vo
 
 function createWebConsoleChannel(args: {
   store: AgentStore;
-  runner: LiveAgentRunner;
+  goalIngress: GoalIngressPort;
   host?: string;
   port?: number;
 }): RuntimeChannelAdapter {
@@ -233,20 +243,7 @@ function createWebConsoleChannel(args: {
           store: args.store,
           host: args.host,
           port: args.port,
-          runTask: async (task, runArgs) => {
-            const runnerTask = runArgs.runtimeSessionId
-              ? [
-                  "Runtime session task submitted from the local web console.",
-                  `Runtime session ID: ${runArgs.runtimeSessionId}`,
-                  "",
-                  "Task:",
-                  task
-                ].join("\n")
-              : task;
-            return args.runner.runTask(runnerTask, {
-              executionContract: runArgs.executionContract ?? undefined
-            });
-          }
+          goalIngress: args.goalIngress
         });
       } catch (caught) {
         error = caught instanceof Error ? caught.message : String(caught);

@@ -1,6 +1,6 @@
 # Task 253: Web Goal Ingress
 
-Status: active
+Status: verified; integration and live acceptance pending
 
 ## Identity And Ownership
 
@@ -91,4 +91,42 @@ only for deferred legacy IM work during this transition.
 
 ## Verification Evidence
 
-- Pending implementation.
+- Governance activation commit `7d5d6e56c0ba5fa59766d1949a5868b806945e71`
+  records Task252 completion and activates this bounded task before code
+  mutation.
+- Evi architecture Goal `goal_20260717232223_3b86c0a4` was explicitly
+  abandoned with receipt `goal_receipt_20260717232409_378e0d78` after three
+  navigation tranches and nine read-only calls did not reach implementation;
+  it made no repository change.
+- Replacement Goal `goal_20260717232424_b109a6bb` proposed one exact
+  `codex.run`, confirmed only after Codex supervisor review. The bounded run
+  timed out at 300 seconds but event
+  `goal_event_20260717232946_199c1ac6` retained 11 attributable workspace
+  paths. Codex supervisor inspected and repaired that diff rather than starting
+  another implementation thread. Evi later proposed a second resume effect;
+  it was not confirmed because this task permits one coding delegation. The
+  Goal was explicitly abandoned with receipt
+  `goal_receipt_20260717233511_bf305e2c`; it is not represented as accepted.
+- The configured GoalRuntime factory and Start-plus-one-Continue protocol now
+  live in runtime-owned `goal_ingress.ts`. CLI `goal` and `live`, standalone
+  Web, and daemon-hosted Web reuse that seam.
+- New Web submissions return canonical `GoalView` plus same-goal guidance and
+  write no legacy queue, task-run, or channel-outbox rows. Web-only daemon mode
+  does not construct `LiveAgentRunner` or start the legacy queue worker. IM
+  mode retains both unchanged.
+- Legacy `runtime_session_id` and `execution_contract` Web fields fail closed
+  before Goal creation instead of losing context or authority silently.
+- Focused Goal CLI, Web, daemon, and capability suite passed 24/24. TypeScript and
+  `git diff --check` passed.
+- Full repository `pnpm run check` passed: build, 956/956 tests, skill
+  validation, and neutral naming across 130 implementation files.
+- Initial independent Spec and Standards reviews found the same two current-fact
+  gaps: fixed Web continuation guidance and stale Web queue documentation.
+  Status-aware HTTP/UI coverage now includes active, manual pause, exact effect
+  confirmation, outcome-unknown, completed, and abandoned views. A follow-up
+  Standards review also caught that `execution_contract` is historical queue
+  recovery compatibility rather than a current IM ingress; the stable English
+  and Chinese contracts now state that current Web and IM paths cannot create
+  it. Final independent Spec and Standards re-reviews both passed with no
+  remaining actionable finding. PR integration, exact-commit deployment,
+  controller handoff, service health, and real Web acceptance remain pending.

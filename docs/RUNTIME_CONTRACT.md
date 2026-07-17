@@ -430,8 +430,8 @@ failure kind, and bounded refs survive truncation. Free-text substring matches a
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.
 
-Current cutover includes the explicit local `goal` lifecycle and the standalone
-`live` convenience ingress:
+Current cutover includes the explicit local `goal` lifecycle, the standalone
+`live` convenience ingress, and the local Web ingress:
 
 ```bash
 pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree]
@@ -450,11 +450,21 @@ It does not translate the Goal into a legacy `RunResult`, automatically run
 additional tranches, or write query/todo discipline; `live --query-todo` fails
 before GoalRuntime construction instead of silently dual-writing old state.
 
-Web, IM, daemon, and resident task-queue work remain on the legacy runner in
-this bounded slice. Their later cutover must happen by whole goal identity and
-retire the relevant queue/session orchestration rather than map one Goal into
-both owners. Foreground learning remains deferred to a receipt-driven
-asynchronous `LearningRuntime`.
+`POST /api/runs` in both standalone `web` and daemon-hosted Web uses that same
+canonical Goal ingress: it issues exactly one Start and one Continue, returns
+the canonical `GoalView`, and renders the returned `goal_id` with an explicit
+`goal continue`/`goal resume` instruction. New Web submissions write no legacy
+task queue, task-run, channel-outbox, completion, episode, iteration, SOP,
+skill, or deployment state. Session, inbox, and historical run/queue read
+surfaces remain readable; the Web request does not bind a new Goal to a session.
+Legacy `runtime_session_id` and `execution_contract` request fields fail closed
+instead of being ignored or translated into Goal authority.
+
+IM and the resident task queue remain on the legacy runner in this bounded
+slice. Their later cutover must happen by whole goal identity and retire the
+relevant queue/session orchestration rather than map one Goal into both owners.
+Foreground learning remains deferred to a receipt-driven asynchronous
+`LearningRuntime`.
 
 ### Basic Entrypoints
 
@@ -508,8 +518,9 @@ reply transport logic, but must not reimplement session-routing rules.
 
 The local web console is also a first-version basic entrypoint. `web` starts a
 localhost-only operator surface over runtime sessions, channel inbox entries,
-profile binding, and task-run history. It may submit an explicit local task run
-through the existing live runner. Profile binding must use the same
+profile binding, task-run history, and canonical Goal submission. It submits a
+new Goal through one Start plus one Continue and returns its `GoalView`; it does
+not invoke the live runner or write a new task-run row. Profile binding must use the same
 provider-neutral route key shape as Feishu, Telegram, and Discord channel
 sources. Under `daemon serve`, the same console is a Web channel adapter
 managed by the `MessageGateway`. It is not a hosted, multi-user, authenticated,
@@ -521,27 +532,28 @@ route key. Unknown Feishu groups can be bootstrapped only by an authorized
 operator and start as pending/unassigned. A profile can be bound through
 `/session use <profile>` in the group or through the web console. Ordinary
 bound group messages append session inbox entries; model execution requires
-`/run <task>`, an explicit mention, an authorized private/direct task, or a web
-console Run action. Explicit task runs append `queued`, `running`, and final
+`/run <task>`, an explicit mention, or an authorized private/direct task.
+Explicit IM task runs append `queued`, `running`, and final
 task-run rows with the same run id; read models show the latest status per run
 id.
 
-Explicit IM and web-console task runs also write a local runtime task queue
+Explicit IM task runs write a local runtime task queue
 ledger under `runs/task_queue.jsonl`. The queue is single-machine and
 append-only: enqueue, strict claim, recoverable claim, complete, fail, list, and
-recoverable-task inspection. Feishu group runs and web-console runs
-synchronously claim their own queued task before invoking the runner, while the
-task-run index mirrors `queued`, `running`, and final rows for GUI/history
-visibility. The resident daemon also runs a bounded queue worker that consumes
+recoverable-task inspection. Feishu group runs synchronously claim their own
+queued task before invoking the runner, while the task-run index mirrors
+`queued`, `running`, and final rows for historical visibility. The resident
+daemon also runs a bounded queue worker that consumes
 stale queued or stale running entries and writes `services/<target>/task_queue.json`
 status. This is local durability and best-effort recovery for self-contained
 runner tasks, not a remote broker, cancellation system, or multi-process
 scheduler.
 
-A localhost `POST /api/runs` may optionally carry an explicit
-`execution_contract` for one operator-confirmed task. The append-only queue row
-stores that contract with the task and preserves it during direct execution and
-daemon recovery. The contract names the operator as Decision Owner, records the
+Historical legacy queue rows may retain an explicit `execution_contract` for
+one operator-confirmed task. The append-only queue read model preserves that
+stored contract during daemon recovery. This is compatibility for existing
+rows, not a current Web or IM ingress capability. The contract names the
+operator as Decision Owner, records the
 authority basis, allowed and forbidden effects, an external-command allowlist,
 forbidden arguments for every direct command, model-round and tool-call budgets, and a side-
 effect ceiling. It must state `operator_confirmed=true` and
@@ -560,8 +572,10 @@ indirection so external tools cannot be hidden inside script text instead of
 direct binary argv. A rejection is a failed harness tool result and therefore
 cannot support a false `done` claim. The outer task contract does not weaken the
 narrower immutable `codex.run` authority snapshot or move completion authority
-away from `main_harness`. Requests without `execution_contract` keep the legacy
-local runner behavior and do not receive external-write authority.
+away from `main_harness`. Current IM enqueue paths do not accept or create an
+`execution_contract`; their tasks keep the legacy local runner behavior and do
+not receive external-write authority. New Web submissions reject the field and
+use GoalRuntime effect confirmation instead.
 
 Queue-worker shutdown clears future ticks, rejects new runs, waits for the
 startup/current run and every accepted status write, then persists `stopped`
@@ -574,7 +588,7 @@ Queue completion is derived only from the structured live-run
 `completion_status` and `verification_status`; verdict prose never changes a
 task to `done`, `blocked`, or `failed`. A verified structured `done` completes
 the task, a structured `done` with failed or skipped verification fails it,
-and `not_done` or `blocked` remains unfinished. An unfinished Web or IM run
+and `not_done` or `blocked` remains unfinished. An unfinished legacy IM run
 retains the same task id, runtime session id, worktree, first live session id,
 working-checkpoint ref, and latest concrete `next_action`. It requeues that same
 entry for a later stale-queue resume and stops after at most three claimed
@@ -597,9 +611,9 @@ completion and verification statuses plus the selected checkpoint ref and
 next action, and the checkpoint's optional actual worktree, so the local queue
 can persist continuity without reading verdict text.
 
-Outbound task communication also has a provider-neutral local ledger under
-`channels/outbox.jsonl`. Feishu final/error replies, web-console final/error
-responses, and daemon recovery final/error outcomes append rows with source
+Outbound legacy IM communication also has a provider-neutral local ledger under
+`channels/outbox.jsonl`. Feishu final/error replies and daemon recovery
+final/error outcomes append rows with source
 kind, source route/source key when available, runtime session id, task run id,
 reply purpose, text, provider delivery ref when a real adapter sent the reply,
 and status. Feishu/Telegram/Discord-sourced daemon recovery rows are queued for adapter
