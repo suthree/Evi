@@ -1,6 +1,6 @@
 # Product Vision: One Persistent Self, Many Doors, Context-Placed Execution
 
-Status: completed; operator checkpoint
+Status: review / integration requested
 
 ## Identity And Ownership
 
@@ -15,7 +15,7 @@ Status: completed; operator checkpoint
   product discussion and requested that it be persisted in product documents
   and the related evolution plan.
 - Capability layer: boundary.
-- Base: `d994c3b` on `develop`.
+- Base: `690c2e8f50c72146650fb043fb8937f7191565ff` on `develop`.
 - Branch: `codex/product-vision-one-self-many-doors-20260716`.
 - Worktree: `.worktrees/product-vision-one-self-many-doors-20260716`.
 
@@ -143,6 +143,11 @@ not mutually exclusive identities.
   entrypoints, one Trellis decision, and this task record changed. Runtime code,
   v0.1 contract, v0.2 design/spec, dependencies, service state, and deployment
   state remain unchanged.
-- No commit, push, pull request, merge, deploy, restart, or external publication
-  was requested or performed. The bounded branch remains at an operator
-  checkpoint for review.
+- Independent post-rebase `git diff --check` exited `0`.
+- The full post-rebase `pnpm run check` exited `0`; its output was truncated, so
+  no exact test or file total is claimed for that run.
+- The local Product Vision commit was rebased to
+  `132f5830101faab258e57c40bd47cbadff9bc15e`.
+- The post-rebase worktree was clean.
+- Push, pull request, merge, deploy, restart, and external publication remain
+  pending and were not performed.
