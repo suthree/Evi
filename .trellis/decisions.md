@@ -1,5 +1,48 @@
 # Decisions
 
+## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
+
+The operator accepts Evi's long-term product identity as a local-first general
+agent brain, not a new universal workbench, a shallow model/agent aggregator,
+or one independent personality per workspace or channel. One persistent Evi
+self owns durable goals, raw memory, result acceptance, and learning judgment.
+Central Web, Desktop, IM mentions, IDEs, browsers, CLI, APIs, connectors, and
+host tools are contextual doors into that same self; they do not own parallel
+runtime state.
+
+Local-first means self sovereignty and a trusted default home, not forced
+all-local execution. The task's authoritative context, credentials, data
+gravity, availability, and environment determine whether a run executes on the
+local machine, a remote node, a hosted specialist agent, or a vertical SaaS.
+Those targets are workers or execution environments. They may receive bounded
+task context and checkpoints, but they do not become another Evi self. The
+parent Evi retains goal continuity, outcome attribution, completion acceptance,
+and capability learning.
+
+Capability management is split into infrastructure and intelligence. Catalogs,
+source identity, conflict checks, immutable projection, activation receipts,
+and rollback make assets portable and operable; they are not evidence that Evi
+has learned. Learning requires verified outcomes and a Tool Competence Model
+that captures when, where, and under which conditions to use a tool, connector,
+specialist agent, execution environment, Skill, or SOP, including confidence,
+failure, fallback, revision, and retirement evidence.
+
+Broad trusted local authority does not remove the harness. In this product
+direction, the harness is also the experiment record for task identity,
+compiled context, selected environment and capabilities, outcome contract,
+evidence, attribution, and recovery. Permission breadth is not a learning or
+completion metric.
+
+This decision supersedes the earlier long-term dependency order that placed a
+full Capability Manager MVP before Cognitive Continuity. After current gates,
+the preferred direction is Session Runtime Foundation, then Cognitive
+Continuity and Outcome Attribution, then Capability Intelligence and Tool
+Mastery, then Multi-Environment Delegated Execution, and finally broad Presence
+and Product Expansion. Thin real-world entry surfaces may continue earlier to
+produce evidence. Already accepted v0.2 capability-infrastructure work still
+finishes its own gates; this decision does not rewrite the implemented v0.1
+contract, expand v0.2 scope, or activate a new implementation slice.
+
 ## 2026-07-16 Engineering Governance And Delivery Truth
 
 Evi uses subject-specific sources of truth instead of one document that tries

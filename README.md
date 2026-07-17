@@ -6,6 +6,11 @@ actions, evidence, verification, and a response. The approved v0.2 direction
 adds private, Git-backed reusable asset distribution without sharing runtime
 state or turning Evi into a hosted multi-user control plane.
 
+The accepted longer-term vision keeps one persistent local-first Evi self while
+allowing many contextual entry surfaces and local, remote, hosted-agent, or
+specialist-SaaS execution environments. That direction does not expand the
+implemented v0.1 contract or the accepted v0.2 delivery scope.
+
 ## Start here
 
 - Chinese operator entrypoint: [docs/README.cn.md](docs/README.cn.md)

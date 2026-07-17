@@ -8,7 +8,7 @@
 
 已经确认的 v0.2 方向会通过私有 LuBan Git 仓库分发经过晋升的可复用 Agent 资产，但执行、原始记忆和 runtime state 继续保留在节点本地。它仍不是托管服务、多用户 bot、公开 marketplace 或共享 runtime state 的分布式平台。详细方案见 [`V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md)。
 
-更长期的产品、多 Session、Context、Harness、Capability Manager 和 LuBan 边界见 [`PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md)。该愿景不代表相关功能已经实现；在自进化、自迭代基础闭环和当前目标 gate 完成前，不启动大范围新产品面。
+更长期的产品方向是一个本地优先的持久 Evi Self，通过中央控制台、IM mention、IDE、浏览器、CLI、API 和 Connector 等多个现场入口被唤醒，并根据 Context 在本机、远程 Node、托管 Agent 或专业 SaaS 中执行。Capability Manager 同时区分资产基础设施与真正的 Tool Competence 学习。详细边界见 [`PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md)。该愿景不代表相关功能已经实现，也不扩大 v0.1 或已接受 v0.2 的当前交付范围；在自进化、自迭代基础闭环和当前目标 Gate 完成前，不启动大范围新产品面。
 
 ## 第一版闭环
 

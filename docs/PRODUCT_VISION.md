@@ -4,9 +4,10 @@ Status: accepted long-term direction; not an implemented runtime contract or
 an authorization to start every surface described here.
 
 This document defines what Evi should grow into after its self-evolution and
-self-iteration foundation is proven. It aligns product surfaces, multi-session
-semantics, context, harness, memory, delegation, and the Evi/LuBan boundary
-without turning them into a speculative backlog.
+self-iteration foundation is proven. It aligns one persistent self, many entry
+surfaces, context-placed execution, multi-session semantics, harness, memory,
+delegation, tool competence, and the Evi/LuBan boundary without turning them
+into a speculative backlog.
 
 The Simplified Chinese companion is
 [`docs/PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md).
@@ -28,10 +29,16 @@ gate.
 
 ## North Star
 
-Evi should become a local-first personal agent operating system: one durable,
-self-growing Evi that can understand goals, operate across workspaces, execute
-bounded work, preserve continuity, manage reusable capabilities, and explain
-what happened with evidence.
+Evi should become a local-first general-agent brain: one durable, self-growing
+Evi that can understand goals, operate across workspaces, learn how to use
+tools and specialist agents well, choose an execution environment that matches
+the task context, preserve continuity, and explain what happened with evidence.
+
+The product shape is **one brain, many doors, and many execution
+environments**. Evi may be invoked from a central console, IM mention, IDE,
+browser, CLI, API, connector, or another host tool. Those surfaces bind context
+to the same self; they do not create independent Evi personalities or state
+owners.
 
 It is not a separate personality for every workspace. Workspaces, goals,
 sessions, and runs are scoped operating contexts around one persistent self.
@@ -40,29 +47,35 @@ hosted multi-user control plane.
 
 The product promise is:
 
-> Give one trusted Evi durable goals, explicit context and authority, verifiable
-> execution, recoverable continuity, and a governed path to learn and reuse
-> better ways of working.
+> Give one trusted Evi durable goals, explicit context, verifiable execution,
+> recoverable continuity, and a governed path to learn when, where, and how to
+> use tools and specialist agents better.
 
 ## Product Principles
 
 1. **One self, many scoped contexts.** Identity is stable; workspace, goal,
    session, and node overlays are explicit and inspectable.
-2. **The runtime owns truth.** Every UI is a client of the resident runtime,
-   never a second state owner.
-3. **Context is compiled, not accumulated.** A model turn receives a bounded,
+2. **One logical brain, many physical doors.** Web, Desktop, IM mentions, IDEs,
+   browsers, connectors, CLI, and APIs are bindings into the same Evi.
+3. **Local self, context-placed execution.** The trusted local home is the
+   default owner of self, goals, raw memory, and learning judgment. Work may run
+   locally, near remote data, in a hosted agent, or inside a specialist SaaS.
+4. **The runtime owns truth.** Every UI and host binding is a client of the
+   resident runtime, never a second state owner.
+5. **Context is compiled, not accumulated.** A model turn receives a bounded,
    immutable context snapshot selected for the current purpose.
-4. **Authority is frozen per run.** The harness records exactly what a run may
-   use, change, spend, and claim.
-5. **Communication is typed.** Sessions exchange tasks, results, events, and
+6. **The harness is an operating and learning record.** Even under broad trusted
+   local authority it freezes the task, context, environment, selected tools,
+   budgets, outcome contract, evidence, and recovery expectations.
+7. **Communication is typed.** Sessions exchange tasks, results, events, and
    artifact references instead of copying entire prompts or memory stores.
-6. **Memory is not a message bus.** Operational coordination, historical
+8. **Memory is not a message bus.** Operational coordination, historical
    recall, stable documentation, and reusable capability assets have different
    owners.
-7. **Evi decides; LuBan preserves accepted assets.** Lifecycle judgment stays
+9. **Evi decides; LuBan preserves accepted assets.** Lifecycle judgment stays
    with Evi. LuBan provides canonical Git identity and history.
-8. **Evidence before surface area.** More sessions, skills, and screens are not
-   progress unless completion, recovery, and outcomes improve.
+10. **Evidence before surface area.** More sessions, skills, connectors, and
+    screens are not progress unless completion, recovery, and outcomes improve.
 
 ## Product Surfaces
 
@@ -73,13 +86,38 @@ All surfaces use one headless Evi Daemon/Gateway and its versioned contracts.
 | Evi Daemon/Gateway | Own sessions, runs, queue, context assembly, harness, evidence, memory selection, and capability activation | The only active runtime-state owner |
 | Web Console/PWA | Primary operator workspace for goals, sessions, evidence, capabilities, nodes, and approvals | Does not implement a parallel runtime or planning database |
 | Thin Desktop shell | Add tray presence, notifications, keychain, file pickers, OS permissions, and local computer-use integration | Reuses the daemon and Web UI; no second execution engine |
-| IM adapters | Fast task intake, progress, approval, and notification | Bounded commands and views; not the full control plane |
+| IM adapters and mentions | Contextual invocation, conversation continuity, progress, and result delivery in the current work surface | Rich host context but no independent runtime state or control plane |
+| Host bindings, connectors, and MCP-style adapters | Bring referenced host context and actions to Evi, or return artifacts to the host | Integration and execution surfaces; never a second self or memory owner |
 | CLI/API | Diagnosis, automation, recovery, scripting, and contract-level access | Remains stable even when GUI surfaces change |
 
-The Web Console should be the primary product surface because it can express
-long-running state, parallel sessions, evidence, and configuration without
-duplicating operating-system integration. A desktop shell should be added only
-when native integration creates concrete value.
+The Web Console should be the primary control and inspection surface because it
+can express long-running goals, parallel sessions, evidence, capability growth,
+and execution placement without duplicating operating-system integration. It is
+not the sole task-entry surface. IM and host bindings may be deep contextual
+doors into Evi as long as the runtime remains the state owner. A desktop shell
+should be added only when native integration creates concrete value.
+
+## Entry, Context, and Execution Placement
+
+Product design must keep four questions separate:
+
+1. where the operator invokes Evi;
+2. where Evi's self, durable goals, memory, and learning judgment live;
+3. where the task's authoritative context and credentials live;
+4. where the work should execute.
+
+Local-first means self sovereignty and a trusted default home, not forced
+all-local computation. File organization and desktop use naturally execute on
+the local machine. Remote development may execute next to the server checkout.
+Long-running or webhook-driven work may continue on a resident remote node.
+Connector and specialist-SaaS work may execute against cloud-owned data. A
+mixed task may be planned and accepted by the home Evi while a remote or hosted
+worker performs the bounded run.
+
+Remote nodes, hosted agents, and specialist SaaS products are execution
+environments or cognitive workers. They may hold a bounded checkpoint and task
+context, but they do not become another Evi self. The parent Evi retains goal
+continuity, result acceptance, outcome attribution, and capability learning.
 
 ## Runtime Domain Model
 
@@ -91,6 +129,10 @@ flowchart TD
   Goal --> Session["Conversation Session"]
   Session --> Run["Task Run"]
   Run --> Turn["Model Turn"]
+  Run --> Target["Execution Target"]
+  Target --> Local["Local Machine"]
+  Target --> Remote["Remote Node"]
+  Target --> Hosted["Hosted Agent or Specialist SaaS"]
   Session --> Worker["Child Worker Session"]
   Worker --> ChildRun["Child Task Run"]
 ```
@@ -122,8 +164,8 @@ its checkpoint, selected working context, and its run history.
 
 A durable execution attempt with explicit states such as `queued`, `running`,
 `waiting`, `blocked`, `done`, `failed`, and `cancelled`. A run binds one context
-snapshot, one harness lock, attempts, node, workspace/worktree, results, and
-completion evidence.
+snapshot, one harness lock, attempts, execution target, node,
+workspace/worktree, results, and completion evidence.
 
 ### Model Turn
 
@@ -132,9 +174,10 @@ must not silently change the session's harness or goal.
 
 ### Worker Session
 
-A parent-linked, isolated execution context for delegated work. It has a
-bounded task, context, harness, workspace/worktree, and result contract. Its
-output is advisory until the parent run verifies and accepts it.
+A parent-linked, isolated execution context for delegated work. It may use a
+local worker, remote node, hosted agent, or specialist cognitive runtime. It has
+a bounded task, context, harness, workspace/worktree or host binding, and result
+contract. Its output is advisory until the parent run verifies and accepts it.
 
 ## Context Architecture
 
@@ -177,6 +220,11 @@ existing evidence and recovery semantics; this document does not choose its
 schema.
 
 ## Harness Architecture
+
+The harness is not only a permission boundary. Under broad trusted local
+authority, its primary product value is repeatability, outcome attribution,
+completion truth, and recovery. Permission breadth is not evidence that Evi has
+learned or that a task succeeded.
 
 Every Task Run freezes an immutable Harness Lock. At minimum it records:
 
@@ -273,11 +321,35 @@ observe -> curate -> deduplicate -> audit -> test -> propose/publish
         -> select -> activate -> evaluate -> revise or retire -> rollback
 ```
 
-The Capability Manager is an Evi product and runtime surface. It should absorb
-the useful responsibilities previously associated with `skill-manager`:
-inventory, source discovery, import, sync, conflict detection, backup, safe
-projection, validation, and recovery. These are capabilities inside Evi, not a
-separate authority beside it.
+The Capability Manager has two distinct responsibilities that must not be
+confused.
+
+### Capability infrastructure
+
+Inventory, source discovery, import, sync, conflict detection, backup, safe
+projection, validation, activation receipts, and recovery make capabilities
+portable and operable. These are capabilities inside Evi, not a separate
+authority beside it. Completing this infrastructure does not by itself prove
+that Evi has learned.
+
+### Capability intelligence and tool competence
+
+Evi must learn not only a procedure, but also when, where, and under which
+conditions to use it. For each important tool, connector, specialist agent, or
+execution environment, Evi should be able to accumulate evidence about:
+
+- suitable task classes and required context;
+- local, remote, hosted-agent, or SaaS placement;
+- input preparation and output/verification contracts;
+- observed quality, latency, cost, and failure modes;
+- recovery, fallback, and tool-composition patterns;
+- operator corrections and stable preferences;
+- confidence, freshness, regression, revision, and retirement conditions.
+
+Memory answers what Evi knows. A Skill or SOP describes how to perform a
+repeatable procedure. A Tool Competence Model helps Evi decide when, where, and
+with which tool or specialist agent to perform it. Capability growth requires
+all three plus verified outcomes.
 
 LuBan remains a private, Git-backed registry for accepted reusable assets. It
 stores typed bodies, manifests, provenance, immutable history, and release
@@ -309,10 +381,13 @@ This is a direction, not a mandate for a database rewrite. Each future slice
 must migrate the smallest coherent owner and retain compatibility, export,
 recovery, and rollback evidence.
 
-A session has one home node while active. Cross-node movement happens through
-pause, checkpoint, export, handoff, and resume. Raw runtime databases and live
-handles are not shared, and active-active execution of one session is not a
-goal.
+Evi's trusted local home is the default canonical owner of self identity,
+durable goals, raw memory, and capability judgment. This does not require every
+run to execute there. A session has one home node while active, while an
+individual run may target a local environment, remote node, hosted agent, or
+specialist SaaS. Cross-node session movement happens through pause, checkpoint,
+export, handoff, and resume. Raw runtime databases and live handles are not
+shared, and active-active execution of one session is not a goal.
 
 ## Operator Experience
 
@@ -361,15 +436,28 @@ After the foundation and current target gates pass, choose exactly one bounded
 goal at a time. The default dependency order is:
 
 1. **Session Runtime Foundation**: durable goal/session/run ledger, context
-   snapshot identity, harness lock, state transitions, restart, and recovery.
-2. **Capability Manager MVP**: inventory, source identity, conflict checks,
-   LuBan publish/select/activate receipts, outcome tracking, and rollback.
-3. **Cognitive Continuity**: session-scoped working/episodic state, selective
-   semantic recall, goal handoff, archive search, and context inspection.
-4. **Delegated Execution**: typed parent-child sessions, queue/dependency
-   control, resource leases, result acceptance, and budget limits.
-5. **Product Layer Expansion**: progressively complete Web views, then add a
-   thin Desktop shell only for proven native integration needs.
+   snapshot identity, channel/host bindings, harness lock, state transitions,
+   restart, and recovery.
+2. **Cognitive Continuity and Outcome Attribution**: session-scoped
+   working/episodic state, selective semantic recall, goal handoff, archive
+   search, context inspection, and attribution of results to context, model,
+   tool, environment, procedure, and execution strategy.
+3. **Capability Intelligence and Tool Mastery**: tool competence records,
+   candidate generation, outcome-based evaluation, confidence, reuse,
+   regression, revision, retirement, and fallback. Capability infrastructure
+   such as inventory, source identity, conflict checks, LuBan
+   publish/select/activate receipts, and rollback may arrive earlier when an
+   accepted current-version gate requires it, but infrastructure completion is
+   not a learning claim.
+4. **Multi-Environment Delegated Execution**: typed parent-child sessions,
+   local/remote/hosted execution targets, queue/dependency control, resource
+   leases, result acceptance, and budget limits. The parent Evi retains goal and
+   completion authority.
+5. **Presence and Product Expansion**: progressively complete Web control and
+   inspection views, deepen selected IM/host entry bindings, then add a thin
+   Desktop shell only for proven native integration needs. Thin real-world
+   entry surfaces may remain active in earlier phases to generate learning
+   evidence; this step governs broad surface expansion.
 
 This order is not a release promise or fixed backlog. After each goal, Evi must
 use measured evidence to keep, reorder, narrow, or retire the next candidate.
@@ -383,8 +471,12 @@ Progress is measured by:
 - verified goal completion and false-completion rate;
 - context provenance, selectivity, and budget compliance;
 - restart, recovery, rollback, and session handoff success;
+- correct execution-target and tool selection, including successful fallback;
+- outcome attribution quality across context, tool, environment, and procedure;
 - harness violations prevented and external effects correctly gated;
-- capability reuse outcomes, regressions, and retirement quality;
+- capability reuse outcomes, confidence calibration, regressions, and
+  retirement quality;
+- continuity when one task moves between central, IM, and host entry surfaces;
 - cross-session result acceptance based on evidence rather than self-report;
 - operator ability to understand current state and the next decision.
 
@@ -396,22 +488,30 @@ success measures by themselves.
 - hosted multi-user control plane;
 - public capability marketplace;
 - raw memory or runtime-database synchronization;
+- an independent Evi self for each surface, workspace, or execution node;
+- forced all-local execution when context, availability, or data gravity favors
+  a remote or hosted worker;
 - free peer-to-peer session chat or autonomous ping-pong;
 - active-active cross-node execution of one session;
 - broad autonomous agent teams;
 - a desktop monolith or separate desktop runtime;
+- a shallow model/agent aggregator measured by provider, connector, or skill
+  count;
+- rebuilding every specialist editor or vertical SaaS inside Evi;
 - GUI-first implementation that outruns runtime ownership and evidence;
 - automatic global activation of LuBan assets;
 - treating planning text as proof that a capability exists.
 
 ## Accepted Direction Summary
 
-Evi grows as one persistent self with multiple bounded operating contexts. Its
-resident runtime owns goals, sessions, context, harness, execution, evidence,
-memory selection, and capability lifecycle. Sessions coordinate through typed
-runtime objects and references; memory and documents preserve knowledge rather
-than acting as an implicit message bus. Evi manages capabilities, while LuBan
-preserves accepted reusable assets in Git.
+Evi grows as one persistent local-first self with many physical doors and
+multiple execution environments. Its resident runtime owns goals, sessions,
+context, harness, evidence, memory selection, result acceptance, and capability
+learning. Central, IM, CLI, API, connector, and host-tool surfaces bind context
+to that same self. Local, remote, hosted-agent, and specialist-SaaS workers may
+execute a run without becoming another Evi. Memory preserves facts, Skills and
+SOPs preserve procedures, Tool Competence guides when and where to use them,
+and LuBan preserves accepted reusable assets in Git.
 
 The immediate product decision is restraint: finish and prove the current
 self-evolution foundation, close the accepted current target, then activate one

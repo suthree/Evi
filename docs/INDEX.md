@@ -5,7 +5,7 @@ Load this compact index by default. Do not preload every stable document.
 - Runtime capabilities, harness, context, tools, and boundaries: `docs/RUNTIME_CONTRACT.md`
 - Service install, health, rollback, logs, IM, and local operations: `docs/LOCAL_RUNTIME.md`
 - Memory, SOP, skill, active vault, promotion, revision, and retirement: `docs/LOCAL_LEARNING.md`
-- Accepted long-term product, multi-session, context, harness, and capability-management vision: `docs/PRODUCT_VISION.md`
+- Accepted long-term one-self/many-entry product, context-placed execution, multi-session, harness, and capability-intelligence vision: `docs/PRODUCT_VISION.md`
 - Approved v0.2 multi-node asset evolution target, LuBan boundary, node activation, and evidence chain: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
 - Publishing, images, Xiaohongshu, and feedback capture: `docs/ACTIVE_EXPLORATION.md`
 - Stable identity and self-modification stance: `core/soul.md`
