@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -526,6 +527,7 @@ async function completeRecovery(
   current: DeploymentRecord,
   now: Date
 ): Promise<DeploymentRecord> {
+  const restored = await restoredStableDeployment(manifest, current, now);
   const taskId = `runtime_task_deployment_repair_${current.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const repairTask = [
     "Repair a failed local runtime deployment after automatic rollback.",
@@ -557,14 +559,94 @@ async function completeRecovery(
     updated_at: queuedAt,
     boundary: "local runtime task queue ledger; single-machine JSONL state, not a remote broker"
   })}\n`, "utf8");
-  return updateDeployment(manifest, {
+  const recoveredCandidate: DeploymentRecord = {
     ...current,
     status: "recovered",
     recovered_at: now.toISOString(),
     readiness_deadline: undefined,
     repair_task_id: taskId,
     updated_at: now.toISOString()
-  });
+  };
+  const paths = deploymentPaths(manifest);
+  await writeJsonAtomic(resolve(paths.historyRoot, `${recoveredCandidate.id}.json`), recoveredCandidate);
+  await writeJsonAtomic(resolve(paths.historyRoot, `${restored.id}.json`), restored);
+  await writeJsonAtomic(paths.current, restored);
+  return restored;
+}
+
+async function restoredStableDeployment(
+  manifest: SupervisorManifest,
+  failedCandidate: DeploymentRecord,
+  now: Date
+): Promise<DeploymentRecord> {
+  const restoredCommit = failedCandidate.previous_source_commit;
+  if (!restoredCommit) throw new Error(`deployment ${failedCandidate.id} has no last known-good commit to restore`);
+
+  const paths = deploymentPaths(manifest);
+  const names = await readdir(paths.historyRoot).catch(() => [] as string[]);
+  const history = (await Promise.all(names
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => readJson<DeploymentRecord>(resolve(paths.historyRoot, name)))))
+    .filter((record): record is DeploymentRecord => Boolean(record?.id));
+  const prior = history
+    .filter((record) => record.id !== failedCandidate.id
+      && record.source_commit === restoredCommit
+      && record.status === "stable")
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at))[0];
+  if (prior) {
+    return {
+      ...prior,
+      status: "stable",
+      stable_at: now.toISOString(),
+      previous_source_commit: failedCandidate.source_commit,
+      readiness_deadline: undefined,
+      failure_count: 0,
+      failure_reason: undefined,
+      failure_refs: undefined,
+      failed_at: undefined,
+      recovered_at: undefined,
+      rolled_back_at: undefined,
+      repair_task_id: undefined,
+      updated_at: now.toISOString()
+    };
+  }
+
+  const build = await readJson<Record<string, unknown>>(manifest.runtime_build_path);
+  if (build?.source_commit !== restoredCommit) {
+    throw new Error(`restored runtime commit does not match rollback target ${restoredCommit}`);
+  }
+  const bundleDigest = await runtimeBundleDigest(manifest.runtime_current_root);
+  const id = `deployment_restored_${failedCandidate.id.replace(/[^a-zA-Z0-9_-]/g, "_")}_${restoredCommit.slice(0, 12)}`;
+  return {
+    schema_version: 1,
+    type: "local_runtime_deployment",
+    id,
+    release_id: `${restoredCommit}:${bundleDigest.slice(0, 16)}`,
+    source_commit: restoredCommit,
+    ...(typeof build.source_branch === "string" ? { source_branch: build.source_branch } : {}),
+    repo_root: manifest.repo_root,
+    state_root: manifest.state_root,
+    bundle_digest: bundleDigest,
+    state_schema_version: failedCandidate.state_schema_version,
+    verification_refs: ["governance/capability-acceptance/basic-entrypoints.json"],
+    repair_chain_id: id,
+    repair_attempt: 0,
+    status: "stable",
+    requested_at: now.toISOString(),
+    updated_at: now.toISOString(),
+    stable_at: now.toISOString(),
+    previous_source_commit: failedCandidate.source_commit,
+    failure_count: 0,
+    boundary: "automatic rollback restoration of the previously verified local runtime; failed candidate remains in deployment history and evidence"
+  };
+}
+
+async function runtimeBundleDigest(root: string): Promise<string> {
+  const hash = createHash("sha256");
+  for (const path of [resolve(root, "build.json"), resolve(root, "dist/apps/cli/src/main.js")]) {
+    hash.update(await readFile(path));
+  }
+  return hash.digest("hex");
 }
 
 async function captureFailureEvidence(
