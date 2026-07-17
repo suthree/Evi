@@ -1,6 +1,6 @@
 # Launchd Missing-Job Re-bootstrap During Candidate Activation
 
-Status: in progress under the bounded main-harness execution; implementation and focused verification pending
+Status: review / integration requested; the rebased implementation and review evidence are recorded, but completion is not claimed
 
 ## Identity And Ownership
 
@@ -10,7 +10,9 @@ Status: in progress under the bounded main-harness execution; implementation and
 - Implementation owner: bounded Codex CLI execution under the main harness.
 - Decision Owner / authority basis: the operator-approved Issue #50 contract supplied by the main harness.
 - Capability layer: basic-entrypoint.
-- Base commit: `690c2e8f50c72146650fb043fb8937f7191565ff`.
+- Original base (historical): `690c2e8f50c72146650fb043fb8937f7191565ff`.
+- Integration baseline: `a373c4f99e48634c63055866910efcc4532419b0`.
+- Rebased implementation commit: `9d253842bed0b42ee3737ffa40630f854fefc970`.
 - Branch: `codex/issue-50-launchd-rebootstrap-missing-job`.
 - Isolated worktree: `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/50-launchd-rebootstrap-missing-job`.
 
@@ -29,7 +31,7 @@ Status: in progress under the bounded main-harness execution; implementation and
 - Emit typed start evidence that distinguishes re-bootstrap activity from kickstart failures.
 - Add only the requested injected-launchctl/injected-delay regressions: one re-bootstrap success path and one exhaustion path.
 - Scope: `packages/runtime/src/service_supervisor.ts`, `tests/deployment_supervisor.test.ts`, and this task record.
-- Non-goals: no new launchd service or dependency, no broad lifecycle refactor, no manifest/schema migration, no root-checkout mutation, commit, push, pull request, merge, deployment, restart, controller handoff, tag, or release.
+- Non-goals: no new launchd service or dependency, no broad lifecycle refactor, no manifest/schema migration, no root-checkout mutation, tag, or release. Push, pull request, merge, deployment, probation, controller update, and live rollback proof remain separate pending integration/runtime work.
 
 ## Design Discipline
 
@@ -43,18 +45,39 @@ Status: in progress under the bounded main-harness execution; implementation and
 
 ## Rebaseline
 
-- Integration baseline: `a373c4f`; this worktree intentionally remains on its recorded Issue #50 base during the bounded execution.
+- The original base `690c2e8f50c72146650fb043fb8937f7191565ff` is retained as historical implementation context.
+- The integration baseline is `a373c4f99e48634c63055866910efcc4532419b0`.
+- The implementation was rebased and committed as `9d253842bed0b42ee3737ffa40630f854fefc970`.
 - Decision: **RETAIN** the three-file Issue #50 repair because it remains independently scoped and required.
-- Evidence separation: checks in this worktree prove only the retained Issue #50 diff against its recorded base; they do not prove compatibility with `a373c4f` or integration readiness.
-- Before integration, rebase this branch onto `a373c4f`, resolve only genuine overlap, and rerun the focused test, build, and patch-integrity checks. Rebase is explicitly prohibited in the current execution.
+- Evidence separation: the post-rebase checks below support review of the unchanged rebased implementation commit only; they do not prove deployment, probation, controller update, or live rollback behavior.
+
+## Review And Verification Evidence
+
+- Evi completed a pre-rebase review of the bounded implementation; the focused deployment-supervisor suite passed `15/15`.
+- Supervisor post-rebase checks ran outside the resident runtime:
+  - `node --import tsx --test tests/deployment_supervisor.test.ts`: `15/15`, exit `0`.
+  - `pnpm run check`: exit `0`, including build, `884/884` tests, skills validation, and neutral-runtime-naming validation.
+  - `git diff --check`: exit `0`.
+- Evi's review acceptance applies only while commit `9d253842bed0b42ee3737ffa40630f854fefc970` remains unchanged. Any implementation change requires renewed review and verification.
+
+## Resident Containment Evidence
+
+- Long resident verification exposed old-controller heartbeat/slot coupling.
+- The official rollback path restored stable live runtime commit `1571967`.
+- This is containment evidence only. It is not proof that Issue #50 was deployed, completed probation, updated the controller, or produced live rollback proof for the Issue #50 implementation.
+
+## Pending Integration And Runtime Evidence
+
+- Push, pull request, merge, deployment, probation, controller update, and live rollback proof remain pending.
+- Issue #50 completion is not claimed.
 
 ## Budgets And Verification
 
-- Main harness budget: `timeout_ms=300000`, `max_output_chars=200000`, `max_context_chars=40000`, `max_tool_calls=32`, `max_retries=0`.
+- Main harness record-update budget: `timeout_ms=180000`, `max_output_chars=100000`, `max_context_chars=20000`, `max_tool_calls=8`, `max_retries=0`.
 - Runtime retry budget: retain the configured total kickstart-attempt cap and existing five-attempt bounded bootstrap helper; add no unbounded loop.
 - Delegation / subagents: zero.
 - Workstreams / exclusive owners: one implementation stream owns only the three scoped files.
 - Focused verification: `node --import tsx --test tests/deployment_supervisor.test.ts` supports activation, re-bootstrap, exhaustion, and rollback regression claims.
-- Build verification if needed: `pnpm run build` supports TypeScript contract integrity.
+- Repository verification: `pnpm run check` supports build, full-suite, skills, and neutral-naming integrity claims.
 - Patch integrity: `git diff --check` supports whitespace integrity.
-- Completion evidence, commit, PR, deploy, restart, live smoke, probation, and rollback evidence: pending; commit/PR/runtime actions are prohibited in this execution.
+- The implementation commit is recorded above. Push, pull request, merge, deployment, probation, controller update, and live rollback proof remain pending.
