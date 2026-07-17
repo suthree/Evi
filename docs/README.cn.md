@@ -72,7 +72,9 @@ action 的 `summary` 复用为已有的有界跨 tranche 工作综合，只保�
 并将新 observation 的 refs 与既有 refs 稳定合并、去重且只保留最新 32 条。完整工具结果
 （包括失败）仍是 event stream 中的 canonical observation，工具摘要不会覆盖工作综合。
 checkpoint 只是可重建、可能出错的工作记忆，不是证明、权限或第二套证据系统；发生冲突时
-以 canonical observation 为准。这个连续性机制不会扩大 recent evidence window，也不会
+以 canonical observation 为准。渲染 recent evidence 时，soft-budget event 只暴露中性的
+暂停事实；其中的工作综合和 selected refs 仅通过独立的 Goal checkpoint surface 进入模型。
+这个连续性机制不会扩大 recent evidence window，也不会
 增加 event schema、planner、引用矩阵或平行 completion state。
 每次 cognition call 都会把 Goal 全程累计量明确命名为 `lifetime_usage`，并单独提供当前
 `execution_budget` 的 `scope`、`limit`、`used` 和非负 `remaining`。当前 tranche 由

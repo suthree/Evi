@@ -20,6 +20,7 @@ const RECEIPT_ROOT = "goals/receipts";
 const GOAL_BOUNDARY =
   "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
 const GOAL_BUDGET_SCOPE = "per_continue_command" as const;
+const SOFT_BUDGET_EVIDENCE_SUMMARY = "Soft execution budget reached; continue the same Goal in a new tranche.";
 const ABANDON_VERIFICATION_SUMMARY = "Goal was explicitly abandoned; completion verification was not run.";
 const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
@@ -1408,8 +1409,8 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
       return {
         event_id: event.id,
         kind: "pause",
-        summary: event.checkpoint.summary || "Soft execution budget reached.",
-        refs: event.checkpoint.selected_refs,
+        summary: SOFT_BUDGET_EVIDENCE_SUMMARY,
+        refs: [],
         occurred_at: event.occurred_at
       };
     case "goal_blocked":
@@ -1744,13 +1745,25 @@ function toolResultRefs(result: ToolResult): string[] {
 }
 
 function mergeCheckpointRefs(prior: string[], current: string[]): string[] {
-  const currentRefs = unique(current);
+  const currentRefs = uniqueNewest(current);
   const currentSet = new Set(currentRefs);
   const merged = [
-    ...unique(prior).filter((ref) => !currentSet.has(ref)),
+    ...uniqueNewest(prior).filter((ref) => !currentSet.has(ref)),
     ...currentRefs
   ];
   return merged.slice(-32);
+}
+
+function uniqueNewest(values: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index]!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result.reverse();
 }
 
 function observedChange(result: ToolResult): GoalChangeIdentity | null {

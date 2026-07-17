@@ -153,6 +153,9 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
       ...priorRefs.slice(1),
       "README.md"
     ]);
+    const softBudgetEvidence = cognition.calls[1]!.evidence.find((item) => item.kind === "pause");
+    assert.equal(softBudgetEvidence?.summary, "Soft execution budget reached; continue the same Goal in a new tranche.");
+    assert.deepEqual(softBudgetEvidence?.refs, []);
     assert.deepEqual(cognition.calls[1]!.execution_budget, {
       scope: "per_continue_command",
       limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
@@ -196,7 +199,13 @@ test("GoalRuntime preserves working synthesis while canonical evidence carries a
     });
     const started = await runtime.handle({
       ...start("failed_observation_start", "Recover a failed read without losing the working synthesis."),
-      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+      checkpoint: {
+        cursor: "seed",
+        summary: "Seed working synthesis.",
+        next_action: "Read package.json.",
+        selected_refs: ["package.json", "docs/legacy.md", "docs/other.md", "docs/legacy.md"]
+      }
     });
 
     const checkpointed = await runtime.handle({
@@ -207,7 +216,7 @@ test("GoalRuntime preserves working synthesis while canonical evidence carries a
     assert.equal(checkpointed.status, "active");
     assert.equal(checkpointed.checkpoint.summary, workingSummary);
     assert.equal(checkpointed.checkpoint.next_action, "Continue the same goal with another soft execution tranche.");
-    assert.deepEqual(checkpointed.checkpoint.selected_refs, ["package.json"]);
+    assert.deepEqual(checkpointed.checkpoint.selected_refs, ["docs/other.md", "docs/legacy.md", "package.json"]);
 
     await runtime.handle({
       type: "continue",
@@ -219,6 +228,10 @@ test("GoalRuntime preserves working synthesis while canonical evidence carries a
     assert.equal(failedObservation?.ok, false);
     assert.equal(failedObservation?.summary, "Fixture read failed.");
     assert.deepEqual(failedObservation?.refs, ["package.json"]);
+    assert.equal(checkpointed.checkpoint.selected_refs.filter((ref) => ref === "package.json").length, 1);
+    const softBudgetEvidence = cognition.calls[1]!.evidence.find((item) => item.kind === "pause");
+    assert.equal(softBudgetEvidence?.summary, "Soft execution budget reached; continue the same Goal in a new tranche.");
+    assert.deepEqual(softBudgetEvidence?.refs, []);
   } finally {
     await fixture.cleanup();
   }
