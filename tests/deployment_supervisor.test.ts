@@ -227,6 +227,144 @@ test("candidate activation retries a transient kickstart failure with persisted 
   }
 });
 
+test("candidate activation re-bootstraps a missing launchd job before the next kickstart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-rebootstrap-success-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") {
+      bootstrapAttempts += 1;
+      loaded = true;
+    }
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts === 1) {
+        loaded = false;
+        return { stdout: "", stderr: "Kickstart failed: 5: Input/output error", exitCode: 5 };
+      }
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "starting");
+    assert.equal(bootstrapAttempts, 2);
+    assert.equal(kickstartAttempts, 2);
+    assert.deepEqual(retryDelays, [250]);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 2,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: [{
+        attempt: 1,
+        exit_code: 5,
+        detail: "Kickstart failed: 5: Input/output error",
+        retry_delay_ms: 250
+      }],
+      rebootstrap_attempts: [{
+        after_kickstart_attempt: 1,
+        job_inspection_exit_code: 113,
+        job_inspection_detail: "Could not find service",
+        bootstrap_attempts: 1
+      }]
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation preserves kickstart exhaustion after bounded missing-job re-bootstrap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-rebootstrap-exhausted-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") {
+      bootstrapAttempts += 1;
+      loaded = true;
+    }
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts <= 3) {
+        loaded = false;
+        return { stdout: "", stderr: "Kickstart failed: 5: Input/output error", exitCode: 5 };
+      }
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "recovering");
+    assert.equal(bootstrapAttempts, 4);
+    assert.equal(kickstartAttempts, 4);
+    assert.deepEqual(retryDelays, [250, 500]);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 3,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: [250, 500, null].map((retryDelayMs, index) => ({
+        attempt: index + 1,
+        exit_code: 5,
+        detail: "Kickstart failed: 5: Input/output error",
+        retry_delay_ms: retryDelayMs
+      })),
+      rebootstrap_attempts: [1, 2].map((attempt) => ({
+        after_kickstart_attempt: attempt,
+        job_inspection_exit_code: 113,
+        job_inspection_detail: "Could not find service",
+        bootstrap_attempts: 1
+      })),
+      kickstart_exhausted: true
+    });
+    assert.equal(result.deployment?.recovery_start?.kickstart_attempts, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("candidate activation spans the launchd throttle window and succeeds on attempt seven", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-kickstart-seven-"));
   const manifest = { ...buildManifest(root), launchctl_start_attempts: undefined };
