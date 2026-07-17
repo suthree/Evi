@@ -245,7 +245,7 @@ test("GoalRuntime keeps verification failure and later success on one identity",
   }
 });
 
-test("Canonical verifier rejects a change identity absent from successful observations", async () => {
+test("Canonical verifier rejects a change identity that is only an observation substring", async () => {
   const fixture = await createFixture();
   try {
     const runtime = createRuntime(fixture.store, {
@@ -254,8 +254,8 @@ test("Canonical verifier rejects a change identity absent from successful observ
         {
           type: "outcome",
           outcome: {
-            summary: "Change identity does not match the observed path.",
-            change: { kind: "state_change", identity: "docs/other.md" },
+            summary: "A generic JSON boolean is not a typed change identity.",
+            change: { kind: "state_change", identity: "true" },
             runtime_result: { status: "healthy", summary: "Local runtime stayed healthy." },
             residual_risks: []
           }
@@ -275,6 +275,55 @@ test("Canonical verifier rejects a change identity absent from successful observ
     const completedEvent = (await readEvents(fixture.stateRoot)).at(-1)!;
     const verification = completedEvent.verification as { checks: Array<{ id: string; status: string }> };
     assert.equal(verification.checks.some((check) => check.id === "change_identity" && check.status === "failed"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Canonical verifier accepts exact typed commit identity followed by verification", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const goal = await runtime.handle(start("typed_verifier_start", "Verify one exact commit identity."));
+    const verification = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate: {
+        summary: "The exact commit was followed by a successful verification.",
+        change: { kind: "git_commit", identity: "abc123" },
+        runtime_result: {
+          status: "healthy",
+          summary: "The bounded verification passed.",
+          evidence_event_ids: ["goal_event_change", "goal_event_verify"]
+        },
+        residual_risks: [],
+        evidence_event_ids: ["goal_event_change", "goal_event_verify"]
+      },
+      evidence: [{
+        event_id: "goal_event_change",
+        kind: "observation",
+        summary: "Committed the bounded change.",
+        refs: [],
+        occurred_at: "2026-07-17T00:00:01.000Z",
+        operation: "execute_dynamic_code",
+        tool: "command.run",
+        ok: true,
+        change: { kind: "git_commit", identity: "abc123" }
+      }, {
+        event_id: "goal_event_verify",
+        kind: "observation",
+        summary: "Repository checks passed.",
+        refs: [],
+        occurred_at: "2026-07-17T00:00:02.000Z",
+        operation: "run_local_verification",
+        tool: "command.run",
+        ok: true
+      }]
+    });
+    assert.equal(verification.status, "passed");
   } finally {
     await fixture.cleanup();
   }
@@ -638,7 +687,11 @@ function recordingTools(): GoalToolExecutor & { calls: EffectAction[] } {
         output: effectAction.tool === "file.read"
           ? { path: effectAction.arguments.path, text: "bounded fixture content" }
           : effectAction.tool === "file.write_repo" || effectAction.tool === "file.write_state"
-            ? { path: effectAction.arguments.path, observed: true }
+            ? {
+                path: effectAction.arguments.path,
+                observed: true,
+                change: { kind: "state_change", identity: effectAction.arguments.path }
+              }
             : { observed: true },
         side_effect_level: effectAction.tool === "file.read" ? "none" : "local_write",
         created_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`

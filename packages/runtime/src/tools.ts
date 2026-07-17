@@ -1,6 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";
 import { readdir, realpath } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { basename, relative, resolve } from "node:path";
 import {
   blockedCodexStructuredResult,
@@ -136,7 +138,8 @@ async function runFileWriteState(args: Record<string, unknown>, context: ToolExe
   await context.store.writeText(relPath, text);
   return toolResult("file.write_state", true, `Wrote state:${relPath} (${text.length} bytes).`, {
     path: relPath,
-    bytes: text.length
+    bytes: text.length,
+    change: { kind: "state_change", identity: relPath }
   }, "local_write");
 }
 
@@ -160,6 +163,7 @@ async function runFileWriteRepo(args: Record<string, unknown>, context: ToolExec
   return toolResult("file.write_repo", true, renderRepoWriteSummary(relPath, text.length, workspaceBefore, workspaceAfter, guard), {
     path: relPath,
     bytes: text.length,
+    change: { kind: "state_change", identity: relPath },
     workspace_guard: guard,
     workspace_before: workspaceStatusEvidence(workspaceBefore),
     workspace_after: workspaceStatusEvidence(workspaceAfter)
@@ -245,6 +249,13 @@ async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutio
         resolved_address_count: destination.addressCount
       }, "none", "private_network");
     }
+    return runPinnedPublicHttpFetch({
+      url,
+      responseType,
+      maxChars,
+      timeoutMs,
+      address: destination.address
+    });
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -253,17 +264,8 @@ async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutio
       headers: {
         "User-Agent": "LocalAgent/0.1"
       },
-      redirect: context.publicNetworkOnly ? "manual" : "follow",
       signal: controller.signal
     });
-    if (context.publicNetworkOnly && response.status >= 300 && response.status < 400) {
-      return toolResult("http.fetch", false, `http.fetch refused an unverified redirect from ${publicUrlTarget(url)}.`, {
-        url: publicUrlTarget(url),
-        status: response.status,
-        status_text: response.statusText,
-        redirect_blocked: true
-      }, "none", "redirect_blocked");
-    }
     const text = await response.text();
     const bodyTruncated = text.length > maxChars;
     const body = bodyTruncated ? truncateOutput(text, maxChars) : text;
@@ -297,7 +299,12 @@ async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutio
 }
 
 async function validatePublicNetworkDestination(url: string): Promise<{
-  ok: boolean;
+  ok: true;
+  summary: string;
+  addressCount: number;
+  address: string;
+} | {
+  ok: false;
   summary: string;
   addressCount: number;
 }> {
@@ -314,10 +321,119 @@ async function validatePublicNetworkDestination(url: string): Promise<{
         addressCount: addresses.length
       };
     }
-    return { ok: true, summary: "Destination resolves only to public addresses.", addressCount: addresses.length };
+    return {
+      ok: true,
+      summary: "Destination resolves only to public addresses.",
+      addressCount: addresses.length,
+      address: addresses[0]!.address
+    };
   } catch {
     return { ok: false, summary: "http.fetch could not verify the destination as public.", addressCount: 0 };
   }
+}
+
+function runPinnedPublicHttpFetch(args: {
+  url: string;
+  responseType: string;
+  maxChars: number;
+  timeoutMs: number;
+  address: string;
+}): Promise<ToolResult> {
+  return new Promise((resolveResult) => {
+    const url = new URL(args.url);
+    const request = url.protocol === "https:" ? httpsRequest : httpRequest;
+    let settled = false;
+    let timedOut = false;
+    const finish = (result: ToolResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolveResult(result);
+    };
+    const requestOptions = {
+      protocol: url.protocol,
+      hostname: args.address,
+      port: url.port || undefined,
+      method: "GET",
+      path: `${url.pathname}${url.search}`,
+      headers: {
+        Host: url.host,
+        "User-Agent": "LocalAgent/0.1",
+        "Accept-Encoding": "identity"
+      },
+      ...(url.protocol === "https:" ? { servername: url.hostname } : {})
+    };
+    const clientRequest = request(requestOptions, (response) => {
+      const status = response.statusCode ?? 0;
+      const statusText = response.statusMessage ?? "";
+      if (status >= 300 && status < 400) {
+        response.resume();
+        finish(toolResult("http.fetch", false, `http.fetch refused an unverified redirect from ${publicUrlTarget(args.url)}.`, {
+          url: publicUrlTarget(args.url),
+          status,
+          status_text: statusText,
+          redirect_blocked: true
+        }, "none", "redirect_blocked"));
+        return;
+      }
+      response.setEncoding("utf8");
+      let body = "";
+      let responseChars = 0;
+      response.on("data", (chunk: string) => {
+        responseChars += chunk.length;
+        if (body.length < args.maxChars) body += chunk.slice(0, args.maxChars - body.length);
+      });
+      response.on("end", () => {
+        const bodyTruncated = responseChars > body.length;
+        const renderedBody = bodyTruncated ? truncateOutput(body, args.maxChars) : body;
+        const ok = status >= 200 && status < 300;
+        const contentType = Array.isArray(response.headers["content-type"])
+          ? response.headers["content-type"].join(", ")
+          : response.headers["content-type"] ?? null;
+        finish(toolResult("http.fetch", ok, `Fetched ${publicUrlTarget(args.url)}: ${status} ${statusText}.`, {
+          url: publicUrlTarget(args.url),
+          status,
+          status_text: statusText,
+          response_type: args.responseType,
+          max_chars: args.maxChars,
+          timeout_ms: args.timeoutMs,
+          timed_out: false,
+          response_chars: responseChars,
+          returned_body_chars: renderedBody.length,
+          body_truncated: bodyTruncated,
+          content_type: contentType,
+          body: args.responseType === "json" ? parseMaybeJson(renderedBody) : renderedBody
+        }, "none", ok ? undefined : "http_status"));
+      });
+      response.on("error", (error) => {
+        finish(toolResult("http.fetch", false, `http.fetch failed: ${errorMessage(error)}`, {
+          url: publicUrlTarget(args.url),
+          response_type: args.responseType,
+          max_chars: args.maxChars,
+          timeout_ms: args.timeoutMs,
+          timed_out: false,
+          error: errorMessage(error)
+        }, "none", "fetch_error"));
+      });
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      clientRequest.destroy(new Error(`http.fetch timed out after ${args.timeoutMs}ms.`));
+    }, args.timeoutMs);
+    clientRequest.on("error", (error) => {
+      finish(toolResult("http.fetch", false, timedOut
+        ? `http.fetch timed out after ${args.timeoutMs}ms.`
+        : `http.fetch failed: ${errorMessage(error)}`, {
+        url: publicUrlTarget(args.url),
+        response_type: args.responseType,
+        max_chars: args.maxChars,
+        timeout_ms: args.timeoutMs,
+        timed_out: timedOut,
+        error: errorMessage(error)
+      }, "none", timedOut ? "timeout" : "fetch_error"));
+    });
+    clientRequest.end();
+  });
 }
 
 function publicUrlTarget(rawUrl: string): string {
@@ -365,6 +481,11 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
   });
   const envAudit = envResult.audit;
   const ok = result.exitCode === 0 && !result.timedOut;
+  const observedChange = ok && command === "git" && commandArgs[0] === "commit"
+    ? await gitText(context.store.repoRoot, ["rev-parse", "HEAD"])
+      .then((identity) => ({ kind: "git_commit" as const, identity }))
+      .catch(() => null)
+    : null;
   return toolResult("command.run", ok, result.summary, {
     command,
     args: commandArgs,
@@ -406,6 +527,7 @@ async function runCommandRun(args: Record<string, unknown>, context: ToolExecuti
       cwd_boundary: cwdScope === "repo" ? "repo_root" : "state_root",
       env_boundary: envAudit
     },
+    ...(observedChange ? { change: observedChange } : {}),
     stdout: result.stdout,
     stderr: result.stderr
   }, sideEffectLevel, ok ? undefined : processFailureKind(result));

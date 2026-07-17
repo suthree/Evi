@@ -68,7 +68,7 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
     "allow",
     "confirm",
     "deny",
-    "allow"
+    "confirm"
   ]);
   assert.equal(read.intent.operation, "read_local");
   assert.equal(external.intent.operation, "write_external");
@@ -88,6 +88,10 @@ test("EffectPolicy classifies command semantics instead of model side-effect lab
     tool: "command.run",
     arguments: { command: "pnpm", args: ["run", "check"], cwd: "state" }
   }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "command.run",
+    arguments: { command: "node", args: ["--require", "./hook.js", "--test"] }
+  }).outcome, "confirm");
 });
 
 test("EffectPolicy permits public fetches and denies secret-bearing egress or unknown tools", () => {
@@ -100,6 +104,10 @@ test("EffectPolicy permits public fetches and denies secret-bearing egress or un
     tool: "http.fetch",
     arguments: { url: "https://example.com/data?api_key=secret" }
   }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "http.fetch",
+    arguments: { url: "https://example.com/collect?q=PRIVATE_LOCAL_TEXT" }
+  }).outcome, "confirm");
   assert.equal(policy.decide({
     tool: "http.fetch",
     arguments: { url: "http://127.0.0.1:8765/private" }

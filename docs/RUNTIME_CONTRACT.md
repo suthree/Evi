@@ -297,9 +297,12 @@ documents.
 
 `EffectPolicy` classifies operation, target, data exposure, and reversibility.
 It does not trust a model-provided `side_effect_level` to grant authority. Safe
-bounded local reads, public reads, reversible repo/state writes, and known local
-verification commands may run under standing local-evolution authority.
-Secrets and private egress, destructive local effects, unknown tools, and
+bounded local reads, query-free public reads whose resolved public address is
+pinned to the actual connection, and reversible repo/state writes may run under
+standing local-evolution authority. Query-bearing public requests and
+repo-controlled verification commands require exact-effect confirmation because
+they can transmit local data or execute mutable code. Secrets and private
+egress, destructive local effects, unknown tools, and
 foreground writes into GoalRuntime, queue, episode, working-memory, SOP, skill,
 deployment, service, channel, or governance-owned state fail closed. External,
 irreversible, runtime-mutating, dynamic-code, and nested coding effects require
@@ -319,6 +322,11 @@ Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
 effects may change authorized repo or task state, but the foreground control
 path writes no legacy queue, opportunity, episode, working-checkpoint,
 completion, iteration, SOP, skill, deployment, or learning-promotion state.
+Accepted non-empty change identities must match a typed change emitted by a
+successful tool observation. A Git commit identity additionally requires a
+later successful verification observation; free-text substring matches and a
+model proposal without decisive observation or fail-closed policy evidence
+cannot create an accepted receipt.
 
 Current cutover is intentionally limited to the explicit local `goal` CLI:
 

@@ -95,6 +95,9 @@ function decideIntent(intent: EffectIntent, envelope: EffectEnvelope): EffectDec
   if (intent.operation === "write_external" || intent.reversibility === "irreversible") {
     return decision("confirm", "External or irreversible effects require explicit confirmation of this exact effect.", intent);
   }
+  if (intent.operation === "run_local_verification" && intent.reversibility === "conditional") {
+    return decision("confirm", "Repo-controlled verification code requires explicit confirmation of this exact effect.", intent);
+  }
   if (intent.operation === "mutate_local_runtime" || intent.operation === "execute_dynamic_code") {
     return decision("confirm", "Runtime mutation or dynamic code execution requires explicit confirmation of this exact effect.", intent);
   }
@@ -173,8 +176,14 @@ function httpFetchIntent(rawUrl: string): EffectIntent {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return intent("unknown", target, "unknown", "unknown");
     }
-    if (url.username || url.password || isPrivateNetworkHost(url.hostname) || [...url.searchParams.keys()].some(secretLikeToken)) {
+    if (url.username
+      || url.password
+      || isPrivateNetworkHost(url.hostname)
+      || [...url.searchParams.entries()].some(([key, value]) => secretLikeToken(key) || secretLikeToken(value))) {
       return intent("read_public_network", target, "read_only", "private_or_secret");
+    }
+    if (url.searchParams.size > 0) {
+      return intent("write_external", target, "conditional", "unknown");
     }
     return intent("read_public_network", target, "read_only", "public_response_to_model");
   } catch {
@@ -222,9 +231,9 @@ function commandIntent(args: Record<string, unknown>): EffectIntent {
   } else if (command === "pnpm") {
     classified = pnpmCommandIntent(argv, target);
   } else if (command === "npm" && argv[0] === "test") {
-    classified = intent("run_local_verification", target, "reversible", "local_content_to_model");
+    classified = intent("run_local_verification", target, "conditional", "local_content_to_model");
   } else if (command === "node" && argv.includes("--test")) {
-    classified = intent("run_local_verification", target, "reversible", "local_content_to_model");
+    classified = intent("run_local_verification", target, "conditional", "local_content_to_model");
   } else {
     classified = intent("execute_dynamic_code", target, "unknown", "unknown");
   }
@@ -292,7 +301,7 @@ function pnpmCommandIntent(argv: string[], target: string): EffectIntent {
   const first = argv[0] ?? "";
   const script = first === "run" ? argv[1] ?? "" : first;
   if (first === "test" || ["check", "test", "lint", "typecheck", "build"].includes(script)) {
-    return intent("run_local_verification", target, "reversible", "local_content_to_model");
+    return intent("run_local_verification", target, "conditional", "local_content_to_model");
   }
   return intent("execute_dynamic_code", target, "unknown", "unknown");
 }

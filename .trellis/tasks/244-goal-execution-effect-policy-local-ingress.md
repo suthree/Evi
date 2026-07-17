@@ -127,11 +127,20 @@ destructive remote action, or stopped-goal resumption.
   dispatch. Secret/private egress, private-network fetch, destructive effects,
   unknown effects, and writes into foreground orchestration/learning state fail
   closed.
+- Public-read auto-allow is limited to query-free URLs. Goal execution resolves
+  the hostname once, rejects any private/special-use result, and connects to a
+  selected validated address with the original HTTP Host/TLS server name, so a
+  later DNS answer cannot redirect the connection. Redirects fail closed.
+- Repo-controlled verification commands are semantic verification effects but
+  require exact confirmation because mutable tests/scripts can execute arbitrary
+  code. Accepted change identity comes only from a typed successful observation;
+  free-text substrings cannot support a receipt, and Git commits require a later
+  successful verification observation.
 - `goal start|continue|read|pause|resume|abandon` is a thin local CLI ingress.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.
   Resident Web/IM/daemon paths remain explicitly legacy.
-- Twenty-two focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
+- Twenty-three focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
   pass. They cover safe execution, automatic evidence binding, exact replay,
   non-contiguous replay refusal, soft continuation, manual pause/resume,
   verification repair, observed change-identity binding, confirmation, denial,

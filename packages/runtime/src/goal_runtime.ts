@@ -321,6 +321,7 @@ export type GoalOutcomeProposal = z.infer<typeof outcomeProposalSchema>;
 export type GoalCognitionResult = z.infer<typeof goalCognitionResultSchema>;
 export type GoalVerificationResult = z.infer<typeof verificationResultSchema>;
 export type OutcomeReceipt = z.infer<typeof outcomeReceiptSchema>;
+export type GoalChangeIdentity = z.infer<typeof changeIdentitySchema>;
 type GoalRuntimeEvent = z.infer<typeof goalRuntimeEventSchema>;
 export type GoalStatus = "active" | "paused" | "completed" | "abandoned";
 export type GoalContinuationReason =
@@ -370,6 +371,7 @@ export interface GoalEvidenceView {
   effect_decision?: EffectDecision["outcome"];
   tool?: string;
   ok?: boolean;
+  change?: GoalChangeIdentity;
   details?: string;
 }
 
@@ -974,23 +976,16 @@ export class CanonicalGoalVerifier implements GoalVerifier {
     const successfulObservations = input.evidence.filter((item) => item.kind === "observation" && item.ok === true);
     const deniedPolicyActions = input.evidence.filter((item) => item.kind === "action" && item.effect_decision === "deny");
     const decisiveEvidence = [...successfulObservations, ...deniedPolicyActions];
-    let mutatingObservationIndex = -1;
-    for (let index = input.evidence.length - 1; index >= 0; index -= 1) {
-      const item = input.evidence[index]!;
-      if (item.kind === "observation"
+    const matchingChangeObservationIndex = input.candidate.change.kind === "none"
+      ? -1
+      : input.evidence.findIndex((item) => item.kind === "observation"
         && item.ok === true
-        && item.operation !== undefined
-        && !["read_local", "read_public_network"].includes(item.operation)) {
-        mutatingObservationIndex = index;
-        break;
-      }
-    }
-    const mutatingObservation = mutatingObservationIndex >= 0;
-    const changeIdentityBound = input.candidate.change.kind === "none" || successfulObservations.some((item) =>
-      item.refs.includes(input.candidate.change.identity)
-        || item.details?.includes(input.candidate.change.identity) === true);
+        && item.change?.kind === input.candidate.change.kind
+        && item.change.identity === input.candidate.change.identity);
+    const mutatingObservation = successfulObservations.some((item) => item.change !== undefined);
+    const changeIdentityBound = input.candidate.change.kind === "none" || matchingChangeObservationIndex >= 0;
     const postMutationVerification = input.candidate.change.kind !== "git_commit"
-      || input.evidence.some((item, index) => index > mutatingObservationIndex
+      || input.evidence.some((item, index) => index > matchingChangeObservationIndex
         && item.kind === "observation"
         && item.ok === true
         && item.operation === "run_local_verification");
@@ -1328,6 +1323,7 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         occurred_at: event.occurred_at
       };
     case "goal_action_observed": {
+      const change = observedChange(event.result);
       return {
         event_id: event.id,
         kind: "observation",
@@ -1337,6 +1333,7 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         operation: event.effect_intent.operation,
         tool: event.result.tool,
         ok: event.result.ok,
+        ...(change ? { change } : {}),
         details: boundedDetails(event.result)
       };
     }
@@ -1624,6 +1621,11 @@ function toolResultRefs(result: ToolResult): string[] {
     if (typeof value === "string" && value.trim() && value.length <= 1_000) refs.push(value.trim());
   }
   return unique(refs).slice(0, 32);
+}
+
+function observedChange(result: ToolResult): GoalChangeIdentity | null {
+  const parsed = changeIdentitySchema.safeParse(result.output.change);
+  return parsed.success ? parsed.data : null;
 }
 
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {

@@ -96,6 +96,7 @@ function renderGoalInput(input: GoalCognitionInput): string {
     ...(item.effect_decision === undefined ? {} : { effect_decision: item.effect_decision }),
     ...(item.tool === undefined ? {} : { tool: item.tool }),
     ...(item.ok === undefined ? {} : { ok: item.ok }),
+    ...(item.change === undefined ? {} : { change: item.change }),
     ...(item.details === undefined ? {} : { details: item.details.slice(0, 4_000) })
   }));
   const tools = coreToolContracts.map((contract) => ({
