@@ -67,6 +67,10 @@ Goal 中保存的 soft budget 约束一次 `continue` command，而不是整个 
 后续 `continue` 会在同一身份上开启新的有界 tranche，所以累计 `usage` 可以大于单次预算；
 view 和 checkpoint projection 会明确返回
 `budget_scope: "per_continue_command"`，避免把续跑机制误读成预算越界。
+每次 cognition call 都会把 Goal 全程累计量明确命名为 `lifetime_usage`，并单独提供当前
+`execution_budget` 的 `scope`、`limit`、`used` 和非负 `remaining`。当前 tranche 由
+active Continue command 的 canonical events 临时推导，不新增持久化预算状态；只有本轮
+`used` 与本轮上限比较，下一次 Continue 从零开始本轮用量，但不会清空全程累计历史。
 
 当前 cutover 只覆盖显式本地 `goal start|continue|read|pause|resume|abandon`。
 `live`、Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个

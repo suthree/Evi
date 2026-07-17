@@ -167,11 +167,16 @@ function renderGoalInput(input: GoalCognitionInput): string {
       goal_id: input.goal.goal_id,
       objective: input.goal.objective,
       status: input.goal.status,
-      budget: input.goal.budget,
-      usage: input.goal.usage,
+      budget_scope: input.goal.budget_scope,
+      lifetime_usage: input.goal.usage,
       checkpoint: input.goal.checkpoint,
       continuation_reasons: input.goal.continuation_reasons,
       next_action: input.goal.next_action
+    }, null, 2),
+    "## Execution Budget",
+    JSON.stringify({
+      current_tranche: input.execution_budget,
+      rule: "Cumulative lifetime usage does not exhaust a later Continue; only current_tranche.used is compared with current_tranche.limit."
     }, null, 2),
     "## Canonical Evidence",
     JSON.stringify(evidence, null, 2),

@@ -93,3 +93,28 @@ exhausted. Another Continue reproduced the same defect without a tool action.
 - Rollback: revert the bounded source/test/doc change through a normal PR and
   redeploy the previous stable commit. Canonical Goal events remain valid
   because no persisted schema or event type changes.
+
+## Implementation Checkpoint
+
+- The deterministic red loop was
+  `node --import tsx --test tests/goal_runtime.test.ts tests/goal_execution_adapters.test.ts`.
+  Before the repair it failed three assertions: both runtime cognition calls
+  lacked `execution_budget`, and the rendered prompt lacked the tranche scope.
+- The confirmed cause was the boundary between `continueGoal` and cognition:
+  GoalRuntime computed `operationUsage` correctly for each command but passed
+  only the cumulative `GoalView.usage`; `renderGoalInput` then placed that
+  cumulative value beside the numeric per-command limit without naming either
+  scope.
+- `GoalCognitionInput.execution_budget` now derives `scope`, `limit`, `used`,
+  and clamped `remaining` from the active command. The model rendering names
+  Goal-wide usage `lifetime_usage`, renders the current tranche separately,
+  and states the comparison rule once. No event, projection, or store changed.
+- The red loop is green at 24/24. TypeScript build and `git diff --check` pass;
+  `pnpm run check` passes at 929/929 with skill and neutral-naming validation.
+- Independent Spec and Standards reviews both returned PASS with no actionable
+  finding. They independently confirmed current-command derivation, within-
+  tranche advancement, later-command reset, non-negative remaining values,
+  paired docs, and the absence of a second counter or persistence surface.
+- Remaining completion gates are PR integration, commit-bound deployment,
+  resident health/controller identity, and same-identity continuation of live
+  Goal `goal_20260717190203_ec82a197`.

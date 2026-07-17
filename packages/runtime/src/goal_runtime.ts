@@ -386,7 +386,15 @@ export interface GoalEvidenceView {
 
 export interface GoalCognitionInput {
   goal: GoalView;
+  execution_budget: GoalExecutionBudgetView;
   evidence: GoalEvidenceView[];
+}
+
+export interface GoalExecutionBudgetView {
+  scope: typeof GOAL_BUDGET_SCOPE;
+  limit: GoalSoftBudget;
+  used: GoalUsage;
+  remaining: GoalUsage;
 }
 
 export interface GoalCognition {
@@ -593,6 +601,7 @@ export class GoalRuntime {
       try {
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
+          execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id))
         }));
       } catch (error) {
@@ -1683,6 +1692,19 @@ function budgetReached(usage: GoalUsage, budget: GoalSoftBudget): boolean {
   return usage.model_rounds >= budget.max_model_rounds
     || usage.tool_calls >= budget.max_tool_calls
     || usage.elapsed_ms >= budget.max_elapsed_ms;
+}
+
+function cognitionExecutionBudget(budget: GoalSoftBudget, used: GoalUsage): GoalExecutionBudgetView {
+  return {
+    scope: GOAL_BUDGET_SCOPE,
+    limit: structuredClone(budget),
+    used: structuredClone(used),
+    remaining: {
+      model_rounds: Math.max(0, budget.max_model_rounds - used.model_rounds),
+      tool_calls: Math.max(0, budget.max_tool_calls - used.tool_calls),
+      elapsed_ms: Math.max(0, budget.max_elapsed_ms - used.elapsed_ms)
+    }
+  };
 }
 
 function boundedToolResult(value: ToolResult): ToolResult {

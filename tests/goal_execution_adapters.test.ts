@@ -105,6 +105,12 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   const cognition = new ModelGoalCognition(model);
   const result = await cognition.next({
     goal: fixtureGoalView(),
+    execution_budget: {
+      scope: "per_continue_command",
+      limit: { max_model_rounds: 3, max_tool_calls: 4, max_elapsed_ms: 120_000 },
+      used: { model_rounds: 1, tool_calls: 1, elapsed_ms: 1_000 },
+      remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 119_000 }
+    },
     evidence: [{
       event_id: "goal_event_1",
       kind: "intent",
@@ -117,6 +123,10 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.equal(requests.length, 1);
   assert.match(requests[0]!.instructions, /Never include evidence ids/);
   assert.match(requests[0]!.input, /Canonical Evidence/);
+  assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
+  assert.match(requests[0]!.input, /"lifetime_usage"/);
+  assert.match(requests[0]!.input, /"current_tranche"/);
+  assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
 });
 
 test("ConfiguredGoalCognition re-resolves explicit provider repair and continues the same Goal", async () => {
