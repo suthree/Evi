@@ -10,9 +10,12 @@ import {
   createCodexAuthoritySnapshot,
   deriveCodexOutputCaptureChars,
   failedCodexStructuredResult,
+  parseCodexAuthoritySnapshot,
   parseCodexRunRequest,
   parseCodexStructuredResult,
+  sha256,
   type CodexAuthoritySnapshot,
+  type CodexDelegationStrategy,
   type CodexRunRequest,
   type CodexStructuredResult
 } from "../../core/src/codex_run_contract.js";
@@ -362,11 +365,32 @@ interface CodexGitAuthority {
 }
 
 interface CodexThreadAuthorityRecord {
-  schema_version: 1;
+  schema_version: 2;
   thread_id: string;
   authority_digest: string;
   authority: CodexAuthoritySnapshot;
+  authority_verifiability: CodexAuthorityVerifiability;
   updated_at: string;
+}
+
+interface CodexAuthorityVerifiability {
+  status: "verified";
+  snapshot_schema_version: 2;
+  authority_digest_recomputed: true;
+  original_prompt_digest_verified: true;
+  effective_prompt_digest_verified: true;
+  git_authority_verified_before_execution: true;
+  resume_authority_inherited: boolean;
+  boundary: string;
+}
+
+interface CodexSubagentToolEvidence {
+  event_index: number;
+  event_type: "item.started" | "item.completed";
+  item_id: string;
+  item_type: string;
+  tool_name: string;
+  receiver_thread_ids: string[];
 }
 
 interface CodexProcessResult {
@@ -385,6 +409,8 @@ interface CodexProcessResult {
   eventTypes: Record<string, number>;
   itemTypes: Record<string, number>;
   toolCallsObserved: number;
+  delegationBudgetExceeded: boolean;
+  subagentToolEvidence: CodexSubagentToolEvidence[];
 }
 
 interface CodexOutputCapture {
@@ -420,8 +446,12 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
   let authority: CodexGitAuthority;
   try {
     if (request.mode === "resume") {
-      prior = await context.store.readStateJson<CodexThreadAuthorityRecord>(codexThreadRecordPath(request.thread_id));
-      if (!prior || prior.thread_id !== request.thread_id || prior.authority_digest !== request.authority_digest) {
+      prior = parseVerifiableCodexThreadRecord(
+        await context.store.readStateJson<unknown>(codexThreadRecordPath(request.thread_id))
+      );
+      if (!prior
+        || prior.thread_id !== request.thread_id
+        || prior.authority_digest !== request.authority_digest) {
         throw new CodexAuthorityError("Resume handle does not match the latest persisted Codex authority snapshot.");
       }
       authority = await inspectCodexGitAuthority(context.store.repoRoot, prior.authority.isolated_worktree, prior.authority.cwd);
@@ -453,6 +483,9 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
 
   const inherited = prior?.authority;
   const budgets = request.mode === "new" ? request.budgets : inherited!.budgets;
+  const selectionRationale = request.mode === "new" ? request.selection_rationale : inherited!.selection_rationale;
+  const taskShape = request.mode === "new" ? request.task_shape : inherited!.task_shape;
+  const delegationStrategy = request.mode === "new" ? request.delegation_strategy : inherited!.delegation_strategy;
   const outputCaptureLimitSource = request.mode === "resume"
     ? "persisted_authority_snapshot"
     : explicitOutputCaptureLimit
@@ -460,8 +493,8 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
       : context.modelMaxOutputTokens === undefined
         ? "runtime_context_budget_default"
         : "runtime_model_config.max_output_tokens";
-  const prompt = codexExecutionPrompt(request.prompt, authority, budgets);
-  if (prompt.length > budgets.max_context_chars) {
+  const effectivePrompt = codexExecutionPrompt(request.prompt, authority, budgets, delegationStrategy);
+  if (effectivePrompt.length > budgets.max_context_chars) {
     return codexFailure("codex_invalid_request", "Bounded Codex prompt exceeds max_context_chars after harness instructions.", failedCodexStructuredResult(
       "Codex request exceeded its context budget before execution.",
       "The prompt plus fixed main-harness authority instructions exceeds max_context_chars.",
@@ -483,30 +516,42 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     service_tier: request.mode === "new" ? request.service_tier : inherited!.service_tier,
     sandbox: request.mode === "new" ? request.sandbox : inherited!.sandbox,
     approval_policy: request.mode === "new" ? request.approval_policy : inherited!.approval_policy,
+    selection_rationale: selectionRationale,
+    task_shape: taskShape,
+    delegation_strategy: delegationStrategy,
     mode: request.mode,
     thread_id: request.mode === "resume" ? request.thread_id : null,
-    prompt,
+    original_prompt: request.prompt,
+    effective_prompt: effectivePrompt,
     budgets
   });
   const schemaRef = await context.store.writeText("codex/schema/structured-result-v1.json", CODEX_STRUCTURED_RESULT_SCHEMA_TEXT);
   const schemaPath = context.store.statePath(schemaRef);
   const argv = buildCodexRunArgv(provisional, schemaPath);
-  const processResult = await runCodexProcess(argv, prompt, provisional);
+  const processResult = await runCodexProcess(argv, effectivePrompt, provisional);
   const workspaceAfter = await inspectCodexWorkspaceChanges(authority.repoRoot).catch(() => ({
     available: false,
     changedPaths: []
   }));
   const threadId = request.mode === "resume" ? request.thread_id : processResult.threadId;
   const finalAuthority = threadId
-    ? createCodexAuthoritySnapshot({ ...provisional, thread_id: threadId, prompt })
+    ? recreateCodexAuthorityWithThread(provisional, threadId, request.prompt, effectivePrompt)
     : provisional;
   const authorityDigest = codexAuthorityDigest(finalAuthority);
+  const authorityVerifiability = codexAuthorityVerifiability(
+    finalAuthority,
+    authorityDigest,
+    request.prompt,
+    effectivePrompt,
+    request.mode === "resume"
+  );
   if (threadId) {
     await context.store.writeJson(codexThreadRecordPath(threadId), {
-      schema_version: 1,
+      schema_version: 2,
       thread_id: threadId,
       authority_digest: authorityDigest,
       authority: finalAuthority,
+      authority_verifiability: authorityVerifiability,
       updated_at: utcNow()
     } satisfies CodexThreadAuthorityRecord);
   }
@@ -518,7 +563,8 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     processResult,
     workspaceBefore,
     workspaceAfter,
-    outputCaptureLimitSource
+    outputCaptureLimitSource,
+    authorityVerifiability
   );
   if (request.mode === "resume" && processResult.threadId && processResult.threadId !== request.thread_id) {
     return codexFailure("codex_authority_mismatch", "Codex resume emitted a different thread id.", failedCodexStructuredResult(
@@ -541,13 +587,17 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
       "Inspect the persisted handle and retry only one Codex thread."
     ), metadata);
   }
-  if (processResult.timedOut || processResult.toolBudgetExceeded) {
+  if (processResult.timedOut || processResult.toolBudgetExceeded || processResult.delegationBudgetExceeded) {
     const kind = processResult.timedOut
       ? "timeout"
       : "codex_tool_budget_exceeded";
     return codexFailure(kind, "Codex execution stopped at a bounded harness limit.", blockedCodexStructuredResult(
       "Codex execution stopped before a valid terminal result.",
-      processResult.timedOut ? "timeout budget exceeded" : "tool-call budget exceeded",
+      processResult.timedOut
+        ? "timeout budget exceeded"
+        : processResult.delegationBudgetExceeded
+          ? "delegation max_subagents budget exceeded"
+          : "tool-call budget exceeded",
       threadId ? "Resume this exact Codex thread with its returned authority handle." : "Start a new bounded Codex run after reviewing the budget."
     ), metadata);
   }
@@ -614,13 +664,36 @@ function codexExecutionMetadata(
   result: CodexProcessResult,
   workspaceBefore: CodexWorkspaceChanges,
   workspaceAfter: CodexWorkspaceChanges,
-  outputCaptureLimitSource: string
+  outputCaptureLimitSource: string,
+  authorityVerifiability: CodexAuthorityVerifiability
 ): Record<string, unknown> {
   const before = new Set(workspaceBefore.changedPaths);
   return {
     authority,
     authority_digest: authorityDigest,
+    authority_verifiability: authorityVerifiability,
     resume_handle: threadId ? { thread_id: threadId, authority_digest: authorityDigest } : null,
+    selection: {
+      model: authority.model,
+      reasoning_effort: authority.reasoning_effort,
+      profile: authority.profile,
+      service_tier: authority.service_tier,
+      selection_rationale: authority.selection_rationale,
+      task_shape: authority.task_shape
+    },
+    prompt_digests: {
+      original_user_prompt_sha256: authority.original_prompt_sha256,
+      effective_prompt_sha256: authority.effective_prompt_sha256,
+      raw_prompts_persisted: false
+    },
+    delegation: {
+      requested_plan: authority.delegation_strategy,
+      supervision_block_injected: authority.delegation_strategy.mode === "parallel",
+      budget_exceeded: result.delegationBudgetExceeded,
+      attributable_tool_evidence: result.subagentToolEvidence,
+      attributable_spawn_calls_observed: result.subagentToolEvidence.length,
+      evidence_boundary: "Only explicit Codex JSONL item events naming spawn_agent are attributable; the requested delegation plan and model self-report do not prove subagent usage or outcomes."
+    },
     process: {
       exit_code: result.exitCode,
       timed_out: result.timedOut,
@@ -638,7 +711,8 @@ function codexExecutionMetadata(
         prefix: result.outputCapture.prefix,
         suffix: result.outputCapture.suffix
       },
-      tool_budget_exceeded: result.toolBudgetExceeded
+      tool_budget_exceeded: result.toolBudgetExceeded,
+      delegation_budget_exceeded: result.delegationBudgetExceeded
     },
     events: {
       count: result.eventCount,
@@ -725,7 +799,103 @@ function assertPersistedAuthority(expected: CodexAuthoritySnapshot, actual: Code
   }
 }
 
-function codexExecutionPrompt(task: string, authority: CodexGitAuthority, budgets: CodexAuthoritySnapshot["budgets"]): string {
+function recreateCodexAuthorityWithThread(
+  authority: CodexAuthoritySnapshot,
+  threadId: string,
+  originalPrompt: string,
+  effectivePrompt: string
+): CodexAuthoritySnapshot {
+  return createCodexAuthoritySnapshot({
+    repo_root: authority.repo_root,
+    git_common_dir: authority.git_common_dir,
+    base_commit: authority.base_commit,
+    head_commit: authority.head_commit,
+    branch: authority.branch,
+    isolated_worktree: authority.isolated_worktree,
+    cwd: authority.cwd,
+    model: authority.model,
+    profile: authority.profile,
+    reasoning_effort: authority.reasoning_effort,
+    service_tier: authority.service_tier,
+    sandbox: authority.sandbox,
+    approval_policy: authority.approval_policy,
+    selection_rationale: authority.selection_rationale,
+    task_shape: authority.task_shape,
+    delegation_strategy: authority.delegation_strategy,
+    mode: authority.mode,
+    thread_id: threadId,
+    original_prompt: originalPrompt,
+    effective_prompt: effectivePrompt,
+    budgets: authority.budgets
+  });
+}
+
+function codexAuthorityVerifiability(
+  authority: CodexAuthoritySnapshot,
+  authorityDigest: string,
+  originalPrompt: string,
+  effectivePrompt: string,
+  resumeAuthorityInherited: boolean
+): CodexAuthorityVerifiability {
+  if (authority.schema_version !== 2
+    || codexAuthorityDigest(authority) !== authorityDigest
+    || sha256(originalPrompt) !== authority.original_prompt_sha256
+    || sha256(effectivePrompt) !== authority.effective_prompt_sha256) {
+    throw new CodexAuthorityError("Codex authority snapshot or prompt digests are not verifiable.");
+  }
+  return {
+    status: "verified",
+    snapshot_schema_version: 2,
+    authority_digest_recomputed: true,
+    original_prompt_digest_verified: true,
+    effective_prompt_digest_verified: true,
+    git_authority_verified_before_execution: true,
+    resume_authority_inherited: resumeAuthorityInherited,
+    boundary: "Strict v2 snapshot, recomputed authority and prompt digests, and fixed Git authority were verified; execution results remain evidence under main-harness completion authority."
+  };
+}
+
+function parseVerifiableCodexThreadRecord(value: unknown): CodexThreadAuthorityRecord | null {
+  if (!isPlainRecord(value)
+    || value.schema_version !== 2
+    || typeof value.thread_id !== "string"
+    || typeof value.authority_digest !== "string"
+    || !/^[a-f0-9]{64}$/.test(value.authority_digest)
+    || !isPlainRecord(value.authority_verifiability)
+    || value.authority_verifiability.status !== "verified"
+    || value.authority_verifiability.snapshot_schema_version !== 2
+    || value.authority_verifiability.authority_digest_recomputed !== true
+    || value.authority_verifiability.original_prompt_digest_verified !== true
+    || value.authority_verifiability.effective_prompt_digest_verified !== true
+    || value.authority_verifiability.git_authority_verified_before_execution !== true
+    || typeof value.authority_verifiability.resume_authority_inherited !== "boolean"
+    || typeof value.authority_verifiability.boundary !== "string"
+    || typeof value.updated_at !== "string") {
+    return null;
+  }
+  let authority: CodexAuthoritySnapshot;
+  try {
+    authority = parseCodexAuthoritySnapshot(value.authority);
+  } catch {
+    return null;
+  }
+  if (authority.thread_id !== value.thread_id || codexAuthorityDigest(authority) !== value.authority_digest) return null;
+  return {
+    schema_version: 2,
+    thread_id: value.thread_id,
+    authority_digest: value.authority_digest,
+    authority,
+    authority_verifiability: value.authority_verifiability as unknown as CodexAuthorityVerifiability,
+    updated_at: value.updated_at
+  };
+}
+
+function codexExecutionPrompt(
+  task: string,
+  authority: CodexGitAuthority,
+  budgets: CodexAuthoritySnapshot["budgets"],
+  delegationStrategy: CodexDelegationStrategy
+): string {
   return [
     "The main harness grants one bounded Codex CLI execution in the recorded isolated worktree.",
     `Repository root: ${authority.repoRoot}`,
@@ -734,9 +904,22 @@ function codexExecutionPrompt(task: string, authority: CodexGitAuthority, budget
     `Budgets: timeout_ms=${budgets.timeout_ms}, max_output_chars=${budgets.max_output_chars}, max_context_chars=${budgets.max_context_chars}, max_tool_calls=${budgets.max_tool_calls}, max_retries=${budgets.max_retries}.`,
     "Do not create worktrees, commit, push, create a pull request, merge, deploy, use web search, add writable directories, bypass approvals, or bypass the sandbox.",
     "Return only the required structured result. Its status is execution evidence; completion_authority must remain main_harness.",
+    ...codexDelegationSupervisionBlock(delegationStrategy),
     "Task:",
     task
   ].join("\n");
+}
+
+function codexDelegationSupervisionBlock(strategy: CodexDelegationStrategy): string[] {
+  if (strategy.mode !== "parallel") return [];
+  return [
+    "Delegation supervision:",
+    `- Parallel delegation is bounded to at most ${strategy.max_subagents} subagents; use fewer when the work does not benefit from parallelism.`,
+    "- Give each opened subagent one independent workstream with non-overlapping file ownership and no authority to integrate, commit, push, publish, merge, deploy, or claim completion.",
+    ...strategy.independent_workstreams.map((workstream, index) => `- Workstream ${index + 1}: ${workstream}`),
+    `- Integration owner: ${strategy.integration_owner}. The main Codex thread owns integration, conflict resolution, focused verification, and the final structured result.`,
+    "- Requested workstreams are a plan, not proof of subagent usage. Report subagent facts only when attributable Codex JSONL/tool evidence exists."
+  ];
 }
 
 function runCodexProcess(argv: readonly string[], prompt: string, authority: CodexAuthoritySnapshot): Promise<CodexProcessResult> {
@@ -761,6 +944,8 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
     const eventTypes: Record<string, number> = {};
     const itemTypes: Record<string, number> = {};
     const countedToolItems = new Set<string>();
+    const subagentToolEvidence = new Map<string, CodexSubagentToolEvidence>();
+    let delegationBudgetExceeded = false;
     const outputCapture = new BoundedCodexOutputCapture(authority.budgets.max_output_chars);
     let settled = false;
     let cleanupStarted = false;
@@ -816,6 +1001,17 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
         if (event.type === "item.completed" && itemType === "agent_message" && typeof event.item.text === "string") {
           lastAgentMessage = event.item.text;
         }
+        const subagentEvidence = codexSubagentToolEvidence(event.type, event.item, eventCount, itemId, itemType);
+        if (subagentEvidence) {
+          const previousEvidence = subagentToolEvidence.get(subagentEvidence.item_id);
+          if (!previousEvidence || subagentEvidence.event_type === "item.completed") {
+            subagentToolEvidence.set(subagentEvidence.item_id, subagentEvidence);
+          }
+          if (subagentToolEvidence.size > authority.delegation_strategy.max_subagents) {
+            delegationBudgetExceeded = true;
+            stop();
+          }
+        }
         if (isCodexToolItem(itemType) && !countedToolItems.has(itemId)) {
           countedToolItems.add(itemId);
           if (countedToolItems.size > authority.budgets.max_tool_calls) {
@@ -864,7 +1060,9 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
         eventCount,
         eventTypes,
         itemTypes,
-        toolCallsObserved: countedToolItems.size
+        toolCallsObserved: countedToolItems.size,
+        delegationBudgetExceeded,
+        subagentToolEvidence: [...subagentToolEvidence.values()]
       });
     });
     child.stdin.on("error", () => {});
@@ -918,6 +1116,39 @@ function summarizeCodexEvent(event: Record<string, unknown>): string {
   return parts.join(" ");
 }
 
+function codexSubagentToolEvidence(
+  eventType: string,
+  item: Record<string, unknown>,
+  eventIndex: number,
+  itemId: string,
+  itemType: string
+): CodexSubagentToolEvidence | null {
+  if ((eventType !== "item.started" && eventType !== "item.completed") || itemType !== "collab_tool_call") {
+    return null;
+  }
+  const toolName = typeof item.tool === "string" ? item.tool : "";
+  if (toolName !== "spawn_agent") return null;
+  const receiverThreadIds = Array.isArray(item.receiver_thread_ids)
+    ? item.receiver_thread_ids.filter((value): value is string =>
+      typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+    ).slice(0, 3)
+    : [];
+  return {
+    event_index: eventIndex,
+    event_type: eventType,
+    item_id: codexEvidenceItemId(itemId),
+    item_type: itemType,
+    tool_name: toolName,
+    receiver_thread_ids: receiverThreadIds
+  };
+}
+
+function codexEvidenceItemId(value: string): string {
+  return /^[A-Za-z0-9_.:/-]{1,120}$/.test(value)
+    ? value
+    : `sha256:${sha256(value).slice(0, 24)}`;
+}
+
 function incrementBoundedCounter(counter: Record<string, number>, rawKey: string): void {
   const key = boundedDiagnosticToken(rawKey);
   if (key in counter || Object.keys(counter).length < 64) {
@@ -954,7 +1185,7 @@ function signalCodexProcessTree(pid: number | undefined, signal: NodeJS.Signals,
 }
 
 function isCodexToolItem(type: string): boolean {
-  return ["command_execution", "file_change", "mcp_tool_call", "tool_call", "dynamic_tool_call", "web_search"].includes(type);
+  return ["command_execution", "file_change", "mcp_tool_call", "tool_call", "dynamic_tool_call", "collab_tool_call", "web_search"].includes(type);
 }
 
 function codexEnv(): NodeJS.ProcessEnv {
