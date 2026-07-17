@@ -1096,21 +1096,21 @@ async function startLaunchdJob(
   if (!bootstrap || (bootstrap.exitCode !== 0 && !(await inspectLaunchdJob(job, run)).loaded)) {
     throw new Error(`launchctl bootstrap failed after bounded retry: ${bootstrap?.stderr || bootstrap?.stdout || "unknown error"}`);
   }
-  let kickstart: CommandResult | null = null;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
-    if (kickstart.exitCode === 0) return;
-    if (attempt === 4) break;
-    const inspected = await inspectLaunchdJob(job, run);
-    if (!inspected.loaded) {
-      const recovered = await run("launchctl", ["bootstrap", job.domain, job.plistPath], { timeoutMs: 30000 });
-      if (recovered.exitCode !== 0 && !(await inspectLaunchdJob(job, run)).loaded && attempt === 3) {
-        throw new Error(`launchctl re-bootstrap failed after kickstart: ${recovered.stderr || recovered.stdout || "unknown error"}`);
-      }
-    }
-    await delay(250 * (2 ** attempt));
+  const kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
+  if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr || kickstart.stdout}`);
+}
+
+async function restartLaunchdJob(
+  job: { domain: string; label: string; plistPath: string },
+  run: CommandRunner
+): Promise<void> {
+  const current = await inspectLaunchdJob(job, run);
+  if (!current.loaded) {
+    await startLaunchdJob(job, run);
+    return;
   }
-  throw new Error(`launchctl kickstart failed after bounded retry: ${kickstart?.stderr || kickstart?.stdout || "unknown error"}`);
+  const kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
+  if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed during restart: ${kickstart.stderr || kickstart.stdout}`);
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -1163,7 +1163,11 @@ export async function restartServiceSupervisor(
   definition: ServiceDefinition,
   run: CommandRunner = runCommand
 ): Promise<LaunchdStatus> {
-  await startSupervisor(definition, run);
+  await restartLaunchdJob({
+    domain: definition.domain,
+    label: definition.supervisorLabel,
+    plistPath: definition.supervisorPlistPath
+  }, run);
   return inspectSupervisor(definition, run);
 }
 

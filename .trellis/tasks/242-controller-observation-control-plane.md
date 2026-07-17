@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: PR #58 integrated; draft PR #59 fix-forward under review; live acceptance pending
+Status: PRs #58 and #59 integrated; draft PR #60 restart-semantics correction under review; live acceptance pending
 
 ## Identity And Ownership
 
@@ -17,6 +17,9 @@ Status: PR #58 integrated; draft PR #59 fix-forward under review; live acceptanc
   at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-controller-observation-control-plane`.
 - Live fix-forward branch/worktree: `codex/issue-57-handoff-kickstart-recovery`
   at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-handoff-kickstart-recovery`.
+- Restart-semantics base: `ede171d1c780ff440bf7ba115643045dfbc67915`.
+- Restart-semantics branch/worktree: `codex/issue-57-supervisor-restart-semantics`
+  at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-supervisor-restart-semantics`.
 
 ## Problem And Evidence
 
@@ -95,6 +98,35 @@ release, publication, or resumption of the stopped legacy goal.
   a different failure class, or if the bounded attempts materially delay normal
   service recovery. The override expires with Task 242; later scope expansion
   requires a new accepted owner decision.
+- Retirement triggered: the post-PR #59 live retry reproduced the same missing-job
+  failure while its rollback fully restored controller, manifest, and supervisor.
+  The generic kickstart/re-bootstrap loop is therefore retired rather than tuned
+  again; it did not address the failure mechanism.
+
+### Live Design Correction: Restart Is Not Start
+
+- Decision Owner and authority remain Task 242's accepted live-acceptance
+  mandate. This correction is inside the existing controller-handoff and shared
+  service-lifecycle owner surfaces; it does not expand the Goal or deployment
+  boundary.
+- Root cause: `restartServiceSupervisor` delegated to `startSupervisor`, whose
+  contract unloads an already loaded job before bootstrapping it. The handoff
+  needs only to restart the copied supervisor process; unloading the unchanged
+  plist created the observed asynchronous removal race.
+- Correct contract: restart a loaded job with one `kickstart -k`; if the job is
+  not loaded, fall back to the existing bounded start/bootstrap path. Ordinary
+  service install/start/restart flows keep their existing explicit stop,
+  service-file refresh, and start behavior.
+- Risk: a direct kickstart does not reload a changed plist. This API is scoped to
+  the controller handoff, which changes only the copied controller and manifest;
+  plist-changing flows remain owned by service install/start/restart.
+- Verification and rollback: the deterministic service-seam regression models
+  successful bootstrap during pending removal and reproduced the exact
+  `Could not find service` failure three times before the correction. Focused
+  service/controller-handoff checks, full repository checks, dual review, real
+  handoff, idempotency, and channel health remain required. Revert the correction
+  if direct kickstart cannot produce a new verified supervisor PID or changes
+  ordinary service lifecycle behavior.
 
 ## Design Discipline
 
@@ -205,5 +237,35 @@ release, publication, or resumption of the stopped legacy goal.
   `git diff --check`, and the repository `pnpm run check` gate (890/890 tests,
   skill validation, and naming checks). These checks validate the bounded
   lifecycle behavior only; they do not yet claim live handoff acceptance.
-- Fix-forward commit `4cc0b3ce46382bbda914edb948855b07cecf4157` is pushed
-  through draft PR #59 to `develop`; review and live retry remain pending.
+- Fix-forward commit `4cc0b3ce46382bbda914edb948855b07cecf4157` was merged
+  through PR #59 to `develop`; its post-merge live retry failed and triggered
+  the restart-semantics correction below.
+
+## 2026-07-17 Restart-Semantics Checkpoint
+
+- PR #59 merged to `develop` as
+  `ede171d1c780ff440bf7ba115643045dfbc67915` after Standards and Spec findings
+  were resolved.
+- The second live handoff reproduced `launchctl kickstart failed after bounded
+  retry: Could not find service`. Its transaction restored the previous
+  controller and manifest and verified the restored supervisor at PID 58525;
+  resident runtime PID 7316, Web, and Feishu remained healthy on stable commit
+  `1c22979d4d4feb0cb4f2bed86e062fd58ab759d3`.
+- No controller exception appeared in supervisor stderr. The deterministic
+  regression then reproduced the failure three times at the shared service seam
+  and turned green when loaded restart stopped performing bootout/bootstrap.
+- The correction removes PR #59's generic kickstart retry, separates loaded
+  restart from unloaded start, preserves the existing start fallback, and adds
+  both loaded and unloaded supervisor regressions. Build plus the focused
+  service/controller-handoff suite passes 23/23. Repository `pnpm run check`
+  passes 891/891 tests plus skill and naming validation, and `git diff --check`
+  passes. Dual review, integration, and live acceptance remain pending.
+- Correction commit `7409e3bc443db0ea40391bf8e3b7e21b16acb69b`
+  records the root cause in its message; checkpoint commit
+  `78a58f5cde86ae437d5c53c2d8e7b7199f93adea` records the pre-PR diagnosis.
+  Both are linked through draft PR #60; review and integration remain pending.
+- A minimal live probe then directly kickstarted the still-backed-up installed
+  supervisor without unloading it. The job changed from PID 58525 to PID 75144
+  on the first attempt; runtime PID 7316, Web, and Feishu remained healthy, with
+  `deployment_stale` as the only expected health attention. This confirms the
+  loaded-restart mechanism but does not yet claim controller handoff acceptance.
