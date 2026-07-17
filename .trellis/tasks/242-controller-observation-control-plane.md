@@ -151,3 +151,23 @@ release, publication, or resumption of the stopped legacy goal.
 - PR review/integration, installed controller handoff, candidate deployment,
   live health/probation, and rollback/recovery drill remain pending and are not
   claimed by this checkpoint.
+
+## 2026-07-17 Live Handoff Checkpoint
+
+- PR #58 merged to `develop` as
+  `60e3fbb53ef70dcdea1d70cded72b25bb3ec218f`; Issue #57 remains open until live
+  acceptance completes.
+- The first live controller handoff correctly failed closed at supervisor
+  restart. Controller and manifest backups were restored, but the supervisor
+  job had disappeared after `bootout`; the resident runtime, Web, and Feishu
+  remained running on stable commit `1c22979d4d4feb0cb4f2bed86e062fd58ab759d3`.
+- A bounded manual `bootstrap` plus `kickstart` restored the backed-up supervisor
+  at PID 12051 without changing runtime residency or resuming the legacy Goal.
+- Live evidence shows the shared service lifecycle adapter needs bounded
+  kickstart retry plus missing-job re-bootstrap after a successful bootstrap.
+  This is being fixed forward in the same Issue #57 and Task 242 before the
+  controller handoff is retried; candidate deployment remains pending.
+- The fix-forward passes the focused service/controller-handoff suite (22/22),
+  `git diff --check`, and the repository `pnpm run check` gate (890/890 tests,
+  skill validation, and naming checks). These checks validate the bounded
+  lifecycle behavior only; they do not yet claim live handoff acceptance.

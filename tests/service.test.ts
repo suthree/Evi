@@ -11,6 +11,7 @@ import {
   prepareServiceRuntimeSource,
   renderLaunchdPlist,
   renderSupervisorLaunchdPlist,
+  restartServiceSupervisor,
   rollbackServiceRuntimeBundle,
   resolveServiceDefinition,
   resolveServiceConfigSelectors,
@@ -109,6 +110,51 @@ test("deployment supervisor launchd job uses the stable copied controller withou
 test("parseLaunchdPid reads launchctl print output", () => {
   assert.equal(parseLaunchdPid("state = running\npid = 12345\n"), 12345);
   assert.equal(parseLaunchdPid("state = waiting\n"), null);
+});
+
+test("supervisor restart re-bootstraps a job lost during transient kickstart failure", async () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    nodePath: "/usr/local/bin/node"
+  });
+  let loaded = true;
+  let pid = 101;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const status = await restartServiceSupervisor(definition, async (_command, args) => {
+    const action = args[0];
+    if (action === "print") return loaded
+      ? { stdout: `state = running\npid = ${pid}\n`, stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (action === "bootout") {
+      loaded = false;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "bootstrap") {
+      bootstrapAttempts += 1;
+      loaded = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts === 1) {
+        loaded = false;
+        return { stdout: "", stderr: "Could not find service", exitCode: 113 };
+      }
+      loaded = true;
+      pid = 202;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    throw new Error(`unexpected launchctl action: ${action}`);
+  });
+
+  assert.equal(bootstrapAttempts, 2);
+  assert.equal(kickstartAttempts, 2);
+  assert.equal(status.loaded, true);
+  assert.equal(status.pid, 202);
 });
 
 test("service runtime rollback swaps current and previous bundles reversibly", async () => {
@@ -253,7 +299,9 @@ test("service rollback restores identities and service attempts when reconciliat
 
     assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "current-commit");
     assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "stable-commit");
-    assert.deepEqual(bootstrapPaths, [definition.plistPath, definition.supervisorPlistPath]);
+    assert.equal(bootstrapPaths.filter((path) => path === definition.plistPath).length, 5);
+    assert.equal(bootstrapPaths.filter((path) => path === definition.supervisorPlistPath).length, 1);
+    assert.deepEqual([...new Set(bootstrapPaths)], [definition.plistPath, definition.supervisorPlistPath]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
