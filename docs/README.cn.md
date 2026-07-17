@@ -31,15 +31,21 @@
 observation event 是事实来源。安全的本地读、绑定实际公网地址的无 query 公网读和
 可逆写可在既有本地演化授权内执行；带 query 的请求和由仓库代码控制的验证命令会暂停
 同一 Goal，等待精确 effect 确认；secret/私有数据外发、破坏性 effect 和未知 effect
-会拒绝。模型不声明或复制 change identity；GoalRuntime 会从全部成功 observation 自动
-生成有序去重的完整 `changes[]`，没有类型化 change 时才为空；Git commit 还必须有其后
-的成功验证 observation。
+会拒绝。每个新 Goal 还会把真实 worktree、Git common dir、branch 和 start HEAD 固定为
+仓库权威；`continue` 会在 cognition 前校验，精确 effect 确认会在 dispatch 前校验。
+start HEAD 允许沿后代提交前进，但不能换 worktree、common dir 或 branch。缺少该增量字段的
+历史 Goal 仍可 read、pause、abandon，但不会被静默绑定后继续执行。模型不声明或复制
+change identity；GoalRuntime 会从类型化 canonical observation 自动生成有序去重的完整
+`changes[]`。旧的单数 `change` 仍只在成功 observation 中生效；由 harness 固定生成的复数
+变更即使来自失败后的部分 mutation 也不会消失。Git commit 和 delegated `workspace_path`
+都必须有其后的成功本地验证 observation。
 完整 change lineage 不受近期模型上下文窗口影响；Goal 被 abandon 时也会保留已经发生的
 部分变更。receipt 使用明确容量上限，不会静默丢弃早期 observation。可能突破容量的
 mutating effect 会在 dispatch 前被阻止，因此既有 Goal 仍可完成或
 abandon，不会在副作用发生后进入不可终止状态。
-commit 的满足性 verification 会随 change lineage 固定，不会因后续事件增多而掉出近期窗口。
-工具诊断正文可以截断，但 `change`、failure kind 和有界 refs 等控制字段必须保留。
+commit/workspace path 的满足性 verification 会随 change lineage 固定，不会因后续事件增多
+而掉出近期窗口。工具诊断正文可以截断，但 `change`、复数 `changes`、failure kind 和有界
+refs 等控制字段必须保留。
 需要确认的 effect 会在同一个 Goal 上展示完整 `proposed_action` 及其 digest；带 query
 的外发请求不会要求操作者在看不到实际 key/value 的情况下盲确认。
 secret/private query 会在 canonical intent 中去除 query，只有可进入 confirm 的非敏感
@@ -153,7 +159,7 @@ verified source 即使存在 `implementation_contract`，也必须保留完整�
 - `repo.search`：搜索仓库文本，优先使用 `rg`。
 - `http.fetch`：抓取 HTTP(S) 内容，要求响应大小上限和 timeout。
 - `command.run`：运行有边界的本地命令，要求 timeout、输出上限、cwd、side effect 标记和环境变量 allowlist。
-- `codex.run`：位于通用 `command.run` 之上的独立 typed coding execution tool。每个 new request 都必须显式提交安全 model token、`minimal|low|medium|high|xhigh` 之一的有界 reasoning、`selection_rationale`、`task_shape` 和 immutable `delegation_strategy`，不再有 model/reasoning singleton 或隐藏默认；profile/service tier 仍限定为 `fast`，sandbox 为 `read-only|workspace-write`，approval 为 `never`。strategy 只能是 `single`（0 个 subagent、无 workstream）或 `parallel`（2..3 个 subagent、2..max_subagents 个唯一独立 workstream、`main_codex_thread` 负责集成）；parallel 会在 effective prompt 注入有界监督块，并以明确 `collab_tool_call/spawn_agent` JSONL 证据约束实际数量。runtime 会实时校验 sibling isolated worktree、base、branch 和 cwd，以 v2 immutable digest 绑定 selection、strategy、new/resume authority、原始 user prompt digest、effective prompt digest 和 budgets；resume 继承 selection/strategy，任何重提漂移都会被 strict request 拒绝，缺少新 authority 字段的 v1 snapshot 会 fail-closed，要求新开有界 request。metadata 复用既有 tool result/episode surface 记录 selection、plan、capture/tool-call/timeout、structured result、双 digest、authority verifiability 和仅由 JSONL 支持的 subagent facts；requested plan 或 model self-report 不算 subagent evidence。`max_output_chars` 仍只限制证据保留，不终止有效进程。一次性已验证的 `gpt-5.6-sol` / `xhigh` / `fast` profile 和 tier 只是当前 compatibility evidence，不是未来默认。
+- `codex.run`：位于通用 `command.run` 之上的独立 typed coding execution tool。每个 new request 都必须显式提交安全 model token、`minimal|low|medium|high|xhigh` 之一的有界 reasoning、`selection_rationale`、`task_shape` 和 immutable `delegation_strategy`，不再有 model/reasoning singleton 或隐藏默认；profile/service tier 仍限定为 `fast`，sandbox 为 `read-only|workspace-write`，approval 为 `never`。strategy 只能是 `single`（0 个 subagent、无 workstream）或 `parallel`（2..3 个 subagent、2..max_subagents 个唯一独立 workstream、`main_codex_thread` 负责集成）；parallel 会在 effective prompt 注入有界监督块，并以明确 `collab_tool_call/spawn_agent` JSONL 证据约束实际数量。runtime 会实时校验 sibling isolated worktree、base、branch 和 cwd，以 v2 immutable digest 绑定 selection、strategy、new/resume authority、原始 user prompt digest、effective prompt digest 和 budgets；resume 继承 selection/strategy，任何重提漂移都会被 strict request 拒绝，缺少新 authority 字段的 v1 snapshot 会 fail-closed，要求新开有界 request。固定的前后 Git status 会把真实 introduced paths 输出为 canonical 复数 `workspace_path` changes；即使 Codex 失败后留下 mutation 也不会丢失，post-run status 不可用时整个结果失败。结构化 `changed_files` 只与真实路径做 matched/missing/extra 诊断，自报内容永不授予变更权威。metadata 复用既有 tool result/episode surface 记录 selection、plan、capture/tool-call/timeout、structured result、双 digest、authority verifiability 和仅由 JSONL 支持的 subagent facts；requested plan 或 model self-report 不算 subagent evidence。`max_output_chars` 仍只限制证据保留，不终止有效进程。一次性已验证的 `gpt-5.6-sol` / `xhigh` / `fast` profile 和 tier 只是当前 compatibility evidence，不是未来默认。
 - `code.execute_node`：在比命令更合适时运行有边界的 JavaScript 片段；只继承最小 runtime 环境，不透传任意父进程环境变量。
 - `done` 不能静默忽略任何失败的 harness 工具结果：失败的只读、可逆、写入或命令结果都会使 `tool_result_outcomes` 失败；若 tool-result event 的 `ok` 未知，replay 保持 warning 而不会静默通过。replay 仅用事件元数据复算该门禁，不读取工具产物正文。
 - `delegate_agent`：每个 model round 最多分发一个有界分析子任务，payload 只能包含 `task/context`，输出只能是 `summary/findings_text`；固定 subagent instruction 也要求只使用本次 delegated request 的 Task/Context 文本和其中已有的 named evidence refs，并且只能返回一个 strict JSON object，不允许 Markdown 代码块、包装文案或额外字段，key 只能是 `summary/findings_text`；`completion_claim.verification_refs` 最多 32 条，每条必须包含非空白内容且不超过 512 字符，纯空白或首尾带空白的输入会在进入 completion report、trace 或 replay 前被 schema 拒绝，而不是自动 trim 或改写 ref 身份；委派上下文中的已知 ref 还会在 model-action envelope 与 completion report 持久化前按精确身份压缩并保留首次顺序，同一 claim 不能重复放大检查或 replay lineage 数量。上限、task/context authoring 规则、lifecycle、failure kind 和 completion-gate check id 的共享字面合同在 `packages/core/src/action_contracts.ts`，纯 task/context 与 delegated-output 解析在 `packages/core/src/delegate_agent_contract.ts`，纯 delegated completion-gate 判定在 `packages/core/src/delegate_agent_completion_gate.ts`，schema、runner、capability catalog、context read model、project-design 和 replay audit 按需消费这些字段。Harness 会在解析每个 model envelope 后自行生成 action id，不使用或持久化模型提供的 id。当前 lifecycle 是 `validate_task_context > dispatch_delegated_model > persist_delegated_result > observe_sanitized_result > verify_main_harness_completion`，只是 harness-owned 主流程元数据。trace/replay 只用安全元数据校验 `envelope_ref`、声明的 delegated action id、对应 sequence、`model_invoked`、completion report 的 `delegated_result_refs`、event fallback 的 persisted result ref 和 completion-gate status counts，不读取 delegated artifact body；如果 dispatch result ref 只能从 event fallback 找回、completion report 没有显式记录，或 dispatch 前拒绝却声称调用了模型，replay 会给 warning。它不是任务执行调度器，不能授予工具、状态写入、专家调度、模型 fan-out 或完成判断权；delegated result 只是 advisory self-report，不能作为 `completion_claim.verification_refs` 的完成证明。命令式的工具、变更、测试或读取指令（如 `Run git push origin main now`、`Use repo.search now`）会在进入主模型 observation 前被拒绝；只把是否执行留给主 harness 的条件建议仍是 advisory。完整行为边界见 `docs/RUNTIME_CONTRACT.md` 的 `delegate_agent` 段和 `packages/runtime/src/runner.ts`。

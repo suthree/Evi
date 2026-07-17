@@ -1130,6 +1130,13 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     outputCaptureLimitSource,
     authorityVerifiability
   );
+  if (!workspaceAfter.available) {
+    return codexFailure("change_not_observed", "Codex post-run workspace inspection was unavailable.", failedCodexStructuredResult(
+      "Codex workspace attribution is unavailable.",
+      "The main harness could not obtain the fixed post-run Git status snapshot.",
+      "Inspect the isolated worktree directly and do not claim delegated completion until canonical attribution is restored."
+    ), metadata);
+  }
   if (request.mode === "resume" && processResult.threadId && processResult.threadId !== request.thread_id) {
     return codexFailure("codex_authority_mismatch", "Codex resume emitted a different thread id.", failedCodexStructuredResult(
       "Codex resume authority mismatch.",
@@ -1202,9 +1209,7 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
 
   const ok = structured.status === "done";
   return toolResult(CODEX_RUN_TOOL, ok, `Codex execution evidence status=${structured.status}; completion authority remains with the main harness.`, {
-    ...metadata,
-    status: structured.status,
-    result: structured
+    ...codexAttributedOutput(metadata, structured)
   }, "local_write", ok ? undefined : structured.status === "blocked" ? "codex_blocked" : "codex_failed");
 }
 
@@ -1215,10 +1220,41 @@ function codexFailure(
   metadata: Record<string, unknown> = {}
 ): ToolResult {
   return toolResult(CODEX_RUN_TOOL, false, summary, {
+    ...codexAttributedOutput(metadata, result)
+  }, "local_write", failureKind);
+}
+
+function codexAttributedOutput(
+  metadata: Record<string, unknown>,
+  result: CodexStructuredResult
+): Record<string, unknown> {
+  const workspace = isPlainRecord(metadata.workspace_changes) ? metadata.workspace_changes : null;
+  if (!workspace) return { ...metadata, status: result.status, result };
+  const observed = stringArrayValue(workspace.introduced_changed_paths);
+  const claimed = [...new Set(result.changed_files)].sort();
+  const observedSet = new Set(observed);
+  const claimedSet = new Set(claimed);
+  const available = workspace.available === true;
+  const missingFromClaim = observed.filter((path) => !claimedSet.has(path));
+  const unobservedClaims = claimed.filter((path) => !observedSet.has(path));
+  return {
     ...metadata,
+    changes: observed.map((path) => ({ kind: "workspace_path", identity: path })),
+    workspace_change_attribution: {
+      status: !available
+        ? "unavailable"
+        : missingFromClaim.length === 0 && unobservedClaims.length === 0
+          ? "claim_matched"
+          : "claim_mismatch",
+      observed_introduced_paths: observed,
+      claimed_changed_paths: claimed,
+      missing_from_claim: missingFromClaim,
+      unobserved_claims: unobservedClaims,
+      authority: "Only fixed live Git status snapshots create canonical workspace_path changes; Codex changed_files is an untrusted diagnostic claim."
+    },
     status: result.status,
     result
-  }, "local_write", failureKind);
+  };
 }
 
 function codexExecutionMetadata(

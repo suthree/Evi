@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { appendFile, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import test from "node:test";
@@ -18,6 +19,85 @@ import {
   type GoalVerifier
 } from "../packages/runtime/src/goal_runtime.js";
 import type { ToolResult } from "../packages/runtime/src/tools.js";
+
+test("GoalRuntime binds new goals to one Git worktree authority", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read one bounded fact under the bound worktree."),
+      outcome("当前 worktree 的有界目标已完成。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("authority_start", "Stay bound to one Git worktree."));
+
+    assert.equal(started.repository_authority?.repo_root, await realpath(fixture.repoRoot));
+    assert.equal(started.repository_authority?.worktree, await realpath(fixture.repoRoot));
+    assert.equal(started.repository_authority?.branch, "develop");
+    assert.match(started.repository_authority?.start_head_commit ?? "", /^[a-f0-9]{40}$/);
+    const [startEvent] = await readEvents(fixture.stateRoot);
+    assert.deepEqual(startEvent?.repository_authority, started.repository_authority);
+
+    const siblingRoot = join(fixture.root, "sibling-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/authority-mismatch", siblingRoot]);
+    const foreignCognition = sequenceCognition([outcome("不应在另一个 worktree 中执行。")]);
+    const foreignRuntime = createRuntime(new AgentStore(siblingRoot, fixture.stateRoot), {
+      cognition: foreignCognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    }, "foreign");
+
+    await assert.rejects(foreignRuntime.handle({
+      type: "continue",
+      command_id: "authority_foreign_continue",
+      goal_id: started.goal_id
+    }), /repository authority mismatch/i);
+    assert.equal(foreignCognition.calls.length, 0);
+
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "authority_same_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime reads legacy goals but refuses to silently bind their continuation", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([outcome("Legacy continuation must not execute.")]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("legacy_authority_start", "Keep historical Goal events readable."));
+    const events = await readEvents(fixture.stateRoot);
+    delete events[0]!.repository_authority;
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+
+    const legacy = await runtime.read(started.goal_id);
+    assert.equal(legacy.repository_authority, null);
+    await assert.rejects(runtime.handle({
+      type: "continue",
+      command_id: "legacy_authority_continue",
+      goal_id: started.goal_id
+    }), /legacy goal has no repository authority/i);
+    assert.equal(cognition.calls.length, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
 
 test("GoalRuntime owns safe action, observation, verification, and one receipt", async () => {
   const fixture = await createFixture();
@@ -459,6 +539,152 @@ test("Canonical verifier accepts exact typed commit identity followed by verific
   }
 });
 
+test("Canonical verifier requires later local verification for delegated workspace paths", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const goal = await runtime.handle(start("workspace_path_verifier_start", "Verify delegated workspace changes."));
+    const changeEvidence = {
+      event_id: "goal_event_workspace_change",
+      kind: "observation" as const,
+      summary: "Codex introduced one repository path.",
+      refs: ["packages/runtime/src/goal_runtime.ts"],
+      occurred_at: "2026-07-17T00:00:01.000Z",
+      operation: "execute_dynamic_code" as const,
+      tool: "codex.run",
+      ok: true,
+      changes: [{ kind: "workspace_path" as const, identity: "packages/runtime/src/goal_runtime.ts" }]
+    };
+    const candidate = {
+      summary: "The delegated path is attributed to canonical Git status evidence.",
+      changes: [{ kind: "workspace_path" as const, identity: "packages/runtime/src/goal_runtime.ts" }],
+      runtime_result: {
+        status: "healthy" as const,
+        summary: "The bounded runtime remained healthy.",
+        evidence_event_ids: ["goal_event_workspace_change"]
+      },
+      residual_risks: [],
+      evidence_event_ids: ["goal_event_workspace_change"]
+    };
+
+    const unverified = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate,
+      evidence: [changeEvidence]
+    });
+    assert.equal(unverified.status, "failed");
+    assert.equal(unverified.checks.some((check) => check.id === "post_change_verification" && check.status === "failed"), true);
+
+    const verified = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate: {
+        ...candidate,
+        runtime_result: {
+          ...candidate.runtime_result,
+          evidence_event_ids: ["goal_event_workspace_change", "goal_event_workspace_verify"]
+        },
+        evidence_event_ids: ["goal_event_workspace_change", "goal_event_workspace_verify"]
+      },
+      evidence: [changeEvidence, {
+        event_id: "goal_event_workspace_verify",
+        kind: "observation",
+        summary: "Repository checks passed after the delegated mutation.",
+        refs: [],
+        occurred_at: "2026-07-17T00:00:02.000Z",
+        operation: "run_local_verification",
+        tool: "command.run",
+        ok: true
+      }]
+    });
+    assert.equal(verified.status, "passed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime carries plural delegated paths into one receipt after verification", async () => {
+  const fixture = await createFixture();
+  try {
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        if (effectAction.tool === "file.write_repo") {
+          return {
+            id: "tool_result_delegated_paths",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Synthetic delegated write introduced two paths.",
+            output: {
+              changes: [
+                { kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" },
+                { kind: "workspace_path", identity: "tests/goal_runtime.test.ts" }
+              ]
+            },
+            side_effect_level: "local_write",
+            created_at: "2026-07-17T00:00:01.000Z"
+          };
+        }
+        return {
+          id: "tool_result_delegated_verify",
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Synthetic post-change verification passed.",
+          output: {},
+          side_effect_level: "local_reversible",
+          created_at: "2026-07-17T00:00:02.000Z"
+        };
+      }
+    };
+    const cognition = sequenceCognition([
+      action("file.write_repo", { path: "docs/delegated.md", text: "bounded" }, "Delegate one bounded workspace change."),
+      outcome("委派结果尚待变更后验证。"),
+      action("command.run", {
+        command: "pnpm",
+        args: ["run", "build"],
+        cwd: "repo",
+        side_effect_level: "local_reversible"
+      }, "Run a later local verification over the attributed workspace."),
+      outcome("委派变更已经后续本地验证。")
+    ]);
+    const runtime = createRuntime(fixture.store, { cognition, tools, verifier: new CanonicalGoalVerifier() });
+    const started = await runtime.handle(start("plural_paths_start", "Attribute and verify delegated workspace paths."));
+    const failed = await runtime.handle({
+      type: "continue",
+      command_id: "plural_paths_unverified",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(failed.continuation_reasons, ["verification_failed"]);
+
+    const verificationPaused = await runtime.handle({
+      type: "continue",
+      command_id: "plural_paths_verified",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(verificationPaused.continuation_reasons, ["effect_confirmation_required"]);
+    await runtime.handle({
+      type: "resume",
+      command_id: "plural_paths_verify_confirmed",
+      goal_id: started.goal_id,
+      confirm_effect_id: verificationPaused.pending_effect!.effect_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "plural_paths_completed",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(completed.receipt?.changes, [
+      { kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" },
+      { kind: "workspace_path", identity: "tests/goal_runtime.test.ts" }
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime preserves a large commit control field and pins its later verification", async () => {
   const fixture = await createFixture();
   try {
@@ -755,6 +981,22 @@ test("Effect confirmation pauses one goal and executes only the exact confirmed 
       }
     });
     assert.equal(tools.calls.length, 0);
+
+    const foreignWorktree = join(fixture.root, "confirmation-foreign-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/confirmation-mismatch", foreignWorktree]);
+    const foreignTools = recordingTools();
+    const foreignRuntime = createRuntime(new AgentStore(foreignWorktree, fixture.stateRoot), {
+      cognition: sequenceCognition([]),
+      tools: foreignTools,
+      verifier: new CanonicalGoalVerifier()
+    }, "confirmation_foreign");
+    await assert.rejects(foreignRuntime.handle({
+      type: "resume",
+      command_id: "confirm_foreign",
+      goal_id: started.goal_id,
+      confirm_effect_id: paused.pending_effect!.effect_id
+    }), /repository authority mismatch/i);
+    assert.equal(foreignTools.calls.length, 0);
 
     const replayed = await runtime.handle({
       type: "continue",
@@ -1199,6 +1441,8 @@ async function snapshotFiles(root: string): Promise<Map<string, string>> {
 }
 
 async function createFixture(): Promise<{
+  root: string;
+  repoRoot: string;
   stateRoot: string;
   store: AgentStore;
   cleanup: () => Promise<void>;
@@ -1208,9 +1452,30 @@ async function createFixture(): Promise<{
   const stateRoot = join(root, "state");
   await mkdir(repoRoot, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
+  await runGoalGit(repoRoot, ["init", "-b", "develop"]);
+  await runGoalGit(repoRoot, ["config", "user.name", "Goal Runtime Test"]);
+  await runGoalGit(repoRoot, ["config", "user.email", "goal-runtime@example.test"]);
+  await runGoalGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+  await writeFile(join(repoRoot, "README.md"), "goal fixture\n", "utf8");
+  await runGoalGit(repoRoot, ["add", "README.md"]);
+  await runGoalGit(repoRoot, ["commit", "-m", "fixture base"]);
   return {
+    root,
+    repoRoot,
     stateRoot,
     store: new AgentStore(repoRoot, stateRoot),
     cleanup: () => rm(root, { recursive: true, force: true })
   };
+}
+
+function runGoalGit(cwd: string, args: string[]): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", args, { cwd }, (error, _stdout, stderr) => {
+      if (error) {
+        reject(new Error(`git ${args.join(" ")} failed: ${stderr}`));
+        return;
+      }
+      resolvePromise();
+    });
+  });
 }

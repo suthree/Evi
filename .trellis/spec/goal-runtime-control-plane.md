@@ -35,6 +35,12 @@ GoalRuntime is the only state owner for:
 - outcome verification and the canonical OutcomeReceipt;
 - interpretation of deployment and other execution observations.
 
+For executable local Goals, repository placement is part of the goal identity,
+not caller ambience. A new start records the real Git worktree, common
+directory, branch, and start HEAD. Continue and exact-effect dispatch validate
+that authority before execution. Historical starts without it remain readable
+but cannot be silently rebound for mutation.
+
 Its external interface is intentionally small:
 
 ```ts
@@ -84,6 +90,12 @@ Project-design, iteration, operator, scorecard, and learning views may derive
 from the receipt. They must not require callers to duplicate claim mappings,
 verification references, plan-reference coverage, or outcome-reference
 coverage into independent writable truth stores.
+
+Delegated workspace attribution comes only from harness-observed pre/post Git
+status. Model-authored changed-file lists are diagnostics, not change authority.
+Observed repository-relative paths are plural typed changes, remain visible
+when a delegated worker fails after mutation, and require a later successful
+local verification observation before acceptance.
 
 ## Deployment Adapter Contract
 

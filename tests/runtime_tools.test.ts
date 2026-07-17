@@ -929,9 +929,50 @@ process.stdin.on("end", () => {
     assert.deepEqual(workspace.before_changed_paths, []);
     assert.deepEqual(workspace.after_changed_paths, ["README.md", "codex-untracked.txt"]);
     assert.deepEqual(workspace.introduced_changed_paths, ["README.md", "codex-untracked.txt"]);
+    assert.deepEqual(result.output.changes, [
+      { kind: "workspace_path", identity: "README.md" },
+      { kind: "workspace_path", identity: "codex-untracked.txt" }
+    ]);
+    const attribution = result.output.workspace_change_attribution as Record<string, unknown>;
+    assert.equal(attribution.status, "claim_mismatch");
+    assert.deepEqual(attribution.observed_introduced_paths, ["README.md", "codex-untracked.txt"]);
+    assert.deepEqual(attribution.claimed_changed_paths, []);
+    assert.deepEqual(attribution.missing_from_claim, ["README.md", "codex-untracked.txt"]);
+    assert.deepEqual(attribution.unobserved_claims, []);
     const structured = result.output.result as Record<string, unknown>;
     assert.deepEqual(structured.changed_files, []);
     assert.equal(structured.completion_authority, "main_harness");
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
+test("failed codex.run still exposes workspace paths introduced before failure", async () => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  try {
+    await writeFakeCodex(fixture.binRoot, `
+const fs = await import("node:fs");
+process.stdin.resume();
+process.stdin.on("end", () => {
+  fs.writeFileSync("failed-untracked.txt", "mutation before failure\\n");
+  console.log(JSON.stringify({ type: "thread.started", thread_id: "019fabcd-1234-7abc-8def-0123456789ab" }));
+  process.exitCode = 9;
+});
+`);
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    const result = await executeTool(useTool("codex.run", codexNewArguments(fixture)), { store: fixture.store });
+
+    assert.equal(result.ok, false);
+    assertFailureKind(result, "nonzero_exit");
+    assert.deepEqual(result.output.changes, [
+      { kind: "workspace_path", identity: "failed-untracked.txt" }
+    ]);
+    const attribution = result.output.workspace_change_attribution as Record<string, unknown>;
+    assert.equal(attribution.status, "claim_mismatch");
+    assert.deepEqual(attribution.observed_introduced_paths, ["failed-untracked.txt"]);
+    assert.deepEqual(attribution.missing_from_claim, ["failed-untracked.txt"]);
   } finally {
     process.env.PATH = previousPath;
     await fixture.cleanup();

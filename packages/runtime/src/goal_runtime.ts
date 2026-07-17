@@ -13,6 +13,12 @@ import {
   type EffectIntent
 } from "./effect_policy.js";
 import type { ToolResult } from "./tools.js";
+import {
+  assertGoalRepositoryAuthority,
+  goalRepositoryAuthoritySchema,
+  inspectGoalRepositoryAuthority,
+  type GoalRepositoryAuthority
+} from "./repository_authority.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -63,9 +69,22 @@ const goalSoftBudgetSchema = z.object({
 }).strict();
 
 const changeIdentitySchema = z.object({
-  kind: z.enum(["git_commit", "deployment", "state_change"]),
+  kind: z.enum(["git_commit", "deployment", "state_change", "workspace_path"]),
   identity: shortTextSchema
-}).strict();
+}).strict().superRefine((value, ctx) => {
+  if (value.kind !== "workspace_path") return;
+  const parts = value.identity.split("/");
+  if (value.identity.startsWith("/")
+    || value.identity === "."
+    || value.identity.includes("\\")
+    || parts.some((part) => part === "" || part === "." || part === "..")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["identity"],
+      message: "workspace_path identity must be one normalized repository-relative Git path"
+    });
+  }
+});
 
 const changeSetSchema = z.array(changeIdentitySchema).max(MAX_OUTCOME_CHANGES);
 
@@ -218,7 +237,8 @@ const startedEventSchema = z.object({
   event_type: z.literal("goal_started"),
   objective: textSchema,
   budget: goalSoftBudgetSchema,
-  checkpoint: goalCheckpointSchema
+  checkpoint: goalCheckpointSchema,
+  repository_authority: goalRepositoryAuthoritySchema.optional()
 }).strict();
 
 const actionPlannedEventSchema = z.object({
@@ -368,6 +388,7 @@ export interface GoalView {
   last_event_id: string;
   last_command_id: string;
   receipt: OutcomeReceipt | null;
+  repository_authority: GoalRepositoryAuthority | null;
   boundary: typeof GOAL_BOUNDARY;
 }
 
@@ -382,6 +403,7 @@ export interface GoalEvidenceView {
   tool?: string;
   ok?: boolean;
   change?: GoalChangeIdentity;
+  changes?: GoalChangeIdentity[];
   details?: string;
 }
 
@@ -512,6 +534,7 @@ export class GoalRuntime {
 
     switch (command.type) {
       case "continue":
+        await this.assertExecutableRepositoryAuthority(currentState.view);
         return this.continueGoal(events, currentState, command, commandDigest);
       case "pause":
         if (currentState.view.status !== "active") {
@@ -551,6 +574,7 @@ export class GoalRuntime {
     if (events.some((event) => event.goal_id === goalId)) {
       throw new Error(`GoalRuntime generated duplicate goal id: ${goalId}`);
     }
+    const repositoryAuthority = await inspectGoalRepositoryAuthority(this.store.repoRoot);
     return (await this.appendEvent(events, {
       schema_version: 2,
       type: "goal_runtime_event",
@@ -564,6 +588,7 @@ export class GoalRuntime {
       objective: command.objective,
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
+      repository_authority: repositoryAuthority,
       boundary: GOAL_BOUNDARY
     })).view;
   }
@@ -721,6 +746,7 @@ export class GoalRuntime {
         event_type: "goal_resumed"
       })).view;
     }
+    await this.assertExecutableRepositoryAuthority(state.view);
     if (state.pending.state === "outcome_unknown") {
       throw new Error(`GoalRuntime effect outcome is unknown and will not be repeated: ${state.pending.effect_id}`);
     }
@@ -977,6 +1003,13 @@ export class GoalRuntime {
     return { events: nextEvents, state, view: state.view };
   }
 
+  private async assertExecutableRepositoryAuthority(view: GoalView): Promise<void> {
+    if (!view.repository_authority) {
+      throw new Error("GoalRuntime legacy goal has no repository authority and cannot continue or dispatch an effect; read, pause, or abandon it instead.");
+    }
+    await assertGoalRepositoryAuthority(view.repository_authority, this.store.repoRoot);
+  }
+
   private async writeProjections(view: GoalView, updatedAt: string): Promise<void> {
     await writeJsonProjectionIfChanged(this.store, `${CHECKPOINT_ROOT}/${view.goal_id}.json`, {
       schema_version: 2,
@@ -992,6 +1025,7 @@ export class GoalRuntime {
       continuation_reasons: view.continuation_reasons,
       next_action: view.next_action,
       pending_effect: view.pending_effect,
+      repository_authority: view.repository_authority,
       last_event_id: view.last_event_id,
       updated_at: updatedAt,
       boundary: GOAL_BOUNDARY
@@ -1051,12 +1085,11 @@ export class CanonicalGoalVerifier implements GoalVerifier {
     const decisiveEvidence = [...successfulObservations, ...deniedPolicyActions];
     const observedChanges = changesFromEvidence(input.evidence);
     const changeSetBound = canonicalJson(input.candidate.changes) === canonicalJson(observedChanges);
-    const unverifiedCommits = input.candidate.changes.filter((change) => {
-      if (change.kind !== "git_commit") return false;
+    const unverifiedRepositoryChanges = input.candidate.changes.filter((change) => {
+      if (change.kind !== "git_commit" && change.kind !== "workspace_path") return false;
       const changeObservationIndex = input.evidence.findIndex((item) => item.kind === "observation"
-        && item.ok === true
-        && item.change?.kind === change.kind
-        && item.change.identity === change.identity);
+        && evidenceChanges(item).some((observed) => observed.kind === change.kind
+          && observed.identity === change.identity));
       return changeObservationIndex < 0 || !input.evidence.some((item, index) => index > changeObservationIndex
         && item.kind === "observation"
         && item.ok === true
@@ -1102,11 +1135,11 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         evidence_event_ids: input.candidate.evidence_event_ids
       });
     }
-    if (unverifiedCommits.length > 0) {
+    if (unverifiedRepositoryChanges.length > 0) {
       checks.push({
         id: "post_change_verification",
         status: "failed",
-        summary: "Every Git commit requires a later successful local verification observation.",
+        summary: "Every Git commit or delegated workspace path requires a later successful local verification observation.",
         evidence_event_ids: input.candidate.evidence_event_ids
       });
     }
@@ -1340,6 +1373,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     last_event_id: last.id,
     last_command_id: last.command_id,
     receipt,
+    repository_authority: started.repository_authority ?? null,
     boundary: GOAL_BOUNDARY
   };
   return { view, pending, manualPause };
@@ -1392,6 +1426,7 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
       };
     case "goal_action_observed": {
       const change = observedChange(event.result);
+      const changes = observedChanges(event.result);
       return {
         event_id: event.id,
         kind: "observation",
@@ -1402,6 +1437,7 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         tool: event.result.tool,
         ok: event.result.ok,
         ...(change ? { change } : {}),
+        ...(changes.length > 0 ? { changes } : {}),
         details: boundedDetails(event.result)
       };
     }
@@ -1447,20 +1483,22 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, c
     "goal_action_observed",
     "goal_verification_failed"
   ].includes(event.event_type));
-  const postCommitVerificationEventIds = changeEventIds.flatMap((changeEventId) => {
+  const postChangeVerificationEventIds = changeEventIds.flatMap((changeEventId) => {
     const changeIndex = eligible.findIndex((event) => event.id === changeEventId);
     const changeEvent = eligible[changeIndex];
     if (changeIndex < 0
       || changeEvent?.event_type !== "goal_action_observed"
-      || observedChange(changeEvent.result)?.kind !== "git_commit") return [];
+      || !observedChanges(changeEvent.result).some((change) => change.kind === "git_commit"
+        || change.kind === "workspace_path")) return [];
     const verification = eligible.slice(changeIndex + 1).find((event) => event.event_type === "goal_action_observed"
       && event.result.ok
       && event.effect_intent.operation === "run_local_verification");
     return verification ? [verification.id] : [];
   });
   const selected = new Set([
+    ...(eligible[0]?.event_type === "goal_started" ? [eligible[0].id] : []),
     ...changeEventIds,
-    ...postCommitVerificationEventIds,
+    ...postChangeVerificationEventIds,
     ...eligible.slice(-RECENT_OUTCOME_EVIDENCE_EVENTS).map((event) => event.id)
   ]);
   return eligible.filter((event) => selected.has(event.id)).map((event) => event.id);
@@ -1720,6 +1758,8 @@ function boundedToolResult(value: ToolResult): ToolResult {
     const controlFields: Record<string, unknown> = {};
     const change = changeIdentitySchema.safeParse(cloned.output.change);
     if (change.success) controlFields.change = change.data;
+    const changes = z.array(changeIdentitySchema).max(200).safeParse(cloned.output.changes);
+    if (changes.success) controlFields.changes = changes.data;
     for (const key of ["failure_kind", "path", "ref", "artifact_ref", "worktree"] as const) {
       const field = cloned.output[key];
       if (typeof field === "string" && field.length <= 2_000) controlFields[key] = field;
@@ -1740,6 +1780,9 @@ function toolResultRefs(result: ToolResult): string[] {
   for (const key of ["path", "ref", "artifact_ref", "worktree"] as const) {
     const value = result.output[key];
     if (typeof value === "string" && value.trim() && value.length <= 1_000) refs.push(value.trim());
+  }
+  for (const change of observedChanges(result)) {
+    if (change.kind === "workspace_path") refs.push(change.identity);
   }
   return unique(refs).slice(0, 32);
 }
@@ -1771,6 +1814,14 @@ function observedChange(result: ToolResult): GoalChangeIdentity | null {
   return parsed.success ? parsed.data : null;
 }
 
+function observedChanges(result: ToolResult): GoalChangeIdentity[] {
+  const plural = z.array(changeIdentitySchema).max(200).safeParse(result.output.changes);
+  const changes = plural.success ? [...plural.data] : [];
+  const singular = observedChange(result);
+  if (result.ok && singular) changes.push(singular);
+  return uniqueChangeIdentities(changes);
+}
+
 function changesFromEvidence(evidence: GoalEvidenceView[]): GoalChangeIdentity[] {
   return changeSetSchema.parse(uniqueChangesFromEvidence(evidence));
 }
@@ -1779,11 +1830,13 @@ function uniqueChangesFromEvidence(evidence: GoalEvidenceView[]): GoalChangeIden
   const changes: GoalChangeIdentity[] = [];
   const seen = new Set<string>();
   for (const item of evidence) {
-    if (item.kind !== "observation" || item.ok !== true || item.change === undefined) continue;
-    const key = canonicalJson(item.change);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    changes.push(item.change);
+    if (item.kind !== "observation") continue;
+    for (const change of evidenceChanges(item)) {
+      const key = canonicalJson(change);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      changes.push(change);
+    }
   }
   return changes;
 }
@@ -1793,13 +1846,29 @@ function goalChangeLineage(events: GoalRuntimeEvent[], goalId: string): {
   eventIds: string[];
 } {
   const evidence = events
-    .filter((event) => event.goal_id === goalId && event.event_type === "goal_action_observed" && event.result.ok)
+    .filter((event) => event.goal_id === goalId && event.event_type === "goal_action_observed")
     .map(evidenceView)
-    .filter((item) => item.change !== undefined);
+    .filter((item) => evidenceChanges(item).length > 0);
   return {
     changes: uniqueChangesFromEvidence(evidence),
     eventIds: evidence.map((item) => item.event_id)
   };
+}
+
+function evidenceChanges(item: GoalEvidenceView): GoalChangeIdentity[] {
+  const plural = item.changes ?? [];
+  const singular = item.ok === true && item.change ? [item.change] : [];
+  return uniqueChangeIdentities([...plural, ...singular]);
+}
+
+function uniqueChangeIdentities(changes: GoalChangeIdentity[]): GoalChangeIdentity[] {
+  const seen = new Set<string>();
+  return changes.filter((change) => {
+    const key = canonicalJson(change);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {

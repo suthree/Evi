@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -117,6 +118,16 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       summary: "Read package metadata.",
       refs: [],
       occurred_at: "2026-07-17T00:00:00.000Z"
+    }, {
+      event_id: "goal_event_2",
+      kind: "observation",
+      summary: "Codex introduced one observed path.",
+      refs: ["packages/runtime/src/goal_runtime.ts"],
+      occurred_at: "2026-07-17T00:00:01.000Z",
+      operation: "execute_dynamic_code",
+      tool: "codex.run",
+      ok: true,
+      changes: [{ kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" }]
     }]
   });
   assert.equal(result.type, "action");
@@ -125,9 +136,14 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /bounded cumulative working synthesis/);
   assert.match(requests[0]!.instructions, /fallible working memory, not evidence or authority/);
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
+  assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
+  assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
+  assert.match(requests[0]!.input, /"repository_authority"/);
+  assert.match(requests[0]!.input, /"start_head_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/);
+  assert.match(requests[0]!.input, /"kind": "workspace_path"/);
   assert.match(requests[0]!.input, /"current_tranche"/);
   assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
 });
@@ -142,6 +158,12 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
   await mkdir(configDir, { recursive: true });
   try {
     await writeFile(join(repoRoot, "package.json"), `${JSON.stringify({ name: "repair-fixture" })}\n`, "utf8");
+    await runGit(repoRoot, ["init", "-b", "develop"]);
+    await runGit(repoRoot, ["config", "user.name", "Goal Cognition Test"]);
+    await runGit(repoRoot, ["config", "user.email", "goal-cognition@example.test"]);
+    await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await runGit(repoRoot, ["add", "package.json"]);
+    await runGit(repoRoot, ["commit", "-m", "fixture base"]);
     await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
       type: "state",
       root: stateRoot
@@ -235,6 +257,27 @@ function fixtureGoalView(): GoalView {
     last_event_id: "goal_event_1",
     last_command_id: "goal_command_1",
     receipt: null,
+    repository_authority: {
+      schema_version: 1,
+      repo_root: "/tmp/evi-worktree",
+      git_common_dir: "/tmp/evi-main/.git",
+      worktree: "/tmp/evi-worktree",
+      branch: "codex/issue-76-delegated-workspace-attribution",
+      start_head_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      boundary: "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor"
+    },
     boundary: "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections"
   };
+}
+
+function runGit(cwd: string, args: string[]): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", args, { cwd }, (error, _stdout, stderr) => {
+      if (error) {
+        reject(new Error(`git ${args.join(" ")} failed: ${stderr}`));
+        return;
+      }
+      resolvePromise();
+    });
+  });
 }
