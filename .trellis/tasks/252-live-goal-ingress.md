@@ -1,6 +1,6 @@
 # Task 252: Live Goal Ingress
 
-Status: verified; integration and live acceptance pending
+Status: complete
 
 ## Identity And Ownership
 
@@ -143,5 +143,13 @@ here instead of creating an evidence-only Issue and PR with no runtime change.
 - Independent Standards review: PASS after adding real CLI subprocess coverage,
   separating legacy LiveAgentRunner context docs, and explicitly bounding the
   predecessor-task transition closure in this task.
-- Integration, exact-commit deployment, controller health, and real live
-  acceptance remain pending.
+- PR #83 merged to `develop` at
+  `51392ba0b0c013d0fb417021b98528a133719478`; GitHub Issue #82 closed after
+  live acceptance.
+- Deployment `deployment_20260717231246_51392ba0b0c0` became stable at the
+  exact merge commit. Controller handoff returned `updated`, then the repeated
+  verification returned `already_matched` for the same source commit.
+- Real standalone live acceptance Goal `goal_20260717231537_a9907014`
+  completed in two model rounds and one bounded `file.read`. Receipt
+  `goal_receipt_20260717231548_b77ed702` was accepted and healthy with no
+  repository changes; the bound worktree remained clean at the merge commit.
