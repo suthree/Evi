@@ -25,6 +25,34 @@
 
 本地 SOP、技能和记忆学习是可用能力，但不是每次运行的主要成功标准。主要标准是 runtime 是否能通过具体核心能力完成并验证工作。
 
+新的本地 `goal` CLI 已开始按完整 Goal 身份切换到持久 GoalRuntime：一次
+`continue` 会在 runtime 内部完成有界模型回合、语义 EffectPolicy 判断、工具观察、
+结果验证和单一 OutcomeReceipt。模型不再逐层复制 evidence ref；原始 action 与
+observation event 是事实来源。安全的本地读、绑定实际公网地址的无 query 公网读和
+可逆写可在既有本地演化授权内执行；带 query 的请求和由仓库代码控制的验证命令会暂停
+同一 Goal，等待精确 effect 确认；secret/私有数据外发、破坏性 effect 和未知 effect
+会拒绝。模型不声明或复制 change identity；GoalRuntime 会从全部成功 observation 自动
+生成有序去重的完整 `changes[]`，没有类型化 change 时才为空；Git commit 还必须有其后
+的成功验证 observation。
+完整 change lineage 不受近期模型上下文窗口影响；Goal 被 abandon 时也会保留已经发生的
+部分变更。receipt 使用明确容量上限，不会静默丢弃早期 observation。可能突破容量的
+mutating effect 会在 dispatch 前被阻止，因此既有 Goal 仍可完成或
+abandon，不会在副作用发生后进入不可终止状态。
+commit 的满足性 verification 会随 change lineage 固定，不会因后续事件增多而掉出近期窗口。
+工具诊断正文可以截断，但 `change`、failure kind 和有界 refs 等控制字段必须保留。
+需要确认的 effect 会在同一个 Goal 上展示完整 `proposed_action` 及其 digest；带 query
+的外发请求不会要求操作者在看不到实际 key/value 的情况下盲确认。
+secret/private query 会在 canonical intent 中去除 query，只有可进入 confirm 的非敏感
+query 才会展示完整 payload。
+effect 已开始但 observation 未落盘时会进入
+`effect_outcome_unknown`，重放不会猜测并重复执行。
+
+当前 cutover 只覆盖显式本地 `goal start|continue|read|pause|resume|abandon`。
+`live`、Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个
+GoalRuntime Goal 双写；它们会在后续子任务中按完整 Goal 身份切换。foreground Goal
+也不会同步生成 SOP/skill，学习将由后续 receipt-driven LearningRuntime 异步处理。
+详细合同见 `docs/RUNTIME_CONTRACT.md` 的 `GoalRuntime Local Control Plane`。
+
 live context 在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
 `total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
 `focused`、`governance` 或 `recovery` 注意力 profile；普通任务不再常驻加载治理、trace、

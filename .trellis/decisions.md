@@ -45,6 +45,37 @@ continuity. It does not weaken secret handling, repository/worktree isolation,
 operator authority over irreversible external effects, the `main` release
 gate, verified deployment, or rollback requirements.
 
+## 2026-07-17 Local GoalRuntime Execution And Semantic Effect Cutover
+
+Issue #65 activates the first whole-goal ingress cutover under the persistent
+GoalRuntime decision. The explicit local `goal` CLI creates and addresses only
+GoalRuntime-owned identities. `live`, Web, IM, daemon, and resident task-queue
+work remain legacy until a later whole-ingress child; no individual goal may
+enter both paths.
+
+GoalRuntime now owns the bounded model loop, durable pre-effect intent, tool
+observation, soft execution tranche, verification, and receipt. One model turn
+proposes one action, outcome, or blocked result. The model does not pass
+caller-authored observations or completion candidates into the runtime and
+does not maintain evidence-reference matrices. The runtime binds same-goal
+canonical events to the verifier and one receipt.
+
+EffectPolicy is the only foreground action-effect decision owner. It derives
+operation, target, reversibility, and data exposure from the actual proposal;
+model-declared side-effect labels cannot widen authority. Standing local
+authority allows bounded reads, reversible local writes, and known local
+verification. Secrets, private egress, destructive effects, unknown effects,
+and writes into orchestration or synchronous-learning owner paths fail closed.
+External, irreversible, runtime-mutating, dynamic-code, and nested coding
+effects pause the same goal for exact-effect confirmation.
+
+An allowed or confirmed effect is persisted before dispatch. If no matching
+observation is appended, replay exposes `effect_outcome_unknown` and never
+repeats the effect automatically. Exact confirmation reuses the stored action
+and digest; it does not create a separate confirmation artifact chain. This
+decision does not yet move IM/Web/daemon ingress, deployment adoption,
+LearningRuntime, or historical legacy readers.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

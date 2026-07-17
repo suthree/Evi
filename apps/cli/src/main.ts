@@ -89,6 +89,7 @@ import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_wo
 import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
 import type { SkillResolverLike } from "../../../packages/core/src/skill_resolver.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
+import { newId } from "../../../packages/core/src/ids.js";
 import { getServiceHealth, type ServiceHealthResult } from "../../../packages/core/src/service_health.js";
 import {
   getContentRun,
@@ -153,6 +154,14 @@ import {
 import { getGovernanceStatus } from "../../../packages/runtime/src/governance_status.js";
 import { executeNextOpportunityAction } from "../../../packages/runtime/src/opportunity_actions.js";
 import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "../../../packages/runtime/src/model.js";
+import {
+  CanonicalGoalVerifier,
+  GoalRuntime
+} from "../../../packages/runtime/src/goal_runtime.js";
+import {
+  ModelGoalCognition,
+  RuntimeGoalToolExecutor
+} from "../../../packages/runtime/src/goal_execution_adapters.js";
 import { runSopLoopRehearsal } from "../../../packages/runtime/src/sop_loop_rehearsal.js";
 import { listContextManifests, repairContextManifest, showContextManifest } from "../../../packages/runtime/src/context_manifest.js";
 import { LiveAgentRunner, type DisciplineMode } from "../../../packages/runtime/src/runner.js";
@@ -180,10 +189,19 @@ import type {
   ReviewFollowUpConfirmationRecoveryDecisionStatus,
   ReviewInboxDecisionStatus
 } from "../../../packages/runtime/src/background_review.js";
+import {
+  executeLocalGoalRequest,
+  isLocalGoalAction,
+  type LocalGoalAction
+} from "./goal.js";
 
 interface CliOptions {
   command: string;
   task?: string;
+  goalAction?: LocalGoalAction;
+  goalId?: string;
+  goalCommandId?: string;
+  goalConfirmEffectId?: string;
   configDir: string;
   repoRoot: string;
   stateRoot?: string;
@@ -1525,6 +1543,34 @@ export async function main(): Promise<number> {
     const result = await getWorkspaceStatus(store, { limit: options.limit });
     console.log(JSON.stringify({ action: options.workspaceAction ?? "status", ...result }, null, 2));
     return result.status === "error" ? 1 : 0;
+  }
+
+  if (options.command === "goal") {
+    const action = options.goalAction;
+    if (!action) throw new Error("goal requires an action: start, continue, read, pause, resume, or abandon");
+    const config = await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      skipAuth: action !== "continue"
+    });
+    const store = new AgentStore(resolve(options.repoRoot), config.state.root);
+    const model = action === "continue" ? new OpenAICompatibleClient(config.model) : null;
+    const runtime = new GoalRuntime({
+      store,
+      verifier: new CanonicalGoalVerifier(),
+      toolExecutor: new RuntimeGoalToolExecutor(store, config.model.max_output_tokens),
+      ...(model ? { cognition: new ModelGoalCognition(model) } : {})
+    });
+    const result = await executeLocalGoalRequest(runtime, {
+      action,
+      commandId: options.goalCommandId ?? newId("goal_command"),
+      ...(options.task ? { objective: options.task } : {}),
+      ...(options.goalId ? { goalId: options.goalId } : {}),
+      ...(options.reason ? { reason: options.reason } : {}),
+      ...(options.goalConfirmEffectId ? { confirmEffectId: options.goalConfirmEffectId } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
   }
 
   if (options.command === "notify") {
@@ -3074,6 +3120,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "governance" && isGovernanceAction(arg)) options.governanceAction = arg;
     else if (options.command === "context" && isContextAction(arg)) options.contextAction = arg;
     else if (options.command === "review" && isReviewAction(arg)) options.reviewAction = arg;
+    else if (options.command === "goal" && isLocalGoalAction(arg)) options.goalAction = arg;
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
     else if (arg === "--port") options.webPort = Number.parseInt(required(rest[++index], "--port requires a value"), 10);
@@ -3186,6 +3233,9 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--config-dir") options.configDir = required(rest[++index], "--config-dir requires a value");
     else if (arg === "--repo-root") options.repoRoot = required(rest[++index], "--repo-root requires a value");
     else if (arg === "--state-root") options.stateRoot = required(rest[++index], "--state-root requires a value");
+    else if (arg === "--goal") options.goalId = required(rest[++index], "--goal requires a value");
+    else if (arg === "--command-id") options.goalCommandId = required(rest[++index], "--command-id requires a value");
+    else if (arg === "--confirm-effect") options.goalConfirmEffectId = required(rest[++index], "--confirm-effect requires a value");
     else if (arg === "--open-id") options.notifyOpenId = required(rest[++index], "--open-id requires a value");
     else if (arg === "--text") options.notifyText = required(rest[++index], "--text requires a value");
     else if (arg === "--source") options.notifySource = required(rest[++index], "--source requires a value");
@@ -3587,6 +3637,10 @@ function printUsage(): void {
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root .runtime/state]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]
+  pnpm run runtime -- goal start --task "..." [--command-id goal_command_...] [--state-root .runtime/state]
+  pnpm run runtime -- goal continue|read --goal goal_... [--command-id goal_command_...] [--state-root .runtime/state]
+  pnpm run runtime -- goal pause|abandon --goal goal_... --reason "..." [--command-id goal_command_...] [--state-root .runtime/state]
+  pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...] [--command-id goal_command_...] [--state-root .runtime/state]
   pnpm run runtime -- pipeline --task "..." [--stages intake,tool_check,final] [--query-todo]
   pnpm run runtime -- pipeline resume --pipeline pipeline_run_... [--from-stage tool_check] [--query-todo]
   pnpm run runtime -- pipeline runs [--pipeline pipeline_run_...] [--limit 10] [--state-root .runtime/state]

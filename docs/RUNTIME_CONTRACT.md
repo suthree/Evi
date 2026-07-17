@@ -283,6 +283,84 @@ Runtime control is the minimal control plane:
 Runtime control is first-version infrastructure. It must not grow into a broad
 agent framework before core execution is reliable.
 
+### GoalRuntime Local Control Plane
+
+New goals created through the local `goal` CLI are owned by `GoalRuntime` from
+their first intent event through one terminal `OutcomeReceipt`. The public
+runtime boundary remains `handle(command)` and `read(goalId)`. A Continue
+command runs a bounded internal execution tranche: cognition proposes one
+action or outcome at a time, `EffectPolicy` decides the semantic effect, the
+runtime records the action intent before dispatch, the tool observation returns
+to the same canonical event stream, and the verifier alone may accept the
+outcome. The model does not author evidence-id matrices or parallel completion
+documents.
+
+`EffectPolicy` classifies operation, target, data exposure, and reversibility.
+It does not trust a model-provided `side_effect_level` to grant authority. Safe
+bounded local reads, query-free public reads whose resolved public address is
+pinned to the actual connection, and reversible repo/state writes may run under
+standing local-evolution authority. Query-bearing public requests and
+repo-controlled verification commands require exact-effect confirmation because
+they can transmit local data or execute mutable code. Secrets and private
+egress, destructive local effects, unknown tools, and
+foreground writes into GoalRuntime, queue, episode, working-memory, SOP, skill,
+deployment, service, channel, or governance-owned state fail closed. External,
+irreversible, runtime-mutating, dynamic-code, and nested coding effects require
+confirmation of the exact effect identity and digest.
+
+An allowed effect is written as an intent before dispatch and as an observation
+after dispatch. If the process stops between them, the same goal is exposed as
+`effect_outcome_unknown`; command replay never guesses that the effect is safe
+to repeat. A confirmation decision pauses the same goal with one pending effect
+whose view exposes the complete proposed action together with its digest, so
+confirmation is informed rather than blind. It does not create a separate
+confirmation-document chain. Local `goal resume
+--confirm-effect <effect-id>` authorizes only that stored action. Manual pause,
+resume, abandon, soft-budget continuation, verification failure, and later
+repair retain the original goal identity.
+
+Denied actions are redacted before canonical persistence. A secret-bearing or
+private URL is classified with a query-free target; only a non-sensitive query
+that can legitimately reach `confirm` is exposed in the pending proposed
+action.
+
+Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
+`goals/receipts/<goal-id>.json` are rebuildable projections. Intended tool
+effects may change authorized repo or task state, but the foreground control
+path writes no legacy queue, opportunity, episode, working-checkpoint,
+completion, iteration, SOP, skill, deployment, or learning-promotion state.
+GoalRuntime derives the accepted receipt's complete, ordered, deduplicated
+`changes[]` from every typed successful tool observation; the model neither
+declares nor copies change identities. An empty set therefore means that no such
+observation exists. This complete change lineage is independent from the recent
+model-evidence window and is also retained by an abandonment receipt, so partial
+effects remain visible after a direction is retired. Receipt capacity is
+bounded; a potentially mutating effect that would cross it is blocked before
+dispatch, leaving the existing Goal completeable or abandonable instead of
+dropping early observations. Every Git commit additionally requires a later successful
+verification observation. That satisfying observation is pinned with the
+commit lineage and cannot age out of the recent evidence window. Diagnostic
+tool output may be truncated, but typed control fields such as `change`,
+failure kind, and bounded refs survive truncation. Free-text substring matches and a model proposal
+without decisive observation or fail-closed policy evidence cannot create an
+accepted receipt.
+
+Current cutover is intentionally limited to the explicit local `goal` CLI:
+
+```bash
+pnpm run runtime -- goal start --task "..."
+pnpm run runtime -- goal continue --goal goal_...
+pnpm run runtime -- goal read --goal goal_...
+pnpm run runtime -- goal pause --goal goal_... --reason "..."
+pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...]
+pnpm run runtime -- goal abandon --goal goal_... --reason "..."
+```
+
+`live`, Web, IM, daemon, and resident task-queue work remain on the legacy
+runner in this bounded slice. They cannot address or dual-write a GoalRuntime
+goal. Their later cutover must happen by whole goal identity; foreground
+learning remains deferred to a receipt-driven asynchronous `LearningRuntime`.
+
 ### Basic Entrypoints
 
 The local CLI is the primary foreground entrypoint.

@@ -591,6 +591,47 @@ test("command.run records timeout failures", async () => {
   }
 });
 
+test("command.run emits a commit change only when HEAD advances", async () => {
+  const fixture = await createFixture();
+  try {
+    await initGitFixture(fixture.repoRoot);
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "base\n", "utf8");
+    await runGit(fixture.repoRoot, ["add", "tracked.txt"]);
+    await runGit(fixture.repoRoot, ["commit", "-m", "base"]);
+    const before = await gitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "changed\n", "utf8");
+    await runGit(fixture.repoRoot, ["add", "tracked.txt"]);
+    const committed = await executeTool(useTool("command.run", {
+      command: "git",
+      args: ["commit", "-m", "bounded change"],
+      cwd: "repo",
+      side_effect_level: "local_write"
+    }), { store: fixture.store });
+    const after = await gitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+
+    assert.equal(committed.ok, true);
+    assert.notEqual(after, before);
+    assert.deepEqual(committed.output.change, { kind: "git_commit", identity: after });
+
+    await writeFile(join(fixture.repoRoot, "tracked.txt"), "dry run\n", "utf8");
+    await runGit(fixture.repoRoot, ["add", "tracked.txt"]);
+    const dryRun = await executeTool(useTool("command.run", {
+      command: "git",
+      args: ["commit", "--dry-run", "-m", "probe"],
+      cwd: "repo",
+      side_effect_level: "local_write"
+    }), { store: fixture.store });
+
+    assert.equal(dryRun.ok, false);
+    assert.equal(await gitValue(fixture.repoRoot, ["rev-parse", "HEAD"]), after);
+    assert.equal(dryRun.output.change, undefined);
+    assertFailureKind(dryRun, "invalid_request");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("codex.run routes through a sibling isolated worktree and reports live tracked plus untracked paths", async () => {
   const fixture = await createCodexFixture();
   const previousPath = process.env.PATH;
