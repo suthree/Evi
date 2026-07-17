@@ -34,6 +34,13 @@ export interface LocalGoalRuntimeOptions {
   stateRoot?: string;
 }
 
+export interface LocalLiveGoalRequest {
+  objective?: string;
+  discipline?: string;
+  startCommandId: string;
+  continueCommandId: string;
+}
+
 /** Build the control plane without resolving cognition; provider readiness is a Continue concern. */
 export async function createLocalGoalRuntime(options: LocalGoalRuntimeOptions): Promise<GoalRuntimePort> {
   const selectors = await loadConfigSelectors({
@@ -91,6 +98,37 @@ export async function executeLocalGoalRequest(
     goal_id: goalId,
     reason: required(request.reason, "goal abandon requires --reason")
   });
+}
+
+/** Whole-goal live ingress: start once, then execute exactly one bounded Continue tranche. */
+export async function executeLocalLiveGoalRequest(
+  runtime: GoalRuntimePort,
+  request: LocalLiveGoalRequest
+): Promise<GoalView> {
+  assertLocalLiveGoalRequest(request);
+  const started = await executeLocalGoalRequest(runtime, {
+    action: "start",
+    commandId: request.startCommandId,
+    objective: request.objective
+  });
+  return executeLocalGoalRequest(runtime, {
+    action: "continue",
+    commandId: request.continueCommandId,
+    goalId: started.goal_id
+  });
+}
+
+/** Reject legacy discipline before constructing GoalRuntime or writing any goal state. */
+export function assertLocalLiveGoalRequest(
+  request: Pick<LocalLiveGoalRequest, "objective" | "discipline">
+): void {
+  required(request.objective, "live requires --task");
+  if (request.discipline && request.discipline !== "none") {
+    throw new Error(
+      "live now uses GoalRuntime and does not support query/todo discipline; "
+      + "run live --task without --query-todo, then use goal continue or goal resume with the returned goal_id"
+    );
+  }
 }
 
 export function isLocalGoalAction(value: string): value is LocalGoalAction {

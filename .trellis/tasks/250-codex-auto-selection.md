@@ -1,6 +1,6 @@
 # Task 250: Codex Auto Selection
 
-Status: verified; integration and live acceptance pending
+Status: complete
 
 ## Identity And Ownership
 
@@ -128,5 +128,14 @@ effort. It does not weaken immutable selection evidence.
   required Goal-visible `auto` contract are behaviorally enforced.
 - Independent Standards review: PASS; GoalRuntime rejects provider pins at the
   authority seam while standalone explicit v2 new/resume remains compatible.
-- PR integration, exact-commit deployment, controller health, and the original
-  paused Goal's live acceptance remain intentionally pending.
+- PR #79 merged to `develop` at
+  `41ed360ccaa57c9492383e09b704a004e88d0929`.
+- The exact behavior shipped in stable deployment
+  `deployment_20260717223617_b47681a2c131`; service and controller source
+  identity matched `b47681a2c131c59767ba3973b50a791d6394d44f` and health was
+  `healthy/current`.
+- The original Goal `goal_20260717211903_81851fca` reused its existing identity
+  and repository authority, selected `model=auto` and
+  `reasoning_effort=auto`, and successfully delegated one bounded Codex change.
+  The later #80 evidence-role repair was required for final acceptance; the
+  completed receipt is `goal_receipt_20260717223926_322b9e56`.

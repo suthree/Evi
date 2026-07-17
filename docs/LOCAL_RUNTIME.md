@@ -115,7 +115,7 @@ pnpm run runtime -- config --state-root .runtime/state
 pnpm run runtime -- capabilities
 pnpm run runtime -- capabilities acceptance
 pnpm run runtime -- capabilities verify-entrypoints --state-root .runtime/state
-pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
+pnpm run runtime -- live --task "..." --state-root .runtime/state
 pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
 pnpm run runtime -- pipeline runs --state-root .runtime/state
@@ -207,7 +207,14 @@ pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
 pnpm run runtime -- show-events --state-root .runtime/state
 ```
 
-Live and IM task text may include bounded repo-local task references:
+`live` now creates one canonical GoalRuntime identity and runs exactly one
+bounded Continue tranche. If the returned view is still active or paused, keep
+the returned `goal_id` and use `goal continue` or `goal resume`; do not start a
+replacement task. Query/todo discipline belongs to the still-legacy runner and
+is rejected on `live` rather than written beside the Goal. Web, IM, daemon, and
+the resident task queue remain legacy until their own whole-ingress cutovers.
+
+The still-legacy Web/IM runner may expand bounded repo-local task references:
 
 ```text
 @file:docs/RUNTIME_CONTRACT.md
@@ -216,8 +223,13 @@ Live and IM task text may include bounded repo-local task references:
 @folder:docs
 ```
 
-These refs are assembled into the live context as `Task References`. They do
-not create a separate command surface and do not widen runtime authority:
+The GoalRuntime-backed `live` CLI keeps the objective literal and lets Evi use
+its bounded `file.read` action when a repository file is needed; it does not
+pre-write a legacy context bundle merely to expand this syntax.
+
+For those legacy runners, these refs are assembled into the context as
+`Task References`. They do not create a separate command surface and do not
+widen runtime authority:
 absolute paths, parent traversal, state/home files, URLs, git refs, shell
 commands, and writes are out of scope.
 

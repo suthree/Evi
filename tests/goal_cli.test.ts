@@ -1,16 +1,23 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  assertLocalLiveGoalRequest,
   createLocalGoalRuntime,
+  executeLocalLiveGoalRequest,
   executeLocalGoalRequest,
   type GoalRuntimePort
 } from "../apps/cli/src/goal.js";
 import { parseArgs } from "../apps/cli/src/main.js";
-import type { GoalCommand, GoalView } from "../packages/runtime/src/goal_runtime.js";
+import {
+  GoalRuntime,
+  type GoalCommand,
+  type GoalView
+} from "../packages/runtime/src/goal_runtime.js";
+import { AgentStore } from "../packages/core/src/store.js";
 
 test("goal CLI parses lifecycle identity and exact effect confirmation", () => {
   const options = parseArgs([
@@ -111,6 +118,226 @@ test("local goal CLI ingress fails before dispatch when required intent is missi
   assert.equal(calls, 0);
 });
 
+test("live ingress starts once and continues the same GoalRuntime identity once", async () => {
+  const handled: GoalCommand[] = [];
+  const started = { goal_id: "goal_live_123", status: "active" } as GoalView;
+  const continued = {
+    goal_id: "goal_live_123",
+    status: "paused",
+    continuation_reasons: ["effect_confirmation_required"]
+  } as GoalView;
+  const runtime: GoalRuntimePort = {
+    async handle(command) {
+      handled.push(command);
+      return command.type === "start" ? started : continued;
+    },
+    async read() {
+      throw new Error("live ingress must not read around the canonical command result");
+    }
+  };
+
+  const result = await executeLocalLiveGoalRequest(runtime, {
+    objective: "Run one bounded live Goal.",
+    discipline: "none",
+    startCommandId: "live_start",
+    continueCommandId: "live_continue"
+  });
+
+  assert.equal(result, continued);
+  assert.deepEqual(handled, [{
+    type: "start",
+    command_id: "live_start",
+    objective: "Run one bounded live Goal."
+  }, {
+    type: "continue",
+    command_id: "live_continue",
+    goal_id: "goal_live_123"
+  }]);
+});
+
+test("live ingress rejects legacy query/todo discipline before dispatch", async () => {
+  let calls = 0;
+  const runtime: GoalRuntimePort = {
+    async handle() {
+      calls += 1;
+      throw new Error("must not dispatch");
+    },
+    async read() {
+      calls += 1;
+      throw new Error("must not read");
+    }
+  };
+
+  assert.throws(() => assertLocalLiveGoalRequest({
+    objective: "Do not dual-write legacy discipline state.",
+    discipline: "query_todo"
+  }), /live now uses GoalRuntime.*without --query-todo.*goal continue or goal resume/);
+  await assert.rejects(executeLocalLiveGoalRequest(runtime, {
+    objective: "Do not dual-write legacy discipline state.",
+    discipline: "query_todo",
+    startCommandId: "legacy_live_start",
+    continueCommandId: "legacy_live_continue"
+  }), /does not support query\/todo discipline/);
+  assert.equal(calls, 0);
+});
+
+test("live CLI rejects query/todo before repository or GoalRuntime construction", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-live-query-todo-rejection-"));
+  const stateRoot = join(root, "state-must-not-exist");
+  try {
+    const result = await runRuntimeCli([
+      "live",
+      "--query-todo",
+      "--task",
+      "Reject legacy discipline before construction.",
+      "--repo-root",
+      join(root, "repo-must-not-exist"),
+      "--config-dir",
+      join(root, "config-must-not-exist"),
+      "--state-root",
+      stateRoot
+    ]);
+
+    assert.notEqual(result.error, null);
+    assert.match(result.stderr, /live now uses GoalRuntime.*without --query-todo.*goal continue or goal resume/);
+    assert.doesNotMatch(result.stderr, /ENOENT|config\.jsonl|repository/i);
+    await assert.rejects(readdir(stateRoot), /ENOENT/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("live CLI routes through one canonical GoalRuntime identity without legacy state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-live-cli-goal-runtime-"));
+  const configDir = join(root, "config");
+  const stateRoot = join(root, "state");
+  const repoRoot = join(root, "repo");
+  await mkdir(configDir, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  await mkdir(repoRoot, { recursive: true });
+  try {
+    await runGit(repoRoot, ["init", "-b", "develop"]);
+    await runGit(repoRoot, ["config", "user.name", "Live CLI Goal Test"]);
+    await runGit(repoRoot, ["config", "user.email", "live-cli-goal@example.test"]);
+    await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await writeFile(join(repoRoot, "README.md"), "live CLI goal fixture\n", "utf8");
+    await runGit(repoRoot, ["add", "README.md"]);
+    await runGit(repoRoot, ["commit", "-m", "fixture base"]);
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "missing-live-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), "", "utf8");
+
+    const cli = await runRuntimeCli([
+      "live",
+      "--task",
+      "Keep one Goal identity when cognition is unavailable.",
+      "--repo-root",
+      repoRoot,
+      "--config-dir",
+      configDir,
+      "--state-root",
+      stateRoot
+    ]);
+
+    assert.equal(cli.error, null, cli.stderr);
+    const result = JSON.parse(cli.stdout) as GoalView;
+    assert.match(result.goal_id, /^goal_/);
+    assert.equal(result.status, "active");
+    assert.deepEqual(result.continuation_reasons, ["blocked"]);
+    assert.match(result.checkpoint.summary, /Active model not found.*missing-live-model/);
+    assert.equal(result.receipt, null);
+
+    assert.deepEqual((await readdir(stateRoot)).sort(), ["goals"]);
+    const goalEntries = (await readdir(join(stateRoot, "goals"))).sort();
+    assert.deepEqual(goalEntries, ["checkpoints", "events.jsonl"]);
+    const events = (await readFile(join(stateRoot, "goals/events.jsonl"), "utf8"))
+      .trim()
+      .split(/\r?\n/)
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.deepEqual(events.map((event) => event.event_type), ["goal_started", "goal_blocked"]);
+    assert.equal(events.every((event) => event.goal_id === result.goal_id), true);
+    assert.notEqual(events[0]?.command_id, events[1]?.command_id);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("live GoalRuntime ingress writes only canonical goal state", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-live-goal-ingress-"));
+  const stateRoot = join(root, "state");
+  const repoRoot = join(root, "repo");
+  await mkdir(stateRoot, { recursive: true });
+  await mkdir(repoRoot, { recursive: true });
+  try {
+    await runGit(repoRoot, ["init", "-b", "develop"]);
+    await runGit(repoRoot, ["config", "user.name", "Live Goal Ingress Test"]);
+    await runGit(repoRoot, ["config", "user.email", "live-goal@example.test"]);
+    await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await writeFile(join(repoRoot, "README.md"), "live goal fixture\n", "utf8");
+    await runGit(repoRoot, ["add", "README.md"]);
+    await runGit(repoRoot, ["commit", "-m", "fixture base"]);
+
+    const runtime = new GoalRuntime({
+      store: new AgentStore(repoRoot, stateRoot),
+      cognition: {
+        async next() {
+          return {
+            type: "outcome",
+            outcome: {
+              summary: "The bounded live Goal completed without legacy state.",
+              runtime_result: {
+                status: "healthy",
+                summary: "The canonical GoalRuntime path is healthy."
+              },
+              residual_risks: []
+            }
+          };
+        }
+      },
+      toolExecutor: {
+        async execute() {
+          throw new Error("outcome-only fixture must not execute a tool");
+        }
+      },
+      verifier: {
+        async verify(input) {
+          return {
+            status: "passed",
+            summary: "Canonical Goal events support the deterministic outcome.",
+            checks: [{
+              id: "live_goal_ingress",
+              status: "passed",
+              summary: "One Goal identity reached one verified receipt.",
+              evidence_event_ids: input.candidate.evidence_event_ids
+            }],
+            next_action: null
+          };
+        }
+      }
+    });
+
+    const result = await executeLocalLiveGoalRequest(runtime, {
+      objective: "Complete one deterministic live Goal.",
+      discipline: "none",
+      startCommandId: "canonical_live_start",
+      continueCommandId: "canonical_live_continue"
+    });
+
+    assert.equal(result.status, "completed");
+    assert.equal(result.receipt?.decision, "accepted");
+    assert.deepEqual((await readdir(stateRoot)).sort(), ["goals"]);
+    assert.deepEqual((await readdir(join(stateRoot, "goals"))).sort(), [
+      "checkpoints",
+      "events.jsonl",
+      "receipts"
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("local goal lifecycle remains usable when the selected active model is missing", async () => {
   const root = await mkdtemp(join(tmpdir(), "evi-goal-cli-missing-model-"));
   const configDir = join(root, "config");
@@ -184,6 +411,22 @@ function runGit(cwd: string, args: string[]): Promise<void> {
         return;
       }
       resolvePromise();
+    });
+  });
+}
+
+function runRuntimeCli(args: string[]): Promise<{
+  error: Error | null;
+  stdout: string;
+  stderr: string;
+}> {
+  return new Promise((resolvePromise) => {
+    execFile(process.execPath, ["--import", "tsx", "apps/cli/src/main.ts", ...args], {
+      cwd: process.cwd(),
+      env: { ...process.env, NODE_NO_WARNINGS: "1" },
+      maxBuffer: 10 * 1024 * 1024
+    }, (error, stdout, stderr) => {
+      resolvePromise({ error, stdout, stderr });
     });
   });
 }

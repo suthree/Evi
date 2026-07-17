@@ -430,7 +430,8 @@ failure kind, and bounded refs survive truncation. Free-text substring matches a
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.
 
-Current cutover is intentionally limited to the explicit local `goal` CLI:
+Current cutover includes the explicit local `goal` lifecycle and the standalone
+`live` convenience ingress:
 
 ```bash
 pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree]
@@ -439,12 +440,21 @@ pnpm run runtime -- goal read --goal goal_...
 pnpm run runtime -- goal pause --goal goal_... --reason "..."
 pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...]
 pnpm run runtime -- goal abandon --goal goal_... --reason "..."
+pnpm run runtime -- live --task "..." [--repo-root /absolute/worktree]
 ```
 
-`live`, Web, IM, daemon, and resident task-queue work remain on the legacy
-runner in this bounded slice. They cannot address or dual-write a GoalRuntime
-goal. Their later cutover must happen by whole goal identity; foreground
-learning remains deferred to a receipt-driven asynchronous `LearningRuntime`.
+`live` issues one Start and exactly one bounded Continue to the same GoalRuntime
+identity, then returns the canonical Goal view. An active or paused result is
+continued through `goal continue` or `goal resume` with the returned `goal_id`.
+It does not translate the Goal into a legacy `RunResult`, automatically run
+additional tranches, or write query/todo discipline; `live --query-todo` fails
+before GoalRuntime construction instead of silently dual-writing old state.
+
+Web, IM, daemon, and resident task-queue work remain on the legacy runner in
+this bounded slice. Their later cutover must happen by whole goal identity and
+retire the relevant queue/session orchestration rather than map one Goal into
+both owners. Foreground learning remains deferred to a receipt-driven
+asynchronous `LearningRuntime`.
 
 ### Basic Entrypoints
 
@@ -4539,7 +4549,7 @@ pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
 pnpm run runtime -- config --state-root .runtime/state
-pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
+pnpm run runtime -- live --task "..." --state-root .runtime/state
 pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
 pnpm run runtime -- pipeline runs --state-root .runtime/state

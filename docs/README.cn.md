@@ -104,20 +104,24 @@ checkpoint 只是可重建、可能出错的工作记忆，不是证明、权限
 active Continue command 的 canonical events 临时推导，不新增持久化预算状态；只有本轮
 `used` 与本轮上限比较，下一次 Continue 从零开始本轮用量，但不会清空全程累计历史。
 
-当前 cutover 只覆盖显式本地 `goal start|continue|read|pause|resume|abandon`。
-`live`、Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个
-GoalRuntime Goal 双写；它们会在后续子任务中按完整 Goal 身份切换。foreground Goal
-也不会同步生成 SOP/skill，学习将由后续 receipt-driven LearningRuntime 异步处理。
+当前 cutover 已覆盖显式本地 `goal start|continue|read|pause|resume|abandon`
+生命周期和 standalone `live` 入口。`live` 会用一个 Goal 身份执行一次有界 Continue；
+Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个 GoalRuntime
+Goal 双写，并会在后续子任务中按完整 Goal 身份切换。foreground Goal 也不会同步生成
+SOP/skill，学习将由后续 receipt-driven LearningRuntime 异步处理。
 详细合同见 `docs/RUNTIME_CONTRACT.md` 的 `GoalRuntime Local Control Plane`。
 
-live context 在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
+仍由 Web、IM、daemon 和 resident worker 使用的 legacy `LiveAgentRunner` context
+在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
 `total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
-`focused`、`governance` 或 `recovery` 注意力 profile；普通任务不再常驻加载治理、trace、
+`focused`、`governance` 或 `recovery` 注意力 profile；普通 legacy runner 任务不再常驻加载治理、trace、
 archive 等历史 section，manifest 的 `attention_selection` 会记录主动省略项。Turn Snapshot
 保留机器可读身份和任务首尾，不再内嵌完整 JSON。超限时再按确定性
 顺序压缩，保留任务首尾、runtime/config、query/todo、recall、selected skills 和输出合同；
 manifest 会记录原始/实际长度、截断 section 与省略 section，`/context` 可只读查看。
 声明的预算小到无法容纳核心上下文时会在模型调用前失败，不会静默超限发送。
+这些 context manifest、attention profile、query/todo 和 `/context` 行为不适用于已经切换到
+GoalRuntime 的 standalone `live` CLI；后者以 canonical Goal event/checkpoint/receipt 为边界。
 
 ## 本地开放演化权限
 
@@ -260,10 +264,16 @@ pnpm run runtime -- doctor --no-auth --no-im
 有模型配置后运行一次 live task：
 
 ```bash
-pnpm run runtime -- live --query-todo --task "Verify the local agent runtime." --state-root .runtime/state
+pnpm run runtime -- live --task "Verify the local agent runtime." --state-root .runtime/state
 ```
 
-查看最近 live run 的有界 trace：
+`live` 现在会创建一个 GoalRuntime Goal，并在同一次命令中只执行一个有界
+Continue tranche。若返回 `active` 或 `paused`，应保留同一个 `goal_id`，再使用
+`goal continue` 或 `goal resume`；不能新建替代任务。`--query-todo` 属于旧 runner，
+在 `live` 上会在创建 Goal 前明确拒绝，避免同一个目标同时写入两套控制面。
+Web、IM、daemon 和 resident task queue 仍等待各自的完整入口切换。
+
+查看仍由 Web、IM、daemon 等 legacy runner 生成的最近 run trace：
 
 ```bash
 pnpm run runtime -- review traces --state-root .runtime/state
