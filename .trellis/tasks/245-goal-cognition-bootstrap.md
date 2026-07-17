@@ -1,6 +1,6 @@
 # Task 245: Goal Cognition Bootstrap
 
-Status: active
+Status: complete; Issue #68 closed after source, installed-bundle, and live runtime acceptance
 
 ## Identity And Ownership
 
@@ -114,5 +114,16 @@ export, destructive remote action, or stopped-goal resumption.
 - The apparent cumulative budget excess is intentional soft-tranche behavior,
   not a lifetime-cap bypass. Goal views now expose
   `budget_scope: per_continue_command` so operator output names that boundary.
-- Installed-bundle acceptance, repository-wide checks, independent review,
-  merge, deployment, and resident handoff remain pending.
+- PR #69 merged the reviewed implementation to `develop` at
+  `aac717ca4018f5b395f63ba6ff36f6d929507d17`. `pnpm run check` passed with
+  929 tests and both independent review tracks passed.
+- Deployment `deployment_20260717185056_aac717ca4018` reached stable at the
+  same source commit. Resident health is `healthy`; controller handoff first
+  updated the supervisor and then returned `already_matched`.
+- Installed Goal `goal_20260717185653_75e21dc2` completed in one Continue with
+  two cognition rounds and one GoalRuntime-owned `file.read`. Accepted receipt
+  `goal_receipt_20260717185712_efd6854f` has `changes[]=[]`; the isolated state
+  root contained only canonical Goal events, checkpoint, and receipt.
+- Issue #68 is closed. The later live architecture-diagnosis Goal exposed a
+  distinct per-Continue cognition-budget presentation defect, now owned by
+  Issue #70 and Task 246 rather than retroactively widening this task.

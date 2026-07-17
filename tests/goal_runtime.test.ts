@@ -45,6 +45,20 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
     assert.deepEqual(completed.receipt?.changes, []);
     assert.equal(tools.calls.length, 1);
     assert.equal(cognition.calls.length, 2);
+    assert.deepEqual(cognition.calls.map((call) => call.execution_budget), [
+      {
+        scope: "per_continue_command",
+        limit: { max_model_rounds: 3, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+        used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
+        remaining: { model_rounds: 3, tool_calls: 4, elapsed_ms: 10_000 }
+      },
+      {
+        scope: "per_continue_command",
+        limit: { max_model_rounds: 3, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+        used: { model_rounds: 1, tool_calls: 1, elapsed_ms: 20 },
+        remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 9_980 }
+      }
+    ]);
     assert.deepEqual(completed.usage, { model_rounds: 2, tool_calls: 1, elapsed_ms: 30 });
     const events = await readEvents(fixture.stateRoot);
     assert.deepEqual(events.map((event) => event.event_type), [
@@ -104,6 +118,12 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
       "utf8"
     )) as Record<string, unknown>;
     assert.equal(checkpointProjection.budget_scope, "per_continue_command");
+    assert.deepEqual(cognition.calls[0]!.execution_budget, {
+      scope: "per_continue_command",
+      limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+      used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
+      remaining: { model_rounds: 1, tool_calls: 4, elapsed_ms: 10_000 }
+    });
 
     const completed = await runtime.handle({
       type: "continue",
@@ -114,6 +134,13 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     assert.equal(completed.goal_id, started.goal_id);
     assert.equal(completed.usage.model_rounds, 2);
     assert.equal(completed.usage.tool_calls, 1);
+    assert.equal(cognition.calls[1]!.goal.usage.model_rounds, 1);
+    assert.deepEqual(cognition.calls[1]!.execution_budget, {
+      scope: "per_continue_command",
+      limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+      used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
+      remaining: { model_rounds: 1, tool_calls: 4, elapsed_ms: 10_000 }
+    });
   } finally {
     await fixture.cleanup();
   }

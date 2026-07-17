@@ -323,6 +323,13 @@ lifetime. A later Continue opens another bounded tranche under the same
 identity; cumulative `usage` may therefore exceed the numeric tranche budget.
 Views and checkpoint projections expose `budget_scope: "per_continue_command"`
 so this continuation behavior cannot be mistaken for a lifetime cap.
+Before each cognition call, the model input names the Goal-wide counter
+`lifetime_usage` and separately supplies the current `execution_budget` with
+`scope`, `limit`, `used`, and non-negative `remaining` values. That current
+tranche is derived from canonical events for the active Continue command and is
+not another persisted budget store. Only its `used` value is compared with the
+tranche limit; a later Continue begins at zero while lifetime usage remains
+cumulative.
 
 `EffectPolicy` classifies operation, target, data exposure, and reversibility.
 It does not trust a model-provided `side_effect_level` to grant authority. Safe
