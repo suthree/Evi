@@ -166,6 +166,7 @@ import {
 import {
   getLocalDeploymentStatus,
   listLocalDeployments,
+  reconcileLocalDeploymentBaseline,
   reportLocalDeploymentFailure,
   requestLocalDeployment
 } from "../../../packages/runtime/src/deployment.js";
@@ -197,7 +198,7 @@ interface CliOptions {
   imAction?: "serve";
   daemonAction?: "serve";
   serviceAction?: ServiceAction | "health";
-  deploymentAction?: "request" | "status" | "fail" | "history";
+  deploymentAction?: "request" | "reconcile" | "status" | "fail" | "history";
   deploymentId?: string;
   deploymentRepairOf?: string;
   deploymentVerificationRefs: string[];
@@ -1612,6 +1613,29 @@ export async function main(): Promise<number> {
       const result = await requestLocalDeployment(definition, {
         verificationRefs: options.deploymentVerificationRefs,
         repairOf: options.deploymentRepairOf
+      });
+      console.log(JSON.stringify({ action, ...result }, null, 2));
+      return 0;
+    }
+    if (action === "reconcile") {
+      const definition = await resolveServiceDefinition({
+        action: "status",
+        target: options.serviceTarget,
+        configDir: options.configDir,
+        repoRoot: options.repoRoot,
+        stateRoot: selectors.stateRoot,
+        provider: options.imProvider,
+        channelId: options.channelId,
+        scenarioId: options.scenarioId,
+        discipline: options.discipline,
+        enableIm: options.requireIm,
+        enableWeb: options.webEnabled,
+        webHost: options.webHost,
+        webPort: options.webPort
+      }, false);
+      const result = await reconcileLocalDeploymentBaseline(definition, {
+        reason: required(options.reason, "deployment reconcile requires --reason"),
+        verificationRefs: options.deploymentVerificationRefs
       });
       console.log(JSON.stringify({ action, ...result }, null, 2));
       return 0;
@@ -3507,8 +3531,8 @@ function isCliServiceAction(value: string): value is ServiceAction | "health" {
   return value === "health" || isServiceAction(value);
 }
 
-function isDeploymentAction(value: string): value is "request" | "status" | "fail" | "history" {
-  return value === "request" || value === "status" || value === "fail" || value === "history";
+function isDeploymentAction(value: string): value is "request" | "reconcile" | "status" | "fail" | "history" {
+  return value === "request" || value === "reconcile" || value === "status" || value === "fail" || value === "history";
 }
 
 function parseServiceTarget(value: string): ServiceTarget {
@@ -3557,6 +3581,7 @@ function printUsage(): void {
   pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- service install|start|stop|restart|rollback|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- deployment request --verification-ref "pnpm run check" [--repair-of deployment_...] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- deployment reconcile --reason "verified bootstrap baseline" --verification-ref "live entrypoints verified" [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- deployment status|history [--limit 20] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- deployment fail --reason "..." [--deployment deployment_...] [--failure-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]

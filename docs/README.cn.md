@@ -500,8 +500,11 @@ pnpm run runtime -- service logs --target runtime --limit 40
 
 新部署只会把通过 commit-bound 基础入口验收的 `current` 保存为
 `previous`。`service rollback` 校验并交换两者，回退后可用同一命令一步恢复；
-`service status` 同时显示 `runtime` 和 `previous_runtime`。服务停止后的启动、重启、
-安装或回滚会轮转 stdout/stderr，每个活动日志 2 MiB，保留 `.1` 到 `.3`，不清理
+`service status` 同时显示 `runtime` 和 `previous_runtime`。
+`service install/start/restart` 只管理已安装 `current` bundle 和 launchd 生命周期，
+不会再把 repo 中的 `dist` 隐式部署到 `current`；只有首次安装且不存在可用 `current` 时，
+才会先完成一次干净 commit 绑定的构建并 bootstrap。服务停止后的启动、重启、安装或回滚
+会轮转 stdout/stderr，每个活动日志 2 MiB，保留 `.1` 到 `.3`，不清理
 state evidence、context manifest 或 episode archive。`bootout` 后的 launchd
 异步卸载窗口通过有界指数重试吸收，单次瞬态 bootstrap error 不会直接放弃启动。
 
@@ -521,6 +524,24 @@ pnpm run runtime -- deployment request --verification-ref "pnpm run check" --sta
 pnpm run runtime -- deployment status --state-root <state-root>
 pnpm run runtime -- deployment history --state-root <state-root>
 ```
+
+请求会重新执行 `pnpm run build`，并确认构建前后仍是同一个干净 commit，再把产物复制到
+`next`；`build.json` 会记录构建命令。构建失败或 source identity 漂移不会改动 `current`，
+也不会创建 pending request。
+
+若旧的人工 bootstrap 使健康 resident bundle 与 deployment ledger 指向不同 commit，
+可在真实 Web/IM、heartbeat 和 manifest 都验证通过后显式建立一次恢复基线：
+
+```bash
+pnpm run runtime -- deployment reconcile \
+  --reason "已核验的 bootstrap ledger 恢复" \
+  --verification-ref "service health: Web 和 IM ready" \
+  --state-root <state-root>
+```
+
+该命令不构建、不切换 bundle、也不重启服务，只把实际运行的干净 commit 记录为 stable，
+并保留被替代的 ledger 历史。存在 pending/active transaction、readiness 不通过或该 commit
+已有失败部署记录时会拒绝。日常交付必须使用 `deployment request`，重复 reconcile 是 drift 信号。
 
 监督器要求候选 heartbeat 与 commit 一致，并等待配置中的 Web/IM 入口就绪；启动最长等待
 90 秒，通过后进入 60 秒观察期。启动超时、连续三次本机硬健康失败，或本地 agent 主动提交带证据的

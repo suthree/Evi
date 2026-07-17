@@ -49,7 +49,11 @@ export interface CommandResult {
   exitCode: number;
 }
 
-export type CommandRunner = (command: string, args: string[], options?: { timeoutMs?: number }) => Promise<CommandResult>;
+export type CommandRunner = (
+  command: string,
+  args: string[],
+  options?: { timeoutMs?: number; cwd?: string }
+) => Promise<CommandResult>;
 
 export interface ServiceDefinitionInput {
   repoRoot: string;
@@ -187,6 +191,7 @@ export async function runServiceCommand(
     run?: CommandRunner;
     platform?: NodeJS.Platform;
     recordRollback?: typeof recordOperatorServiceRollback;
+    prepareRuntimeSource?: typeof prepareServiceRuntimeSource;
   } = {}
 ): Promise<ServiceCommandResult> {
   const action = options.action;
@@ -195,6 +200,7 @@ export async function runServiceCommand(
   const run = deps.run ?? runCommand;
   const platform = deps.platform ?? process.platform;
   const recordRollback = deps.recordRollback ?? recordOperatorServiceRollback;
+  const prepareRuntimeSource = deps.prepareRuntimeSource ?? prepareServiceRuntimeSource;
 
   if (platform !== "darwin") {
     if (action === "status" || action === "logs") return buildResult(action, definition, {
@@ -221,7 +227,7 @@ export async function runServiceCommand(
   if (action === "install") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
       supervisor: await inspectSupervisor(definition, run),
@@ -234,14 +240,16 @@ export async function runServiceCommand(
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service definition installed. Run service start to load it."
+      message: bootstrapped
+        ? "Service definition installed with the first commit-bound runtime bundle. Run service start to load it."
+        : "Service definition installed without changing the current runtime bundle. Run service start to load it."
     });
   }
 
   if (action === "start") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     await startLaunchd(definition, run);
     await startSupervisor(definition, run);
     return buildResult(action, definition, {
@@ -256,7 +264,9 @@ export async function runServiceCommand(
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service start requested."
+      message: bootstrapped
+        ? "Service start requested after first-install runtime bootstrap."
+        : "Service start requested for the installed runtime bundle; repository source was not deployed."
     });
   }
 
@@ -282,7 +292,7 @@ export async function runServiceCommand(
   if (action === "restart") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     await startLaunchd(definition, run);
     await startSupervisor(definition, run);
     return buildResult(action, definition, {
@@ -297,7 +307,9 @@ export async function runServiceCommand(
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service restart requested."
+      message: bootstrapped
+        ? "Service restart requested after first-install runtime bootstrap."
+        : "Service restart requested for the installed runtime bundle; repository source was not deployed."
     });
   }
 
@@ -702,15 +714,29 @@ function renderPlist(input: {
   ].join("\n");
 }
 
-async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
+async function writeServiceFiles(
+  definition: ServiceDefinition,
+  run: CommandRunner,
+  prepareRuntimeSource: typeof prepareServiceRuntimeSource
+): Promise<boolean> {
   if (!existsSync(definition.programArguments[0])) {
     throw new Error(`node executable not found: ${definition.programArguments[0]}`);
   }
   await rotateServiceLogs(definition);
-  await syncServiceRuntimeBundle(definition);
-  const sourceSupervisorEntry = resolve(definition.repoRoot, "dist/packages/runtime/src/service_supervisor.js");
+  let bootstrapped = false;
+  if (existsSync(definition.runtimeCurrentRoot)) {
+    await assertRuntimeBundleUsable(definition.runtimeCurrentRoot, "installed runtime");
+  } else {
+    const preparedBuild = await prepareRuntimeSource(definition, run);
+    await syncServiceRuntimeBundle(definition, preparedBuild);
+    bootstrapped = true;
+  }
+  const sourceSupervisorEntry = resolve(
+    definition.runtimeCurrentRoot,
+    "dist/packages/runtime/src/service_supervisor.js"
+  );
   if (!existsSync(sourceSupervisorEntry)) {
-    throw new Error(`Built service supervisor not found: ${sourceSupervisorEntry}; run pnpm run build before service install/start.`);
+    throw new Error(`Installed service supervisor not found: ${sourceSupervisorEntry}; deploy or bootstrap a complete runtime bundle first.`);
   }
   await mkdir(definition.supervisorRoot, { recursive: true });
   await cp(sourceSupervisorEntry, definition.supervisorEntryPath, { force: true });
@@ -780,14 +806,21 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     program_arguments: definition.programArguments,
     updated_at: new Date().toISOString()
   }, null, 2)}\n`, "utf8");
+  return bootstrapped;
 }
 
-export async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
-  await stageServiceRuntimeBundle(definition);
+export async function syncServiceRuntimeBundle(
+  definition: ServiceDefinition,
+  preparedBuild?: ServiceRuntimeBuild
+): Promise<void> {
+  await stageServiceRuntimeBundle(definition, preparedBuild);
   await activateStagedServiceRuntimeBundle(definition);
 }
 
-export async function stageServiceRuntimeBundle(definition: ServiceDefinition): Promise<ServiceRuntimeBuild> {
+export async function stageServiceRuntimeBundle(
+  definition: ServiceDefinition,
+  preparedBuild?: ServiceRuntimeBuild
+): Promise<ServiceRuntimeBuild> {
   const sourceDist = resolve(definition.repoRoot, "dist");
   const sourceCliEntry = resolve(sourceDist, "apps/cli/src/main.js");
   const sourceNodeModules = resolve(definition.repoRoot, "node_modules");
@@ -801,26 +834,79 @@ export async function stageServiceRuntimeBundle(definition: ServiceDefinition): 
   if (!existsSync(definition.sourceConfigDir)) {
     throw new Error(`Config directory not found: ${definition.sourceConfigDir}`);
   }
+  if (preparedBuild) await assertPreparedRuntimeSource(definition, preparedBuild);
 
   await rm(definition.runtimeNextRoot, { recursive: true, force: true });
-  await mkdir(definition.runtimeNextRoot, { recursive: true });
-  await cp(sourceDist, resolve(definition.runtimeNextRoot, "dist"), { recursive: true, force: true });
-  await cp(sourceNodeModules, resolve(definition.runtimeNextRoot, "node_modules"), {
-    recursive: true,
-    force: true
+  try {
+    await mkdir(definition.runtimeNextRoot, { recursive: true });
+    await cp(sourceDist, resolve(definition.runtimeNextRoot, "dist"), { recursive: true, force: true });
+    await cp(sourceNodeModules, resolve(definition.runtimeNextRoot, "node_modules"), {
+      recursive: true,
+      force: true
+    });
+    await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
+    if (preparedBuild) await assertPreparedRuntimeSource(definition, preparedBuild);
+    const build = preparedBuild ?? await buildServiceRuntimeBuild(definition);
+    await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
+      build,
+      null,
+      2
+    )}\n`, "utf8");
+    await writeFile(resolve(definition.runtimeNextRoot, "package.json"), `${JSON.stringify({
+      private: true,
+      type: "module"
+    }, null, 2)}\n`, "utf8");
+    return build;
+  } catch (error) {
+    await rm(definition.runtimeNextRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function prepareServiceRuntimeSource(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<ServiceRuntimeBuild> {
+  const before = await buildServiceRuntimeBuild(definition);
+  if (!before.source_commit || before.source_is_dirty !== false) {
+    throw new Error("runtime build requires a clean Git commit before pnpm run build");
+  }
+  const result = await run("pnpm", ["run", "build"], {
+    cwd: definition.repoRoot,
+    timeoutMs: 300_000
   });
-  await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
-  const build = await buildServiceRuntimeBuild(definition);
-  await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
-    build,
-    null,
-    2
-  )}\n`, "utf8");
-  await writeFile(resolve(definition.runtimeNextRoot, "package.json"), `${JSON.stringify({
-    private: true,
-    type: "module"
-  }, null, 2)}\n`, "utf8");
-  return build;
+  if (result.exitCode !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`;
+    throw new Error(`runtime build failed: ${detail}`);
+  }
+  const after = await buildServiceRuntimeBuild(definition);
+  if (after.source_commit !== before.source_commit || after.source_is_dirty !== false) {
+    throw new Error("runtime source changed or became dirty during pnpm run build");
+  }
+  const required = [
+    resolve(definition.repoRoot, "dist/apps/cli/src/main.js"),
+    resolve(definition.repoRoot, "dist/packages/runtime/src/service_supervisor.js")
+  ];
+  const missing = required.filter((path) => !existsSync(path));
+  if (missing.length > 0) throw new Error(`runtime build output is incomplete: ${missing.join(", ")}`);
+  return {
+    ...after,
+    build_command: "pnpm run build"
+  };
+}
+
+async function assertPreparedRuntimeSource(
+  definition: ServiceDefinition,
+  preparedBuild: ServiceRuntimeBuild
+): Promise<void> {
+  const current = await buildServiceRuntimeBuild(definition);
+  if (!preparedBuild.source_commit
+    || preparedBuild.source_is_dirty !== false
+    || current.source_commit !== preparedBuild.source_commit
+    || current.source_is_dirty !== false
+    || current.repo_root !== preparedBuild.repo_root) {
+    throw new Error("prepared runtime source no longer matches the same clean Git commit");
+  }
 }
 
 export async function activateStagedServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
@@ -1230,10 +1316,15 @@ function buildResult(
   };
 }
 
-async function runCommand(command: string, args: string[], options: { timeoutMs?: number } = {}): Promise<CommandResult> {
+async function runCommand(
+  command: string,
+  args: string[],
+  options: { timeoutMs?: number; cwd?: string } = {}
+): Promise<CommandResult> {
   try {
     const result = await execFile(command, args, {
       timeout: options.timeoutMs ?? 30000,
+      cwd: options.cwd,
       encoding: "utf8"
     });
     return {
