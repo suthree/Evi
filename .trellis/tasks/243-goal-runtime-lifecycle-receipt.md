@@ -1,6 +1,6 @@
 # Task 243: GoalRuntime Lifecycle And OutcomeReceipt
 
-Status: active; delivery child of GitHub Issue #56 through Issue #62
+Status: complete; Issue #62 closed after source, deployment, and live interface acceptance
 
 ## Identity And Ownership
 
@@ -16,6 +16,8 @@ Status: active; delivery child of GitHub Issue #56 through Issue #62
 - Base: `c9a1c2b678c41224f4444cf2e2ce97ab22cc0e0f` on `develop`.
 - Branch/worktree: `codex/issue-62-goal-runtime-lifecycle` at
   `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/62-goal-runtime-lifecycle`.
+- Live-evidence branch/worktree: `codex/issue-62-live-acceptance-evidence` in
+  the same isolated worktree after PR #63 integration.
 
 ## Architectural Outcome
 
@@ -154,5 +156,37 @@ deployment, publication, or stopped-goal resumption.
   verifier seam are corrected. Independent Standards and Spec re-review of
   commit `7ca1975b545d715875390205e29b1036bca444b8` report no findings; both also
   reran the 10 focused tests and an independent TypeScript check successfully.
-- PR integration, commit-bound deployment, and live runtime/channel health
-  remain pending and are not claimed here.
+- This checkpoint preceded PR integration and live acceptance; the completion
+  receipt below supersedes its pending statement.
+
+## 2026-07-17 Live Acceptance And Completion
+
+- PR #63 merged to `develop` as
+  `f92deedd19e1d78998dd0439eb0a5352c703d474`; the root checkout is clean and
+  aligned with `origin/develop` at that commit.
+- The installed service manifest resolved the authoritative Evi state root as
+  `/Users/agi00079/Documents/GitHub/suthree/Evi/.runtime/state`. The separate
+  home-scoped path contains stale historical XingZhe state and was not used for
+  deployment or acceptance.
+- Commit-bound deployment `deployment_20260717135340_f92deedd19e1` moved from
+  `pending` through `starting` and `probation` to `stable` at
+  `2026-07-17T13:55:29.755Z`. It retained the last known-good runtime in the
+  previous slot and produced no failure or repair Goal.
+- Resident runtime PID `67904` reports a fresh heartbeat, current commit
+  `f92deedd19e1d78998dd0439eb0a5352c703d474`, healthy runtime and application
+  layers, running Web at `127.0.0.1:8765`, and connected Feishu inbound.
+- Controller handoff updated the installed manifest from the prior stable
+  commit to `f92deedd19e1d78998dd0439eb0a5352c703d474`, restarted supervisor PID
+  `99578` as PID `69955`, verified process identity, and returned
+  `already_matched` on exact repetition.
+- A smoke executed `GoalRuntime` directly from the installed runtime bundle in
+  a temporary state root. One goal retained identity through start,
+  observation, and verified completion at sequence 3, emitted one accepted
+  receipt, and created only the `goals` state root. The temporary state was
+  removed after the check.
+- The stopped legacy Evi goal was never resumed. No CLI, daemon, Web, IM,
+  deployment, adoption, EffectPolicy, or LearningRuntime path was connected to
+  GoalRuntime in this slice, and no legacy orchestration store was written.
+- Task 243 and Issue #62 are complete. Parent Issue #56 remains open for the
+  later ingress/EffectPolicy, asynchronous learning, and legacy-retirement
+  slices, which must be activated only from measured evidence.
