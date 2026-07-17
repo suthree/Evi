@@ -484,6 +484,25 @@ test("candidate activation persists typed evidence and a precise error when kick
       result.deployment?.failure_reason,
       "candidate activation failed: launchctl kickstart exhausted 7/7 attempts for gui/501/local.runtime.runtime; last exit_code=5; last_error=Kickstart failed: 5: throttled"
     );
+    assert.ok(result.deployment?.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
+
+    await writeHeartbeat(manifest, "stable-commit", "2026-07-15T00:00:01.000Z");
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:02.000Z"),
+      runLaunchctl
+    });
+    assert.equal(recovered.action, "recovered");
+    const observation = JSON.parse(await readFile(paths.latestObservation, "utf8")) as DeploymentFailureObservation;
+    assert.equal(observation.kind, "deployment_failed_recovered");
+    assert.equal(observation.deployment_id, request.id);
+    assert.equal(observation.candidate.source_commit, "candidate-commit");
+    assert.equal(observation.stable_runtime.source_commit, "stable-commit");
+    assert.ok(observation.failure.evidence_refs.some((ref) => ref.endsWith("failure.json")));
+    assert.match(
+      await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/failure.json`), "utf8"),
+      /candidate activation failed/
+    );
+    await assert.rejects(readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), { code: "ENOENT" });
   } finally {
     await rm(root, { recursive: true, force: true });
   }

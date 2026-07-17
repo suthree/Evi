@@ -500,15 +500,7 @@ async function activateDeployment(
       updated_at: now.toISOString()
     });
   } catch (error) {
-    let recoveryStart: LaunchctlStartEvidence | undefined;
-    let recoveryError: string | undefined;
-    try {
-      recoveryStart = await restoreAndStartKnownGood(manifest, activating, deps);
-    } catch (recoveryFailure) {
-      recoveryStart = launchctlStartEvidence(recoveryFailure);
-      recoveryError = errorMessage(recoveryFailure);
-    }
-    return updateDeployment(manifest, {
+    const failed = await captureDeploymentFailure(manifest, {
       ...activating,
       status: "recovering",
       failed_at: now.toISOString(),
@@ -517,6 +509,18 @@ async function activateDeployment(
       readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
       recovery_attempts: 1,
       recovery_last_attempt_at: now.toISOString(),
+      updated_at: now.toISOString()
+    }, now);
+    let recoveryStart: LaunchctlStartEvidence | undefined;
+    let recoveryError: string | undefined;
+    try {
+      recoveryStart = await restoreAndStartKnownGood(manifest, failed, deps);
+    } catch (recoveryFailure) {
+      recoveryStart = launchctlStartEvidence(recoveryFailure);
+      recoveryError = errorMessage(recoveryFailure);
+    }
+    return updateDeployment(manifest, {
+      ...failed,
       recovery_start: recoveryStart,
       recovery_last_error: recoveryError,
       updated_at: now.toISOString()
@@ -545,15 +549,7 @@ async function resumeActivation(
         updated_at: now.toISOString()
       });
     } catch (error) {
-      let recoveryStart: LaunchctlStartEvidence | undefined;
-      let recoveryError: string | undefined;
-      try {
-        recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
-      } catch (recoveryFailure) {
-        recoveryStart = launchctlStartEvidence(recoveryFailure);
-        recoveryError = errorMessage(recoveryFailure);
-      }
-      return updateDeployment(manifest, {
+      const failed = await captureDeploymentFailure(manifest, {
         ...current,
         status: "recovering",
         failed_at: now.toISOString(),
@@ -562,9 +558,21 @@ async function resumeActivation(
         readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
         recovery_attempts: 1,
         recovery_last_attempt_at: now.toISOString(),
+        controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
+        updated_at: now.toISOString()
+      }, now);
+      let recoveryStart: LaunchctlStartEvidence | undefined;
+      let recoveryError: string | undefined;
+      try {
+        recoveryStart = await restoreAndStartKnownGood(manifest, failed, deps);
+      } catch (recoveryFailure) {
+        recoveryStart = launchctlStartEvidence(recoveryFailure);
+        recoveryError = errorMessage(recoveryFailure);
+      }
+      return updateDeployment(manifest, {
+        ...failed,
         recovery_start: recoveryStart,
         recovery_last_error: recoveryError,
-        controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
         updated_at: now.toISOString()
       });
     }
@@ -573,15 +581,7 @@ async function resumeActivation(
     return activateDeployment(manifest, { ...current, status: "pending" }, now, deps);
   }
   if (currentCommit === current.previous_source_commit) {
-    let recoveryStart: LaunchctlStartEvidence | undefined;
-    let recoveryError: string | undefined;
-    try {
-      recoveryStart = await restoreAndStartKnownGood(manifest, current, deps);
-    } catch (error) {
-      recoveryStart = launchctlStartEvidence(error);
-      recoveryError = errorMessage(error);
-    }
-    return updateDeployment(manifest, {
+    const failed = await captureDeploymentFailure(manifest, {
       ...current,
       status: "recovering",
       failed_at: now.toISOString(),
@@ -589,9 +589,21 @@ async function resumeActivation(
       readiness_deadline: new Date(now.getTime() + manifest.startup_timeout_ms).toISOString(),
       recovery_attempts: 1,
       recovery_last_attempt_at: now.toISOString(),
+      controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
+      updated_at: now.toISOString()
+    }, now);
+    let recoveryStart: LaunchctlStartEvidence | undefined;
+    let recoveryError: string | undefined;
+    try {
+      recoveryStart = await restoreAndStartKnownGood(manifest, failed, deps);
+    } catch (error) {
+      recoveryStart = launchctlStartEvidence(error);
+      recoveryError = errorMessage(error);
+    }
+    return updateDeployment(manifest, {
+      ...failed,
       recovery_start: recoveryStart,
       recovery_last_error: recoveryError,
-      controller_assessment: current.controller_assessment ?? assessController(manifest, current.source_commit),
       updated_at: now.toISOString()
     });
   }
@@ -852,6 +864,18 @@ async function captureFailureEvidence(
   }, null, 2)}\n`, "utf8");
   refs.push(`deployments/evidence/${deployment.id}/failure.json`);
   return refs;
+}
+
+async function captureDeploymentFailure(
+  manifest: SupervisorManifest,
+  deployment: DeploymentRecord,
+  now: Date
+): Promise<DeploymentRecord> {
+  const evidenceRefs = await captureFailureEvidence(manifest, deployment, now);
+  return {
+    ...deployment,
+    evidence_refs: [...new Set([...(deployment.evidence_refs ?? []), ...evidenceRefs])]
+  };
 }
 
 async function activateSlots(manifest: SupervisorManifest): Promise<void> {

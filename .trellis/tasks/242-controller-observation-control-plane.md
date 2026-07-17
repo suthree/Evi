@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: implementation verified locally; commit, PR integration, and live acceptance pending
+Status: draft PR #58 under review; integration and live acceptance pending
 
 ## Identity And Ownership
 
@@ -137,6 +137,17 @@ release, publication, or resumption of the stopped legacy goal.
 - Interface-focused build and 108 selected tests passed after the final identity
   refactor. Repository-wide `pnpm run check` passed with 889 tests, skill
   validation, and neutral naming validation. `git diff --check` also passed.
-- Commit, push, PR review/integration, installed controller handoff, candidate
-  deployment, live health/probation, and rollback/recovery drill remain pending
-  and are not claimed by this checkpoint.
+- The PR Spec review found that activation-failure recovery could emit an
+  observation without evidence refs. The three activation recovery paths now
+  use one failure-capture helper, and the activation-failure regression runs
+  through final observation persistence. After this correction, 24 focused
+  deployment/controller/queue tests and a fresh repository-wide
+  `pnpm run check` with 889 tests passed. Standards and Spec re-review both
+  confirmed their findings resolved.
+- Governance commit `3a7eecc8e289f4010cf3b08eeddb1b95a643d8d2` and
+  implementation commit `bb906ec537d9b5d83e541fac82e9d5a8c06426e4`
+  are pushed on `codex/issue-57-controller-observation-control-plane` and linked
+  through draft PR #58 to `develop`.
+- PR review/integration, installed controller handoff, candidate deployment,
+  live health/probation, and rollback/recovery drill remain pending and are not
+  claimed by this checkpoint.
