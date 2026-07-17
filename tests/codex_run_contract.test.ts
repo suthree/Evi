@@ -16,12 +16,9 @@ const threadId = "019fabcd-1234-7abc-8def-0123456789ab";
 
 test("codex.run request allowlist rejects unsafe argv and authority expansion", () => {
   const valid = parseCodexRunRequest({
-    mode: "new",
-    prompt: "Implement the bounded change.",
-    base_commit: baseCommit,
-    branch: "codex/issue-25-typed-codex-cli",
-    worktree: ".",
-    cwd: "."
+    ...validNewRequest(),
+    model: "gpt-5.6-sol",
+    reasoning_effort: "xhigh"
   });
   assert.equal(valid.mode, "new");
   if (valid.mode !== "new") return;
@@ -34,14 +31,11 @@ test("codex.run request allowlist rejects unsafe argv and authority expansion", 
   assert.equal(valid.budgets.max_retries, 0);
   assert.equal(valid.budgets.max_output_chars, deriveCodexOutputCaptureChars());
 
-  const injected = parseCodexRunRequest({
-    mode: "new",
-    prompt: "Use the runtime-derived capture default.",
-    base_commit: baseCommit,
-    branch: "codex/issue-34-output-capture",
-    worktree: ".",
-    cwd: "."
-  }, { max_output_chars: 12_345 });
+  assert.equal(valid.selection_rationale, "Use a compatible coding model for a bounded contract task.");
+  assert.equal(valid.task_shape, "One main-thread implementation with no independent workstreams.");
+  assert.deepEqual(valid.delegation_strategy, singleDelegation());
+
+  const injected = parseCodexRunRequest(validNewRequest(), { max_output_chars: 12_345 });
   assert.equal(injected.mode === "new" && injected.budgets.max_output_chars, 12_345);
   const explicit = parseCodexRunRequest({
     ...injected,
@@ -50,7 +44,11 @@ test("codex.run request allowlist rejects unsafe argv and authority expansion", 
   assert.equal(explicit.mode === "new" && explicit.budgets.max_output_chars, 23_456);
 
   for (const request of [
-    { ...valid, model: "gpt-5.6" },
+    { ...valid, model: "gpt-5.6;--danger" },
+    { ...valid, model: "-gpt-5.6" },
+    { ...valid, model: undefined },
+    { ...valid, reasoning_effort: undefined },
+    { ...valid, reasoning_effort: "unbounded" },
     { ...valid, profile: "default" },
     { ...valid, sandbox: "danger-full-access" },
     { ...valid, approval_policy: "on-request" },
@@ -61,6 +59,50 @@ test("codex.run request allowlist rejects unsafe argv and authority expansion", 
   ]) {
     assert.throws(() => parseCodexRunRequest(request as Record<string, unknown>), /codex\.run/);
   }
+});
+
+test("codex.run accepts multiple explicit safe model tokens and bounded reasoning efforts", () => {
+  for (const model of ["gpt-5.6-sol", "gpt-5.7-codex", "o4-mini"]) {
+    for (const reasoning_effort of ["minimal", "low", "medium", "high", "xhigh"]) {
+      const parsed = parseCodexRunRequest({ ...validNewRequest(), model, reasoning_effort });
+      assert.equal(parsed.mode === "new" && parsed.model, model);
+      assert.equal(parsed.mode === "new" && parsed.reasoning_effort, reasoning_effort);
+    }
+  }
+});
+
+test("codex.run validates bounded delegation strategy and rejects resume strategy drift", () => {
+  const parallel = parseCodexRunRequest({
+    ...validNewRequest(),
+    task_shape: "Three independent workstreams integrated by the main Codex thread.",
+    delegation_strategy: {
+      mode: "parallel",
+      max_subagents: 3,
+      independent_workstreams: ["contract and authority", "runtime evidence", "tests and docs"],
+      integration_owner: "main_codex_thread"
+    }
+  });
+  assert.equal(parallel.mode === "new" && parallel.delegation_strategy.mode, "parallel");
+  assert.equal(parallel.mode === "new" && parallel.delegation_strategy.max_subagents, 3);
+
+  for (const delegation_strategy of [
+    { ...singleDelegation(), max_subagents: 1 },
+    { ...singleDelegation(), independent_workstreams: ["not single"] },
+    { mode: "parallel", max_subagents: 1, independent_workstreams: ["one"], integration_owner: "main_codex_thread" },
+    { mode: "parallel", max_subagents: 3, independent_workstreams: ["one", "two", "three", "four"], integration_owner: "main_codex_thread" },
+    { mode: "parallel", max_subagents: 3, independent_workstreams: ["duplicate", "duplicate"], integration_owner: "main_codex_thread" },
+    { mode: "parallel", max_subagents: 3, independent_workstreams: ["one", "two"], integration_owner: "subagent" }
+  ]) {
+    assert.throws(() => parseCodexRunRequest({ ...validNewRequest(), delegation_strategy }), /codex\.run/);
+  }
+
+  assert.throws(() => parseCodexRunRequest({
+    mode: "resume",
+    prompt: "Continue the bounded task.",
+    thread_id: threadId,
+    authority_digest: "b".repeat(64),
+    delegation_strategy: singleDelegation()
+  }), /unsupported fields: delegation_strategy/);
 });
 
 test("codex.run derives output capture retention from configured model output tokens", () => {
@@ -92,6 +134,10 @@ test("codex.run builds fixed new and resume argv without shell or forbidden flag
     assert.equal(resumeArgv.includes(forbidden), false);
   }
   assert.equal(codexAuthorityDigest(resumed).length, 64);
+  assert.equal(resumed.schema_version, 2);
+  assert.equal(resumed.original_prompt_sha256.length, 64);
+  assert.equal(resumed.effective_prompt_sha256.length, 64);
+  assert.notEqual(resumed.original_prompt_sha256, resumed.effective_prompt_sha256);
   assert.equal(resumed.output_schema_sha256, CODEX_STRUCTURED_RESULT_SCHEMA_SHA256);
 });
 
@@ -159,9 +205,13 @@ function snapshot(mode: "new" | "resume", id: string | null) {
     service_tier: "fast",
     sandbox: "workspace-write",
     approval_policy: "never",
+    selection_rationale: "Use the explicitly selected compatible model and bounded effort.",
+    task_shape: "Bounded single-thread fixture.",
+    delegation_strategy: singleDelegation(),
     mode,
     thread_id: id,
-    prompt: "bounded prompt",
+    original_prompt: "bounded user prompt",
+    effective_prompt: "bounded effective prompt",
     budgets: {
       timeout_ms: 1000,
       max_output_chars: 4000,
@@ -170,4 +220,33 @@ function snapshot(mode: "new" | "resume", id: string | null) {
       max_retries: 0
     }
   });
+}
+
+function validNewRequest(): Record<string, unknown> {
+  return {
+    mode: "new",
+    prompt: "Implement the bounded change.",
+    base_commit: baseCommit,
+    branch: "codex/issue-54-adaptive-codex-invocation",
+    worktree: ".",
+    cwd: ".",
+    model: "gpt-5.6-sol",
+    profile: "fast",
+    reasoning_effort: "xhigh",
+    service_tier: "fast",
+    sandbox: "workspace-write",
+    approval_policy: "never",
+    selection_rationale: "Use a compatible coding model for a bounded contract task.",
+    task_shape: "One main-thread implementation with no independent workstreams.",
+    delegation_strategy: singleDelegation()
+  };
+}
+
+function singleDelegation() {
+  return {
+    mode: "single" as const,
+    max_subagents: 0,
+    independent_workstreams: [] as string[],
+    integration_owner: "main_codex_thread" as const
+  };
 }

@@ -79,29 +79,37 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "codex.run",
     side_effect_level: "local_write",
-    rationale: "need one bounded typed Codex CLI coding execution inside an isolated worktree; max_output_chars is an optional capture-only override",
+    rationale: "bounded Codex run in isolated worktree",
     arguments: {
-      mode: "new | resume",
-      prompt: "bounded coding task",
-      base_commit: "full Git commit SHA (new only)",
-      branch: "isolated branch (new only)",
-      worktree: "isolated worktree path (new only)",
-      cwd: "cwd inside the isolated worktree (new only)",
-      model: "gpt-5.6-sol (new only)",
-      profile: "fast (new only)",
-      reasoning_effort: "xhigh (new only)",
-      service_tier: "fast (new only)",
-      sandbox: "read-only | workspace-write (new only)",
-      approval_policy: "never (new only)",
+      mode: "new|resume",
+      prompt: "task",
+      base_commit: "SHA,new",
+      branch: "new",
+      worktree: "isolated,new",
+      cwd: "within worktree,new",
+      model: "safe token,new,required",
+      profile: "fast,new",
+      reasoning_effort: "minimal|low|medium|high|xhigh,new,required",
+      service_tier: "fast,new",
+      sandbox: "read-only|workspace-write,new",
+      approval_policy: "never,new",
+      selection_rationale: "bounded,new,required",
+      task_shape: "bounded,new,required",
+      delegation_strategy: {
+        mode: "single|parallel,new",
+        max_subagents: "single:0;parallel:2..3",
+        independent_workstreams: "single:[];parallel:2..max unique",
+        integration_owner: "main_codex_thread"
+      },
       budgets: {
         timeout_ms: 300000,
-        max_output_chars: "optional explicit evidence-retention limit; omitted value derives from active model max_output_tokens",
+        max_output_chars: "capture-only,optional/derived",
         max_context_chars: 40000,
         max_tool_calls: 32,
         max_retries: 0
       },
-      thread_id: "UUID (resume only)",
-      authority_digest: "prior authority SHA-256 (resume only)"
+      thread_id: "UUID,resume",
+      authority_digest: "SHA-256,resume"
     }
   },
   {
@@ -125,5 +133,5 @@ export function renderCoreToolExamples(contracts = coreToolContracts): string {
       tool: contract.tool,
       arguments: contract.arguments
     }
-  }, null, 2)).join("\n\n");
+  }, null, contract.tool === "codex.run" ? 0 : 2)).join("\n\n");
 }

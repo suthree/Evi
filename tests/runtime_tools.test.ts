@@ -5,6 +5,10 @@ import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import {
+  codexAuthorityDigest,
+  type CodexAuthoritySnapshot
+} from "../packages/core/src/codex_run_contract.js";
 import type { ActionProposal } from "../packages/core/src/schemas.js";
 import { coreToolContracts, renderCoreToolExamples } from "../packages/core/src/tool_contracts.js";
 import { AgentStore } from "../packages/core/src/store.js";
@@ -629,6 +633,20 @@ process.stdin.on("end", () => {
     assert.equal(authority.repo_root, await realpath(fixture.worktreeRoot));
     assert.equal(authority.isolated_worktree, await realpath(fixture.worktreeRoot));
     assert.equal(authority.git_common_dir, await realpath(join(fixture.mainRoot, ".git")));
+    assert.equal(authority.schema_version, 2);
+    assert.equal(authority.model, "gpt-5.6-sol");
+    assert.equal(authority.reasoning_effort, "xhigh");
+    assert.equal(typeof authority.original_prompt_sha256, "string");
+    assert.equal(typeof authority.effective_prompt_sha256, "string");
+    assert.notEqual(authority.original_prompt_sha256, authority.effective_prompt_sha256);
+    const verifiability = result.output.authority_verifiability as Record<string, unknown>;
+    assert.equal(verifiability.status, "verified");
+    assert.equal(verifiability.snapshot_schema_version, 2);
+    assert.equal(verifiability.authority_digest_recomputed, true);
+    const selection = result.output.selection as Record<string, unknown>;
+    assert.equal(selection.selection_rationale, "Use the verified local compatibility profile for a bounded test fixture.");
+    const promptDigests = result.output.prompt_digests as Record<string, unknown>;
+    assert.equal(promptDigests.raw_prompts_persisted, false);
     const workspace = result.output.workspace_changes as Record<string, unknown>;
     assert.deepEqual(workspace.before_changed_paths, []);
     assert.deepEqual(workspace.after_changed_paths, ["README.md", "codex-untracked.txt"]);
@@ -636,6 +654,155 @@ process.stdin.on("end", () => {
     const structured = result.output.result as Record<string, unknown>;
     assert.deepEqual(structured.changed_files, []);
     assert.equal(structured.completion_authority, "main_harness");
+  } finally {
+    process.env.PATH = previousPath;
+    await fixture.cleanup();
+  }
+});
+
+test("codex.run injects parallel supervision, records attributable spawn evidence, inherits strategy on resume, and rejects legacy snapshots", async () => {
+  const fixture = await createCodexFixture();
+  const previousPath = process.env.PATH;
+  const promptCapture = join(fixture.root, "effective-prompt.txt");
+  const threadId = "019fabcd-1234-7abc-8def-0123456789ab";
+  try {
+    await writeFakeCodex(fixture.binRoot, `
+const fs = await import("node:fs");
+let prompt = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { prompt += chunk; });
+process.stdin.on("end", () => {
+  fs.writeFileSync(${JSON.stringify(promptCapture)}, prompt);
+  console.log(JSON.stringify({ type: "thread.started", thread_id: ${JSON.stringify(threadId)} }));
+  for (const [id, receiver] of [["spawn-1", "019fabcd-1234-7abc-8def-0123456789ac"], ["spawn-2", "019fabcd-1234-7abc-8def-0123456789ad"]]) {
+    const item = { id, type: "collab_tool_call", tool: "spawn_agent", receiver_thread_ids: [receiver] };
+    console.log(JSON.stringify({ type: "item.started", item }));
+    console.log(JSON.stringify({ type: "item.started", item }));
+    console.log(JSON.stringify({ type: "item.completed", item: { ...item, status: "completed" } }));
+    console.log(JSON.stringify({ type: "item.completed", item: { ...item, status: "completed" } }));
+  }
+  console.log(JSON.stringify({
+    type: "item.completed",
+    item: {
+      id: "item-final",
+      type: "agent_message",
+      text: JSON.stringify({
+        status: "done",
+        summary: "Synthetic parallel JSONL fixture completed.",
+        changed_files: [],
+        tests: ["synthetic parallel metadata regression passed"],
+        blockers: [],
+        next_action: "The main harness verifies the evidence.",
+        completion_authority: "main_harness"
+      })
+    }
+  }));
+});
+`);
+    process.env.PATH = `${fixture.binRoot}:${previousPath ?? ""}`;
+    const parallelArguments = {
+      ...codexNewArguments(fixture),
+      task_shape: "Two independent workstreams integrated by the main Codex thread.",
+      delegation_strategy: {
+        mode: "parallel",
+        max_subagents: 2,
+        independent_workstreams: ["contract and authority", "runtime tests and docs"],
+        integration_owner: "main_codex_thread"
+      }
+    };
+    const result = await executeTool(useTool("codex.run", parallelArguments), { store: fixture.store });
+    assert.equal(result.ok, true);
+    const effectivePrompt = await readFile(promptCapture, "utf8");
+    assert.match(effectivePrompt, /Delegation supervision:/);
+    assert.match(effectivePrompt, /at most 2 subagents/);
+    assert.match(effectivePrompt, /Workstream 1: contract and authority/);
+    assert.match(effectivePrompt, /Integration owner: main_codex_thread/);
+    const delegation = result.output.delegation as Record<string, unknown>;
+    assert.equal(delegation.supervision_block_injected, true);
+    assert.equal(delegation.attributable_spawn_calls_observed, 2);
+    assert.equal(delegation.budget_exceeded, false);
+    const evidence = delegation.attributable_tool_evidence as Array<Record<string, unknown>>;
+    assert.equal(evidence.length, 2);
+    assert.deepEqual(evidence.map((item) => item.receiver_thread_ids), [
+      ["019fabcd-1234-7abc-8def-0123456789ac"],
+      ["019fabcd-1234-7abc-8def-0123456789ad"]
+    ]);
+
+    const resumeHandle = result.output.resume_handle as Record<string, unknown>;
+    const strategyDrift = await executeTool(useTool("codex.run", {
+      mode: "resume",
+      prompt: "Continue with a different strategy.",
+      thread_id: resumeHandle.thread_id,
+      authority_digest: resumeHandle.authority_digest,
+      delegation_strategy: {
+        mode: "single",
+        max_subagents: 0,
+        independent_workstreams: [],
+        integration_owner: "main_codex_thread"
+      }
+    }), { store: fixture.store });
+    assertFailureKind(strategyDrift, "codex_invalid_request");
+
+    const resumed = await executeTool(useTool("codex.run", {
+      mode: "resume",
+      prompt: "Continue under the inherited immutable authority.",
+      thread_id: resumeHandle.thread_id,
+      authority_digest: resumeHandle.authority_digest
+    }), { store: fixture.store });
+    assert.equal(resumed.ok, true);
+    assert.equal((resumed.output.authority_verifiability as Record<string, unknown>).resume_authority_inherited, true);
+    assert.equal(((resumed.output.delegation as Record<string, unknown>).requested_plan as Record<string, unknown>).mode, "parallel");
+
+    const resumedHandle = resumed.output.resume_handle as Record<string, unknown>;
+    const persisted = await fixture.store.readStateJson<Record<string, unknown>>(`codex/threads/${threadId}.json`);
+    assert.ok(persisted);
+    const validAuthority = persisted.authority as unknown as CodexAuthoritySnapshot;
+    const malformedAuthorities: Array<[string, CodexAuthoritySnapshot]> = [
+      ["model", { ...validAuthority, model: "unsafe model token" }],
+      ["reasoning_effort", { ...validAuthority, reasoning_effort: "unbounded" as CodexAuthoritySnapshot["reasoning_effort"] }],
+      ["profile", { ...validAuthority, profile: "default" as CodexAuthoritySnapshot["profile"] }],
+      ["service_tier", { ...validAuthority, service_tier: "slow" as CodexAuthoritySnapshot["service_tier"] }],
+      ["sandbox", { ...validAuthority, sandbox: "danger-full-access" as CodexAuthoritySnapshot["sandbox"] }],
+      ["approval_policy", { ...validAuthority, approval_policy: "on-request" as CodexAuthoritySnapshot["approval_policy"] }],
+      ["delegation_strategy", {
+        ...validAuthority,
+        delegation_strategy: {
+          mode: "parallel",
+          max_subagents: 2,
+          independent_workstreams: ["duplicate", "duplicate"],
+          integration_owner: "main_codex_thread"
+        }
+      }]
+    ];
+    for (const [field, malformedAuthority] of malformedAuthorities) {
+      const malformedDigest = codexAuthorityDigest(malformedAuthority);
+      await fixture.store.writeJson(`codex/threads/${threadId}.json`, {
+        ...persisted,
+        authority_digest: malformedDigest,
+        authority: malformedAuthority
+      });
+      const malformed = await executeTool(useTool("codex.run", {
+        mode: "resume",
+        prompt: `Reject malformed persisted ${field}.`,
+        thread_id: threadId,
+        authority_digest: malformedDigest
+      }), { store: fixture.store });
+      assertFailureKind(malformed, "codex_authority_mismatch");
+    }
+
+    await fixture.store.writeJson(`codex/threads/${threadId}.json`, {
+      schema_version: 1,
+      thread_id: threadId,
+      authority_digest: resumedHandle.authority_digest,
+      authority: resumed.output.authority
+    });
+    const legacy = await executeTool(useTool("codex.run", {
+      mode: "resume",
+      prompt: "Attempt to resume an old snapshot.",
+      thread_id: threadId,
+      authority_digest: resumedHandle.authority_digest
+    }), { store: fixture.store });
+    assertFailureKind(legacy, "codex_authority_mismatch");
   } finally {
     process.env.PATH = previousPath;
     await fixture.cleanup();
@@ -923,7 +1090,7 @@ test("tool contract renderer covers the core tool surface", () => {
 
   const rendered = renderCoreToolExamples();
   for (const toolName of toolNames) {
-    assert.match(rendered, new RegExp(`"tool": "${escapeRegExp(toolName)}"`));
+    assert.match(rendered, new RegExp(`"tool"\\s*:\\s*"${escapeRegExp(toolName)}"`));
   }
   const contractsByTool = new Map(coreToolContracts.map((contract) => [contract.tool, contract]));
   assert.deepEqual(Object.keys(contractsByTool.get("repo.search")?.arguments ?? {}).sort(), [
@@ -956,13 +1123,16 @@ test("tool contract renderer covers the core tool surface", () => {
     "branch",
     "budgets",
     "cwd",
+    "delegation_strategy",
     "mode",
     "model",
     "profile",
     "prompt",
     "reasoning_effort",
     "sandbox",
+    "selection_rationale",
     "service_tier",
+    "task_shape",
     "thread_id",
     "worktree"
   ]);
@@ -1071,6 +1241,20 @@ function codexNewArguments(fixture: Awaited<ReturnType<typeof createCodexFixture
     branch: "codex/test",
     worktree: fixture.worktreeRoot,
     cwd: fixture.worktreeRoot,
+    model: "gpt-5.6-sol",
+    profile: "fast",
+    reasoning_effort: "xhigh",
+    service_tier: "fast",
+    sandbox: "workspace-write",
+    approval_policy: "never",
+    selection_rationale: "Use the verified local compatibility profile for a bounded test fixture.",
+    task_shape: "One main Codex thread with no independent workstreams.",
+    delegation_strategy: {
+      mode: "single",
+      max_subagents: 0,
+      independent_workstreams: [],
+      integration_owner: "main_codex_thread"
+    },
     budgets: {
       timeout_ms: 2000,
       max_output_chars: 8000,

@@ -2508,19 +2508,33 @@ generic `command.run`; it is not an arbitrary command or argument passthrough.
 
 Required policy:
 
-- allow only model `gpt-5.6-sol`, profile `fast`, reasoning `xhigh`, service
-  tier `fast`, sandbox `read-only` or `workspace-write`, and approval `never`
+- require every new request to submit an explicit safe model token and one
+  bounded reasoning effort (`minimal|low|medium|high|xhigh`); keep profile
+  `fast`, service tier `fast`, sandbox `read-only` or `workspace-write`, and
+  approval `never` explicit or allowlisted
+- require bounded `selection_rationale`, `task_shape`, and an immutable
+  delegation strategy: `single` with zero subagents and no workstreams, or
+  `parallel` with two to three subagents, two to the declared maximum unique
+  independent workstreams, and `main_codex_thread` as integration owner
 - live-validate a registered sibling isolated worktree under the configured Git
   common directory, together with its repository root, base, branch, and cwd;
   reject non-repositories, other common directories, unregistered worktrees,
   main checkouts, and drift
-- bind execution authority, mode, thread handle, prompt/output-schema digest,
-  and timeout/output-capture/context/tool/retry budgets in an immutable digest
+- bind execution authority, selection, delegation strategy, mode, thread
+  handle, original-user/effective-prompt digests, output-schema digest, and
+  timeout/output-capture/context/tool/retry budgets in an immutable v2 digest
 - construct allowlisted argv without shell concatenation; prohibit
   danger-full-access, bypass flags, add-dir, and search
 - support one bounded `new` execution or `resume <thread-id>` bound to the same
-  authority snapshot, without another worktree, fan-out, scheduler, or
-  automatic retry
+  authority snapshot, without another worktree, scheduler, or automatic retry;
+  resume inherits selection and strategy and rejects any re-submitted drift
+- for a parallel strategy, inject a bounded supervision block naming the
+  subagent maximum, independent workstreams, exclusive integration owner, and
+  evidence boundary; count one slot for the first `started` or `completed` JSONL
+  observation of each unique attributable `spawn_agent` `item_id`; a later
+  `completed` observation for that same item replaces its `started` evidence
+  without increasing the count; stop only when unique item IDs exceed immutable
+  `max_subagents`
 - continue consuming and validating JSONL after the output-capture retention
   limit is reached; retain only bounded event-summary/redacted-diagnostic
   prefix and suffix evidence, and record observed, retained, truncated, and
@@ -2533,6 +2547,11 @@ Required policy:
   with TERM followed by bounded KILL
 - derive tracked and untracked changed paths from fixed live pre/post Git
   status evidence; never return reasoning bodies or secrets
+- reuse tool-result/episode metadata to record selection, requested plan,
+  capture, tool-call and timeout facts, structured result, both prompt digests,
+  and authority verifiability; requested workstreams and model self-report are
+  not subagent evidence, so record subagent facts only from attributable Codex
+  JSONL `collab_tool_call` events
 - side effect: `local_write`
 
 `codex.run` returns execution evidence only. Review, independent diff and test
@@ -2545,11 +2564,14 @@ tool, write, or completion authority.
 termination budget. An explicit caller value wins. When omitted for a new run,
 the runtime derives it from the active model's configured `max_output_tokens`
 through the typed tool-execution context; direct callers without model config
-use the existing context-budget fallback. Version-1 authority snapshots remain
-readable and resumes keep their persisted effective value. For migration,
+use the existing context-budget fallback. For output-capture migration,
 `process.output_budget_exceeded` remains present as `false`; consumers should
 use `process.output_capture.truncated` and its observed/retained/effective-limit
-fields instead.
+fields instead. Version-1 thread snapshots predate immutable selection,
+strategy, and dual prompt digests, so resume rejects them fail-closed and the
+caller must start a new bounded request. The one-time verified selection
+`gpt-5.6-sol` / `xhigh` / `fast` profile and tier is current compatibility
+evidence, not a compile-time singleton or future default.
 
 ### `code.execute_node`
 
