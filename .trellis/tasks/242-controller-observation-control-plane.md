@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: PRs #58 and #59 integrated; draft PR #60 restart-semantics correction under review; live acceptance pending
+Status: complete; Issue #57 closed; completion receipt linked through PR #61
 
 ## Identity And Ownership
 
@@ -19,6 +19,8 @@ Status: PRs #58 and #59 integrated; draft PR #60 restart-semantics correction un
   at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-handoff-kickstart-recovery`.
 - Restart-semantics base: `ede171d1c780ff440bf7ba115643045dfbc67915`.
 - Restart-semantics branch/worktree: `codex/issue-57-supervisor-restart-semantics`
+  at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-supervisor-restart-semantics`.
+- Live-evidence branch/worktree: `codex/issue-57-live-acceptance-evidence`
   at `/Users/agi00079/Documents/GitHub/suthree/Evi/.worktrees/57-supervisor-restart-semantics`.
 
 ## Problem And Evidence
@@ -269,3 +271,47 @@ release, publication, or resumption of the stopped legacy goal.
   on the first attempt; runtime PID 7316, Web, and Feishu remained healthy, with
   `deployment_stale` as the only expected health attention. This confirms the
   loaded-restart mechanism but does not yet claim controller handoff acceptance.
+
+## 2026-07-17 Final Live Acceptance
+
+- PR #60 merged to `develop` as
+  `99b6c8a4e597043deb37caea8d2907536ee30f1c`. The final correction passed
+  Standards and Spec re-review with no residual code or contract findings.
+- Canonical stable controller handoff installed digest
+  `dd23fb8c70596106a62e355896bf005fb3e0a88794172fade6486a643590c83b`
+  from stable commit `1c22979d4d4feb0cb4f2bed86e062fd58ab759d3`, changed the
+  supervisor from PID 75144 to PID 84707, and verified process identity. An
+  immediate repeat returned `already_matched` and preserved PID 84707.
+- Deployment `deployment_20260717130725_99b6c8a4e597` activated clean commit
+  `99b6c8a4e597043deb37caea8d2907536ee30f1c`, reached Web and Feishu
+  readiness, completed probation, and became stable at
+  `2026-07-17T13:09:16.242Z` with healthy service state.
+- The installed controller was then handed forward to the accepted stable
+  commit with digest
+  `9b92f46eafb7eb1d961d6b202fdf7992d89efb27b12f77346ba1d15a6e44a40c`,
+  changing the supervisor from PID 84707 to PID 88774 before the rollback drill.
+- Tree-identical drill commit
+  `4069077b6bee346e5be15ce2d508a40e8662cd3e`, preserved on
+  `origin/codex/issue-57-observation-only-rollback-drill`, passed the existing
+  runtime tree verification and entered healthy probation as deployment
+  `deployment_20260717131027_4069077b6bee`.
+- An explicit evidence-bound Task 242 failure signal caused the controller to
+  restore stable deployment `deployment_20260717130725_99b6c8a4e597` and emit
+  immutable observation
+  `deployment_observation_deployment_20260717131027_4069077b6bee` with kind
+  `deployment_failed_recovered`, recovery status `known_good_restored`, and
+  `goal_action: none`.
+- `.runtime/state/runs/task_queue.jsonl` remained byte-identical before and after
+  recovery: SHA-256
+  `f21a0593f36094711a249b0b160542fb597a7fb28bb841558a3f1d7ccda94f12`
+  and 843 lines. The controller created, resumed, and enqueued no Goal or task.
+- Final health after recovery was healthy on runtime PID 91998 and stable commit
+  `99b6c8a4e597043deb37caea8d2907536ee30f1c`, with fresh heartbeat, Web
+  running, Feishu inbound connected, and no autonomy pause. The stopped legacy
+  self-evolution Goal was never resumed.
+- GitHub Issue #57 was closed with this compact live receipt. Task 242 acceptance
+  is complete; the parent Goal and Issue #56 remain active for the next
+  GoalRuntime control-plane slice.
+- Completion-evidence commit
+  `1ed8de68cc4c0c7434f1a500a232bbef4b3d2f2a` and this status update are
+  linked through evidence-only PR #61 to `develop`.
