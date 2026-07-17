@@ -151,6 +151,8 @@ deployment, publication, or stopped-goal resumption.
   neutral naming validation. `git diff --check` also passes.
 - Initial Standards/Spec review findings on state-root locking, pre-append id
   collisions, replay projection writes, abandonment receipt binding, and the
-  verifier seam are corrected. Re-review, PR integration, commit-bound
-  deployment, and live runtime/channel health remain pending and are not
-  claimed here.
+  verifier seam are corrected. Independent Standards and Spec re-review of
+  commit `7ca1975b545d715875390205e29b1036bca444b8` report no findings; both also
+  reran the 10 focused tests and an independent TypeScript check successfully.
+- PR integration, commit-bound deployment, and live runtime/channel health
+  remain pending and are not claimed here.
