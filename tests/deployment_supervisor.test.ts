@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { requestLocalDeployment } from "../packages/runtime/src/deployment.js";
+import {
+  reconcileLocalDeploymentBaseline,
+  requestLocalDeployment
+} from "../packages/runtime/src/deployment.js";
 import { buildRuntimeServiceDefinition, isCurrentRuntimeKnownGood } from "../packages/runtime/src/service.js";
 import {
   checkRuntimeReadiness,
@@ -222,6 +225,26 @@ test("deployment request requires a clean distinct commit and stages an immutabl
     await writeFile(definition.supervisorManifestPath, `${JSON.stringify({ max_repair_attempts: 2 })}\n`, "utf8");
     await writeFile(definition.supervisorPlistPath, "plist", "utf8");
 
+    const preparedReceipt = (sourceCommit: string) => ({
+      schema_version: 1 as const,
+      target: "runtime" as const,
+      runtime_current_root: definition.runtimeCurrentRoot,
+      repo_root: repoRoot,
+      built_at: "2026-07-15T00:00:00.000Z",
+      node_version: process.version,
+      source_commit: sourceCommit,
+      source_commit_short: sourceCommit.slice(0, 12),
+      source_branch: "develop",
+      source_is_dirty: false,
+      build_command: "pnpm run build"
+    });
+    await assert.rejects(requestLocalDeployment(definition, {
+      verificationRefs: ["pnpm run check"]
+    }, {
+      prepareCandidate: async () => preparedReceipt(stableCommit)
+    }), /candidate commit matches the running commit/);
+    await assert.rejects(readFile(resolve(definition.runtimeNextRoot, "build.json"), "utf8"), { code: "ENOENT" });
+
     await writeFile(resolve(repoRoot, "dist/apps/cli/src/main.js"), "export const version = 2;\n", "utf8");
     await execFile("git", ["add", "."], { cwd: repoRoot });
     await execFile("git", ["commit", "-qm", "candidate"], { cwd: repoRoot });
@@ -229,11 +252,75 @@ test("deployment request requires a clean distinct commit and stages an immutabl
     const result = await requestLocalDeployment(definition, {
       verificationRefs: ["pnpm run check"],
       now: new Date("2026-07-15T00:00:00.000Z")
+    }, {
+      prepareCandidate: async () => preparedReceipt(candidateCommit)
     });
     assert.equal(result.source_commit, candidateCommit);
     assert.equal(result.status, "pending");
     assert.match(result.release_id, new RegExp(`^${candidateCommit}:[a-f0-9]{16}`));
     assert.equal(await bundleCommit(definition.runtimeNextRoot), candidateCommit);
+    assert.equal(JSON.parse(await readFile(resolve(definition.runtimeNextRoot, "build.json"), "utf8")).build_command, "pnpm run build");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deployment reconciliation adopts only the ready running commit and retains prior ledger history", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-reconcile-"));
+  const repoRoot = resolve(root, "repo");
+  const stateRoot = resolve(root, "state");
+  const homeRoot = resolve(root, "home");
+  const baseDefinition = buildRuntimeServiceDefinition({
+    repoRoot,
+    configDir: resolve(repoRoot, "config"),
+    stateRoot,
+    homeRoot,
+    nodePath: process.execPath
+  });
+  const definition = {
+    ...baseDefinition,
+    supervisorPlistPath: resolve(homeRoot, "service/supervisor.plist")
+  };
+  const manifest: SupervisorManifest = {
+    ...buildManifest(root),
+    runtime_current_root: definition.runtimeCurrentRoot,
+    runtime_previous_root: definition.runtimePreviousRoot,
+    runtime_next_root: definition.runtimeNextRoot,
+    runtime_build_path: definition.runtimeBuildPath,
+    runtime_previous_build_path: definition.runtimePreviousBuildPath,
+    heartbeat_path: definition.heartbeatPath,
+    state_root: stateRoot,
+    repo_root: repoRoot
+  };
+  const now = new Date("2026-07-17T00:00:00.000Z");
+  try {
+    await writeRuntimeBundle(definition.runtimeCurrentRoot, "running-commit", repoRoot);
+    await writeRuntimeBundle(definition.runtimePreviousRoot, "previous-commit", repoRoot);
+    await writeJson(definition.supervisorManifestPath, manifest);
+    await writeFile(definition.supervisorPlistPath, "plist", "utf8");
+    await writeHeartbeat(manifest, "running-commit", now.toISOString());
+    const prior = {
+      ...deploymentRecord("ledger-old-commit", "recovered"),
+      id: "deployment_old_ledger",
+      repo_root: repoRoot,
+      state_root: stateRoot
+    };
+    await writeJson(resolve(stateRoot, "deployments/current.json"), prior);
+    await writeJson(resolve(stateRoot, `deployments/history/${prior.id}.json`), prior);
+
+    const adopted = await reconcileLocalDeploymentBaseline(definition, {
+      reason: "operator verified bootstrap recovery",
+      verificationRefs: ["service health: Web and IM ready", "pnpm run check"],
+      now
+    });
+
+    assert.equal(adopted.status, "stable");
+    assert.equal(adopted.source_commit, "running-commit");
+    assert.equal(adopted.previous_source_commit, "previous-commit");
+    assert.equal(adopted.superseded_deployment_id, prior.id);
+    assert.equal(adopted.adoption_reason, "operator verified bootstrap recovery");
+    assert.equal((await readJson(resolve(stateRoot, "deployments/current.json"))).source_commit, "running-commit");
+    assert.equal((await readJson(resolve(stateRoot, `deployments/history/${prior.id}.json`))).source_commit, "ledger-old-commit");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -362,4 +449,8 @@ async function bundleCommit(root: string): Promise<string> {
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(resolve(path, ".."), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function readJson(path: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
 }

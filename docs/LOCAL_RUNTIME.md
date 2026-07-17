@@ -1255,13 +1255,16 @@ fall back to `<LOCAL_RUNTIME_HOME>/state/runtime`. Passing `--state-root` remain
 the highest-priority explicit override. This keeps the read-only health surface
 aligned with the state root the resident process actually received.
 
-`service install`, `service start`, and `service restart` sync a built runtime
-snapshot before loading the launchd job. The snapshot contains compiled JS,
-config files, and runtime dependencies so the resident process does not depend
-on TypeScript loaders or repo-local package symlinks. It also writes
-`build.json` with the source commit, branch, dirty flag, build time, Node
-version, and runtime root. `service status` reads this file from the copied
-runtime and returns `health_command` pointing to the matching bounded
+`service install`, `service start`, and `service restart` manage the launchd
+lifecycle around the already installed `current` runtime bundle; they do not
+copy repository source into `current`. On a first installation only, when no
+usable `current` exists, the lifecycle command performs the same clean,
+commit-bound build preparation and bootstraps one bundle. The snapshot contains
+compiled JS, config files, and runtime dependencies so the resident process
+does not depend on TypeScript loaders or repo-local package symlinks. Its
+`build.json` records the source commit, branch, dirty flag, build command, build
+time, Node version, and runtime root. `service status` reads this file from the
+copied runtime and returns `health_command` pointing to the matching bounded
 `service health --target ...` check. The service heartbeat carries the same
 metadata so Feishu `/status`, `governance status`, and Feishu `/governance` can
 confirm which build the resident process is actually running without reading
@@ -1301,7 +1304,7 @@ not invoke a model, edit repository source, inspect ordinary logs for semantic
 judgment, communicate externally, or perform remote deployment.
 
 After targeted checks and `pnpm run check`, a clean, distinct commit may be
-staged without stopping the resident runtime:
+built and staged without stopping the resident runtime:
 
 ```bash
 pnpm run runtime -- deployment request \
@@ -1311,8 +1314,11 @@ pnpm run runtime -- deployment status --state-root <state-root>
 pnpm run runtime -- deployment history --state-root <state-root>
 ```
 
-The request copies the candidate into `next`, binds the release id to its Git
-commit and a bounded bundle digest, and writes `deployments/request.json`. The
+The request first runs `pnpm run build` and verifies that the repository remains
+on the same clean commit. It then copies that exact candidate into `next`, binds
+the release id to its Git commit and a bounded bundle digest, records the build
+command in `build.json`, and writes `deployments/request.json`. A failed build or
+source-identity change leaves `current` untouched and creates no request. The
 supervisor then moves the verified current build to `previous`, activates
 `next`, and waits up to 90 seconds for a fresh heartbeat with the candidate
 commit plus the configured Web and IM entrypoints. A passing candidate enters a
@@ -1320,6 +1326,24 @@ commit plus the configured Web and IM entrypoints. A passing candidate enters a
 failures, a startup timeout, or an explicit evidence-bound failure signal cause
 automatic rollback. Ordinary error-log text and post-start external IM
 connectivity alone are not rollback signals.
+
+If an older manual bootstrap left a healthy running bundle and deployment
+ledger on different commits, an operator may establish one explicit recovery
+baseline before the next transaction:
+
+```bash
+pnpm run runtime -- deployment reconcile \
+  --reason "verified bootstrap ledger recovery" \
+  --verification-ref "service health: Web and IM ready" \
+  --state-root <state-root>
+```
+
+Reconciliation does not build, stage, activate, or restart anything. It only
+adopts the currently running clean commit after the supervisor manifest,
+heartbeat, configured Web/IM readiness, reason, and evidence refs agree, and it
+retains the superseded ledger record in history. It rejects pending deployment
+transactions and commits with failed deployment history. Normal delivery must
+use `deployment request`; repeated reconciliation is a drift signal.
 
 When the running agent identifies a deterministic regression, it can request
 rollback without terminating itself:

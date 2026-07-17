@@ -211,7 +211,7 @@ test("service command parses runtime target and web host options", () => {
   assert.equal(options.requireIm, false);
 });
 
-test("deployment commands parse autonomous release, repair, and failure evidence", () => {
+test("deployment commands parse release, baseline reconciliation, repair, and failure evidence", () => {
   const request = parseArgs([
     "deployment",
     "request",
@@ -228,6 +228,18 @@ test("deployment commands parse autonomous release, repair, and failure evidence
   assert.equal(request.deploymentAction, "request");
   assert.deepEqual(request.deploymentVerificationRefs, ["pnpm run check", "tests/deployment_supervisor.test.ts"]);
   assert.equal(request.deploymentRepairOf, "deployment_failed_1");
+
+  const reconcile = parseArgs([
+    "deployment",
+    "reconcile",
+    "--reason",
+    "operator verified the running baseline",
+    "--verification-ref",
+    "service health: Web and IM ready"
+  ]);
+  assert.equal(reconcile.deploymentAction, "reconcile");
+  assert.equal(reconcile.reason, "operator verified the running baseline");
+  assert.deepEqual(reconcile.deploymentVerificationRefs, ["service health: Web and IM ready"]);
 
   const fail = parseArgs([
     "deployment",

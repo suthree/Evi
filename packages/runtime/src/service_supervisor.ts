@@ -76,6 +76,9 @@ export interface DeploymentRecord {
   log_offsets?: { stdout: number; stderr: number };
   evidence_refs?: string[];
   repair_task_id?: string;
+  adopted_at?: string;
+  adoption_reason?: string;
+  superseded_deployment_id?: string;
   boundary: string;
 }
 

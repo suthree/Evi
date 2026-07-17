@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   buildRuntimeServiceDefinition,
   parseLaunchdPid,
+  prepareServiceRuntimeSource,
   renderLaunchdPlist,
   renderSupervisorLaunchdPlist,
   rollbackServiceRuntimeBundle,
@@ -15,6 +18,8 @@ import {
   runServiceCommand,
   syncServiceRuntimeBundle
 } from "../packages/runtime/src/service.js";
+
+const execFile = promisify(execFileCallback);
 
 test("launchd plist uses explicit runtime daemon runner and does not contain secrets", () => {
   const definition = buildRuntimeServiceDefinition({
@@ -305,6 +310,106 @@ test("runtime sync preserves only commit-bound verified current builds as last k
     await syncServiceRuntimeBundle(definition);
     assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "verified-commit");
     assert.match(await readFile(join(definition.runtimeCurrentRoot, "dist/apps/cli/src/main.js"), "utf8"), /version = 2/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime source preparation builds one unchanged clean commit before staging", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-build-source-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot,
+    configDir,
+    stateRoot: join(root, "state"),
+    homeRoot: join(root, "home"),
+    nodePath: process.execPath
+  });
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), "", "utf8");
+    await writeFile(join(repoRoot, "source.ts"), "export const value = 1;\n", "utf8");
+    await writeFile(join(repoRoot, ".gitignore"), "dist/\n", "utf8");
+    await execFile("git", ["init", "-q"], { cwd: repoRoot });
+    await execFile("git", ["config", "user.email", "test@example.invalid"], { cwd: repoRoot });
+    await execFile("git", ["config", "user.name", "Test"], { cwd: repoRoot });
+    await execFile("git", ["add", "."], { cwd: repoRoot });
+    await execFile("git", ["commit", "-qm", "source"], { cwd: repoRoot });
+    const commit = (await execFile("git", ["rev-parse", "HEAD"], { cwd: repoRoot })).stdout.trim();
+    let buildCalls = 0;
+    const build = await prepareServiceRuntimeSource(definition, async (command, args, options) => {
+      buildCalls += 1;
+      assert.equal(command, "pnpm");
+      assert.deepEqual(args, ["run", "build"]);
+      assert.equal(options?.cwd, repoRoot);
+      await mkdir(join(repoRoot, "dist/apps/cli/src"), { recursive: true });
+      await mkdir(join(repoRoot, "dist/packages/runtime/src"), { recursive: true });
+      await writeFile(join(repoRoot, "dist/apps/cli/src/main.js"), "export {};\n", "utf8");
+      await writeFile(join(repoRoot, "dist/packages/runtime/src/service_supervisor.js"), "export {};\n", "utf8");
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    assert.equal(buildCalls, 1);
+    assert.equal(build.source_commit, commit);
+    assert.equal(build.source_is_dirty, false);
+    assert.equal(build.build_command, "pnpm run build");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service restart preserves installed current and previous bundles", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-restart-installed-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "model-main"
+    })}\n`, "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "installed-commit", repoRoot);
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "previous-commit", repoRoot);
+    let prepareCalls = 0;
+    let loaded = true;
+    const result = await runServiceCommand({
+      action: "restart",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      enableIm: false
+    }, {
+      platform: "darwin",
+      prepareRuntimeSource: async () => {
+        prepareCalls += 1;
+        throw new Error("restart must not build repo source");
+      },
+      run: async (_command, args) => {
+        if (args[0] === "print") return loaded
+          ? { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 }
+          : { stdout: "", stderr: "not loaded", exitCode: 1 };
+        if (args[0] === "bootout") loaded = false;
+        if (args[0] === "bootstrap" || args[0] === "kickstart") loaded = true;
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    });
+    assert.equal(prepareCalls, 0);
+    assert.equal(result.runtime?.source_commit, "installed-commit");
+    assert.equal(result.previous_runtime?.source_commit, "previous-commit");
+    assert.match(result.message ?? "", /repository source was not deployed/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -793,9 +898,11 @@ test("runtime service status points operators to runtime bounded health", async 
 
 async function writeTestRuntimeBundle(root: string, sourceCommit: string, repoRoot = "/repo"): Promise<void> {
   await mkdir(join(root, "dist/apps/cli/src"), { recursive: true });
+  await mkdir(join(root, "dist/packages/runtime/src"), { recursive: true });
   await mkdir(join(root, "node_modules"), { recursive: true });
   await mkdir(join(root, "config"), { recursive: true });
   await writeFile(join(root, "dist/apps/cli/src/main.js"), "export {};\n", "utf8");
+  await writeFile(join(root, "dist/packages/runtime/src/service_supervisor.js"), "export {};\n", "utf8");
   await writeFile(join(root, "config/config.jsonl"), "", "utf8");
   await writeFile(join(root, "build.json"), `${JSON.stringify({
     schema_version: 1,

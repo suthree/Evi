@@ -1337,6 +1337,16 @@ through `repair_of`; diagnostic prose or model completion confidence is not a
 completion signal. Incomplete repair sessions may be continued only through a
 small bounded retry count.
 
+Repository source reaches the installed runtime through one commit-bound
+transaction. A deployment request must freshly build one unchanged clean commit
+before staging it. Ordinary service install/start/restart actions preserve an
+existing usable `current` bundle and own only installed service and launchd
+lifecycle; first-install bootstrap is allowed only when `current` is absent.
+An explicit evidence-bound reconciliation may adopt an already running clean,
+ready bundle when recovering legacy ledger drift, while preserving superseded
+history. Reconciliation must not build, activate, restart, weaken failed-commit
+exclusion, or become the normal deployment path.
+
 ### Local Learning
 
 SOP and skill promotion are local learning experiments. They operate on local

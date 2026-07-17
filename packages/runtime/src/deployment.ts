@@ -4,14 +4,17 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   isCurrentRuntimeKnownGood,
+  prepareServiceRuntimeSource,
   stageServiceRuntimeBundle,
   type ServiceDefinition
 } from "./service.js";
-import type {
-  DeploymentFailureSignal,
-  DeploymentRecord
+import {
+  checkRuntimeReadiness,
+  type DeploymentFailureSignal,
+  type DeploymentRecord,
+  type SupervisorManifest
 } from "./service_supervisor.js";
-import { readServiceRuntimeBuild } from "./service_runtime_build.js";
+import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
 const DEPLOYMENT_BOUNDARY = "single-machine local runtime deployment transaction; no remote deployment, public release, model invocation, or incompatible state migration";
 
@@ -22,7 +25,10 @@ export async function requestLocalDeployment(
     repairOf?: string;
     stateSchemaVersion?: number;
     now?: Date;
-  }
+  },
+  deps: {
+    prepareCandidate?: (definition: ServiceDefinition) => Promise<ServiceRuntimeBuild>;
+  } = {}
 ): Promise<DeploymentRecord> {
   const paths = deploymentPaths(definition.stateRoot);
   await ensureDeploymentLayout(paths);
@@ -40,22 +46,12 @@ export async function requestLocalDeployment(
   if (!await isCurrentRuntimeKnownGood(definition)) {
     throw new Error("current runtime is not commit-bound verified; refresh basic entrypoint acceptance before autonomous deployment");
   }
-  const currentBuild = await readServiceRuntimeBuild(definition.runtimeBuildPath);
-  const stagedBuild = await stageServiceRuntimeBundle(definition);
-  if (!stagedBuild.source_commit || stagedBuild.source_is_dirty !== false) {
-    throw new Error("candidate runtime must be built from a clean Git commit");
-  }
-  if (stagedBuild.source_commit === currentBuild?.source_commit) {
-    throw new Error("candidate commit matches the running commit; autonomous deployment requires a distinct release");
-  }
-  const failedCommits = new Set((await listLocalDeployments(definition.stateRoot, 200))
-    .filter((record) => record.status === "recovered" || record.status === "rollback_failed")
-    .map((record) => record.source_commit));
-  if (failedCommits.has(stagedBuild.source_commit)) {
-    throw new Error(`candidate commit ${stagedBuild.source_commit} already failed; fix forward and create a new commit`);
-  }
-  const verificationRefs = [...new Set(args.verificationRefs.map((ref) => ref.trim()).filter(Boolean))];
+  const verificationRefs = normalizedRefs(args.verificationRefs);
   if (!verificationRefs.length) throw new Error("deployment request requires at least one --verification-ref");
+  const stateSchemaVersion = args.stateSchemaVersion ?? 1;
+  if (stateSchemaVersion !== 1) {
+    throw new Error("autonomous deployment rejects incompatible state schema changes in v0.1");
+  }
 
   let repairAttempt = 0;
   let repairChainId: string | undefined;
@@ -71,20 +67,40 @@ export async function requestLocalDeployment(
     }
   }
 
+  const currentBuild = await readServiceRuntimeBuild(definition.runtimeBuildPath);
+  const preparedBuild = await (deps.prepareCandidate ?? prepareServiceRuntimeSource)(definition);
+  if (!preparedBuild.source_commit || preparedBuild.source_is_dirty !== false) {
+    throw new Error("candidate runtime must be built from a clean Git commit");
+  }
+  const sourceCommit = preparedBuild.source_commit;
+  if (sourceCommit === currentBuild?.source_commit) {
+    throw new Error("candidate commit matches the running commit; autonomous deployment requires a distinct release");
+  }
+  const failedCommits = new Set((await listLocalDeployments(definition.stateRoot, 200))
+    .filter((record) => record.status === "recovered" || record.status === "rollback_failed")
+    .map((record) => record.source_commit));
+  if (failedCommits.has(sourceCommit)) {
+    throw new Error(`candidate commit ${sourceCommit} already failed; fix forward and create a new commit`);
+  }
+  const stagedBuild = await stageServiceRuntimeBundle(definition, preparedBuild);
+  if (stagedBuild.source_commit !== sourceCommit) {
+    throw new Error("staged runtime source commit does not match the prepared build");
+  }
+
   const now = args.now ?? new Date();
   const bundleDigest = await candidateBundleDigest(definition);
-  const id = `deployment_${now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}_${stagedBuild.source_commit.slice(0, 12)}`;
+  const id = `deployment_${now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}_${sourceCommit.slice(0, 12)}`;
   const record: DeploymentRecord = {
     schema_version: 1,
     type: "local_runtime_deployment",
     id,
-    release_id: `${stagedBuild.source_commit}:${bundleDigest.slice(0, 16)}`,
-    source_commit: stagedBuild.source_commit,
+    release_id: `${sourceCommit}:${bundleDigest.slice(0, 16)}`,
+    source_commit: sourceCommit,
     source_branch: stagedBuild.source_branch,
     repo_root: definition.repoRoot,
     state_root: definition.stateRoot,
     bundle_digest: bundleDigest,
-    state_schema_version: args.stateSchemaVersion ?? 1,
+    state_schema_version: stateSchemaVersion,
     verification_refs: verificationRefs,
     repair_chain_id: repairChainId ?? id,
     repair_attempt: repairAttempt,
@@ -94,11 +110,94 @@ export async function requestLocalDeployment(
     updated_at: now.toISOString(),
     boundary: DEPLOYMENT_BOUNDARY
   };
-  if (record.state_schema_version !== 1) {
-    throw new Error("autonomous deployment rejects incompatible state schema changes in v0.1");
-  }
   await writeJsonAtomic(paths.request, record);
   await writeJsonAtomic(resolve(paths.historyRoot, `${record.id}.json`), record);
+  return record;
+}
+
+export async function reconcileLocalDeploymentBaseline(
+  definition: ServiceDefinition,
+  args: {
+    reason: string;
+    verificationRefs: string[];
+    now?: Date;
+  }
+): Promise<DeploymentRecord> {
+  const paths = deploymentPaths(definition.stateRoot);
+  await ensureDeploymentLayout(paths);
+  const reason = args.reason.trim();
+  if (!reason) throw new Error("deployment reconcile requires a non-empty --reason");
+  const verificationRefs = normalizedRefs(args.verificationRefs);
+  if (!verificationRefs.length) throw new Error("deployment reconcile requires at least one --verification-ref");
+  if (!existsSync(definition.supervisorManifestPath) || !existsSync(definition.supervisorPlistPath)) {
+    throw new Error("deployment supervisor is not installed; run service restart before reconciling the live baseline");
+  }
+  const pending = await readJson<DeploymentRecord>(paths.request);
+  if (pending?.status === "pending") throw new Error(`deployment request ${pending.id} is already pending`);
+  const prior = await readJson<DeploymentRecord>(paths.current);
+  if (prior && ["activating", "starting", "probation", "rolling_back", "recovering"].includes(prior.status)) {
+    throw new Error(`deployment ${prior.id} is still ${prior.status}`);
+  }
+  const [build, previousBuild, manifest] = await Promise.all([
+    readServiceRuntimeBuild(definition.runtimeBuildPath),
+    readServiceRuntimeBuild(definition.runtimePreviousBuildPath),
+    readJson<SupervisorManifest>(definition.supervisorManifestPath)
+  ]);
+  if (!build?.source_commit || build.source_is_dirty !== false) {
+    throw new Error("running runtime is not bound to a clean source commit");
+  }
+  if (build.repo_root !== definition.repoRoot) {
+    throw new Error(`running runtime repo root ${build.repo_root} does not match ${definition.repoRoot}`);
+  }
+  if (!manifest
+    || manifest.repo_root !== definition.repoRoot
+    || manifest.state_root !== definition.stateRoot
+    || manifest.runtime_current_root !== definition.runtimeCurrentRoot) {
+    throw new Error("deployment supervisor manifest does not match the installed runtime boundary");
+  }
+  const now = args.now ?? new Date();
+  const readiness = await checkRuntimeReadiness(manifest, build.source_commit, now, true);
+  if (!readiness.ready) {
+    throw new Error(`running runtime is not ready for baseline reconciliation: ${readiness.reasons.join(", ")}`);
+  }
+  const failedSameCommit = (await listLocalDeployments(definition.stateRoot, 200)).some((record) =>
+    record.source_commit === build.source_commit
+    && (record.status === "recovered" || record.status === "rollback_failed")
+  );
+  if (failedSameCommit) {
+    throw new Error(`running commit ${build.source_commit} has failed deployment history and cannot be reconciled as known-good`);
+  }
+  if (prior?.source_commit === build.source_commit && prior.status === "stable") return prior;
+
+  const bundleDigest = await runtimeBundleDigest(definition.runtimeCurrentRoot);
+  const id = `deployment_baseline_${now.toISOString().replace(/[-:.TZ]/g, "").slice(0, 14)}_${build.source_commit.slice(0, 12)}`;
+  const record: DeploymentRecord = {
+    schema_version: 1,
+    type: "local_runtime_deployment",
+    id,
+    release_id: `${build.source_commit}:${bundleDigest.slice(0, 16)}`,
+    source_commit: build.source_commit,
+    source_branch: build.source_branch,
+    repo_root: definition.repoRoot,
+    state_root: definition.stateRoot,
+    bundle_digest: bundleDigest,
+    state_schema_version: 1,
+    verification_refs: verificationRefs,
+    repair_chain_id: id,
+    repair_attempt: 0,
+    status: "stable",
+    requested_at: now.toISOString(),
+    updated_at: now.toISOString(),
+    stable_at: now.toISOString(),
+    adopted_at: now.toISOString(),
+    adoption_reason: reason,
+    previous_source_commit: previousBuild?.source_commit,
+    ...(prior ? { superseded_deployment_id: prior.id } : {}),
+    boundary: "explicit evidence-bound adoption of the running local runtime as the transactional deployment baseline; no build, activation, remote deployment, or model invocation"
+  };
+  if (prior) await writeJsonAtomic(resolve(paths.historyRoot, `${prior.id}.json`), prior);
+  await writeJsonAtomic(resolve(paths.historyRoot, `${record.id}.json`), record);
+  await writeJsonAtomic(paths.current, record);
   return record;
 }
 
@@ -169,12 +268,20 @@ export async function listLocalDeployments(stateRoot: string, limit = 20): Promi
 }
 
 async function candidateBundleDigest(definition: ServiceDefinition): Promise<string> {
+  return runtimeBundleDigest(definition.runtimeNextRoot);
+}
+
+async function runtimeBundleDigest(root: string): Promise<string> {
   const hash = createHash("sha256");
   for (const path of [
-    resolve(definition.runtimeNextRoot, "build.json"),
-    resolve(definition.runtimeNextRoot, "dist/apps/cli/src/main.js")
+    resolve(root, "build.json"),
+    resolve(root, "dist/apps/cli/src/main.js")
   ]) hash.update(await readFile(path));
   return hash.digest("hex");
+}
+
+function normalizedRefs(refs: string[]): string[] {
+  return [...new Set(refs.map((ref) => ref.trim()).filter(Boolean))];
 }
 
 function deploymentPaths(stateRoot: string) {
