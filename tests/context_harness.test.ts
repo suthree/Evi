@@ -45,6 +45,7 @@ import {
   claimRuntimeTask,
   enqueueRuntimeTask,
   listRuntimeTaskQueue,
+  parseRuntimeTaskExecutionContract,
   settleRuntimeTaskFromResult
 } from "../packages/core/src/runtime_task_queue.js";
 import {
@@ -7545,6 +7546,113 @@ test("live runner executes state-only harness actions and feeds observations bac
   }
 });
 
+test("live runner exposes and enforces the operator task execution contract before tool execution", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    const model = new ExecutionContractExternalThenBlockedModel();
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model,
+      discipline: "query_todo"
+    });
+    const contract = parseRuntimeTaskExecutionContract({
+      schema_version: 1,
+      decision_owner: "operator",
+      authority_basis: "Explicit operator authorization for a local-write-only bounded harness test.",
+      allowed_effects: ["repository-local test changes"],
+      forbidden_effects: ["all external writes"],
+      external_command_allowlist: [],
+      forbidden_command_arguments: ["main", "--force"],
+      budget: { max_model_rounds: 2, max_tool_calls: 1 },
+      side_effect_ceiling: "local_write",
+      operator_confirmed: true,
+      expires_with_task: true
+    });
+
+    const result = await runner.runTask("Prove that external command execution is blocked by the accepted task contract.", {
+      executionContract: contract
+    });
+    const context = await readFile(join(fixture.stateRoot, result.context_ref), "utf8");
+    const toolEvents = (await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl")))
+      .filter((event) => event.kind === "tool_result");
+    const toolRefs = toolEvents.map((event) => (event.artifact_refs as string[] | undefined)?.[0] ?? "");
+    const toolResults = await Promise.all(toolRefs.map(async (toolRef) => JSON.parse(
+      await readFile(join(fixture.stateRoot, toolRef), "utf8")
+    ) as {
+      ok: boolean;
+      output: { failure_kind?: string; reason?: string };
+    }));
+
+    assert.equal(result.completion_status, "blocked");
+    assert.equal(model.calls, 2);
+    assert.equal(model.sawBlockedObservation, true);
+    assert.equal(toolResults.length, 2);
+    assert.equal(toolResults[0]?.ok, false);
+    assert.equal(toolResults[0]?.output.failure_kind, "task_execution_contract_blocked");
+    assert.match(toolResults[0]?.output.reason ?? "", /above ceiling=local_write/);
+    assert.match(toolResults[1]?.output.reason ?? "", /exceeded max_tool_calls=1/);
+    await assert.rejects(readFile(join(fixture.stateRoot, "must-not-write.md"), "utf8"));
+    assert.match(context, /execution_contract: .*decision_owner.*operator/);
+    assert.match(context, /max_model_rounds.*2/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("live runner enforces external command allowlist and forbidden arguments", async () => {
+  const fixture = await createRepoFixture();
+  const activeVault = join(fixture.root, "home/vault");
+  try {
+    await mkdir(join(fixture.repoRoot, "vault/skills"), { recursive: true });
+    await mkdir(join(fixture.repoRoot, "skills"), { recursive: true });
+    const runner = new LiveAgentRunner({
+      repoRoot: fixture.repoRoot,
+      stateRoot: fixture.stateRoot,
+      config: testConfig({ stateRoot: fixture.stateRoot, activeVault }),
+      model: new ExecutionContractCommandPolicyThenBlockedModel(),
+      discipline: "query_todo"
+    });
+    const result = await runner.runTask("Prove the external command policy blocks unapproved routes.", {
+      executionContract: parseRuntimeTaskExecutionContract({
+        schema_version: 1,
+        decision_owner: "operator",
+        authority_basis: "Explicit operator authorization for one bounded external command policy test.",
+        allowed_effects: ["GitHub pull request changes through gh"],
+        forbidden_effects: ["main and non-GitHub external commands"],
+        external_command_allowlist: ["gh"],
+        forbidden_command_arguments: ["main", "--force"],
+        budget: { max_model_rounds: 2, max_tool_calls: 3 },
+        side_effect_ceiling: "external_write",
+        operator_confirmed: true,
+        expires_with_task: true
+      })
+    });
+    const toolEvents = (await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl")))
+      .filter((event) => event.kind === "tool_result");
+    const reasons = await Promise.all(toolEvents.map(async (event) => {
+      const ref = (event.artifact_refs as string[] | undefined)?.[0] ?? "";
+      const value = JSON.parse(await readFile(join(fixture.stateRoot, ref), "utf8")) as {
+        output: { reason?: string };
+      };
+      return value.output.reason ?? "";
+    }));
+
+    assert.equal(result.completion_status, "blocked");
+    assert.deepEqual(reasons.map((reason) => reason.replace(/external command (curl|gh)/, "external command <binary>")), [
+      "external command <binary> is not allowlisted by the task execution contract",
+      "external command argument main is forbidden by the task execution contract",
+      "external command <binary> must declare side_effect_level=external_write"
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("blocked engineering runs retain the genuine harness checkpoint next action", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
@@ -8149,6 +8257,104 @@ class FailedCommandThenDoneModel implements ModelClient {
       api: "responses",
       model: "failed-command-then-done",
       responseId: `response-${this.calls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
+
+class ExecutionContractExternalThenBlockedModel implements ModelClient {
+  calls = 0;
+  sawBlockedObservation = false;
+
+  async create(request: ModelRequest): Promise<ModelResponse> {
+    this.calls += 1;
+    if (this.calls > 1) {
+      this.sawBlockedObservation = request.input.includes("task_execution_contract_blocked")
+        && request.input.includes("above ceiling=local_write");
+    }
+    const outputText = JSON.stringify(this.calls === 1
+      ? {
+        summary: "request one deliberately over-ceiling command",
+        actions: [
+          {
+            type: "use_tool",
+            rationale: "exercise the pre-execution authority ceiling",
+            payload: {
+              tool: "command.run",
+              arguments: {
+                command: "gh",
+                args: ["issue", "list"],
+                cwd: "repo",
+                timeout_ms: 1000,
+                max_output_chars: 1000,
+                side_effect_level: "external_write",
+                env_allowlist: [],
+                env: {}
+              }
+            }
+          },
+          {
+            type: "use_tool",
+            rationale: "exercise the task-level tool-call budget",
+            payload: {
+              tool: "file.write_state",
+              arguments: { path: "must-not-write.md", text: "blocked" }
+            }
+          }
+        ],
+        completion_claim: { status: "not_done", verification_refs: [] }
+      }
+      : blockedEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "execution-contract-external-then-blocked",
+      responseId: `response-execution-contract-${this.calls}`,
+      outputText,
+      raw: { outputText }
+    };
+  }
+}
+
+class ExecutionContractCommandPolicyThenBlockedModel implements ModelClient {
+  private calls = 0;
+
+  async create(): Promise<ModelResponse> {
+    this.calls += 1;
+    const commandAction = (command: string, args: string[], sideEffectLevel: string) => ({
+      type: "use_tool",
+      rationale: "exercise one external command contract guard",
+      payload: {
+        tool: "command.run",
+        arguments: {
+          command,
+          args,
+          cwd: "repo",
+          timeout_ms: 1000,
+          max_output_chars: 1000,
+          side_effect_level: sideEffectLevel,
+          env_allowlist: [],
+          env: {}
+        }
+      }
+    });
+    const outputText = JSON.stringify(this.calls === 1
+      ? {
+        summary: "request three commands that the task contract must reject",
+        actions: [
+          commandAction("curl", ["https://example.com"], "external_write"),
+          commandAction("gh", ["pr", "merge", "main"], "external_write"),
+          commandAction("gh", ["issue", "list"], "local_write")
+        ],
+        completion_claim: { status: "not_done", verification_refs: [] }
+      }
+      : blockedEnvelope());
+    return {
+      provider: "test",
+      api: "responses",
+      model: "execution-contract-command-policy-then-blocked",
+      responseId: `response-execution-command-policy-${this.calls}`,
       outputText,
       raw: { outputText }
     };

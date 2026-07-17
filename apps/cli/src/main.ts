@@ -1737,15 +1737,18 @@ export async function main(): Promise<number> {
           model,
           discipline: options.discipline
         });
-        return runner.runTask(args.runtimeSessionId
+        const runnerTask = args.runtimeSessionId
           ? [
-            "Runtime session task submitted from the local web console.",
-            `Runtime session ID: ${args.runtimeSessionId}`,
-            "",
-            "Task:",
-            task
-          ].join("\n")
-          : task);
+              "Runtime session task submitted from the local web console.",
+              `Runtime session ID: ${args.runtimeSessionId}`,
+              "",
+              "Task:",
+              task
+            ].join("\n")
+          : task;
+        return runner.runTask(runnerTask, {
+          executionContract: args.executionContract ?? undefined
+        });
       }
     });
     console.log(`Runtime web console listening at ${handle.url}`);

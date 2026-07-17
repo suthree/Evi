@@ -50,6 +50,10 @@ import {
 } from "../../core/src/schemas.js";
 import { ensureVaultLayout, promoteSkillToVault } from "../../core/src/skill_registry.js";
 import { AgentStore } from "../../core/src/store.js";
+import type {
+  RuntimeTaskExecutionContract,
+  RuntimeTaskSideEffectLevel
+} from "../../core/src/runtime_task_queue.js";
 import { loadRuntimeConfigSummary, type RuntimeConfig } from "./config.js";
 import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
@@ -158,6 +162,7 @@ interface EpisodeRecallPlan {
 
 export interface LiveRunOptions {
   recallQuery?: string;
+  executionContract?: RuntimeTaskExecutionContract;
 }
 
 export class LiveAgentRunner {
@@ -202,6 +207,13 @@ export class LiveAgentRunner {
         risk: 1,
         cost: 1
       },
+      ...(options.executionContract ? {
+        budget_hint: {
+          max_turns: options.executionContract.budget.max_model_rounds,
+          max_tool_calls: options.executionContract.budget.max_tool_calls,
+          side_effect_level: options.executionContract.side_effect_ceiling
+        }
+      } : {}),
       status: "selected"
     });
     await this.store.appendJsonl("autonomy/opportunities.jsonl", opportunity);
@@ -221,7 +233,10 @@ export class LiveAgentRunner {
         base_score: skill.base_score,
         quality: skill.quality
       })),
-      discipline: discipline?.refs
+      discipline: discipline?.refs,
+      execution_contract: options.executionContract
+        ? JSON.parse(JSON.stringify(options.executionContract)) as Record<string, unknown>
+        : null
     });
     const renderedContext = await renderContextBundleWithManifest(this.store, snapshot, {
       vaultRoot: this.config.vault,
@@ -312,7 +327,8 @@ export class LiveAgentRunner {
     let modelFormatRepairAttempts = 0;
     const modelFailureRecoveryGuidance: string[] = [];
 
-    const maxRounds = discipline ? 5 : 3;
+    const maxRounds = options.executionContract?.budget.max_model_rounds ?? (discipline ? 5 : 3);
+    let attemptedToolCalls = 0;
     for (let round = 1; round <= maxRounds; round += 1) {
       const hadObservationsBeforeRound = toolResults.length > 0 || delegatedResults.length > 0 || harnessActionResults.length > 0;
       let roundModelFailed = false;
@@ -524,7 +540,13 @@ export class LiveAgentRunner {
           discipline.iteration_log.push(`Round ${round}: executing tool ${(action.payload as Record<string, unknown>).tool ?? "unknown"}.`);
           await this.writeDisciplineTodo(discipline);
         }
-        const toolResult = await executeTool(action, { store: this.store });
+        attemptedToolCalls += 1;
+        const contractBlock = options.executionContract
+          ? taskExecutionContractBlockReason(action, options.executionContract, attemptedToolCalls)
+          : null;
+        const toolResult = contractBlock
+          ? blockedTaskExecutionToolResult(action, contractBlock)
+          : await executeTool(action, { store: this.store });
         toolResults.push(toolResult);
         const toolRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${toolResult.id}.json`, toolResult);
         toolArtifactRefs.push(toolRef);
@@ -2300,6 +2322,82 @@ function isWriteOrRunToolResult(result: ToolResult): boolean {
     || result.tool === "command.run"
     || result.side_effect_level === "local_write"
     || result.side_effect_level === "external_write";
+}
+
+function taskExecutionContractBlockReason(
+  action: ActionProposal,
+  contract: RuntimeTaskExecutionContract,
+  attemptedToolCalls: number
+): string | null {
+  if (attemptedToolCalls > contract.budget.max_tool_calls) {
+    return `task execution contract exceeded max_tool_calls=${contract.budget.max_tool_calls}`;
+  }
+  const requestedEffect = requestedToolSideEffect(action);
+  if (sideEffectRank(requestedEffect) > sideEffectRank(contract.side_effect_ceiling)) {
+    return `tool requested side_effect_level=${requestedEffect} above ceiling=${contract.side_effect_ceiling}`;
+  }
+  const payload = action.payload as Record<string, unknown>;
+  if (payload.tool !== "command.run") return null;
+  const args = isPlainRecord(payload.arguments) ? payload.arguments : {};
+  const command = typeof args.command === "string" ? args.command : "";
+  const commandArgs = Array.isArray(args.args)
+    ? args.args.filter((item): item is string => typeof item === "string")
+    : [];
+  const externalWriteCommand = command === "gh" || (command === "git" && commandArgs[0] === "push");
+  if (externalWriteCommand && requestedEffect !== "external_write") {
+    return `external command ${command} must declare side_effect_level=external_write`;
+  }
+  if (requestedEffect !== "external_write") return null;
+  if (!contract.external_command_allowlist.includes(command)) {
+    return `external command ${command || "(missing)"} is not allowlisted by the task execution contract`;
+  }
+  const forbidden = commandArgs.find((arg) => contract.forbidden_command_arguments.some((value) =>
+    arg === value || arg.startsWith(`${value}=`)
+  ));
+  return forbidden
+    ? `external command argument ${forbidden} is forbidden by the task execution contract`
+    : null;
+}
+
+function requestedToolSideEffect(action: ActionProposal): RuntimeTaskSideEffectLevel {
+  const payload = action.payload as Record<string, unknown>;
+  const tool = typeof payload.tool === "string" ? payload.tool : "";
+  const args = isPlainRecord(payload.arguments) ? payload.arguments : {};
+  if (tool === "file.write_state" || tool === "file.write_repo" || tool === "codex.run") return "local_write";
+  if (tool === "code.execute_node") return "local_reversible";
+  if (tool === "command.run") {
+    const level = args.side_effect_level;
+    if (level === "none" || level === "local_reversible" || level === "local_write" || level === "external_write") {
+      return level;
+    }
+  }
+  return "none";
+}
+
+function sideEffectRank(value: RuntimeTaskSideEffectLevel): number {
+  return ["none", "local_reversible", "local_write", "external_write"].indexOf(value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function blockedTaskExecutionToolResult(action: ActionProposal, reason: string): ToolResult {
+  const payload = action.payload as Record<string, unknown>;
+  const tool = typeof payload.tool === "string" && payload.tool ? payload.tool : "unknown";
+  return {
+    id: newId("tool_result"),
+    tool,
+    ok: false,
+    summary: `Task execution contract blocked ${tool}: ${reason}.`,
+    output: {
+      failure_kind: "task_execution_contract_blocked",
+      reason,
+      requested_side_effect_level: requestedToolSideEffect(action)
+    },
+    side_effect_level: "none",
+    created_at: utcNow()
+  };
 }
 
 function compactRefs(refs: Array<string | null | undefined>): string[] {
