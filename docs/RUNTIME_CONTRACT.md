@@ -295,6 +295,28 @@ to the same canonical event stream, and the verifier alone may accept the
 outcome. The model does not author evidence-id matrices or parallel completion
 documents.
 
+Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
+Pause, Resume, and Abandon construct the local control plane without resolving
+a model. Continue lazily resolves exactly one `goal_cognition` provider from
+layered runtime configuration. `active_model` uses the selected
+OpenAI-compatible model; `codex_cli` uses the operator's local `fast` Codex
+profile as a stateless cognition substrate. Provider selection never falls back
+silently. Bootstrap or model failure is recorded as a blocked observation on
+the same Goal and may be repaired before a later Continue.
+
+The Codex cognition adapter is not a second agent or an effect executor. Each
+turn runs ephemerally in an empty temporary directory with a read-only sandbox,
+Web disabled, bounded capture and time, and a strict output schema. Command,
+file-change, MCP, Web-search, and any other non-reasoning tool item fail the
+turn closed. GoalRuntime alone executes the proposed normalized action and owns
+effect authority, evidence, verification, and the receipt.
+
+The stored soft budget applies to one Continue command, not to the Goal's
+lifetime. A later Continue opens another bounded tranche under the same
+identity; cumulative `usage` may therefore exceed the numeric tranche budget.
+Views and checkpoint projections expose `budget_scope: "per_continue_command"`
+so this continuation behavior cannot be mistaken for a lifetime cap.
+
 `EffectPolicy` classifies operation, target, data exposure, and reversibility.
 It does not trust a model-provided `side_effect_level` to grant authority. Safe
 bounded local reads, query-free public reads whose resolved public address is

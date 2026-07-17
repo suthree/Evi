@@ -1228,6 +1228,29 @@ print API keys, app ids, app secrets, or env values. CLI `config`, Feishu
 `/config`, live Runtime Config context, and the capability catalog still do not
 read `auth.jsonl`.
 
+Goal cognition has an independent non-secret selector in layered
+`config.jsonl`. The default keeps the existing active text model:
+
+```jsonl
+{"type":"goal_cognition","provider":"active_model"}
+```
+
+On a machine where Codex is already authenticated through ChatGPT, an ignored
+`config/config.local.jsonl` may explicitly select the local cognition
+bootstrap:
+
+```jsonl
+{"type":"goal_cognition","provider":"codex_cli","profile":"fast","reasoning_effort":"medium","timeout_ms":120000,"max_output_chars":64000}
+```
+
+Only `profile: "fast"` is accepted in this slice. Evi reuses the local Codex
+login but never copies credentials into its config or state. Lifecycle-only
+Goal commands do not resolve this provider. Continue invokes one ephemeral
+read-only Codex turn in an empty temporary directory, disables Web through the
+Codex config override, rejects any emitted tool item, and removes the temporary
+directory after success or failure. `config` reports the selected provider,
+source ref, profile, readiness, and process bounds without reading auth data.
+
 ## Local Service Runtime
 
 The local service runtime is a single-user resident mode for this machine. On

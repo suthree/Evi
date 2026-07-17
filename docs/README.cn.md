@@ -47,6 +47,23 @@ query 才会展示完整 payload。
 effect 已开始但 observation 未落盘时会进入
 `effect_outcome_unknown`，重放不会猜测并重复执行。
 
+Goal 的生命周期不再由模型是否就绪决定。`start|read|pause|resume|abandon`
+只建立或读取本地控制面，不解析模型；只有 `continue` 才从分层配置中懒加载一个明确的
+`goal_cognition` provider。`active_model` 使用当前 OpenAI-compatible 模型；
+`codex_cli` 使用本机 `fast` Codex profile 作为无状态认知底座，两者之间没有静默
+fallback。provider 或认证失败会成为同一 Goal 上的 blocked observation，修复后继续原
+Goal，不创建 successor goal。
+
+Codex cognition 不是第二个 agent，也不执行 effect。每一回合都在空临时目录、只读沙箱、
+禁用 Web、严格输出 schema 和有界时限/输出下运行；出现 command、file change、MCP、
+Web search 或其他工具 item 就 fail closed。Codex 只返回一个规范化 action、outcome 或
+blocked decision，真正的 effect、证据、验证和 receipt 仍只由 GoalRuntime 负责。
+
+Goal 中保存的 soft budget 约束一次 `continue` command，而不是整个 Goal 生命周期。
+后续 `continue` 会在同一身份上开启新的有界 tranche，所以累计 `usage` 可以大于单次预算；
+view 和 checkpoint projection 会明确返回
+`budget_scope: "per_continue_command"`，避免把续跑机制误读成预算越界。
+
 当前 cutover 只覆盖显式本地 `goal start|continue|read|pause|resume|abandon`。
 `live`、Web、IM、daemon 和 resident task queue 仍走 legacy runner，不能与同一个
 GoalRuntime Goal 双写；它们会在后续子任务中按完整 Goal 身份切换。foreground Goal

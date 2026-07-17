@@ -82,3 +82,23 @@ export, destructive remote action, or stopped-goal resumption.
 - Provider failure never discards or replaces the current GoalRuntime identity.
 - Completion requires real installed Codex cognition, not only a fixture, plus
   merged source, stable deployment, live health, and this evidence checkpoint.
+
+## Implementation Checkpoint
+
+- Goal lifecycle construction now loads selectors and store only; cognition is
+  selected lazily for Continue and re-resolved on each later Continue.
+- `codex_cli` uses the authenticated `fast` profile, an ephemeral empty
+  workspace, read-only sandbox, disabled Web config, strict wrapped output,
+  bounded process capture, and fail-closed JSONL item inspection.
+- Focused typecheck and 21 tests pass for config/readiness, lifecycle without a
+  model, same-identity provider repair, Codex isolation, and process failure
+  modes.
+- Source smoke Goal `goal_20260717175555_bcf6f624` retained one identity across
+  an auth bootstrap failure and a deprecated Codex feature-flag warning, then
+  read `package.json` and completed with accepted receipt
+  `goal_receipt_20260717180701_7f21d9b4`; `changes[]` is empty.
+- The apparent cumulative budget excess is intentional soft-tranche behavior,
+  not a lifetime-cap bypass. Goal views now expose
+  `budget_scope: per_continue_command` so operator output names that boundary.
+- Installed-bundle acceptance, repository-wide checks, independent review,
+  merge, deployment, and resident handoff remain pending.

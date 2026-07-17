@@ -154,14 +154,6 @@ import {
 import { getGovernanceStatus } from "../../../packages/runtime/src/governance_status.js";
 import { executeNextOpportunityAction } from "../../../packages/runtime/src/opportunity_actions.js";
 import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "../../../packages/runtime/src/model.js";
-import {
-  CanonicalGoalVerifier,
-  GoalRuntime
-} from "../../../packages/runtime/src/goal_runtime.js";
-import {
-  ModelGoalCognition,
-  RuntimeGoalToolExecutor
-} from "../../../packages/runtime/src/goal_execution_adapters.js";
 import { runSopLoopRehearsal } from "../../../packages/runtime/src/sop_loop_rehearsal.js";
 import { listContextManifests, repairContextManifest, showContextManifest } from "../../../packages/runtime/src/context_manifest.js";
 import { LiveAgentRunner, type DisciplineMode } from "../../../packages/runtime/src/runner.js";
@@ -190,6 +182,7 @@ import type {
   ReviewInboxDecisionStatus
 } from "../../../packages/runtime/src/background_review.js";
 import {
+  createLocalGoalRuntime,
   executeLocalGoalRequest,
   isLocalGoalAction,
   type LocalGoalAction
@@ -1548,18 +1541,10 @@ export async function main(): Promise<number> {
   if (options.command === "goal") {
     const action = options.goalAction;
     if (!action) throw new Error("goal requires an action: start, continue, read, pause, resume, or abandon");
-    const config = await loadConfig({
+    const runtime = await createLocalGoalRuntime({
+      repoRoot: options.repoRoot,
       configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      skipAuth: action !== "continue"
-    });
-    const store = new AgentStore(resolve(options.repoRoot), config.state.root);
-    const model = action === "continue" ? new OpenAICompatibleClient(config.model) : null;
-    const runtime = new GoalRuntime({
-      store,
-      verifier: new CanonicalGoalVerifier(),
-      toolExecutor: new RuntimeGoalToolExecutor(store, config.model.max_output_tokens),
-      ...(model ? { cognition: new ModelGoalCognition(model) } : {})
+      stateRoot: options.stateRoot
     });
     const result = await executeLocalGoalRequest(runtime, {
       action,

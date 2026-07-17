@@ -96,8 +96,14 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     });
     assert.equal(checkpointed.status, "active");
     assert.equal(checkpointed.goal_id, started.goal_id);
+    assert.equal(checkpointed.budget_scope, "per_continue_command");
     assert.deepEqual(checkpointed.continuation_reasons, ["soft_budget_reached"]);
     assert.equal(checkpointed.continuation_required, true);
+    const checkpointProjection = JSON.parse(await readFile(
+      join(fixture.stateRoot, `goals/checkpoints/${started.goal_id}.json`),
+      "utf8"
+    )) as Record<string, unknown>;
+    assert.equal(checkpointProjection.budget_scope, "per_continue_command");
 
     const completed = await runtime.handle({
       type: "continue",

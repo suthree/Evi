@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   loadAppSecretAuth,
   loadConfig,
+  loadGoalCognitionConfig,
   loadImageModelConfig,
   loadRuntimeAuthDiagnostics,
   loadRuntimeConfigSummary,
@@ -150,6 +151,13 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
     assert.deepEqual(summary.runtime.defaulted_fields, ["promotion_enabled", "structured_output"]);
+    assert.deepEqual(summary.goal_cognition, {
+      provider: "active_model",
+      source_ref: "default:goal_cognition",
+      readiness: "selected",
+      timeout_ms: 120000,
+      max_output_chars: 64000
+    });
     assert.equal(summary.active_model.id, "local-model");
     assert.equal(summary.active_model.model, "gpt-test");
     assert.equal(summary.active_model.auth_id, "model-secret");
@@ -250,7 +258,15 @@ test("repo-local ignored config overlays tracked defaults before home and state"
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "config.local.jsonl"), [
       JSON.stringify({ type: "active_model", model_id: "local-model" }),
-      JSON.stringify({ type: "active_channel", channel_id: "local-channel" })
+      JSON.stringify({ type: "active_channel", channel_id: "local-channel" }),
+      JSON.stringify({
+        type: "goal_cognition",
+        provider: "codex_cli",
+        profile: "fast",
+        reasoning_effort: "medium",
+        timeout_ms: 45000,
+        max_output_chars: 32000
+      })
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
       type: "model",
@@ -299,12 +315,45 @@ test("repo-local ignored config overlays tracked defaults before home and state"
     assert.equal(config.model.api_key, "LOCAL_SECRET_SHOULD_NOT_APPEAR");
 
     const summary = await loadRuntimeConfigSummary({ configDir });
+    const goalCognition = await loadGoalCognitionConfig({ configDir });
     assert.equal(summary.active_model.id, "local-model");
     assert.equal(summary.active_model.source_ref, "local:models.local.jsonl#1");
     assert.equal(summary.active_channel.id, "local-channel");
     assert.equal(summary.active_channel.source_ref, "local:settings.local.jsonl#1");
     assert.equal(summary.refs.includes("local:config.local.jsonl#1"), true);
+    assert.deepEqual(summary.goal_cognition, {
+      provider: "codex_cli",
+      profile: "fast",
+      source_ref: "local:config.local.jsonl#3",
+      readiness: "selected",
+      reasoning_effort: "medium",
+      timeout_ms: 45000,
+      max_output_chars: 32000
+    });
+    assert.equal(goalCognition.provider, "codex_cli");
+    assert.equal(goalCognition.profile, "fast");
+    assert.equal(goalCognition.source_ref, "local:config.local.jsonl#3");
     assert.doesNotMatch(JSON.stringify(summary), /LOCAL_SECRET_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("goal cognition summary exposes a missing selected model without resolving auth", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-goal-cognition-gap-"));
+  const configDir = join(root, "config");
+  const stateRoot = join(root, "state");
+  await mkdir(configDir, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  try {
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "missing-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), "", "utf8");
+    const summary = await loadRuntimeConfigSummary({ configDir });
+    assert.equal(summary.goal_cognition.provider, "active_model");
+    assert.equal(summary.goal_cognition.readiness, "missing_active_model");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

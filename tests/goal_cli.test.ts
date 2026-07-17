@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
+  createLocalGoalRuntime,
   executeLocalGoalRequest,
   type GoalRuntimePort
 } from "../apps/cli/src/goal.js";
@@ -104,4 +108,62 @@ test("local goal CLI ingress fails before dispatch when required intent is missi
     goalId: "goal_123"
   }), /requires --reason/);
   assert.equal(calls, 0);
+});
+
+test("local goal lifecycle remains usable when the selected active model is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-cli-missing-model-"));
+  const configDir = join(root, "config");
+  const stateRoot = join(root, "state");
+  const repoRoot = join(root, "repo");
+  await mkdir(configDir, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  await mkdir(repoRoot, { recursive: true });
+  try {
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "primary-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), "", "utf8");
+    const runtime = await createLocalGoalRuntime({ repoRoot, configDir, stateRoot });
+    const started = await runtime.handle({
+      type: "start",
+      command_id: "missing_model_start",
+      objective: "Keep lifecycle control available."
+    });
+    assert.equal((await runtime.read(started.goal_id)).status, "active");
+
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "missing_model_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(blocked.status, "active");
+    assert.equal(blocked.goal_id, started.goal_id);
+    assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
+    assert.match(blocked.checkpoint.summary, /Active model not found.*primary-model/);
+
+    const paused = await runtime.handle({
+      type: "pause",
+      command_id: "missing_model_pause",
+      goal_id: started.goal_id,
+      reason: "Operator retains lifecycle authority."
+    });
+    assert.equal(paused.status, "paused");
+    const resumed = await runtime.handle({
+      type: "resume",
+      command_id: "missing_model_resume",
+      goal_id: started.goal_id
+    });
+    assert.equal(resumed.status, "active");
+    const abandoned = await runtime.handle({
+      type: "abandon",
+      command_id: "missing_model_abandon",
+      goal_id: started.goal_id,
+      reason: "Fixture complete."
+    });
+    assert.equal(abandoned.status, "abandoned");
+    assert.equal(abandoned.goal_id, started.goal_id);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
