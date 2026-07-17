@@ -299,17 +299,24 @@ Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
 Pause, Resume, and Abandon construct the local control plane without resolving
 a model. Continue lazily resolves exactly one `goal_cognition` provider from
 layered runtime configuration. `active_model` uses the selected
-OpenAI-compatible model; `codex_cli` uses the operator's local `fast` Codex
-profile as a stateless cognition substrate. Provider selection never falls back
-silently. Bootstrap or model failure is recorded as a blocked observation on
-the same Goal and may be repaired before a later Continue.
+OpenAI-compatible model; `codex_cli` uses an Evi-owned isolated Codex contract
+with the `fast` service tier and an explicit local credential-store selector.
+It does not load the user's Codex config or profile. Provider selection never
+falls back silently. For either provider, Config reports exact selector/model
+gaps or `runtime_check_required`; it does not inspect login material, execute a
+provider, or turn config presence into a live-availability claim. A bootstrap
+or model failure is recorded as a blocked observation on the same Goal and may
+be repaired before a later Continue.
 
 The Codex cognition adapter is not a second agent or an effect executor. Each
-turn runs ephemerally in an empty temporary directory with a read-only sandbox,
-Web disabled, bounded capture and time, and a strict output schema. Command,
-file-change, MCP, Web-search, and any other non-reasoning tool item fail the
-turn closed. GoalRuntime alone executes the proposed normalized action and owns
-effect authority, evidence, verification, and the receipt.
+turn runs ephemerally in an empty temporary directory with user config and
+rules ignored, a minimal process environment, Web disabled, bounded capture
+and time, and a strict output schema. The invocation disables shell/unified
+exec, apps/plugins, browser/computer, image, multi-agent, hooks, and related
+tool features. Its custom permission profile also denies the filesystem root
+and tool network access. JSONL inspection terminates any forbidden item as a
+second line of defense. GoalRuntime alone executes the proposed normalized
+action and owns effect authority, evidence, verification, and the receipt.
 
 The stored soft budget applies to one Continue command, not to the Goal's
 lifetime. A later Continue opens another bounded tranche under the same

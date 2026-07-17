@@ -81,11 +81,12 @@ const activeScenarioRecordSchema = z.object({
 const goalCognitionRecordSchema = z.object({
   type: z.literal("goal_cognition"),
   provider: z.enum(["active_model", "codex_cli"]).default("active_model"),
-  profile: z.literal("fast").default("fast"),
+  service_tier: z.literal("fast").default("fast"),
+  credential_store: z.enum(["auto", "file", "keyring"]).default("auto"),
   model: z.string().min(1).optional(),
-  reasoning_effort: z.string().min(1).optional(),
-  timeout_ms: z.number().int().positive().default(120000),
-  max_output_chars: z.number().int().positive().default(64000)
+  reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  timeout_ms: z.number().int().min(1_000).max(600_000).default(120000),
+  max_output_chars: z.number().int().min(1_024).max(1_000_000).default(64000)
 });
 
 const modelRecordSchema = z.object({
@@ -279,9 +280,10 @@ export interface RuntimeConfigSummary {
   };
   goal_cognition: {
     provider: GoalCognitionProvider;
-    profile?: "fast";
+    service_tier?: "fast";
+    credential_store?: "auto" | "file" | "keyring";
     source_ref: string;
-    readiness: "selected" | "missing_active_model_selector" | "missing_active_model";
+    readiness: "runtime_check_required" | "missing_active_model_selector" | "missing_active_model";
     model?: string;
     reasoning_effort?: string;
     timeout_ms: number;
@@ -747,15 +749,18 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
     },
     goal_cognition: {
       provider: goalCognitionValue.provider,
-      ...(goalCognitionValue.provider === "codex_cli" ? { profile: goalCognitionValue.profile } : {}),
+      ...(goalCognitionValue.provider === "codex_cli" ? {
+        service_tier: goalCognitionValue.service_tier,
+        credential_store: goalCognitionValue.credential_store
+      } : {}),
       source_ref: goalCognition?.ref ?? "default:goal_cognition",
       readiness: goalCognitionValue.provider === "codex_cli"
-        ? "selected"
+        ? "runtime_check_required"
         : !activeModel
           ? "missing_active_model_selector"
           : !model
             ? "missing_active_model"
-            : "selected",
+            : "runtime_check_required",
       ...(goalCognitionValue.model ? { model: goalCognitionValue.model } : {}),
       ...(goalCognitionValue.reasoning_effort ? { reasoning_effort: goalCognitionValue.reasoning_effort } : {}),
       timeout_ms: goalCognitionValue.timeout_ms,

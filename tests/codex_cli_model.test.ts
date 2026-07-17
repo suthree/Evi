@@ -17,7 +17,7 @@ const outputSchema = {
   additionalProperties: false
 };
 
-test("Codex CLI model uses ephemeral read-only strict execution and unwraps one decision", async () => {
+test("Codex CLI model uses an isolated tool-disabled contract and unwraps one decision", async () => {
   let invocation: CodexExecInvocation | null = null;
   const runner: CodexExecRunner = {
     async run(input) {
@@ -48,25 +48,36 @@ test("Codex CLI model uses ephemeral read-only strict execution and unwraps one 
   assert.equal(observed.command, "codex");
   assert.deepEqual(observed.args.slice(0, 9), [
     "exec",
-    "--profile",
-    "fast",
     "--json",
     "--ephemeral",
-    "--sandbox",
-    "read-only",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--strict-config",
     "--skip-git-repo-check",
-    "--color"
+    "--color",
+    "never"
   ]);
-  assert.deepEqual(observed.args.slice(10, 14), [
-    "-c",
-    "approval_policy=\"never\"",
-    "-c",
-    "web_search=\"disabled\""
-  ]);
+  for (const feature of ["shell_tool", "unified_exec", "apps", "plugins", "browser_use", "computer_use", "multi_agent", "hooks"]) {
+    const offset = observed.args.findIndex((value, index) => value === "--disable" && observed.args[index + 1] === feature);
+    assert.notEqual(offset, -1, `missing disabled Codex feature: ${feature}`);
+  }
+  assert.equal(observed.args.includes("cli_auth_credentials_store=\"auto\""), true);
+  assert.equal(observed.args.includes("service_tier=\"fast\""), true);
+  assert.equal(observed.args.includes("default_permissions=\"cognition_only\""), true);
+  assert.equal(observed.args.includes("permissions.cognition_only.filesystem={\":root\"=\"deny\"}"), true);
+  assert.equal(observed.args.includes("permissions.cognition_only.network.enabled=false"), true);
+  assert.equal(observed.args.includes("shell_environment_policy.inherit=\"none\""), true);
+  assert.equal(observed.args.includes("web_search=\"disabled\""), true);
+  assert.equal(observed.args.includes("--profile"), false);
+  assert.equal(observed.args.includes("--sandbox"), false);
   assert.equal(observed.args.includes("danger-full-access"), false);
   assert.equal(observed.args.includes("workspace-write"), false);
   assert.equal(observed.args.includes("--add-dir"), false);
   assert.equal(observed.args.at(-1), "-");
+  assert.deepEqual(
+    Object.keys(observed.env).filter((key) => !["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "USER", "SHELL", "LANG", "LC_ALL", "CODEX_HOME"].includes(key)),
+    []
+  );
   assert.match(observed.stdin, /Do not call shell, file, MCP, Web/);
   assert.equal(existsSync(observed.cwd), false);
 });
@@ -117,6 +128,7 @@ test("Node Codex process runner enforces timeout and output capture limits", asy
     args: ["-e", "setTimeout(() => {}, 10000)"],
     cwd: process.cwd(),
     stdin: "",
+    env: {},
     timeoutMs: 30,
     maxOutputChars: 1000
   });
@@ -127,11 +139,24 @@ test("Node Codex process runner enforces timeout and output capture limits", asy
     args: ["-e", "process.stdout.write('x'.repeat(5000))"],
     cwd: process.cwd(),
     stdin: "",
+    env: {},
     timeoutMs: 5000,
     maxOutputChars: 100
   });
   assert.equal(overflow.outputExceeded, true);
   assert.equal(overflow.stdout.length, 100);
+
+  const forbidden = await runner.run({
+    command: process.execPath,
+    args: ["-e", `process.stdout.write(JSON.stringify({type:"item.started",item:{type:"command_execution"}})+"\\n");setInterval(()=>{},10000)`],
+    cwd: process.cwd(),
+    stdin: "",
+    env: {},
+    timeoutMs: 5000,
+    maxOutputChars: 1000
+  });
+  assert.equal(forbidden.forbiddenItemType, "command_execution");
+  assert.equal(forbidden.timedOut, false);
 });
 
 function jsonl(finalMessage: Record<string, unknown>): string {
@@ -151,6 +176,7 @@ function result(stdout: string): CodexExecResult {
     stdout,
     stderr: "",
     timedOut: false,
-    outputExceeded: false
+    outputExceeded: false,
+    forbiddenItemType: null
   };
 }

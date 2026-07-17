@@ -87,10 +87,14 @@ bootstrap exception or a successor goal.
 
 Provider selection is explicit. `active_model` keeps the existing
 OpenAI-compatible client. `codex_cli` is an operator-selected local cognition
-substrate, not a fallback: one ephemeral read-only `codex exec` turn receives
+substrate, not a fallback: one ephemeral isolated `codex exec` turn receives
 only the bounded GoalRuntime input and must return the strict cognition schema.
-The adapter rejects Codex command, file-change, MCP, Web-search, and other tool
-events. GoalRuntime remains the only owner of action execution, semantic effect
+It does not load user Codex configuration, profiles, rules, MCP servers,
+plugins, or hooks. An Evi-owned fixed contract disables shell, unified exec,
+apps, browser/computer, image, multi-agent, and related tool features; a custom
+permission profile denies the filesystem root and tool network access. JSONL is
+still inspected online as defense in depth and terminates an attempted tool
+item. GoalRuntime remains the only owner of action execution, semantic effect
 authority, evidence, verification, and receipts.
 
 This slice restores a usable cognition bootstrap before broadening ingress. It

@@ -154,7 +154,7 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.deepEqual(summary.goal_cognition, {
       provider: "active_model",
       source_ref: "default:goal_cognition",
-      readiness: "selected",
+      readiness: "runtime_check_required",
       timeout_ms: 120000,
       max_output_chars: 64000
     });
@@ -262,7 +262,8 @@ test("repo-local ignored config overlays tracked defaults before home and state"
       JSON.stringify({
         type: "goal_cognition",
         provider: "codex_cli",
-        profile: "fast",
+        service_tier: "fast",
+        credential_store: "keyring",
         reasoning_effort: "medium",
         timeout_ms: 45000,
         max_output_chars: 32000
@@ -323,15 +324,17 @@ test("repo-local ignored config overlays tracked defaults before home and state"
     assert.equal(summary.refs.includes("local:config.local.jsonl#1"), true);
     assert.deepEqual(summary.goal_cognition, {
       provider: "codex_cli",
-      profile: "fast",
+      service_tier: "fast",
+      credential_store: "keyring",
       source_ref: "local:config.local.jsonl#3",
-      readiness: "selected",
+      readiness: "runtime_check_required",
       reasoning_effort: "medium",
       timeout_ms: 45000,
       max_output_chars: 32000
     });
     assert.equal(goalCognition.provider, "codex_cli");
-    assert.equal(goalCognition.profile, "fast");
+    assert.equal(goalCognition.service_tier, "fast");
+    assert.equal(goalCognition.credential_store, "keyring");
     assert.equal(goalCognition.source_ref, "local:config.local.jsonl#3");
     assert.doesNotMatch(JSON.stringify(summary), /LOCAL_SECRET_SHOULD_NOT_APPEAR/);
   } finally {
@@ -354,6 +357,28 @@ test("goal cognition summary exposes a missing selected model without resolving 
     const summary = await loadRuntimeConfigSummary({ configDir });
     assert.equal(summary.goal_cognition.provider, "active_model");
     assert.equal(summary.goal_cognition.readiness, "missing_active_model");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("goal cognition config rejects unbounded process settings and unsupported reasoning", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-goal-cognition-bounds-"));
+  const configDir = join(root, "config");
+  await mkdir(configDir, { recursive: true });
+  try {
+    for (const invalid of [
+      { timeout_ms: 600_001 },
+      { max_output_chars: 1_000_001 },
+      { reasoning_effort: "ultra" }
+    ]) {
+      await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
+        type: "goal_cognition",
+        provider: "codex_cli",
+        ...invalid
+      })}\n`, "utf8");
+      await assert.rejects(loadGoalCognitionConfig({ configDir }), /goal_cognition/);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

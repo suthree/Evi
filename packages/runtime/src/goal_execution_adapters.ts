@@ -127,7 +127,8 @@ async function createConfiguredGoalClient(
   return new CodexCliModelClient({
     outputSchema: GOAL_COGNITION_OUTPUT_SCHEMA,
     outputField: "decision_json",
-    profile: selection.profile,
+    serviceTier: selection.service_tier,
+    credentialStore: selection.credential_store,
     ...(selection.model ? { model: selection.model } : {}),
     ...(selection.reasoning_effort ? { reasoningEffort: selection.reasoning_effort } : {}),
     timeoutMs: selection.timeout_ms,

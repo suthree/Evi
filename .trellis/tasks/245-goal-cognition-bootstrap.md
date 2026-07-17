@@ -45,12 +45,12 @@ goal_cognition.provider = active_model | codex_cli
 `active_model` preserves the existing OpenAI-compatible path. `codex_cli` is an
 explicit local operator choice, never a fallback. It invokes one stateless
 `codex exec` turn with saved local authentication, an ephemeral session,
-read-only sandbox, empty temporary working directory, strict cognition output
-schema, bounded process/output budget, and JSONL inspection. If Codex attempts
-command execution, file mutation, MCP, Web search, or another tool action, the
-cognition call fails closed. Codex only proposes one normalized decision;
-GoalRuntime still owns action dispatch, effects, evidence, verification, and
-receipt.
+empty temporary working directory, ignored user config/rules, disabled tool
+features, filesystem-root and tool-network denial, strict cognition output
+schema, bounded process/output budget, and online JSONL inspection. A remaining
+tool attempt terminates the process as defense in depth. Codex only proposes
+one normalized decision; GoalRuntime still owns action dispatch, effects,
+evidence, verification, and receipt.
 
 ## Acceptance
 
@@ -87,16 +87,28 @@ export, destructive remote action, or stopped-goal resumption.
 
 - Goal lifecycle construction now loads selectors and store only; cognition is
   selected lazily for Continue and re-resolved on each later Continue.
-- `codex_cli` uses the authenticated `fast` profile, an ephemeral empty
-  workspace, read-only sandbox, disabled Web config, strict wrapped output,
-  bounded process capture, and fail-closed JSONL item inspection.
-- Focused typecheck and 21 tests pass for config/readiness, lifecycle without a
+- Independent review rejected the first draft because read-only plus
+  after-the-fact JSONL rejection still exposed user-configured shell/MCP
+  capability. The repaired contract ignores user config/profiles/rules, uses a
+  minimal environment, disables Codex tool features, denies filesystem root
+  and tool network access, and terminates a forbidden item from the live JSONL
+  stream. `fast` is an explicit service tier, not a loaded user profile.
+- Process timeout/output settings now have schema maxima and an enumerated
+  reasoning effort. The process runner clears its delayed SIGKILL timer on
+  every settle path.
+- Focused typecheck and 42 tests pass for config/readiness, lifecycle without a
   model, same-identity provider repair, Codex isolation, and process failure
   modes.
-- Source smoke Goal `goal_20260717175555_bcf6f624` retained one identity across
-  an auth bootstrap failure and a deprecated Codex feature-flag warning, then
-  read `package.json` and completed with accepted receipt
-  `goal_receipt_20260717180701_7f21d9b4`; `changes[]` is empty.
+- Earlier source smoke Goal `goal_20260717175555_bcf6f624` proved same-identity
+  recovery and completed with accepted receipt
+  `goal_receipt_20260717180701_7f21d9b4`, but it predates the preventive
+  tool-isolation repair and is not final acceptance evidence.
+- Repaired source smoke Goal `goal_20260717183614_b6df42c7` completed in one
+  Continue with two model rounds and one GoalRuntime-owned `file.read`;
+  accepted receipt `goal_receipt_20260717183634_2de8b0d0` has `changes[]=[]`.
+  Its state root contains only canonical Goal events plus checkpoint/receipt
+  projections and no credential, Codex, legacy orchestration, or learning
+  artifact.
 - The apparent cumulative budget excess is intentional soft-tranche behavior,
   not a lifetime-cap bypass. Goal views now expose
   `budget_scope: per_continue_command` so operator output names that boundary.

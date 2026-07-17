@@ -7,9 +7,10 @@ import type { ModelClient, ModelRequest, ModelResponse } from "./model.js";
 export interface CodexCliModelOptions {
   outputSchema: Record<string, unknown>;
   outputField?: string;
-  profile?: "fast";
+  serviceTier?: "fast";
+  credentialStore?: "auto" | "file" | "keyring";
   model?: string;
-  reasoningEffort?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
   timeoutMs?: number;
   maxOutputChars?: number;
   command?: string;
@@ -20,6 +21,7 @@ export interface CodexExecInvocation {
   args: string[];
   cwd: string;
   stdin: string;
+  env: NodeJS.ProcessEnv;
   timeoutMs: number;
   maxOutputChars: number;
 }
@@ -31,6 +33,7 @@ export interface CodexExecResult {
   stderr: string;
   timedOut: boolean;
   outputExceeded: boolean;
+  forbiddenItemType: string | null;
 }
 
 export interface CodexExecRunner {
@@ -38,11 +41,35 @@ export interface CodexExecRunner {
 }
 
 const ALLOWED_CODEX_ITEM_TYPES = new Set(["agent_message", "reasoning"]);
+const DISABLED_CODEX_TOOL_FEATURES = [
+  "shell_tool",
+  "unified_exec",
+  "shell_snapshot",
+  "apps",
+  "plugins",
+  "plugin_sharing",
+  "remote_plugin",
+  "browser_use",
+  "browser_use_external",
+  "browser_use_full_cdp_access",
+  "computer_use",
+  "in_app_browser",
+  "image_generation",
+  "multi_agent",
+  "hooks",
+  "workspace_dependencies",
+  "skill_mcp_dependency_install",
+  "auth_elicitation",
+  "tool_suggest",
+  "code_mode_host"
+] as const;
 
 /** Stateless model substrate. GoalRuntime remains the only agent and effect owner. */
 export class CodexCliModelClient implements ModelClient {
-  private readonly options: Required<Pick<CodexCliModelOptions, "profile" | "timeoutMs" | "maxOutputChars" | "command">>
-    & Omit<CodexCliModelOptions, "profile" | "timeoutMs" | "maxOutputChars" | "command">;
+  private readonly options: Required<Pick<CodexCliModelOptions,
+    "serviceTier" | "credentialStore" | "timeoutMs" | "maxOutputChars" | "command">>
+    & Omit<CodexCliModelOptions,
+      "serviceTier" | "credentialStore" | "timeoutMs" | "maxOutputChars" | "command">;
 
   constructor(
     options: CodexCliModelOptions,
@@ -50,7 +77,8 @@ export class CodexCliModelClient implements ModelClient {
   ) {
     this.options = {
       ...options,
-      profile: options.profile ?? "fast",
+      serviceTier: options.serviceTier ?? "fast",
+      credentialStore: options.credentialStore ?? "auto",
       timeoutMs: options.timeoutMs ?? 120_000,
       maxOutputChars: options.maxOutputChars ?? 64_000,
       command: options.command ?? "codex"
@@ -65,7 +93,8 @@ export class CodexCliModelClient implements ModelClient {
       const args = buildCodexCliArgs({
         workspace,
         schemaPath,
-        profile: this.options.profile,
+        serviceTier: this.options.serviceTier,
+        credentialStore: this.options.credentialStore,
         model: this.options.model,
         reasoningEffort: this.options.reasoningEffort
       });
@@ -74,11 +103,15 @@ export class CodexCliModelClient implements ModelClient {
         args,
         cwd: workspace,
         stdin: renderCodexPrompt(request, this.options.outputField),
+        env: codexCognitionEnv(),
         timeoutMs: this.options.timeoutMs,
         maxOutputChars: this.options.maxOutputChars
       });
       if (result.timedOut) throw new Error(`Codex cognition timed out after ${this.options.timeoutMs}ms`);
       if (result.outputExceeded) throw new Error(`Codex cognition exceeded ${this.options.maxOutputChars} captured characters`);
+      if (result.forbiddenItemType) {
+        throw new Error(`Codex cognition emitted forbidden item event: ${result.forbiddenItemType}`);
+      }
       if (result.exitCode !== 0) {
         throw new Error(`Codex cognition exited with code ${result.exitCode ?? "unknown"}: ${boundedDiagnostic(result.stderr)}`);
       }
@@ -98,7 +131,8 @@ export class CodexCliModelClient implements ModelClient {
           thread_id: parsed.threadId,
           event_count: parsed.eventCount,
           ephemeral: true,
-          sandbox: "read-only",
+          permissions: "cognition_only_root_deny",
+          user_config: "ignored",
           tool_events: 0
         }
       };
@@ -113,24 +147,45 @@ export class NodeCodexExecRunner implements CodexExecRunner {
     return new Promise<CodexExecResult>((resolve, reject) => {
       const child = spawn(invocation.command, invocation.args, {
         cwd: invocation.cwd,
-        env: process.env,
+        env: invocation.env,
         stdio: ["pipe", "pipe", "pipe"],
         detached: process.platform !== "win32"
       });
       const stdout = new BoundedCapture(invocation.maxOutputChars);
       const stderr = new BoundedCapture(invocation.maxOutputChars);
+      let stdoutBuffer = "";
       let timedOut = false;
       let outputExceeded = false;
+      let forbiddenItemType: string | null = null;
       let terminating = false;
+      let settled = false;
+      let killTimer: NodeJS.Timeout | null = null;
 
       const terminate = (): void => {
         if (terminating) return;
         terminating = true;
         signalProcessTree(child.pid, "SIGTERM", () => child.kill("SIGTERM"));
-        const killTimer = setTimeout(() => {
+        killTimer = setTimeout(() => {
           signalProcessTree(child.pid, "SIGKILL", () => child.kill("SIGKILL"));
         }, 1_000);
         killTimer.unref();
+      };
+      const inspectLine = (line: string): void => {
+        const itemType = codexItemType(line);
+        if (itemType && !ALLOWED_CODEX_ITEM_TYPES.has(itemType) && !forbiddenItemType) {
+          forbiddenItemType = itemType;
+          if (!settled) terminate();
+        }
+      };
+      const inspectChunk = (text: string): void => {
+        stdoutBuffer += text;
+        const lines = stdoutBuffer.split(/\r?\n/u);
+        stdoutBuffer = lines.pop() ?? "";
+        for (const line of lines) inspectLine(line);
+      };
+      const clearTimers = (): void => {
+        clearTimeout(timeout);
+        if (killTimer) clearTimeout(killTimer);
       };
       const timeout = setTimeout(() => {
         timedOut = true;
@@ -139,7 +194,9 @@ export class NodeCodexExecRunner implements CodexExecRunner {
       timeout.unref();
 
       child.stdout.on("data", (chunk: Buffer) => {
-        if (!stdout.append(chunk.toString("utf8"))) {
+        const text = chunk.toString("utf8");
+        inspectChunk(text);
+        if (!stdout.append(text)) {
           outputExceeded = true;
           terminate();
         }
@@ -151,18 +208,24 @@ export class NodeCodexExecRunner implements CodexExecRunner {
         }
       });
       child.once("error", (error) => {
-        clearTimeout(timeout);
+        if (settled) return;
+        settled = true;
+        clearTimers();
         reject(error);
       });
       child.once("close", (exitCode, signal) => {
-        clearTimeout(timeout);
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        if (stdoutBuffer.trim()) inspectLine(stdoutBuffer);
         resolve({
           exitCode,
           signal,
           stdout: stdout.value(),
           stderr: stderr.value(),
           timedOut,
-          outputExceeded
+          outputExceeded,
+          forbiddenItemType
         });
       });
       child.stdin.end(invocation.stdin);
@@ -173,25 +236,40 @@ export class NodeCodexExecRunner implements CodexExecRunner {
 export function buildCodexCliArgs(input: {
   workspace: string;
   schemaPath: string;
-  profile: "fast";
+  serviceTier: "fast";
+  credentialStore: "auto" | "file" | "keyring";
   model?: string;
-  reasoningEffort?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh";
 }): string[] {
   return [
     "exec",
-    "--profile",
-    input.profile,
     "--json",
     "--ephemeral",
-    "--sandbox",
-    "read-only",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--strict-config",
     "--skip-git-repo-check",
     "--color",
     "never",
+    ...DISABLED_CODEX_TOOL_FEATURES.flatMap((feature) => ["--disable", feature]),
+    "-c",
+    `cli_auth_credentials_store=${JSON.stringify(input.credentialStore)}`,
+    "-c",
+    `service_tier=${JSON.stringify(input.serviceTier)}`,
     "-c",
     "approval_policy=\"never\"",
     "-c",
     "web_search=\"disabled\"",
+    "-c",
+    "default_permissions=\"cognition_only\"",
+    "-c",
+    "permissions.cognition_only.description=\"Cognition only; all tool filesystem and network access denied.\"",
+    "-c",
+    "permissions.cognition_only.filesystem={\":root\"=\"deny\"}",
+    "-c",
+    "permissions.cognition_only.network.enabled=false",
+    "-c",
+    "shell_environment_policy.inherit=\"none\"",
     "--output-schema",
     input.schemaPath,
     "-C",
@@ -263,6 +341,26 @@ function parseCodexJsonl(raw: string): { threadId: string | null; outputText: st
   }
   if (!outputText?.trim()) throw new Error("Codex cognition returned no completed agent message");
   return { threadId, outputText: outputText.trim(), eventCount };
+}
+
+function codexItemType(line: string): string | null {
+  if (!line.trim()) return null;
+  try {
+    const event = JSON.parse(line) as unknown;
+    if (!isRecord(event) || typeof event.type !== "string" || !event.type.startsWith("item.")) return null;
+    return isRecord(event.item) && typeof event.item.type === "string" ? event.item.type : "untyped_item";
+  } catch {
+    return null;
+  }
+}
+
+function codexCognitionEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TEMP", "TMP", "USER", "SHELL", "LANG", "LC_ALL"]) {
+    if (process.env[key]) env[key] = process.env[key];
+  }
+  if (process.env.CODEX_HOME) env.CODEX_HOME = process.env.CODEX_HOME;
+  return env;
 }
 
 class BoundedCapture {

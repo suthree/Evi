@@ -1240,16 +1240,21 @@ On a machine where Codex is already authenticated through ChatGPT, an ignored
 bootstrap:
 
 ```jsonl
-{"type":"goal_cognition","provider":"codex_cli","profile":"fast","reasoning_effort":"medium","timeout_ms":120000,"max_output_chars":64000}
+{"type":"goal_cognition","provider":"codex_cli","service_tier":"fast","credential_store":"keyring","model":"gpt-5.6-terra","reasoning_effort":"medium","timeout_ms":120000,"max_output_chars":64000}
 ```
 
-Only `profile: "fast"` is accepted in this slice. Evi reuses the local Codex
-login but never copies credentials into its config or state. Lifecycle-only
-Goal commands do not resolve this provider. Continue invokes one ephemeral
-read-only Codex turn in an empty temporary directory, disables Web through the
-Codex config override, rejects any emitted tool item, and removes the temporary
-directory after success or failure. `config` reports the selected provider,
-source ref, profile, readiness, and process bounds without reading auth data.
+Only `service_tier: "fast"` is accepted in this slice; `credential_store` may
+be `auto`, `file`, or `keyring` and stores no credential value. Evi reuses the
+selected local Codex login but never copies credentials into its config or
+state. Lifecycle-only Goal commands do not resolve this provider. Continue
+invokes one ephemeral Codex turn in an empty temporary directory with
+`--ignore-user-config`, `--ignore-rules`, a minimal environment, disabled tool
+features, filesystem-root denial, tool-network denial, disabled Web, strict
+output, and online forbidden-item termination. The temporary directory is
+removed after success or failure. `config` reports the provider, source ref,
+service tier, credential-store kind, process bounds, and
+`runtime_check_required`; it does not read auth data or claim that login/model
+access has already succeeded.
 
 ## Local Service Runtime
 
