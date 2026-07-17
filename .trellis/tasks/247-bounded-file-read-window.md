@@ -1,6 +1,6 @@
 # Task 247: Bounded File Read Window
 
-Status: active
+Status: complete; Issue #72 closed after same-identity installed-runtime acceptance
 
 ## Identity And Ownership
 
@@ -132,6 +132,14 @@ new planner, another checkpoint store, or stronger per-step governance.
 - The focused tool suite passes 29/29. TypeScript build and `git diff --check`
   pass. `pnpm run check` passes with 934/934 tests plus skill validation and
   neutral-naming validation.
-- Remaining gates are PR integration, commit-bound deployment, resident
-  health/controller identity, and same-identity continuation of installed Goal
-  `goal_20260717190203_ec82a197`.
+- PR #73 merged to `develop` at
+  `27d210efd1010f4345530223c18c78c59efff48c`. Deployment
+  `deployment_20260717195443_27d210efd101` reached stable at the same commit;
+  controller handoff returned `updated` and then `already_matched`, and resident
+  health is `healthy` with installed build equal to repository HEAD.
+- The existing installed Goal `goal_20260717190203_ec82a197` continued from
+  sequence 47 and used deep line windows across `tools.ts`, `effect_policy.ts`,
+  and `goal_runtime.ts`, proving the capability without a successor Goal.
+- At sequence 110 the same trace exposed a distinct cross-tranche working-
+  synthesis continuity defect, now owned by Issue #74 and Task 248. Issue #72
+  is closed; the new control-plane gap does not reopen this completed read tool.
