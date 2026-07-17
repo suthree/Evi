@@ -1,6 +1,6 @@
 # Task 246: Goal Cognition Tranche Budget
 
-Status: active
+Status: complete; Issue #70 closed after same-identity installed-runtime recovery
 
 ## Identity And Ownership
 
@@ -115,6 +115,16 @@ exhausted. Another Continue reproduced the same defect without a tool action.
   finding. They independently confirmed current-command derivation, within-
   tranche advancement, later-command reset, non-negative remaining values,
   paired docs, and the absence of a second counter or persistence surface.
-- Remaining completion gates are PR integration, commit-bound deployment,
-  resident health/controller identity, and same-identity continuation of live
-  Goal `goal_20260717190203_ec82a197`.
+- PR #71 merged the reviewed implementation to `develop` at
+  `ff1849e101bba0766f2e0b141d3e61e5e7b90ef6`. Deployment
+  `deployment_20260717191955_ff1849e101bb` reached stable at the same source
+  commit; resident health is `healthy`, and controller handoff first updated
+  the supervisor and then returned `already_matched`.
+- The installed Goal `goal_20260717190203_ec82a197` continued under the same
+  identity across multiple fresh tranches. It advanced from 4 to 19 cumulative
+  tool calls and to 21 model rounds without repeating the false budget block.
+- The continued trace exposed a distinct basic-capability gap: `repo.search`
+  returned deep source line numbers, but `file.read` could only reread file
+  prefixes. That new gap is owned by Issue #72 and Task 247; it does not widen
+  or reopen this completed budget repair.
+- Issue #70 is closed.
