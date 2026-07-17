@@ -90,8 +90,10 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
 test("GoalRuntime soft budget checkpoints and continues the same identity", async () => {
   const fixture = await createFixture();
   try {
+    const priorRefs = Array.from({ length: 32 }, (_, index) => `docs/prior-${index}.md`);
+    const workingSummary = "Confirmed the entrypoint scope; README.md is the next bounded read before inspecting runtime ownership.";
     const cognition = sequenceCognition([
-      action("file.read", { scope: "repo", path: "README.md" }, "Read the entrypoint."),
+      action("file.read", { scope: "repo", path: "README.md" }, workingSummary),
       outcome("第二个 soft tranche 完成同一目标。")
     ]);
     const runtime = createRuntime(fixture.store, {
@@ -101,7 +103,13 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     });
     const started = await runtime.handle({
       ...start("budget_start", "Keep one identity across a soft budget."),
-      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
+      checkpoint: {
+        cursor: "seed",
+        summary: "Seed working synthesis.",
+        next_action: "Read README.md.",
+        selected_refs: priorRefs
+      }
     });
     const checkpointed = await runtime.handle({
       type: "continue",
@@ -113,6 +121,11 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     assert.equal(checkpointed.budget_scope, "per_continue_command");
     assert.deepEqual(checkpointed.continuation_reasons, ["soft_budget_reached"]);
     assert.equal(checkpointed.continuation_required, true);
+    assert.equal(checkpointed.checkpoint.summary, workingSummary);
+    assert.deepEqual(checkpointed.checkpoint.selected_refs, [
+      ...priorRefs.slice(1),
+      "README.md"
+    ]);
     const checkpointProjection = JSON.parse(await readFile(
       join(fixture.stateRoot, `goals/checkpoints/${started.goal_id}.json`),
       "utf8"
@@ -135,12 +148,77 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     assert.equal(completed.usage.model_rounds, 2);
     assert.equal(completed.usage.tool_calls, 1);
     assert.equal(cognition.calls[1]!.goal.usage.model_rounds, 1);
+    assert.equal(cognition.calls[1]!.goal.checkpoint.summary, workingSummary);
+    assert.deepEqual(cognition.calls[1]!.goal.checkpoint.selected_refs, [
+      ...priorRefs.slice(1),
+      "README.md"
+    ]);
     assert.deepEqual(cognition.calls[1]!.execution_budget, {
       scope: "per_continue_command",
       limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
       used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
       remaining: { model_rounds: 1, tool_calls: 4, elapsed_ms: 10_000 }
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime preserves working synthesis while canonical evidence carries a failed observation", async () => {
+  const fixture = await createFixture();
+  try {
+    const workingSummary = "Confirmed the package boundary; the manifest read is next and any tool failure must be recovered before completion.";
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "package.json" }, workingSummary),
+      {
+        type: "blocked",
+        summary: "The canonical read failed and requires a bounded recovery.",
+        next_action: "Repair the file reader and continue this Goal."
+      }
+    ]);
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        return {
+          id: "tool_result_failed_read",
+          tool: effectAction.tool,
+          ok: false,
+          summary: "Fixture read failed.",
+          output: { failure_kind: "fixture_read_failure", path: "package.json" },
+          side_effect_level: "none",
+          created_at: "2026-07-17T00:10:01.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("failed_observation_start", "Recover a failed read without losing the working synthesis."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+
+    const checkpointed = await runtime.handle({
+      type: "continue",
+      command_id: "failed_observation_one",
+      goal_id: started.goal_id
+    });
+    assert.equal(checkpointed.status, "active");
+    assert.equal(checkpointed.checkpoint.summary, workingSummary);
+    assert.equal(checkpointed.checkpoint.next_action, "Continue the same goal with another soft execution tranche.");
+    assert.deepEqual(checkpointed.checkpoint.selected_refs, ["package.json"]);
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "failed_observation_two",
+      goal_id: started.goal_id
+    });
+    assert.equal(cognition.calls[1]!.goal.checkpoint.summary, workingSummary);
+    const failedObservation = cognition.calls[1]!.evidence.find((item) => item.kind === "observation");
+    assert.equal(failedObservation?.ok, false);
+    assert.equal(failedObservation?.summary, "Fixture read failed.");
+    assert.deepEqual(failedObservation?.refs, ["package.json"]);
   } finally {
     await fixture.cleanup();
   }

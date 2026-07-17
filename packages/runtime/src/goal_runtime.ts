@@ -430,6 +430,7 @@ interface PendingEffectInternal {
   event_id: string;
   effect_id: string;
   action_digest: string;
+  working_summary: string;
   action: EffectAction;
   decision: "allow" | "confirm";
   state: "awaiting_confirmation" | "outcome_unknown";
@@ -781,11 +782,14 @@ export class GoalRuntime {
     });
     const checkpoint = normalizeCheckpoint({
       cursor: `effect:${pending.effect_id}:observed`,
-      summary: boundedResult.summary,
+      summary: pending.working_summary,
       next_action: boundedResult.ok
         ? "Evaluate the canonical observation and continue toward an outcome."
         : "Recover from the failed tool observation before proposing completion.",
-      selected_refs: toolResultRefs(boundedResult)
+      selected_refs: mergeCheckpointRefs(
+        state.view.checkpoint.selected_refs,
+        toolResultRefs(boundedResult)
+      )
     });
     return this.appendEvent(events, {
       ...this.eventBase(state.view, command, commandDigest),
@@ -1174,6 +1178,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
           event_id: event.id,
           effect_id: event.effect_id,
           action_digest: event.action_digest,
+          working_summary: event.model_summary,
           action: event.action,
           decision: event.effect_decision.outcome,
           state: event.effect_decision.outcome === "confirm" ? "awaiting_confirmation" : "outcome_unknown",
@@ -1736,6 +1741,16 @@ function toolResultRefs(result: ToolResult): string[] {
     if (typeof value === "string" && value.trim() && value.length <= 1_000) refs.push(value.trim());
   }
   return unique(refs).slice(0, 32);
+}
+
+function mergeCheckpointRefs(prior: string[], current: string[]): string[] {
+  const currentRefs = unique(current);
+  const currentSet = new Set(currentRefs);
+  const merged = [
+    ...unique(prior).filter((ref) => !currentSet.has(ref)),
+    ...currentRefs
+  ];
+  return merged.slice(-32);
 }
 
 function observedChange(result: ToolResult): GoalChangeIdentity | null {
