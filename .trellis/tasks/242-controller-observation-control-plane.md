@@ -260,3 +260,5 @@ release, publication, or resumption of the stopped legacy goal.
   service/controller-handoff suite passes 23/23. Repository `pnpm run check`
   passes 891/891 tests plus skill and naming validation, and `git diff --check`
   passes. Dual review, integration, and live acceptance remain pending.
+- Correction commit `7409e3bc443db0ea40391bf8e3b7e21b16acb69b`
+  records the root cause in its message; PR creation and review remain pending.
