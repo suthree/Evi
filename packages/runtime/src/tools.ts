@@ -1010,6 +1010,7 @@ export async function assertGoalBoundToolAuthority(
       branch: actual.branch,
       baseCommit: request.base_commit
     });
+    assertGoalCodexAutoSelection(request.model, request.reasoning_effort);
     return;
   }
 
@@ -1028,6 +1029,13 @@ export async function assertGoalBoundToolAuthority(
     branch: prior.authority.branch,
     baseCommit: prior.authority.base_commit
   });
+  assertGoalCodexAutoSelection(prior.authority.model, prior.authority.reasoning_effort);
+}
+
+function assertGoalCodexAutoSelection(model: string, reasoningEffort: string): void {
+  if (model !== "auto" || reasoningEffort !== "auto") {
+    throw new Error("GoalRuntime codex.run selection must use auto for both model and reasoning_effort; start a new auto-selected thread instead of pinning provider details.");
+  }
 }
 
 function assertCodexGoalAuthority(

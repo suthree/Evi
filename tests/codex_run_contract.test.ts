@@ -71,6 +71,80 @@ test("codex.run accepts multiple explicit safe model tokens and bounded reasonin
   }
 });
 
+test("codex.run records auto selection while delegating model and reasoning resolution to the profile", () => {
+  const parsed = parseCodexRunRequest({
+    ...validNewRequest(),
+    model: "auto",
+    reasoning_effort: "auto"
+  });
+  assert.equal(parsed.mode, "new");
+  if (parsed.mode !== "new") return;
+  assert.equal(parsed.model, "auto");
+  assert.equal(parsed.reasoning_effort, "auto");
+
+  const authority = createCodexAuthoritySnapshot({
+    repo_root: "/repo/worktree",
+    git_common_dir: "/repo/.git",
+    base_commit: baseCommit,
+    head_commit: baseCommit,
+    branch: "codex/issue-78-codex-auto-selection",
+    isolated_worktree: "/repo/worktree",
+    cwd: "/repo/worktree",
+    model: parsed.model,
+    profile: parsed.profile,
+    reasoning_effort: parsed.reasoning_effort,
+    service_tier: parsed.service_tier,
+    sandbox: parsed.sandbox,
+    approval_policy: parsed.approval_policy,
+    selection_rationale: parsed.selection_rationale,
+    task_shape: parsed.task_shape,
+    delegation_strategy: parsed.delegation_strategy,
+    mode: "new",
+    thread_id: null,
+    original_prompt: parsed.prompt,
+    effective_prompt: parsed.prompt,
+    budgets: parsed.budgets
+  });
+  const argv = buildCodexRunArgv(authority, "/tmp/result-schema.json");
+  assert.equal(argv.includes("--model"), false);
+  assert.equal(argv.some((value) => value.includes("model_reasoning_effort")), false);
+  assert.equal(argv.includes("--profile"), true);
+  assert.equal(argv.includes("fast"), true);
+  assert.equal(argv.includes('service_tier="fast"'), true);
+  assert.equal(argv.includes('approval_policy="never"'), true);
+
+  const resumedAuthority = createCodexAuthoritySnapshot({
+    repo_root: authority.repo_root,
+    git_common_dir: authority.git_common_dir,
+    base_commit: authority.base_commit,
+    head_commit: authority.head_commit,
+    branch: authority.branch,
+    isolated_worktree: authority.isolated_worktree,
+    cwd: authority.cwd,
+    model: authority.model,
+    profile: authority.profile,
+    reasoning_effort: authority.reasoning_effort,
+    service_tier: authority.service_tier,
+    sandbox: authority.sandbox,
+    approval_policy: authority.approval_policy,
+    selection_rationale: authority.selection_rationale,
+    task_shape: authority.task_shape,
+    delegation_strategy: authority.delegation_strategy,
+    mode: "resume",
+    thread_id: threadId,
+    original_prompt: "Continue the same bounded task.",
+    effective_prompt: "Continue the same bounded task.",
+    budgets: authority.budgets
+  });
+  const resumeArgv = buildCodexRunArgv(resumedAuthority, "/tmp/result-schema.json");
+  assert.equal(resumeArgv.includes("resume"), true);
+  assert.equal(resumeArgv.includes(threadId), true);
+  assert.equal(resumeArgv.includes("--model"), false);
+  assert.equal(resumeArgv.some((value) => value.includes("model_reasoning_effort")), false);
+  assert.equal(resumedAuthority.model, "auto");
+  assert.equal(resumedAuthority.reasoning_effort, "auto");
+});
+
 test("codex.run validates bounded delegation strategy and rejects resume strategy drift", () => {
   const parallel = parseCodexRunRequest({
     ...validNewRequest(),

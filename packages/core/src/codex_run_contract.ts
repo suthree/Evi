@@ -3,7 +3,7 @@ import { DEFAULT_CONTEXT_TOTAL_HARD_LIMIT_CHARS } from "./context_budget.js";
 
 export const CODEX_RUN_TOOL = "codex.run" as const;
 export const CODEX_RUN_PROFILES = ["fast"] as const;
-export const CODEX_RUN_REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
+export const CODEX_RUN_REASONING_EFFORTS = ["auto", "minimal", "low", "medium", "high", "xhigh"] as const;
 export const CODEX_RUN_SERVICE_TIERS = ["fast"] as const;
 export const CODEX_RUN_SANDBOXES = ["read-only", "workspace-write"] as const;
 export const CODEX_RUN_APPROVAL_POLICIES = ["never"] as const;
@@ -291,10 +291,14 @@ export function buildCodexRunArgv(snapshot: CodexAuthoritySnapshot, outputSchema
   // Authority-bearing settings remain explicit below. Do not strict-validate
   // unrelated user config fields: Codex versions may accept them leniently
   // while --strict-config aborts before a thread can be created.
+  const modelSelection = snapshot.model === "auto" ? [] : ["--model", snapshot.model];
+  const reasoningSelection = snapshot.reasoning_effort === "auto"
+    ? []
+    : ["--config", `model_reasoning_effort=\"${snapshot.reasoning_effort}\"`];
   const bounded = [
     "--json",
-    "--model", snapshot.model,
-    "--config", `model_reasoning_effort=\"${snapshot.reasoning_effort}\"`,
+    ...modelSelection,
+    ...reasoningSelection,
     "--config", `service_tier=\"${snapshot.service_tier}\"`,
     "--config", `approval_policy=\"${snapshot.approval_policy}\"`,
     "--output-schema", outputSchemaPath
