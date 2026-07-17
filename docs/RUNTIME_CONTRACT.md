@@ -370,7 +370,7 @@ A localhost `POST /api/runs` may optionally carry an explicit
 stores that contract with the task and preserves it during direct execution and
 daemon recovery. The contract names the operator as Decision Owner, records the
 authority basis, allowed and forbidden effects, an external-command allowlist,
-forbidden command arguments, model-round and tool-call budgets, and a side-
+forbidden arguments for every direct command, model-round and tool-call budgets, and a side-
 effect ceiling. It must state `operator_confirmed=true` and
 `expires_with_task=true`; external-write authority is invalid without at least
 one allowlisted external command. The runtime computes and persists an

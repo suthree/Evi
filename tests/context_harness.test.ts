@@ -7604,7 +7604,7 @@ test("live runner exposes and enforces the operator task execution contract befo
   }
 });
 
-test("live runner enforces external command allowlist and forbidden arguments", async () => {
+test("live runner enforces command argument policy and external command allowlist", async () => {
   const fixture = await createRepoFixture();
   const activeVault = join(fixture.root, "home/vault");
   try {
@@ -7625,8 +7625,8 @@ test("live runner enforces external command allowlist and forbidden arguments", 
         allowed_effects: ["GitHub pull request changes through gh"],
         forbidden_effects: ["main and non-GitHub external commands"],
         external_command_allowlist: ["gh"],
-        forbidden_command_arguments: ["main", "--force"],
-        budget: { max_model_rounds: 2, max_tool_calls: 6 },
+        forbidden_command_arguments: ["main", "--force", "worktree"],
+        budget: { max_model_rounds: 2, max_tool_calls: 7 },
         side_effect_ceiling: "external_write",
         operator_confirmed: true,
         expires_with_task: true
@@ -7645,9 +7645,10 @@ test("live runner enforces external command allowlist and forbidden arguments", 
     assert.equal(result.completion_status, "blocked");
     assert.deepEqual(reasons.map((reason) => reason.replace(/external command (curl|gh|git)/, "external command <binary>")), [
       "external command <binary> is not allowlisted by the task execution contract",
-      "external command argument main is forbidden by the task execution contract",
+      "command argument main is forbidden by the task execution contract",
       "external command <binary> must declare side_effect_level=external_write",
       "external command <binary> must declare side_effect_level=external_write",
+      "command argument worktree is forbidden by the task execution contract",
       "external-write task execution contracts forbid indirect command carrier sh; use direct binary argv",
       "external-write task execution contracts forbid code.execute_node as an indirect command carrier"
     ]);
@@ -8344,12 +8345,13 @@ class ExecutionContractCommandPolicyThenBlockedModel implements ModelClient {
     });
     const outputText = JSON.stringify(this.calls === 1
       ? {
-        summary: "request six commands that the task contract must reject",
+        summary: "request seven commands that the task contract must reject",
         actions: [
           commandAction("curl", ["https://example.com"], "external_write"),
           commandAction("gh", ["pr", "merge", "main"], "external_write"),
           commandAction("git", ["-C", ".worktrees/example", "push", "origin", "example"], "local_write"),
           commandAction("gh", ["issue", "list"], "local_write"),
+          commandAction("git", ["worktree", "add", ".worktrees/replayed"], "local_reversible"),
           commandAction("sh", ["-lc", "gh issue create --title bypass"], "none"),
           {
             type: "use_tool",
