@@ -19,6 +19,7 @@ const CHECKPOINT_ROOT = "goals/checkpoints";
 const RECEIPT_ROOT = "goals/receipts";
 const GOAL_BOUNDARY =
   "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
+const GOAL_BUDGET_SCOPE = "per_continue_command" as const;
 const ABANDON_VERIFICATION_SUMMARY = "Goal was explicitly abandoned; completion verification was not run.";
 const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
@@ -356,6 +357,7 @@ export interface GoalView {
   status: GoalStatus;
   sequence: number;
   budget: GoalSoftBudget;
+  budget_scope: typeof GOAL_BUDGET_SCOPE;
   usage: GoalUsage;
   checkpoint: GoalCheckpoint;
   continuation_required: boolean;
@@ -971,6 +973,7 @@ export class GoalRuntime {
       checkpoint: view.checkpoint,
       usage: view.usage,
       budget: view.budget,
+      budget_scope: view.budget_scope,
       continuation_required: view.continuation_required,
       continuation_reasons: view.continuation_reasons,
       next_action: view.next_action,
@@ -1312,6 +1315,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     status,
     sequence: last.sequence,
     budget: started.budget,
+    budget_scope: GOAL_BUDGET_SCOPE,
     usage,
     checkpoint,
     continuation_required: status === "active" && reasons.length > 0,

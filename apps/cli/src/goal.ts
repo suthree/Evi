@@ -1,4 +1,16 @@
-import type { GoalCommand, GoalView } from "../../../packages/runtime/src/goal_runtime.js";
+import { resolve } from "node:path";
+import { AgentStore } from "../../../packages/core/src/store.js";
+import { loadConfigSelectors } from "../../../packages/runtime/src/config.js";
+import {
+  ConfiguredGoalCognition,
+  RuntimeGoalToolExecutor
+} from "../../../packages/runtime/src/goal_execution_adapters.js";
+import {
+  CanonicalGoalVerifier,
+  GoalRuntime,
+  type GoalCommand,
+  type GoalView
+} from "../../../packages/runtime/src/goal_runtime.js";
 
 export type LocalGoalAction = "start" | "continue" | "read" | "pause" | "resume" | "abandon";
 
@@ -14,6 +26,30 @@ export interface LocalGoalRequest {
 export interface GoalRuntimePort {
   handle(command: GoalCommand): Promise<GoalView>;
   read(goalId: string): Promise<GoalView>;
+}
+
+export interface LocalGoalRuntimeOptions {
+  repoRoot: string;
+  configDir?: string;
+  stateRoot?: string;
+}
+
+/** Build the control plane without resolving cognition; provider readiness is a Continue concern. */
+export async function createLocalGoalRuntime(options: LocalGoalRuntimeOptions): Promise<GoalRuntimePort> {
+  const selectors = await loadConfigSelectors({
+    configDir: options.configDir,
+    stateRoot: options.stateRoot
+  });
+  const store = new AgentStore(resolve(options.repoRoot), selectors.stateRoot);
+  return new GoalRuntime({
+    store,
+    cognition: new ConfiguredGoalCognition({
+      configDir: selectors.configDir,
+      stateRoot: selectors.stateRoot
+    }),
+    verifier: new CanonicalGoalVerifier(),
+    toolExecutor: new RuntimeGoalToolExecutor(store)
+  });
 }
 
 /** Thin local ingress: translate operator intent, never own lifecycle state. */

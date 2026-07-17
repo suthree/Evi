@@ -78,6 +78,17 @@ const activeScenarioRecordSchema = z.object({
   scenario_id: z.string().min(1)
 });
 
+const goalCognitionRecordSchema = z.object({
+  type: z.literal("goal_cognition"),
+  provider: z.enum(["active_model", "codex_cli"]).default("active_model"),
+  service_tier: z.literal("fast").default("fast"),
+  credential_store: z.enum(["auto", "file", "keyring"]).default("auto"),
+  model: z.string().min(1).optional(),
+  reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  timeout_ms: z.number().int().min(1_000).max(600_000).default(120000),
+  max_output_chars: z.number().int().min(1_024).max(1_000_000).default(64000)
+});
+
 const modelRecordSchema = z.object({
   type: z.literal("model"),
   id: z.string().min(1),
@@ -135,11 +146,16 @@ type ActiveModelRecord = z.infer<typeof activeModelRecordSchema>;
 type ActiveImageModelRecord = z.infer<typeof activeImageModelRecordSchema>;
 type ActiveChannelRecord = z.infer<typeof activeChannelRecordSchema>;
 type ActiveScenarioRecord = z.infer<typeof activeScenarioRecordSchema>;
+type GoalCognitionRecord = z.infer<typeof goalCognitionRecordSchema>;
 type ModelRecord = z.infer<typeof modelRecordSchema>;
 type ImageModelRecord = z.infer<typeof imageModelRecordSchema>;
 type AuthRecord = z.infer<typeof authRecordSchema>;
 export type ApiKeyAuthRecord = z.infer<typeof authRecordSchema>;
 export type AppSecretAuthRecord = z.infer<typeof appSecretAuthRecordSchema>;
+export type GoalCognitionProvider = GoalCognitionRecord["provider"];
+export type GoalCognitionConfig = GoalCognitionRecord & {
+  source_ref: string;
+};
 export type ImageModelConfig = ImageModelRecord & {
   api_key: string;
 };
@@ -261,6 +277,17 @@ export interface RuntimeConfigSummary {
     content_creator_metrics_browser_cdp_port?: string;
     source_ref: string;
     defaulted_fields: string[];
+  };
+  goal_cognition: {
+    provider: GoalCognitionProvider;
+    service_tier?: "fast";
+    credential_store?: "auto" | "file" | "keyring";
+    source_ref: string;
+    readiness: "runtime_check_required" | "missing_active_model_selector" | "missing_active_model";
+    model?: string;
+    reasoning_effort?: string;
+    timeout_ms: number;
+    max_output_chars: number;
   };
   active_model: {
     id: string | null;
@@ -568,6 +595,23 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
   };
 }
 
+export async function loadGoalCognitionConfig(options: ConfigSourceOptions = {}): Promise<GoalCognitionConfig> {
+  const selectors = await loadConfigSelectors(options);
+  const records = parseJsonlWithRefs(
+    await readConfigSourceLayers(selectors, "config.jsonl"),
+    goalCognitionRecordSchema,
+    "goal_cognition"
+  );
+  const selected = records.at(-1);
+  return {
+    ...(selected?.value ?? goalCognitionRecordSchema.parse({
+      type: "goal_cognition",
+      provider: "active_model"
+    })),
+    source_ref: selected?.ref ?? "default:goal_cognition"
+  };
+}
+
 export async function loadImageModelConfig(options: ImageModelConfigLoadOptions = {}): Promise<ImageModelConfig> {
   const selectors = await loadConfigSelectors(options);
   const configRaw = await readLayeredConfig(selectors, "config.jsonl");
@@ -614,6 +658,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
   const activeImageModelRecords = parseJsonlWithRefs(configLayers, activeImageModelRecordSchema, "active_image_model");
   const activeChannelRecords = parseJsonlWithRefs(configLayers, activeChannelRecordSchema, "active_channel");
   const activeScenarioRecords = parseJsonlWithRefs(configLayers, activeScenarioRecordSchema, "active_scenario");
+  const goalCognitionRecords = parseJsonlWithRefs(configLayers, goalCognitionRecordSchema, "goal_cognition");
   const modelRecords = parseJsonlWithRefs(modelLayers, modelRecordSchema, "model");
   const imageModelRecords = parseJsonlWithRefs(modelLayers, imageModelRecordSchema, "image_model");
   const channelRecords = parseRawJsonlWithRefs(settingLayers, "channel");
@@ -629,6 +674,11 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
   const activeImageModel = activeImageModelRecords.at(-1);
   const activeChannel = activeChannelRecords.at(-1);
   const activeScenario = activeScenarioRecords.at(-1);
+  const goalCognition = goalCognitionRecords.at(-1);
+  const goalCognitionValue = goalCognition?.value ?? goalCognitionRecordSchema.parse({
+    type: "goal_cognition",
+    provider: "active_model"
+  });
   const model = activeModel
     ? [...modelRecords].reverse().find((item) => item.value.id === activeModel.value.model_id)
     : undefined;
@@ -652,7 +702,8 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
     activeChannel?.ref,
     channel?.ref,
     activeScenario?.ref,
-    scenario?.ref
+    scenario?.ref,
+    goalCognition?.ref
   ]);
 
   return {
@@ -695,6 +746,25 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
       source_ref: runtimeSourceRef,
       defaulted_fields: runtimeDefaultedFields(runtimeRaw)
+    },
+    goal_cognition: {
+      provider: goalCognitionValue.provider,
+      ...(goalCognitionValue.provider === "codex_cli" ? {
+        service_tier: goalCognitionValue.service_tier,
+        credential_store: goalCognitionValue.credential_store
+      } : {}),
+      source_ref: goalCognition?.ref ?? "default:goal_cognition",
+      readiness: goalCognitionValue.provider === "codex_cli"
+        ? "runtime_check_required"
+        : !activeModel
+          ? "missing_active_model_selector"
+          : !model
+            ? "missing_active_model"
+            : "runtime_check_required",
+      ...(goalCognitionValue.model ? { model: goalCognitionValue.model } : {}),
+      ...(goalCognitionValue.reasoning_effort ? { reasoning_effort: goalCognitionValue.reasoning_effort } : {}),
+      timeout_ms: goalCognitionValue.timeout_ms,
+      max_output_chars: goalCognitionValue.max_output_chars
     },
     active_model: {
       id: activeModel?.value.model_id ?? null,

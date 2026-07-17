@@ -1,14 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { AgentStore } from "../packages/core/src/store.js";
 import {
+  ConfiguredGoalCognition,
   ModelGoalCognition,
   RuntimeGoalToolExecutor
 } from "../packages/runtime/src/goal_execution_adapters.js";
-import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
+import {
+  CanonicalGoalVerifier,
+  GoalRuntime,
+  type GoalView
+} from "../packages/runtime/src/goal_runtime.js";
 import type { ModelClient, ModelRequest } from "../packages/runtime/src/model.js";
 
 test("RuntimeGoalToolExecutor replaces model command side-effect labels with policy semantics", async () => {
@@ -114,6 +119,88 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /Canonical Evidence/);
 });
 
+test("ConfiguredGoalCognition re-resolves explicit provider repair and continues the same Goal", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-cognition-repair-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const configDir = join(root, "config");
+  await mkdir(repoRoot, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  await mkdir(configDir, { recursive: true });
+  try {
+    await writeFile(join(repoRoot, "package.json"), `${JSON.stringify({ name: "repair-fixture" })}\n`, "utf8");
+    await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
+      type: "state",
+      root: stateRoot
+    })}\n`, "utf8");
+    let repairedModelCalls = 0;
+    const cognition = new ConfiguredGoalCognition({ configDir, stateRoot }, async (selection) => {
+      if (selection.provider === "active_model") throw new Error("fixture active model unavailable");
+      return {
+        async create() {
+          repairedModelCalls += 1;
+          return {
+            provider: "fixture",
+            api: "exec",
+            model: "fixture-codex",
+            responseId: `response_${repairedModelCalls}`,
+            outputText: repairedModelCalls === 1
+              ? JSON.stringify({
+                  type: "action",
+                  summary: "Read package metadata after provider repair.",
+                  action: { tool: "file.read", arguments: { scope: "repo", path: "package.json" } }
+                })
+              : JSON.stringify({
+                  type: "outcome",
+                  outcome: {
+                    summary: "Provider repair preserved and completed the original Goal.",
+                    runtime_result: { status: "healthy", summary: "Cognition is available." },
+                    residual_risks: []
+                  }
+                }),
+            raw: {}
+          };
+        }
+      };
+    });
+    const store = new AgentStore(repoRoot, stateRoot);
+    const runtime = new GoalRuntime({
+      store,
+      cognition,
+      verifier: new CanonicalGoalVerifier(),
+      toolExecutor: new RuntimeGoalToolExecutor(store)
+    });
+    const started = await runtime.handle({
+      type: "start",
+      command_id: "repair_start",
+      objective: "Repair cognition without replacing this Goal."
+    });
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "repair_blocked",
+      goal_id: started.goal_id
+    });
+    assert.equal(blocked.status, "active");
+    assert.match(blocked.checkpoint.summary, /fixture active model unavailable/);
+
+    await writeFile(join(configDir, "config.local.jsonl"), `${JSON.stringify({
+      type: "goal_cognition",
+      provider: "codex_cli"
+    })}\n`, "utf8");
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "repair_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.goal_id, started.goal_id);
+    assert.equal(completed.receipt?.decision, "accepted");
+    assert.equal(repairedModelCalls, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function fixtureGoalView(): GoalView {
   return {
     goal_id: "goal_1",
@@ -125,6 +212,7 @@ function fixtureGoalView(): GoalView {
       max_tool_calls: 4,
       max_elapsed_ms: 120_000
     },
+    budget_scope: "per_continue_command",
     usage: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
     checkpoint: { cursor: null, summary: "", next_action: null, selected_refs: [] },
     continuation_required: false,
