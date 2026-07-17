@@ -24,8 +24,8 @@ const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
 const DEFAULT_TOOL_CALLS_PER_CONTINUE = 4;
 const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
-const MAX_OUTCOME_CHANGES = 512;
-const MAX_CHANGE_EVIDENCE_EVENTS = 2_048;
+const MAX_OUTCOME_CHANGES = 64;
+const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
 const MAX_OUTCOME_EVIDENCE_EVENTS = MAX_CHANGE_EVIDENCE_EVENTS + RECENT_OUTCOME_EVIDENCE_EVENTS;
 
@@ -642,6 +642,28 @@ export class GoalRuntime {
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
       const effectDecision = effectDecisionSchema.parse(rawDecision);
+      const lineage = goalChangeLineage(events, command.goal_id);
+      if (effectDecision.outcome !== "deny"
+        && effectMayEmitTypedChange(effectDecision.intent)
+        && (lineage.changes.length >= MAX_OUTCOME_CHANGES
+          || lineage.eventIds.length >= MAX_CHANGE_EVIDENCE_EVENTS)) {
+        const summary = "Goal change lineage is at receipt capacity; the proposed mutating effect was not dispatched.";
+        const nextAction = "Propose the current bounded outcome or abandon this goal before starting more mutating work.";
+        const checkpoint = normalizeCheckpoint({
+          cursor: "change_lineage_capacity",
+          summary,
+          next_action: nextAction,
+          selected_refs: state.view.checkpoint.selected_refs
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: nextAction,
+          checkpoint,
+          usage_delta: modelUsage
+        })).view;
+      }
       const persistedAction = effectDecision.outcome === "deny" ? redactedDeniedAction(action) : action;
       const planned = await this.appendEvent(events, {
         ...this.eventBase(state.view, command, commandDigest),
@@ -779,7 +801,7 @@ export class GoalRuntime {
     const lineage = goalChangeLineage(events, command.goal_id);
     if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
       const summary = `Goal change lineage exceeds the bounded receipt capacity (${MAX_OUTCOME_CHANGES} identities or ${MAX_CHANGE_EVIDENCE_EVENTS} observations).`;
-      const nextAction = "Abandon this goal explicitly and split future execution into smaller complete goals.";
+      const nextAction = "Repair or migrate the unsupported canonical lineage before continuing this goal.";
       const checkpoint = normalizeCheckpoint({
         cursor: "change_lineage_limit",
         summary,
@@ -1711,6 +1733,12 @@ function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_le
   if (intent.operation === "run_local_verification") return "local_reversible";
   if (intent.operation === "write_external") return "external_write";
   return "local_write";
+}
+
+function effectMayEmitTypedChange(intent: EffectIntent): boolean {
+  return intent.operation !== "read_local"
+    && intent.operation !== "read_public_network"
+    && intent.operation !== "run_local_verification";
 }
 
 function elapsedSince(started: number, ended: number): number {

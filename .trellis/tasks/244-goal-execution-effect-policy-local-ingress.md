@@ -138,7 +138,8 @@ destructive remote action, or stopped-goal resumption.
   receipt's complete ordered and deduplicated `changes[]` from typed successful
   observations across the complete Goal history, independently of the recent
   cognition window. Abandonment receipts retain partial observed changes, and
-  bounded capacity fails explicitly instead of sliding away old observations.
+  a capacity-breaking mutating effect is blocked before dispatch, so the Goal
+  remains completeable or abandonable instead of sliding away old observations.
   Free-text substrings cannot support a receipt, and every Git commit requires a
   later successful verification observation.
 - Denied secret/private query actions persist only a query-free intent target;

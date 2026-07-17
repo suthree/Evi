@@ -35,7 +35,9 @@ observation event 是事实来源。安全的本地读、绑定实际公网地�
 生成有序去重的完整 `changes[]`，没有类型化 change 时才为空；Git commit 还必须有其后
 的成功验证 observation。
 完整 change lineage 不受近期模型上下文窗口影响；Goal 被 abandon 时也会保留已经发生的
-部分变更。超过 receipt 的明确容量上限会阻止完成，而不会静默丢弃早期 observation。
+部分变更。receipt 使用明确容量上限，不会静默丢弃早期 observation。可能突破容量的
+mutating effect 会在 dispatch 前被阻止，因此既有 Goal 仍可完成或
+abandon，不会在副作用发生后进入不可终止状态。
 需要确认的 effect 会在同一个 Goal 上展示完整 `proposed_action` 及其 digest；带 query
 的外发请求不会要求操作者在看不到实际 key/value 的情况下盲确认。
 secret/private query 会在 canonical intent 中去除 query，只有可进入 confirm 的非敏感

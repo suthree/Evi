@@ -335,8 +335,9 @@ declares nor copies change identities. An empty set therefore means that no such
 observation exists. This complete change lineage is independent from the recent
 model-evidence window and is also retained by an abandonment receipt, so partial
 effects remain visible after a direction is retired. Receipt capacity is
-bounded; crossing it blocks completion explicitly instead of dropping early
-observations. Every Git commit additionally requires a later successful
+bounded; a potentially mutating effect that would cross it is blocked before
+dispatch, leaving the existing Goal completeable or abandonable instead of
+dropping early observations. Every Git commit additionally requires a later successful
 verification observation; free-text substring matches and a model proposal
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.

@@ -445,6 +445,48 @@ test("GoalRuntime retains early changes beyond the recent evidence window", asyn
   }
 });
 
+test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains abandonable", async () => {
+  const fixture = await createFixture();
+  try {
+    const retainedPaths = Array.from({ length: 64 }, (_, index) => `docs/capacity-${index}.md`);
+    const rejectedPath = "docs/capacity-overflow.md";
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        ...retainedPaths.map((path) => action("file.write_repo", { path, text: path }, `Write ${path}.`)),
+        action("file.write_repo", { path: rejectedPath, text: "overflow" }, "Attempt one change beyond receipt capacity.")
+      ]),
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    let view = await runtime.handle(start("capacity_start", "Stop before change lineage exceeds receipt capacity."));
+    let command = 0;
+    while (!view.continuation_reasons.includes("blocked")) {
+      view = await runtime.handle({
+        type: "continue",
+        command_id: `capacity_continue_${command}`,
+        goal_id: view.goal_id
+      });
+      command += 1;
+      assert.ok(command < 30, "capacity guard should stop within bounded continuations");
+    }
+
+    assert.equal(tools.calls.length, retainedPaths.length);
+    assert.equal(tools.calls.some((call) => call.arguments.path === rejectedPath), false);
+    assert.equal(view.checkpoint.cursor, "change_lineage_capacity");
+    const abandoned = await runtime.handle({
+      type: "abandon",
+      command_id: "capacity_abandon",
+      goal_id: view.goal_id,
+      reason: "Capacity boundary preserved all prior effects."
+    });
+    assert.equal(abandoned.status, "abandoned");
+    assert.deepEqual(abandoned.receipt?.changes, retainedPaths.map((identity) => ({ kind: "state_change", identity })));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Canonical verifier rejects an intent-only no-change outcome", async () => {
   const fixture = await createFixture();
   try {
