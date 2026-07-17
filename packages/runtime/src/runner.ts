@@ -2343,7 +2343,7 @@ function taskExecutionContractBlockReason(
   const commandArgs = Array.isArray(args.args)
     ? args.args.filter((item): item is string => typeof item === "string")
     : [];
-  const externalWriteCommand = command === "gh" || (command === "git" && commandArgs[0] === "push");
+  const externalWriteCommand = command === "gh" || (command === "git" && gitCommandName(commandArgs) === "push");
   if (externalWriteCommand && requestedEffect !== "external_write") {
     return `external command ${command} must declare side_effect_level=external_write`;
   }
@@ -2357,6 +2357,30 @@ function taskExecutionContractBlockReason(
   return forbidden
     ? `external command argument ${forbidden} is forbidden by the task execution contract`
     : null;
+}
+
+function gitCommandName(args: readonly string[]): string {
+  const optionsWithValues = new Set([
+    "-C",
+    "-c",
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree"
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg === "--") return args[index + 1] ?? "";
+    if (optionsWithValues.has(arg)) {
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return "";
 }
 
 function requestedToolSideEffect(action: ActionProposal): RuntimeTaskSideEffectLevel {

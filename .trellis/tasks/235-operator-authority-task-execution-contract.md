@@ -159,3 +159,18 @@ and whose own delivery evidence is independently verified.
 - `git diff --check` passed. The final diff is limited to Task 235, the queue/
   Web/runner/context propagation surfaces, paired runtime documentation, and
   their tests.
+
+## Post-deployment guard audit
+
+Deployment `deployment_20260717032938_6b11163f3483` reached `stable` with
+healthy Web/Feishu entrypoints, but a supervisor audit found that the direct
+external-command guard recognized only `git push` with `push` as argv[0]. The
+isolated-worktree flow normally uses `git -C <worktree> push`, so the same Issue
+and task received a bounded fix-forward on branch
+`codex/issue-34-git-option-external-guard`.
+
+The fix extracts the Git subcommand after bounded global options and proves
+that `git -C <worktree> push` cannot execute under a false `local_write`
+declaration. Focused context/runner checks passed 126/126; the full repository
+gate again passed 873/873, active-vault skill validation, neutral naming across
+123 implementation files, and `git diff --check`.
