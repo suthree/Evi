@@ -36,6 +36,8 @@ export class AgentStore {
       "autonomy/reviews",
       "autonomy/reports",
       "autonomy/ticks",
+      "goals/checkpoints",
+      "goals/receipts",
       "operator/notifications/outbox"
     ]) {
       await mkdir(this.statePath(rel), { recursive: true });

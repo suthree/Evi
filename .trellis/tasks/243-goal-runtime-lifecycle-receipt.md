@@ -127,3 +127,23 @@ deployment, publication, or stopped-goal resumption.
   dual review, PR merge, commit-bound deployment, live health, and a Task 243
   checkpoint. Planning artifacts alone are not completion evidence.
 
+## 2026-07-17 Implementation Checkpoint
+
+- `GoalRuntime` now exposes only `handle(command)` and `read(goalId)`. It owns
+  canonical event append, lifecycle replay, soft-budget signals, pause/resume,
+  injected verification, abandonment, and the single terminal receipt.
+- Command ids are bound to canonical command digests. In-process mutations are
+  serialized; exact replay returns the original command view without appending
+  another event, while conflicting reuse fails closed.
+- Canonical replay validates contiguous transitions, same-goal evidence,
+  verifier decision consistency, receipt-to-goal/candidate/event binding, and
+  duplicate event, command, or receipt ids. Projections are ignored for
+  authority and can be rebuilt by idempotent command handling.
+- Seven focused interface tests pass, including failed verification followed by
+  success on the same goal, soft-budget continuation, pause/resume, concurrent
+  calls, foreign evidence, semantic receipt corruption, and an exact state diff
+  proving legacy stores unchanged.
+- Repository-wide `pnpm run check` passes with 898 tests, skill validation, and
+  neutral naming validation. `git diff --check` also passes.
+- Standards/Spec review, PR integration, commit-bound deployment, and live
+  runtime/channel health remain pending and are not claimed here.
