@@ -221,6 +221,28 @@ session/run, and channel-outbox owners. Their later cutover must retire those
 orchestration seams by complete Goal identity; a compatibility mapper that
 writes both stores is not an acceptable intermediate architecture.
 
+## 2026-07-18 Web GoalRuntime Ingress
+
+Issue #84 activates the second whole-ingress cutover. Standalone and
+daemon-hosted Web share one runtime-owned Goal ingress port: each new Web task
+issues one Start and exactly one bounded Continue, then returns the canonical
+`GoalView` and same-goal Continue/Resume guidance.
+
+A new Web Goal writes no runtime task queue, task-run, channel-outbox, legacy
+completion, episode, iteration, or synchronous-learning state. Historical
+session, inbox, run, and queue views remain readable. Legacy
+`runtime_session_id` and `execution_contract` submission fields fail closed;
+they are not silently ignored or mapped into Goal authority. In a Web-only
+daemon, the legacy runner and task-queue worker are not constructed. When IM
+is enabled, those components remain explicitly owned by the deferred legacy IM
+path until its own whole-ingress cutover.
+
+The Web ingress does not automatically run additional tranches or create a
+replacement Goal. An active or paused result is continued through the existing
+Goal lifecycle. This decision adds no Goal scheduler, queue projection,
+provider-specific Goal adapter, compatibility result mapper, service, database,
+or dependency.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

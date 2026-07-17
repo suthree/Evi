@@ -175,6 +175,7 @@ import {
 } from "../../../packages/runtime/src/deployment.js";
 import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
+import { createConfiguredGoalIngress } from "../../../packages/runtime/src/goal_ingress.js";
 import { startRuntimeWebConsole } from "../../../packages/runtime/src/web_console.js";
 import type {
   ReviewFollowUpConfirmationGateFilter,
@@ -1778,43 +1779,18 @@ export async function main(): Promise<number> {
 
   if (options.command === "web") {
     if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
-    const readConfig = await loadConfig({
-      configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      skipAuth: true
-    });
+    const readConfig = await loadConfig({ configDir: options.configDir, stateRoot: options.stateRoot, skipAuth: true });
     const store = new AgentStore(resolve(options.repoRoot), readConfig.state.root);
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot: options.repoRoot,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
     const handle = await startRuntimeWebConsole({
       store,
       host: options.webHost,
       port: options.webPort,
-      runTask: async (task, args) => {
-        const runConfig = await loadConfig({
-          configDir: options.configDir,
-          stateRoot: options.stateRoot
-        });
-        const model = new OpenAICompatibleClient(runConfig.model);
-        const runner = new LiveAgentRunner({
-          repoRoot: resolve(options.repoRoot),
-          stateRoot: runConfig.state.root,
-          config: runConfig,
-          configDir: options.configDir,
-          model,
-          discipline: options.discipline
-        });
-        const runnerTask = args.runtimeSessionId
-          ? [
-              "Runtime session task submitted from the local web console.",
-              `Runtime session ID: ${args.runtimeSessionId}`,
-              "",
-              "Task:",
-              task
-            ].join("\n")
-          : task;
-        return runner.runTask(runnerTask, {
-          executionContract: args.executionContract ?? undefined
-        });
-      }
+      goalIngress
     });
     console.log(`Runtime web console listening at ${handle.url}`);
     await new Promise(() => undefined);

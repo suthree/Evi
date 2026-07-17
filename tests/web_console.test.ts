@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,75 +10,92 @@ import {
   type FeishuSessionSource,
   type RuntimeSessionSource
 } from "../packages/core/src/runtime_sessions.js";
-import { listRuntimeChannelOutbox } from "../packages/core/src/runtime_channel_outbox.js";
-import {
-  listRuntimeTaskQueue,
-  parseRuntimeTaskExecutionContract
-} from "../packages/core/src/runtime_task_queue.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
+import { createGoalIngress, type GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import { GoalRuntime, type GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { startRuntimeWebConsole } from "../packages/runtime/src/web_console.js";
 
-test("runtime web console exposes sessions, binds pending profiles, and records local runs", async () => {
+test("runtime web console preserves session reads and submits one canonical Goal ingress", async () => {
   const fixture = await createFixture();
   const source: FeishuSessionSource = {
-    kind: "feishu",
-    channelId: "feishu-test",
-    conversationType: "group",
-    conversationId: "oc_web",
-    threadId: "main",
-    actorId: "ou_operator"
+    kind: "feishu", channelId: "feishu-test", conversationType: "group",
+    conversationId: "oc_web", threadId: "main", actorId: "ou_operator"
   };
   const pending = await resolveRuntimeSession(fixture.store, {
-    source,
-    actorAuthorized: true,
-    now: "2026-07-07T00:00:00.000Z"
+    source, actorAuthorized: true, now: "2026-07-07T00:00:00.000Z"
   });
   assert.ok(pending.session);
-
+  const submitted: string[] = [];
   const handle = await startRuntimeWebConsole({
     store: fixture.store,
     port: 0,
-    runTask: async (task, args) => stubRunResult(task, args.runtimeSessionId)
+    goalIngress: goalIngress((task) => {
+      submitted.push(task);
+      return goalView("goal_web_123");
+    })
   });
   try {
     const sessions = await getJson(`${handle.url}/api/sessions`);
     assert.equal(sessions.sessions.length, 1);
-    assert.equal(sessions.sessions[0].status, "pending");
-
-    const bind = await postJson(`${handle.url}/api/sessions/${pending.session.id}/profile`, {
-      profile: "ops"
-    });
+    const bind = await postJson(`${handle.url}/api/sessions/${pending.session.id}/profile`, { profile: "ops" });
     assert.equal(bind.binding.profile, "ops");
     assert.equal((await listRuntimeSessions(fixture.store))[0]?.status, "active");
 
-    const run = await postJson(`${handle.url}/api/runs`, {
-      runtime_session_id: pending.session.id,
-      task: "check web console"
-    });
-    assert.equal(run.run.runtime_session_id, pending.session.id);
-    assert.equal(run.run.status, "done");
-    assert.equal(run.run.task, "check web console");
+    const response = await postJson(`${handle.url}/api/runs`, { task: "check canonical web Goal" });
+    assert.deepEqual(submitted, ["check canonical web Goal"]);
+    assert.equal(response.goal.goal_id, "goal_web_123");
+    assert.match(response.continue_hint, /goal continue --goal goal_web_123/);
+    await assertNoLegacyWebOrchestration(fixture.stateRoot);
+  } finally {
+    await handle.close();
+    await fixture.cleanup();
+  }
+});
 
-    const runs = await getJson(`${handle.url}/api/runs`);
-    assert.equal(runs.runs.length, 1);
-    assert.equal(runs.runs[0].verdict, "done");
-    const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.id, run.run.id);
-    assert.equal(tasks[0]?.status, "done");
-    const rawRuns = await readFile(join(fixture.stateRoot, "runs/index.jsonl"), "utf8");
-    assert.equal(rawRuns.trim().split(/\r?\n/).length, 3);
-    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
-    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "done"]);
-    const outbox = await listRuntimeChannelOutbox(fixture.store);
-    assert.equal(outbox.length, 1);
-    assert.equal(outbox[0]?.source_kind, "web");
-    assert.equal(outbox[0]?.purpose, "final");
-    assert.equal(outbox[0]?.status, "sent");
-    assert.equal(outbox[0]?.task_run_id, run.run.id);
-    assert.equal(outbox[0]?.runtime_session_id, pending.session.id);
-    assert.equal(outbox[0]?.text, "done");
+test("runtime web console returns status-aware canonical Goal guidance", async () => {
+  const fixture = await createFixture();
+  const pendingEffect = (state: "awaiting_confirmation" | "outcome_unknown", effectId: string) => ({
+    effect_id: effectId,
+    state
+  }) as GoalView["pending_effect"];
+  const views = [
+    goalView("goal_active"),
+    goalView("goal_manual_pause", { status: "paused" }),
+    goalView("goal_confirm", {
+      status: "paused",
+      pending_effect: pendingEffect("awaiting_confirmation", "effect_confirm_123")
+    }),
+    goalView("goal_unknown", {
+      status: "paused",
+      pending_effect: pendingEffect("outcome_unknown", "effect_unknown_123")
+    }),
+    goalView("goal_completed", { status: "completed" }),
+    goalView("goal_abandoned", { status: "abandoned" })
+  ];
+  const handle = await startRuntimeWebConsole({
+    store: fixture.store,
+    port: 0,
+    goalIngress: goalIngress(() => {
+      const view = views.shift();
+      if (!view) throw new Error("unexpected extra Goal submission");
+      return view;
+    })
+  });
+  try {
+    const html = await fetch(handle.url).then((response) => response.text());
+    assert.match(html, /result\.continue_hint/);
+    const hints: string[] = [];
+    for (const task of ["active", "manual", "confirm", "unknown", "completed", "abandoned"]) {
+      hints.push((await postJson(`${handle.url}/api/runs`, { task })).continue_hint);
+    }
+    assert.match(hints[0]!, /goal continue --goal goal_active/);
+    assert.match(hints[1]!, /goal resume --goal goal_manual_pause/);
+    assert.match(hints[2]!, /goal resume --goal goal_confirm --confirm-effect effect_confirm_123/);
+    assert.match(hints[3]!, /No safe continuation command.*effect_unknown_123/);
+    assert.doesNotMatch(hints[3]!, /goal (continue|resume)/);
+    assert.match(hints[4]!, /completed; no continuation command/);
+    assert.match(hints[5]!, /abandoned; no continuation command/);
+    await assertNoLegacyWebOrchestration(fixture.stateRoot);
   } finally {
     await handle.close();
     await fixture.cleanup();
@@ -86,156 +104,137 @@ test("runtime web console exposes sessions, binds pending profiles, and records 
 
 test("runtime web console profile-binds provider-neutral channel sessions", async () => {
   const fixture = await createFixture();
-  const cases: Array<{ name: string; profile: string; source: RuntimeSessionSource; routeKey: string }> = [
-    {
-      name: "telegram",
-      profile: "ops",
-      source: {
-        kind: "telegram",
-        channelId: "telegram-main",
-        conversationType: "supergroup",
-        conversationId: "-100123",
-        threadId: "main",
-        actorId: "tg_operator"
-      },
-      routeKey: "telegram:telegram-main:supergroup:-100123:main"
-    },
-    {
-      name: "discord",
-      profile: "community",
-      source: {
-        kind: "discord",
-        channelId: "discord-main",
-        conversationType: "guild_text",
-        conversationId: "channel-1",
-        threadId: "main",
-        actorId: "discord-user"
-      },
-      routeKey: "discord:discord-main:guild_text:channel-1:main"
-    }
+  const cases: Array<{ profile: string; source: RuntimeSessionSource; routeKey: string }> = [
+    { profile: "ops", source: { kind: "telegram", channelId: "telegram-main", conversationType: "supergroup", conversationId: "-100123", threadId: "main", actorId: "tg_operator" }, routeKey: "telegram:telegram-main:supergroup:-100123:main" },
+    { profile: "community", source: { kind: "discord", channelId: "discord-main", conversationType: "guild_text", conversationId: "channel-1", threadId: "main", actorId: "discord-user" }, routeKey: "discord:discord-main:guild_text:channel-1:main" }
   ];
-  const pendingSessionIds: string[] = [];
+  const sessionIds: string[] = [];
   for (const item of cases) {
-    const pending = await resolveRuntimeSession(fixture.store, {
-      source: item.source,
-      actorAuthorized: true,
-      now: "2026-07-07T00:00:00.000Z"
-    });
-    assert.ok(pending.session, item.name);
-    assert.equal(pending.session.source_kind, item.source.kind);
+    const pending = await resolveRuntimeSession(fixture.store, { source: item.source, actorAuthorized: true, now: "2026-07-07T00:00:00.000Z" });
+    assert.ok(pending.session);
     assert.equal(pending.session.source_route_key, item.routeKey);
-    assert.equal(pending.session.status, "pending");
-    pendingSessionIds.push(pending.session.id);
+    sessionIds.push(pending.session.id);
   }
-
-  const handle = await startRuntimeWebConsole({
-    store: fixture.store,
-    port: 0
-  });
+  const handle = await startRuntimeWebConsole({ store: fixture.store, port: 0 });
   try {
     for (const [index, item] of cases.entries()) {
-      const sessionId = pendingSessionIds[index];
-      assert.ok(sessionId);
-      const bind = await postJson(`${handle.url}/api/sessions/${sessionId}/profile`, {
-        profile: item.profile
-      });
+      const bind = await postJson(`${handle.url}/api/sessions/${sessionIds[index]}/profile`, { profile: item.profile });
       assert.equal(bind.binding.source_kind, item.source.kind);
       assert.equal(bind.binding.profile, item.profile);
-      assert.equal(bind.binding.route_key, item.routeKey);
-      const session = bind.sessions.find((entry: { id: string }) => entry.id === sessionId);
-      assert.equal(session?.status, "active");
-      assert.equal(session?.profile, item.profile);
     }
-
-    const sessions = await listRuntimeSessions(fixture.store);
-    assert.equal(sessions.length, 2);
-    assert.deepEqual(sessions.map((session) => session.status), ["active", "active"]);
+    assert.deepEqual((await listRuntimeSessions(fixture.store)).map((session) => session.status), ["active", "active"]);
   } finally {
     await handle.close();
     await fixture.cleanup();
   }
 });
 
-test("runtime web console persists unfinished task continuity for bounded resume", async () => {
+test("runtime web console writes only canonical Goal state for a new task", async () => {
   const fixture = await createFixture();
+  await runGit(fixture.repoRoot, ["init", "-b", "develop"]);
+  await runGit(fixture.repoRoot, ["config", "user.name", "Web Goal Test"]);
+  await runGit(fixture.repoRoot, ["config", "user.email", "web-goal@example.test"]);
+  await writeFile(join(fixture.repoRoot, "README.md"), "web goal fixture\n");
+  await runGit(fixture.repoRoot, ["add", "README.md"]);
+  await runGit(fixture.repoRoot, ["commit", "-m", "fixture base"]);
+  const runtime = new GoalRuntime({
+    store: fixture.store,
+    cognition: { async next() { return { type: "blocked", summary: "Need one explicit next step.", next_action: "continue the same Goal" } as const; } },
+    toolExecutor: { async execute() { throw new Error("blocked fixture does not execute tools"); } },
+    verifier: { async verify() { throw new Error("blocked fixture does not verify"); } }
+  });
+  const handle = await startRuntimeWebConsole({ store: fixture.store, port: 0, goalIngress: createGoalIngress(runtime) });
+  try {
+    const response = await postJson(`${handle.url}/api/runs`, { task: "Keep this web task in one Goal." });
+    assert.match(response.goal.goal_id, /^goal_/);
+    assert.equal(response.goal.status, "active");
+    const events = (await readFile(join(fixture.stateRoot, "goals/events.jsonl"), "utf8"))
+      .trim().split(/\r?\n/).map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.deepEqual(events.map((event) => event.event_type), ["goal_started", "goal_blocked"]);
+    assert.equal(events.every((event) => event.goal_id === response.goal.goal_id), true);
+    await assertNoLegacyWebOrchestration(fixture.stateRoot);
+  } finally {
+    await handle.close();
+    await fixture.cleanup();
+  }
+});
+
+test("runtime web console rejects new tasks when the canonical Goal ingress is absent", async () => {
+  const fixture = await createFixture();
+  const handle = await startRuntimeWebConsole({ store: fixture.store, port: 0 });
+  try {
+    const response = await fetch(`${handle.url}/api/runs`, {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ task: "do not use legacy orchestration" })
+    });
+    assert.equal(response.status, 503);
+    assert.match(await response.text(), /Goal ingress is not configured/);
+    await assertNoLegacyWebOrchestration(fixture.stateRoot);
+  } finally {
+    await handle.close();
+    await fixture.cleanup();
+  }
+});
+
+test("runtime web console rejects legacy execution fields instead of silently mapping authority", async () => {
+  const fixture = await createFixture();
+  let submissions = 0;
   const handle = await startRuntimeWebConsole({
     store: fixture.store,
     port: 0,
-    runTask: async (task, args) => ({
-      ...stubRunResult(task, args.runtimeSessionId),
-      session_id: "live_session_web_continuity",
-      completion_status: "not_done",
-      verification_status: "skipped",
-      worktree: fixture.repoRoot,
-      working_checkpoint_ref: "memory/working/current.json",
-      next_action: "resume the exact unfinished web step"
+    goalIngress: goalIngress(() => {
+      submissions += 1;
+      return goalView("goal_must_not_start");
     })
   });
   try {
-    const run = await postJson(`${handle.url}/api/runs`, {
-      runtime_session_id: "runtime_session_web_continuity",
-      task: "continue a local engineering task"
-    });
-    assert.equal(run.run.status, "blocked");
-    const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.id, run.run.id);
-    assert.equal(tasks[0]?.status, "queued");
-    assert.equal(tasks[0]?.attempt, 1);
-    assert.equal(tasks[0]?.runtime_session_id, "runtime_session_web_continuity");
-    assert.equal(tasks[0]?.live_session_id, "live_session_web_continuity");
-    assert.equal(tasks[0]?.worktree, fixture.repoRoot);
-    assert.equal(tasks[0]?.working_checkpoint_ref, "memory/working/current.json");
-    assert.equal(tasks[0]?.next_action, "resume the exact unfinished web step");
-    assert.equal(tasks[0]?.max_attempts, 3);
-    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
-    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "queued"]);
-  } finally {
-    await handle.close();
-    await fixture.cleanup();
-  }
-});
-
-test("runtime web console validates and propagates explicit operator execution authority", async () => {
-  const fixture = await createFixture();
-  let observedContract: Record<string, unknown> | null = null;
-  const handle = await startRuntimeWebConsole({
-    store: fixture.store,
-    port: 0,
-    runTask: async (task, args) => {
-      observedContract = args.executionContract as unknown as Record<string, unknown>;
-      return stubRunResult(task, args.runtimeSessionId);
+    for (const legacy of [
+      { runtime_session_id: "runtime_session_legacy" },
+      { execution_contract: { schema_version: 1 } }
+    ]) {
+      const response = await fetch(`${handle.url}/api/runs`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Do not translate legacy authority.", ...legacy })
+      });
+      assert.equal(response.status, 400);
+      assert.match(await response.text(), /legacy|cannot be mapped/);
     }
-  });
-  try {
-    const contract = operatorExecutionContract();
-    const normalizedContract = parseRuntimeTaskExecutionContract(contract);
-    const run = await postJson(`${handle.url}/api/runs`, {
-      task: "deliver an operator-authorized bounded change",
-      execution_contract: contract
-    });
-    assert.equal(run.run.status, "done");
-    assert.deepEqual(observedContract, normalizedContract);
-    const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.deepEqual(tasks[0]?.execution_contract, normalizedContract);
-    assert.match(tasks[0]?.execution_contract?.authority_digest ?? "", /^[a-f0-9]{64}$/);
-
-    const invalid = await fetch(`${handle.url}/api/runs`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        task: "do not queue implicit external authority",
-        execution_contract: { ...contract, operator_confirmed: false }
-      })
-    });
-    assert.equal(invalid.status, 400);
-    assert.match(await invalid.text(), /operator_confirmed must be true/);
-    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 1);
+    assert.equal(submissions, 0);
+    await assertNoLegacyWebOrchestration(fixture.stateRoot);
   } finally {
     await handle.close();
     await fixture.cleanup();
   }
 });
+
+function goalIngress(submit: (task: string) => GoalView): GoalIngressPort {
+  return { submit: async (task) => submit(task) };
+}
+
+function goalView(goalId: string, overrides: Partial<GoalView> = {}): GoalView {
+  return {
+    goal_id: goalId,
+    status: "active",
+    pending_effect: null,
+    ...overrides
+  } as GoalView;
+}
+
+async function assertNoLegacyWebOrchestration(stateRoot: string): Promise<void> {
+  for (const rel of ["runs/task_queue.jsonl", "runs/index.jsonl", "channels/outbox.jsonl"]) {
+    assert.equal(await fileExists(join(stateRoot, rel)), false, `${rel} must not be written by a Web Goal`);
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 async function getJson(url: string): Promise<any> {
   const response = await fetch(url);
@@ -244,81 +243,25 @@ async function getJson(url: string): Promise<any> {
 }
 
 async function postJson(url: string, body: Record<string, unknown>): Promise<any> {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
+  const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (!response.ok) assert.fail(await response.text());
   return response.json();
 }
 
-function stubRunResult(task: string, runtimeSessionId: string | null): RunResult {
-  return {
-    trigger_id: "trigger_web",
-    opportunity_id: "opp_web",
-    session_id: runtimeSessionId ?? "session_web",
-    turn_id: "turn_web",
-    context_ref: "memory/episodes/web-context.md",
-    context_manifest_ref: null,
-    model_response_ref: "memory/episodes/web-model.json",
-    envelope_ref: "memory/episodes/web-envelope.json",
-    evidence_refs: [`task:${task}`],
-    sop_ref: null,
-    audit_ref: null,
-    skill_ref: null,
-    recalled_skill_refs: [],
-    final_response_ref: null,
-    completion_report_ref: null,
-    discipline_refs: null,
-    completion_status: "done",
-    verification_status: "passed",
-    worktree: null,
-    working_checkpoint_ref: null,
-    next_action: null,
-    verdict: "done"
-  };
-}
-
-function operatorExecutionContract(): Record<string, unknown> {
-  return {
-    schema_version: 1,
-    decision_owner: "operator",
-    authority_basis: "Explicit operator authorization for one bounded integration task.",
-    allowed_effects: ["GitHub Issue and pull request on develop"],
-    forbidden_effects: ["main, tags, releases, public publication, and force push"],
-    external_command_allowlist: ["git", "gh"],
-    forbidden_command_arguments: ["main", "--force", "--delete"],
-    budget: { max_model_rounds: 5, max_tool_calls: 16 },
-    side_effect_ceiling: "external_write",
-    operator_confirmed: true,
-    expires_with_task: true
-  };
-}
-
-async function readJsonl(path: string): Promise<Array<Record<string, any>>> {
-  const text = await readFile(path, "utf8");
-  return text
-    .split(/\r?\n/)
-    .filter((line) => line.trim())
-    .map((line) => JSON.parse(line) as Record<string, any>);
-}
-
-async function createFixture(): Promise<{
-  repoRoot: string;
-  stateRoot: string;
-  store: AgentStore;
-  cleanup: () => Promise<void>;
-}> {
+async function createFixture(): Promise<{ repoRoot: string; stateRoot: string; store: AgentStore; cleanup: () => Promise<void> }> {
   const root = join(tmpdir(), `local-runtime-web-console-${process.pid}-${Date.now()}`);
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   await mkdir(repoRoot, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
-  return {
-    repoRoot,
-    stateRoot,
-    store: new AgentStore(repoRoot, stateRoot),
-    cleanup: () => rm(root, { recursive: true, force: true })
-  };
+  return { repoRoot, stateRoot, store: new AgentStore(repoRoot, stateRoot), cleanup: () => rm(root, { recursive: true, force: true }) };
+}
+
+function runGit(cwd: string, args: string[]): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", args, { cwd }, (error, _stdout, stderr) => {
+      if (error) reject(new Error(`git ${args.join(" ")} failed: ${stderr}`));
+      else resolvePromise();
+    });
+  });
 }

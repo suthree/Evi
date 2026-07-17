@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -18,6 +19,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
   const heartbeatPath = join(stateRoot, "services/runtime/heartbeat.json");
   try {
     await mkdir(repoRoot, { recursive: true });
+    await initializeGitRepository(repoRoot);
     const handle = await startRuntimeDaemon({
       repoRoot,
       config: runtimeConfig({ stateRoot, homeRoot }),
@@ -41,6 +43,19 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
       const payload = await response.json() as Record<string, any>;
       assert.deepEqual(payload.sessions, []);
       assert.equal(payload.boundary, "local runtime session control state");
+
+      const goalResponse = await fetch(`${gateway.channels[0]?.detail}/api/runs`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ task: "Keep daemon Web work in one Goal." })
+      });
+      assert.equal(goalResponse.ok, true);
+      const goalPayload = await goalResponse.json() as Record<string, any>;
+      assert.match(goalPayload.goal.goal_id, /^goal_/);
+      assert.match(goalPayload.continue_hint, /goal continue --goal/);
+      assert.equal(await fileExists(join(stateRoot, "runs/task_queue.jsonl")), false);
+      assert.equal(await fileExists(join(stateRoot, "runs/index.jsonl")), false);
+      assert.equal(await fileExists(join(stateRoot, "channels/outbox.jsonl")), false);
 
       const heartbeat = await readJsonEventually(heartbeatPath, (entry) => entry.state === "running");
       assert.equal(heartbeat.service, "runtime");
@@ -197,6 +212,34 @@ async function readJsonEventually(
     await delay(25);
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function initializeGitRepository(repoRoot: string): Promise<void> {
+  await runGit(repoRoot, ["init", "-b", "develop"]);
+  await runGit(repoRoot, ["config", "user.name", "Daemon Web Goal Test"]);
+  await runGit(repoRoot, ["config", "user.email", "daemon-web-goal@example.test"]);
+  await writeFile(join(repoRoot, "README.md"), "daemon web goal fixture\n");
+  await runGit(repoRoot, ["add", "README.md"]);
+  await runGit(repoRoot, ["commit", "-m", "fixture base"]);
+}
+
+function runGit(cwd: string, args: string[]): Promise<void> {
+  return new Promise((resolvePromise, reject) => {
+    execFile("git", args, { cwd }, (error, _stdout, stderr) => {
+      if (error) reject(new Error(`git ${args.join(" ")} failed: ${stderr}`));
+      else resolvePromise();
+    });
+  });
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 function runtimeConfig(args: { stateRoot: string; homeRoot: string }): RuntimeConfig {

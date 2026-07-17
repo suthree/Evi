@@ -79,6 +79,8 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(runtimeSessions?.commands?.includes("pnpm run runtime -- web"), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("pending/unassigned")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("ordinary bound group messages")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("legacy IM") && boundary.includes("new Web submissions") && boundary.includes("do not enter this queue")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("explicit IM and web task runs")), false);
   const feishuSession = runtimeService?.capabilities.find((capability) => capability.id === "feishu.private_chat");
   assert.equal(feishuSession?.summary.includes("Feishu groups"), true);
   assert.equal(feishuSession?.boundaries?.some((boundary) => boundary.includes("unknown groups")), true);
@@ -91,6 +93,9 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(webConsole?.refs?.includes("packages/runtime/src/web_console.ts"), true);
   assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("localhost operator surface")), true);
   assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("not a hosted")), true);
+  assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("one canonical Goal")), true);
+  assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("no legacy queue")), true);
+  assert.equal(webConsole?.boundaries?.some((boundary) => boundary.includes("execution_contract") && boundary.includes("fail closed")), true);
   const contentDryRun = entrypoints?.capabilities.find((capability) => capability.id === "cli.content_dry_run");
   assert.equal(contentDryRun?.layer, "application_slice");
   assert.equal(contentDryRun?.category_layer, "basic_entrypoint");
@@ -109,6 +114,7 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.notEqual(contentDryRun?.layer, "core_runtime");
   const livePipeline = entrypoints?.capabilities.find((capability) => capability.id === "cli.live.pipeline");
   assert.equal(livePipeline?.commands?.includes("pnpm run runtime -- pipeline runs --pipeline <ref>"), true);
+  assert.equal(livePipeline?.refs?.includes("packages/runtime/src/goal_ingress.ts"), true);
   assert.equal(livePipeline?.refs?.includes("packages/core/src/pipeline_history.ts"), true);
   assert.equal(livePipeline?.boundaries?.some((boundary) =>
     boundary.includes("bounded blocked-tool diagnostic metadata")

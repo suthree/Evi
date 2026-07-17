@@ -1,16 +1,10 @@
-import { resolve } from "node:path";
-import { AgentStore } from "../../../packages/core/src/store.js";
-import { loadConfigSelectors } from "../../../packages/runtime/src/config.js";
 import {
-  ConfiguredGoalCognition,
-  RuntimeGoalToolExecutor
-} from "../../../packages/runtime/src/goal_execution_adapters.js";
-import {
-  CanonicalGoalVerifier,
-  GoalRuntime,
-  type GoalCommand,
-  type GoalView
-} from "../../../packages/runtime/src/goal_runtime.js";
+  createConfiguredGoalRuntime,
+  executeGoalIngressRequest,
+  type ConfiguredGoalRuntimeOptions,
+  type GoalRuntimePort
+} from "../../../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../../../packages/runtime/src/goal_runtime.js";
 
 export type LocalGoalAction = "start" | "continue" | "read" | "pause" | "resume" | "abandon";
 
@@ -23,16 +17,8 @@ export interface LocalGoalRequest {
   confirmEffectId?: string;
 }
 
-export interface GoalRuntimePort {
-  handle(command: GoalCommand): Promise<GoalView>;
-  read(goalId: string): Promise<GoalView>;
-}
-
-export interface LocalGoalRuntimeOptions {
-  repoRoot: string;
-  configDir?: string;
-  stateRoot?: string;
-}
+export type { GoalRuntimePort } from "../../../packages/runtime/src/goal_ingress.js";
+export type LocalGoalRuntimeOptions = ConfiguredGoalRuntimeOptions;
 
 export interface LocalLiveGoalRequest {
   objective?: string;
@@ -43,20 +29,7 @@ export interface LocalLiveGoalRequest {
 
 /** Build the control plane without resolving cognition; provider readiness is a Continue concern. */
 export async function createLocalGoalRuntime(options: LocalGoalRuntimeOptions): Promise<GoalRuntimePort> {
-  const selectors = await loadConfigSelectors({
-    configDir: options.configDir,
-    stateRoot: options.stateRoot
-  });
-  const store = new AgentStore(resolve(options.repoRoot), selectors.stateRoot);
-  return new GoalRuntime({
-    store,
-    cognition: new ConfiguredGoalCognition({
-      configDir: selectors.configDir,
-      stateRoot: selectors.stateRoot
-    }),
-    verifier: new CanonicalGoalVerifier(),
-    toolExecutor: new RuntimeGoalToolExecutor(store)
-  });
+  return createConfiguredGoalRuntime(options);
 }
 
 /** Thin local ingress: translate operator intent, never own lifecycle state. */
@@ -106,15 +79,10 @@ export async function executeLocalLiveGoalRequest(
   request: LocalLiveGoalRequest
 ): Promise<GoalView> {
   assertLocalLiveGoalRequest(request);
-  const started = await executeLocalGoalRequest(runtime, {
-    action: "start",
-    commandId: request.startCommandId,
-    objective: request.objective
-  });
-  return executeLocalGoalRequest(runtime, {
-    action: "continue",
-    commandId: request.continueCommandId,
-    goalId: started.goal_id
+  return executeGoalIngressRequest(runtime, {
+    objective: request.objective ?? "",
+    startCommandId: request.startCommandId,
+    continueCommandId: request.continueCommandId
   });
 }
 

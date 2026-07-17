@@ -398,6 +398,12 @@ export interface GoalView {
   boundary: typeof GOAL_BOUNDARY;
 }
 
+/** The deliberately small public lifecycle port used by ingress adapters. */
+export interface GoalRuntimePort {
+  handle(command: GoalCommand): Promise<GoalView>;
+  read(goalId: string): Promise<GoalView>;
+}
+
 export interface GoalEvidenceView {
   event_id: string;
   kind: GoalEvidenceKind;
