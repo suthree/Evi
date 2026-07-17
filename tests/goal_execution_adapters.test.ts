@@ -138,6 +138,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
   assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
+  assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
+  assert.match(requests[0]!.instructions, /Do not guess provider model tokens/);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
@@ -146,6 +148,9 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"kind": "workspace_path"/);
   assert.match(requests[0]!.input, /"current_tranche"/);
   assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
+  assert.match(requests[0]!.input, /"model": "auto,new,required"/);
+  assert.match(requests[0]!.input, /"reasoning_effort": "auto,new,required"/);
+  assert.doesNotMatch(requests[0]!.input, /safe-token|minimal\|low\|medium\|high\|xhigh/);
 });
 
 test("ConfiguredGoalCognition re-resolves explicit provider repair and continues the same Goal", async () => {

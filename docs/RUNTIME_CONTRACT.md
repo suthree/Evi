@@ -2673,10 +2673,16 @@ generic `command.run`; it is not an arbitrary command or argument passthrough.
 
 Required policy:
 
-- require every new request to submit an explicit safe model token and one
-  bounded reasoning effort (`minimal|low|medium|high|xhigh`); keep profile
-  `fast`, service tier `fast`, sandbox `read-only` or `workspace-write`, and
-  approval `never` explicit or allowlisted
+- require every new request to record model and reasoning selection. Ordinary
+  GoalRuntime delegation uses explicit `auto` for both, which delegates
+  provider-specific resolution to the named Codex profile and omits the model
+  and reasoning CLI overrides. The Goal-owned authority seam rejects a pinned
+  new request or persisted pinned resume before action planning or dispatch;
+  it must start a new auto-selected thread. Evidence-backed standalone
+  harnesses may still pin a safe model token and one bounded reasoning effort
+  (`minimal|low|medium|high|xhigh`). Keep profile `fast`, service tier `fast`,
+  sandbox `read-only` or `workspace-write`, and approval `never` explicit or
+  allowlisted
 - require bounded `selection_rationale`, `task_shape`, and an immutable
   delegation strategy: `single` with zero subagents and no workstreams, or
   `parallel` with two to three subagents, two to the declared maximum unique
@@ -2692,7 +2698,9 @@ Required policy:
   danger-full-access, bypass flags, add-dir, and search
 - support one bounded `new` execution or `resume <thread-id>` bound to the same
   authority snapshot, without another worktree, scheduler, or automatic retry;
-  resume inherits selection and strategy and rejects any re-submitted drift
+  standalone resume inherits recorded `auto` or explicit selection and
+  strategy and rejects any re-submitted drift; GoalRuntime resumes only an
+  auto-selected thread
 - for a parallel strategy, inject a bounded supervision block naming the
   subagent maximum, independent workstreams, exclusive integration owner, and
   evidence boundary; count one slot for the first `started` or `completed` JSONL
@@ -2743,7 +2751,13 @@ fields instead. Version-1 thread snapshots predate immutable selection,
 strategy, and dual prompt digests, so resume rejects them fail-closed and the
 caller must start a new bounded request. The one-time verified selection
 `gpt-5.6-sol` / `xhigh` / `fast` profile and tier is current compatibility
-evidence, not a compile-time singleton or future default.
+evidence, not a compile-time singleton or future default. `auto` does not read
+or snapshot a Desktop-owned model cache, retry another model, or weaken
+selection provenance: the immutable authority records that the named Codex
+profile owns resolution for the thread.
+Historical explicit v2 thread records remain parseable and resumable through
+the standalone harness. GoalRuntime does not inherit their provider pin; it
+starts a new auto-selected thread under the same Goal repository authority.
 
 ### `code.execute_node`
 

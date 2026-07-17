@@ -1101,6 +1101,17 @@ process.stdin.on("end", () => {
     ]);
 
     const resumeHandle = result.output.resume_handle as Record<string, unknown>;
+    const sameGoalAuthority = await inspectGoalRepositoryAuthority(fixture.worktreeRoot);
+    await assert.rejects(assertGoalBoundToolAuthority({
+      tool: "codex.run",
+      arguments: {
+        mode: "resume",
+        prompt: "GoalRuntime must start a new auto-selected thread instead of inheriting an explicit pin.",
+        thread_id: resumeHandle.thread_id,
+        authority_digest: resumeHandle.authority_digest
+      }
+    }, sameGoalAuthority, fixture.store), /GoalRuntime codex\.run selection must use auto/i);
+
     const otherGoalRoot = join(fixture.root, "other-goal-worktree");
     await runGit(fixture.mainRoot, ["worktree", "add", "-b", "codex/other-goal", otherGoalRoot]);
     const otherGoalAuthority = await inspectGoalRepositoryAuthority(otherGoalRoot);

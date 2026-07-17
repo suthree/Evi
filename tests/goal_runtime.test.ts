@@ -115,9 +115,9 @@ test("GoalRuntime rejects a codex.run target in a sibling worktree before planni
       branch: "codex/goal-sibling",
       worktree: siblingRoot,
       cwd: siblingRoot,
-      model: "gpt-5.6-terra",
+      model: "auto",
       profile: "fast",
-      reasoning_effort: "medium",
+      reasoning_effort: "auto",
       service_tier: "fast",
       sandbox: "workspace-write",
       approval_policy: "never",
@@ -152,6 +152,65 @@ test("GoalRuntime rejects a codex.run target in a sibling worktree before planni
     assert.equal(blocked.status, "active");
     assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
     assert.match(blocked.checkpoint.summary, /codex\.run.*Goal.*worktree authority/i);
+    assert.equal(tools.calls.length, 0);
+    const events = await readEvents(fixture.stateRoot);
+    assert.equal(events.some((event) => event.event_type === "goal_action_planned"), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects provider-pinned codex.run selection before planning or execution", async () => {
+  const fixture = await createFixture();
+  try {
+    const boundRoot = join(fixture.root, "auto-selection-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-auto-selection", boundRoot]);
+    const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
+    const tools = recordingTools();
+    const cognition = sequenceCognition([action("codex.run", {
+      mode: "new",
+      prompt: "Use a provider-pinned selection inside GoalRuntime.",
+      base_commit: startHead,
+      branch: "codex/goal-auto-selection",
+      worktree: ".",
+      cwd: ".",
+      model: "gpt-5",
+      profile: "fast",
+      reasoning_effort: "minimal",
+      service_tier: "fast",
+      sandbox: "workspace-write",
+      approval_policy: "never",
+      selection_rationale: "Synthetic stale provider-selection fixture.",
+      task_shape: "One bounded coding task.",
+      delegation_strategy: {
+        mode: "single",
+        max_subagents: 0,
+        independent_workstreams: [],
+        integration_owner: "main_codex_thread"
+      },
+      budgets: {
+        timeout_ms: 2_000,
+        max_output_chars: 8_000,
+        max_context_chars: 8_000,
+        max_tool_calls: 4,
+        max_retries: 0
+      }
+    }, "Attempt to pin provider details inside the Goal-owned seam.")]);
+    const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("codex_auto_selection_start", "Delegate through the current Codex profile."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "codex_auto_selection_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(blocked.status, "active");
+    assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
+    assert.match(blocked.checkpoint.summary, /GoalRuntime codex\.run selection must use auto/i);
     assert.equal(tools.calls.length, 0);
     const events = await readEvents(fixture.stateRoot);
     assert.equal(events.some((event) => event.event_type === "goal_action_planned"), false);
@@ -787,9 +846,9 @@ test("GoalRuntime accepts one bounded 200-path codex.run lineage after later ver
         branch: "codex/goal-capacity",
         worktree: ".",
         cwd: ".",
-        model: "gpt-5.6-terra",
+        model: "auto",
         profile: "fast",
-        reasoning_effort: "medium",
+        reasoning_effort: "auto",
         service_tier: "fast",
         sandbox: "workspace-write",
         approval_policy: "never",
@@ -1086,9 +1145,9 @@ test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains 
           branch: "codex/goal-capacity-guard",
           worktree: ".",
           cwd: ".",
-          model: "gpt-5.6-terra",
+          model: "auto",
           profile: "fast",
-          reasoning_effort: "medium",
+          reasoning_effort: "auto",
           service_tier: "fast",
           sandbox: "workspace-write",
           approval_policy: "never",

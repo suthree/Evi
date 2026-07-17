@@ -136,6 +136,33 @@ singular tool observations can represent changes; it does not grant Codex
 completion, commit, PR, merge, deployment, external-write, or release
 authority.
 
+## 2026-07-18 Profile-Owned Codex Execution Selection
+
+Issue #78 repairs a measured owner mismatch discovered during Issue #76 live
+acceptance. Evi twice chose a provider model token and reasoning level that the
+current Codex runtime did not advertise; both runs failed before a tool call or
+workspace change. A live read-only run succeeded when the existing `fast`
+profile resolved those values. The Desktop-owned model cache also had a newer
+schema than the installed CLI, so importing that cache into Evi would create an
+unstable provider implementation dependency.
+
+Evi owns coding intent, Goal repository authority, sandbox, budgets, and
+delegation shape. For ordinary Goal-owned `codex.run`, model and reasoning are
+recorded as `auto`, and the named Codex profile owns provider-specific
+resolution. `auto` omits only those two CLI overrides. It is immutable
+selection authority, not an unrecorded default, cache lookup, fallback chain,
+or retry policy. The Goal-owned seam rejects both a pinned new request and a
+persisted pinned resume before action planning or dispatch; the same Goal must
+start a new auto-selected thread. An evidence-backed external main harness may
+still pin a safe model token and bounded reasoning effort, and standalone
+explicit v2 threads remain parseable and resumable.
+
+This decision supersedes Task241's assumption that every Goal-owned run must
+guess a concrete model and reasoning effort. It does not weaken worktree
+isolation, effect confirmation, prompt and authority digests, JSONL evidence,
+Git change attribution, later local verification, or main-harness completion
+ownership. No capability registry, cache parser, or model fallback is added.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general
