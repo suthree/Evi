@@ -105,6 +105,7 @@ interface ContextSelection {
     query_ref: string;
     todo_ref: string;
   };
+  execution_contract?: Record<string, unknown> | null;
 }
 
 export type ContextAttentionProfile = "focused" | "governance" | "recovery";
@@ -288,6 +289,7 @@ export async function buildTurnSnapshot(
       accepted_goal: acceptedGoal,
       attention_profile: selectContextAttentionProfile(acceptedGoal, opportunity),
       budget: opportunity.budget_hint,
+      execution_contract: selection.execution_contract ?? null,
       stop_signal_active: Boolean(stopSignal),
       stop_signal_ref: stopSignal ? "autonomy/runs/pause_signal.json" : null,
       stop_signal: stopSignal
@@ -3247,6 +3249,7 @@ function compactTurnSnapshot(snapshot: TurnSnapshot): string {
     `- attention_profile: ${getString(task.attention_profile) ?? "focused"}`,
     `- goal: ${goal}`,
     `- budget: ${compactJson(task.budget, 320)}`,
+    `- execution_contract: ${compactJson(task.execution_contract, 1200)}`,
     `- stop_signal: active=${Boolean(task.stop_signal_active)} ref=${getString(task.stop_signal_ref) ?? "none"}`,
     `- recall: memory=${getRecordArray(recall.memory_hits).length} skills=${getStringArray(recall.skill_refs).length}`,
     `- checkpoint: ref=${getString(working.checkpoint_ref) ?? "none"} current=${compactAttentionText(getString(checkpoint?.current_step) ?? getString(working.checkpoint) ?? "none", 240)}`,

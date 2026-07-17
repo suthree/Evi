@@ -279,6 +279,23 @@ checkpoint 缺失该字段（包括旧记录）时则保留 queue 现有路径�
 prompt 会携带更新后的稳定字段和当前 attempt，最多领取三次；
 第三次仍未完成时进入终态 `blocked`，后续 tick 不再重复执行。
 
+localhost Web API 的 `POST /api/runs` 还可以为单个任务显式提交结构化
+`execution_contract`。它必须记录 operator Decision Owner、authority basis、允许/
+禁止效果、外部命令 allowlist、禁止参数、model-round/tool-call 预算、side-effect
+ceiling，并同时要求 `operator_confirmed=true`、`expires_with_task=true`。该快照会随
+append-only queue row 持久化，在同步执行和 daemon resume 中保持同一份身份；不会从
+自由文本推断权限，也不是全局角色或可复用授权。runtime 会计算 SHA-256
+`authority_digest`；持久化内容与 digest 不一致时，read model 会 fail closed，不保留该
+授权。
+
+runner 会把同一快照写入 turn context，并在工具执行前硬拦超过 ceiling、超过
+tool-call 预算、未进入外部命令 allowlist 或带禁止参数的动作。拦截结果是失败的
+harness tool evidence，不能支撑虚假 `done`。外层 task contract 不会削弱
+`codex.run` 自己的 immutable worktree/model/sandbox/budget authority snapshot，最终
+完成判断仍属于 `main_harness`。未提交 `execution_contract` 的旧客户端保持原有本地
+任务行为，也不会自动获得 external-write 权限；完整 JSON 形状见
+`docs/LOCAL_RUNTIME.md`。
+
 固定 workspace git 诊断会为 `git status --porcelain=v1 -b` 强制设置
 `LANG=C` 与 `LC_ALL=C`。只有 spawn 资源错误 `EAGAIN`、`EMFILE`、`ENFILE`
 会且只会重试一次；普通 git 失败和其他 spawn 错误保持原样，不会被重试或改写。

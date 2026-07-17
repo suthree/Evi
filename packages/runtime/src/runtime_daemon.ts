@@ -163,7 +163,9 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   });
   const taskQueueWorker = createRuntimeTaskQueueWorker({
     store,
-    runTask: async (task) => runner.runTask(task),
+    runTask: async (task, entry) => runner.runTask(task, {
+      executionContract: entry.execution_contract ?? undefined
+    }),
     statusRef: serviceRef(target, "task_queue.json")
   });
 
@@ -231,15 +233,20 @@ function createWebConsoleChannel(args: {
           store: args.store,
           host: args.host,
           port: args.port,
-          runTask: async (task, runArgs) => args.runner.runTask(runArgs.runtimeSessionId
-            ? [
-              "Runtime session task submitted from the local web console.",
-              `Runtime session ID: ${runArgs.runtimeSessionId}`,
-              "",
-              "Task:",
-              task
-            ].join("\n")
-            : task)
+          runTask: async (task, runArgs) => {
+            const runnerTask = runArgs.runtimeSessionId
+              ? [
+                  "Runtime session task submitted from the local web console.",
+                  `Runtime session ID: ${runArgs.runtimeSessionId}`,
+                  "",
+                  "Task:",
+                  task
+                ].join("\n")
+              : task;
+            return args.runner.runTask(runnerTask, {
+              executionContract: runArgs.executionContract ?? undefined
+            });
+          }
         });
       } catch (caught) {
         error = caught instanceof Error ? caught.message : String(caught);

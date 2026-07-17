@@ -365,6 +365,28 @@ status. This is local durability and best-effort recovery for self-contained
 runner tasks, not a remote broker, cancellation system, or multi-process
 scheduler.
 
+A localhost `POST /api/runs` may optionally carry an explicit
+`execution_contract` for one operator-confirmed task. The append-only queue row
+stores that contract with the task and preserves it during direct execution and
+daemon recovery. The contract names the operator as Decision Owner, records the
+authority basis, allowed and forbidden effects, an external-command allowlist,
+forbidden command arguments, model-round and tool-call budgets, and a side-
+effect ceiling. It must state `operator_confirmed=true` and
+`expires_with_task=true`; external-write authority is invalid without at least
+one allowlisted external command. The runtime computes and persists an
+`authority_digest`; a stored digest mismatch fails closed by removing authority
+from the normalized read model. Free-form task text never creates this authority.
+
+When present, the live runner exposes the same structured snapshot in the turn
+context, uses its model-round/tool budgets, and rejects a tool before execution
+when the requested effect exceeds the ceiling, the total tool-call budget is
+exhausted, an external command is not allowlisted, or a forbidden command
+argument is present. A rejection is a failed harness tool result and therefore
+cannot support a false `done` claim. The outer task contract does not weaken the
+narrower immutable `codex.run` authority snapshot or move completion authority
+away from `main_harness`. Requests without `execution_contract` keep the legacy
+local runner behavior and do not receive external-write authority.
+
 Queue-worker shutdown clears future ticks, rejects new runs, waits for the
 startup/current run and every accepted status write, then persists `stopped`
 before its stop promise resolves. Runtime-daemon shutdown awaits that promise.

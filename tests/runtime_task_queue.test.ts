@@ -9,7 +9,8 @@ import {
   enqueueRuntimeTask,
   failRuntimeTask,
   listRecoverableRuntimeTasks,
-  listRuntimeTaskQueue
+  listRuntimeTaskQueue,
+  parseRuntimeTaskExecutionContract
 } from "../packages/core/src/runtime_task_queue.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
@@ -121,11 +122,84 @@ test("runtime task queue normalizes legacy rows without continuity fields", asyn
     assert.equal(tasks[0]?.live_session_id, null);
     assert.equal(tasks[0]?.working_checkpoint_ref, null);
     assert.equal(tasks[0]?.next_action, null);
+    assert.equal(tasks[0]?.execution_contract, null);
     assert.equal(tasks[0]?.max_attempts, 3);
   } finally {
     await fixture.cleanup();
   }
 });
+
+test("runtime task queue preserves one immutable operator execution contract", async () => {
+  const fixture = await createFixture();
+  try {
+    const executionContract = parseRuntimeTaskExecutionContract(operatorExecutionContract());
+    const queued = await enqueueRuntimeTask(fixture.store, {
+      task: "deliver one bounded change",
+      executionContract,
+      now: "2026-07-17T00:00:00.000Z"
+    });
+    assert.deepEqual(queued.execution_contract, executionContract);
+    assert.equal(Object.isFrozen(queued.execution_contract), true);
+    assert.equal(Object.isFrozen(queued.execution_contract?.budget), true);
+    assert.match(queued.execution_contract?.authority_digest ?? "", /^[a-f0-9]{64}$/);
+    await claimRuntimeTask(fixture.store, {
+      id: queued.id,
+      now: "2026-07-17T00:00:01.000Z"
+    });
+    const current = (await listRuntimeTaskQueue(fixture.store))[0];
+    assert.deepEqual(current?.execution_contract, executionContract);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("operator execution contract rejects implicit or unbounded external authority", () => {
+  assert.throws(
+    () => parseRuntimeTaskExecutionContract({
+      ...operatorExecutionContract(),
+      operator_confirmed: false
+    }),
+    /operator_confirmed must be true/
+  );
+  assert.throws(
+    () => parseRuntimeTaskExecutionContract({
+      ...operatorExecutionContract(),
+      external_command_allowlist: []
+    }),
+    /external_write requires external_command_allowlist/
+  );
+  assert.throws(
+    () => parseRuntimeTaskExecutionContract({
+      ...operatorExecutionContract(),
+      budget: { max_model_rounds: 9, max_tool_calls: 16 }
+    }),
+    /max_model_rounds/
+  );
+  const normalized = parseRuntimeTaskExecutionContract(operatorExecutionContract());
+  assert.throws(
+    () => parseRuntimeTaskExecutionContract({
+      ...normalized,
+      authority_digest: "0".repeat(64)
+    }),
+    /authority_digest does not match/
+  );
+});
+
+function operatorExecutionContract(): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    decision_owner: "operator",
+    authority_basis: "Explicit operator authorization for one bounded integration task.",
+    allowed_effects: ["GitHub Issue and pull request on develop"],
+    forbidden_effects: ["main, tags, releases, public publication, and force push"],
+    external_command_allowlist: ["git", "gh"],
+    forbidden_command_arguments: ["main", "--force", "--delete"],
+    budget: { max_model_rounds: 5, max_tool_calls: 16 },
+    side_effect_ceiling: "external_write",
+    operator_confirmed: true,
+    expires_with_task: true
+  };
+}
 
 async function readJsonl(path: string): Promise<Array<Record<string, any>>> {
   const text = await readFile(path, "utf8");

@@ -10,7 +10,10 @@ import {
   type RuntimeSessionSource
 } from "../packages/core/src/runtime_sessions.js";
 import { listRuntimeChannelOutbox } from "../packages/core/src/runtime_channel_outbox.js";
-import { listRuntimeTaskQueue } from "../packages/core/src/runtime_task_queue.js";
+import {
+  listRuntimeTaskQueue,
+  parseRuntimeTaskExecutionContract
+} from "../packages/core/src/runtime_task_queue.js";
 import type { RunResult } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { startRuntimeWebConsole } from "../packages/runtime/src/web_console.js";
@@ -193,6 +196,47 @@ test("runtime web console persists unfinished task continuity for bounded resume
   }
 });
 
+test("runtime web console validates and propagates explicit operator execution authority", async () => {
+  const fixture = await createFixture();
+  let observedContract: Record<string, unknown> | null = null;
+  const handle = await startRuntimeWebConsole({
+    store: fixture.store,
+    port: 0,
+    runTask: async (task, args) => {
+      observedContract = args.executionContract as unknown as Record<string, unknown>;
+      return stubRunResult(task, args.runtimeSessionId);
+    }
+  });
+  try {
+    const contract = operatorExecutionContract();
+    const normalizedContract = parseRuntimeTaskExecutionContract(contract);
+    const run = await postJson(`${handle.url}/api/runs`, {
+      task: "deliver an operator-authorized bounded change",
+      execution_contract: contract
+    });
+    assert.equal(run.run.status, "done");
+    assert.deepEqual(observedContract, normalizedContract);
+    const tasks = await listRuntimeTaskQueue(fixture.store);
+    assert.deepEqual(tasks[0]?.execution_contract, normalizedContract);
+    assert.match(tasks[0]?.execution_contract?.authority_digest ?? "", /^[a-f0-9]{64}$/);
+
+    const invalid = await fetch(`${handle.url}/api/runs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        task: "do not queue implicit external authority",
+        execution_contract: { ...contract, operator_confirmed: false }
+      })
+    });
+    assert.equal(invalid.status, 400);
+    assert.match(await invalid.text(), /operator_confirmed must be true/);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 1);
+  } finally {
+    await handle.close();
+    await fixture.cleanup();
+  }
+});
+
 async function getJson(url: string): Promise<any> {
   const response = await fetch(url);
   assert.equal(response.ok, true);
@@ -233,6 +277,22 @@ function stubRunResult(task: string, runtimeSessionId: string | null): RunResult
     working_checkpoint_ref: null,
     next_action: null,
     verdict: "done"
+  };
+}
+
+function operatorExecutionContract(): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    decision_owner: "operator",
+    authority_basis: "Explicit operator authorization for one bounded integration task.",
+    allowed_effects: ["GitHub Issue and pull request on develop"],
+    forbidden_effects: ["main, tags, releases, public publication, and force push"],
+    external_command_allowlist: ["git", "gh"],
+    forbidden_command_arguments: ["main", "--force", "--delete"],
+    budget: { max_model_rounds: 5, max_tool_calls: 16 },
+    side_effect_ceiling: "external_write",
+    operator_confirmed: true,
+    expires_with_task: true
   };
 }
 

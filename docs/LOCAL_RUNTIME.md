@@ -1799,6 +1799,36 @@ for `service status`. It records final task-run status and can queue
 Feishu/Telegram/Discord provider replies for adapter replay; it is still not a remote broker,
 cancellation system, or cross-process scheduler.
 
+The localhost Web API accepts an optional one-task operator execution contract:
+
+```json
+{
+  "task": "Deliver one accepted change through a ready PR to develop.",
+  "execution_contract": {
+    "schema_version": 1,
+    "decision_owner": "operator",
+    "authority_basis": "Explicit operator instruction for this bounded task.",
+    "allowed_effects": ["GitHub Issue, branch, push, PR, and merge to develop"],
+    "forbidden_effects": ["main, tags, releases, public publication, and force push"],
+    "external_command_allowlist": ["git", "gh"],
+    "forbidden_command_arguments": ["main", "refs/heads/main", "--force", "--force-with-lease", "--delete"],
+    "budget": { "max_model_rounds": 5, "max_tool_calls": 16 },
+    "side_effect_ceiling": "external_write",
+    "operator_confirmed": true,
+    "expires_with_task": true
+  }
+}
+```
+
+The API validates this object before enqueue. The queue persists it unchanged
+for direct execution and resume, adds a SHA-256 `authority_digest`, and fails
+closed if a stored digest no longer matches; live context renders it as
+`execution_contract`. The runner enforces its model-round/tool-call budgets and
+blocks over-ceiling tools, non-allowlisted external commands, and forbidden
+command arguments before execution. The snapshot expires with that queue task
+and is not a reusable role or global grant. Omit the object for the existing
+default local task behavior. Task prose alone cannot grant external writes.
+
 On shutdown, the queue worker rejects new ticks, waits for its startup/current
 run and inflight status writes, and persists `stopped` before returning. The
 daemon awaits that stop promise. It also waits for any heartbeat write already

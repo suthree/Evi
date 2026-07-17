@@ -18,8 +18,10 @@ import {
   claimRuntimeTask,
   enqueueRuntimeTask,
   failRuntimeTask,
+  parseRuntimeTaskExecutionContract,
   settleRuntimeTaskFromResult
 } from "../../core/src/runtime_task_queue.js";
+import type { RuntimeTaskExecutionContract } from "../../core/src/runtime_task_queue.js";
 import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
 
@@ -27,7 +29,10 @@ export interface RuntimeWebConsoleOptions {
   store: AgentStore;
   host?: string;
   port?: number;
-  runTask?: (task: string, args: { runtimeSessionId: string | null }) => Promise<RunResult>;
+  runTask?: (task: string, args: {
+    runtimeSessionId: string | null;
+    executionContract: RuntimeTaskExecutionContract | null;
+  }) => Promise<RunResult>;
 }
 
 export interface RuntimeWebConsoleHandle {
@@ -141,6 +146,15 @@ async function handleRequest(
         return;
       }
       const runtimeSessionId = stringField(body, "runtime_session_id")?.trim() || null;
+      let executionContract: RuntimeTaskExecutionContract | null = null;
+      if (body.execution_contract !== undefined) {
+        try {
+          executionContract = parseRuntimeTaskExecutionContract(body.execution_contract);
+        } catch (error) {
+          writeJson(response, 400, { error: error instanceof Error ? error.message : String(error) });
+          return;
+        }
+      }
       const sourceKind = runtimeSessionId ? "runtime" : "local";
       const sourceKey = runtimeSessionId;
       const webSource = webConsoleSource(runtimeSessionId);
@@ -148,7 +162,8 @@ async function handleRequest(
         runtimeSessionId,
         sourceKind,
         sourceKey,
-        task
+        task,
+        executionContract
       });
       await recordRuntimeTaskRun(options.store, {
         id: queued.id,
@@ -172,7 +187,10 @@ async function handleRequest(
       });
       let result: RunResult;
       try {
-        result = await options.runTask(task, { runtimeSessionId });
+        result = await options.runTask(task, {
+          runtimeSessionId,
+          executionContract: started.execution_contract
+        });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         await failRuntimeTask(options.store, { id: queued.id, error: message });

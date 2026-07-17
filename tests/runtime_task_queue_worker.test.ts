@@ -7,7 +7,8 @@ import test from "node:test";
 import {
   claimRuntimeTask,
   enqueueRuntimeTask,
-  listRuntimeTaskQueue
+  listRuntimeTaskQueue,
+  parseRuntimeTaskExecutionContract
 } from "../packages/core/src/runtime_task_queue.js";
 import { listRuntimeChannelOutbox } from "../packages/core/src/runtime_channel_outbox.js";
 import {
@@ -93,9 +94,11 @@ test("runtime task queue worker claims stale queued tasks and records final run 
       sourceKey: "feishu:default:group:oc_group:main:ops",
       task: "recover task",
       runnerTask: "rendered recover task",
+      executionContract: parseRuntimeTaskExecutionContract(operatorExecutionContract()),
       now: "2026-07-07T00:00:00.000Z"
     });
     const seen: string[] = [];
+    const seenOwners: string[] = [];
 
     const summary = await runRuntimeTaskQueueOnce({
       store: fixture.store,
@@ -103,13 +106,15 @@ test("runtime task queue worker claims stale queued tasks and records final run 
       queuedStaleMs: 30_000,
       runningStaleMs: 60 * 60 * 1000,
       clock: () => new Date("2026-07-07T00:01:00.000Z"),
-      runTask: async (task) => {
+      runTask: async (task, entry) => {
         seen.push(task);
+        seenOwners.push(entry.execution_contract?.decision_owner ?? "none");
         return stubRunResult("done");
       }
     });
 
     assert.deepEqual(seen, ["rendered recover task"]);
+    assert.deepEqual(seenOwners, ["operator"]);
     assert.equal(summary.recoverable_count, 2);
     assert.equal(summary.due_count, 1);
     assert.deepEqual(summary.task_ids, [queued.id]);
@@ -134,6 +139,22 @@ test("runtime task queue worker claims stale queued tasks and records final run 
     await fixture.cleanup();
   }
 });
+
+function operatorExecutionContract(): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    decision_owner: "operator",
+    authority_basis: "Explicit operator authorization for one bounded integration task.",
+    allowed_effects: ["GitHub Issue and pull request on develop"],
+    forbidden_effects: ["main, tags, releases, public publication, and force push"],
+    external_command_allowlist: ["git", "gh"],
+    forbidden_command_arguments: ["main", "--force", "--delete"],
+    budget: { max_model_rounds: 5, max_tool_calls: 16 },
+    side_effect_ceiling: "external_write",
+    operator_confirmed: true,
+    expires_with_task: true
+  };
+}
 
 test("runtime task queue worker reclaims stale running tasks once the stale threshold is reached", async () => {
   const fixture = await createFixture();
