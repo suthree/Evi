@@ -173,22 +173,21 @@ function httpFetchIntent(rawUrl: string): EffectIntent {
   try {
     const url = new URL(rawUrl);
     const publicTarget = `${url.protocol}//${url.host}${url.pathname}`;
-    const target = url.searchParams.size > 0 ? url.toString() : publicTarget;
     if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return intent("unknown", target, "unknown", "unknown");
+      return intent("unknown", publicTarget, "unknown", "unknown");
     }
     if (url.username
       || url.password
       || isPrivateNetworkHost(url.hostname)
       || [...url.searchParams.entries()].some(([key, value]) => secretLikeToken(key) || secretLikeToken(value))) {
-      return intent("read_public_network", target, "read_only", "private_or_secret");
+      return intent("read_public_network", publicTarget, "read_only", "private_or_secret");
     }
     if (url.searchParams.size > 0) {
-      return intent("write_external", target, "conditional", "unknown");
+      return intent("write_external", url.toString(), "conditional", "unknown");
     }
-    return intent("read_public_network", target, "read_only", "public_response_to_model");
+    return intent("read_public_network", publicTarget, "read_only", "public_response_to_model");
   } catch {
-    return intent("unknown", `url:${rawUrl || "(missing)"}`, "unknown", "unknown");
+    return intent("unknown", "url:(invalid or malformed)", "unknown", "unknown");
   }
 }
 

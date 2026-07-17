@@ -24,6 +24,10 @@ const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
 const DEFAULT_TOOL_CALLS_PER_CONTINUE = 4;
 const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
+const MAX_OUTCOME_CHANGES = 512;
+const MAX_CHANGE_EVIDENCE_EVENTS = 2_048;
+const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
+const MAX_OUTCOME_EVIDENCE_EVENTS = MAX_CHANGE_EVIDENCE_EVENTS + RECENT_OUTCOME_EVIDENCE_EVENTS;
 
 interface StateRootMutationQueue {
   tail: Promise<void>;
@@ -61,7 +65,7 @@ const changeIdentitySchema = z.object({
   identity: shortTextSchema
 }).strict();
 
-const changeSetSchema = z.array(changeIdentitySchema).max(64);
+const changeSetSchema = z.array(changeIdentitySchema).max(MAX_OUTCOME_CHANGES);
 
 const runtimeResultProposalSchema = z.object({
   status: z.enum(["healthy", "degraded", "not_applicable"]),
@@ -69,7 +73,7 @@ const runtimeResultProposalSchema = z.object({
 }).strict();
 
 const runtimeResultSchema = runtimeResultProposalSchema.extend({
-  evidence_event_ids: z.array(safeIdSchema).max(64)
+  evidence_event_ids: z.array(safeIdSchema).max(MAX_OUTCOME_EVIDENCE_EVENTS)
 }).strict();
 
 const outcomeProposalSchema = z.object({
@@ -81,14 +85,14 @@ const outcomeProposalSchema = z.object({
 const outcomeCandidateSchema = outcomeProposalSchema.extend({
   changes: changeSetSchema,
   runtime_result: runtimeResultSchema,
-  evidence_event_ids: z.array(safeIdSchema).min(1).max(64)
+  evidence_event_ids: z.array(safeIdSchema).min(1).max(MAX_OUTCOME_EVIDENCE_EVENTS)
 }).strict();
 
 const verificationCheckSchema = z.object({
   id: safeIdSchema,
   status: z.enum(["passed", "failed"]),
   summary: shortTextSchema,
-  evidence_event_ids: z.array(safeIdSchema).min(1).max(64)
+  evidence_event_ids: z.array(safeIdSchema).min(1).max(MAX_OUTCOME_EVIDENCE_EVENTS)
 }).strict();
 
 const verificationResultSchema = z.object({
@@ -114,7 +118,7 @@ const outcomeReceiptSchema = z.object({
   }).strict(),
   runtime_result: runtimeResultSchema,
   residual_risks: z.array(shortTextSchema).max(32),
-  evidence_event_ids: z.array(safeIdSchema).min(1).max(128),
+  evidence_event_ids: z.array(safeIdSchema).min(1).max(MAX_OUTCOME_EVIDENCE_EVENTS + 1),
   created_at: z.string().min(1),
   boundary: z.literal(GOAL_BOUNDARY)
 }).strict();
@@ -511,7 +515,11 @@ export class GoalRuntime {
       case "abandon": {
         const eventId = this.nextSafeId("goal_event");
         const occurredAt = this.now();
-        const receipt = this.abandonmentReceipt(currentState.view, command.reason, eventId, occurredAt);
+        const lineage = goalChangeLineage(events, command.goal_id);
+        if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
+          throw new Error("GoalRuntime cannot abandon with a change lineage beyond the bounded receipt capacity");
+        }
+        const receipt = this.abandonmentReceipt(currentState.view, command.reason, eventId, occurredAt, lineage);
         return (await this.appendEvent(events, {
           ...this.eventBase(currentState.view, command, commandDigest, eventId, occurredAt),
           event_type: "goal_abandoned",
@@ -768,11 +776,30 @@ export class GoalRuntime {
     proposal: GoalOutcomeProposal,
     usageDelta: GoalUsage
   ): Promise<GoalView> {
-    const evidenceEventIds = candidateEvidenceEventIds(events, command.goal_id);
+    const lineage = goalChangeLineage(events, command.goal_id);
+    if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
+      const summary = `Goal change lineage exceeds the bounded receipt capacity (${MAX_OUTCOME_CHANGES} identities or ${MAX_CHANGE_EVIDENCE_EVENTS} observations).`;
+      const nextAction = "Abandon this goal explicitly and split future execution into smaller complete goals.";
+      const checkpoint = normalizeCheckpoint({
+        cursor: "change_lineage_limit",
+        summary,
+        next_action: nextAction,
+        selected_refs: state.view.checkpoint.selected_refs
+      });
+      return (await this.appendEvent(events, {
+        ...this.eventBase(state.view, command, commandDigest),
+        event_type: "goal_blocked",
+        summary,
+        next_action: nextAction,
+        checkpoint,
+        usage_delta: usageDelta
+      })).view;
+    }
+    const evidenceEventIds = candidateEvidenceEventIds(events, command.goal_id, lineage.eventIds);
     const evidence = buildEvidenceViews(events, command.goal_id, evidenceEventIds);
     const candidate = outcomeCandidateSchema.parse({
       ...proposal,
-      changes: changesFromEvidence(evidence),
+      changes: lineage.changes,
       runtime_result: {
         ...proposal.runtime_result,
         evidence_event_ids: evidenceEventIds
@@ -884,7 +911,8 @@ export class GoalRuntime {
     current: GoalView,
     reason: string,
     terminalEventId: string,
-    createdAt: string
+    createdAt: string,
+    lineage: { changes: GoalChangeIdentity[]; eventIds: string[] }
   ): OutcomeReceipt {
     return buildAbandonmentReceipt({
       receiptId: this.nextSafeId("goal_receipt"),
@@ -892,7 +920,9 @@ export class GoalRuntime {
       objective: current.objective,
       reason,
       terminalEventId,
-      createdAt
+      createdAt,
+      changes: lineage.changes,
+      evidenceEventIds: lineage.eventIds
     });
   }
 
@@ -1180,7 +1210,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
         if (parseVerificationResult(event.verification).status !== "failed") {
           throw new Error(`GoalRuntime verification-failed event contains passed result: ${event.id}`);
         }
-        assertCandidateEvidence(event.candidate, events.slice(0, index));
+        assertCandidateEvidence(event.candidate, events.slice(0, index), event.goal_id);
         assertVerificationEvidence(event.verification, event.candidate);
         checkpoint = event.checkpoint;
         usage = addUsage(usage, event.usage_delta);
@@ -1194,7 +1224,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
         if (parseVerificationResult(event.verification).status !== "passed") {
           throw new Error(`GoalRuntime completed event contains failed result: ${event.id}`);
         }
-        assertCandidateEvidence(event.candidate, events.slice(0, index));
+        assertCandidateEvidence(event.candidate, events.slice(0, index), event.goal_id);
         assertVerificationEvidence(event.verification, event.candidate);
         assertAcceptedReceipt(started, event);
         checkpoint = event.checkpoint;
@@ -1224,7 +1254,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
         if (status !== "active" && status !== "paused") {
           throw new Error(`Invalid GoalRuntime replay transition ${event.event_type} from ${status}`);
         }
-        assertAbandonmentReceipt(started, event);
+        assertAbandonmentReceipt(started, event, events.slice(0, index));
         status = "abandoned";
         receipt = event.receipt;
         pending = null;
@@ -1368,7 +1398,7 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
   }
 }
 
-function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string): string[] {
+function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, changeEventIds: string[]): string[] {
   const eligible = events.filter((event) => event.goal_id === goalId && [
     "goal_started",
     "goal_action_planned",
@@ -1376,7 +1406,11 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string): 
     "goal_action_observed",
     "goal_verification_failed"
   ].includes(event.event_type));
-  return eligible.slice(-64).map((event) => event.id);
+  const selected = new Set([
+    ...changeEventIds,
+    ...eligible.slice(-RECENT_OUTCOME_EVIDENCE_EVENTS).map((event) => event.id)
+  ]);
+  return eligible.filter((event) => selected.has(event.id)).map((event) => event.id);
 }
 
 function parseVerificationResult(value: GoalVerificationResult): GoalVerificationResult {
@@ -1397,7 +1431,7 @@ function parseVerificationResult(value: GoalVerificationResult): GoalVerificatio
   return parsed.data;
 }
 
-function assertCandidateEvidence(candidate: OutcomeCandidate, events: GoalRuntimeEvent[]): void {
+function assertCandidateEvidence(candidate: OutcomeCandidate, events: GoalRuntimeEvent[], goalId: string): void {
   const eventById = new Map(events.map((event) => [event.id, event]));
   for (const id of unique([...candidate.evidence_event_ids, ...candidate.runtime_result.evidence_event_ids])) {
     if (!eventById.has(id)) throw new Error(`GoalRuntime candidate references foreign or missing event: ${id}`);
@@ -1407,7 +1441,13 @@ function assertCandidateEvidence(candidate: OutcomeCandidate, events: GoalRuntim
     if (!declared.has(id)) throw new Error(`GoalRuntime runtime result uses undeclared evidence event: ${id}`);
   }
   const evidence = candidate.evidence_event_ids.map((id) => evidenceView(eventById.get(id)!));
-  if (canonicalJson(candidate.changes) !== canonicalJson(changesFromEvidence(evidence))) {
+  const lineage = goalChangeLineage(events, goalId);
+  if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
+    throw new Error("GoalRuntime completed candidate exceeds bounded change lineage capacity");
+  }
+  if (canonicalJson(candidate.changes) !== canonicalJson(lineage.changes)
+    || lineage.eventIds.some((id) => !declared.has(id))
+    || canonicalJson(candidate.changes) !== canonicalJson(changesFromEvidence(evidence))) {
     throw new Error("GoalRuntime candidate change set does not match canonical observations");
   }
 }
@@ -1445,16 +1485,20 @@ function assertAcceptedReceipt(
 
 function assertAbandonmentReceipt(
   started: z.infer<typeof startedEventSchema>,
-  event: z.infer<typeof abandonedEventSchema>
+  event: z.infer<typeof abandonedEventSchema>,
+  priorEvents: GoalRuntimeEvent[]
 ): void {
   const receipt = event.receipt;
+  const lineage = goalChangeLineage(priorEvents, event.goal_id);
   const expected = buildAbandonmentReceipt({
     receiptId: receipt.id,
     goalId: event.goal_id,
     objective: started.objective,
     reason: event.reason,
     terminalEventId: event.id,
-    createdAt: event.occurred_at
+    createdAt: event.occurred_at,
+    changes: lineage.changes,
+    evidenceEventIds: lineage.eventIds
   });
   if (canonicalJson(receipt) !== canonicalJson(expected)) {
     throw new Error(`GoalRuntime abandonment receipt does not match its terminal event: ${receipt.id}`);
@@ -1468,6 +1512,8 @@ function buildAbandonmentReceipt(args: {
   reason: string;
   terminalEventId: string;
   createdAt: string;
+  changes: GoalChangeIdentity[];
+  evidenceEventIds: string[];
 }): OutcomeReceipt {
   return outcomeReceiptSchema.parse({
     schema_version: 2,
@@ -1477,7 +1523,7 @@ function buildAbandonmentReceipt(args: {
     objective: args.objective,
     decision: "abandoned",
     summary: args.reason,
-    changes: [],
+    changes: args.changes,
     verification: {
       status: "not_run",
       summary: ABANDON_VERIFICATION_SUMMARY,
@@ -1489,7 +1535,7 @@ function buildAbandonmentReceipt(args: {
       evidence_event_ids: []
     },
     residual_risks: [],
-    evidence_event_ids: [args.terminalEventId],
+    evidence_event_ids: unique([...args.evidenceEventIds, args.terminalEventId]),
     created_at: args.createdAt,
     boundary: GOAL_BOUNDARY
   });
@@ -1630,6 +1676,10 @@ function observedChange(result: ToolResult): GoalChangeIdentity | null {
 }
 
 function changesFromEvidence(evidence: GoalEvidenceView[]): GoalChangeIdentity[] {
+  return changeSetSchema.parse(uniqueChangesFromEvidence(evidence));
+}
+
+function uniqueChangesFromEvidence(evidence: GoalEvidenceView[]): GoalChangeIdentity[] {
   const changes: GoalChangeIdentity[] = [];
   const seen = new Set<string>();
   for (const item of evidence) {
@@ -1639,7 +1689,21 @@ function changesFromEvidence(evidence: GoalEvidenceView[]): GoalChangeIdentity[]
     seen.add(key);
     changes.push(item.change);
   }
-  return changeSetSchema.parse(changes);
+  return changes;
+}
+
+function goalChangeLineage(events: GoalRuntimeEvent[], goalId: string): {
+  changes: GoalChangeIdentity[];
+  eventIds: string[];
+} {
+  const evidence = events
+    .filter((event) => event.goal_id === goalId && event.event_type === "goal_action_observed" && event.result.ok)
+    .map(evidenceView)
+    .filter((item) => item.change !== undefined);
+  return {
+    changes: uniqueChangesFromEvidence(evidence),
+    eventIds: evidence.map((item) => item.event_id)
+  };
 }
 
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {

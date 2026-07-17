@@ -319,6 +319,11 @@ confirmation-document chain. Local `goal resume
 resume, abandon, soft-budget continuation, verification failure, and later
 repair retain the original goal identity.
 
+Denied actions are redacted before canonical persistence. A secret-bearing or
+private URL is classified with a query-free target; only a non-sensitive query
+that can legitimately reach `confirm` is exposed in the pending proposed
+action.
+
 Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
 `goals/receipts/<goal-id>.json` are rebuildable projections. Intended tool
 effects may change authorized repo or task state, but the foreground control
@@ -327,7 +332,11 @@ completion, iteration, SOP, skill, deployment, or learning-promotion state.
 GoalRuntime derives the accepted receipt's complete, ordered, deduplicated
 `changes[]` from every typed successful tool observation; the model neither
 declares nor copies change identities. An empty set therefore means that no such
-observation exists. Every Git commit additionally requires a later successful
+observation exists. This complete change lineage is independent from the recent
+model-evidence window and is also retained by an abandonment receipt, so partial
+effects remain visible after a direction is retired. Receipt capacity is
+bounded; crossing it blocks completion explicitly instead of dropping early
+observations. Every Git commit additionally requires a later successful
 verification observation; free-text substring matches and a model proposal
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.

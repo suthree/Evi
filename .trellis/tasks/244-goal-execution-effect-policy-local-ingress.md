@@ -136,8 +136,14 @@ destructive remote action, or stopped-goal resumption.
   require exact confirmation because mutable tests/scripts can execute arbitrary
   code. The model never declares a change identity; GoalRuntime derives the
   receipt's complete ordered and deduplicated `changes[]` from typed successful
-  observations. Free-text substrings cannot support a receipt, and every Git
-  commit requires a later successful verification observation.
+  observations across the complete Goal history, independently of the recent
+  cognition window. Abandonment receipts retain partial observed changes, and
+  bounded capacity fails explicitly instead of sliding away old observations.
+  Free-text substrings cannot support a receipt, and every Git commit requires a
+  later successful verification observation.
+- Denied secret/private query actions persist only a query-free intent target;
+  the exact query payload is visible only for non-sensitive actions that can
+  legitimately reach confirmation.
 - `goal start|continue|read|pause|resume|abandon` is a thin local CLI ingress.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.

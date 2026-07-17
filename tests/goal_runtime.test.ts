@@ -414,6 +414,37 @@ test("GoalRuntime derives every typed observation into one complete receipt chan
   }
 });
 
+test("GoalRuntime retains early changes beyond the recent evidence window", async () => {
+  const fixture = await createFixture();
+  try {
+    const paths = Array.from({ length: 33 }, (_, index) => `docs/long-${index}.md`);
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        ...paths.map((path) => action("file.write_repo", { path, text: path }, `Write ${path}.`)),
+        outcome("长 Goal 的完整 change lineage 已绑定。")
+      ]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    let view = await runtime.handle(start("long_changes_start", "Preserve complete changes across many soft tranches."));
+    let command = 0;
+    while (view.status === "active") {
+      view = await runtime.handle({
+        type: "continue",
+        command_id: `long_changes_continue_${command}`,
+        goal_id: view.goal_id
+      });
+      command += 1;
+      assert.ok(command < 20, "long goal should complete within bounded continuations");
+    }
+
+    assert.equal(view.status, "completed");
+    assert.deepEqual(view.receipt?.changes, paths.map((identity) => ({ kind: "state_change", identity })));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Canonical verifier rejects an intent-only no-change outcome", async () => {
   const fixture = await createFixture();
   try {
@@ -560,6 +591,7 @@ test("Denied effects are canonical observations of policy and never dispatch", a
     const runtime = createRuntime(fixture.store, {
       cognition: sequenceCognition([
         action("unknown.tool", { token: "must-not-persist", payload: "ignored" }, "Unknown effect."),
+        action("http.fetch", { url: "https://example.com/data?api_key=TOP_SECRET_VALUE" }, "Secret egress must fail closed."),
         outcome("未知 effect 已被拒绝，目标没有产生副作用。")
       ]),
       tools,
@@ -577,6 +609,7 @@ test("Denied effects are canonical observations of policy and never dispatch", a
     const planned = events.find((event) => event.event_type === "goal_action_planned")!;
     assert.equal((planned.effect_decision as Record<string, unknown>).outcome, "deny");
     assert.equal(JSON.stringify(events).includes("must-not-persist"), false);
+    assert.equal(JSON.stringify(events).includes("TOP_SECRET_VALUE"), false);
     assert.equal(planned.action_redacted, true);
   } finally {
     await fixture.cleanup();
@@ -716,7 +749,10 @@ test("GoalRuntime abandonment remains explicit and terminal", async () => {
   try {
     let verifierCalls = 0;
     const runtime = createRuntime(fixture.store, {
-      cognition: sequenceCognition([]),
+      cognition: sequenceCognition([
+        action("file.write_repo", { path: "docs/partial.md", text: "partial" }, "Write one partial result."),
+        { type: "blocked", summary: "The direction is no longer viable.", next_action: "Ask the operator to retire it." }
+      ]),
       tools: recordingTools(),
       verifier: {
         async verify() {
@@ -726,6 +762,12 @@ test("GoalRuntime abandonment remains explicit and terminal", async () => {
       }
     });
     const started = await runtime.handle(start("abandon_start", "Retire a direction explicitly."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "abandon_partial_work",
+      goal_id: started.goal_id
+    });
+    assert.equal(blocked.status, "active");
     const abandoned = await runtime.handle({
       type: "abandon",
       command_id: "abandon_command",
@@ -735,6 +777,10 @@ test("GoalRuntime abandonment remains explicit and terminal", async () => {
     assert.equal(abandoned.status, "abandoned");
     assert.equal(abandoned.receipt?.decision, "abandoned");
     assert.equal(abandoned.receipt?.verification.status, "not_run");
+    assert.deepEqual(abandoned.receipt?.changes, [{ kind: "state_change", identity: "docs/partial.md" }]);
+    const events = await readEvents(fixture.stateRoot);
+    const observation = events.find((event) => event.event_type === "goal_action_observed")!;
+    assert.equal(abandoned.receipt?.evidence_event_ids.includes(observation.id), true);
     assert.equal(verifierCalls, 0);
     await assert.rejects(runtime.handle({
       type: "resume",

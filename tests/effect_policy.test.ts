@@ -104,10 +104,12 @@ test("EffectPolicy permits public fetches and denies secret-bearing egress or un
     tool: "http.fetch",
     arguments: { url: "https://example.com/public.json" }
   }).outcome, "allow");
-  assert.equal(policy.decide({
+  const secretFetch = policy.decide({
     tool: "http.fetch",
     arguments: { url: "https://example.com/data?api_key=secret" }
-  }).outcome, "deny");
+  });
+  assert.equal(secretFetch.outcome, "deny");
+  assert.equal(secretFetch.intent.target, "https://example.com/data");
   const queryFetch = policy.decide({
     tool: "http.fetch",
     arguments: { url: "https://example.com/collect?q=PRIVATE_LOCAL_TEXT" }
