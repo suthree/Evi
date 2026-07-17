@@ -184,3 +184,16 @@ task therefore receive one more fail-closed fix-forward on branch
 shells, general interpreters, `code.execute_node`, and package-manager exec/dlx
 carriers before execution, while direct fixed commands such as `git`, `gh`, and
 `pnpm run check` remain available.
+
+That runtime then proved one more replay boundary: the forbidden-argument guard
+was evaluated only for commands declaring `external_write`, so a recovery
+attempt could repeat local `git worktree add` even when `worktree` was listed as
+forbidden. The same Issue and task receive a final fail-closed fix-forward on
+branch `codex/issue-34-forbidden-command-scope`: forbidden arguments apply to
+every direct `command.run`, while the binary allowlist remains specific to
+external writes. This lets a continuation contract hard-block both another
+`gh issue` operation and another local worktree setup.
+
+Focused context/runner checks passed 126/126. The full repository gate passed
+873/873 tests, active-vault skill validation, neutral naming across 123
+implementation files, and `git diff --check`.

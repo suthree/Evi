@@ -289,7 +289,8 @@ append-only queue row 持久化，在同步执行和 daemon resume 中保持同�
 授权。
 
 runner 会把同一快照写入 turn context，并在工具执行前硬拦超过 ceiling、超过
-tool-call 预算、未进入外部命令 allowlist 或带禁止参数的动作。拦截结果是失败的
+tool-call 预算、任意直接 `command.run` 中的禁止参数，或未进入外部命令 allowlist
+的外部动作。拦截结果是失败的
 harness tool evidence，不能支撑虚假 `done`。带 `external_write` ceiling 的任务还会
 fail closed 拒绝 shell、通用解释器、`code.execute_node` 以及 package-manager exec/dlx
 等间接命令载体；外部操作必须使用直接 binary argv，不能把 `gh` 或 `git push` 藏在

@@ -2349,6 +2349,12 @@ function taskExecutionContractBlockReason(
   if (contract.side_effect_ceiling === "external_write" && isIndirectCommandCarrier(command, commandArgs)) {
     return `external-write task execution contracts forbid indirect command carrier ${command}; use direct binary argv`;
   }
+  const forbidden = commandArgs.find((arg) => contract.forbidden_command_arguments.some((value) =>
+    arg === value || arg.startsWith(`${value}=`)
+  ));
+  if (forbidden) {
+    return `command argument ${forbidden} is forbidden by the task execution contract`;
+  }
   const externalWriteCommand = command === "gh" || (command === "git" && gitCommandName(commandArgs) === "push");
   if (externalWriteCommand && requestedEffect !== "external_write") {
     return `external command ${command} must declare side_effect_level=external_write`;
@@ -2357,12 +2363,7 @@ function taskExecutionContractBlockReason(
   if (!contract.external_command_allowlist.includes(command)) {
     return `external command ${command || "(missing)"} is not allowlisted by the task execution contract`;
   }
-  const forbidden = commandArgs.find((arg) => contract.forbidden_command_arguments.some((value) =>
-    arg === value || arg.startsWith(`${value}=`)
-  ));
-  return forbidden
-    ? `external command argument ${forbidden} is forbidden by the task execution contract`
-    : null;
+  return null;
 }
 
 function isIndirectCommandCarrier(command: string, args: readonly string[]): boolean {
