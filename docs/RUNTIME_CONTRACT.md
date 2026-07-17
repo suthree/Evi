@@ -338,7 +338,10 @@ effects remain visible after a direction is retired. Receipt capacity is
 bounded; a potentially mutating effect that would cross it is blocked before
 dispatch, leaving the existing Goal completeable or abandonable instead of
 dropping early observations. Every Git commit additionally requires a later successful
-verification observation; free-text substring matches and a model proposal
+verification observation. That satisfying observation is pinned with the
+commit lineage and cannot age out of the recent evidence window. Diagnostic
+tool output may be truncated, but typed control fields such as `change`,
+failure kind, and bounded refs survive truncation. Free-text substring matches and a model proposal
 without decisive observation or fail-closed policy evidence cannot create an
 accepted receipt.
 

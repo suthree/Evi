@@ -140,8 +140,10 @@ destructive remote action, or stopped-goal resumption.
   cognition window. Abandonment receipts retain partial observed changes, and
   a capacity-breaking mutating effect is blocked before dispatch, so the Goal
   remains completeable or abandonable instead of sliding away old observations.
-  Free-text substrings cannot support a receipt, and every Git commit requires a
-  later successful verification observation.
+  Diagnostic output truncation preserves typed control fields. Free-text
+  substrings cannot support a receipt, and every Git commit requires a later
+  successful verification observation that is pinned with its change lineage
+  rather than aging out of the recent context window.
 - Denied secret/private query actions persist only a query-free intent target;
   the exact query payload is visible only for non-sensitive actions that can
   legitimately reach confirmation.

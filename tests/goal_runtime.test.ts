@@ -335,6 +335,89 @@ test("Canonical verifier accepts exact typed commit identity followed by verific
   }
 });
 
+test("GoalRuntime preserves a large commit control field and pins its later verification", async () => {
+  const fixture = await createFixture();
+  try {
+    const calls: EffectAction[] = [];
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        calls.push(structuredClone(effectAction));
+        const command = effectAction.arguments.command;
+        const isCommit = effectAction.tool === "command.run" && command === "git";
+        return {
+          id: `tool_result_large_commit_${calls.length}`,
+          tool: effectAction.tool,
+          ok: true,
+          summary: `Executed ${effectAction.tool}.`,
+          output: isCommit
+            ? {
+                change: { kind: "git_commit", identity: "abc123" },
+                padding: "x".repeat(81_000)
+              }
+            : effectAction.tool === "file.read"
+              ? { path: effectAction.arguments.path, text: "bounded fixture content" }
+              : { observed: true },
+          side_effect_level: isCommit ? "local_write" : effectAction.tool === "file.read" ? "none" : "local_reversible",
+          created_at: `2026-07-17T00:20:${String(calls.length).padStart(2, "0")}.000Z`
+        } satisfies ToolResult;
+      }
+    };
+    const trailingReads = Array.from({ length: 33 }, (_, index) => `docs/read-${index}.md`);
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("command.run", { command: "git", args: ["commit", "-m", "bounded"], cwd: "repo" }, "Create one bounded commit."),
+        action("command.run", { command: "pnpm", args: ["run", "check"], cwd: "repo" }, "Verify the commit."),
+        ...trailingReads.map((path) => action("file.read", { scope: "repo", path }, `Read ${path}.`)),
+        outcome("大型 commit observation 与其后验证均被完整绑定。")
+      ]),
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    let view = await runtime.handle(start("large_commit_start", "Retain typed control facts independently of diagnostic payloads."));
+    view = await runtime.handle({ type: "continue", command_id: "large_commit_plan", goal_id: view.goal_id });
+    assert.equal(view.status, "paused");
+    view = await runtime.handle({
+      type: "resume",
+      command_id: "large_commit_confirm",
+      goal_id: view.goal_id,
+      confirm_effect_id: view.pending_effect!.effect_id
+    });
+    view = await runtime.handle({ type: "continue", command_id: "large_verify_plan", goal_id: view.goal_id });
+    assert.equal(view.status, "paused");
+    view = await runtime.handle({
+      type: "resume",
+      command_id: "large_verify_confirm",
+      goal_id: view.goal_id,
+      confirm_effect_id: view.pending_effect!.effect_id
+    });
+    let continuation = 0;
+    while (view.status === "active") {
+      view = await runtime.handle({
+        type: "continue",
+        command_id: `large_commit_continue_${continuation}`,
+        goal_id: view.goal_id
+      });
+      continuation += 1;
+      assert.ok(continuation < 20, "commit trajectory should complete within bounded continuations");
+    }
+
+    assert.equal(view.status, "completed");
+    assert.deepEqual(view.receipt?.changes, [{ kind: "git_commit", identity: "abc123" }]);
+    const events = await readEvents(fixture.stateRoot);
+    const observations = events.filter((event) => event.event_type === "goal_action_observed");
+    const commitObservation = observations[0]!;
+    const verificationObservation = observations[1]!;
+    assert.equal((commitObservation.result as { output: { truncated: boolean } }).output.truncated, true);
+    assert.deepEqual(
+      (commitObservation.result as { output: { change: unknown } }).output.change,
+      { kind: "git_commit", identity: "abc123" }
+    );
+    assert.equal(view.receipt?.evidence_event_ids.includes(verificationObservation.id as string), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Canonical verifier rejects an incomplete change set", async () => {
   const fixture = await createFixture();
   try {

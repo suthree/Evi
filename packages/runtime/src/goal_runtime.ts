@@ -27,7 +27,7 @@ const DEFAULT_ELAPSED_MS_PER_CONTINUE = 120_000;
 const MAX_OUTCOME_CHANGES = 64;
 const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
-const MAX_OUTCOME_EVIDENCE_EVENTS = MAX_CHANGE_EVIDENCE_EVENTS + RECENT_OUTCOME_EVIDENCE_EVENTS;
+const MAX_OUTCOME_EVIDENCE_EVENTS = (MAX_CHANGE_EVIDENCE_EVENTS * 2) + RECENT_OUTCOME_EVIDENCE_EVENTS;
 
 interface StateRootMutationQueue {
   tail: Promise<void>;
@@ -1428,8 +1428,20 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, c
     "goal_action_observed",
     "goal_verification_failed"
   ].includes(event.event_type));
+  const postCommitVerificationEventIds = changeEventIds.flatMap((changeEventId) => {
+    const changeIndex = eligible.findIndex((event) => event.id === changeEventId);
+    const changeEvent = eligible[changeIndex];
+    if (changeIndex < 0
+      || changeEvent?.event_type !== "goal_action_observed"
+      || observedChange(changeEvent.result)?.kind !== "git_commit") return [];
+    const verification = eligible.slice(changeIndex + 1).find((event) => event.event_type === "goal_action_observed"
+      && event.result.ok
+      && event.effect_intent.operation === "run_local_verification");
+    return verification ? [verification.id] : [];
+  });
   const selected = new Set([
     ...changeEventIds,
+    ...postCommitVerificationEventIds,
     ...eligible.slice(-RECENT_OUTCOME_EVIDENCE_EVENTS).map((event) => event.id)
   ]);
   return eligible.filter((event) => selected.has(event.id)).map((event) => event.id);
@@ -1673,7 +1685,15 @@ function boundedToolResult(value: ToolResult): ToolResult {
   const cloned = structuredClone(value);
   const serialized = JSON.stringify(cloned.output);
   if (serialized.length > 80_000) {
+    const controlFields: Record<string, unknown> = {};
+    const change = changeIdentitySchema.safeParse(cloned.output.change);
+    if (change.success) controlFields.change = change.data;
+    for (const key of ["failure_kind", "path", "ref", "artifact_ref", "worktree"] as const) {
+      const field = cloned.output[key];
+      if (typeof field === "string" && field.length <= 2_000) controlFields[key] = field;
+    }
     cloned.output = {
+      ...controlFields,
       truncated: true,
       original_chars: serialized.length,
       preview: serialized.slice(0, 76_000)

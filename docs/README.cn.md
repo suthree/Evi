@@ -38,6 +38,8 @@ observation event 是事实来源。安全的本地读、绑定实际公网地�
 部分变更。receipt 使用明确容量上限，不会静默丢弃早期 observation。可能突破容量的
 mutating effect 会在 dispatch 前被阻止，因此既有 Goal 仍可完成或
 abandon，不会在副作用发生后进入不可终止状态。
+commit 的满足性 verification 会随 change lineage 固定，不会因后续事件增多而掉出近期窗口。
+工具诊断正文可以截断，但 `change`、failure kind 和有界 refs 等控制字段必须保留。
 需要确认的 effect 会在同一个 Goal 上展示完整 `proposed_action` 及其 digest；带 query
 的外发请求不会要求操作者在看不到实际 key/value 的情况下盲确认。
 secret/private query 会在 canonical intent 中去除 query，只有可进入 confirm 的非敏感
