@@ -15,6 +15,8 @@ export const coreToolContracts: ToolContract[] = [
     arguments: {
       scope: "repo | state",
       path: "relative/path",
+      start_line: 1,
+      max_lines: 200,
       max_chars: 12000
     }
   },

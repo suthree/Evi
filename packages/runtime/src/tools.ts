@@ -1,6 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { lookup } from "node:dns/promises";
-import { readdir, realpath } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { readdir, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { basename, relative, resolve } from "node:path";
@@ -54,11 +55,13 @@ type ToolFailureKind =
   | "change_not_observed"
   | "http_status"
   | "invalid_request"
+  | "not_found"
   | "nonzero_exit"
   | "private_network"
   | "protected_path"
   | "redirect_blocked"
   | "runtime_state_path"
+  | "scan_limit_exceeded"
   | "search_error"
   | "spawn_error"
   | "timeout"
@@ -69,6 +72,13 @@ export interface ToolExecutionContext {
   modelMaxOutputTokens?: number;
   publicNetworkOnly?: boolean;
 }
+
+const FILE_READ_DEFAULT_MAX_CHARS = 12_000;
+const FILE_READ_MAX_CHARS = 50_000;
+const FILE_READ_DEFAULT_MAX_LINES = 200;
+const FILE_READ_MAX_LINES = 400;
+const FILE_READ_MAX_START_LINE = 1_000_000;
+const FILE_READ_MAX_SCAN_BYTES = 4 * 1024 * 1024;
 
 export async function executeTool(action: ActionProposal, context: ToolExecutionContext): Promise<ToolResult> {
   const payload = action.payload as Record<string, unknown>;
@@ -108,7 +118,6 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
 async function runFileRead(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
   const scope = stringValue(args.scope) || "repo";
   const relPath = stringValue(args.path);
-  const maxChars = intValue(args.max_chars, 12000);
   const invalid = validateRelativePath(relPath)
     ?? (scope === "repo" ? validateRepoRuntimePath("file.read", relPath) : null);
   if (invalid) {
@@ -118,15 +127,312 @@ async function runFileRead(args: Record<string, unknown>, context: ToolExecution
     return toolResult("file.read", false, `Unsupported file.read scope: ${scope}`, { scope }, "none", "invalid_request");
   }
 
-  const text = scope === "state"
-    ? await context.store.readStateText(relPath, maxChars)
-    : await context.store.readRepoText(relPath, maxChars);
-  return toolResult("file.read", true, `Read ${scope}:${relPath} (${text.length} chars returned).`, {
+  const startLine = boundedPositiveIntegerArg(args.start_line, "start_line", 1, FILE_READ_MAX_START_LINE);
+  const maxLines = boundedPositiveIntegerArg(args.max_lines, "max_lines", FILE_READ_DEFAULT_MAX_LINES, FILE_READ_MAX_LINES);
+  const maxChars = boundedPositiveIntegerArg(args.max_chars, "max_chars", FILE_READ_DEFAULT_MAX_CHARS, FILE_READ_MAX_CHARS);
+  if (!startLine.ok) {
+    return toolResult("file.read", false, startLine.message, {
+      scope,
+      path: relPath,
+      argument: startLine.argument,
+      received: startLine.received
+    }, "none", "invalid_request");
+  }
+  if (!maxLines.ok) {
+    return toolResult("file.read", false, maxLines.message, {
+      scope,
+      path: relPath,
+      argument: maxLines.argument,
+      received: maxLines.received
+    }, "none", "invalid_request");
+  }
+  if (!maxChars.ok) {
+    return toolResult("file.read", false, maxChars.message, {
+      scope,
+      path: relPath,
+      argument: maxChars.argument,
+      received: maxChars.received
+    }, "none", "invalid_request");
+  }
+
+  const absolutePath = scope === "state"
+    ? context.store.statePath(relPath)
+    : context.store.repoPath(relPath);
+  let window: BoundedFileWindow;
+  try {
+    window = await readBoundedFileWindow(
+      absolutePath,
+      startLine.value,
+      maxLines.value,
+      maxChars.value
+    );
+  } catch (error) {
+    return toolResult("file.read", false, `file.read failed for ${scope}:${relPath}: ${errorMessage(error)}`, {
+      scope,
+      path: relPath,
+      start_line: startLine.value,
+      max_lines: maxLines.value,
+      max_chars: maxChars.value
+    }, "none", "fetch_error");
+  }
+
+  if (window.status === "not_found") {
+    return toolResult("file.read", false, `File not found: ${scope}:${relPath}`, {
+      scope,
+      path: relPath,
+      start_line: startLine.value,
+      max_lines: maxLines.value,
+      max_chars: maxChars.value
+    }, "none", "not_found");
+  }
+  if (window.status === "not_file") {
+    return toolResult("file.read", false, `Path is not a regular file: ${scope}:${relPath}`, {
+      scope,
+      path: relPath,
+      start_line: startLine.value,
+      max_lines: maxLines.value,
+      max_chars: maxChars.value
+    }, "none", "invalid_request");
+  }
+  if (window.status === "scan_limit") {
+    return toolResult("file.read", false, `file.read stopped after the bounded ${window.maxScanBytes}-byte scan limit before reaching the requested window.`, {
+      scope,
+      path: relPath,
+      start_line: startLine.value,
+      max_lines: maxLines.value,
+      max_chars: maxChars.value,
+      scanned_bytes: window.scannedBytes,
+      max_scan_bytes: window.maxScanBytes
+    }, "none", "scan_limit_exceeded");
+  }
+
+  const range = window.endLine === null
+    ? `no lines at or after line ${startLine.value}`
+    : `lines ${startLine.value}-${window.endLine}`;
+  const continuation = window.lineTruncated
+    ? "selected line was truncated; no lossless line continuation is available"
+    : window.nextStartLine === null
+      ? "end of file"
+      : `continue at line ${window.nextStartLine}`;
+  return toolResult("file.read", true, `Read ${scope}:${relPath} ${range} (${window.charsReturned} chars returned; ${continuation}).`, {
     scope,
     path: relPath,
-    max_chars: maxChars,
-    text
+    start_line: startLine.value,
+    end_line: window.endLine,
+    max_lines: maxLines.value,
+    max_chars: maxChars.value,
+    chars_returned: window.charsReturned,
+    scanned_bytes: window.scannedBytes,
+    max_scan_bytes: FILE_READ_MAX_SCAN_BYTES,
+    truncated: window.truncated,
+    truncation_reason: window.truncationReason,
+    line_truncated: window.lineTruncated,
+    has_more: window.hasMore,
+    next_start_line: window.nextStartLine,
+    text: window.text
   }, "none");
+}
+
+type BoundedPositiveInteger = {
+  ok: true;
+  value: number;
+} | {
+  ok: false;
+  argument: string;
+  received: unknown;
+  message: string;
+};
+
+function boundedPositiveIntegerArg(
+  value: unknown,
+  argument: string,
+  fallback: number,
+  maximum: number
+): BoundedPositiveInteger {
+  if (value === undefined) return { ok: true, value: fallback };
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1 || value > maximum) {
+    return {
+      ok: false,
+      argument,
+      received: value,
+      message: `${argument} must be a positive integer no greater than ${maximum}.`
+    };
+  }
+  return { ok: true, value };
+}
+
+type BoundedFileWindow = {
+  status: "not_found";
+} | {
+  status: "not_file";
+} | {
+  status: "scan_limit";
+  scannedBytes: number;
+  maxScanBytes: number;
+} | {
+  status: "ok";
+  text: string;
+  charsReturned: number;
+  scannedBytes: number;
+  endLine: number | null;
+  truncated: boolean;
+  truncationReason: "max_chars" | "max_lines" | null;
+  lineTruncated: boolean;
+  hasMore: boolean;
+  nextStartLine: number | null;
+};
+
+async function readBoundedFileWindow(
+  absolutePath: string,
+  startLine: number,
+  maxLines: number,
+  maxChars: number
+): Promise<BoundedFileWindow> {
+  let metadata;
+  try {
+    metadata = await stat(absolutePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { status: "not_found" };
+    throw error;
+  }
+  if (!metadata.isFile()) return { status: "not_file" };
+
+  let text = "";
+  let lineBuffer = "";
+  let lineBufferChars = 0;
+  let charsReturned = 0;
+  let scannedBytes = 0;
+  let currentLine = 1;
+  let returnedLines = 0;
+  let endLine: number | null = null;
+  let truncated = false;
+  let truncationReason: "max_chars" | "max_lines" | null = null;
+  let lineTruncated = false;
+  let hasMore = false;
+  let nextStartLine: number | null = null;
+  let scanLimitExceeded = false;
+  let stopped = false;
+  let pendingCarriageReturn = false;
+
+  const processToken = (token: string, isNewline: boolean): boolean => {
+    if (returnedLines >= maxLines) {
+      truncated = true;
+      truncationReason = "max_lines";
+      hasMore = true;
+      nextStartLine = currentLine;
+      return true;
+    }
+
+    const tokenBytes = Buffer.byteLength(token, "utf8");
+    if (scannedBytes + tokenBytes > FILE_READ_MAX_SCAN_BYTES) {
+      scanLimitExceeded = true;
+      return true;
+    }
+    scannedBytes += tokenBytes;
+
+    if (currentLine < startLine) {
+      if (isNewline) currentLine += 1;
+      return false;
+    }
+
+    const tokenChars = 1;
+    const remainingChars = maxChars - charsReturned;
+    lineBuffer += token;
+    lineBufferChars += tokenChars;
+    if (lineBufferChars > remainingChars) {
+      truncated = true;
+      truncationReason = "max_chars";
+      hasMore = true;
+      if (text.length > 0) {
+        nextStartLine = currentLine;
+      } else {
+        text = dropLastUnicodeToken(lineBuffer, token);
+        charsReturned = lineBufferChars - tokenChars;
+        endLine = currentLine;
+        returnedLines = 1;
+        lineTruncated = true;
+        nextStartLine = null;
+      }
+      return true;
+    }
+
+    if (isNewline) {
+      text += lineBuffer;
+      charsReturned += lineBufferChars;
+      lineBuffer = "";
+      lineBufferChars = 0;
+      returnedLines += 1;
+      endLine = currentLine;
+      currentLine += 1;
+    }
+    return false;
+  };
+
+  const stream = createReadStream(absolutePath, { encoding: "utf8" });
+  outer: for await (const rawChunk of stream) {
+    const chunk = String(rawChunk);
+    for (const codePoint of chunk) {
+      if (pendingCarriageReturn) {
+        pendingCarriageReturn = false;
+        if (codePoint === "\n") {
+          if (processToken("\r\n", true)) {
+            stopped = true;
+            break outer;
+          }
+          continue;
+        }
+        if (processToken("\r", false)) {
+          stopped = true;
+          break outer;
+        }
+      }
+
+      if (codePoint === "\r") {
+        pendingCarriageReturn = true;
+        continue;
+      }
+      if (processToken(codePoint, codePoint === "\n")) {
+        stopped = true;
+        break outer;
+      }
+    }
+  }
+
+  if (!stopped && pendingCarriageReturn) {
+    stopped = processToken("\r", false);
+  }
+
+  if (scanLimitExceeded) {
+    return {
+      status: "scan_limit",
+      scannedBytes,
+      maxScanBytes: FILE_READ_MAX_SCAN_BYTES
+    };
+  }
+
+  if (!truncated && currentLine >= startLine && returnedLines < maxLines && lineBuffer.length > 0) {
+    text += lineBuffer;
+    charsReturned += lineBufferChars;
+    returnedLines += 1;
+    endLine = currentLine;
+  }
+
+  return {
+    status: "ok",
+    text,
+    charsReturned,
+    scannedBytes,
+    endLine,
+    truncated,
+    truncationReason,
+    lineTruncated,
+    hasMore,
+    nextStartLine
+  };
+}
+
+function dropLastUnicodeToken(value: string, token: string): string {
+  return value.slice(0, value.length - token.length);
 }
 
 async function runFileWriteState(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {

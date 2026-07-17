@@ -2525,7 +2525,10 @@ Common result audit policy:
 
 ### `file.read`
 
-Reads text from repo or state scope by relative path.
+Reads text from repo or state scope by relative path. The default remains a
+bounded prefix read from line 1. Callers may provide a one-based `start_line`
+and bounded `max_lines` to read a deep source window directly after a
+`repo.search` hit.
 
 Required policy:
 
@@ -2534,7 +2537,25 @@ Required policy:
 - for `repo` scope, reject repo-local runtime state paths such as `.runtime/`,
   `.runtime-*`, `.runtime_*`, and `.local-runtime*`; use `state` scope for the
   selected state root instead
-- enforce max chars
+- accept only positive integer `start_line <= 1000000`,
+  `max_lines <= 400`, and `max_chars <= 50000`; defaults are line 1, 200
+  lines, and 12000 characters
+- stream the selected file and stop at the first line or character bound rather
+  than loading an arbitrarily large file into memory
+- stop with `scan_limit_exceeded` after 4 MiB of decoded-window scanning, even
+  when the requested `start_line` has not been reached
+- count complete Unicode code points; treat CRLF as one logical newline token,
+  and never return a split code point or a dangling carriage return
+- preserve full-line continuation when a later line would cross the character
+  bound; if the first selected line alone crosses it, return the bounded prefix
+  and mark `line_truncated=true`, `has_more=true`, and
+  `next_start_line=null` because a line-only cursor cannot recover its tail
+- return `start_line`, nullable `end_line`, `truncated`, nullable
+  `truncation_reason`, `line_truncated`, `has_more`, nullable
+  `next_start_line`, `chars_returned`, `scanned_bytes`, and
+  `max_scan_bytes` beside the bounded text
+- fail explicitly for a missing or non-file path instead of reporting an empty
+  successful read
 - side effect: `none`
 
 ### `file.write_state`

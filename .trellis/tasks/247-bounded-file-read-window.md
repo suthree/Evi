@@ -105,3 +105,33 @@ new planner, another checkpoint store, or stronger per-step governance.
 - Rollback: revert the bounded source/test/doc change through a normal PR and
   redeploy the previous stable commit. No persisted Goal schema or canonical
   event changes, so existing Goal history remains valid.
+
+## Implementation Checkpoint
+
+- The red loop was `node --import tsx --test tests/runtime_tools.test.ts`.
+  Before the repair it failed five assertions across default progress metadata,
+  deep windows, character-bound continuation, invalid arguments, and the
+  model-visible tool contract.
+- `file.read` now validates one-based `start_line`, bounded `max_lines`, and
+  bounded `max_chars`, then streams the validated repository or state file.
+  Successful results expose actual line range, character and scan counts,
+  truncation reason, lossless-continuation availability, and the next line only
+  when that cursor can preserve the unread text.
+- The stream counts complete Unicode code points, treats CRLF as one logical
+  newline token, never emits a split surrogate or dangling carriage return, and
+  stops deep-start scanning at a fixed 4 MiB decoded-byte ceiling with typed
+  `scan_limit_exceeded` evidence.
+- Missing files and non-file paths fail explicitly. Existing repo-local runtime
+  path rejection and EffectPolicy authority are unchanged; no write, event,
+  checkpoint, model, or persistence surface was added.
+- The first independent reviews found an unbounded deep-start scan, lossy
+  long-line continuation, Unicode/CRLF boundary corruption, and a newline-token
+  continuation edge. Each finding was reproduced, repaired, and covered by a
+  deterministic regression test. Final independent Standards and Spec reviews
+  both return PASS with no remaining actionable finding.
+- The focused tool suite passes 29/29. TypeScript build and `git diff --check`
+  pass. `pnpm run check` passes with 934/934 tests plus skill validation and
+  neutral-naming validation.
+- Remaining gates are PR integration, commit-bound deployment, resident
+  health/controller identity, and same-identity continuation of installed Goal
+  `goal_20260717190203_ec82a197`.
