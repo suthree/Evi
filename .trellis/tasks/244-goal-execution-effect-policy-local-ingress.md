@@ -140,7 +140,7 @@ destructive remote action, or stopped-goal resumption.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.
   Resident Web/IM/daemon paths remain explicitly legacy.
-- Twenty-three focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
+- Twenty-four focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
   pass. They cover safe execution, automatic evidence binding, exact replay,
   non-contiguous replay refusal, soft continuation, manual pause/resume,
   verification repair, observed change-identity binding, confirmation, denial,

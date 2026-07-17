@@ -329,6 +329,47 @@ test("Canonical verifier accepts exact typed commit identity followed by verific
   }
 });
 
+test("Canonical verifier rejects change none after a typed mutation observation", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const goal = await runtime.handle(start("unreported_change_start", "Do not hide an observed mutation."));
+    const verification = await new CanonicalGoalVerifier().verify({
+      goal,
+      candidate: {
+        summary: "The candidate incorrectly reports no change.",
+        change: { kind: "none", identity: "none" },
+        runtime_result: {
+          status: "healthy",
+          summary: "The runtime stayed healthy.",
+          evidence_event_ids: ["goal_event_change"]
+        },
+        residual_risks: [],
+        evidence_event_ids: ["goal_event_change"]
+      },
+      evidence: [{
+        event_id: "goal_event_change",
+        kind: "observation",
+        summary: "Wrote one bounded file.",
+        refs: ["docs/result.md"],
+        occurred_at: "2026-07-17T00:00:01.000Z",
+        operation: "write_local_repo",
+        tool: "file.write_repo",
+        ok: true,
+        change: { kind: "state_change", identity: "docs/result.md" }
+      }]
+    });
+    assert.equal(verification.status, "failed");
+    assert.equal(verification.checks.some((check) => check.id === "unreported_change"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("Canonical verifier rejects an intent-only no-change outcome", async () => {
   const fixture = await createFixture();
   try {

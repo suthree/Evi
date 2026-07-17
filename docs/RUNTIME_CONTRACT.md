@@ -322,8 +322,9 @@ Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
 effects may change authorized repo or task state, but the foreground control
 path writes no legacy queue, opportunity, episode, working-checkpoint,
 completion, iteration, SOP, skill, deployment, or learning-promotion state.
-Accepted non-empty change identities must match a typed change emitted by a
-successful tool observation. A Git commit identity additionally requires a
+Every typed change emitted by a successful tool observation must be represented
+by the accepted outcome; `change: none` is valid only when no such observation
+exists. A non-empty identity must match by kind and exact identity. A Git commit additionally requires a
 later successful verification observation; free-text substring matches and a
 model proposal without decisive observation or fail-closed policy evidence
 cannot create an accepted receipt.

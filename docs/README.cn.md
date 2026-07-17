@@ -31,8 +31,9 @@
 observation event 是事实来源。安全的本地读、绑定实际公网地址的无 query 公网读和
 可逆写可在既有本地演化授权内执行；带 query 的请求和由仓库代码控制的验证命令会暂停
 同一 Goal，等待精确 effect 确认；secret/私有数据外发、破坏性 effect 和未知 effect
-会拒绝。非空 change identity 必须精确匹配成功 observation 的类型化 change，Git commit
-还必须有其后的成功验证 observation。effect 已开始但 observation 未落盘时会进入
+会拒绝。成功 observation 一旦产生类型化 change，outcome 就不能再声称 `change: none`，
+且 kind 与 identity 必须精确匹配；Git commit 还必须有其后的成功验证 observation。
+effect 已开始但 observation 未落盘时会进入
 `effect_outcome_unknown`，重放不会猜测并重复执行。
 
 当前 cutover 只覆盖显式本地 `goal start|continue|read|pause|resume|abandon`。

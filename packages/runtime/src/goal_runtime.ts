@@ -976,14 +976,17 @@ export class CanonicalGoalVerifier implements GoalVerifier {
     const successfulObservations = input.evidence.filter((item) => item.kind === "observation" && item.ok === true);
     const deniedPolicyActions = input.evidence.filter((item) => item.kind === "action" && item.effect_decision === "deny");
     const decisiveEvidence = [...successfulObservations, ...deniedPolicyActions];
+    const observedChanges = successfulObservations.filter((item) => item.change !== undefined);
     const matchingChangeObservationIndex = input.candidate.change.kind === "none"
       ? -1
       : input.evidence.findIndex((item) => item.kind === "observation"
         && item.ok === true
         && item.change?.kind === input.candidate.change.kind
         && item.change.identity === input.candidate.change.identity);
-    const mutatingObservation = successfulObservations.some((item) => item.change !== undefined);
-    const changeIdentityBound = input.candidate.change.kind === "none" || matchingChangeObservationIndex >= 0;
+    const mutatingObservation = observedChanges.length > 0;
+    const changeIdentityBound = input.candidate.change.kind === "none"
+      ? observedChanges.length === 0
+      : matchingChangeObservationIndex >= 0;
     const postMutationVerification = input.candidate.change.kind !== "git_commit"
       || input.evidence.some((item, index) => index > matchingChangeObservationIndex
         && item.kind === "observation"
@@ -1027,6 +1030,14 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         status: "failed",
         summary: "A claimed change requires a successful mutating observation.",
         evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    if (input.candidate.change.kind === "none" && !changeIdentityBound) {
+      checks.push({
+        id: "unreported_change",
+        status: "failed",
+        summary: "A typed successful change observation cannot be omitted from the outcome.",
+        evidence_event_ids: observedChanges.map((item) => item.event_id)
       });
     }
     if (input.candidate.change.kind !== "none" && !changeIdentityBound) {
