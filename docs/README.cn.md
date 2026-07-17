@@ -67,6 +67,15 @@ Goal 中保存的 soft budget 约束一次 `continue` command，而不是整个 
 后续 `continue` 会在同一身份上开启新的有界 tranche，所以累计 `usage` 可以大于单次预算；
 view 和 checkpoint projection 会明确返回
 `budget_scope: "per_continue_command"`，避免把续跑机制误读成预算越界。
+action 的 `summary` 复用为已有的有界跨 tranche 工作综合，只保留已确认事实、未解决问题和
+为什么下一步执行当前 action。action 被观察后，GoalRuntime 会把该综合带入 checkpoint，
+并将新 observation 的 refs 与既有 refs 稳定合并、去重且只保留最新 32 条。完整工具结果
+（包括失败）仍是 event stream 中的 canonical observation，工具摘要不会覆盖工作综合。
+checkpoint 只是可重建、可能出错的工作记忆，不是证明、权限或第二套证据系统；发生冲突时
+以 canonical observation 为准。渲染 recent evidence 时，soft-budget event 只暴露中性的
+暂停事实；其中的工作综合和 selected refs 仅通过独立的 Goal checkpoint surface 进入模型。
+这个连续性机制不会扩大 recent evidence window，也不会
+增加 event schema、planner、引用矩阵或平行 completion state。
 每次 cognition call 都会把 Goal 全程累计量明确命名为 `lifetime_usage`，并单独提供当前
 `execution_budget` 的 `scope`、`limit`、`used` 和非负 `remaining`。当前 tranche 由
 active Continue command 的 canonical events 临时推导，不新增持久化预算状态；只有本轮

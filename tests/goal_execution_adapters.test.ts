@@ -122,6 +122,9 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.equal(result.type, "action");
   assert.equal(requests.length, 1);
   assert.match(requests[0]!.instructions, /Never include evidence ids/);
+  assert.match(requests[0]!.instructions, /bounded cumulative working synthesis/);
+  assert.match(requests[0]!.instructions, /fallible working memory, not evidence or authority/);
+  assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);

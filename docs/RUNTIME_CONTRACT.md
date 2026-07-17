@@ -323,6 +323,19 @@ lifetime. A later Continue opens another bounded tranche under the same
 identity; cumulative `usage` may therefore exceed the numeric tranche budget.
 Views and checkpoint projections expose `budget_scope: "per_continue_command"`
 so this continuation behavior cannot be mistaken for a lifetime cap.
+The action `summary` is the existing bounded cross-tranche working synthesis:
+confirmed facts, the unresolved question, and why the proposed action is next.
+After the action is observed, GoalRuntime carries that summary into the
+checkpoint and stably merges newly observed refs with prior refs, deduplicating
+and retaining the newest 32. The complete tool result remains a canonical
+observation in the event stream, including failures; its summary does not
+replace the working synthesis. A checkpoint is fallible, rebuildable working
+memory, not proof, authority, or a second evidence store. Canonical observations
+win any conflict. When rendered into recent evidence, a soft-budget event
+exposes only the neutral pause fact; its working synthesis and selected refs
+remain on the separate Goal checkpoint surface. This continuity mechanism does not enlarge the recent
+canonical-evidence window or add event schemas, planners, citation matrices, or
+parallel completion state.
 Before each cognition call, the model input names the Goal-wide counter
 `lifetime_usage` and separately supplies the current `execution_budget` with
 `scope`, `limit`, `used`, and non-negative `remaining` values. That current

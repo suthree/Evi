@@ -20,6 +20,7 @@ const RECEIPT_ROOT = "goals/receipts";
 const GOAL_BOUNDARY =
   "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections" as const;
 const GOAL_BUDGET_SCOPE = "per_continue_command" as const;
+const SOFT_BUDGET_EVIDENCE_SUMMARY = "Soft execution budget reached; continue the same Goal in a new tranche.";
 const ABANDON_VERIFICATION_SUMMARY = "Goal was explicitly abandoned; completion verification was not run.";
 const ABANDON_RUNTIME_SUMMARY = "No accepted outcome was activated.";
 const DEFAULT_MODEL_ROUNDS_PER_CONTINUE = 3;
@@ -430,6 +431,7 @@ interface PendingEffectInternal {
   event_id: string;
   effect_id: string;
   action_digest: string;
+  working_summary: string;
   action: EffectAction;
   decision: "allow" | "confirm";
   state: "awaiting_confirmation" | "outcome_unknown";
@@ -781,11 +783,14 @@ export class GoalRuntime {
     });
     const checkpoint = normalizeCheckpoint({
       cursor: `effect:${pending.effect_id}:observed`,
-      summary: boundedResult.summary,
+      summary: pending.working_summary,
       next_action: boundedResult.ok
         ? "Evaluate the canonical observation and continue toward an outcome."
         : "Recover from the failed tool observation before proposing completion.",
-      selected_refs: toolResultRefs(boundedResult)
+      selected_refs: mergeCheckpointRefs(
+        state.view.checkpoint.selected_refs,
+        toolResultRefs(boundedResult)
+      )
     });
     return this.appendEvent(events, {
       ...this.eventBase(state.view, command, commandDigest),
@@ -1174,6 +1179,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
           event_id: event.id,
           effect_id: event.effect_id,
           action_digest: event.action_digest,
+          working_summary: event.model_summary,
           action: event.action,
           decision: event.effect_decision.outcome,
           state: event.effect_decision.outcome === "confirm" ? "awaiting_confirmation" : "outcome_unknown",
@@ -1403,8 +1409,8 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
       return {
         event_id: event.id,
         kind: "pause",
-        summary: event.checkpoint.summary || "Soft execution budget reached.",
-        refs: event.checkpoint.selected_refs,
+        summary: SOFT_BUDGET_EVIDENCE_SUMMARY,
+        refs: [],
         occurred_at: event.occurred_at
       };
     case "goal_blocked":
@@ -1736,6 +1742,28 @@ function toolResultRefs(result: ToolResult): string[] {
     if (typeof value === "string" && value.trim() && value.length <= 1_000) refs.push(value.trim());
   }
   return unique(refs).slice(0, 32);
+}
+
+function mergeCheckpointRefs(prior: string[], current: string[]): string[] {
+  const currentRefs = uniqueNewest(current);
+  const currentSet = new Set(currentRefs);
+  const merged = [
+    ...uniqueNewest(prior).filter((ref) => !currentSet.has(ref)),
+    ...currentRefs
+  ];
+  return merged.slice(-32);
+}
+
+function uniqueNewest(values: string[]): string[] {
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index]!;
+    if (seen.has(value)) continue;
+    seen.add(value);
+    result.push(value);
+  }
+  return result.reverse();
 }
 
 function observedChange(result: ToolResult): GoalChangeIdentity | null {
