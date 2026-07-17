@@ -151,16 +151,21 @@ destructive remote action, or stopped-goal resumption.
   It constructs no `LiveAgentRunner`, task queue, episode, working checkpoint,
   completion graph, iteration, SOP, skill, deployment, or learning state.
   Resident Web/IM/daemon paths remain explicitly legacy.
-- Twenty-four focused GoalRuntime, EffectPolicy, production-adapter, and CLI tests
-  pass. They cover safe execution, automatic evidence binding, exact replay,
+- Fifty-three reviewer-targeted GoalRuntime, EffectPolicy, production-adapter,
+  tool, and CLI tests pass. They cover safe execution, automatic evidence binding, exact replay,
   non-contiguous replay refusal, soft continuation, manual pause/resume,
-  verification repair, observed change-identity binding, confirmation, denial,
-  crash-gap ambiguity, redaction, projection recovery, state isolation, command
-  label normalization, and thin CLI translation.
-- The first repository-wide run passed all 909 tests and skill validation. Its
-  only failure was neutral naming in one production cognition string; that
-  wording was corrected and the neutral naming check then passed across 127
-  implementation files. A final full check follows this checkpoint.
+  verification repair, complete long-Goal change lineage, capacity-before-effect
+  blocking, abandonment partial effects, typed control-field truncation,
+  post-commit verification pinning, confirmation, denial, crash-gap ambiguity,
+  redaction, projection recovery, state isolation, command label normalization,
+  and thin CLI translation.
+- The final repository-wide `pnpm run check` passes all 921 tests, skill
+  validation, and neutral naming validation across 127 implementation files.
+  `git diff --check` also passes.
+- Independent Standards and Spec final review of fixed commit `13c96cf` report
+  PASS with no hard actionable findings. Reviewers independently reproduced the
+  long-history, capacity, abandonment, secret-query, large-output, commit,
+  pinned-network, and verification-window boundaries before signing off.
 - A source CLI smoke in an isolated temporary state root created and read one
   GoalRuntime goal, wrote only `goals/events.jsonl` and its checkpoint
   projection, and then moved the temporary root to the system trash.
