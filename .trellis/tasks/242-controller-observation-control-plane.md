@@ -1,6 +1,6 @@
 # Task 242: Controller Observation Control Plane
 
-Status: live acceptance complete; Issue #57 closed; evidence-only integration pending
+Status: complete; Issue #57 closed; completion receipt linked through PR #61
 
 ## Identity And Ownership
 
@@ -312,3 +312,6 @@ release, publication, or resumption of the stopped legacy goal.
 - GitHub Issue #57 was closed with this compact live receipt. Task 242 acceptance
   is complete; the parent Goal and Issue #56 remain active for the next
   GoalRuntime control-plane slice.
+- Completion-evidence commit
+  `1ed8de68cc4c0c7434f1a500a232bbef4b3d2f2a` and this status update are
+  linked through evidence-only PR #61 to `develop`.
