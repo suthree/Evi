@@ -174,3 +174,13 @@ that `git -C <worktree> push` cannot execute under a false `local_write`
 declaration. Focused context/runner checks passed 126/126; the full repository
 gate again passed 873/873, active-vault skill validation, neutral naming across
 123 implementation files, and `git diff --check`.
+
+A subsequent real Evi task exhausted three attempts without creating an Issue
+or worktree and emitted `sh -lc` as a read-only Git wrapper. The observed call
+did not perform an external effect, but it proved direct external-command policy
+could be bypassed through script/interpreter indirection. The same Issue and
+task therefore receive one more fail-closed fix-forward on branch
+`codex/issue-34-command-indirection-guard`: external-write task contracts reject
+shells, general interpreters, `code.execute_node`, and package-manager exec/dlx
+carriers before execution, while direct fixed commands such as `git`, `gh`, and
+`pnpm run check` remain available.

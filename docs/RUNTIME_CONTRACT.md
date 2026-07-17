@@ -381,7 +381,10 @@ When present, the live runner exposes the same structured snapshot in the turn
 context, uses its model-round/tool budgets, and rejects a tool before execution
 when the requested effect exceeds the ceiling, the total tool-call budget is
 exhausted, an external command is not allowlisted, or a forbidden command
-argument is present. A rejection is a failed harness tool result and therefore
+argument is present. When the ceiling is `external_write`, it also rejects
+shells, general interpreters, `code.execute_node`, and package-manager exec/dlx
+indirection so external tools cannot be hidden inside script text instead of
+direct binary argv. A rejection is a failed harness tool result and therefore
 cannot support a false `done` claim. The outer task contract does not weaken the
 narrower immutable `codex.run` authority snapshot or move completion authority
 away from `main_harness`. Requests without `execution_contract` keep the legacy
