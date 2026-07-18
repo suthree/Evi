@@ -14,7 +14,7 @@ This file is model-facing guidance for Codex and other host runtimes.
 ## Local Context
 
 - Treat this repository as a local-first, single-machine runtime for a self-growing agent.
-- Start with `README.md`, `docs/INDEX.md`, and `memory/index.md`. Route from the compact indexes, search headings or identifiers first, and read only the task-relevant sections of `docs/RUNTIME_CONTRACT.md`, `docs/LOCAL_RUNTIME.md`, or `docs/LOCAL_LEARNING.md`. Use `docs/INDEX.cn.md`, `docs/README.cn.md`, and `docs/AGENTS.cn.md` as fast Simplified Chinese operator-facing overviews.
+- Start with `README.md`, `docs/INDEX.md`, and `memory/index.md`. Route from the compact indexes, search headings or identifiers first, and read only the task-relevant sections of `docs/ARCHITECTURE.md`, `docs/RUNTIME_CONTRACT.md`, `docs/LOCAL_RUNTIME.md`, or `docs/LOCAL_LEARNING.md`. Use `docs/INDEX.cn.md`, `docs/README.cn.md`, `docs/ARCHITECTURE.cn.md`, and `docs/AGENTS.cn.md` as fast Simplified Chinese operator-facing overviews.
 - Treat long documents, raw logs, episodes, and archives as on-demand evidence stores rather than resident prompt context. Keep the current goal, working checkpoint, selected refs, and verification evidence hotter than historical bodies.
 - Read `docs/ACTIVE_EXPLORATION.md` only for active-exploration, content publishing, image-generation, Xiaohongshu adapter, or feedback-capture work.
 - Read `.trellis/agents/AGENTS.md`, `.trellis/spec/engineering-delivery-contract.md`, the applicable version spec, and `.trellis/decisions.md` only when changing Trellis integration, project direction, or task governance.
@@ -25,6 +25,7 @@ This file is model-facing guidance for Codex and other host runtimes.
 | --- | --- | --- |
 | `core/soul.md` | Stable identity, values, learning stance, self-modification boundaries | Project commands, active tasks, repo-specific workflows |
 | `AGENTS.md` | Repository entrypoint, reading order, work discipline, routing rules | Detailed runtime contract or Trellis-generated context |
+| `docs/ARCHITECTURE.md` | Current module ownership, own/delegate seams, architecture pressure, and staged replacement order | Implemented behavior, product vision, or active task status |
 | `docs/RUNTIME_CONTRACT.md` | Runtime capability boundaries, core/basic capability direction, local evolution authority | Durable identity or operator personality |
 | `docs/LOCAL_LEARNING.md` | SOP, skill, active-vault, and local-learning promotion gates | Core runtime behavior changes |
 | `.trellis/` | Bounded task governance, specs, decisions, Trellis-maintained agent context | Runtime state, durable memory, active vault, skill promotion authority |

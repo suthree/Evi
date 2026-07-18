@@ -10,7 +10,10 @@
 
 当本愿景与当前实现不一致时，按以下顺序判断：
 
-1. 当前代码、[`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和 [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) 描述已经实现的行为。
+1. 当前代码、[`docs/ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)、
+   [`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和
+   [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) 描述当前模块归属与已经实现的行为；
+   当前事实最终仍以代码和 live evidence 为准。
 2. [`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) 和对应 Trellis spec 描述已经接受的当前交付目标。
 3. 本文描述更长期的产品与运行时北极星。
 4. GitHub 方向项和一个有界 Trellis task 才能激活真实实施。

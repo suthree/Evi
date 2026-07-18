@@ -3,6 +3,7 @@
 默认只加载本索引，不要预加载所有稳定文档。
 
 - Runtime 能力、harness、context、工具和边界：`docs/RUNTIME_CONTRACT.md`
+- 当前模块归属、own/delegate seam、架构压力与渐进替换顺序：`docs/ARCHITECTURE.cn.md`
 - 服务安装、健康、回滚、日志、IM 和本地运维：`docs/LOCAL_RUNTIME.md`
 - 记忆、SOP、skill、active vault、晋升、修订和退役：`docs/LOCAL_LEARNING.md`
 - 已接受的一个 Self/多个入口、按 Context 选择执行位置、多 Session、harness 和能力智能愿景：`docs/PRODUCT_VISION.cn.md`

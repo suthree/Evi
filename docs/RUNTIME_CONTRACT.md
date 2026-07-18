@@ -81,6 +81,9 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
   references.
 - `docs/README.cn.md` is the compact Simplified Chinese entrypoint for local
   operators.
+- `docs/ARCHITECTURE.md` and `docs/ARCHITECTURE.cn.md` own current module
+  placement, own/delegate seams, architecture pressure, and staged replacement
+  order. They do not prove that a proposed migration is implemented.
 - `docs/RUNTIME_CONTRACT.md` is the runtime authority.
 - `docs/LOCAL_RUNTIME.md` is command and local service guidance.
 - `docs/LOCAL_LEARNING.md` is SOP, skill, and active-vault guidance.
