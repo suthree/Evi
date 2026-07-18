@@ -1,6 +1,6 @@
 # Task 257: Goal Outcome-Driven Tool Competence
 
-Status: in progress
+Status: completed
 
 ## Identity And Ownership
 
@@ -134,4 +134,47 @@ governing self-evolution through line-count or report gates.
 
 ## Completion Evidence
 
-- Pending.
+- Activation commit `5ac0758` created this task from exact `develop` base
+  `bc66085fb3e99d7e1f66f668db55f2444588bcbe` and was pushed before
+  implementation. GitHub Issue #93 and parent Issue #56 record the operator's
+  explicit decision to resume this one bounded outcome-learning child after
+  stabilization.
+- Implementation commit `7af40e539db4e5441cffcbba3359f049369a6c44`
+  adds a pure `goal_tool_competence` projection over canonical terminal Goal
+  history. It writes no state, adds no model call or dependency, separates
+  direct tool execution results from accepted/abandoned Goal association, and
+  injects at most eight bounded historical summaries into later Goal cognition
+  as non-authoritative decision support.
+- GoalRuntime integration tests prove that action observations from an
+  unfinished Goal are absent and that a later Goal receives experience only
+  after the earlier Goal has a terminal OutcomeReceipt. Projection tests cover
+  sparse, reliable, and degraded histories; recent-failure fallback guidance;
+  deterministic ordering; hard history/tool limits; and failure-text
+  truncation.
+- Resident context no longer imports or renders Self-Evolution Scorecard,
+  Project Design Plan, or Self-Evolution Iteration. Their capability-catalog
+  advertisements, dead compaction helpers, and implementation-shaped resident
+  context tests were removed. The remaining legacy commands are explicit
+  on-demand diagnostics pending caller-based retirement.
+- Paired `docs/ENGINEERING.md` and `docs/ENGINEERING.cn.md` now own source,
+  directory, dependency, test, and documentation structure without defining
+  self-evolution authority. Domain and architecture docs distinguish direct
+  observation, Goal association, and causal attribution and record the staged
+  replacement boundary.
+- The focused seven-file command passed 227/227 tests. A local Markdown-link
+  check passed for all 15 changed/new Markdown files. `git diff --check`
+  passed. Full `pnpm run check` passed TypeScript build, 941/941 tests,
+  active-vault skill validation, and neutral naming across 129 implementation
+  files.
+- Final review recorded 896 insertions and 3,269 deletions across 27 files.
+  The change adds no dependency, lockfile, persisted schema, service, queue,
+  database, compatibility layer, or runtime-state artifact. `context.ts` was
+  reduced to 3,022 lines, `docs/RUNTIME_CONTRACT.md` to 3,919,
+  `docs/LOCAL_RUNTIME.md` to 1,854, and `tests/context_harness.test.ts` to
+  10,950; the remaining large files stay under the documented
+  no-unrelated-growth rule rather than a line-count gate.
+- GitHub Issue #93 owns final external receipts that cannot be embedded in the
+  pre-merge task commit: PR identity, merge commit, exact-commit resident
+  deployment and health, parent reconciliation, branch/worktree cleanup, and
+  Issue closure. Those effects remain part of the same supervised delivery and
+  must complete before reporting the overall task done to the operator.
