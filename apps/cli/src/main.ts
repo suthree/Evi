@@ -1612,7 +1612,6 @@ export async function main(): Promise<number> {
       provider: options.imProvider,
       channelId: options.channelId,
       scenarioId: options.scenarioId,
-      discipline: options.discipline,
       enableIm: options.requireIm,
       enableWeb: options.webEnabled,
       webHost: options.webHost,
@@ -1640,7 +1639,6 @@ export async function main(): Promise<number> {
         provider: options.imProvider,
         channelId: options.channelId,
         scenarioId: options.scenarioId,
-        discipline: options.discipline,
         enableIm: options.requireIm,
         enableWeb: options.webEnabled,
         webHost: options.webHost,
@@ -1673,7 +1671,6 @@ export async function main(): Promise<number> {
         provider: options.imProvider,
         channelId: options.channelId,
         scenarioId: options.scenarioId,
-        discipline: options.discipline,
         enableIm: options.requireIm,
         enableWeb: options.webEnabled,
         webHost: options.webHost,
@@ -1696,7 +1693,6 @@ export async function main(): Promise<number> {
         provider: options.imProvider,
         channelId: options.channelId,
         scenarioId: options.scenarioId,
-        discipline: options.discipline,
         enableIm: options.requireIm,
         enableWeb: options.webEnabled,
         webHost: options.webHost,
@@ -1740,22 +1736,15 @@ export async function main(): Promise<number> {
       })
       : null;
     if (scenario) assertRuntimeImAdapterSupported(scenario);
-    const feishuPrivateScenario = scenario?.provider === "feishu" ? scenario : null;
     const config = await loadConfig({
       configDir: options.configDir,
       stateRoot: options.stateRoot,
-      modelId: feishuPrivateScenario?.legacyPrivateModelId,
-      skipAuth: !feishuPrivateScenario
+      skipAuth: true
     });
     await serveRuntimeDaemon({
       repoRoot: options.repoRoot,
       config,
       configDir: options.configDir,
-      discipline: feishuPrivateScenario
-        ? options.discipline === "none"
-          ? feishuPrivateScenario.legacyPrivateDiscipline
-          : options.discipline
-        : undefined,
       target: "runtime",
       service: scenario
         ? {

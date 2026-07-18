@@ -116,5 +116,46 @@ There is no p2p runtime-session identity or compatibility `RunResult`.
   Conversation history, follow-up serialization, operator commands, and
   notification delivery are adapter-owned and remain in scope only as
   preserved behavior.
-- Activation, Evi Goal/effect, implementation, review, verification,
-  integration, deployment, and installed-artifact evidence remain pending.
+- Activation commit `1484988aae64b2b6fe998e93c0920e6082598f06` binds this
+  task to the named branch and worktree. Evi Goal
+  `goal_20260718005140_7c628eb6` read this task as its complete contract. Its
+  first proposed `cwd=in-worktree` was rejected by immutable repository
+  authority before any write; the same Goal corrected the location and Codex
+  confirmed the one permitted implementation effect
+  `goal_effect_20260718005237_f031a560` against that commit, branch, and
+  worktree.
+- The confirmed effect reached its 300-second observation budget after
+  introducing 17 attributable paths. It returned no valid terminal claim, so
+  Codex did not resume or replace the coding delegation. Under the task's
+  recovery rule, Codex inspected those exact paths, removed the proposed
+  compatibility alias and residual `TaskRunner` surface, repaired stale tests
+  and docs, and added explicit p2p failure plus stale-scenario service
+  regressions. This is supervisor recovery from observed local writes, not an
+  Evi completion claim.
+- Initial independent Spec/Standards reviews rejected missing Goal identity in
+  p2p error evidence, post-history objective materialization order, stale
+  current-fact outbox/operator-command wording, and two Feishu-only facades
+  with no production caller. Codex added typed `GoalIngressError` provenance,
+  materializes the objective before inbound persistence, completed provider
+  failure evidence, corrected stable docs, deleted the dead scenario/service
+  facades, and removed their stale capability refs. Standards re-review then
+  rejected using the Start view as failure status; the ingress now reads the
+  canonical latest Goal after a Continue exception and records unknown status
+  rather than stale state if that read also fails.
+- Post-fix focused verification passes across Goal ingress,
+  Feishu adapter, Web, IM adapter/config, runtime daemon, doctor, service, and
+  capabilities; the TypeScript build and `git diff --check` also pass. Full
+  `pnpm run check` passes 966/966 tests plus skill and neutral-naming
+  validation. Independent Spec and Standards/architecture re-reviews both
+  report PASS with no remaining blocker. Integration, exact-commit deployment,
+  controller handoff, installed-artifact acceptance, and live health remain
+  pending.
+- Codex offered the same Goal one bounded outcome-acceptance continuation after
+  recording the verified recovery. The first invocation used the isolated
+  worktree's tracked config and correctly failed because ignored local config
+  is root-checkout state; retrying with the canonical root config reached
+  cognition, which attempted a second malformed `codex.run` instead of
+  accepting the evidence. Codex confirmed no effect, abandoned the Goal under
+  the one-delegation contract, and preserved receipt
+  `goal_receipt_20260718011328_f2ea39c7`. Task completion therefore remains a
+  supervisor claim backed by independent checks, not an Evi Goal success.

@@ -457,7 +457,7 @@ export function getCapabilityAcceptanceAudit(
         ],
         refs: [
           "packages/runtime/src/content_daily_service.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
+          "packages/runtime/src/runtime_daemon.ts",
           ".trellis/tasks/165-active-exploration-daily-service-loop.md"
         ]
       },
@@ -946,7 +946,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         status: "implemented",
         layer: "application_slice",
         commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target runtime"],
-        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
+        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "tests/content_daily_service.test.ts"],
         boundaries: [
           "disabled by default",
           "skips duplicate same-date jobs instead of forcing replacement",
@@ -967,7 +967,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         refs: [
           "packages/runtime/src/content_feedback_refresh_service.ts",
           "packages/runtime/src/runtime_daemon.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_feedback_refresh_service.test.ts"
         ],
         boundaries: [
@@ -990,7 +989,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         refs: [
           "packages/runtime/src/content_creator_metrics_service.ts",
           "packages/runtime/src/runtime_daemon.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_creator_metrics_service.test.ts"
         ],
         boundaries: [
@@ -1045,24 +1043,24 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "each bound /run or accepted mention starts one canonical Goal, performs one bounded Continue, and returns status-aware continuation or terminal receipt guidance",
           "new runtime-session Goals write no legacy queue, task-run, provider-neutral outbox, completion, episode, iteration, SOP, skill, or deployment state",
           "provider adapters own direct delivery and provider-specific evidence with goal_id, Goal status, and receipt id; Goal failures stay out of the provider-neutral outbox",
-          "goal_cognition is the only execution-model owner for runtime-session Goals; Telegram and Discord scenario model/discipline fields do not gate startup or readiness, while Feishu keeps separately named legacy private execution settings only for p2p",
+          "goal_cognition is the only execution-model owner for all new IM Goals; stale scenario model/discipline fields parse as ignored input and do not gate startup or readiness",
           "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work or projects stale queue-worker files through current service status",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
-          "ordinary bound group messages append inbox entries only; Feishu p2p/private chat remains a separately named legacy runner ingress with history, follow-up queues, and operator commands"
+          "ordinary bound group messages append inbox entries only; allowed Feishu p2p tasks render bounded same-chat history into one Goal objective, while the adapter retains follow-up queues and operator commands"
         ]
       },
       {
         id: "feishu.private_chat",
         title: "Feishu IM sessions",
-        summary: "Receive allowed private messages through the legacy private runner, map Feishu groups to Goal-backed runtime sessions, preserve local channel evidence, and queue private-chat follow-ups in process.",
+        summary: "Receive allowed private messages and group executions through canonical Goals, preserve provider evidence, and queue private-chat follow-ups in process.",
         status: "implemented",
         commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
-          "bound group messages are inbox context by default; /run or accepted mention submits one canonical Goal without using the private runner",
-          "private chat remains explicitly legacy and must not be represented as Goal-owned",
+          "bound group messages are inbox context by default; /run or accepted mention submits one canonical Goal",
+          "each allowed private-chat task submits one canonical Goal with bounded same-chat history and records direct provider delivery evidence only",
           "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
         ]
       }
@@ -1126,7 +1124,7 @@ function entrypointsCategory(): CapabilityCategoryDraft {
           "provider-neutral IM config selection supports Feishu, Telegram, and Discord kinds; all three are implemented",
           "channel adapters own provider-specific IDs and SDK details",
           "the shared dispatcher standardizes inbound IM session routing; bound /run and accepted mentions use one canonical Goal ingress for all three providers",
-          "the daemon constructs a Goal ingress for runtime-session work and constructs a legacy private runner only for Feishu p2p/private chat",
+          "the daemon constructs one Goal ingress for Web and every IM task; it constructs no Feishu private runner",
           "the daemon starts no runtime task queue worker; historical provider outbox rows can still be drained without making the daemon a provider send adapter",
           "this slice standardizes lifecycle and status; it does not yet provide a retry broker, durable cross-process task scheduling, Telegram features beyond the long-polling Bot API adapter, or Discord features beyond the Gateway/REST bot adapter"
         ]

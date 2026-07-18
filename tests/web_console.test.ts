@@ -13,8 +13,10 @@ import {
 import { AgentStore } from "../packages/core/src/store.js";
 import {
   createGoalIngress,
+  GoalIngressError,
   renderGoalIngressPresentation,
-  type GoalIngressPort
+  type GoalIngressPort,
+  type GoalRuntimePort
 } from "../packages/runtime/src/goal_ingress.js";
 import { GoalRuntime, type GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { startRuntimeWebConsole } from "../packages/runtime/src/web_console.js";
@@ -31,6 +33,54 @@ test("Goal ingress presentation exposes terminal receipt without an invalid cont
     "Result: Session work complete.",
     "Goal goal_done is completed; no continuation command is required."
   ].join("\n"));
+});
+
+test("Goal ingress errors preserve the Goal identity created before Continue", async () => {
+  const commands: string[] = [];
+  const latest = goalView("goal_started_before_failure", {
+    status: "completed",
+    receipt: { id: "goal_receipt_latest", summary: "latest canonical view" } as GoalView["receipt"]
+  });
+  const runtime: GoalRuntimePort = {
+    async handle(command) {
+      commands.push(command.type);
+      if (command.type === "start") return goalView("goal_started_before_failure");
+      throw new Error("continue failed");
+    },
+    async read() {
+      commands.push("read");
+      return latest;
+    }
+  };
+
+  await assert.rejects(createGoalIngress(runtime).submit("preserve failed Goal identity"), (error) => {
+    assert.equal(error instanceof GoalIngressError, true);
+    assert.equal((error as GoalIngressError).goalId, "goal_started_before_failure");
+    assert.deepEqual((error as GoalIngressError).goal, latest);
+    assert.equal((error as Error).message, "continue failed");
+    return true;
+  });
+  assert.deepEqual(commands, ["start", "continue", "read"]);
+});
+
+test("Goal ingress errors leave status unknown when canonical recovery also fails", async () => {
+  const runtime: GoalRuntimePort = {
+    async handle(command) {
+      if (command.type === "start") return goalView("goal_identity_only");
+      throw new Error("continue failed");
+    },
+    async read() {
+      throw new Error("read failed");
+    }
+  };
+
+  await assert.rejects(createGoalIngress(runtime).submit("do not invent current Goal state"), (error) => {
+    assert.equal(error instanceof GoalIngressError, true);
+    assert.equal((error as GoalIngressError).goalId, "goal_identity_only");
+    assert.equal((error as GoalIngressError).goal, null);
+    assert.equal((error as Error).message, "continue failed");
+    return true;
+  });
 });
 
 test("runtime web console preserves session reads and submits one canonical Goal ingress", async () => {

@@ -152,7 +152,7 @@ test("doctor checks IM by default and reports missing Feishu app auth", async ()
   }
 });
 
-test("doctor rejects a Feishu private-chat scenario whose legacy model is absent", async () => {
+test("doctor ignores a stale Feishu scenario model when Goal cognition owns execution", async () => {
   const fixture = await createDoctorFixture({ scenarioModelId: "missing-scenario-model" });
   const previous = process.env[TEST_ENV];
   const previousFeishuAppId = process.env[TEST_FEISHU_APP_ID_ENV];
@@ -167,10 +167,11 @@ test("doctor rejects a Feishu private-chat scenario whose legacy model is absent
       stateRoot: fixture.stateRoot
     });
 
-    assert.equal(report.ok, false);
+    assert.equal(report.ok, true);
     assert.equal(check(report, "config")?.level, "ok");
-    assert.equal(check(report, "im")?.level, "error");
-    assert.match(check(report, "im")?.summary ?? "", /missing-scenario-model/);
+    assert.equal(check(report, "im")?.level, "ok");
+    assert.equal(check(report, "im")?.details?.execution_owner, "goal_cognition");
+    assert.doesNotMatch(JSON.stringify(check(report, "im")?.details), /missing-scenario-model|legacy_private/);
   } finally {
     restoreEnv(TEST_ENV, previous);
     restoreEnv(TEST_FEISHU_APP_ID_ENV, previousFeishuAppId);

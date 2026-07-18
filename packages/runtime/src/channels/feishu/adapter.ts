@@ -97,7 +97,6 @@ import {
 } from "../../../../core/src/sop_evolution_ledger.js";
 import { type RuntimeSessionSource, type RuntimeSessionRecord } from "../../../../core/src/runtime_sessions.js";
 import {
-  recordRuntimeChannelOutbound,
   recordRuntimeChannelOutboundDelivery,
   type RuntimeChannelOutboundRecord
 } from "../../../../core/src/runtime_channel_outbox.js";
@@ -121,7 +120,6 @@ import {
 } from "../../../../core/src/harness_replay.js";
 import { renderReusedSkillCoverageMarkdown } from "../../../../core/src/reused_skill_coverage.js";
 import type { SopEvolutionConfirmationGate } from "../../../../core/src/sop_confirmation_readiness.js";
-import { evidenceEventSchema, type RunResult } from "../../../../core/src/schemas.js";
 import type { SkillResolverLike } from "../../../../core/src/skill_resolver.js";
 import { AgentStore } from "../../../../core/src/store.js";
 import { utcNow } from "../../../../core/src/ids.js";
@@ -169,11 +167,16 @@ import { loadRuntimeConfigSummary, type RuntimeConfigSummary } from "../../confi
 import type { DailyContentJobResult, DailyContentJobStep } from "../../content_pipeline.js";
 import { getGovernanceStatus, type GovernanceOpportunitySummary, type GovernanceStatusResult } from "../../governance_status.js";
 import { dispatchRuntimeChannelMessage } from "../../channel_message_dispatcher.js";
-import { renderGoalIngressPresentation, type GoalIngressPort } from "../../goal_ingress.js";
+import {
+  goalFromIngressError,
+  goalIdFromIngressError,
+  renderGoalIngressPresentation,
+  type GoalIngressPort
+} from "../../goal_ingress.js";
+import type { GoalView } from "../../goal_runtime.js";
 import type { RuntimeChannelAdapter, RuntimeChannelHealth } from "../../message_gateway.js";
 import { drainRuntimeChannelOutboxForAdapter } from "../../runtime_channel_outbox_drainer.js";
 import type {
-  TaskRunner,
   FeishuChannelConfig,
   FeishuInboundEvent,
   FeishuSendResult,
@@ -223,9 +226,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   readonly channelId: string;
   private readonly config: FeishuChannelConfig;
   private readonly transport: FeishuTransport;
-  /** Feishu p2p remains a legacy private-chat runner, outside Goal ownership. */
-  private readonly legacyPrivateRunner: TaskRunner;
-  private readonly goalIngress: GoalIngressPort | null;
+  private readonly goalIngress: GoalIngressPort;
   private readonly store: AgentStore;
   private readonly vaultRoot: SkillResolverLike;
   private readonly homeRoot: string;
@@ -247,8 +248,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   constructor(args: {
     config: FeishuChannelConfig;
     transport: FeishuTransport;
-    legacyPrivateRunner: TaskRunner;
-    goalIngress?: GoalIngressPort;
+    goalIngress: GoalIngressPort;
     store: AgentStore;
     vaultRoot?: SkillResolverLike;
     homeRoot?: string;
@@ -257,8 +257,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     this.config = args.config;
     this.channelId = args.config.channelId ?? "feishu";
     this.transport = args.transport;
-    this.legacyPrivateRunner = args.legacyPrivateRunner;
-    this.goalIngress = args.goalIngress ?? null;
+    this.goalIngress = args.goalIngress;
     this.store = args.store;
     this.vaultRoot = args.vaultRoot ?? "vault";
     this.homeRoot = resolve(args.homeRoot ?? process.env.LOCAL_RUNTIME_HOME ?? resolve(homedir(), ".local-runtime"));
@@ -640,7 +639,6 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     try {
       inboundRef = await this.recordInbound(message);
       await this.sendChunksToMessage(message, this.config.ackText);
-      if (!this.goalIngress) throw new Error("Feishu runtime sessions require Goal ingress");
       const goal = await this.goalIngress.submit(renderAgentTask(message, [], session, taskText));
       const finalText = renderGoalIngressPresentation(goal);
       const outbound = await this.sendChunksToMessage(message, finalText);
@@ -708,47 +706,68 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   private async runSingleMessage(normalized: NormalizedFeishuPrivateMessage): Promise<void> {
     let inboundRef = "";
     let outboundRef = "";
+    let goal: GoalView | null = null;
     try {
       const history = await this.loadConversationHistory(normalized);
+      const objective = renderAgentTask(normalized, history);
       inboundRef = await this.recordInbound(normalized);
       await this.sendChunks(normalized.openId, this.config.ackText);
-      const task = renderAgentTask(normalized, history);
-      const result = await this.legacyPrivateRunner.runTask(task, { recallQuery: normalized.text });
-      const finalText = await this.finalTextForRun(result);
+      goal = await this.goalIngress.submit(objective);
+      const finalText = renderGoalIngressPresentation(goal);
       const outbound = await this.sendChunks(normalized.openId, finalText);
-      outboundRef = await this.recordOutbound(normalized, result, finalText, outbound, {
-        source: this.feishuSessionSource(normalized)
+      outboundRef = await this.store.writeJson(`channels/feishu/outbound/${normalized.messageId}.json`, {
+        source_message_id: normalized.messageId,
+        chat_id: normalized.chatId,
+        chat_type: normalized.chatType,
+        thread_id: normalized.threadId,
+        open_id: normalized.openId,
+        goal_id: goal.goal_id,
+        goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null,
+        text: finalText,
+        sends: outbound,
+        inbound_ref: inboundRef,
+        created_at: utcNow()
       });
-      await this.recordRunEvidence(result, {
-        inboundRef,
-        outboundRef,
-        summary: `Handled Feishu private message ${normalized.messageId}.`
+      await this.recordChannelEvent("goal_delivered", `Delivered Feishu Goal ${goal.goal_id}.`, {
+        message_id: normalized.messageId,
+        chat_id: normalized.chatId,
+        open_id: normalized.openId,
+        goal_id: goal.goal_id,
+        goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null,
+        inbound_ref: inboundRef,
+        outbound_ref: outboundRef,
+        provider_message_ids: sentMessageIds(outbound)
       });
     } catch (error) {
       const message = errorMessage(error);
+      const failedGoal = goal ?? goalFromIngressError(error);
+      const failedGoalId = failedGoal?.goal_id ?? goalIdFromIngressError(error);
       const outbound = await this.sendChunks(normalized.openId, this.config.errorText);
       outboundRef = await this.store.writeJson(`channels/feishu/errors/${normalized.messageId}.json`, {
         message_id: normalized.messageId,
+        chat_id: normalized.chatId,
         open_id: normalized.openId,
+        goal_id: failedGoalId,
+        goal_status: failedGoal?.status ?? null,
+        receipt_id: failedGoal?.receipt?.id ?? null,
         error: message,
         outbound,
+        inbound_ref: inboundRef || null,
+        provider_message_ids: sentMessageIds(outbound),
         created_at: utcNow()
-      });
-      await recordRuntimeChannelOutbound(this.store, {
-        source: this.feishuSessionSource(normalized),
-        inReplyToMessageId: normalized.messageId,
-        purpose: "error",
-        status: "sent",
-        text: this.config.errorText,
-        providerDeliveryRef: outboundRef,
-        providerMessageIds: sentMessageIds(outbound),
-        error: message
       });
       await this.recordChannelEvent("error", `Feishu message ${normalized.messageId} failed: ${message}`, {
         message_id: normalized.messageId,
+        chat_id: normalized.chatId,
         open_id: normalized.openId,
+        goal_id: failedGoalId,
+        goal_status: failedGoal?.status ?? null,
+        receipt_id: failedGoal?.receipt?.id ?? null,
         inbound_ref: inboundRef || null,
-        outbound_ref: outboundRef
+        outbound_ref: outboundRef,
+        provider_message_ids: sentMessageIds(outbound)
       });
     }
   }
@@ -882,20 +901,6 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       actorId: message.openId,
       profile
     };
-  }
-
-  private async finalTextForRun(result: RunResult): Promise<string> {
-    if (result.final_response_ref) {
-      const text = await this.store.readStateText(result.final_response_ref, 20000);
-      if (text.trim()) return text.trim();
-    }
-    return [
-      "The run completed without a final response artifact.",
-      "",
-      `Verdict: ${result.verdict}`,
-      `Session: ${result.session_id}`,
-      `Evidence refs: ${result.evidence_refs.join(", ")}`
-    ].join("\n");
   }
 
   private async handleOperatorCommand(
@@ -2560,72 +2565,6 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       open_id: message.openId
     });
     return ref;
-  }
-
-  private async recordOutbound(
-    message: NormalizedFeishuTextMessage,
-    result: RunResult,
-    text: string,
-    sends: FeishuSendResult[],
-    args: {
-      source?: RuntimeSessionSource;
-      runtimeSessionId?: string | null;
-      taskRunId?: string | null;
-    } = {}
-  ): Promise<string> {
-    const ref = await this.store.writeJson(`channels/feishu/outbound/${message.messageId}.json`, {
-      source_message_id: message.messageId,
-      chat_id: message.chatId,
-      chat_type: message.chatType,
-      thread_id: message.threadId,
-      open_id: message.openId,
-      session_id: result.session_id,
-      turn_id: result.turn_id,
-      text,
-      sends,
-      created_at: utcNow()
-    });
-    await recordRuntimeChannelOutbound(this.store, {
-      source: args.source ?? this.feishuSessionSource(message),
-      runtimeSessionId: args.runtimeSessionId ?? null,
-      taskRunId: args.taskRunId ?? null,
-      inReplyToMessageId: message.messageId,
-      purpose: "final",
-      status: "sent",
-      text,
-      providerDeliveryRef: ref,
-      providerMessageIds: sentMessageIds(sends)
-    });
-    await this.recordChannelEvent("outbound", `Sent Feishu final reply for ${message.messageId}.`, {
-      artifact_ref: ref,
-      message_id: message.messageId,
-      chat_id: message.chatId,
-      chat_type: message.chatType,
-      open_id: message.openId,
-      send_count: sends.length
-    });
-    return ref;
-  }
-
-  private async recordRunEvidence(
-    result: RunResult,
-    args: { inboundRef: string; outboundRef: string; summary: string }
-  ): Promise<void> {
-    const event = evidenceEventSchema.parse({
-      session_id: result.session_id,
-      turn_id: result.turn_id,
-      kind: "report",
-      summary: args.summary,
-      artifact_refs: [
-        args.inboundRef,
-        result.context_ref,
-        result.model_response_ref,
-        result.envelope_ref,
-        ...(result.final_response_ref ? [result.final_response_ref] : []),
-        args.outboundRef
-      ]
-    });
-    await this.store.appendJsonl("memory/episodes/events.jsonl", event);
   }
 
   private async recordChannelEvent(kind: string, summary: string, data: Record<string, unknown>): Promise<void> {

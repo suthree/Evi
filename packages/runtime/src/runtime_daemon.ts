@@ -11,10 +11,9 @@ import { createContentFeedbackRefreshLoop } from "./content_feedback_refresh_ser
 import { RuntimeMessageGateway, type RuntimeChannelAdapter, type RuntimeChannelHealth } from "./message_gateway.js";
 import { createRuntimeImAdapter } from "./im_adapters.js";
 import type { ImScenarioConfig } from "./im_config.js";
-import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "./model.js";
+import { OpenAICompatibleImageClient } from "./model.js";
 import { createReviewTickLoop } from "./review_tick_service.js";
 import { createConfiguredGoalIngress, type GoalIngressPort } from "./goal_ingress.js";
-import { LiveAgentRunner, type DisciplineMode } from "./runner.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 import { startRuntimeWebConsole, type RuntimeWebConsoleHandle } from "./web_console.js";
 import { XiaohongshuMcpClient } from "./xiaohongshu_mcp.js";
@@ -25,7 +24,6 @@ export interface RuntimeDaemonOptions {
   repoRoot: string;
   config: RuntimeConfig;
   configDir?: string;
-  discipline?: DisciplineMode;
   target?: RuntimeDaemonTarget;
   service?: {
     channelId?: string;
@@ -55,16 +53,6 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   const repoRoot = resolve(args.repoRoot);
   const store = new AgentStore(repoRoot, args.config.state.root);
   const imEnabled = args.im?.enabled !== false && Boolean(args.im?.scenario);
-  const legacyPrivateRunner = imEnabled && args.im?.scenario?.provider === "feishu"
-    ? new LiveAgentRunner({
-        repoRoot,
-        stateRoot: args.config.state.root,
-        config: args.config,
-        configDir: args.configDir,
-        model: new OpenAICompatibleClient(args.config.model),
-        discipline: args.discipline ?? "query_todo"
-      })
-    : null;
   const adapters: RuntimeChannelAdapter[] = [];
 
   if (imEnabled && args.im?.scenario) {
@@ -76,7 +64,6 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     adapters.push(createRuntimeImAdapter({
       scenario: args.im.scenario,
       goalIngress,
-      legacyPrivateRunner: legacyPrivateRunner ?? undefined,
       store,
       vaultRoot: args.config.vault,
       homeRoot: args.config.home.root,
