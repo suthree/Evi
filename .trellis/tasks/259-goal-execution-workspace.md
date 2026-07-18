@@ -1,6 +1,6 @@
 # Task 259: Goal Execution Workspace Binding
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -166,3 +166,32 @@ Pre-live implementation checkpoint on 2026-07-18:
 - `git diff --check` passed. No live-runtime or Feishu acceptance claim has yet
   been made; Issue #97 and Task 259 remain active until merged exact-commit
   deployment and the fresh resident Goal probe succeed.
+
+Final integration and live checkpoint on 2026-07-18:
+
+- PR #98 merged to `develop` as
+  `20bac86a7cedfd247ee080bd500a71f7f4d4254a`. A fresh check at that merge
+  commit passed 969/969 tests, active Skill validation, and neutral naming
+  across 132 implementation files. GitHub had no configured remote checks, so
+  no CI claim was made.
+- Deployment `deployment_20260718145612_20bac86a7ced` reached `stable`.
+  Independent service health then reported `healthy`, `deployment=current`,
+  runtime commit equal to repository HEAD, and Feishu inbound `connected`.
+  Basic-entrypoint acceptance was re-verified at the same commit.
+- Real Feishu provider message `om_x100b6a8d13a678a4b3b4ff62f9b1711`
+  created fresh Goal `goal_20260718150351_75e190af`. Cognition dynamically
+  selected `workspace.prepare`; canonical observation
+  `goal_event_20260718150408_1cb6e060` bound the exact requested branch and
+  base in the derived sibling worktree. Terminal receipt
+  `goal_receipt_20260718150421_6f25c942` recorded no repository changes.
+- A read-only probe against the installed runtime artifact and that Goal
+  checkpoint showed `workspace.prepare` absent after binding,
+  `codex.run` ready, and dynamic rather than keyword-mapped selection.
+- Both terminal live-probe worktrees and the merged implementation worktree
+  were clean before their exact local worktrees and branches were removed.
+  GitHub Issue #97 closed with linked source, deployment, live, negative, and
+  cleanup evidence.
+- Live provider presentation exposed a separate next-child gap: canonical
+  status was `completed` while model-authored receipt prose contained
+  `status=active`. Task 260 owns same-Goal provider control and lifecycle
+  presentation; it does not reopen this completed workspace Module.
