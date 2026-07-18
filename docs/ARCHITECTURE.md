@@ -1,8 +1,9 @@
 # Evi Architecture
 
 Status: current module ownership and staged migration direction, updated on
-2026-07-18 after the stabilization audit and the first outcome-learning
-consolidation. Source, tests, and live evidence decide current implementation.
+2026-07-18 after the stabilization audit, the first outcome-learning
+consolidation, and the dynamic capability-selection seam. Source, tests, and
+live evidence decide current implementation.
 
 The Simplified Chinese companion is
 [`docs/ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md).
@@ -37,10 +38,9 @@ or owner, update this document and its Chinese companion in the same delivery.
    observe-decide-act-verify-learn loop plus a small bootstrap tool surface.
    Do not copy its unrestricted `code_run` authority or promote every task into
    a skill.
-2. **Own judgment, delegate execution.** Evi owns why, when, under which
-   authority, and whether a result is accepted. Codex, browsers, operating
-   systems, sandboxes, connectors, and specialist SaaS own their execution
-   engines.
+2. **Own outcomes, select execution dynamically.** Evi owns why, when, under
+   which authority, how results are checked, and whether they are accepted. It
+   is the capability orchestrator, not the default specialist worker.
 3. **Build deep modules.** A module earns its place when a small interface hides
    substantial behavior and gives callers leverage and maintainers locality.
 4. **Use real seams.** Do not add an adapter interface for hypothetical
@@ -66,21 +66,26 @@ or owner, update this document and its Chinese companion in the same delivery.
 CLI / Web / IM
       |
       v
-Goal ingress -> GoalRuntime -> cognition proposal
-                     |              |
-                     v              v
-              EffectPolicy -> tool execution
-                     |              |
-                     +---- observations
-                              |
-                              v
-                   verification / receipt
-                              |
-                    +---------+----------+
-                    |                    |
-              operator result     bounded tool competence
-                                         |
-                                  later Goal cognition
+Goal ingress -> GoalRuntime
+                    |
+                    v
+           Capability Portfolio
+                    |
+                    v
+           cognition selection
+                    |
+                    v
+GoalRuntime validation -> EffectPolicy -> selected execution
+                                                |
+                                                v
+                                   canonical observations
+                                                |
+                                                v
+                                     verification / receipt
+                                         |             |
+                                   operator result  bounded competence
+                                                       |
+                                                later Goal cognition
 ```
 
 The flow is intentionally one-way in ownership: entry adapters submit work;
@@ -99,6 +104,7 @@ own the Self or completion.
 | Context compilation | `packages/core/src/context.ts`, `context_budget.ts`, runtime context manifest | Bounded rendered snapshot plus provenance and omissions | Raw archive ownership or ambient full recall |
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
+| Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded candidates, readiness, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
 | Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
 | Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts; derived projections remain rebuildable | Product direction or automatic truth promotion |
@@ -111,18 +117,32 @@ state code remains. It is on-demand compatibility/history, not resident
 context, capability-selection authority, or another current execution owner.
 Removal requires a later bounded issue with caller and operator-need evidence.
 
-## Own, Reuse, Delegate
+## Dynamic Capability Selection
 
-| Capability | Evi owns | Preferred execution | Do not build by default |
-| --- | --- | --- | --- |
-| File read/write/search | Path authority, bounded contract, effect decision, evidence | Native filesystem primitives and mature search tools such as `rg` | A general filesystem, duplicate search index, or editor |
-| Coding | Goal, repository authority, acceptance, tests, evidence | Codex or another bounded coding adapter | Another coding agent inside Evi |
-| Browser/search | Query intent, private-data boundary, selected evidence, acceptance | Browser controller, search provider, or connector | A browser engine, crawler platform, or ambient web memory |
-| Shell/dynamic code | Semantic effect, confirmation, expected output, evidence | OS/container/sandbox host | Treating cwd, env filtering, timeout, or output limits as confinement |
-| External SaaS/data | Goal and data-egress authority, result contract, verification | MCP/app/provider adapter near the data | Provider-specific behavior in the core |
-| Memory/search | Scope, provenance, selection, promotion, freshness, retirement | Existing filesystem/SQLite/search libraries behind local policy | A new vector database without measured retrieval need |
-| UI/IM | One-Self binding, channel identity, operator visibility | Thin Web/IM/host adapters | A second runtime, planner, or state owner per surface |
-| Skills/SOPs | Trigger, reusable procedure, outcome evidence, trust and lifecycle | Existing skill formats and delegated tools | Automatic skill creation from task length or one success |
+Architecture owns the decision boundary, not a task-to-tool routing table. On
+each cognition turn, GoalRuntime supplies a bounded Capability Portfolio built
+from current tool contracts and constraints, readiness under the bound
+authority, selected skills, and evidence-derived competence. Cognition chooses
+one capability and states its purpose, rationale, verification plan, fallback,
+and any selected skill refs. GoalRuntime validates that selection before
+EffectPolicy or dispatch.
+
+Direct tools and delegated executors describe execution roles, not fixed task
+categories. Direct action remains appropriate for bounded orientation,
+verification, recovery, or a genuinely atomic task. Specialist production is
+normally delegated when a suitable executor is available. Readiness, evidence,
+risk, cost, reversibility, and verifiability may change the choice; no keyword
+map decides it. If no credible capability is available, Evi blocks or chooses
+an explicit verifiable fallback instead of silently becoming the worker.
+
+The stable ownership split is:
+
+| Decision concern | Owner |
+| --- | --- |
+| Goal, authority, evidence requirement, and acceptance | Evi / GoalRuntime |
+| Candidate discovery and bounded decision context | Capability Portfolio |
+| Capability choice and declared purpose | Goal cognition, validated by GoalRuntime |
+| Specialist execution internals | The selected tool, host, adapter, or delegated surface |
 
 ## Reference Audit
 

@@ -200,7 +200,6 @@ export async function readLatestSelectedSkillOutcomeSummaries(
   store: AgentStore,
   limit: number
 ): Promise<SelectedSkillOutcomeHistorySummary[]> {
-  await store.ensureLayout();
   const summaries = await readSelectedSkillOutcomeSummaries(store);
   return summaries.slice(0, Math.max(0, limit));
 }

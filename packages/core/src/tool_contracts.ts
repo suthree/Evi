@@ -5,6 +5,7 @@ export interface ToolContract {
   side_effect_level: ToolSideEffectLevel;
   rationale: string;
   arguments: Record<string, unknown>;
+  constraints?: string[];
 }
 
 export const coreToolContracts: ToolContract[] = [
@@ -18,7 +19,13 @@ export const coreToolContracts: ToolContract[] = [
       start_line: 1,
       max_lines: 200,
       max_chars: 12000
-    }
+    },
+    constraints: [
+      "path must be repository- or state-root relative and must not contain ..",
+      "start_line must be an integer from 1 through 1000000",
+      "max_lines must be an integer from 1 through 400",
+      "max_chars must be an integer from 1 through 50000"
+    ]
   },
   {
     tool: "file.write_state",
@@ -48,7 +55,11 @@ export const coreToolContracts: ToolContract[] = [
       globs: ["*.ts", "*.md"],
       max_results: 20,
       max_output_chars: 12000
-    }
+    },
+    constraints: [
+      "query and path stay inside the repository and exclude runtime-state roots",
+      "result count and returned text are bounded"
+    ]
   },
   {
     tool: "http.fetch",
@@ -77,7 +88,12 @@ export const coreToolContracts: ToolContract[] = [
       env: {
         X: "test"
       }
-    }
+    },
+    constraints: [
+      "cwd must resolve to repo or state scope",
+      "timeout, output cap, purpose, and semantic side-effect intent are required",
+      "verification purpose counts only after process success and unchanged harness snapshots"
+    ]
   },
   {
     tool: "codex.run",
@@ -113,7 +129,12 @@ export const coreToolContracts: ToolContract[] = [
       },
       thread_id: "UUID,resume",
       authority_digest: "SHA-256,resume"
-    }
+    },
+    constraints: [
+      "GoalRuntime new requests use model=auto and reasoning_effort=auto",
+      "execution requires the Goal-bound isolated linked worktree, branch, Git common directory, and start HEAD",
+      "delegated output is untrusted until GoalRuntime records canonical observations and independent verification"
+    ]
   },
   {
     tool: "code.execute_node",

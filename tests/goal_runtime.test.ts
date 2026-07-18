@@ -6,6 +6,10 @@ import { dirname, join, relative } from "node:path";
 import test from "node:test";
 import { AgentStore } from "../packages/core/src/store.js";
 import type { EffectAction } from "../packages/runtime/src/effect_policy.js";
+import type {
+  GoalCapabilityPortfolioProvider,
+  GoalCapabilitySelection
+} from "../packages/runtime/src/goal_capability_portfolio.js";
 import {
   CanonicalGoalVerifier,
   GoalRuntime,
@@ -100,9 +104,10 @@ test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal 
       goal_id: second.goal_id
     });
 
-    assert.deepEqual(cognition.calls[0]!.tool_competence, []);
-    assert.deepEqual(cognition.calls[1]!.tool_competence, []);
-    assert.deepEqual(cognition.calls[2]!.tool_competence.map((item) => ({
+    assert.equal(capabilityCompetence(cognition.calls[0]!, "file.read"), null);
+    assert.equal(capabilityCompetence(cognition.calls[1]!, "file.read"), null);
+    const competence = capabilityCompetence(cognition.calls[2]!, "file.read")!;
+    assert.deepEqual([competence].map((item) => ({
       tool: item.tool,
       observations: item.observation_count,
       successes: item.success_count,
@@ -115,7 +120,101 @@ test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal 
       accepted: 1,
       abandoned: 0
     }]);
-    assert.match(cognition.calls[2]!.tool_competence[0]!.boundary, /not causal attribution/);
+    assert.match(competence.boundary, /not causal attribution/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects invalid capability selections before policy or tool dispatch", async () => {
+  const scenarios: Array<{
+    name: string;
+    cognition: GoalCognitionResult;
+    expected: RegExp;
+  }> = [{
+    name: "action mismatch",
+    cognition: action("file.read", { scope: "repo", path: "README.md" }, "Read one bounded file.", {
+      capability_id: "repo.search"
+    }),
+    expected: /does not match action tool/i
+  }, {
+    name: "unavailable delegated executor",
+    cognition: action("codex.run", {
+      worktree: ".",
+      task: "Implement one bounded change in the current repository.",
+      model: "auto",
+      reasoning_effort: "auto",
+      purpose: "execute"
+    }, "Delegate specialist execution.", {
+      capability_id: "codex.run",
+      execution_purpose: "specialist_execution"
+    }),
+    expected: /currently unavailable/i
+  }, {
+    name: "unselected skill",
+    cognition: action("file.read", { scope: "repo", path: "README.md" }, "Read with one selected procedure.", {
+      skill_refs: ["skills/not-selected/SKILL.md"]
+    }),
+    expected: /unselected skill/i
+  }];
+
+  for (const scenario of scenarios) {
+    const fixture = await createFixture();
+    try {
+      const tools = recordingTools();
+      const runtime = createRuntime(fixture.store, {
+        cognition: sequenceCognition([scenario.cognition]),
+        tools,
+        verifier: new CanonicalGoalVerifier()
+      });
+      const started = await runtime.handle(start(`capability_${scenario.name.replaceAll(" ", "_")}_start`, scenario.name));
+      const blocked = await runtime.handle({
+        type: "continue",
+        command_id: `capability_${scenario.name.replaceAll(" ", "_")}_continue`,
+        goal_id: started.goal_id
+      });
+
+      assert.equal(blocked.status, "active");
+      assert.equal(blocked.checkpoint.cursor, "capability_selection_invalid");
+      assert.match(blocked.checkpoint.summary, scenario.expected);
+      assert.equal(tools.calls.length, 0);
+      const events = await readEvents(fixture.stateRoot);
+      assert.equal(events.some((event) => event.event_type === "goal_action_planned"), false);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});
+
+test("GoalRuntime treats capability discovery failure as a zero-model blocked checkpoint", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([outcome("Capability discovery should fail before cognition.")]);
+    const tools = recordingTools();
+    const capabilityPortfolioProvider: GoalCapabilityPortfolioProvider = {
+      async resolve() {
+        throw new Error("fixture capability registry unavailable");
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier(),
+      capabilityPortfolioProvider
+    });
+    const started = await runtime.handle(start("capability_provider_failure_start", "Fail capability discovery safely."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "capability_provider_failure_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(blocked.status, "active");
+    assert.equal(blocked.checkpoint.cursor, "capability_portfolio_failed");
+    assert.match(blocked.checkpoint.summary, /fixture capability registry unavailable/);
+    assert.deepEqual(blocked.usage, { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 });
+    assert.equal(cognition.calls.length, 0);
+    assert.equal(tools.calls.length, 0);
   } finally {
     await fixture.cleanup();
   }
@@ -312,6 +411,9 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
         remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 9_980 }
       }
     ]);
+    const plannedEvidence = cognition.calls[1]!.evidence.find((item) => item.kind === "action")!;
+    assert.match(plannedEvidence.details ?? "", /"capability_id":"file\.read"/);
+    assert.match(plannedEvidence.details ?? "", /"execution_purpose":"atomic_task"/);
     assert.deepEqual(completed.usage, { model_rounds: 2, tool_calls: 1, elapsed_ms: 30 });
     const events = await readEvents(fixture.stateRoot);
     assert.deepEqual(events.map((event) => event.event_type), [
@@ -320,6 +422,14 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
       "goal_action_observed",
       "goal_completed"
     ]);
+    assert.deepEqual(events[1]!.capability_selection, {
+      capability_id: "file.read",
+      execution_purpose: "atomic_task",
+      skill_refs: [],
+      rationale: "Use the current file.read capability for this bounded step.",
+      verification_plan: "Inspect the canonical observation before choosing the next step or accepting an outcome.",
+      fallback: "Block with the observed failure and choose an explicit available fallback."
+    });
     assert.deepEqual(
       completed.receipt?.evidence_event_ids,
       events.map((event) => event.id)
@@ -335,6 +445,40 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
     assert.equal(tools.calls.length, 1);
     assert.equal(cognition.calls.length, 2);
     assert.deepEqual(await snapshotFiles(fixture.stateRoot), beforeReplay);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime replays historical planned events without capability selection metadata", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.read", { scope: "repo", path: "README.md" }, "Read one historical fixture."),
+        outcome("Historical fixture completed.")
+      ]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("legacy_selection_start", "Keep old action events replayable."));
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "legacy_selection_continue",
+      goal_id: started.goal_id
+    });
+    const events = await readEvents(fixture.stateRoot);
+    const planned = events.find((event) => event.event_type === "goal_action_planned")!;
+    delete planned.capability_selection;
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+
+    const replayed = await runtime.read(started.goal_id);
+    assert.equal(replayed.status, "completed");
+    assert.deepEqual(replayed.receipt, completed.receipt);
   } finally {
     await fixture.cleanup();
   }
@@ -1698,15 +1842,16 @@ test("Query-bearing outbound confirmation exposes the exact proposed request", a
   }
 });
 
-test("Denied effects are canonical observations of policy and never dispatch", async () => {
+test("Denied known effects are canonical observations of policy and never dispatch", async () => {
   const fixture = await createFixture();
   try {
     const tools = recordingTools();
     const runtime = createRuntime(fixture.store, {
       cognition: sequenceCognition([
-        action("unknown.tool", { token: "must-not-persist", payload: "ignored" }, "Unknown effect."),
-        action("http.fetch", { url: "https://example.com/data?api_key=TOP_SECRET_VALUE" }, "Secret egress must fail closed."),
-        outcome("未知 effect 已被拒绝，目标没有产生副作用。")
+        action("http.fetch", {
+          url: "https://example.com/data?api_key=TOP_SECRET_VALUE&token=must-not-persist"
+        }, "Secret egress must fail closed."),
+        outcome("敏感外发 effect 已被拒绝，目标没有产生副作用。")
       ]),
       tools,
       verifier: new CanonicalGoalVerifier()
@@ -1919,12 +2064,35 @@ function start(commandId: string, objective: string): GoalCommand & { type: "sta
   };
 }
 
-function action(tool: string, args: Record<string, unknown>, summary: string): GoalCognitionResult {
+function action(
+  tool: string,
+  args: Record<string, unknown>,
+  summary: string,
+  selection: Partial<GoalCapabilitySelection> = {}
+): GoalCognitionResult {
+  const executionPurpose: GoalCapabilitySelection["execution_purpose"] = tool === "codex.run"
+    ? "specialist_execution"
+    : args.purpose === "verification"
+      ? "verification"
+      : "atomic_task";
   return {
     type: "action",
     summary,
+    capability_selection: {
+      capability_id: tool,
+      execution_purpose: executionPurpose,
+      skill_refs: [],
+      rationale: `Use the current ${tool} capability for this bounded step.`,
+      verification_plan: "Inspect the canonical observation before choosing the next step or accepting an outcome.",
+      fallback: "Block with the observed failure and choose an explicit available fallback.",
+      ...selection
+    },
     action: { tool, arguments: args }
   };
+}
+
+function capabilityCompetence(input: GoalCognitionInput, capabilityId: string) {
+  return input.capability_portfolio.capabilities.find((item) => item.id === capabilityId)?.competence ?? null;
 }
 
 function outcome(summary: string, runtimeStatus: "healthy" | "degraded" = "healthy"): GoalCognitionResult {
@@ -2012,7 +2180,12 @@ function failedVerification(input: GoalVerificationInput, summary: string): Goal
 
 function createRuntime(
   store: AgentStore,
-  args: { cognition: GoalCognition; tools: GoalToolExecutor; verifier: GoalVerifier },
+  args: {
+    cognition: GoalCognition;
+    tools: GoalToolExecutor;
+    verifier: GoalVerifier;
+    capabilityPortfolioProvider?: GoalCapabilityPortfolioProvider;
+  },
   namespace = ""
 ): GoalRuntime {
   const counts = new Map<string, number>();
@@ -2023,6 +2196,7 @@ function createRuntime(
     cognition: args.cognition,
     toolExecutor: args.tools,
     verifier: args.verifier,
+    capabilityPortfolioProvider: args.capabilityPortfolioProvider,
     idFactory(prefix) {
       const count = (counts.get(prefix) ?? 0) + 1;
       counts.set(prefix, count);

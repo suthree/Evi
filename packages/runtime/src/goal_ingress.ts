@@ -6,6 +6,7 @@ import {
   ConfiguredGoalCognition,
   RuntimeGoalToolExecutor
 } from "./goal_execution_adapters.js";
+import { ConfiguredGoalCapabilityPortfolioProvider } from "./goal_capability_portfolio.js";
 import {
   CanonicalGoalVerifier,
   GoalRuntime,
@@ -92,6 +93,10 @@ export async function createConfiguredGoalRuntime(options: ConfiguredGoalRuntime
   return new GoalRuntime({
     store,
     cognition: new ConfiguredGoalCognition({
+      configDir: selectors.configDir,
+      stateRoot: selectors.stateRoot
+    }),
+    capabilityPortfolioProvider: new ConfiguredGoalCapabilityPortfolioProvider(store, {
       configDir: selectors.configDir,
       stateRoot: selectors.stateRoot
     }),
