@@ -164,15 +164,7 @@ import {
   type ServiceAction,
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
-import {
-  DeploymentControllerHandoffRequiredError,
-  getLocalDeploymentStatus,
-  handoffDeploymentController,
-  listLocalDeployments,
-  reconcileLocalDeploymentBaseline,
-  reportLocalDeploymentFailure,
-  requestLocalDeployment
-} from "../../../packages/runtime/src/deployment.js";
+import { runDeploymentCommand } from "./deployment_command.js";
 import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
 import { createConfiguredGoalIngress } from "../../../packages/runtime/src/goal_ingress.js";
@@ -1623,104 +1615,26 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "deployment") {
-    const action = options.deploymentAction ?? "status";
-    const selectors = await resolveServiceConfigSelectors({
-      target: options.serviceTarget,
+    return runDeploymentCommand({
+      action: options.deploymentAction,
       configDir: options.configDir,
-      stateRoot: options.stateRoot
+      repoRoot: options.repoRoot,
+      stateRoot: options.stateRoot,
+      limit: options.limit,
+      serviceTarget: options.serviceTarget,
+      provider: options.imProvider,
+      channelId: options.channelId,
+      scenarioId: options.scenarioId,
+      enableIm: options.requireIm,
+      enableWeb: options.webEnabled,
+      webHost: options.webHost,
+      webPort: options.webPort,
+      deploymentId: options.deploymentId,
+      repairOf: options.deploymentRepairOf,
+      verificationRefs: options.deploymentVerificationRefs,
+      evidenceRefs: options.deploymentEvidenceRefs,
+      reason: options.reason
     });
-    if (action === "request") {
-      const definition = await resolveServiceDefinition({
-        action: "restart",
-        target: options.serviceTarget,
-        configDir: options.configDir,
-        repoRoot: options.repoRoot,
-        stateRoot: selectors.stateRoot,
-        provider: options.imProvider,
-        channelId: options.channelId,
-        scenarioId: options.scenarioId,
-        enableIm: options.requireIm,
-        enableWeb: options.webEnabled,
-        webHost: options.webHost,
-        webPort: options.webPort
-      }, true);
-      try {
-        const result = await requestLocalDeployment(definition, {
-          verificationRefs: options.deploymentVerificationRefs,
-          repairOf: options.deploymentRepairOf
-        });
-        console.log(JSON.stringify({ action, ...result }, null, 2));
-        return 0;
-      } catch (error) {
-        if (!(error instanceof DeploymentControllerHandoffRequiredError)) throw error;
-        console.log(JSON.stringify({
-          action,
-          code: error.code,
-          controller_readiness: error.readiness
-        }, null, 2));
-        return 1;
-      }
-    }
-    if (action === "reconcile") {
-      const definition = await resolveServiceDefinition({
-        action: "status",
-        target: options.serviceTarget,
-        configDir: options.configDir,
-        repoRoot: options.repoRoot,
-        stateRoot: selectors.stateRoot,
-        provider: options.imProvider,
-        channelId: options.channelId,
-        scenarioId: options.scenarioId,
-        enableIm: options.requireIm,
-        enableWeb: options.webEnabled,
-        webHost: options.webHost,
-        webPort: options.webPort
-      }, false);
-      const result = await reconcileLocalDeploymentBaseline(definition, {
-        reason: required(options.reason, "deployment reconcile requires --reason"),
-        verificationRefs: options.deploymentVerificationRefs
-      });
-      console.log(JSON.stringify({ action, ...result }, null, 2));
-      return 0;
-    }
-    if (action === "controller-handoff") {
-      const definition = await resolveServiceDefinition({
-        action: "status",
-        target: options.serviceTarget,
-        configDir: options.configDir,
-        repoRoot: options.repoRoot,
-        stateRoot: selectors.stateRoot,
-        provider: options.imProvider,
-        channelId: options.channelId,
-        scenarioId: options.scenarioId,
-        enableIm: options.requireIm,
-        enableWeb: options.webEnabled,
-        webHost: options.webHost,
-        webPort: options.webPort
-      }, false);
-      const result = await handoffDeploymentController(definition);
-      console.log(JSON.stringify(result, null, 2));
-      return result.ok ? 0 : 1;
-    }
-    if (action === "fail") {
-      const result = await reportLocalDeploymentFailure(selectors.stateRoot, {
-        deploymentId: options.deploymentId,
-        reason: required(options.reason, "deployment fail requires --reason"),
-        evidenceRefs: options.deploymentEvidenceRefs
-      });
-      console.log(JSON.stringify({ action, ...result }, null, 2));
-      return 0;
-    }
-    if (action === "history") {
-      console.log(JSON.stringify({
-        action,
-        boundary: "read-only local deployment history",
-        deployments: await listLocalDeployments(selectors.stateRoot, options.limit)
-      }, null, 2));
-      return 0;
-    }
-    console.log(JSON.stringify({ action, ...await getLocalDeploymentStatus(selectors.stateRoot) }, null, 2));
-    return 0;
   }
 
   if (options.command === "daemon") {

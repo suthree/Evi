@@ -39,16 +39,20 @@ command dispatch and delegates the deployment command once.
   deployment APIs remain the owner of ledger state and transitions.
 - Authoritative inputs are parsed CLI options and existing local service
   selectors/definitions. Command output remains derived from those APIs.
-- Existing CLI parser tests and deployment-supervisor tests are regression
-  evidence; any added tests target observable module behavior, not an internal
-  forwarding sequence.
+- Existing CLI parser, controller-handoff, and deployment-supervisor tests are
+  supporting regression evidence, but they do not exercise the new CLI module
+  boundary. Add a focused `tests/deployment_command.test.ts` (or an equally
+  narrow replacement) that invokes the public deployment command Interface and
+  asserts CLI-visible JSON/exit or error behavior for safe representative
+  paths. Do not copy the module's internal forwarding sequence into tests.
 - Rollback is a normal revert of the source commit; no runtime state is
   touched by this work.
 
 ## Verification And Budgets
 
-- Run targeted CLI/deployment tests, TypeScript build, `git diff --check`, and
-  full `pnpm run check`.
+- Run the new deployment-command boundary test plus targeted CLI/controller/
+  deployment tests, TypeScript build, `git diff --check`, and full
+  `pnpm run check`.
 - Inspect the final diff for one deployment execution owner and no accidental
   change outside the stated scope.
 - One main owner; no subagents, retries, deployment, push, PR, merge, or
@@ -63,3 +67,24 @@ command dispatch and delegates the deployment command once.
 - Prior Task260 has merged/deployed/live closure evidence at exact `develop`
   commit `a0f5ce17195c5d884606c29ea8be90a751cc9a17` before this activation.
 - This task file and Task260 status closure are the only activation changes.
+
+## Pre-Commit Verification Evidence
+
+- Real Feishu Goal `goal_20260718155814_357c4361` dynamically bound this
+  worktree and delegated the source implementation to Codex. GoalRuntime later
+  read the new module and test, inspected the `main.ts` diff and full Git
+  status, and independently verified the owner boundary rather than accepting
+  the delegated result as completion.
+- `tests/deployment_command.test.ts` passed 2/2 and exercises the public module
+  Interface for default status, read-only history JSON/exit behavior, and the
+  existing missing-reason error.
+- Existing CLI parsing tests passed 78/78 and deployment supervisor tests passed
+  15/15 through canonical Goal command observations with unchanged Git
+  snapshots.
+- After adding the boundary test, `pnpm run check` passed on 2026-07-18:
+  TypeScript build, 978/978 tests, active Skill validation, and neutral naming
+  across 132 implementation files. `git diff --check` also passed.
+- Codex's linked-worktree sandbox could modify source but could not write the
+  shared Git metadata needed for a commit. The main harness therefore owns the
+  exact local commit handoff; this does not widen Codex sandbox authority or
+  change the four-file implementation scope.
