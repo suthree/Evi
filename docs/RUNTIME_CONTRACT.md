@@ -556,7 +556,10 @@ delivery compatibility. The queue implementation remains a historical/manual
 compatibility surface; it is not an ingress owner, resident scheduler, remote
 broker, cancellation system, or multi-process scheduler. New Goal failures
 also stay out of the provider-neutral outbox and are recorded only in the
-provider adapter's error evidence.
+provider adapter's error evidence. Current service manifests and `service status`
+do not expose the retired queue worker; an old
+`services/runtime/task_queue.json` file may remain as historical evidence but
+is not current component state.
 
 Historical legacy queue rows may retain an explicit `execution_contract` for
 one operator-confirmed task. The append-only queue read model preserves that

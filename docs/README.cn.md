@@ -377,7 +377,9 @@ receipt 摘要和续作指令。新 session Goal 不写 task queue、task-run �
 历史 queue/task-run/outbox 仍可只读，已排队的 Feishu/Telegram/Discord provider row
 仍可由对应 Adapter 兼容投递。真实发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不
 属于当前 channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询
-反复处理。
+反复处理。当前 service manifest 与 `service status` 也不再暴露已退役的 queue
+worker；磁盘上遗留的 `services/runtime/task_queue.json` 只作为历史证据存在，不代表
+当前常驻组件状态。
 
 daemon 停止时会先停止 resident loops；heartbeat 若已有写入进行中，会先等待该写入，
 再落盘最终 `stopping`/`stopped`，避免 stop 返回后出现延迟 heartbeat 状态写入。

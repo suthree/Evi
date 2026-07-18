@@ -1046,7 +1046,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "new runtime-session Goals write no legacy queue, task-run, provider-neutral outbox, completion, episode, iteration, SOP, skill, or deployment state",
           "provider adapters own direct delivery and provider-specific evidence with goal_id, Goal status, and receipt id; Goal failures stay out of the provider-neutral outbox",
           "goal_cognition is the only execution-model owner for runtime-session Goals; Telegram and Discord scenario model/discipline fields do not gate startup or readiness, while Feishu keeps separately named legacy private execution settings only for p2p",
-          "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work",
+          "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work or projects stale queue-worker files through current service status",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
           "ordinary bound group messages append inbox entries only; Feishu p2p/private chat remains a separately named legacy runner ingress with history, follow-up queues, and operator commands"
