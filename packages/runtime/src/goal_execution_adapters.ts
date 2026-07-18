@@ -1,5 +1,6 @@
 import { newId } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
+import { resolveGoalToolStorePlacement } from "../../core/src/tool_contracts.js";
 import type {
   GoalCognition,
   GoalCognitionInput,
@@ -199,16 +200,9 @@ function goalToolStore(
   context?: GoalToolExecutionContext
 ): AgentStore {
   const executionRoot = context?.execution_workspace?.authority.repo_root;
-  if (!executionRoot || !usesRepositoryScope(action)) return controlStore;
+  if (!executionRoot
+    || resolveGoalToolStorePlacement(action.tool, action.arguments) !== "execution") return controlStore;
   return new AgentStore(executionRoot, controlStore.stateRoot);
-}
-
-function usesRepositoryScope(action: Parameters<GoalToolExecutor["execute"]>[0]): boolean {
-  if (action.tool === "file.read") return action.arguments.scope !== "state";
-  if (action.tool === "command.run") return action.arguments.cwd !== "state";
-  return action.tool === "file.write_repo"
-    || action.tool === "repo.search"
-    || action.tool === "codex.run";
 }
 
 function extractJsonObject(text: string): string {

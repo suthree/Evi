@@ -149,6 +149,12 @@ state-scoped tools retain the original state root and Continue/Resume still
 validate the control checkout. Preparation is lazy and evidence-gated, not an
 ingress side effect, keyword route, or automatic per-task scheduler.
 
+The core tool contract also owns each tool's Goal store-placement metadata.
+The execution adapter resolves dynamic `scope`/`cwd` placement from that shared
+contract instead of maintaining another tool-name routing list. This metadata
+selects only control versus execution storage; it does not classify tasks or
+grant effect authority.
+
 The stable ownership split is:
 
 | Decision concern | Owner |

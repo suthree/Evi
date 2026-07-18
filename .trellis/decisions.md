@@ -13,6 +13,9 @@ Decision:
 - `workspace.prepare` is a dynamically selected placement capability. It may
   create one fresh `codex/issue-N-slug` linked worktree from the exact control
   start HEAD only after EffectPolicy allows the recorded semantic intent;
+- its arguments are strict, branch ownership and the derived path are acquired
+  before Git checkout, and failed-attempt cleanup reports uncertainty rather
+  than deleting concurrent artifacts or swallowing cleanup errors;
 - one successful canonical tool observation is the sole source of the Goal's
   derived execution-workspace projection. Later repo-scoped tools and
   `codex.run` use that workspace after live authority checks; state-scoped tools
@@ -36,8 +39,9 @@ Authority and supersession:
 Verification and recovery:
 
 - real-Git interface tests cover creation, strict branch/base/control checks,
-  replay, second-prepare rejection, repo-versus-state scoping, and exact cleanup
-  after a checkout-hook failure;
+  concurrent acquisition, replay, forged-main observation rejection,
+  second-prepare rejection, repo-versus-state scoping, and exact cleanup after
+  a checkout-hook failure;
 - GoalRuntime tests keep the control checkout authoritative while proving later
   repo actions and confirmed `codex.run` resolve against the execution workspace;
 - rollback is a normal revert. No state migration is required because the

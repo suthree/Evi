@@ -33,6 +33,7 @@ import {
 } from "../../core/src/workspace_status.js";
 import { isPrivateNetworkHost, type EffectAction } from "./effect_policy.js";
 import {
+  prepareGoalExecutionWorkspaceArgumentsSchema,
   prepareGoalExecutionWorkspace,
   type GoalToolExecutionContext as GoalWorkspaceToolExecutionContext
 } from "./goal_execution_workspace.js";
@@ -138,6 +139,10 @@ async function runWorkspacePrepare(
   args: Record<string, unknown>,
   context: ToolExecutionContext
 ): Promise<ToolResult> {
+  const parsedArgs = prepareGoalExecutionWorkspaceArgumentsSchema.safeParse(args);
+  if (!parsedArgs.success) {
+    return toolResult("workspace.prepare", false, "workspace.prepare requires only a strict branch and base_commit.", {}, "local_reversible", "invalid_request");
+  }
   if (!context.goal) {
     return toolResult("workspace.prepare", false, "workspace.prepare requires GoalRuntime execution context.", {}, "local_reversible", "invalid_request");
   }
@@ -150,8 +155,8 @@ async function runWorkspacePrepare(
     const executionWorkspace = await prepareGoalExecutionWorkspace({
       goal_id: context.goal.goal_id,
       control_authority: context.goal.control_repository_authority,
-      branch: stringValue(args.branch),
-      base_commit: stringValue(args.base_commit)
+      branch: parsedArgs.data.branch,
+      base_commit: parsedArgs.data.base_commit
     });
     return toolResult("workspace.prepare", true, `Prepared Goal execution workspace ${executionWorkspace.authority.branch}.`, {
       execution_workspace: executionWorkspace

@@ -24,6 +24,7 @@ import {
 } from "../packages/runtime/src/goal_runtime.js";
 import type { ToolResult } from "../packages/runtime/src/tools.js";
 import { RuntimeGoalToolExecutor } from "../packages/runtime/src/goal_execution_adapters.js";
+import { GOAL_EXECUTION_WORKSPACE_BOUNDARY } from "../packages/runtime/src/goal_execution_workspace.js";
 
 test("GoalRuntime binds new goals to one Git worktree authority", async () => {
   const fixture = await createFixture();
@@ -128,6 +129,20 @@ test("GoalRuntime derives one execution workspace and scopes later repo tools wi
 
     const replayed = await runtime.read(started.goal_id);
     assert.deepEqual(replayed.execution_workspace, observed.execution_workspace);
+
+    const canonicalEvents = await readEvents(fixture.stateRoot);
+    const prepareIntent = canonicalEvents.find((event) => event.event_type === "goal_action_planned"
+      && (event.action as { tool?: string } | undefined)?.tool === "workspace.prepare") as {
+        action?: { arguments?: { branch?: string } };
+      } | undefined;
+    assert.ok(prepareIntent?.action?.arguments);
+    prepareIntent.action.arguments.branch = "codex/issue-97-corrupted-replay";
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${canonicalEvents.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+    await assert.rejects(runtime.read(started.goal_id), /action digest mismatch|execution workspace does not match/i);
   } finally {
     await fixture.cleanup();
   }
@@ -162,6 +177,66 @@ test("GoalRuntime rejects a second execution workspace selection before another 
     assert.equal(blocked.execution_workspace?.authority.branch, branch);
     assert.equal((await goalGitValue(fixture.repoRoot, ["worktree", "list", "--porcelain"]))
       .split(/\r?\n/).filter((line) => line.startsWith("worktree ")).length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects a successful workspace observation that points back to the control checkout", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const branch = "codex/issue-97-forged-control";
+    const cognition = sequenceCognition([
+      action("workspace.prepare", { branch, base_commit: baseCommit }, "Reject a forged main-checkout binding.")
+    ]);
+    const tools: GoalToolExecutor = {
+      async execute(effectAction, _decision, context) {
+        assert.equal(effectAction.tool, "workspace.prepare");
+        return {
+          id: "tool_result_forged_workspace",
+          tool: "workspace.prepare",
+          ok: true,
+          summary: "Forged workspace observation.",
+          output: {
+            execution_workspace: {
+              schema_version: 1,
+              goal_id: context.goal_id,
+              control_start_head_commit: context.control_repository_authority.start_head_commit,
+              authority: context.control_repository_authority,
+              boundary: GOAL_EXECUTION_WORKSPACE_BOUNDARY
+            }
+          },
+          side_effect_level: "local_reversible",
+          created_at: "2026-07-17T00:10:00.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const startCommand = start("forged_workspace_start", "Reject non-isolated workspace observations.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 1 };
+    const started = await runtime.handle(startCommand);
+    const observed = await runtime.handle({
+      type: "continue",
+      command_id: "forged_workspace_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(observed.execution_workspace, null);
+    const events = await readEvents(fixture.stateRoot);
+    const actionObserved = events.find((event) => event.event_type === "goal_action_observed") as {
+      result?: { ok?: boolean; summary?: string; output?: { failure_kind?: string } };
+    } | undefined;
+    assert.equal(actionObserved?.result?.ok, false);
+    assert.equal(actionObserved?.result?.output?.failure_kind, "workspace_prepare_observation_invalid");
+    assert.match(actionObserved?.result?.summary ?? "", /observation was rejected/i);
   } finally {
     await fixture.cleanup();
   }

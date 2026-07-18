@@ -14,7 +14,7 @@ import type { GoalExecutionWorkspace } from "./goal_execution_workspace.js";
 import type { GoalRepositoryAuthority } from "./repository_authority.js";
 import type { GoalToolCompetence } from "./goal_tool_competence.js";
 
-export const MAX_GOAL_CAPABILITIES = 8;
+export const MAX_GOAL_CAPABILITIES = 9;
 export const MAX_GOAL_SELECTED_SKILLS = 2;
 export const MAX_GOAL_SELECTED_SKILL_BODY_CHARS = 2_400;
 

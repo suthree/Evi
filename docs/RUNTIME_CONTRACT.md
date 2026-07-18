@@ -2035,16 +2035,21 @@ router, VCS control plane, or delivery workflow.
 Required policy:
 
 - require GoalRuntime execution context; standalone calls fail closed
+- accept only the strict `branch` and `base_commit` fields; unknown fields are
+  denied before dispatch
 - accept only a fresh `codex/issue-N-slug` branch and the exact immutable
-  control-authority start HEAD as `base_commit`
+  control-authority start HEAD as `base_commit`; current control HEAD must still
+  equal that start HEAD at preparation time
 - require the control authority to be a clean, unchanged main checkout and the
   target `.worktrees/<branch-basename>` path to be Git-ignored and absent
-- create the branch and registered linked worktree in one bounded operation,
-  then live-validate repository root, Git common directory, branch, and base
+- atomically acquire the fresh branch, reserve the derived path, create the
+  registered linked worktree, then live-validate repository root, exact derived
+  worktree path, Git common directory, branch, and base
 - return one typed `execution_workspace`; GoalRuntime derives it only from the
   successful canonical observation and rejects a second preparation
-- on preparation failure, remove only the exact newly registered worktree and
-  branch when both can still be proven to match the requested base
+- on preparation failure, remove only a path and branch whose ownership was
+  acquired by that attempt; preserve concurrent artifacts and report incomplete
+  rollback instead of swallowing cleanup errors
 - do not mutate the state root, create a workspace registry, choose a task
   class, run Codex, commit, push, merge, deploy, or claim completion
 - semantic effect: reversible `prepare_local_workspace`; malformed shapes are

@@ -25,6 +25,7 @@ import {
 } from "./repository_authority.js";
 import {
   assertGoalExecutionWorkspace,
+  prepareGoalExecutionWorkspaceArgumentsSchema,
   type GoalExecutionWorkspace,
   type GoalToolExecutionContext
 } from "./goal_execution_workspace.js";
@@ -927,7 +928,7 @@ export class GoalRuntime {
         created_at: this.now()
       };
     }
-    result = validateWorkspacePrepareObservation(pending.action, state.view, result);
+    result = await validateWorkspacePrepareObservation(pending.action, state.view, result);
     const boundedResult = boundedToolResult(result);
     const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
     const toolUsage = normalizeUsage({
@@ -1539,10 +1540,18 @@ function deriveGoalExecutionWorkspace(
     if (event.event_type !== "goal_action_observed"
       || event.result.tool !== "workspace.prepare"
       || !event.result.ok) continue;
+    const intent = events.find((candidate) => candidate.id === event.intent_event_id);
+    if (!intent
+      || intent.event_type !== "goal_action_planned"
+      || intent.action.tool !== "workspace.prepare") {
+      throw new Error(`GoalRuntime execution workspace observation has no matching preparation intent: ${event.id}`);
+    }
+    const args = prepareGoalExecutionWorkspaceArgumentsSchema.parse(intent.action.arguments);
     const workspace = assertGoalExecutionWorkspace(
       event.result.output.execution_workspace,
       goalId,
-      control
+      control,
+      args
     );
     if (selected) {
       throw new Error(`GoalRuntime history contains more than one successful execution workspace binding: ${goalId}`);
@@ -1569,20 +1578,23 @@ function goalToolExecutionContext(view: GoalView): GoalToolExecutionContext {
   };
 }
 
-function validateWorkspacePrepareObservation(
+async function validateWorkspacePrepareObservation(
   action: EffectAction,
   view: GoalView,
   result: ToolResult
-): ToolResult {
+): Promise<ToolResult> {
   if (action.tool !== "workspace.prepare" || !result.ok) return result;
   try {
     if (!view.repository_authority) throw new Error("Goal has no control repository authority");
     if (view.execution_workspace) throw new Error("Goal already has an execution workspace");
-    assertGoalExecutionWorkspace(
+    const args = prepareGoalExecutionWorkspaceArgumentsSchema.parse(action.arguments);
+    const workspace = assertGoalExecutionWorkspace(
       result.output.execution_workspace,
       view.goal_id,
-      view.repository_authority
+      view.repository_authority,
+      args
     );
+    await assertGoalRepositoryAuthority(workspace.authority, workspace.authority.repo_root);
     return result;
   } catch (error) {
     return {

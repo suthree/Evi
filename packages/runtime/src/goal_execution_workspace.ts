@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { lstat, mkdir, realpath } from "node:fs/promises";
+import { lstat, mkdir, realpath, rmdir } from "node:fs/promises";
 import { basename, resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -11,6 +11,15 @@ import {
 
 const execFileAsync = promisify(execFile);
 const BRANCH_PATTERN = /^codex\/issue-[1-9][0-9]*-[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/;
+
+export const prepareGoalExecutionWorkspaceArgumentsSchema = z.object({
+  branch: z.string().regex(BRANCH_PATTERN, "workspace.prepare branch must match codex/issue-N-slug"),
+  base_commit: z.string().regex(/^[a-f0-9]{40}$/)
+}).strict();
+
+export type PrepareGoalExecutionWorkspaceArguments = z.infer<
+  typeof prepareGoalExecutionWorkspaceArgumentsSchema
+>;
 
 export const GOAL_EXECUTION_WORKSPACE_BOUNDARY =
   "one Goal-bound sibling linked worktree derived from canonical preparation evidence; no registry, cleanup scheduler, or completion authority" as const;
@@ -32,6 +41,11 @@ export interface PrepareGoalExecutionWorkspaceInput {
   base_commit: string;
 }
 
+export interface ExpectedGoalExecutionWorkspace {
+  branch: string;
+  base_commit: string;
+}
+
 export interface GoalToolExecutionContext {
   goal_id: string;
   control_repository_authority: GoalRepositoryAuthority;
@@ -47,11 +61,12 @@ export async function prepareGoalExecutionWorkspace(
 ): Promise<GoalExecutionWorkspace> {
   const goalId = required(input.goal_id, "workspace.prepare requires a Goal id");
   const control = goalRepositoryAuthoritySchema.parse(input.control_authority);
-  const branch = required(input.branch, "workspace.prepare requires a branch");
-  const baseCommit = required(input.base_commit, "workspace.prepare requires a base_commit");
-  if (!BRANCH_PATTERN.test(branch)) {
-    throw new Error("workspace.prepare branch must match codex/issue-N-slug");
-  }
+  const args = prepareGoalExecutionWorkspaceArgumentsSchema.parse({
+    branch: input.branch,
+    base_commit: input.base_commit
+  });
+  const branch = args.branch;
+  const baseCommit = args.base_commit;
   if (baseCommit !== control.start_head_commit) {
     throw new Error("workspace.prepare base_commit must equal the Goal control start HEAD");
   }
@@ -61,7 +76,8 @@ export async function prepareGoalExecutionWorkspace(
   if (liveControl.repo_root !== control.repo_root
     || liveControl.git_common_dir !== control.git_common_dir
     || liveControl.worktree !== control.worktree
-    || liveControl.branch !== control.branch) {
+    || liveControl.branch !== control.branch
+    || liveControl.start_head_commit !== control.start_head_commit) {
     throw new Error("workspace.prepare control repository authority changed");
   }
   if (await realpath(resolve(controlRoot, ".git")) !== control.git_common_dir) {
@@ -88,10 +104,14 @@ export async function prepareGoalExecutionWorkspace(
   }
   await mkdir(worktreeRoot, { recursive: true });
 
-  let commandAttempted = false;
+  let ownedBranch = false;
+  let reservedPath = false;
   try {
-    commandAttempted = true;
-    await git(controlRoot, ["worktree", "add", "-b", branch, worktreePath, baseCommit]);
+    await git(controlRoot, ["branch", branch, baseCommit]);
+    ownedBranch = true;
+    await mkdir(worktreePath);
+    reservedPath = true;
+    await git(controlRoot, ["worktree", "add", worktreePath, branch]);
     const authority = await inspectGoalRepositoryAuthority(worktreePath);
     if (authority.git_common_dir !== control.git_common_dir
       || authority.branch !== branch
@@ -106,21 +126,40 @@ export async function prepareGoalExecutionWorkspace(
       boundary: GOAL_EXECUTION_WORKSPACE_BOUNDARY
     });
   } catch (error) {
-    if (commandAttempted) await rollbackCreatedWorkspace(controlRoot, worktreePath, branch, baseCommit);
-    throw new Error(`workspace.prepare failed: ${errorMessage(error)}`);
+    const rollbackFailures = await rollbackCreatedWorkspace(
+      controlRoot,
+      worktreePath,
+      branch,
+      baseCommit,
+      { ownedBranch, reservedPath }
+    );
+    const rollbackSummary = rollbackFailures.length > 0
+      ? ` Rollback incomplete: ${rollbackFailures.join("; ")}`
+      : "";
+    throw new Error(`workspace.prepare failed: ${errorMessage(error)}${rollbackSummary}`);
   }
 }
 
 export function assertGoalExecutionWorkspace(
   value: unknown,
   goalId: string,
-  control: GoalRepositoryAuthority
+  control: GoalRepositoryAuthority,
+  expected?: ExpectedGoalExecutionWorkspace
 ): GoalExecutionWorkspace {
   const workspace = goalExecutionWorkspaceSchema.parse(value);
+  const branch = workspace.authority.branch;
+  const expectedPath = resolve(control.repo_root, ".worktrees", basename(branch));
   if (workspace.goal_id !== goalId
     || workspace.control_start_head_commit !== control.start_head_commit
     || workspace.authority.git_common_dir !== control.git_common_dir
-    || workspace.authority.start_head_commit !== control.start_head_commit) {
+    || workspace.authority.start_head_commit !== control.start_head_commit
+    || workspace.authority.repo_root !== workspace.authority.worktree
+    || workspace.authority.repo_root === control.repo_root
+    || workspace.authority.repo_root !== expectedPath
+    || !BRANCH_PATTERN.test(branch)
+    || (expected !== undefined
+      && (branch !== expected.branch
+        || workspace.authority.start_head_commit !== expected.base_commit))) {
     throw new Error("execution workspace does not match the Goal control authority");
   }
   return workspace;
@@ -136,18 +175,65 @@ async function rollbackCreatedWorkspace(
   controlRoot: string,
   worktreePath: string,
   branch: string,
-  baseCommit: string
-): Promise<void> {
-  const registered = (await gitText(controlRoot, ["worktree", "list", "--porcelain"]).catch(() => ""))
-    .split(/\r?\n/)
-    .some((line) => line === `worktree ${worktreePath}`);
-  if (registered) {
-    await git(controlRoot, ["worktree", "remove", "--force", worktreePath]).catch(() => undefined);
+  baseCommit: string,
+  ownership: { ownedBranch: boolean; reservedPath: boolean }
+): Promise<string[]> {
+  const failures: string[] = [];
+  let registered: boolean;
+  try {
+    registered = registeredWorktree(
+      await gitText(controlRoot, ["worktree", "list", "--porcelain"]),
+      worktreePath
+    );
+  } catch (error) {
+    failures.push(`could not inspect worktree registration: ${errorMessage(error)}`);
+    return failures;
   }
-  const branchHead = await gitText(controlRoot, ["rev-parse", "--verify", `refs/heads/${branch}`]).catch(() => "");
-  if (registered && branchHead === baseCommit) {
-    await git(controlRoot, ["branch", "-D", branch]).catch(() => undefined);
+  if (ownership.reservedPath && registered) {
+    try {
+      await git(controlRoot, ["worktree", "remove", "--force", worktreePath]);
+    } catch (error) {
+      failures.push(`could not remove registered worktree: ${errorMessage(error)}`);
+    }
   }
+  if (ownership.reservedPath && !registered && await pathExists(worktreePath)) {
+    try {
+      await rmdir(worktreePath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        failures.push(`could not remove reserved worktree path: ${errorMessage(error)}`);
+      }
+    }
+  }
+  let stillRegistered: boolean;
+  try {
+    stillRegistered = registeredWorktree(
+      await gitText(controlRoot, ["worktree", "list", "--porcelain"]),
+      worktreePath
+    );
+  } catch (error) {
+    failures.push(`could not recheck worktree registration: ${errorMessage(error)}`);
+    return failures;
+  }
+  let branchHead: string;
+  try {
+    branchHead = await gitText(controlRoot, ["rev-parse", "--verify", `refs/heads/${branch}`]);
+  } catch (error) {
+    if (ownership.ownedBranch) failures.push(`could not inspect owned branch: ${errorMessage(error)}`);
+    return failures;
+  }
+  if (ownership.ownedBranch && !stillRegistered && branchHead === baseCommit) {
+    try {
+      await git(controlRoot, ["branch", "-D", branch]);
+    } catch (error) {
+      failures.push(`could not remove owned branch: ${errorMessage(error)}`);
+    }
+  }
+  return failures;
+}
+
+function registeredWorktree(porcelain: string, worktreePath: string): boolean {
+  return porcelain.split(/\r?\n/).some((line) => line === `worktree ${worktreePath}`);
 }
 
 async function pathExists(path: string): Promise<boolean> {

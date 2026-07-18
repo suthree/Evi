@@ -121,6 +121,10 @@ Skill，以及从证据派生的 Competence。Cognition 选择一个能力，并
 state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控制 checkout。
 准备过程是惰性、证据门控的，不是入口副作用、关键词路由或每任务自动调度器。
 
+核心工具契约同时拥有各工具的 Goal store-placement 元数据。执行 Adapter 从这份共享契约
+解析动态 `scope`/`cwd` 落点，不再维护另一份工具名路由清单。这份元数据只选择 control
+或 execution storage；它不做任务分类，也不授予 effect 权限。
+
 稳定的所有权拆分是：
 
 | 决策关注点 | Owner |

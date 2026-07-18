@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { z } from "zod";
+import { prepareGoalExecutionWorkspaceArgumentsSchema } from "./goal_execution_workspace.js";
 
 const shortTextSchema = z.string().trim().min(1).max(2_000);
 const toolSchema = z.string().trim().min(1).max(128);
@@ -153,14 +154,14 @@ function classifyEffect(action: EffectAction): EffectIntent {
 }
 
 function workspacePrepareIntent(args: Record<string, unknown>): EffectIntent {
-  const branch = stringValue(args.branch);
-  const baseCommit = stringValue(args.base_commit);
-  const target = `workspace:${branch || "(missing)"}@${baseCommit || "(missing)"}`;
-  if (!/^codex\/issue-[1-9][0-9]*-[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(branch)
-    || !/^[a-f0-9]{40}$/.test(baseCommit)) {
-    return intent("unknown", target, "unknown", "none");
-  }
-  return intent("prepare_local_workspace", target, "reversible", "none");
+  const parsed = prepareGoalExecutionWorkspaceArgumentsSchema.safeParse(args);
+  if (!parsed.success) return intent("unknown", "workspace:(invalid)", "unknown", "none");
+  return intent(
+    "prepare_local_workspace",
+    `workspace:${parsed.data.branch}@${parsed.data.base_commit}`,
+    "reversible",
+    "none"
+  );
 }
 
 function localReadIntent(scope: string, path: string): EffectIntent {

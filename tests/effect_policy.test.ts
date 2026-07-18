@@ -46,6 +46,14 @@ test("EffectPolicy allows only a strictly shaped reversible workspace preparatio
     tool: "workspace.prepare",
     arguments: { branch: "feature/unsafe", base_commit: "a".repeat(40) }
   }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "workspace.prepare",
+    arguments: {
+      branch: "codex/issue-97-effect-policy",
+      base_commit: "a".repeat(40),
+      path: "/tmp/operator-supplied"
+    }
+  }).outcome, "deny");
 });
 
 test("EffectPolicy classifies command semantics instead of model side-effect labels", () => {

@@ -94,9 +94,11 @@ ingress classifier or second Goal is introduced.
 - Preparation is a bounded reversible local mutation. EffectPolicy names it
   separately from destructive cleanup; the tool cannot remove existing
   worktrees or branches.
-- A failed creation inspects only the exact derived branch/path and removes
-  artifacts created by that attempt when their identity is still provable.
-  Pre-existing branches, paths, and worktrees are never overwritten.
+- The strict argument schema rejects unknown fields before dispatch. Branch
+  ownership and the derived directory are acquired before checkout. A failed
+  creation removes only artifacts owned by that attempt when their identity is
+  still provable; concurrent, pre-existing, or uncertain artifacts are
+  preserved and incomplete rollback is reported.
 - Event parsing is additive. No historical event or receipt migration and no
   dual write are allowed.
 - Source rollback is a normal revert PR and exact-commit redeploy. A live
@@ -113,8 +115,10 @@ ingress classifier or second Goal is introduced.
   planner, queue, scheduler, database, workspace registry, or alternate Goal
   owner.
 - Do not resume, rewrite, or complete the stopped historical Goal.
-- One Issue, one task, one branch/worktree, one PR, and no subagents. Retry only
-  a concrete failing check, review finding, integration, or deployment step.
+- One Issue, one task, one branch/worktree, one PR, and no implementation
+  subagents. Independent read-only Standards/Spec reviewers are permitted by
+  the repository review Skill; they own no code or integration. Retry only a
+  concrete failing check, review finding, integration, or deployment step.
 
 ## Verification And Completion
 
@@ -144,11 +148,18 @@ Pre-live implementation checkpoint on 2026-07-18:
   observation, keeps the original control authority and state root, rejects a
   second selection, and live-validates both authorities before later execution.
 - Capability Portfolio exposes `workspace.prepare` only while meaningful,
-  flips `codex.run` readiness after binding, retains its eight-candidate bound,
-  and adds no keyword mapping or persisted owner.
-- Focused real-Git, Portfolio, and GoalRuntime suite: 46 tests passed.
-- Full `pnpm run check`: build passed; 965 tests passed; 0 failed; active Skill
+  flips `codex.run` readiness after binding, keeps the candidate set bounded
+  without displacing an existing core tool, and adds no keyword mapping or
+  persisted owner.
+- Focused real-Git, Portfolio, and GoalRuntime suite: 48 tests passed.
+- Full `pnpm run check`: build passed; 968 tests passed; 0 failed; active Skill
   validation passed; neutral naming passed across 131 implementation files.
+- The first independent Standards/Spec review found canonical isolation,
+  strict-argument, concurrent rollback-ownership, duplicated branch rule, and
+  store-placement drift risks. The implementation now uses one strict shared
+  schema, observation/action/derived-path/live-authority checks, atomic branch
+  plus path ownership with explicit cleanup failure, and contract-owned store
+  placement; focused probes cover each regression before re-review.
 - `git diff --check` passed. No live-runtime or Feishu acceptance claim has yet
   been made; Issue #97 and Task 259 remain active until merged exact-commit
   deployment and the fresh resident Goal probe succeed.

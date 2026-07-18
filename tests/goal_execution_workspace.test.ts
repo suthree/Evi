@@ -72,6 +72,16 @@ test("execution workspace Module rejects invalid branch, base, dirty control, an
       base_commit: control.start_head_commit
     }), /branch already exists/);
     assert.equal(await pathExists(join(fixture.repoRoot, ".worktrees", "issue-97-existing-branch")), false);
+
+    await writeFile(join(fixture.repoRoot, "advanced.txt"), "advanced\n", "utf8");
+    await git(fixture.repoRoot, ["add", "advanced.txt"]);
+    await git(fixture.repoRoot, ["commit", "-qm", "advance control"]);
+    await assert.rejects(prepareGoalExecutionWorkspace({
+      goal_id: "goal_workspace_advanced_control",
+      control_authority: control,
+      branch: "codex/issue-97-advanced-control",
+      base_commit: control.start_head_commit
+    }), /control repository authority changed/);
   } finally {
     await fixture.cleanup();
   }
@@ -117,6 +127,28 @@ test("execution workspace Module rejects an unignored derived root without mutat
 
     assert.notEqual(await gitExit(fixture.repoRoot, ["show-ref", "--verify", `refs/heads/${branch}`]), 0);
     assert.equal(await pathExists(join(fixture.repoRoot, ".worktrees", "issue-97-unignored-root")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("execution workspace Module keeps the one concurrently acquired branch and worktree", async () => {
+  const fixture = await createFixture();
+  try {
+    const control = await inspectGoalRepositoryAuthority(fixture.repoRoot);
+    const branch = "codex/issue-97-concurrent-owner";
+    const attempts = await Promise.allSettled([1, 2].map((index) => prepareGoalExecutionWorkspace({
+      goal_id: `goal_workspace_concurrent_${index}`,
+      control_authority: control,
+      branch,
+      base_commit: control.start_head_commit
+    })));
+
+    assert.equal(attempts.filter((attempt) => attempt.status === "fulfilled").length, 1);
+    assert.equal(attempts.filter((attempt) => attempt.status === "rejected").length, 1);
+    assert.equal(await gitText(fixture.repoRoot, ["rev-parse", "--verify", `refs/heads/${branch}`]), control.start_head_commit);
+    assert.match(await gitText(fixture.repoRoot, ["worktree", "list", "--porcelain"]), /issue-97-concurrent-owner/);
+    assert.equal(await pathExists(join(fixture.repoRoot, ".worktrees", "issue-97-concurrent-owner")), true);
   } finally {
     await fixture.cleanup();
   }

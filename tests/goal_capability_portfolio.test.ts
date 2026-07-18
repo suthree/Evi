@@ -73,7 +73,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
       }]
     });
 
-    assert.equal(portfolio.capabilities.length, 8);
+    assert.equal(portfolio.capabilities.length, 9);
     const fileRead = portfolio.capabilities.find((candidate) => candidate.id === "file.read");
     assert.ok(fileRead);
     assert.equal(fileRead.kind, "direct_tool");
@@ -85,6 +85,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     assert.equal(codex?.readiness, "unavailable");
     assert.match(codex?.readiness_reason ?? "", /isolated execution workspace/i);
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "workspace.prepare")?.readiness, "available");
+    assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
     assert.deepEqual(portfolio.selected_skills.map((skill) => skill.name), ["source-architecture-review"]);
     assert.match(portfolio.selected_skills[0]!.body, /delegate specialist production/);
     assert.doesNotMatch(JSON.stringify(portfolio), /UNSELECTED_SKILL_BODY/);

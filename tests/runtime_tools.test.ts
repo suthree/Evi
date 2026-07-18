@@ -10,7 +10,11 @@ import {
   type CodexAuthoritySnapshot
 } from "../packages/core/src/codex_run_contract.js";
 import type { ActionProposal } from "../packages/core/src/schemas.js";
-import { coreToolContracts, renderCoreToolExamples } from "../packages/core/src/tool_contracts.js";
+import {
+  coreToolContracts,
+  renderCoreToolExamples,
+  resolveGoalToolStorePlacement
+} from "../packages/core/src/tool_contracts.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { inspectGoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
 import { assertGoalBoundToolAuthority, executeTool } from "../packages/runtime/src/tools.js";
@@ -1583,6 +1587,29 @@ test("code.execute_node records output truncation metadata", async () => {
   }
 });
 
+test("workspace.prepare rejects unknown arguments before Goal context dispatch", async () => {
+  const fixture = await createFixture();
+  try {
+    const invalid = await executeTool(useTool("workspace.prepare", {
+      branch: "codex/issue-97-strict-tool",
+      base_commit: "a".repeat(40),
+      path: "/tmp/operator-supplied"
+    }), { store: fixture.store });
+    assert.equal(invalid.ok, false);
+    assert.match(invalid.summary, /only a strict branch and base_commit/i);
+    assertFailureKind(invalid, "invalid_request");
+
+    const missingGoal = await executeTool(useTool("workspace.prepare", {
+      branch: "codex/issue-97-strict-tool",
+      base_commit: "a".repeat(40)
+    }), { store: fixture.store });
+    assert.equal(missingGoal.ok, false);
+    assert.match(missingGoal.summary, /requires GoalRuntime execution context/i);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("tool contract renderer covers the core tool surface", () => {
   const toolNames = coreToolContracts.map((contract) => contract.tool);
   assert.deepEqual(toolNames, [
@@ -1596,6 +1623,12 @@ test("tool contract renderer covers the core tool surface", () => {
     "codex.run",
     "code.execute_node"
   ]);
+  assert.equal(resolveGoalToolStorePlacement("file.read", { scope: "repo" }), "execution");
+  assert.equal(resolveGoalToolStorePlacement("file.read", { scope: "state" }), "control");
+  assert.equal(resolveGoalToolStorePlacement("command.run", { cwd: "repo" }), "execution");
+  assert.equal(resolveGoalToolStorePlacement("command.run", { cwd: "state" }), "control");
+  assert.equal(resolveGoalToolStorePlacement("workspace.prepare", {}), "control");
+  assert.equal(resolveGoalToolStorePlacement("codex.run", {}), "execution");
 
   const rendered = renderCoreToolExamples();
   for (const toolName of toolNames) {
