@@ -1,5 +1,61 @@
 # Decisions
 
+## 2026-07-18 Dynamic Capability Orchestration And Goal-Owned Acceptance
+
+Decision Owner: operator, through explicit approval in the Issue #95 / Task
+258 architecture discussion.
+
+Decision:
+
+- Evi is the outcome-owning capability orchestrator, not the default specialist
+  worker. It owns Goal continuity, authority, evidence requirements, result
+  inspection, fallback judgment, and acceptance;
+- capability choice remains a dynamic cognition decision rather than a
+  task-to-tool or keyword mapping in architecture documents or runtime code;
+- before each Goal cognition call, a read-only bounded Capability Portfolio
+  combines current tool contracts and constraints, authority-bound readiness,
+  selected skills, and evidence-derived competence without adding a model call,
+  planner, queue, database, or persisted state owner;
+- every proposed action names its selected capability, execution purpose,
+  selected skill refs, rationale, verification plan, and fallback. GoalRuntime
+  validates the choice before EffectPolicy or dispatch;
+- direct tools are valid for bounded orientation, verification, recovery, or a
+  genuinely atomic task. A delegated executor represents specialist production
+  when suitable and available. These are role semantics, not hard task classes;
+- unavailable, mismatched, or ungrounded selections block on the same Goal
+  before effect planning. Evi does not silently replace a missing specialist by
+  becoming the worker.
+
+Authority and supersession:
+
+- this decision refines the own/delegate direction from Issue #91 and the
+  outcome-driven competence direction from Issue #93; it does not supersede
+  GoalRuntime, EffectPolicy, repository authority, canonical evidence, or
+  verifier ownership;
+- it does not activate the paused historical self-evolution Goal, LuBan,
+  multi-agent scheduling, automatic worktree/session creation, automatic
+  SOP/skill promotion, Feishu command expansion, or `main.ts` decomposition.
+
+Verification and recovery:
+
+- interface tests cover bounded portfolio assembly, selected-skill loading,
+  tool constraints, linked-worktree readiness, selection/action agreement,
+  role agreement, and unselected skill rejection;
+- GoalRuntime tests prove invalid selection blocks before policy and tools,
+  portfolio failure consumes no model round, terminal competence remains
+  bounded, and historical planned events without selection metadata replay;
+- rollback is a normal revert. No state migration is required because new
+  action-planned metadata is optional for historical events and the Portfolio
+  has no persisted owner.
+
+Re-evaluation:
+
+- widen candidates, add execution hosts, or change selection roles only from
+  observed Goal evidence and a separately bounded Issue;
+- do not add a static router or another planning/state layer unless measured
+  failures show that the current single-cognition seam cannot express a needed
+  decision.
+
 ## 2026-07-18 Outcome-Driven Self-Evolution Resumption
 
 Decision Owner: operator, through explicit approval after Issue #91 completed

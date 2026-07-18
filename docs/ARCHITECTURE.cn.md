@@ -1,7 +1,7 @@
 # Evi 架构
 
-状态：当前模块归属与渐进迁移方向；2026-07-18 在稳定化审计和第一轮 outcome-learning
-收敛后更新。当前实现以源码、测试和 live evidence 为准。
+状态：当前模块归属与渐进迁移方向；2026-07-18 在稳定化审计、第一轮 outcome-learning
+收敛和动态能力选择 seam 后更新。当前实现以源码、测试和 live evidence 为准。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
 
@@ -29,8 +29,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 1. **保持循环精简。** 吸收 GenericAgent 的克制：有界的观察、决策、执行、验证、
    学习循环，加上很小的 bootstrap 工具面。不能照搬无约束 `code_run`，也不能把每次
    任务都自动变成 Skill。
-2. **自己拥有判断，委托具体执行。** Evi 负责为什么做、何时做、权限依据和是否接受
-   结果；Codex、浏览器、操作系统、沙箱、Connector 和专业 SaaS 负责各自执行引擎。
+2. **自己拥有结果，动态选择执行。** Evi 负责为什么做、何时做、权限依据、如何检查结果
+   以及是否接受；Evi 是能力调度者，不是默认亲自生产的专业执行者。
 3. **构建深模块。** 小 Interface 隐藏大量行为，为调用者提供 leverage、为维护者提供
    locality，模块才值得存在。
 4. **只在真实变化点建立 seam。** 不为假想变化增加 Adapter Interface。至少存在两个
@@ -50,21 +50,26 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 CLI / Web / IM
       |
       v
-Goal ingress -> GoalRuntime -> cognition proposal
-                     |              |
-                     v              v
-              EffectPolicy -> tool execution
-                     |              |
-                     +---- observations
-                              |
-                              v
-                   verification / receipt
-                              |
-                    +---------+----------+
-                    |                    |
-                operator result   bounded tool competence
-                                         |
-                                  later Goal cognition
+Goal ingress -> GoalRuntime
+                    |
+                    v
+           Capability Portfolio
+                    |
+                    v
+           cognition selection
+                    |
+                    v
+GoalRuntime validation -> EffectPolicy -> selected execution
+                                                |
+                                                v
+                                   canonical observations
+                                                |
+                                                v
+                                     verification / receipt
+                                         |             |
+                                   operator result  bounded competence
+                                                       |
+                                                later Goal cognition
 ```
 
 所有权保持单向：入口 Adapter 提交工作；GoalRuntime 拥有生命周期；EffectPolicy 判断
@@ -81,6 +86,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Context 编译 | `packages/core/src/context.ts`、`context_budget.ts`、runtime context manifest | 有预算的 snapshot、来源和 omission | 原始 archive owner 或全量常驻 recall |
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
+| Capability Portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | 只读、有界的候选能力、就绪度、已选 Skill、Competence 与选择校验 | 任务路由、effect 权限、执行、持久化或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
 | Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
 | 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | append-only 或持久事实；projection 可重建 | 产品方向或自动把内容晋升成真相 |
@@ -93,18 +99,26 @@ state 代码。它们只用于按需兼容/历史检查，不进入常驻 Contex
 也不授权创建第二个当前执行 owner。后续删除必须有独立有界 Issue、真实 caller 和
 operator 需求证据。
 
-## 自己拥有、复用与委托
+## 动态能力选择
 
-| 能力 | Evi 拥有 | 首选执行方式 | 默认不自建 |
-| --- | --- | --- | --- |
-| 文件读写与搜索 | 路径权限、有界契约、effect 判断、证据 | 原生文件系统和 `rg` 等成熟搜索工具 | 通用文件系统、重复搜索索引或编辑器 |
-| 编码 | Goal、仓库权限、验收、测试和证据 | Codex 或其他有界 coding Adapter | Evi 内部再造一个 coding agent |
-| 浏览与搜索 | 查询意图、私有数据边界、证据选择和验收 | Browser controller、search provider 或 Connector | 浏览器引擎、爬虫平台或无边界 Web Memory |
-| Shell/动态代码 | 语义 effect、确认、预期输出和证据 | OS/container/sandbox host | 把 cwd、env 过滤、timeout、输出上限当作隔离 |
-| 外部 SaaS/数据 | Goal、数据外发权限、结果契约和验证 | 靠近数据的 MCP/App/provider Adapter | 把 provider 专属行为放进 core |
-| Memory/搜索 | Scope、provenance、选择、晋升、新鲜度和退役 | 现有文件系统/SQLite/搜索库，受本地策略约束 | 没有检索证据就增加新的向量数据库 |
-| UI/IM | one-Self binding、渠道身份、operator 可见性 | 薄 Web/IM/宿主 Adapter | 每个入口一套 runtime、planner 或 state owner |
-| Skill/SOP | Trigger、可复用 procedure、outcome evidence、trust 和生命周期 | 现有 Skill 格式与委托工具 | 因任务长或成功一次就自动创建 Skill |
+架构只规定决策边界，不维护任务到工具的路由表。每次 cognition 前，GoalRuntime 提供一份
+有界 Capability Portfolio，内容来自当前工具契约与约束、Goal 绑定权限下的就绪度、已选
+Skill，以及从证据派生的 Competence。Cognition 选择一个能力，并声明用途、理由、验证
+方案、回退方式及所引用的已选 Skill；GoalRuntime 在 EffectPolicy 和 dispatch 之前校验。
+
+直接工具和委托执行器描述的是执行角色，不是固定任务类别。有界定位、验证、恢复或真正
+原子化的任务可以直接执行；存在合适执行器时，专业生产通常应委托。就绪度、证据、风险、
+成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
+或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
+
+稳定的所有权拆分是：
+
+| 决策关注点 | Owner |
+| --- | --- |
+| Goal、权限、证据要求与验收 | Evi / GoalRuntime |
+| 候选发现与有界决策 Context | Capability Portfolio |
+| 能力选择与用途声明 | Goal cognition，GoalRuntime 负责校验 |
+| 专业执行内部细节 | 被选中的工具、宿主、Adapter 或委托面 |
 
 ## 参考项目审计
 

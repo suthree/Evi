@@ -15,6 +15,7 @@ import {
   GoalRuntime,
   type GoalView
 } from "../packages/runtime/src/goal_runtime.js";
+import type { GoalCapabilityPortfolio } from "../packages/runtime/src/goal_capability_portfolio.js";
 import type { ModelClient, ModelRequest } from "../packages/runtime/src/model.js";
 
 test("RuntimeGoalToolExecutor replaces model command side-effect labels with policy semantics", async () => {
@@ -94,6 +95,14 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
         outputText: JSON.stringify({
           type: "action",
           summary: "Read the bounded manifest.",
+          capability_selection: {
+            capability_id: "file.read",
+            execution_purpose: "orientation",
+            skill_refs: ["skills/source-review/SKILL.md"],
+            rationale: "Read one bounded manifest before deciding whether specialist execution is needed.",
+            verification_plan: "Check the returned manifest path and bounded read metadata.",
+            fallback: "Block with the missing evidence if the bounded read fails."
+          },
           action: {
             tool: "file.read",
             arguments: { scope: "repo", path: "package.json" }
@@ -129,24 +138,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       ok: true,
       changes: [{ kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" }]
     }],
-    tool_competence: [{
-      tool: "codex.run",
-      status: "degraded",
-      observation_count: 3,
-      success_count: 1,
-      failure_count: 2,
-      accepted_goal_count: 1,
-      abandoned_goal_count: 1,
-      latest_observation_at: "2026-07-16T00:00:03.000Z",
-      latest_event_id: "goal_event_prior_3",
-      latest_failure: {
-        event_id: "goal_event_prior_3",
-        summary: "The delegated result exceeded its observation budget.",
-        occurred_at: "2026-07-16T00:00:03.000Z"
-      },
-      guidance: "Do not repeat the same failed action shape; inspect the latest failure and prefer a bounded, verified fallback.",
-      boundary: "execution outcomes are direct observations; goal decisions are associations, not causal attribution"
-    }]
+    capability_portfolio: fixtureCapabilityPortfolio()
   });
   assert.equal(result.type, "action");
   assert.equal(requests.length, 1);
@@ -154,7 +146,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /bounded cumulative working synthesis/);
   assert.match(requests[0]!.instructions, /fallible working memory, not evidence or authority/);
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
-  assert.match(requests[0]!.instructions, /Prior Tool Experience as historical decision support/);
+  assert.match(requests[0]!.instructions, /controlling Goal runtime owns judgment and acceptance/);
+  assert.match(requests[0]!.instructions, /capability_selection/);
   assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
   assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
@@ -169,7 +162,9 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"kind": "workspace_path"/);
   assert.match(requests[0]!.input, /"current_tranche"/);
   assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
-  assert.match(requests[0]!.input, /Prior Tool Experience/);
+  assert.match(requests[0]!.input, /Capability Portfolio/);
+  assert.match(requests[0]!.input, /source-review/);
+  assert.match(requests[0]!.input, /max_lines must be an integer from 1 through 400/);
   assert.match(requests[0]!.input, /"status": "degraded"/);
   assert.match(requests[0]!.input, /associations, not causal attribution/);
   assert.doesNotMatch(requests[0]!.input, /raw tool output/);
@@ -214,6 +209,14 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
               ? JSON.stringify({
                   type: "action",
                   summary: "Read package metadata after provider repair.",
+                  capability_selection: {
+                    capability_id: "file.read",
+                    execution_purpose: "atomic_task",
+                    skill_refs: [],
+                    rationale: "Read the one requested manifest through the bounded direct capability.",
+                    verification_plan: "Verify the canonical read observation before proposing completion.",
+                    fallback: "Block with the read failure if package metadata is unavailable."
+                  },
                   action: { tool: "file.read", arguments: { scope: "repo", path: "package.json" } }
                 })
               : JSON.stringify({
@@ -298,6 +301,78 @@ function fixtureGoalView(): GoalView {
       boundary: "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor"
     },
     boundary: "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections"
+  };
+}
+
+function fixtureCapabilityPortfolio(): GoalCapabilityPortfolio {
+  return {
+    capabilities: [{
+      id: "file.read",
+      kind: "direct_tool" as const,
+      summary: "need to read repo or state context",
+      side_effect_level: "none" as const,
+      arguments: {
+        scope: "repo | state",
+        path: "relative/path",
+        start_line: 1,
+        max_lines: 200,
+        max_chars: 12000
+      },
+      constraints: ["max_lines must be an integer from 1 through 400"],
+      readiness: "available" as const,
+      readiness_reason: "Registered bounded tool.",
+      competence: {
+        tool: "file.read",
+        status: "degraded" as const,
+        observation_count: 3,
+        success_count: 1,
+        failure_count: 2,
+        accepted_goal_count: 1,
+        abandoned_goal_count: 1,
+        latest_observation_at: "2026-07-16T00:00:03.000Z",
+        latest_event_id: "goal_event_prior_3",
+        latest_failure: {
+          event_id: "goal_event_prior_3",
+          summary: "The delegated result exceeded its observation budget.",
+          occurred_at: "2026-07-16T00:00:03.000Z"
+        },
+        guidance: "Do not repeat the same failed action shape; inspect the latest failure and prefer a bounded, verified fallback.",
+        boundary: "execution outcomes are direct observations; goal decisions are associations, not causal attribution" as const
+      }
+    }, {
+      id: "codex.run",
+      kind: "delegated_executor",
+      summary: "need specialist coding execution in the bound linked worktree",
+      side_effect_level: "local_write",
+      arguments: {
+        worktree: "relative/path",
+        task: "bounded task",
+        model: "auto,new,required",
+        reasoning_effort: "auto,new,required",
+        purpose: "execute|verification"
+      },
+      constraints: ["model and reasoning_effort must remain auto"],
+      readiness: "available",
+      readiness_reason: "Bound linked worktree is available.",
+      competence: null
+    }],
+    selected_skills: [{
+      name: "source-review",
+      description: "Review source with bounded evidence.",
+      instructions_ref: "skills/source-review/SKILL.md",
+      metadata_ref: "skills/source-review/metadata.json",
+      source: "seed" as const,
+      score: 20,
+      body: "Use bounded source evidence and verify the selected seam."
+    }],
+    selection_contract: {
+      task_routing: "dynamic_not_keyword_mapped" as const,
+      owner: "goal_cognition_selects; GoalRuntime validates and owns acceptance" as const,
+      direct_action_purposes: ["orientation", "verification", "recovery", "atomic_task"],
+      delegated_action_purpose: "specialist_execution",
+      guidance: "Evi owns judgment and acceptance; choose dynamically from live candidates."
+    },
+    boundary: "read-only capability decision context; no model invocation, tool execution, state write, effect authority, or completion authority"
   };
 }
 

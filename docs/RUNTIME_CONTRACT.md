@@ -357,16 +357,39 @@ not another persisted budget store. Only its `used` value is compared with the
 tranche limit; a later Continue begins at zero while lifetime usage remains
 cumulative.
 
-Before the same cognition call, GoalRuntime also derives bounded Prior Tool
-Experience from action observations belonging only to previously terminal
-Goals with current OutcomeReceipts. `packages/runtime/src/goal_tool_competence.ts`
-limits the recent signal window, number of tools, and failure-summary length.
-Direct `ok`/failure counts are execution observations; accepted/abandoned Goal
-counts are association only, never causal attribution. Sparse history remains
-`emerging`; repeated recent failures become `degraded` fallback guidance;
-repeated successful history may become `reliable`. The projection writes no
-state, invokes no model, promotes no learning artifact, and never overrides
-current canonical evidence, EffectPolicy, or verification.
+Before the same cognition call, GoalRuntime resolves one bounded Capability
+Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
+tool contracts and their model-visible constraints, readiness under the Goal's
+repository authority, at most two recalled skill bodies, and bounded capability
+competence. It is a read-only decision context: it invokes no model, executes no
+tool, writes no state, grants no effect authority, and cannot accept completion.
+There is no keyword task router. The existing cognition call chooses from the
+current candidates using the Goal, evidence, readiness, competence, authority,
+cost, risk, reversibility, and verifiability.
+
+Every new cognition action must include a typed `capability_selection` with
+`capability_id`, `execution_purpose`, `skill_refs`, `rationale`,
+`verification_plan`, and `fallback`. GoalRuntime validates before EffectPolicy
+or dispatch that the capability exists, is currently available, matches the
+action tool and execution role, and cites only skills present in the Portfolio.
+Invalid selection becomes a same-Goal blocked checkpoint without planning or
+executing the effect. Direct tools may support bounded orientation,
+verification, recovery, or an atomic task; delegated executors represent
+specialist execution. These are role semantics, not a task-to-tool map.
+Historical `goal_action_planned` events without selection metadata remain
+readable; new planned events retain the validated selection as evidence of the
+decision, not as a second authority.
+
+Capability competence is derived from action observations belonging only to
+previously terminal Goals with current OutcomeReceipts.
+`packages/runtime/src/goal_tool_competence.ts` limits the recent signal window,
+number of tools, and failure-summary length. Direct `ok`/failure counts are
+execution observations; accepted/abandoned Goal counts are association only,
+never causal attribution. Sparse history remains `emerging`; repeated recent
+failures become `degraded` fallback guidance; repeated successful history may
+become `reliable`. The projection writes no state, invokes no model, promotes
+no learning artifact, and never overrides current canonical evidence,
+EffectPolicy, or verification.
 
 `EffectPolicy` classifies operation, target, data exposure, and reversibility.
 It does not trust a model-provided `side_effect_level` to grant authority. Safe

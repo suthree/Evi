@@ -24,6 +24,14 @@ _Avoid_: Tool protocol, project overlay
 A specialized **Host Runtime** that the agent can ask to perform bounded work, then inspect and verify, such as delegating a coding task to Codex. It is more capable than a **Tool Protocol**, but it still does not become the **Self-Growing Agent Core**.
 _Avoid_: Tool protocol, separate self
 
+**Capability Portfolio**:
+The bounded, current decision context for one Goal cognition turn: available direct tools and delegated executors, their contracts and readiness, selected skills, and evidence-derived **Capability Competence**. It informs a dynamic choice but does not route tasks, execute effects, persist a second state, or accept outcomes.
+_Avoid_: Static task router, capability catalog, permission grant, planner
+
+**Capability Selection**:
+The model-proposed choice of one candidate from the current **Capability Portfolio**, including its execution purpose, selected skill refs, rationale, verification plan, and fallback. The **Harness Kernel** validates it before effect policy or execution; Evi still owns evidence and acceptance.
+_Avoid_: Keyword mapping, tool call alone, delegated completion claim
+
 **Capability Experience**:
 One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
 _Avoid_: Causal proof, raw tool output, progress score
@@ -77,7 +85,7 @@ The bounded prompt-facing view rendered from a **Turn Snapshot**. It contains se
 _Avoid_: Full memory dump, raw archive
 
 **Model Action Envelope**:
-The structured action proposal returned by the model. It may request tool use, delegation, evidence recording, SOP drafting, memory updates, audit, response, or pause, but the harness decides what actually executes.
+The structured action proposal returned by the model. For Goal execution it includes a **Capability Selection** beside the proposed effect; the harness decides what actually executes.
 _Avoid_: Final authority, unstructured answer
 
 **Evidence Event**:

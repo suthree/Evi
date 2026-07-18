@@ -28,6 +28,14 @@ import {
   type GoalToolCompetence,
   type GoalToolExperienceSignal
 } from "./goal_tool_competence.js";
+import {
+  buildGoalCapabilityPortfolio,
+  goalCapabilitySelectionSchema,
+  validateGoalCapabilitySelection,
+  type GoalCapabilityPortfolio,
+  type GoalCapabilityPortfolioProvider,
+  type GoalCapabilitySelection
+} from "./goal_capability_portfolio.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -166,6 +174,7 @@ const toolResultSchema = z.object({
 const cognitionActionSchema = z.object({
   type: z.literal("action"),
   summary: shortTextSchema,
+  capability_selection: goalCapabilitySelectionSchema,
   action: effectActionSchema
 }).strict();
 
@@ -254,6 +263,7 @@ const actionPlannedEventSchema = z.object({
   ...baseEventFields,
   event_type: z.literal("goal_action_planned"),
   model_summary: shortTextSchema,
+  capability_selection: goalCapabilitySelectionSchema.optional(),
   action: effectActionSchema,
   action_redacted: z.boolean(),
   action_digest: z.string().regex(/^[a-f0-9]{64}$/),
@@ -430,7 +440,7 @@ export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
   evidence: GoalEvidenceView[];
-  tool_competence: GoalToolCompetence[];
+  capability_portfolio: GoalCapabilityPortfolio;
 }
 
 export interface GoalExecutionBudgetView {
@@ -464,6 +474,7 @@ export interface GoalRuntimeOptions {
   cognition?: GoalCognition;
   toolExecutor?: GoalToolExecutor;
   effectPolicy?: EffectPolicy;
+  capabilityPortfolioProvider?: GoalCapabilityPortfolioProvider;
   now?: () => string;
   nowMs?: () => number;
   idFactory?: (prefix: string) => string;
@@ -493,6 +504,7 @@ export class GoalRuntime {
   private readonly cognition?: GoalCognition;
   private readonly toolExecutor?: GoalToolExecutor;
   private readonly effectPolicy: EffectPolicy;
+  private readonly capabilityPortfolioProvider: GoalCapabilityPortfolioProvider;
   private readonly now: () => string;
   private readonly nowMs: () => number;
   private readonly idFactory: (prefix: string) => string;
@@ -503,6 +515,7 @@ export class GoalRuntime {
     this.cognition = options.cognition;
     this.toolExecutor = options.toolExecutor;
     this.effectPolicy = options.effectPolicy ?? new EffectPolicy();
+    this.capabilityPortfolioProvider = options.capabilityPortfolioProvider ?? defaultCapabilityPortfolioProvider();
     this.now = options.now ?? utcNow;
     this.nowMs = options.nowMs ?? Date.now;
     this.idFactory = options.idFactory ?? newId;
@@ -643,6 +656,33 @@ export class GoalRuntime {
         })).view;
       }
 
+      const toolCompetence = buildGoalToolCompetence(events);
+      let capabilityPortfolio: GoalCapabilityPortfolio;
+      try {
+        capabilityPortfolio = await this.capabilityPortfolioProvider.resolve({
+          goal_id: state.view.goal_id,
+          objective: state.view.objective,
+          repository_authority: state.view.repository_authority,
+          tool_competence: structuredClone(toolCompetence)
+        });
+      } catch (error) {
+        const summary = `Goal capability portfolio failed: ${errorMessage(error)}`.slice(0, 2_000);
+        const checkpoint = normalizeCheckpoint({
+          ...state.view.checkpoint,
+          cursor: "capability_portfolio_failed",
+          summary,
+          next_action: "Repair capability discovery and continue the same goal."
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: checkpoint.next_action!,
+          checkpoint,
+          usage_delta: normalizeUsage({})
+        })).view;
+      }
+
       const cognitionStarted = this.nowMs();
       let cognition: GoalCognitionResult;
       try {
@@ -650,7 +690,7 @@ export class GoalRuntime {
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id)),
-          tool_competence: structuredClone(buildGoalToolCompetence(events))
+          capability_portfolio: structuredClone(capabilityPortfolio)
         }));
       } catch (error) {
         const elapsed = elapsedSince(cognitionStarted, this.nowMs());
@@ -697,6 +737,31 @@ export class GoalRuntime {
       }
 
       const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
+      let capabilitySelection: GoalCapabilitySelection;
+      try {
+        capabilitySelection = validateGoalCapabilitySelection(
+          cognition.capability_selection,
+          action,
+          capabilityPortfolio
+        );
+      } catch (error) {
+        const summary = `Goal capability selection validation failed: ${errorMessage(error)}`.slice(0, 2_000);
+        const nextAction = "Re-evaluate the current Capability Portfolio and continue with one available, matching capability or an explicit blocked outcome.";
+        const checkpoint = normalizeCheckpoint({
+          cursor: "capability_selection_invalid",
+          summary,
+          next_action: nextAction,
+          selected_refs: state.view.checkpoint.selected_refs
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: nextAction,
+          checkpoint,
+          usage_delta: modelUsage
+        })).view;
+      }
       const actionDigest = digestAction(action);
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
@@ -751,6 +816,7 @@ export class GoalRuntime {
         ...this.eventBase(state.view, command, commandDigest),
         event_type: "goal_action_planned",
         model_summary: cognition.summary,
+        capability_selection: capabilitySelection,
         action: persistedAction,
         action_redacted: effectDecision.outcome === "deny",
         action_digest: actionDigest,
@@ -1499,7 +1565,8 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         details: boundedDetails({
           effect_id: event.effect_id,
           action: event.action,
-          intent: event.effect_decision.intent
+          intent: event.effect_decision.intent,
+          ...(event.capability_selection ? { capability_selection: event.capability_selection } : {})
         })
       };
     case "goal_effect_confirmed":
@@ -2129,6 +2196,18 @@ function unique(values: string[]): string[] {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function defaultCapabilityPortfolioProvider(): GoalCapabilityPortfolioProvider {
+  return {
+    async resolve(input) {
+      return buildGoalCapabilityPortfolio({
+        repository_authority: input.repository_authority,
+        tool_competence: input.tool_competence,
+        selected_skills: []
+      });
+    }
+  };
 }
 
 async function writeJsonProjectionIfChanged(store: AgentStore, ref: string, value: unknown): Promise<void> {
