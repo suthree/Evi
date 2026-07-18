@@ -1,6 +1,6 @@
 # Task 253: Web Goal Ingress
 
-Status: verified; integration and live acceptance pending
+Status: complete
 
 ## Identity And Ownership
 
@@ -128,5 +128,16 @@ only for deferred legacy IM work during this transition.
   recovery compatibility rather than a current IM ingress; the stable English
   and Chinese contracts now state that current Web and IM paths cannot create
   it. Final independent Spec and Standards re-reviews both passed with no
-  remaining actionable finding. PR integration, exact-commit deployment,
-  controller handoff, service health, and real Web acceptance remain pending.
+  remaining actionable finding.
+- PR #85 merged to `develop` at
+  `f3c919a28ab271619936d583984d65e9dc41333e`; Issue #84 is closed.
+- Deployment `deployment_20260717235106_f3c919a28ab2` reached `stable` at the
+  exact merge commit. Controller handoff returned `updated` and then
+  `already_matched`; installed service health remained `healthy/current`.
+- The real resident Web ingress created Goal
+  `goal_20260717235352_1dd43f13`. Evi continued that same identity across three
+  soft tranches and completed with accepted/passed/healthy receipt
+  `goal_receipt_20260717235516_6c88af85`, `changes=[]`.
+- Before and after that Web Goal, legacy task-queue, task-run-index, and
+  channel-outbox line counts and SHA-256 hashes were identical. This proves the
+  installed Web path did not dual-write legacy orchestration state.
