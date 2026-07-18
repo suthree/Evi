@@ -5,7 +5,6 @@ import {
   type AllowedAction
 } from "./action_contracts.js";
 import { getExpertOrchestrationContract } from "./expert_orchestration.js";
-import { getProjectDesignContract } from "./project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
 
 export type CapabilityCategoryId =
@@ -50,7 +49,7 @@ export interface CapabilityCategory {
 export interface CapabilityCatalog {
   schema_version: 1;
   catalog_id: "local_runtime_capabilities";
-  catalog_version: "2026-07-07";
+  catalog_version: "2026-07-18";
   count: number;
   categories: CapabilityCategory[];
   refs: string[];
@@ -137,7 +136,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
   return {
     schema_version: 1,
     catalog_id: "local_runtime_capabilities",
-    catalog_version: "2026-07-07",
+    catalog_version: "2026-07-18",
     count: categories.reduce((total, category) => total + category.capabilities.length, 0),
     categories,
     refs: [
@@ -149,17 +148,17 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "packages/core/src/action_contracts.ts",
       "packages/core/src/tool_contracts.ts",
       "packages/core/src/context.ts",
-      "packages/core/src/project_design.ts",
       "packages/core/src/expert_orchestration.ts",
       "packages/core/src/harness_replay.ts",
       "packages/core/src/pipeline_history.ts",
       "packages/core/src/content_pipeline.ts",
-      "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
-      "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/runtime_channel_messages.ts",
       "packages/core/src/runtime_sessions.ts",
       "packages/core/src/workspace_status.ts",
+      "packages/runtime/src/goal_runtime.ts",
+      "packages/runtime/src/goal_tool_competence.ts",
+      "packages/runtime/src/goal_execution_adapters.ts",
       "packages/runtime/src/runner.ts",
       "packages/runtime/src/sop_loop_rehearsal.ts",
       "packages/runtime/src/content_pipeline.ts",
@@ -605,7 +604,6 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
 }
 
 function contextReadModelsCategory(): CapabilityCategoryDraft {
-  const projectDesignContract = getProjectDesignContract();
   const expertContract = getExpertOrchestrationContract();
   return {
     id: "context_read_models",
@@ -673,27 +671,6 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
           "archive-health and skill-registry-health backlog items may become bounded review tick runtime-gap proposals without executing repair commands",
           "live run traces may show repo-write workspace guard summaries parsed from bounded event metadata only",
           "harness replay audit reports are metadata-only evidence and do not rerun traces or execute tools"
-        ]
-      },
-      {
-        id: "project.design_contract",
-        title: projectDesignContract.title,
-        summary: projectDesignContract.summary,
-        status: "implemented",
-        layer: projectDesignContract.layer,
-        commands: projectDesignContract.commands,
-        refs: projectDesignContract.refs,
-        boundaries: [
-          projectDesignContract.boundary,
-          "project-design may derive and inspect read-only artifacts from verified iteration outcomes; artifacts are reuse guidance, not state writes or completion proof",
-          "project-design may expose a read-only next_core_basic_plan from verified core/basic artifacts; the plan is advisory context and does not record iterations or execute work",
-          "next_core_basic_plan includes read-only goal_scope with the operator objective, owner surface, source of truth, and success evidence before selecting the next slice",
-          "next_core_basic_plan includes a read-only layer_decision that keeps recurring project design as core identity and external adapters as application slices by default",
-          "next_core_basic_plan includes read-only iteration_record_status so matching open iterations are inspected instead of blindly recording duplicates",
-          "next_core_basic_plan may include a read-only next_iteration_seed for record-iteration --from-project-design-plan; the seed itself does not write state",
-          "next_core_basic_plan may include completion_audit_seeds for goal scope, current state, verification scope, and learning persistence; seeds are advisory evidence prompts only",
-          "classifies external adapters as application slices unless their pattern generalizes back into the runtime contract",
-          "keeps project design as a core-runtime loop over goal intake, layering, contract design, execution planning, verification, and durable learning"
         ]
       },
       {
@@ -828,6 +805,24 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
         boundaries: ["read models do not render raw skill bodies or mutate registries"]
       },
       {
+        id: "goal.tool_competence",
+        title: "Goal outcome-driven tool competence",
+        summary: "Derive bounded tool-use decision support from previously terminal Goal observations and receipts, then provide it to later Goal cognition.",
+        status: "implemented",
+        layer: "core_runtime",
+        refs: [
+          "packages/runtime/src/goal_tool_competence.ts",
+          "packages/runtime/src/goal_runtime.ts",
+          "packages/runtime/src/goal_execution_adapters.ts"
+        ],
+        boundaries: [
+          "persists no new ledger and reads only canonical terminal Goal experience already loaded by GoalRuntime",
+          "tool success or failure is a direct execution observation; accepted or abandoned Goal counts are association only, never causal attribution",
+          "history, tools, failure summaries, and cognition material are bounded; current evidence, EffectPolicy, and verification remain authoritative",
+          "does not invoke another model, execute tools, promote SOPs or skills, or change goal acceptance"
+        ]
+      },
+      {
         id: "self_evolution.gaps",
         title: "Self-evolution gaps",
         summary: "Derive proposal-only implementation gaps from bounded local evidence, explicit operator corrections, verified iteration outcomes, and scorecard maturity signals; suppress superseded publish-run noise and surface current gaps through governance gaps and Opportunity Backlog.",
@@ -841,45 +836,6 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
         ],
         boundaries: ["gap intake reads bounded state refs, active dream metadata, verified iteration outcome metadata, scorecard maturity metadata, and explicit operator-correction records only; record-correction writes one local state artifact and does not draft SOPs, update memory, mutate repo files, write the active vault, invoke models, execute tools, publish externally, or change services; verified outcomes may become SOP-candidate gaps but do not auto-draft, audit, promote, or write skills; superseded publish-gap suppression is read-model filtering, not historical state rewriting"]
       },
-      {
-        id: "self_evolution.scorecard",
-        title: "Self-evolution scorecard",
-        summary: "Assess project design artifacts, core/basic capability growth, general-agent delegation, and gated local-learning continuity as the read-only core/basic selection view.",
-        status: "implemented",
-        layer: "core_runtime",
-        commands: ["pnpm run runtime -- governance scorecard"],
-        refs: [
-          "packages/core/src/self_evolution_scorecard.ts",
-          "packages/core/src/project_design.ts",
-          "packages/core/src/capabilities.ts",
-          "packages/core/src/memory_layers.ts",
-          "packages/core/src/dreams.ts"
-        ],
-        boundaries: ["scorecard is a read-only core/basic selection surface; it may inspect local-learning maturity metadata as gated context, but does not invoke models, execute tools, mutate memory, promote SOPs, promote skills, manage services, write repo files, or prove completion"]
-      },
-      {
-        id: "self_evolution.iterations",
-        title: "Self-evolution iteration contracts",
-        summary: "Record, inspect, and close bounded iteration contracts that declare core/basic/local-learning/application layer, owner surface, evidence, verification commands, non-goals, advisory expert roles, and operator-supplied outcomes for major work.",
-        status: "implemented",
-        layer: "core_runtime",
-        commands: [
-          "pnpm run runtime -- governance iterations",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id>",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed <seed-id>",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed all",
-          "pnpm run runtime -- governance record-iteration --summary <summary> --layer core_runtime --owner-surface <surface> --proposed-slice <slice>",
-          "pnpm run runtime -- governance record-iteration --from-project-design-plan",
-          "pnpm run runtime -- governance record-iteration-outcome --iteration <ref-or-id> --outcome-status verified --summary <summary>"
-        ],
-        refs: [
-          "packages/core/src/self_evolution_iterations.ts",
-          "packages/core/src/self_evolution_scorecard.ts",
-          "packages/core/src/expert_orchestration.ts",
-          "CONTEXT.md"
-        ],
-        boundaries: ["iteration contracts and outcomes write one local state record only; they declare layer, verification intent, outcome evidence, and next moves, but do not execute work, run verification commands, invoke models, mutate repo files, write the active vault, manage services, promote SOPs, promote skills, or prove completion beyond cited evidence; plan-derived iteration recording copies a read-only project-design seed into one iteration contract only and reuses a matching open iteration instead of writing duplicates; iteration audit-seed inspection and aggregate completion audit are read-only and advisory; seed evidence status summarizes evidence presence only and does not prove the seed is satisfied"]
-      }
     ]
   };
 }

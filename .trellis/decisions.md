@@ -1,5 +1,57 @@
 # Decisions
 
+## 2026-07-18 Outcome-Driven Self-Evolution Resumption
+
+Decision Owner: operator, through explicit approval after Issue #91 completed
+the stabilization and architecture-audit gates.
+
+Decision:
+
+- resume parent Issue #56 through exactly one bounded child, Issue #93 / Task
+  257; do not resume the prior chain of automatically selected feature slices;
+- define development standards to make the repository understandable and
+  maintainable. Those standards own project structure, not the permission or
+  scoring rules for self-evolution;
+- use self-evolution boundaries to prevent repeated context, harness, sandbox,
+  communication, and ownership failures observed in prior sessions;
+- judge growth by whether canonical outcomes improve a later decision. A
+  scorecard, iteration record, project-design packet, test count, or generated
+  report is not self-evolution merely because it describes progress;
+- derive bounded tool competence from terminal Goal events and one
+  OutcomeReceipt, without a new ledger or causal overclaim, and remove the
+  legacy proof-oriented views from resident context;
+- keep legacy project-design, scorecard, and iteration commands readable only
+  as on-demand diagnostics during staged retirement. They do not own active
+  work, resident context, current capability selection, or completion.
+
+Authority and supersession:
+
+- this decision satisfies and supersedes the scheduling pause in the
+  2026-07-18 Stabilization decision for Issue #93 only;
+- it preserves the one-persistent-Self, GoalRuntime, EffectPolicy, evidence,
+  rollback, secret, private-egress, and irreversible-effect boundaries;
+- it does not activate LuBan/multi-node work, automatic SOP/skill promotion,
+  another feature child, or broad sandbox/package redesign.
+
+Verification and recovery:
+
+- one isolated Issue/task/branch/worktree/PR owns the change;
+- interface tests must show that only prior terminal Goals affect later
+  cognition, direct execution outcomes remain distinct from Goal association,
+  and no new learning state is written;
+- context tests must show the three proof sections are absent; the final diff
+  must include net removal of their render/test path and concise paired docs;
+- rollback is a normal revert and exact-commit redeploy. Canonical Goal events,
+  receipts, and historical diagnostic state remain readable and require no
+  migration.
+
+Re-evaluation:
+
+- after Issue #93 integration and live verification, measure remaining callers
+  before retiring legacy command/source modules;
+- any later child under #56 requires a fresh operator-accepted bounded Issue
+  and must not be derived automatically from the legacy diagnostic chain.
+
 ## 2026-07-18 Stabilization Pause And Own-Delegate Architecture
 
 Decision Owner: operator, through explicit approval in the 2026-07-18 Codex

@@ -11,7 +11,6 @@ import {
   getProjectDesignReadModel,
   selectProjectDesignArtifact
 } from "../packages/core/src/project_design.js";
-import { compactProjectPlanGovernanceCleanup } from "../packages/core/src/context.js";
 import { delegateAgentActionContract, delegateAgentAuthoringContract } from "../packages/core/src/action_contracts.js";
 import {
   implementationContractSha256,
@@ -638,7 +637,6 @@ test("project design read model derives reusable artifacts from verified iterati
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations[0]?.superseded_by_ref, verifiedIteration.ref);
     assert.match(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations[0]?.reason ?? "", /governance cleanup/);
     assert.equal(readModel.next_core_basic_plan?.governance_cleanup.superseded_open_iterations.some((item) => item.id === unrelatedOpenIteration.id), false);
-    assert.match(compactProjectPlanGovernanceCleanup(readModel.next_core_basic_plan!), /iteration_contract_stale_history:partial/);
     assert.equal(readModel.next_core_basic_plan?.phase_gates.length, 6);
     assert.equal(
       readModel.next_core_basic_plan?.phase_gates.find((gate) => gate.phase_id === "capability_layering")?.forbidden_shortcuts.includes("do not promote Nasdaq, Xiaohongshu MCP, browser automation, or one adapter into core identity by default"),

@@ -128,6 +128,24 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       tool: "codex.run",
       ok: true,
       changes: [{ kind: "workspace_path", identity: "packages/runtime/src/goal_runtime.ts" }]
+    }],
+    tool_competence: [{
+      tool: "codex.run",
+      status: "degraded",
+      observation_count: 3,
+      success_count: 1,
+      failure_count: 2,
+      accepted_goal_count: 1,
+      abandoned_goal_count: 1,
+      latest_observation_at: "2026-07-16T00:00:03.000Z",
+      latest_event_id: "goal_event_prior_3",
+      latest_failure: {
+        event_id: "goal_event_prior_3",
+        summary: "The delegated result exceeded its observation budget.",
+        occurred_at: "2026-07-16T00:00:03.000Z"
+      },
+      guidance: "Do not repeat the same failed action shape; inspect the latest failure and prefer a bounded, verified fallback.",
+      boundary: "execution outcomes are direct observations; goal decisions are associations, not causal attribution"
     }]
   });
   assert.equal(result.type, "action");
@@ -136,6 +154,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /bounded cumulative working synthesis/);
   assert.match(requests[0]!.instructions, /fallible working memory, not evidence or authority/);
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
+  assert.match(requests[0]!.instructions, /Prior Tool Experience as historical decision support/);
   assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
   assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
@@ -150,6 +169,10 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"kind": "workspace_path"/);
   assert.match(requests[0]!.input, /"current_tranche"/);
   assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
+  assert.match(requests[0]!.input, /Prior Tool Experience/);
+  assert.match(requests[0]!.input, /"status": "degraded"/);
+  assert.match(requests[0]!.input, /associations, not causal attribution/);
+  assert.doesNotMatch(requests[0]!.input, /raw tool output/);
   assert.match(requests[0]!.input, /"model": "auto,new,required"/);
   assert.match(requests[0]!.input, /"reasoning_effort": "auto,new,required"/);
   assert.match(requests[0]!.input, /"purpose": "execute\|verification"/);

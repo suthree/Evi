@@ -23,6 +23,11 @@ import {
   inspectGoalRepositoryAuthority,
   type GoalRepositoryAuthority
 } from "./repository_authority.js";
+import {
+  summarizeGoalToolCompetence,
+  type GoalToolCompetence,
+  type GoalToolExperienceSignal
+} from "./goal_tool_competence.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -425,6 +430,7 @@ export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
   evidence: GoalEvidenceView[];
+  tool_competence: GoalToolCompetence[];
 }
 
 export interface GoalExecutionBudgetView {
@@ -643,7 +649,8 @@ export class GoalRuntime {
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
-          evidence: structuredClone(buildCognitionEvidence(events, command.goal_id))
+          evidence: structuredClone(buildCognitionEvidence(events, command.goal_id)),
+          tool_competence: structuredClone(buildGoalToolCompetence(events))
         }));
       } catch (error) {
         const elapsed = elapsedSince(cognitionStarted, this.nowMs());
@@ -1434,6 +1441,34 @@ function buildCognitionEvidence(events: GoalRuntimeEvent[], goalId: string): Goa
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   const selected = goalEvents.filter((event) => event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned").slice(-16);
   return selected.map(evidenceView);
+}
+
+function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {
+  const terminalGoals = new Map<string, { receipt_id: string; decision: "accepted" | "abandoned" }>();
+  for (const event of events) {
+    if (event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned") continue;
+    terminalGoals.set(event.goal_id, {
+      receipt_id: event.receipt.id,
+      decision: event.receipt.decision
+    });
+  }
+  const signals: GoalToolExperienceSignal[] = [];
+  for (const event of events) {
+    if (event.event_type !== "goal_action_observed") continue;
+    const terminal = terminalGoals.get(event.goal_id);
+    if (!terminal) continue;
+    signals.push({
+      goal_id: event.goal_id,
+      receipt_id: terminal.receipt_id,
+      decision: terminal.decision,
+      event_id: event.id,
+      tool: event.result.tool,
+      ok: event.result.ok,
+      summary: event.result.summary,
+      occurred_at: event.occurred_at
+    });
+  }
+  return summarizeGoalToolCompetence(signals);
 }
 
 function buildEvidenceViews(events: GoalRuntimeEvent[], goalId: string, requestedIds: string[]): GoalEvidenceView[] {

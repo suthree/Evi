@@ -52,6 +52,7 @@ Goal owner 或完成判定 owner。
 | 需要了解 | 权威入口 |
 | --- | --- |
 | 当前模块归属、own/delegate 选择、迁移顺序 | [`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md) |
+| 源码、目录、依赖、测试和文档规范 | [`ENGINEERING.cn.md`](ENGINEERING.cn.md) |
 | 当前 Runtime 能力、Tool、Context、Harness | [`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) |
 | 安装、配置、服务、日志、健康、恢复 | [`LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) |
 | Memory、SOP、Skill、Dream、晋升与退役 | [`LOCAL_LEARNING.md`](LOCAL_LEARNING.md) |
@@ -98,7 +99,7 @@ packages/core/     Context、Evidence、Memory、Governance 纯核心面
 packages/runtime/  Goal、Effect、Tool、Service、Web 与 IM 运行面
 config/            可提交的安全默认配置
 core/              Self、Memory 与 Runtime Reference 策略
-docs/              架构、行为、运维、学习与愿景文档
+docs/              架构、工程、行为、运维、学习与愿景文档
 .trellis/          有界任务 Spec、Decision 与历史证据
 ```
 

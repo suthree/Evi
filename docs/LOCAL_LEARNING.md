@@ -223,6 +223,19 @@ boundaries, evidence capture, completion checks, recovery, or operator
 inspection belongs in the runtime contract and Trellis task governance before it
 becomes a local-learning artifact.
 
+## Capability Experience And Competence
+
+GoalRuntime derives bounded tool competence from direct action observations
+belonging to previously terminal Goals. Tool success/failure is direct execution
+evidence; accepted/abandoned Goal counts are association only, not proof that a
+tool caused the Goal result. The projection changes later cognition guidance but
+persists no new ledger and does not promote an SOP, skill, memory, or identity.
+
+Competence stays provisional with sparse evidence, records recent failure and
+fallback guidance, and yields to current canonical evidence. Durable procedural
+promotion still requires the normal reuse, audit, regression, freshness,
+revision, and retirement gates in this document.
+
 ## CLI
 
 Validate local seed and active skill packages:
@@ -305,8 +318,9 @@ The design goal is continuity without authority drift:
 
 Dream consumes facts and verified outcomes; semantic memory remains the
 durable fact layer, episode/session archives remain recall evidence, SOPs and
-skills remain procedural memory, and iteration outcomes remain completion
-evidence. Dream may recommend which layer deserves attention next, but cannot
+skills remain procedural memory, current OutcomeReceipts remain Goal completion
+evidence, and historical iteration outcomes remain migration evidence. Dream
+may recommend which layer deserves attention next, but cannot
 promote, execute, reconcile state roots, or prove completion.
 
 External implementations inform this separation but do not define
@@ -354,64 +368,17 @@ registry fields such as source, status, trust level, refs, version, and usage
 counters. They do not rewrite registry metadata, mutate skill files, write the
 active vault, invoke the model, or run shell commands.
 
-Operators can inspect self-evolution maturity through
-`governance scorecard`. The scorecard reads only capability catalog metadata,
-memory-layer diagnostics, accepted dream snapshots, the SOP evolution ledger,
-and the Opportunity Backlog. It classifies current progress across core project design
-design, basic runtime substrate, general-agent delegation, SOP/skill/memory
-loop, and memory/dream direction. Its review lenses are advisory context, not
-delegated agents, and the command never promotes SOPs, writes skills, invokes
-models, or proves completion.
-The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
-`next_slices`. `default_next_slice` is the bounded core/basic planning outlet by
-default. `next_slices` stays read-only, all-dimension prioritization context
-derived from dimension stage, score, and layer; it may surface local-learning
-SOP follow-ups first, but those hints must not redefine the agent's core
-capability direction or execute the slice.
-`governance project-design` exposes the core project design contract. It
-keeps goal intake, capability layering, contract design, execution planning,
-verification review, and learning persistence as the reusable loop before a
-project slice is treated as durable progress. It is read-only and does not
-execute tools, create projects, spawn experts, promote memories, or prove
+Legacy `governance scorecard`, `governance project-design`, and
+`governance iterations` commands remain available for on-demand historical
+diagnosis. They do not enter resident context, select active engineering work,
+or own current completion. Do not add new learning or promotion dependencies
+to them; current runtime experience begins with canonical Goal events and one
+OutcomeReceipt. Existing historical state remains readable until a later
+bounded retirement task measures its remaining callers.
+
+`governance experts` remains a read-only advisory contract and cannot spawn
+experts, call models, execute tools, mutate state, promote learning, or claim
 completion.
-Verified self-evolution iteration outcomes can also appear there as read-only
-project-design artifacts. They are reusable project design lessons, not state
-writes, SOP drafts, skill promotion, or future completion proof.
-If the latest reusable artifact is core/basic, `project-design` also emits
-`next_core_basic_plan`, an advisory planning packet with phase gates,
-acceptance criteria, verification commands, non-goals, selection readiness, and
-completion-audit seeds. It is not an execution plan, backlog write, SOP draft,
-or completion claim. Its `acceptance_trace` can map each criterion to required
-verification entrypoints and outcome claim prefixes, but that trace is review
-guidance only and does not promote SOPs, skills, memory, or dreams.
-Operators can record the layer discipline for a major iteration through
-`governance record-iteration`. The record declares whether the work is
-`core_runtime`, `basic_entrypoint`, `local_learning`, `application_slice`, or
-`boundary`, plus owner surface, proposed slice, evidence refs, verification
-commands, non-goals, and advisory expert roles. `governance iterations` lists
-or inspects these records. They are context and governance evidence only; they
-do not execute work, write repo files, write the active vault, promote SOPs, or
-prove completion.
-`governance experts` exposes the matching read-only expert orchestration
-contract. It defines advisory roles, scheduling boundaries, and main-thread
-verification authority; it does not spawn expert agents, call multiple models,
-execute tools, mutate state, or prove completion.
-The same contract includes delegation gates for core-boundary, runtime-health,
-learning-persistence, and delegation-budget reviews. Each gate names trigger,
-required inputs, expected output, rejection cases, and main-runtime completion
-authority before advice can affect an iteration.
-`governance experts --gate <gate-id>` turns one gate into a read-only advisory
-plan packet. The packet can guide a review, but it cannot call experts, execute
-recommendations, promote memory/SOP/skills, or prove completion.
-If an active dream snapshot exists, low-maturity scorecard dimensions can become
-proposal-only `governance gaps` items. The general-agent delegation gap is
-suppressed once `delegate_agent` exists in the harness action catalog; any
-future durable SOP or skill still moves through the normal review, audit, and
-promotion gates.
-Verified self-evolution iteration outcomes can also become SOP-candidate gaps
-when no state-only SOP draft cites the iteration yet. This preserves reusable
-learning pressure without auto-drafting, auditing, promoting, accepting memory,
-or writing the active vault.
 
 Operators can also inspect active-vault skill registry health through
 `skills health`, `skills health --skill-name <name>`, Feishu `/skill health`,
