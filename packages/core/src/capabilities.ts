@@ -1003,21 +1003,23 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work or projects stale queue-worker files through current service status",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
-          "ordinary bound group messages append inbox entries only; allowed Feishu p2p tasks render bounded same-chat history into one Goal objective, while the adapter retains follow-up queues and operator commands"
+          "ordinary bound group messages append inbox entries only; allowed Feishu p2p tasks render bounded same-chat history into one Goal objective, while explicit named /goal interactions reuse the same canonical runtime and same-sender lane"
         ]
       },
       {
         id: "feishu.private_chat",
         title: "Feishu IM sessions",
-        summary: "Receive allowed private messages and group executions through canonical Goals, preserve provider evidence, and queue private-chat follow-ups in process.",
+        summary: "Receive allowed private messages and group executions through canonical Goals, continue explicitly named p2p Goals, preserve provider evidence, and queue private-chat interactions in process.",
         status: "implemented",
-        commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
+        commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /goal continue <goal-id>", "Feishu /goal confirm <goal-id> <effect-id>", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
           "bound group messages are inbox context by default; /run or accepted mention submits one canonical Goal",
           "each allowed private-chat task submits one canonical Goal with bounded same-chat history and records direct provider delivery evidence only",
-          "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
+          "strict /goal read, continue, resume, and exact confirm address one named canonical Goal without latest-Goal inference or replacement submission",
+          "follow-up queues are bounded in-memory same-open_id queues shared by task and Goal interactions; queued artifacts are trace evidence, not durable replay or cross-process steering",
+          "Goal control messages are provider protocol and are excluded from later ordinary-task conversation history"
         ]
       }
     ]

@@ -13,7 +13,7 @@ import {
   createRuntimeImAdapter
 } from "../packages/runtime/src/im_adapters.js";
 import type { DiscordImScenarioConfig, FeishuImScenarioConfig, TelegramImScenarioConfig } from "../packages/runtime/src/im_config.js";
-import type { GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalInteractionPort } from "../packages/runtime/src/goal_ingress.js";
 import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 
 test("runtime IM adapter seam creates Feishu adapters from provider-neutral scenarios", async () => {
@@ -70,8 +70,14 @@ test("runtime IM adapter seam creates Discord adapters from provider-neutral sce
   }
 });
 
-function stubGoalIngress(): GoalIngressPort {
-  return { submit: async () => ({ goal_id: "goal_adapter", status: "active", receipt: null } as GoalView) };
+function stubGoalIngress(): GoalInteractionPort {
+  const view = { goal_id: "goal_adapter", status: "active", receipt: null } as GoalView;
+  return {
+    submit: async () => view,
+    read: async () => view,
+    continue: async () => view,
+    resume: async () => view
+  };
 }
 
 function feishuScenario(): FeishuImScenarioConfig {

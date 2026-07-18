@@ -17,6 +17,8 @@ import {
 
 export type { GoalRuntimePort } from "./goal_runtime.js";
 
+type GoalInteractionCommand = Extract<GoalCommand, { type: "continue" | "resume" }>;
+
 export interface ConfiguredGoalRuntimeOptions {
   repoRoot: string;
   configDir?: string;
@@ -34,52 +36,70 @@ export interface GoalIngressPort {
   submit(objective: string): Promise<GoalView>;
 }
 
-/** Preserve the canonical Goal identity when a Continue fails after Start. */
-export class GoalIngressError extends Error {
+/** One interactive edge over the canonical GoalRuntime; owns command ids only. */
+export interface GoalInteractionPort extends GoalIngressPort {
+  read(goalId: string): Promise<GoalView>;
+  continue(goalId: string): Promise<GoalView>;
+  resume(goalId: string, confirmEffectId?: string): Promise<GoalView>;
+}
+
+/** Preserve the canonical Goal identity when an interactive command fails. */
+export class GoalInteractionError extends Error {
   readonly goalId: string;
   readonly goal: GoalView | null;
 
   constructor(goalId: string, goal: GoalView | null, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause));
-    this.name = "GoalIngressError";
+    this.name = "GoalInteractionError";
     this.goalId = goalId;
     this.goal = goal;
   }
 }
 
-export function goalFromIngressError(error: unknown): GoalView | null {
-  return error instanceof GoalIngressError ? error.goal : null;
+export function goalFromInteractionError(error: unknown): GoalView | null {
+  return error instanceof GoalInteractionError ? error.goal : null;
 }
 
-export function goalIdFromIngressError(error: unknown): string | null {
-  return error instanceof GoalIngressError ? error.goalId : null;
+export function goalIdFromInteractionError(error: unknown): string | null {
+  return error instanceof GoalInteractionError ? error.goalId : null;
 }
 
 /** Render one canonical Goal view for every interactive ingress without reviving RunResult. */
-export function goalContinuationHint(goal: GoalView): string {
+export function goalContinuationHint(goal: GoalView, surface: "cli" | "feishu" = "cli"): string {
   if (goal.status === "completed") return `Goal ${goal.goal_id} is completed; no continuation command is required.`;
   if (goal.status === "abandoned") return `Goal ${goal.goal_id} is abandoned; no continuation command is allowed.`;
   if (goal.status === "paused" && goal.pending_effect?.state === "awaiting_confirmation") {
+    if (surface === "feishu") return `Send /goal confirm ${goal.goal_id} ${goal.pending_effect.effect_id} to confirm this exact effect.`;
     return `Run goal resume --goal ${goal.goal_id} --confirm-effect ${goal.pending_effect.effect_id} to confirm this exact effect.`;
   }
   if (goal.status === "paused" && goal.pending_effect?.state === "outcome_unknown") {
     return `No safe continuation command: effect ${goal.pending_effect.effect_id} has an unknown outcome and must be reconciled from evidence before any new action.`;
   }
-  if (goal.status === "paused") return `Run goal resume --goal ${goal.goal_id} to resume this manually paused Goal.`;
+  if (goal.status === "paused") {
+    return surface === "feishu"
+      ? `Send /goal resume ${goal.goal_id} to resume this manually paused Goal.`
+      : `Run goal resume --goal ${goal.goal_id} to resume this manually paused Goal.`;
+  }
+  if (surface === "feishu") return `Send /goal continue ${goal.goal_id} to continue this Goal.`;
   return `Run goal continue --goal ${goal.goal_id} to continue this Goal.`;
 }
 
-export function renderGoalIngressPresentation(goal: GoalView): string {
+export function renderGoalIngressPresentation(
+  goal: GoalView,
+  options: { surface?: "cli" | "feishu" } = {}
+): string {
+  const surface = options.surface ?? "cli";
   const detail = goal.receipt?.summary?.trim()
-    ? `Result: ${goal.receipt.summary.trim()}`
+    ? `${surface === "feishu" ? "Outcome (receipt content; canonical lifecycle is shown above)" : "Result"}: ${goal.receipt.summary.trim()}`
     : goal.next_action?.trim()
       ? `Next: ${goal.next_action.trim()}`
       : null;
   return [
     `Goal: ${goal.goal_id}`,
-    `Status: ${goal.status}`,
+    `${surface === "feishu" ? "Canonical status" : "Status"}: ${goal.status}`,
+    ...(surface === "feishu" && goal.receipt?.id ? [`Receipt: ${goal.receipt.id}`] : []),
     ...(detail ? [detail] : []),
-    goalContinuationHint(goal)
+    goalContinuationHint(goal, surface)
   ].join("\n");
 }
 
@@ -129,23 +149,61 @@ export async function executeGoalIngressRequest(
     } catch {
       // Preserve only the known identity when canonical current state is unreadable.
     }
-    throw new GoalIngressError(started.goal_id, latest, error);
+    throw new GoalInteractionError(started.goal_id, latest, error);
   }
 }
 
 /** Bind generated command identities at the edge while preserving one reusable canonical ingress. */
-export function createGoalIngress(runtime: GoalRuntimePort): GoalIngressPort {
+export function createGoalIngress(runtime: GoalRuntimePort): GoalInteractionPort {
   return {
     submit: (objective) => executeGoalIngressRequest(runtime, {
       objective,
       startCommandId: newId("goal_command"),
       continueCommandId: newId("goal_command")
+    }),
+    read: (goalId) => readGoal(runtime, goalId),
+    continue: (goalId) => executeNamedGoalCommand(runtime, {
+      type: "continue",
+      command_id: newId("goal_command"),
+      goal_id: required(goalId, "goal continue requires a goal id")
+    }),
+    resume: (goalId, confirmEffectId) => executeNamedGoalCommand(runtime, {
+      type: "resume",
+      command_id: newId("goal_command"),
+      goal_id: required(goalId, "goal resume requires a goal id"),
+      ...(confirmEffectId !== undefined
+        ? { confirm_effect_id: required(confirmEffectId, "goal confirmation requires an effect id") }
+        : {})
     })
   };
 }
 
-export async function createConfiguredGoalIngress(options: ConfiguredGoalRuntimeOptions): Promise<GoalIngressPort> {
+export async function createConfiguredGoalIngress(options: ConfiguredGoalRuntimeOptions): Promise<GoalInteractionPort> {
   return createGoalIngress(await createConfiguredGoalRuntime(options));
+}
+
+async function readGoal(runtime: GoalRuntimePort, rawGoalId: string): Promise<GoalView> {
+  const goalId = required(rawGoalId, "goal read requires a goal id");
+  try {
+    return await runtime.read(goalId);
+  } catch (error) {
+    throw new GoalInteractionError(goalId, null, error);
+  }
+}
+
+async function executeNamedGoalCommand(runtime: GoalRuntimePort, command: GoalInteractionCommand): Promise<GoalView> {
+  const goalId = command.goal_id;
+  try {
+    return await runtime.handle(command);
+  } catch (error) {
+    let latest: GoalView | null = null;
+    try {
+      latest = await runtime.read(goalId);
+    } catch {
+      // Preserve the named identity even when canonical current state is unreadable.
+    }
+    throw new GoalInteractionError(goalId, latest, error);
+  }
 }
 
 function required(value: string, message: string): string {

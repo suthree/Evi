@@ -16,8 +16,17 @@ import {
 } from "../packages/core/src/runtime_channel_outbox.js";
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
-import { FeishuPrivateChatAdapter, normalizePrivateTextMessage, parseFeishuTextContent, splitText } from "../packages/runtime/src/channels/feishu/adapter.js";
-import { GoalIngressError, type GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import {
+  FeishuPrivateChatAdapter,
+  normalizePrivateTextMessage,
+  parseFeishuGoalControlCommand,
+  parseFeishuTextContent,
+  splitText
+} from "../packages/runtime/src/channels/feishu/adapter.js";
+import {
+  GoalInteractionError,
+  type GoalInteractionPort
+} from "../packages/runtime/src/goal_ingress.js";
 import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { loadFeishuChannelConfig } from "../packages/runtime/src/channels/feishu/config.js";
 import type {
@@ -191,7 +200,7 @@ test("private text message submits one Goal and records provider-only delivery e
     assert.match(goalIngress.objectives[0]!, /请处理这个任务/);
     assert.deepEqual(transport.sent.map((item) => item.text), [
       "收到，正在处理。",
-      "Goal: goal_feishu_private\nStatus: completed\nResult: Final answer.\nGoal goal_feishu_private is completed; no continuation command is required."
+      "Goal: goal_feishu_private\nCanonical status: completed\nReceipt: goal_receipt_goal_feishu_private\nOutcome (receipt content; canonical lifecycle is shown above): Final answer.\nGoal goal_feishu_private is completed; no continuation command is required."
     ]);
 
     const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
@@ -205,6 +214,227 @@ test("private text message submits one Goal and records provider-only delivery e
     assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
     assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
     assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu Goal control parser accepts only exact provider commands", () => {
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal read goal_control_123"), {
+    kind: "command", command: { operation: "read", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal continue goal_control_123"), {
+    kind: "command", command: { operation: "continue", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal resume goal_control_123"), {
+    kind: "command", command: { operation: "resume", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal confirm goal_control_123 goal_effect_confirm_123"), {
+    kind: "command",
+    command: { operation: "confirm", goalId: "goal_control_123", confirmEffectId: "goal_effect_confirm_123" }
+  });
+  assert.equal(parseFeishuGoalControlCommand("/goal continue goal_control_123 extra").kind, "invalid");
+  assert.equal(parseFeishuGoalControlCommand("/goal confirm goal_control_123 wrong_effect").kind, "invalid");
+  assert.equal(parseFeishuGoalControlCommand("/goal read goal_effect_not_a_goal").kind, "invalid");
+  assert.deepEqual(parseFeishuGoalControlCommand("please continue the work"), { kind: "none" });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goalkeeper continue goal_control_123"), { kind: "none" });
+});
+
+test("private Goal controls keep one named canonical identity and record provider evidence", async () => {
+  const fixture = await createFixture();
+  try {
+    const calls: Array<{ operation: string; goalId: string; effectId?: string }> = [];
+    const goalId = "goal_control_123";
+    const effectId = "goal_effect_confirm_123";
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        throw new Error("Goal control must not submit a replacement Goal");
+      },
+      read: async (requestedGoalId) => {
+        calls.push({ operation: "read", goalId: requestedGoalId });
+        return activeGoalView(requestedGoalId);
+      },
+      continue: async (requestedGoalId) => {
+        calls.push({ operation: "continue", goalId: requestedGoalId });
+        return {
+          ...activeGoalView(requestedGoalId),
+          status: "paused",
+          pending_effect: { effect_id: effectId, state: "awaiting_confirmation" }
+        } as GoalView;
+      },
+      resume: async (requestedGoalId, confirmEffectId) => {
+        calls.push({
+          operation: confirmEffectId ? "confirm" : "resume",
+          goalId: requestedGoalId,
+          ...(confirmEffectId ? { effectId: confirmEffectId } : {})
+        });
+        return confirmEffectId
+          ? {
+              goal_id: requestedGoalId,
+              status: "completed",
+              pending_effect: null,
+              receipt: { id: "goal_receipt_control_123", summary: "Delegated change verified." }
+            } as GoalView
+          : activeGoalView(requestedGoalId);
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    for (const [messageId, text] of [
+      ["om_goal_read", `/goal read ${goalId}`],
+      ["om_goal_continue", `/goal continue ${goalId}`],
+      ["om_goal_resume", `/goal resume ${goalId}`],
+      ["om_goal_confirm", `/goal confirm ${goalId} ${effectId}`]
+    ]) {
+      await adapter.handleInboundEvent(feishuEvent({
+        messageId, chatType: "p2p", openId: "ou_allowed", text
+      }));
+    }
+
+    assert.deepEqual(calls, [
+      { operation: "read", goalId },
+      { operation: "continue", goalId },
+      { operation: "resume", goalId },
+      { operation: "confirm", goalId, effectId }
+    ]);
+    assert.equal(transport.sent.some((item) => item.text.includes(`/goal confirm ${goalId} ${effectId}`)), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: completed")), true);
+    const evidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_confirm.json"), "utf8"
+    ));
+    assert.deepEqual({
+      operation: evidence.operation,
+      requested_goal_id: evidence.requested_goal_id,
+      requested_effect_id: evidence.requested_effect_id,
+      goal_id: evidence.goal_id,
+      goal_status: evidence.goal_status,
+      receipt_id: evidence.receipt_id,
+      status: evidence.status
+    }, {
+      operation: "confirm",
+      requested_goal_id: goalId,
+      requested_effect_id: effectId,
+      goal_id: goalId,
+      goal_status: "completed",
+      receipt_id: "goal_receipt_control_123",
+      status: "delivered"
+    });
+    assert.equal(existsSync(join(fixture.stateRoot, "runs/task_queue.jsonl")), false);
+    assert.equal(existsSync(join(fixture.stateRoot, "channels/outbox.jsonl")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("malformed and mismatched private Goal controls fail closed without replacement Goals", async () => {
+  const fixture = await createFixture();
+  try {
+    let submissions = 0;
+    const expectedEffectId = "goal_effect_expected_123";
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        submissions += 1;
+        return activeGoalView("goal_replacement_forbidden");
+      },
+      read: async (goalId) => activeGoalView(goalId),
+      continue: async (goalId) => activeGoalView(goalId),
+      resume: async (goalId, effectId) => {
+        const latest = {
+          ...activeGoalView(goalId),
+          status: "paused",
+          pending_effect: { effect_id: expectedEffectId, state: "awaiting_confirmation" }
+        } as GoalView;
+        throw new GoalInteractionError(goalId, latest, new Error(`confirmation does not match pending effect: ${expectedEffectId}; received ${effectId}`));
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_malformed", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal continue goal_control_123 extra"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_mismatch", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal confirm goal_control_123 goal_effect_wrong_123"
+    }));
+
+    assert.equal(submissions, 0);
+    assert.equal(transport.sent.some((item) => item.text.includes("Goal control command rejected.")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Goal control command failed closed.")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: paused")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("confirmation does not match pending effect")), false);
+    const failed = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_mismatch.json"), "utf8"
+    ));
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.goal_status, "paused");
+    assert.equal(failed.pending_effect_id, expectedEffectId);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("terminal and outcome-unknown Goal controls preserve canonical state and fail closed", async () => {
+  const fixture = await createFixture();
+  try {
+    let submissions = 0;
+    const terminalGoal = {
+      goal_id: "goal_terminal_123",
+      status: "completed",
+      pending_effect: null,
+      receipt: { id: "goal_receipt_terminal_123", summary: "Already complete." }
+    } as GoalView;
+    const unknownGoal = {
+      ...activeGoalView("goal_unknown_123"),
+      status: "paused",
+      pending_effect: { effect_id: "goal_effect_unknown_123", state: "outcome_unknown" }
+    } as GoalView;
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        submissions += 1;
+        return activeGoalView("goal_replacement_forbidden");
+      },
+      read: async (goalId) => activeGoalView(goalId),
+      continue: async (goalId) => {
+        throw new GoalInteractionError(goalId, terminalGoal, new Error("completed Goal cannot continue"));
+      },
+      resume: async (goalId) => {
+        throw new GoalInteractionError(goalId, unknownGoal, new Error("unknown effect outcome requires reconciliation"));
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_terminal", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal continue goal_terminal_123"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_unknown", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal resume goal_unknown_123"
+    }));
+
+    assert.equal(submissions, 0);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: completed")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("No safe continuation command")), true);
+    const terminalEvidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_terminal.json"), "utf8"
+    ));
+    const unknownEvidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_unknown.json"), "utf8"
+    ));
+    assert.equal(terminalEvidence.goal_status, "completed");
+    assert.equal(terminalEvidence.receipt_id, "goal_receipt_terminal_123");
+    assert.equal(unknownEvidence.goal_status, "paused");
+    assert.equal(unknownEvidence.pending_effect_id, "goal_effect_unknown_123");
   } finally {
     await fixture.cleanup();
   }
@@ -351,6 +581,13 @@ test("private text Goal objective includes bounded local conversation history", 
       text: "不应该出现在当前上下文",
       created_at: "2026-06-29T00:00:03.000Z"
     });
+    await fixture.store.writeJson("channels/feishu/inbound/om_goal_control.json", {
+      message_id: "om_goal_control",
+      chat_id: "chat_ou_allowed",
+      open_id: "ou_allowed",
+      text: "/goal confirm goal_history_123 goal_effect_history_123",
+      created_at: "2026-06-29T00:00:03.500Z"
+    });
     const goalIngress = stubGoalIngress("goal_feishu_history");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
@@ -374,6 +611,7 @@ test("private text Goal objective includes bounded local conversation history", 
     assert.doesNotMatch(goalIngress.objectives[0]!, /不应该混入其他聊天回复/);
     assert.doesNotMatch(goalIngress.objectives[0]!, /无 chat_id 回复不应该进入上下文/);
     assert.doesNotMatch(goalIngress.objectives[0]!, /不应该出现在当前上下文/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /goal_effect_history_123/);
     assert.match(goalIngress.objectives[0]!, /User message:\n现在呢？/);
 
     const outbound = JSON.parse(
@@ -431,9 +669,9 @@ test("private text messages queue same-sender follow-ups while a run is active",
     assert.deepEqual(transport.sent.map((item) => item.text), [
       "收到，正在处理。",
       "queued",
-      "Goal: goal_blocking_1\nStatus: completed\nResult: First answer.\nGoal goal_blocking_1 is completed; no continuation command is required.",
+      "Goal: goal_blocking_1\nCanonical status: completed\nReceipt: goal_receipt_blocking_1\nOutcome (receipt content; canonical lifecycle is shown above): First answer.\nGoal goal_blocking_1 is completed; no continuation command is required.",
       "收到，正在处理。",
-      "Goal: goal_blocking_2\nStatus: completed\nResult: Second answer.\nGoal goal_blocking_2 is completed; no continuation command is required."
+      "Goal: goal_blocking_2\nCanonical status: completed\nReceipt: goal_receipt_blocking_2\nOutcome (receipt content; canonical lifecycle is shown above): Second answer.\nGoal goal_blocking_2 is completed; no continuation command is required."
     ]);
 
     const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
@@ -441,6 +679,50 @@ test("private text messages queue same-sender follow-ups while a run is active",
     assert.equal(channelEvents.some((event) => event.kind === "dequeued_followup"), true);
     assert.equal(channelEvents.some((event) => event.kind === "busy"), false);
     assert.equal(existsSync(join(fixture.stateRoot, "channels/feishu/queued/om_queue_second.json")), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("private Goal control waits in the same-sender lane and never becomes a replacement Goal", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new BlockingGoalIngress(fixture.store);
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ queuedText: "queued" }),
+      transport,
+      goalIngress: runner,
+      store: fixture.store
+    });
+
+    const firstRun = adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_control_lane_first",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "先执行一个新 Goal"
+    }));
+    await waitUntil(() => runner.tasks.length === 1);
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_control_lane_second",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "/goal continue goal_existing_123"
+    }));
+    assert.equal(runner.tasks.length, 1);
+    assert.equal(runner.controlCalls.length, 0);
+    assert.equal(transport.sent.some((item) => item.text === "queued"), true);
+
+    runner.resolveNext("First answer.");
+    await firstRun;
+    assert.deepEqual(runner.controlCalls, [
+      { operation: "continue", goalId: "goal_existing_123" }
+    ]);
+    assert.equal(runner.tasks.length, 1);
+    const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
+    assert.equal(channelEvents.some((event) => event.kind === "queued_followup"), true);
+    assert.equal(channelEvents.some((event) => event.kind === "goal_control_delivered"), true);
   } finally {
     await fixture.cleanup();
   }
@@ -5185,7 +5467,7 @@ class MockFeishuTransport implements FeishuTransport {
   }
 }
 
-class StubGoalIngress implements GoalIngressPort {
+class StubGoalIngress implements GoalInteractionPort {
   readonly tasks: string[] = [];
 
   constructor(
@@ -5202,30 +5484,51 @@ class StubGoalIngress implements GoalIngressPort {
       receipt: { id: `goal_receipt_stub_${index}`, summary: this.finalText }
     } as GoalView;
   }
+
+  async read(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
+  }
+
+  async continue(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
+  }
+
+  async resume(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
+  }
 }
 
-function stubGoalIngress(goalId: string): GoalIngressPort & { objectives: string[] } {
+function stubGoalIngress(goalId: string): GoalInteractionPort & { objectives: string[] } {
   const objectives: string[] = [];
-  return { objectives, submit: async (objective) => {
-    objectives.push(objective);
-    return { goal_id: goalId, status: "active", receipt: null } as GoalView;
-  } };
-}
-
-function completedGoalIngress(goalId: string, summary: string): GoalIngressPort & { objectives: string[] } {
-  const objectives: string[] = [];
-  return { objectives, submit: async (objective) => {
-    objectives.push(objective);
-    return {
-      goal_id: goalId,
-      status: "completed",
-      receipt: { id: `goal_receipt_${goalId}`, summary }
-    } as GoalView;
-  } };
-}
-
-function failingGoalIngress(message: string): GoalIngressPort {
   return {
+    objectives,
+    ...passiveGoalControls(),
+    submit: async (objective) => {
+      objectives.push(objective);
+      return activeGoalView(goalId);
+    }
+  };
+}
+
+function completedGoalIngress(goalId: string, summary: string): GoalInteractionPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return {
+    objectives,
+    ...passiveGoalControls(),
+    submit: async (objective) => {
+      objectives.push(objective);
+      return {
+        goal_id: goalId,
+        status: "completed",
+        receipt: { id: `goal_receipt_${goalId}`, summary }
+      } as GoalView;
+    }
+  };
+}
+
+function failingGoalIngress(message: string): GoalInteractionPort {
+  return {
+    ...passiveGoalControls(),
     submit: async () => {
       const goal = {
         goal_id: "goal_feishu_failed",
@@ -5233,13 +5536,14 @@ function failingGoalIngress(message: string): GoalIngressPort {
         pending_effect: null,
         receipt: null
       } as GoalView;
-      throw new GoalIngressError(goal.goal_id, goal, new Error(message));
+      throw new GoalInteractionError(goal.goal_id, goal, new Error(message));
     }
   };
 }
 
-class BlockingGoalIngress implements GoalIngressPort {
+class BlockingGoalIngress implements GoalInteractionPort {
   readonly tasks: string[] = [];
+  readonly controlCalls: Array<{ operation: string; goalId: string; effectId?: string }> = [];
   private readonly pending: Array<{ resolve: (text: string) => void; promise: Promise<string> }> = [];
 
   constructor(private readonly _store: AgentStore) {}
@@ -5254,6 +5558,25 @@ class BlockingGoalIngress implements GoalIngressPort {
       status: "completed",
       receipt: { id: `goal_receipt_blocking_${index}`, summary: finalText }
     } as GoalView;
+  }
+
+  async read(goalId: string): Promise<GoalView> {
+    this.controlCalls.push({ operation: "read", goalId });
+    return activeGoalView(goalId);
+  }
+
+  async continue(goalId: string): Promise<GoalView> {
+    this.controlCalls.push({ operation: "continue", goalId });
+    return activeGoalView(goalId);
+  }
+
+  async resume(goalId: string, effectId?: string): Promise<GoalView> {
+    this.controlCalls.push({
+      operation: effectId ? "confirm" : "resume",
+      goalId,
+      ...(effectId ? { effectId } : {})
+    });
+    return activeGoalView(goalId);
   }
 
   resolveNext(text: string): void {
@@ -5271,6 +5594,18 @@ class BlockingGoalIngress implements GoalIngressPort {
     this.pending.push(pending);
     return pending;
   }
+}
+
+function passiveGoalControls(): Pick<GoalInteractionPort, "read" | "continue" | "resume"> {
+  return {
+    read: async (goalId) => activeGoalView(goalId),
+    continue: async (goalId) => activeGoalView(goalId),
+    resume: async (goalId) => activeGoalView(goalId)
+  };
+}
+
+function activeGoalView(goalId: string): GoalView {
+  return { goal_id: goalId, status: "active", pending_effect: null, receipt: null } as GoalView;
 }
 
 function testFeishuConfig(overrides: Partial<FeishuChannelConfig> = {}): FeishuChannelConfig {

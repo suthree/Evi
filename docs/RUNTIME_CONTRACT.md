@@ -528,6 +528,17 @@ operator commands, but it does not own a legacy runner or compatibility result.
 Foreground learning remains deferred to a receipt-driven asynchronous
 `LearningRuntime`.
 
+Allowed Feishu p2p operators may address that same canonical control plane with
+strict `/goal read goal_...`, `/goal continue goal_...`, `/goal resume
+goal_...`, and `/goal confirm goal_... goal_effect_...` commands. These commands
+name the Goal and, for confirmation, the exact pending effect; there is no
+latest-Goal lookup or conversational `yes` inference. Read is read-only;
+Continue, Resume, and Confirm translate to one canonical GoalRuntime command.
+Malformed or mismatched identifiers fail closed and never become new task
+prose. The interaction edge owns generated command ids and provider evidence,
+not Goal state. Feishu renders canonical lifecycle status separately from
+receipt outcome prose and returns provider-native next commands.
+
 ### Basic Entrypoints
 
 The local CLI is the primary foreground entrypoint.
@@ -3666,6 +3677,9 @@ First-version IM supports:
 - bounded same-sender in-memory follow-up queue for normal private-chat tasks
 - state-only operator notification outbox drained by the resident Feishu
   service
+- explicit Feishu p2p Goal interaction commands: `/goal read <goal-id>`,
+  `/goal continue <goal-id>`, `/goal resume <goal-id>`, and
+  `/goal confirm <goal-id> <effect-id>`
 - read-only local operator commands in private chat:
   `/status`, `/config`, `/runtime config`, `/service config`, `/health`,
   `/service health`, `/logs [lines]`, `/service logs [lines]`,
@@ -3804,10 +3818,12 @@ adapter sends the configured queued response, records a queued trace artifact
 under `channels/feishu/queued/`, and drains queued messages after the current
 run reaches its local boundary. Queue-full messages may receive the configured
 busy response. This queue is process-local scheduling only. It must not apply
-to operator commands, cross users, group chats, remote Feishu state, service
-restart recovery, multi-process coordination, durable replay, steering,
-cancel/resume semantics, model invocation outside the normal task runner, or
-self-evolution confirmation execution.
+to read-only operator commands, cross users, group chats, remote Feishu state,
+service restart recovery, multi-process coordination, durable replay, or
+implicit conversational steering. Explicit `/goal` interactions share this
+same-sender lane and are reparsed when dequeued, so Continue, Resume, and exact
+Confirm cannot race a current task or become replacement Goal prose. Goal
+control messages are excluded from later ordinary-task conversation history.
 
 Operator progress notifications are not Feishu operator commands and are not a
 general send API. `notify queue` writes a local request under

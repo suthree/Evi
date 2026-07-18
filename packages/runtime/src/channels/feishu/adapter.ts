@@ -168,10 +168,11 @@ import type { DailyContentJobResult, DailyContentJobStep } from "../../content_p
 import { getGovernanceStatus, type GovernanceOpportunitySummary, type GovernanceStatusResult } from "../../governance_status.js";
 import { dispatchRuntimeChannelMessage } from "../../channel_message_dispatcher.js";
 import {
-  goalFromIngressError,
-  goalIdFromIngressError,
+  goalFromInteractionError,
+  goalIdFromInteractionError,
+  goalContinuationHint,
   renderGoalIngressPresentation,
-  type GoalIngressPort
+  type GoalInteractionPort
 } from "../../goal_ingress.js";
 import type { GoalView } from "../../goal_runtime.js";
 import type { RuntimeChannelAdapter, RuntimeChannelHealth } from "../../message_gateway.js";
@@ -226,7 +227,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   readonly channelId: string;
   private readonly config: FeishuChannelConfig;
   private readonly transport: FeishuTransport;
-  private readonly goalIngress: GoalIngressPort;
+  private readonly goalIngress: GoalInteractionPort;
   private readonly store: AgentStore;
   private readonly vaultRoot: SkillResolverLike;
   private readonly homeRoot: string;
@@ -248,7 +249,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   constructor(args: {
     config: FeishuChannelConfig;
     transport: FeishuTransport;
-    goalIngress: GoalIngressPort;
+    goalIngress: GoalInteractionPort;
     store: AgentStore;
     vaultRoot?: SkillResolverLike;
     homeRoot?: string;
@@ -685,7 +686,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     try {
       let current: NormalizedFeishuPrivateMessage | null = initial;
       while (current) {
-        await this.runSingleMessage(current);
+        await this.runPrivateInteraction(current);
         const queued = this.dequeueFollowup(initial.openId);
         current = queued?.message ?? null;
         if (queued) {
@@ -703,7 +704,20 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     }
   }
 
-  private async runSingleMessage(normalized: NormalizedFeishuPrivateMessage): Promise<void> {
+  private async runPrivateInteraction(message: NormalizedFeishuPrivateMessage): Promise<void> {
+    const parsed = parseFeishuGoalControlCommand(message.text);
+    if (parsed.kind === "invalid") {
+      await this.handleGoalControlParseFailure(message, parsed.error);
+      return;
+    }
+    if (parsed.kind === "command") {
+      await this.runGoalControlCommand(message, parsed.command);
+      return;
+    }
+    await this.runNewGoalMessage(message);
+  }
+
+  private async runNewGoalMessage(normalized: NormalizedFeishuPrivateMessage): Promise<void> {
     let inboundRef = "";
     let outboundRef = "";
     let goal: GoalView | null = null;
@@ -713,7 +727,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       inboundRef = await this.recordInbound(normalized);
       await this.sendChunks(normalized.openId, this.config.ackText);
       goal = await this.goalIngress.submit(objective);
-      const finalText = renderGoalIngressPresentation(goal);
+      const finalText = renderGoalIngressPresentation(goal, { surface: "feishu" });
       const outbound = await this.sendChunks(normalized.openId, finalText);
       outboundRef = await this.store.writeJson(`channels/feishu/outbound/${normalized.messageId}.json`, {
         source_message_id: normalized.messageId,
@@ -742,8 +756,8 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       });
     } catch (error) {
       const message = errorMessage(error);
-      const failedGoal = goal ?? goalFromIngressError(error);
-      const failedGoalId = failedGoal?.goal_id ?? goalIdFromIngressError(error);
+      const failedGoal = goal ?? goalFromInteractionError(error);
+      const failedGoalId = failedGoal?.goal_id ?? goalIdFromInteractionError(error);
       const outbound = await this.sendChunks(normalized.openId, this.config.errorText);
       outboundRef = await this.store.writeJson(`channels/feishu/errors/${normalized.messageId}.json`, {
         message_id: normalized.messageId,
@@ -767,6 +781,133 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
         receipt_id: failedGoal?.receipt?.id ?? null,
         inbound_ref: inboundRef || null,
         outbound_ref: outboundRef,
+        provider_message_ids: sentMessageIds(outbound)
+      });
+    }
+  }
+
+  private async handleGoalControlParseFailure(
+    message: NormalizedFeishuPrivateMessage,
+    parseError: string
+  ): Promise<void> {
+    const inboundRef = await this.recordInbound(message);
+    const text = [
+      "Goal control command rejected.",
+      `Error: ${parseError}`,
+      goalControlUsage()
+    ].join("\n");
+    const outbound = await this.sendChunks(message.openId, text);
+    const artifactRef = await this.store.writeJson(`channels/feishu/goal-control/${message.messageId}.json`, {
+      source_message_id: message.messageId,
+      open_id: message.openId,
+      status: "rejected",
+      error: parseError,
+      text,
+      sends: outbound,
+      inbound_ref: inboundRef,
+      created_at: utcNow(),
+      boundary: "provider evidence for one explicit canonical Goal control request; no Goal lifecycle authority"
+    });
+    await this.recordChannelEvent("goal_control_rejected", "Rejected malformed Feishu Goal control command.", {
+      message_id: message.messageId,
+      open_id: message.openId,
+      inbound_ref: inboundRef,
+      artifact_ref: artifactRef,
+      provider_message_ids: sentMessageIds(outbound)
+    });
+  }
+
+  private async runGoalControlCommand(
+    message: NormalizedFeishuPrivateMessage,
+    command: FeishuGoalControlCommand
+  ): Promise<void> {
+    let inboundRef = "";
+    let artifactRef = "";
+    const requestedEffectId = command.operation === "confirm" ? command.confirmEffectId : null;
+    try {
+      inboundRef = await this.recordInbound(message);
+      await this.sendChunks(message.openId, this.config.ackText);
+      const goal = command.operation === "read"
+        ? await this.goalIngress.read(command.goalId)
+        : command.operation === "continue"
+          ? await this.goalIngress.continue(command.goalId)
+          : await this.goalIngress.resume(command.goalId, requestedEffectId ?? undefined);
+      const text = renderGoalIngressPresentation(goal, { surface: "feishu" });
+      const outbound = await this.sendChunks(message.openId, text);
+      artifactRef = await this.store.writeJson(`channels/feishu/goal-control/${message.messageId}.json`, {
+        source_message_id: message.messageId,
+        open_id: message.openId,
+        operation: command.operation,
+        requested_goal_id: command.goalId,
+        requested_effect_id: requestedEffectId,
+        goal_id: goal.goal_id,
+        goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null,
+        pending_effect_id: goal.pending_effect?.effect_id ?? null,
+        status: "delivered",
+        text,
+        sends: outbound,
+        inbound_ref: inboundRef,
+        created_at: utcNow(),
+        boundary: "provider evidence for one explicit canonical Goal control request; no Goal lifecycle authority"
+      });
+      await this.recordChannelEvent("goal_control_delivered", `Delivered Feishu Goal ${command.operation} for ${goal.goal_id}.`, {
+        message_id: message.messageId,
+        open_id: message.openId,
+        operation: command.operation,
+        requested_goal_id: command.goalId,
+        requested_effect_id: requestedEffectId,
+        goal_id: goal.goal_id,
+        goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null,
+        pending_effect_id: goal.pending_effect?.effect_id ?? null,
+        inbound_ref: inboundRef,
+        artifact_ref: artifactRef,
+        provider_message_ids: sentMessageIds(outbound)
+      });
+    } catch (error) {
+      const latest = goalFromInteractionError(error);
+      const goalId = latest?.goal_id ?? goalIdFromInteractionError(error) ?? command.goalId;
+      const errorText = truncateText(errorMessage(error), 1_200);
+      const text = [
+        "Goal control command failed closed.",
+        `Goal: ${goalId}`,
+        `Operation: ${command.operation}`,
+        `Canonical status: ${latest?.status ?? "unknown"}`,
+        "The canonical GoalRuntime rejected this interaction. Inspect local provider evidence for diagnostics.",
+        ...(latest ? [goalContinuationHint(latest, "feishu")] : [])
+      ].join("\n");
+      const outbound = await this.sendChunks(message.openId, text);
+      artifactRef = await this.store.writeJson(`channels/feishu/goal-control/${message.messageId}.json`, {
+        source_message_id: message.messageId,
+        open_id: message.openId,
+        operation: command.operation,
+        requested_goal_id: command.goalId,
+        requested_effect_id: requestedEffectId,
+        goal_id: goalId,
+        goal_status: latest?.status ?? null,
+        receipt_id: latest?.receipt?.id ?? null,
+        pending_effect_id: latest?.pending_effect?.effect_id ?? null,
+        status: "failed",
+        error: errorText,
+        text,
+        sends: outbound,
+        inbound_ref: inboundRef || null,
+        created_at: utcNow(),
+        boundary: "provider evidence for one explicit canonical Goal control request; no Goal lifecycle authority"
+      });
+      await this.recordChannelEvent("goal_control_failed", `Feishu Goal ${command.operation} failed closed for ${goalId}.`, {
+        message_id: message.messageId,
+        open_id: message.openId,
+        operation: command.operation,
+        requested_goal_id: command.goalId,
+        requested_effect_id: requestedEffectId,
+        goal_id: goalId,
+        goal_status: latest?.status ?? null,
+        receipt_id: latest?.receipt?.id ?? null,
+        pending_effect_id: latest?.pending_effect?.effect_id ?? null,
+        inbound_ref: inboundRef || null,
+        artifact_ref: artifactRef,
         provider_message_ids: sentMessageIds(outbound)
       });
     }
@@ -2513,6 +2654,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       const text = stringField(record, "text");
       if (!messageId || messageId === message.messageId || !text) continue;
       if (parseOperatorCommand(text)) continue;
+      if (parseFeishuGoalControlCommand(text).kind !== "none") continue;
       rows.push({
         role: "user",
         message_id: messageId,
@@ -2776,6 +2918,55 @@ type FeishuOperatorCommand =
   | { name: "review_ticks"; tickRef?: string }
   | { name: "reused_skill_coverage"; sopRef: string }
   | { name: "review_inbox"; status?: "active" | "all" | "executed"; itemRef?: string };
+
+export type FeishuGoalControlCommand =
+  | { operation: "read"; goalId: string }
+  | { operation: "continue"; goalId: string }
+  | { operation: "resume"; goalId: string; confirmEffectId?: undefined }
+  | { operation: "confirm"; goalId: string; confirmEffectId: string };
+
+export type FeishuGoalControlParseResult =
+  | { kind: "none" }
+  | { kind: "invalid"; error: string }
+  | { kind: "command"; command: FeishuGoalControlCommand };
+
+export function parseFeishuGoalControlCommand(text: string): FeishuGoalControlParseResult {
+  const compact = text.trim().replace(/\s+/g, " ");
+  if (!/^\/goal(?:\s|$)/i.test(compact)) return { kind: "none" };
+  const parts = compact.split(" ");
+  const operation = parts[1]?.toLowerCase();
+  const goalId = parts[2] ?? "";
+  if (!validGoalControlId(goalId)) return { kind: "invalid", error: "Goal id must be one exact goal_... identifier." };
+  if ((operation === "read" || operation === "continue" || operation === "resume") && parts.length === 3) {
+    return { kind: "command", command: { operation, goalId } };
+  }
+  if (operation === "confirm" && parts.length === 4) {
+    const confirmEffectId = parts[3] ?? "";
+    if (!validGoalEffectControlId(confirmEffectId)) {
+      return { kind: "invalid", error: "Effect id must be one exact goal_effect_... identifier." };
+    }
+    return { kind: "command", command: { operation, goalId, confirmEffectId } };
+  }
+  return { kind: "invalid", error: "Unsupported or malformed Goal control command." };
+}
+
+function validGoalControlId(value: string): boolean {
+  return /^goal_(?!effect_)[a-z0-9][a-z0-9_-]{2,127}$/.test(value);
+}
+
+function validGoalEffectControlId(value: string): boolean {
+  return /^goal_effect_[a-z0-9][a-z0-9_-]{2,127}$/.test(value);
+}
+
+function goalControlUsage(): string {
+  return [
+    "Use one exact command:",
+    "/goal read goal_...",
+    "/goal continue goal_...",
+    "/goal resume goal_...",
+    "/goal confirm goal_... goal_effect_..."
+  ].join("\n");
+}
 
 function parseOperatorCommand(text: string): FeishuOperatorCommand | null {
   const compact = text.trim().replace(/\s+/g, " ");
@@ -3274,6 +3465,10 @@ function renderOperatorHelp(): string {
     "",
     "/capabilities - read the local capability catalog and boundaries",
     "/capabilities acceptance - read next-version acceptance gates and verification commands",
+    "/goal read <goal-id> - read one canonical Goal without creating another Goal",
+    "/goal continue <goal-id> - run one bounded Continue tranche on the named Goal",
+    "/goal resume <goal-id> - resume one manually paused Goal",
+    "/goal confirm <goal-id> <effect-id> - confirm the exact pending Goal effect",
     "/status - read local service, review tick, and autonomy pause status",
     "/config - read effective runtime config summary without secrets",
     "/health - read local service health and heartbeat freshness",

@@ -212,6 +212,14 @@ then the adapter records inbound and direct delivery evidence. The adapter keeps
 history selection, follow-up queues, and read-only operator commands; none of
 those create a second execution owner.
 
+Feishu p2p can continue the explicitly named identity without creating another
+Goal: `/goal read goal_...`, `/goal continue goal_...`, `/goal resume goal_...`,
+and `/goal confirm goal_... goal_effect_...`. The last command confirms only
+the exact pending effect. There is no implicit latest Goal or plain-language
+confirmation. Invalid or mismatched identifiers fail closed. Provider replies
+label canonical lifecycle status separately from non-authoritative receipt
+outcome prose and return Feishu-native next commands.
+
 ## Doctor Semantics
 
 Default `doctor` means: this machine can run the complete first-version local
@@ -1154,6 +1162,9 @@ task intake:
 - explicit group execution through `/run <task>` or an explicit bot mention
 - optional allowlist
 - operator notification outbox drained by the resident Feishu service
+- explicit p2p Goal interaction through `/goal read <goal-id>`,
+  `/goal continue <goal-id>`, `/goal resume <goal-id>`, and
+  `/goal confirm <goal-id> <effect-id>`
 - read-only local operator commands: `/status`, `/health`,
   `/service health`, `/logs [lines]`, `/service logs [lines]`,
   `/governance`, `/help`, `/capabilities`, `/evolution`,
@@ -1248,8 +1259,11 @@ configured queued response, write a trace artifact under
 `channels/feishu/queued/`, and run it after the current task finishes. The
 trace artifact is observability, not durable replay: restarting the local
 service clears the in-memory queue. Queue-full messages use the configured busy
-response. Operator commands stay immediate read-only commands and do not enter
-this queue.
+response. Read-only operator commands stay immediate and do not enter this
+queue. Explicit `/goal` interaction commands do share the same-sender lane and
+are reparsed when dequeued, so mutation cannot race the current Goal or fall
+through as a replacement Goal. They are excluded from later ordinary-task
+conversation history.
 
 `workspace status` and Feishu `/workspace` expose a fixed local git status
 diagnostic for the configured repo root. They summarize branch, upstream,

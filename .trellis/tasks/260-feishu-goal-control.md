@@ -51,7 +51,7 @@ truth.
 
 ## Scope And Acceptance
 
-- Reuse GoalRuntime commands and events, `GoalIngressError` recovery,
+- Reuse GoalRuntime commands and events, `GoalInteractionError` recovery,
   `renderGoalIngressPresentation`, provider allowlisting, deduplication,
   evidence writes, and the existing same-open-id execution lane.
 - Deepen or replace the Start-only Goal ingress Interface with one small
@@ -168,3 +168,22 @@ truth.
 - Task 259 closure and Task 260 activation are the only changes in the
   activation commit; implementation follows only after this contract is
   committed and linked to the Issue.
+
+## Pre-Merge Verification Evidence
+
+- The Goal interaction edge translates one submission, Read, Continue,
+  manual Resume, or exact-effect Confirm into the existing GoalRuntime. It
+  owns generated command ids and error recovery only; no latest-Goal mapping,
+  provider lifecycle store, or alternate planner was added.
+- Feishu strict parsing, same-sender serialization, provider evidence,
+  canonical lifecycle presentation, terminal/outcome-unknown failure, and
+  conversation-history exclusion are covered by adapter tests. Web, CLI,
+  Telegram, Discord, group-session, and legacy-state boundaries remain on
+  their existing ingress paths.
+- Focused regression on 2026-07-18 passed 186/186 tests across Goal runtime,
+  Feishu, Web, IM adapter seam, Telegram, Discord, CLI, and capability catalog.
+- `pnpm run check` passed on 2026-07-18: TypeScript build; 976/976 tests; active
+  Skill validation; neutral naming across 131 implementation files.
+- `git diff --check` passed. The source candidate still requires independent
+  Standards/Spec review, merge, exact deployment, connected Feishu inbound,
+  and the named-Goal live confirmation probe before this task can complete.
