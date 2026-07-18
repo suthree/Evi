@@ -5,8 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { AgentStore } from "../packages/core/src/store.js";
 import { AgentStore as Store } from "../packages/core/src/store.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
-import type { FeishuSendResult, FeishuTransport, TaskRunner } from "../packages/runtime/src/channels/feishu/types.js";
+import type { FeishuSendResult, FeishuTransport } from "../packages/runtime/src/channels/feishu/types.js";
 import type { TelegramSendResult, TelegramTransport } from "../packages/runtime/src/channels/telegram/types.js";
 import type { DiscordSendResult, DiscordTransport } from "../packages/runtime/src/channels/discord/types.js";
 import {
@@ -23,7 +22,6 @@ test("runtime IM adapter seam creates Feishu adapters from provider-neutral scen
     const adapter = createRuntimeImAdapter({
       scenario: feishuScenario(),
       store: fixture.store,
-      legacyPrivateRunner: new StubRunner(),
       goalIngress: stubGoalIngress(),
       feishuTransportFactory: () => new FakeFeishuTransport()
     });
@@ -81,10 +79,6 @@ function feishuScenario(): FeishuImScenarioConfig {
     id: "im-default",
     provider: "feishu",
     channelId: "feishu-main",
-    legacyPrivateModelId: "test-model",
-    legacyPrivateDiscipline: "query_todo",
-    legacyPrivateReplyPolicy: "final_response",
-    legacyPrivateConcurrency: "per_sender",
     channelDescriptor: {
       id: "feishu-main",
       kind: "feishu",
@@ -188,35 +182,6 @@ class FakeDiscordTransport implements DiscordTransport {
   async stop(): Promise<void> {}
   async sendText(): Promise<DiscordSendResult> {
     return { ok: true, messageId: "sent_1", summary: "sent" };
-  }
-}
-
-class StubRunner implements TaskRunner {
-  async runTask(): Promise<RunResult> {
-    return {
-      trigger_id: "trigger_im_adapter",
-      opportunity_id: "opp_im_adapter",
-      session_id: "session_im_adapter",
-      turn_id: "turn_im_adapter",
-      context_ref: "memory/episodes/im-adapter-context.md",
-      context_manifest_ref: null,
-      model_response_ref: "memory/episodes/im-adapter-model.json",
-      envelope_ref: "memory/episodes/im-adapter-envelope.json",
-      evidence_refs: [],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: null,
-      completion_report_ref: null,
-      discipline_refs: null,
-      completion_status: "done",
-      verification_status: "passed",
-      worktree: null,
-      working_checkpoint_ref: null,
-      next_action: null,
-      verdict: "ok"
-    };
   }
 }
 

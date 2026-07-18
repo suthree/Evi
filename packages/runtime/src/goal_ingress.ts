@@ -33,6 +33,27 @@ export interface GoalIngressPort {
   submit(objective: string): Promise<GoalView>;
 }
 
+/** Preserve the canonical Goal identity when a Continue fails after Start. */
+export class GoalIngressError extends Error {
+  readonly goalId: string;
+  readonly goal: GoalView | null;
+
+  constructor(goalId: string, goal: GoalView | null, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "GoalIngressError";
+    this.goalId = goalId;
+    this.goal = goal;
+  }
+}
+
+export function goalFromIngressError(error: unknown): GoalView | null {
+  return error instanceof GoalIngressError ? error.goal : null;
+}
+
+export function goalIdFromIngressError(error: unknown): string | null {
+  return error instanceof GoalIngressError ? error.goalId : null;
+}
+
 /** Render one canonical Goal view for every interactive ingress without reviving RunResult. */
 export function goalContinuationHint(goal: GoalView): string {
   if (goal.status === "completed") return `Goal ${goal.goal_id} is completed; no continuation command is required.`;
@@ -90,11 +111,21 @@ export async function executeGoalIngressRequest(
     command_id: request.startCommandId,
     objective
   });
-  return runtime.handle({
-    type: "continue",
-    command_id: request.continueCommandId,
-    goal_id: started.goal_id
-  });
+  try {
+    return await runtime.handle({
+      type: "continue",
+      command_id: request.continueCommandId,
+      goal_id: started.goal_id
+    });
+  } catch (error) {
+    let latest: GoalView | null = null;
+    try {
+      latest = await runtime.read(started.goal_id);
+    } catch {
+      // Preserve only the known identity when canonical current state is unreadable.
+    }
+    throw new GoalIngressError(started.goal_id, latest, error);
+  }
 }
 
 /** Bind generated command identities at the edge while preserving one reusable canonical ingress. */

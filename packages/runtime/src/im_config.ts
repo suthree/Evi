@@ -7,7 +7,6 @@ import { loadTelegramChannelConfig } from "./channels/telegram/config.js";
 import type { TelegramChannelConfig } from "./channels/telegram/types.js";
 import { loadDiscordChannelConfig } from "./channels/discord/config.js";
 import type { DiscordChannelConfig } from "./channels/discord/types.js";
-import type { DisciplineMode } from "./runner.js";
 
 export type ImProvider = Extract<RuntimeChannelKind, "feishu" | "telegram" | "discord">;
 
@@ -54,10 +53,6 @@ export interface ImScenarioBase {
 
 export type FeishuImScenarioConfig = ImScenarioBase & {
   provider: "feishu";
-  legacyPrivateModelId: string;
-  legacyPrivateDiscipline: DisciplineMode;
-  legacyPrivateReplyPolicy: "final_response";
-  legacyPrivateConcurrency: "per_sender";
   channel: FeishuChannelConfig;
 };
 
@@ -108,17 +103,9 @@ export async function loadImScenarioConfig(options: ImScenarioLoadOptions = {}):
   };
 
   if (channel.kind === "feishu") {
-    const legacyPrivateModelId = scenario?.model_id ?? selectors.activeModelId;
-    if (!legacyPrivateModelId) {
-      throw new Error("No model found for Feishu private chat; set scenario.model_id or active_model.");
-    }
     return {
       ...base,
       provider: "feishu",
-      legacyPrivateModelId,
-      legacyPrivateDiscipline: scenario?.discipline ?? "query_todo",
-      legacyPrivateReplyPolicy: scenario?.reply_policy ?? "final_response",
-      legacyPrivateConcurrency: scenario?.concurrency ?? "per_sender",
       channel: await loadFeishuChannelConfig({ ...options, channelId: channel.id })
     };
   }

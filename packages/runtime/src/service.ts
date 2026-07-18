@@ -13,7 +13,6 @@ import type { ContentDailyLoopStatus } from "./content_daily_service.js";
 import type { ContentCreatorMetricsLoopStatus } from "./content_creator_metrics_service.js";
 import type { ContentFeedbackRefreshLoopStatus } from "./content_feedback_refresh_service.js";
 import type { ReviewTickLoopStatus } from "./review_tick_service.js";
-import type { DisciplineMode } from "./runner.js";
 import { recordOperatorServiceRollback } from "./service_supervisor.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
@@ -34,7 +33,6 @@ export interface ServiceCommandOptions {
   provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
-  discipline?: DisciplineMode;
   enableIm?: boolean;
   enableWeb?: boolean;
   webHost?: string;
@@ -62,7 +60,6 @@ export interface ServiceDefinitionInput {
   provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
-  discipline?: DisciplineMode;
   enableIm?: boolean;
   enableWeb?: boolean;
   webHost?: string;
@@ -408,7 +405,6 @@ export async function resolveServiceDefinition(
   let channelId = options.channelId ?? serviceSelectors.activeChannelId ?? undefined;
   let scenarioId = options.scenarioId ?? serviceSelectors.activeScenarioId ?? undefined;
   let provider = options.provider;
-  let discipline: "query_todo" | undefined = options.discipline === "query_todo" ? "query_todo" : undefined;
   const enableIm = options.enableIm !== false;
   const enableWeb = options.enableWeb !== false;
 
@@ -421,27 +417,14 @@ export async function resolveServiceDefinition(
       scenarioId: options.scenarioId
     });
     assertRuntimeImAdapterSupported(scenario);
-    if (scenario.provider === "feishu") {
-      await loadConfig({
-        configDir: options.configDir,
-        stateRoot: serviceSelectors.stateRoot,
-        modelId: scenario.legacyPrivateModelId
-      });
-    } else {
-      await loadConfig({
-        configDir: options.configDir,
-        stateRoot: serviceSelectors.stateRoot,
-        skipAuth: true
-      });
-    }
+    await loadConfig({
+      configDir: options.configDir,
+      stateRoot: serviceSelectors.stateRoot,
+      skipAuth: true
+    });
     channelId = scenario.channelId;
     scenarioId = scenario.id;
     provider = scenario.provider;
-    discipline = scenario.provider === "feishu"
-      ? options.discipline === "query_todo" || scenario.legacyPrivateDiscipline === "query_todo"
-        ? "query_todo"
-        : undefined
-      : undefined;
   }
   if (validateRuntime && !enableIm) {
     await loadConfig({
@@ -459,7 +442,6 @@ export async function resolveServiceDefinition(
     provider,
     channelId,
     scenarioId,
-    discipline,
     enableIm,
     enableWeb,
     webHost: options.webHost,
@@ -546,7 +528,6 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   if (input.scenarioId) serviceArgs.push("--scenario", input.scenarioId);
   if (input.provider) serviceArgs.push("--provider", input.provider);
   if (input.channelId) serviceArgs.push("--channel", input.channelId);
-  if (input.discipline && input.discipline !== "none") serviceArgs.push("--discipline", input.discipline);
   if (input.enableIm === false) serviceArgs.push("--no-im");
   if (input.enableWeb === false) serviceArgs.push("--no-web");
   if (input.webHost) serviceArgs.push("--host", input.webHost);

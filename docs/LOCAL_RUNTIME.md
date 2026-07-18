@@ -207,36 +207,20 @@ pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
 pnpm run runtime -- show-events --state-root .runtime/state
 ```
 
-`live`, standalone `web`, daemon-hosted Web, and bound Feishu/Telegram/Discord
-runtime-session `/run` or accepted-mention messages create one canonical
+`live`, standalone `web`, daemon-hosted Web, ordinary allowed Feishu p2p tasks,
+and bound Feishu/Telegram/Discord runtime-session `/run` or accepted-mention
+tasks create one canonical
 GoalRuntime identity and run exactly one bounded Continue tranche. A Web or IM
 submission returns its `GoalView`, displays the `goal_id`, and directs the
 operator to `goal continue` or `goal resume`; it never starts a replacement
-Goal automatically. New Web and runtime-session IM work writes no legacy task queue, task-run, or
-channel-outbox state, although historical run and queue rows remain readable.
-Query/todo discipline belongs to the still-legacy runner and is rejected on
-`live` rather than written beside the Goal. Feishu p2p/private chat remains a
-separate legacy ingress because it still owns history, follow-up queues, and
-operator commands.
-
-The still-legacy Feishu p2p/private-chat runner may expand bounded repo-local task references:
-
-```text
-@file:docs/RUNTIME_CONTRACT.md
-@file:docs/RUNTIME_CONTRACT.md:120-160
-@file:"docs/release notes.md":1-20
-@folder:docs
-```
-
-The GoalRuntime-backed `live` CLI keeps the objective literal and lets Evi use
-its bounded `file.read` action when a repository file is needed; it does not
-pre-write a legacy context bundle merely to expand this syntax.
-
-For that legacy runner, these refs are assembled into the context as
-`Task References`. They do not create a separate command surface and do not
-widen runtime authority:
-absolute paths, parent traversal, state/home files, URLs, git refs, shell
-commands, and writes are out of scope.
+Goal automatically. New Web, Feishu p2p, and runtime-session IM work writes no
+legacy task queue, task-run, or channel-outbox state, although historical run
+and queue rows remain readable.
+`live --query-todo` is rejected rather than written beside a Goal. Feishu p2p
+also uses GoalRuntime: it renders bounded same-chat history into the objective,
+then the adapter records inbound and direct delivery evidence. The adapter keeps
+history selection, follow-up queues, and read-only operator commands; none of
+those create a second execution owner.
 
 ## Doctor Semantics
 
@@ -248,10 +232,8 @@ It should check:
 - repository readability
 - JSONL config parsing
 - active model selection
-- `goal_cognition` selection for Goal-backed runtime sessions; Telegram and
-  Discord scenario model fields do not gate readiness
-- Feishu legacy private-chat scenario model selection and model-layer
-  resolution
+- `goal_cognition` selection for all Goal-backed IM; stale scenario model and
+  discipline fields do not gate readiness
 - model auth unless `--no-auth` is passed
 - non-secret model auth source diagnostics: auth id, source ref, direct/env
   mode, and whether an explicitly named env value is present
@@ -1924,9 +1906,9 @@ concrete next action. The optional checkpoint `worktree` records the actual
 local path for a later queue resume. Selected-skill usage telemetry does not replace it. If no
 valid run checkpoint exists, the harness records a bounded resume fallback.
 
-Legacy Feishu p2p communication and historical/manual queue recovery are also
-mirrored into the provider-neutral `channels/outbox.jsonl` ledger. Feishu p2p
-records real delivery refs and provider message ids for final/error replies;
+Historical/manual queue recovery remains mirrored into the provider-neutral
+`channels/outbox.jsonl` ledger. New Feishu p2p Goal delivery records provider
+specific delivery refs and provider message ids without appending that ledger;
 the retained queue worker records queued Feishu/Telegram/Discord outbound rows when a
 source route is available, or skipped rows when there is no deliverable provider
 source. Provider adapters mark rows that match their provider but not their

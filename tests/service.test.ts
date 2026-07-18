@@ -31,7 +31,6 @@ test("launchd plist uses explicit runtime daemon runner and does not contain sec
     provider: "feishu",
     channelId: "feishu-main",
     scenarioId: "im-default",
-    discipline: "query_todo",
     nodePath: "/usr/local/bin/node",
     pathEnv: "/usr/local/bin:/usr/bin:/bin"
   });
@@ -61,7 +60,6 @@ test("runtime service definition starts the unified daemon with configurable cha
     provider: "feishu",
     channelId: "feishu-main",
     scenarioId: "im-default",
-    discipline: "query_todo",
     enableIm: false,
     webHost: "127.0.0.1",
     webPort: 9876,
@@ -664,6 +662,79 @@ test("runtime service provider flag overrides stale active IM selectors", async 
     ]);
     assert.equal(serviceArgs.includes("--discipline"), false);
     assert.equal(serviceArgs.includes("--no-im"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime service ignores a stale Feishu scenario model and emits no discipline owner", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-feishu-goal-owner-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
+      JSON.stringify({ type: "active_scenario", scenario_id: "im-feishu" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "settings.jsonl"), [
+      JSON.stringify({
+        type: "channel",
+        id: "feishu-main",
+        kind: "feishu",
+        transport: "websocket",
+        mode: "private_chat",
+        auth_id: "feishu-main"
+      }),
+      JSON.stringify({
+        type: "scenario",
+        id: "im-feishu",
+        channel_id: "feishu-main",
+        model_id: "missing-scenario-model",
+        discipline: "query_todo"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "model-main"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "auth.jsonl"), `${JSON.stringify({
+      type: "app_secret",
+      id: "feishu-main",
+      app_id: "cli-test",
+      app_secret: "secret-test"
+    })}\n`, "utf8");
+
+    const definition = await resolveServiceDefinition({
+      action: "start",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      provider: "feishu"
+    }, true);
+
+    const serviceArgs = definition.programArguments.slice(2);
+    assert.equal(serviceArgs.includes("missing-scenario-model"), false);
+    assert.equal(serviceArgs.includes("--discipline"), false);
+    assert.deepEqual(serviceArgs.slice(serviceArgs.indexOf("--scenario"), serviceArgs.indexOf("--runtime-build")), [
+      "--scenario",
+      "im-feishu",
+      "--provider",
+      "feishu",
+      "--channel",
+      "feishu-main"
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

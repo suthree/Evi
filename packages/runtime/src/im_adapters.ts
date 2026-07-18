@@ -3,7 +3,7 @@ import type { AgentStore } from "../../core/src/store.js";
 import { FeishuPrivateChatAdapter } from "./channels/feishu/adapter.js";
 import { LarkSdkFeishuTransport } from "./channels/feishu/client.js";
 import { assertFeishuConfigReady } from "./channels/feishu/config.js";
-import type { FeishuChannelConfig, FeishuTransport, TaskRunner } from "./channels/feishu/types.js";
+import type { FeishuChannelConfig, FeishuTransport } from "./channels/feishu/types.js";
 import { TelegramBotAdapter } from "./channels/telegram/adapter.js";
 import { TelegramBotApiTransport } from "./channels/telegram/client.js";
 import { assertTelegramConfigReady } from "./channels/telegram/config.js";
@@ -20,7 +20,6 @@ export interface RuntimeImAdapterOptions {
   scenario: ImScenarioConfig;
   store: AgentStore;
   goalIngress: GoalIngressPort;
-  legacyPrivateRunner?: TaskRunner;
   vaultRoot?: SkillResolverLike;
   homeRoot?: string;
   configDir?: string;
@@ -42,7 +41,6 @@ export function createRuntimeImAdapter(args: RuntimeImAdapterOptions): RuntimeCh
     return new FeishuPrivateChatAdapter({
       config: args.scenario.channel,
       transport: args.feishuTransportFactory?.(args.scenario.channel) ?? new LarkSdkFeishuTransport(args.scenario.channel),
-      legacyPrivateRunner: requiredLegacyPrivateRunner(args),
       goalIngress: args.goalIngress,
       store: args.store,
       vaultRoot: args.vaultRoot,
@@ -66,9 +64,4 @@ export function createRuntimeImAdapter(args: RuntimeImAdapterOptions): RuntimeCh
     goalIngress: args.goalIngress,
     store: args.store
   });
-}
-
-function requiredLegacyPrivateRunner(args: RuntimeImAdapterOptions): TaskRunner {
-  if (!args.legacyPrivateRunner) throw new Error("Feishu private chat requires a legacyPrivateRunner");
-  return args.legacyPrivateRunner;
 }

@@ -83,10 +83,12 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("new runtime-session Goals") && boundary.includes("no legacy queue")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("resident daemon no longer starts a queue worker")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("stale queue-worker files") && boundary.includes("current service status")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("goal_cognition") && boundary.includes("all new IM Goals")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("explicit IM and web task runs")), false);
   const feishuSession = runtimeService?.capabilities.find((capability) => capability.id === "feishu.private_chat");
-  assert.equal(feishuSession?.summary.includes("Feishu groups"), true);
+  assert.equal(feishuSession?.summary.includes("canonical Goals"), true);
   assert.equal(feishuSession?.boundaries?.some((boundary) => boundary.includes("unknown groups")), true);
+  assert.equal(feishuSession?.boundaries?.some((boundary) => boundary.includes("private-chat task") && boundary.includes("bounded same-chat history")), true);
   assert.equal(runtimeService?.capabilities.some((capability) => capability.id === "service.content_feedback_refresh_loop"), true);
   const transactionalDeployment = runtimeService?.capabilities.find((capability) => capability.id === "service.transactional_deployment");
   assert.equal(transactionalDeployment?.refs?.includes("packages/runtime/src/service_supervisor.ts"), true);

@@ -113,24 +113,19 @@ skill 或 deployment state；旧的 `runtime_session_id` 和 `execution_contract
 拒绝，不会静默映射成 Goal 权限。Feishu、Telegram、Discord 已绑定 session 的 `/run`
 或有效 mention 也走相同 Goal ingress：每条触发只创建一个 Goal 并执行一个有界 Continue，
 回复 Goal 状态、终态 receipt 摘要和状态感知续作指令；provider Adapter 只保留直接发送和
-带 `goal_id`、Goal 状态、receipt id 的平台证据。这些 session Goal 同样不写 legacy
+带 `goal_id`、Goal 状态、receipt id 的平台证据。允许的 Feishu p2p/private chat 普通任务同样创建
+canonical Goal，并先把有界同 chat 对话历史渲染进 objective；这些新 Goal 不写 legacy
 控制面。历史 run/queue/outbox 与 session/inbox 仍可只读查看，已排队 provider row 仍可兼容投递。
-Feishu p2p/private chat 因为仍拥有对话历史、follow-up queue 和 operator commands，明确保留为
-独立 legacy ingress，不能声称已经 Goal 化。foreground Goal 也不会同步生成 SOP/skill，学习将由后续
+Feishu Adapter 保留 history、follow-up queue 和 read-only operator commands，但不再拥有 legacy runner。
+foreground Goal 也不会同步生成 SOP/skill，学习将由后续
 receipt-driven LearningRuntime 异步处理。
 详细合同见 `docs/RUNTIME_CONTRACT.md` 的 `GoalRuntime Local Control Plane`。
 
-仍由 Feishu p2p/private chat 使用的 legacy `LiveAgentRunner` context
-在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
-`total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
-`focused`、`governance` 或 `recovery` 注意力 profile；普通 legacy runner 任务不再常驻加载治理、trace、
-archive 等历史 section，manifest 的 `attention_selection` 会记录主动省略项。Turn Snapshot
-保留机器可读身份和任务首尾，不再内嵌完整 JSON。超限时再按确定性
-顺序压缩，保留任务首尾、runtime/config、query/todo、recall、selected skills 和输出合同；
-manifest 会记录原始/实际长度、截断 section 与省略 section，`/context` 可只读查看。
-声明的预算小到无法容纳核心上下文时会在模型调用前失败，不会静默超限发送。
-这些 context manifest、attention profile、query/todo 和 `/context` 行为不适用于已经切换到
-GoalRuntime 的 standalone `live` CLI；后者以 canonical Goal event/checkpoint/receipt 为边界。
+GoalRuntime 会在执行前保留自身的有界 context 与 effect authority；Feishu p2p 只提供
+同 chat 的截断历史，不会装配 legacy runner context，也不会生成 query/todo、recall、
+selected-skill 或 legacy context manifest。历史/manual runner 的 `/context` 只读诊断仍可
+查看既有 artifact，但不属于已经切换到 GoalRuntime 的 live、Web 或 IM task ingress；这些
+入口以 canonical Goal event/checkpoint/receipt 为边界。
 
 ## 本地开放演化权限
 
@@ -281,9 +276,10 @@ pnpm run runtime -- live --task "Verify the local agent runtime." --state-root .
 `paused`，应保留同一个 `goal_id`，再使用 `goal continue` 或 `goal resume`；不能新建
 替代任务。Web 不写 legacy queue/task-run/channel-outbox state，但历史 run/queue 仍可查看。
 `--query-todo` 属于旧 runner，在 `live` 上会在创建 Goal 前明确拒绝，避免同一个目标同时
-写入两套控制面。Runtime-session IM 已整体切到 Goal；Feishu p2p/private chat 仍是独立 legacy 入口。
+写入两套控制面。Runtime-session IM 与允许的 Feishu p2p/private chat 普通任务都已切到 Goal；
+只读 operator command 仍在 Goal 外直接读取本地状态。
 
-查看仍由 IM、daemon 等 legacy runner 生成的最近 run trace：
+查看 historical/manual legacy runner 已生成的最近 run trace：
 
 ```bash
 pnpm run runtime -- review traces --state-root .runtime/state
@@ -364,10 +360,8 @@ route key 和 inbox 从这个结构派生，避免把 Feishu `chat_id`
 `/session use`、pending session 创建、inbox append，以及 `/run` 或 mention
 触发分类。Adapter 只保留平台解析和回复发送。
 
-Runtime-session Goal 的唯一模型 owner 是 `goal_cognition`。Telegram/Discord
-scenario 中残留的 `model_id` 或 discipline 不参与执行，也不阻断 daemon、service 或
-doctor readiness；只有 Feishu p2p/private chat 明确保留独立命名的 legacy private
-model 与 discipline。
+所有 IM Goal 的唯一模型 owner 是 `goal_cognition`。scenario 中残留的 `model_id`
+或 discipline 作为 ignored input 解析，不参与执行，也不阻断 daemon、service 或 doctor readiness。
 
 已绑定 Feishu、Telegram、Discord session 的 `/run` 或有效 mention 会提交一个
 canonical Goal，只执行一次有界 Continue，再由 Adapter 直接回复 Goal 状态、终态
@@ -414,8 +408,8 @@ fail closed 拒绝 shell、通用解释器、`code.execute_node` 以及 package-
 等间接命令载体；外部操作必须使用直接 binary argv，不能把 `gh` 或 `git push` 藏在
 脚本字符串中。外层 task contract 不会削弱
 `codex.run` 自己的 immutable worktree/model/sandbox/budget authority snapshot，最终
-完成判断仍属于 `main_harness`。Feishu p2p/private-chat 任务仍保持本地 legacy runner
-行为，也不会从任务文本自动获得 external-write 权限；历史兼容 JSON 形状见
+完成判断仍属于 `main_harness`。Feishu p2p/private-chat 任务已由 GoalRuntime 管理 effect
+confirmation，也不会从任务文本自动获得 external-write 权限；历史兼容 JSON 形状见
 `docs/LOCAL_RUNTIME.md`。
 
 固定 workspace git 诊断会为 `git status --porcelain=v1 -b` 强制设置

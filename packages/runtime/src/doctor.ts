@@ -349,22 +349,6 @@ async function checkIm(
       configDir: options.configDir,
       stateRoot: options.stateRoot
     });
-    if (scenario.provider === "feishu") {
-      await loadConfig({
-        configDir: options.configDir,
-        stateRoot: options.stateRoot,
-        modelId: scenario.legacyPrivateModelId,
-        skipAuth: true
-      });
-      if (options.requireAuth !== false && scenario.legacyPrivateModelId !== options.activeModelId) {
-        await loadConfig({
-          configDir: options.configDir,
-          stateRoot: options.stateRoot,
-          modelId: scenario.legacyPrivateModelId,
-          skipAuth: false
-        });
-      }
-    }
     assertRuntimeImAdapterSupported(scenario);
     if (scenario.provider === "feishu") assertFeishuConfigReady(scenario.channel);
     if (scenario.provider === "telegram") assertTelegramConfigReady(scenario.channel);
@@ -386,9 +370,6 @@ async function checkIm(
         goal_cognition_provider: goalCognition.provider,
         goal_cognition_source_ref: goalCognition.source_ref,
         ...(scenario.provider === "feishu" ? {
-          legacy_private_model_id: scenario.legacyPrivateModelId,
-          legacy_private_discipline: scenario.legacyPrivateDiscipline,
-          legacy_private_reply_policy: scenario.legacyPrivateReplyPolicy,
           domain: scenario.channel.domain,
           allowed_open_ids_count: scenario.channel.allowedOpenIds.length
         } : scenario.provider === "telegram" ? {

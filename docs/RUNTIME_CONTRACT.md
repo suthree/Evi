@@ -460,16 +460,19 @@ surfaces remain readable; the Web request does not bind a new Goal to a session.
 Legacy `runtime_session_id` and `execution_contract` request fields fail closed
 instead of being ignored or translated into Goal authority.
 
-Bound Feishu, Telegram, and Discord runtime-session `/run` or accepted-mention
-messages use the same canonical Goal ingress. Each trigger starts one Goal and
+Ordinary allowed Feishu p2p tasks and bound Feishu, Telegram, and Discord
+runtime-session `/run` or accepted-mention tasks use the same canonical Goal
+ingress. Each task starts one Goal and
 executes one bounded Continue, then replies with Goal status, receipt summary
-when terminal, and status-aware continuation guidance. These new session Goals
+when terminal, and status-aware continuation guidance. These new interactive
+Goals
 write no legacy queue, task-run, provider-neutral outbox, completion, episode,
 iteration, SOP, skill, or deployment state. Provider adapters retain direct
 delivery and provider-specific evidence containing `goal_id`, Goal status, and
-receipt id. Feishu p2p/private chat remains a separately named legacy ingress
-because it still owns conversation history, follow-up queuing, and operator
-commands; it must not be represented as Goal-owned.
+receipt id. For p2p, bounded same-chat history is rendered into the Goal objective
+before inbound evidence is recorded. The Feishu adapter retains allowlisting,
+deduplication, in-memory follow-up queuing, transport sends, and read-only
+operator commands, but it does not own a legacy runner or compatibility result.
 Foreground learning remains deferred to a receipt-driven asynchronous
 `LearningRuntime`.
 
@@ -497,10 +500,9 @@ starts Feishu, Telegram, and Discord adapters.
 Provider startability and concrete adapter construction live in
 `packages/runtime/src/im_adapters.ts`; the config loader only resolves the
 provider-neutral scenario.
-Runtime-session Goal execution is owned exclusively by `goal_cognition`;
-Telegram and Discord scenario `model_id`/discipline fields are not execution
-selectors and do not gate daemon, service, or doctor readiness. Feishu keeps a
-separately named legacy private model and discipline only for p2p/private chat.
+IM Goal execution is owned exclusively by `goal_cognition`; stale scenario
+`model_id`/discipline fields are ignored input and do not gate daemon, service,
+or doctor readiness.
 The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` renders the
 heartbeat-carried gateway summary, but it must not read provider logs, provider
@@ -545,9 +547,8 @@ operator and start as pending/unassigned. A profile can be bound through
 bound group messages append session inbox entries; `/run <task>` and accepted
 mentions submit one canonical Goal through the shared Goal ingress. Adapters
 send the returned presentation directly and persist only provider-specific
-delivery evidence. Telegram and Discord receive no `TaskRunner`; Feishu group
-execution receives Goal ingress while Feishu p2p receives a clearly named
-legacy private runner.
+delivery evidence. No IM adapter receives a `TaskRunner`; Feishu p2p and group
+execution both receive Goal ingress.
 
 The resident daemon does not start a runtime task-queue worker for current
 session work. Existing queue, task-run, and provider-neutral outbox ledgers
@@ -624,15 +625,15 @@ completion and verification statuses plus the selected checkpoint ref and
 next action, and the checkpoint's optional actual worktree, so the local queue
 can persist continuity without reading verdict text.
 
-Legacy Feishu p2p communication and historical/manual queue recovery also have
-a provider-neutral local ledger under `channels/outbox.jsonl`. Feishu p2p
-final/error replies and queue-worker final/error outcomes append rows with source
-kind, source route/source key when available, runtime session id, task run id,
-reply purpose, text, provider delivery ref when a real adapter sent the reply,
-and status. Feishu/Telegram/Discord-sourced historical recovery rows are queued for adapter
-replay; rows without a deliverable provider source remain skipped. This outbox
-is a compatibility communication read model, not the owner of new session Goal
-replies. Provider adapters must mark
+Historical/manual queue recovery has a provider-neutral local ledger under
+`channels/outbox.jsonl`. Queue-worker final/error outcomes append rows with
+source kind, source route/source key when available, runtime session id, task
+run id, reply purpose, text, and status. Feishu/Telegram/Discord-sourced
+historical recovery rows are queued for adapter replay; rows without a
+deliverable provider source remain skipped. New Feishu p2p Goal final/error
+delivery writes provider-specific evidence and does not append this ledger.
+The outbox is a compatibility communication read model, not a current Goal
+ingress owner. Provider adapters must mark
 rows that match their provider but not their configured channel as skipped
 instead of leaving them queued forever. It is not a retry broker, provider SDK
 wrapper, or hosted messaging system.

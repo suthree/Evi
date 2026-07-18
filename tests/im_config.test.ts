@@ -41,7 +41,7 @@ test("IM scenario config resolves implemented Feishu provider through the provid
 
     assert.equal(scenario.provider, "feishu");
     assert.equal(scenario.channelId, "feishu-main");
-    assert.equal(scenario.legacyPrivateModelId, "test-model");
+    assert.equal("legacyPrivateModelId" in scenario, false);
     assertRuntimeImAdapterSupported(scenario);
     assert.equal(scenario.channel.appId, "cli_app");
   } finally {

@@ -1,6 +1,6 @@
 # Task 254: Runtime-Session Goal Ingress
 
-Status: active
+Status: complete
 
 ## Identity And Ownership
 
@@ -171,3 +171,15 @@ inside this provider-neutral slice.
   Standards review specifically confirmed that the owner-layer removal leaves
   no renamed or filtered compatibility projection and that the deliberate
   stale-file fixture matches the documented historical-evidence boundary.
+- PR #87 merged the canonical session ingress at `b520f406`; PR #88 merged the
+  stale service-projection retirement at final develop commit `146c38a3807f`.
+  Issue #86 is closed. Deployment
+  `deployment_20260718004251_146c38a3807f` reached stable, controller handoff
+  returned `already_matched`, and live service health was healthy with Feishu
+  connected, Web running, and resident/repo commits both `146c38a3807f`.
+- Installed-artifact synthetic Telegram acceptance produced completed Goal
+  `goal_installed_adapter_acceptance` and receipt
+  `goal_receipt_installed_adapter`; task-run, task-queue, and
+  provider-neutral outbox counts remained zero. The installed service manifest
+  and current status omit the retired queue worker while the historical status
+  file remains readable.
