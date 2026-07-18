@@ -1,6 +1,6 @@
 # Task 256: Stabilization And Architecture Audit
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -187,6 +187,16 @@ Status: active
   restored the lockfile-pinned local environment. The second full check passed:
   TypeScript build, 966/966 tests, active-vault skill validation, and neutral
   naming across 128 implementation files.
-- Final diff review, implementation commit, PR integration, post-merge
-  exact-commit deployment/health, final root/worktree cleanup, and Issue
-  closure remain pending.
+- Final review confirmed that all 16 tracked paths are Markdown governance or
+  documentation; no source, config, dependency, schema, or runtime state path
+  is in the diff. Commit `a15ae6ed8c253a2cb7281da1d5a6d90cb47bec7b`
+  contains the architecture and documentation change.
+- Draft PR #92 targets `develop` from the named branch, is clean/mergeable, and
+  reports no repository-hosted checks; the executed local verification above
+  is therefore the repository gate. PR #92 is the integration record and its
+  final head carries this completed task state.
+- GitHub Issue #91 owns the final external receipts that cannot be known inside
+  the pre-merge task commit: merge commit, exact-commit resident deployment and
+  health, branch/worktree cleanup, and Issue closure. Those effects must occur
+  in the same supervised delivery before completion is reported to the
+  operator.
