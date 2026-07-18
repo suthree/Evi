@@ -1,6 +1,6 @@
 # Task 258: Goal Dynamic Capability Selection
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -139,5 +139,41 @@ acceptance, and later learning; executors own specialist production.
 
 ## Completion Evidence
 
-- Pending implementation, verification, integration, deployment, and live
-  acceptance.
+- Activation commit `492c38f` created this task from exact `develop` base
+  `dc8208d590305cd0428a33ad3c7612bd87be99fa` and was pushed before
+  implementation. GitHub Issue #95 records the operator-approved positioning:
+  Evi owns outcomes and dynamically orchestrates capabilities instead of acting
+  as the default specialist worker.
+- Implementation commit `2c4d551` adds one
+  `GoalCapabilityPortfolioProvider.resolve` seam. The configured adapter reuses
+  current tool contracts, selected Skill recall, repository authority, and
+  terminal Goal competence; the deterministic test adapter uses the same
+  Interface. The Portfolio is limited to eight candidates, two selected Skill
+  bodies, and 2,400 characters per body and adds no model call, dependency,
+  planner, queue, database, or persisted state owner.
+- New cognition actions carry typed `capability_selection` metadata.
+  GoalRuntime rejects unavailable, mismatched, role-inconsistent, and
+  unselected-Skill choices before EffectPolicy or tool dispatch. New planned
+  events retain the validated choice, while historical events without the
+  optional field replay without migration.
+- Tool constraints now expose the actual `file.read max_lines <= 400` boundary
+  in the live Portfolio. The production ingress injects bounded selected Skill
+  bodies and current readiness; `codex.run` is unavailable in the main checkout
+  and available only when the Goal is bound to a linked worktree.
+- Full-check diagnosis found that the reused selected-Skill outcome read path
+  called `ensureLayout()` and created unrelated state directories. The read
+  helper is now side-effect free, and both portfolio and live-CLI tests prove
+  capability discovery does not create a competing state surface.
+- Final `PATH="../../node_modules/.bin:$PATH" pnpm run check` passed TypeScript
+  build, 956/956 tests, active-vault Skill validation, and neutral naming across
+  130 implementation files. `git diff --check` and focused Goal capability,
+  cognition, runtime, and CLI tests also passed.
+- The implementation commit changes 14 files with 1,006 insertions and 148
+  deletions. Most added volume is the 224-line deep Module, focused contract
+  tests, and paired architecture/runtime documentation; no lockfile, dependency,
+  legacy compatibility facade, or unrelated application feature changed.
+- GitHub Issue #95 owns final external receipts that cannot be embedded in the
+  pre-merge task commit: PR identity, merge commit, exact-commit resident
+  deployment and health, branch/worktree cleanup, and Issue closure. Those
+  effects remain part of this supervised delivery before reporting the overall
+  task done to the operator.
