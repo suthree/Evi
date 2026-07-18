@@ -1855,6 +1855,9 @@ queue worker for current session work. Historical queue/task-run rows remain
 readable, and already-queued provider outbox rows may still be drained for
 delivery compatibility. This historical/manual queue surface is not a current
 ingress owner, remote broker, cancellation system, or cross-process scheduler.
+The current service manifest and `service status` omit that retired worker;
+an old `services/runtime/task_queue.json` may remain on disk as historical
+evidence without being projected as a live component.
 
 Historical legacy queue rows may retain a one-task operator execution contract
 in their persisted envelope. This is a compatibility schema for recovery, not

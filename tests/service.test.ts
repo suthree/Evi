@@ -74,7 +74,6 @@ test("runtime service definition starts the unified daemon with configurable cha
   assert.equal(definition.label, "local.runtime.runtime");
   assert.equal(definition.manifestPath, "/home/user/.local-runtime/service/runtime.json");
   assert.equal(definition.heartbeatPath, "/work/runtime/.runtime/state/services/runtime/heartbeat.json");
-  assert.equal(definition.taskQueueStatusPath, "/work/runtime/.runtime/state/services/runtime/task_queue.json");
   assert.equal(definition.runtimePreviousRoot, "/home/user/.local-runtime/service/runtime/previous");
   assert.match(plist, /<string>daemon<\/string>/);
   assert.match(plist, /<string>serve<\/string>/);
@@ -931,9 +930,7 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.previous_runtime?.source_commit_short, "abcdef012345");
     assert.equal(result.review_tick?.state, "ok");
     assert.equal(result.review_tick?.last_inbox_count, 2);
-    assert.equal(result.task_queue?.state, "ok");
-    assert.equal(result.task_queue?.last_recoverable_count, 2);
-    assert.deepEqual(result.task_queue?.last_task_ids, ["runtime_task_1"]);
+    assert.equal("task_queue" in result, false);
     assert.equal(result.content_daily?.state, "ok");
     assert.equal(result.content_daily?.last_job_ref, "content/daily/2026-07-01.json");
     assert.equal(result.content_daily?.last_job_status, "preflight_ok");

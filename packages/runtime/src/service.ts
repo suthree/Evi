@@ -14,7 +14,6 @@ import type { ContentCreatorMetricsLoopStatus } from "./content_creator_metrics_
 import type { ContentFeedbackRefreshLoopStatus } from "./content_feedback_refresh_service.js";
 import type { ReviewTickLoopStatus } from "./review_tick_service.js";
 import type { DisciplineMode } from "./runner.js";
-import type { RuntimeTaskQueueWorkerStatus } from "./runtime_task_queue_worker.js";
 import { recordOperatorServiceRollback } from "./service_supervisor.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
@@ -98,7 +97,6 @@ export interface ServiceDefinition {
   stderrPath: string;
   heartbeatPath: string;
   reviewTickStatusPath: string;
-  taskQueueStatusPath: string;
   contentDailyStatusPath: string;
   contentFeedbackRefreshStatusPath: string;
   contentCreatorMetricsStatusPath: string;
@@ -139,7 +137,6 @@ export interface ServiceCommandResult {
   previous_runtime?: ServiceRuntimeBuild | null;
   heartbeat?: ServiceHeartbeat | null;
   review_tick?: ReviewTickLoopStatus | null;
-  task_queue?: RuntimeTaskQueueWorkerStatus | null;
   content_daily?: ContentDailyLoopStatus | null;
   content_feedback_refresh?: ContentFeedbackRefreshLoopStatus | null;
   content_creator_metrics?: ContentCreatorMetricsLoopStatus | null;
@@ -214,7 +211,6 @@ export async function runServiceCommand(
       },
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -234,7 +230,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -258,7 +253,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -279,7 +273,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -301,7 +294,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -347,7 +339,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -366,7 +357,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -383,7 +373,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -400,7 +389,6 @@ export async function runServiceCommand(
     supervisor: await inspectSupervisor(definition, run),
     heartbeat: await readHeartbeat(definition),
     reviewTick: await readReviewTickStatus(definition),
-    taskQueue: await readTaskQueueStatus(definition),
     contentDaily: await readContentDailyStatus(definition),
     contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
     contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -591,7 +579,6 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
     stderrPath,
     heartbeatPath: resolve(stateRoot, `services/${target}/heartbeat.json`),
     reviewTickStatusPath: resolve(stateRoot, `services/${target}/review_tick.json`),
-    taskQueueStatusPath: resolve(stateRoot, `services/${target}/task_queue.json`),
     contentDailyStatusPath: resolve(stateRoot, `services/${target}/content_daily.json`),
     contentFeedbackRefreshStatusPath: resolve(stateRoot, `services/${target}/content_feedback_refresh.json`),
     contentCreatorMetricsStatusPath: resolve(stateRoot, `services/${target}/content_creator_metrics.json`),
@@ -804,7 +791,6 @@ async function writeServiceFiles(
     stderr_path: definition.stderrPath,
     heartbeat_path: definition.heartbeatPath,
     review_tick_status_path: definition.reviewTickStatusPath,
-    task_queue_status_path: definition.taskQueueStatusPath,
     content_daily_status_path: definition.contentDailyStatusPath,
     content_feedback_refresh_status_path: definition.contentFeedbackRefreshStatusPath,
     content_creator_metrics_status_path: definition.contentCreatorMetricsStatusPath,
@@ -1251,15 +1237,6 @@ async function readReviewTickStatus(definition: ServiceDefinition): Promise<Revi
   }
 }
 
-async function readTaskQueueStatus(definition: ServiceDefinition): Promise<RuntimeTaskQueueWorkerStatus | null> {
-  try {
-    const raw = await readFile(definition.taskQueueStatusPath, "utf8");
-    return JSON.parse(raw) as RuntimeTaskQueueWorkerStatus;
-  } catch {
-    return null;
-  }
-}
-
 async function readContentDailyStatus(definition: ServiceDefinition): Promise<ContentDailyLoopStatus | null> {
   try {
     const raw = await readFile(definition.contentDailyStatusPath, "utf8");
@@ -1332,7 +1309,6 @@ function buildResult(
     supervisor?: LaunchdStatus;
     heartbeat?: ServiceHeartbeat | null;
     reviewTick?: ReviewTickLoopStatus | null;
-    taskQueue?: RuntimeTaskQueueWorkerStatus | null;
     contentDaily?: ContentDailyLoopStatus | null;
     contentFeedbackRefresh?: ContentFeedbackRefreshLoopStatus | null;
     contentCreatorMetrics?: ContentCreatorMetricsLoopStatus | null;
@@ -1367,7 +1343,6 @@ function buildResult(
     previous_runtime: args.previousRuntime,
     heartbeat: args.heartbeat,
     review_tick: args.reviewTick,
-    task_queue: args.taskQueue,
     content_daily: args.contentDaily,
     content_feedback_refresh: args.contentFeedbackRefresh,
     content_creator_metrics: args.contentCreatorMetrics,

@@ -154,3 +154,20 @@ inside this provider-neutral slice.
 - PR integration, exact-commit deployment, controller handoff,
   installed-artifact synthetic adapter acceptance, and live service health
   remain pending.
+- Post-merge deployment inspection found one observability drift before rollout:
+  `service status` still projected the retired queue worker from a stale
+  `services/runtime/task_queue.json`. Codex owns this correction because it is
+  a current runtime-boundary contract, not an Evi task-level recovery. A
+  follow-up branch removes the retired worker from the service definition,
+  manifest, and result while preserving the historical status file and manual
+  recovery implementation as readable evidence.
+- The follow-up regression leaves a deliberately stale `task_queue.json` in
+  the service-status fixture and proves the result omits `task_queue`.
+  Service/capability focused tests passed 25/25, TypeScript and
+  `git diff --check` passed, and full `pnpm run check` again passed build,
+  962/962 tests, active-vault skill validation, and neutral naming across 129
+  implementation files.
+- Independent follow-up Spec and Standards reviews both returned PASS. The
+  Standards review specifically confirmed that the owner-layer removal leaves
+  no renamed or filtered compatibility projection and that the deliberate
+  stale-file fixture matches the documented historical-evidence boundary.
