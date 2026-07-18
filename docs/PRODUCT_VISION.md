@@ -16,8 +16,11 @@ The Simplified Chinese companion is
 
 When this vision differs from current implementation, use this order:
 
-1. Current code, [`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md), and
-   [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) describe implemented behavior.
+1. Current code, [`docs/ARCHITECTURE.md`](ARCHITECTURE.md),
+   [`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md), and
+   [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) describe current placement and
+   implemented behavior. Code and live evidence remain the final current-fact
+   authority.
 2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and the
    matching Trellis spec describe the accepted current delivery target.
 3. This document describes the long-term product and runtime north star.

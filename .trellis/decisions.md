@@ -1,5 +1,80 @@
 # Decisions
 
+## 2026-07-18 Stabilization Pause And Own-Delegate Architecture
+
+Decision Owner: operator, through explicit approval in the 2026-07-18 Codex
+discussion and GitHub Issue #91.
+
+Decision:
+
+- pause creation or execution of new Codex-supervised Evi self-evolution
+  feature children under Issue #56 while Issue #91 / Task 256 stabilizes the
+  repository and audits core capability boundaries;
+- keep the existing GoalRuntime and ordinary resident operation supported;
+  this is a scheduling pause, not abandonment or rollback of the persistent
+  GoalRuntime direction;
+- treat `docs/ARCHITECTURE.md` and its Chinese companion as the owner of current
+  module placement, own/delegate seams, architecture pressure, staged
+  replacement order, and feature-resumption gates;
+- follow GA-inspired restraint: keep the observe/decide/act/verify/learn loop
+  small, reuse mature tools, and preserve Evi ownership of continuity,
+  authority, evidence, learning, and result acceptance;
+- later refactors replace one complete vertical path through a deep module
+  interface and delete the superseded path. They do not add indefinite
+  compatibility layers, dual writes, or speculative adapter interfaces.
+
+Authority and supersession:
+
+- this decision temporarily supersedes the active-child scheduling momentum in
+  Issue #56 and any derived scorecard/project-design suggestion that would
+  automatically activate another feature slice;
+- it does not supersede the one-persistent-Self vision, open local evolution
+  authority, the implemented GoalRuntime contract, the v0.2 LuBan target, or
+  operator-authorized bug repair and ordinary operation;
+- only the operator, as current Decision Owner, may resume Issue #56 or accept
+  a successor feature program after the documented gates pass.
+
+Evidence:
+
+- clean and synchronized `develop@396fd193b35332581503b10818d1883959610c41`,
+  full `pnpm run check` with 966 passing tests, and a healthy/current resident
+  runtime provide a stable baseline;
+- 37 registered worktrees, two uncommitted worktrees, one prunable record,
+  stale Issue/Task status, 78,704 source lines, 66,535 test lines, 12,024 docs
+  lines, and 112 commits since `1fc29f7` show that delivery velocity had
+  outpaced environment and architecture consolidation;
+- current `tools.ts`, `context.ts`, CLI, channel adapter, tests, and long
+  contracts carry several concerns each; current process bounds do not prove
+  OS/filesystem confinement, and valid skill packaging does not prove reusable
+  tool competence;
+- pinned local GenericAgent, Codex, pi, OpenCode, OpenClaw, Hermes, and
+  learn-claude-code snapshots provide reusable patterns but remain evidence,
+  not standards or dependencies.
+
+Risk, verification, and recovery:
+
+- the stabilization task changes governance and documentation only; it does
+  not change runtime behavior, schemas, dependencies, state contracts, or
+  deployment implementation. A normal exact-commit deployment after merge may
+  align resident source identity with `develop`;
+- worktree/branch cleanup first proves commit reachability and inspects dirty
+  artifacts. Tracked documentation passes paired-owner, link, diff, and full
+  repository checks before integration;
+- the documentation change is reverted through a normal PR if it misstates
+  current ownership. Closed Issues can be reopened and removed worktrees can be
+  reconstructed from retained commits and remote refs.
+
+Re-evaluation and expiry:
+
+- re-evaluate after Issue #91 is merged and root/worktree/GitHub/Trellis state
+  is clean;
+- resumption then requires one newly accepted bounded child naming the owner
+  module, interface, replacement/deletion path, sandbox/context limits,
+  verification, and rollback, with no parallel feature slice or automatic
+  learning promotion;
+- until explicit operator resumption, the pause remains active even if tests,
+  runtime health, or an autonomous proposal suggests another feature.
+
 ## 2026-07-17 Persistent GoalRuntime And Observation-Only Execution Controllers
 
 The operator accepts replacing Evi's chained runtime-task, completion-reference,

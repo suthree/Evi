@@ -60,8 +60,10 @@ Status: active
 - Record the pause and architecture-restraint decision in
   `.trellis/decisions.md` with authority, superseded activation, scope,
   verification, recovery, and re-evaluation conditions.
-- Keep runtime behavior, dependencies, schemas, state, and deployment
-  unchanged. Pass link/document checks, `git diff --check`, focused
+- Keep runtime behavior, dependencies, schemas, and deployment implementation
+  unchanged. A normal exact-commit post-merge deployment is permitted only to
+  align resident source identity with `develop`. Pass link/document checks,
+  `git diff --check`, focused
   documentation validation, full `pnpm run check`, PR integration, and
   post-merge root/runtime verification.
 
@@ -73,8 +75,8 @@ Status: active
 - Non-goals: new product capability, GoalRuntime behavior, tool/harness/context
   implementation, sandbox implementation, memory schema migration, provider
   or entrypoint work, broad monolith extraction, dependency, database, queue,
-  service, compatibility layer, main merge, tag, release, public publication,
-  or secret movement.
+  service or deployment implementation, compatibility layer, main merge, tag,
+  release, public publication, or secret movement.
 - This task names future seams and retirement order. It does not create
   hypothetical interfaces with only one adapter and does not introduce a
   facade over existing shallow modules.
@@ -143,5 +145,48 @@ Status: active
 
 ## Completion Evidence
 
-- Pending implementation, verification, commit, PR, merge, cleanup, and live
-  post-merge evidence.
+- Activation commit `d00fd5ed1936a2f233fbbfaa8e58846a204b4498`
+  created this task on the named branch and was pushed before implementation.
+- Issue #56 records the operator pause and links Issue #91. Issue #89 was
+  closed after PR #90 merge and exact-commit resident health evidence; Task 255
+  is reconciled to `completed` in this diff.
+- Stale completed bootstrap Issues #30, #32, #34, #43, #46, #48, #50, and #54
+  were closed with their merged PR lineage and current full-check/live-health
+  evidence. The remaining open Issues are v0.2 target #13, paused GoalRuntime
+  program #56, and this stabilization Issue #91.
+- Git worktree cleanup first proved every retired worktree HEAD was an ancestor
+  of `origin/develop`. It then removed 35 merged historical feature worktrees,
+  pruned the missing `/private/tmp/evi-issue-13-branch-authority` record, and
+  retained only root `develop` plus this task worktree.
+- The uncommitted Issue #34 output-capture test was retired because current
+  `develop` already contains the stricter regression `codex.run truncates
+  diagnostic retention without terminating valid JSONL or the final structured
+  result`. The Issue #76 one-line live-growth probe was temporary acceptance
+  evidence and was also retired. Neither artifact contained a unique commit.
+- Merged local `codex/*` branches were removed. The unmerged rollback-drill
+  branch was removed locally only after confirming its commit remains on its
+  upstream remote branch. The active Issue #91 branch and long-lived release /
+  integration branches remain.
+- The installed Trellis 0.6.7 CLI does not expose the `status`, `log`, or
+  `seed` commands advertised by generated `.trellis/agents/AGENTS.md`. This
+  task records the drift but does not manually edit generated Trellis context
+  or expand scope into a Trellis upgrade.
+- `docs/ARCHITECTURE.md` and `docs/ARCHITECTURE.cn.md` now own the current
+  module map, own/delegate decision, reference snapshot audit, pressure
+  evidence, staged replacement order, and resume gates. Routers, instruction
+  ownership, product precedence, runtime documentation ownership, and the
+  engineering delivery contract point to that owner.
+- `docs/README.cn.md` was reduced from 742 lines to a 116-line operator router.
+  Runtime, operations, learning, product, and historical details remain behind
+  their canonical documents rather than being copied into the entrypoint.
+- A local Markdown-link check passed for all 16 changed/new Markdown files;
+  `git diff --check` passed; `docs/README.cn.md` is below 150 lines and
+  `memory/index.md` remains below its 30-line resident budget.
+- The first `pnpm run check` attempt stopped before compilation because this
+  isolated worktree had no `node_modules`. `pnpm install --frozen-lockfile`
+  restored the lockfile-pinned local environment. The second full check passed:
+  TypeScript build, 966/966 tests, active-vault skill validation, and neutral
+  naming across 128 implementation files.
+- Final diff review, implementation commit, PR integration, post-merge
+  exact-commit deployment/health, final root/worktree cleanup, and Issue
+  closure remain pending.

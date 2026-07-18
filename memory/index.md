@@ -7,6 +7,7 @@ This file is the compact resident index for the agent. It should stay small enou
 - Stable identity and self-modification policy: `core/soul.md`
 - Memory and recall policy: `core/memory.md`
 - Documentation and evidence router: `docs/INDEX.md`
+- Current module ownership and delegated capability seams: `docs/ARCHITECTURE.md`
 - Runtime object contract, on demand: `docs/RUNTIME_CONTRACT.md`
 - Runtime/reference boundary: `core/runtimes.md`
 - Shared vocabulary: `CONTEXT.md`

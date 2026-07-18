@@ -21,6 +21,7 @@ question being answered:
 | Mission and long-term product north star | Accepted stable product-vision documents and explicit operator decisions | Direction, not implementation proof or a fixed backlog |
 | Version capability sequence and milestone priority | Accepted version specs plus GitHub Milestones, Issues, and Projects | What is accepted and when; not current runtime fact |
 | Durable architecture and governance choices | `.trellis/decisions.md` | Decisions and supersession lineage; not live progress |
+| Current module placement and delegated capability seams | `docs/ARCHITECTURE.md` plus source/tests | Current owner map and staged replacement direction; not implementation proof or an active task |
 | Activated implementation constraints | `.trellis/spec/` | Cross-task delivery and version boundaries; not runtime state |
 | One bounded repository delivery | One linked `.trellis/tasks/` record | Scope, checkpoints, acceptance, and evidence for that task |
 | Integration state | Git branch, pull request, checks, commits, and reviews | Delivery evidence; not product vision |

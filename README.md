@@ -16,6 +16,9 @@ implemented v0.1 contract or the accepted v0.2 delivery scope.
 - Chinese operator entrypoint: [docs/README.cn.md](docs/README.cn.md)
 - Compact documentation router: [docs/INDEX.md](docs/INDEX.md) and
   [docs/INDEX.cn.md](docs/INDEX.cn.md)
+- Current module ownership, delegated capability seams, and staged migration:
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+  [docs/ARCHITECTURE.cn.md](docs/ARCHITECTURE.cn.md)
 - Repository work rules: [AGENTS.md](AGENTS.md) and
   [docs/AGENTS.cn.md](docs/AGENTS.cn.md)
 - Stable identity and learning stance: [core/soul.md](core/soul.md) and

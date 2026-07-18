@@ -1,6 +1,6 @@
 # Task 255: Feishu Private-Chat Goal Ingress
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -159,3 +159,9 @@ There is no p2p runtime-session identity or compatibility `RunResult`.
   the one-delegation contract, and preserved receipt
   `goal_receipt_20260718011328_f2ea39c7`. Task completion therefore remains a
   supervisor claim backed by independent checks, not an Evi Goal success.
+- PR #90 merged the reviewed task diff into `develop` at
+  `396fd193b35332581503b10818d1883959610c41`. Full `pnpm run check` passes
+  966/966 tests; the installed runtime reports `healthy`, `deployment: current`,
+  the same source commit, Feishu inbound connected, and Web running. Issue #89
+  was closed from this integration and live evidence during Issue #91
+  stabilization.
