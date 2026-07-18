@@ -1,6 +1,6 @@
 # Task 260: Feishu Same-Goal Control And Exact Confirmation
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -196,3 +196,24 @@ truth.
   canonical fail-closed behavior, provider evidence, Feishu-native guidance,
   and lifecycle/outcome separation; its focused read-only regression passed
   130/130 tests and `git diff --check`.
+
+## Completion Evidence
+
+- Pull request #100 merged to `develop` as
+  `a0f5ce17195c5d884606c29ea8be90a751cc9a17`; the root worktree and
+  `origin/develop` both resolve to that commit.
+- Local deployment `deployment_20260718154227_a0f5ce17195c` is `stable` for
+  that exact source commit. The resident runtime build is clean and names the
+  same commit; its heartbeat reports a running Feishu gateway with
+  `inbound=connected`.
+- Real Feishu same-Goal acceptance kept
+  `goal_20260718154722_1d3f8a94` from workspace preparation through exact
+  confirmation of `goal_effect_20260718154800_3e035fe6`, later Continue,
+  independent canonical `file.read` verification, and terminal receipt
+  `goal_receipt_20260718155143_5566ff52`. The provider goal-control evidence
+  records the exact named Goal/effect and did not create a replacement Goal.
+- The implementation, integration, exact-commit deployment, connected inbound,
+  exact same-Goal confirmation/continuation, Evi-owned verification, and
+  terminal delivery are therefore evidenced. Historical provider prose that
+  said `status=active` remains non-authoritative and is not used for this
+  completion decision.
