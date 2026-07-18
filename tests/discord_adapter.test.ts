@@ -1,31 +1,31 @@
 import assert from "node:assert/strict";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { listRuntimeChannelOutbox, recordRuntimeChannelOutbound } from "../packages/core/src/runtime_channel_outbox.js";
 import { listRuntimeTaskQueue } from "../packages/core/src/runtime_task_queue.js";
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { DiscordBotAdapter } from "../packages/runtime/src/channels/discord/adapter.js";
+import type { GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 import type {
   DiscordChannelConfig,
   DiscordMessage,
   DiscordSendResult,
-  DiscordTransport,
-  TaskRunner
+  DiscordTransport
 } from "../packages/runtime/src/channels/discord/types.js";
 
 test("Discord guild channel session bind and run use the provider-neutral runtime path", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner();
+    const goalIngress = stubGoalIngress("goal_discord");
     const transport = new MockDiscordTransport();
     const adapter = new DiscordBotAdapter({
       config: testDiscordConfig({ allowedUserIds: ["42"], allowedGuildIds: ["guild-1"], botUserId: "bot-1" }),
       transport,
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -50,29 +50,57 @@ test("Discord guild channel session bind and run use the provider-neutral runtim
     assert.equal(sessions[0]?.profile, "ops");
     const inbox = await listRuntimeInbox(fixture.store, sessions[0]!.id);
     assert.deepEqual(inbox.map((entry) => entry.trigger_kind), ["session_command", "mention"]);
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /Discord runtime session message received/);
-    assert.match(runner.tasks[0], /check service status/);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /Discord runtime session message received/);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
     assert.deepEqual(transport.sent.map((item) => item.text), [
       `已绑定 runtime session: ${sessions[0]!.id}\nprofile: ops\n后续普通消息会进入 inbox；使用 /run 或 bot mention 才会执行任务。`,
       "收到，正在处理。",
-      "discord done"
+      "Goal: goal_discord\nStatus: active\nRun goal continue --goal goal_discord to continue this Goal."
     ]);
 
-    const runs = await listRuntimeTaskRuns(fixture.store);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]?.source_kind, "discord");
-    assert.equal(runs[0]?.status, "done");
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
     const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.source_kind, "discord");
-    assert.equal(tasks[0]?.source_route_key, "discord:discord-main:guild_text:channel-1:main");
+    assert.equal(tasks.length, 0);
     const outbox = await listRuntimeChannelOutbox(fixture.store);
-    assert.equal(outbox.length, 1);
-    assert.equal(outbox[0]?.source_kind, "discord");
-    assert.equal(outbox[0]?.status, "sent");
-    assert.equal(outbox[0]?.task_run_id, runs[0]?.id);
-    assert.equal(outbox[0]?.text, "discord done");
+    assert.equal(outbox.length, 0);
+    const delivery = JSON.parse(await readFile(join(fixture.stateRoot, "channels/discord/outbound/m-11.json"), "utf8"));
+    assert.deepEqual({
+      goal_id: delivery.goal_id,
+      goal_status: delivery.goal_status,
+      receipt_id: delivery.receipt_id
+    }, { goal_id: "goal_discord", goal_status: "active", receipt_id: null });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Discord session Goal failure stays out of legacy orchestration state", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockDiscordTransport();
+    const adapter = new DiscordBotAdapter({
+      config: testDiscordConfig({ allowedUserIds: ["42"], allowedGuildIds: ["guild-1"], botUserId: "bot-1" }),
+      transport,
+      goalIngress: failingGoalIngress("goal ingress failed"),
+      store: fixture.store
+    });
+
+    await adapter.handleMessage(discordMessage({
+      messageId: "m-20", channelId: "channel-1", guildId: "guild-1", userId: "42",
+      text: "/session use ops"
+    }));
+    await adapter.handleMessage(discordMessage({
+      messageId: "m-21", channelId: "channel-1", guildId: "guild-1", userId: "99",
+      text: "<@bot-1> fail safely"
+    }));
+
+    assert.deepEqual(transport.sent.map((item) => item.text).slice(-2), ["收到，正在处理。", "error"]);
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    const evidence = JSON.parse(await readFile(join(fixture.stateRoot, "channels/discord/errors/m-21.json"), "utf8"));
+    assert.equal(evidence.error, "goal ingress failed");
   } finally {
     await fixture.cleanup();
   }
@@ -85,7 +113,7 @@ test("Discord adapter drains queued provider-neutral outbox replies", async () =
     const adapter = new DiscordBotAdapter({
       config: testDiscordConfig(),
       transport,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress("goal_discord_compat"),
       store: fixture.store
     });
     const queued = await recordRuntimeChannelOutbound(fixture.store, {
@@ -178,36 +206,16 @@ class MockDiscordTransport implements DiscordTransport {
   }
 }
 
-class StubRunner implements TaskRunner {
-  readonly tasks: string[] = [];
+function stubGoalIngress(goalId: string): GoalIngressPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return { objectives, submit: async (objective) => {
+    objectives.push(objective);
+    return { goal_id: goalId, status: "active", receipt: null } as GoalView;
+  } };
+}
 
-  async runTask(task: string): Promise<RunResult> {
-    this.tasks.push(task);
-    return {
-      trigger_id: "trigger_discord",
-      opportunity_id: "opp_discord",
-      session_id: "session_discord",
-      turn_id: "turn_discord",
-      context_ref: "memory/episodes/discord-context.md",
-      context_manifest_ref: null,
-      model_response_ref: "memory/episodes/discord-model.json",
-      envelope_ref: "memory/episodes/discord-envelope.json",
-      evidence_refs: [],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: null,
-      completion_report_ref: null,
-      discipline_refs: null,
-      completion_status: "done",
-      verification_status: "passed",
-      worktree: null,
-      working_checkpoint_ref: null,
-      next_action: null,
-      verdict: "discord done"
-    };
-  }
+function failingGoalIngress(message: string): GoalIngressPort {
+  return { submit: async () => { throw new Error(message); } };
 }
 
 async function createFixture(): Promise<{

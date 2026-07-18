@@ -433,19 +433,27 @@ export async function resolveServiceDefinition(
       scenarioId: options.scenarioId
     });
     assertRuntimeImAdapterSupported(scenario);
-    await loadConfig({
-      configDir: options.configDir,
-      stateRoot: serviceSelectors.stateRoot,
-      modelId: scenario.modelId
-    });
+    if (scenario.provider === "feishu") {
+      await loadConfig({
+        configDir: options.configDir,
+        stateRoot: serviceSelectors.stateRoot,
+        modelId: scenario.legacyPrivateModelId
+      });
+    } else {
+      await loadConfig({
+        configDir: options.configDir,
+        stateRoot: serviceSelectors.stateRoot,
+        skipAuth: true
+      });
+    }
     channelId = scenario.channelId;
     scenarioId = scenario.id;
     provider = scenario.provider;
-    discipline = options.discipline === "query_todo"
-      ? "query_todo"
-      : scenario.discipline === "query_todo"
+    discipline = scenario.provider === "feishu"
+      ? options.discipline === "query_todo" || scenario.legacyPrivateDiscipline === "query_todo"
         ? "query_todo"
-        : undefined;
+        : undefined
+      : undefined;
   }
   if (validateRuntime && !enableIm) {
     await loadConfig({

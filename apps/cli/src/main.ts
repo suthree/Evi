@@ -1740,17 +1740,22 @@ export async function main(): Promise<number> {
       })
       : null;
     if (scenario) assertRuntimeImAdapterSupported(scenario);
+    const feishuPrivateScenario = scenario?.provider === "feishu" ? scenario : null;
     const config = await loadConfig({
       configDir: options.configDir,
       stateRoot: options.stateRoot,
-      modelId: scenario?.modelId,
-      skipAuth: !options.requireIm
+      modelId: feishuPrivateScenario?.legacyPrivateModelId,
+      skipAuth: !feishuPrivateScenario
     });
     await serveRuntimeDaemon({
       repoRoot: options.repoRoot,
       config,
       configDir: options.configDir,
-      discipline: options.discipline === "none" ? scenario?.discipline : options.discipline,
+      discipline: feishuPrivateScenario
+        ? options.discipline === "none"
+          ? feishuPrivateScenario.legacyPrivateDiscipline
+          : options.discipline
+        : undefined,
       target: "runtime",
       service: scenario
         ? {

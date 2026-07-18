@@ -18,6 +18,8 @@ import {
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { FeishuPrivateChatAdapter, normalizePrivateTextMessage, parseFeishuTextContent, splitText } from "../packages/runtime/src/channels/feishu/adapter.js";
+import type { GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { loadFeishuChannelConfig, loadFeishuScenarioConfig } from "../packages/runtime/src/channels/feishu/config.js";
 import type {
   TaskRunner,
@@ -87,7 +89,7 @@ test("Feishu adapter exposes a failed inbound connection without SDK details", a
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner: new StubRunner(fixture.store, "unused"),
+      legacyPrivateRunner: new StubRunner(fixture.store, "unused"),
       store: fixture.store
     });
 
@@ -116,7 +118,7 @@ test("Feishu adapter keeps a connecting inbound connection running", async () =>
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner: new StubRunner(fixture.store, "unused"),
+      legacyPrivateRunner: new StubRunner(fixture.store, "unused"),
       store: fixture.store
     });
 
@@ -139,7 +141,7 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
     const first = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport: new MockFeishuTransport(),
-      runner: new StubRunner(fixture.store, "done"),
+      legacyPrivateRunner: new StubRunner(fixture.store, "done"),
       store: fixture.store
     });
     await first.start();
@@ -157,7 +159,7 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
     const restarted = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport: new MockFeishuTransport(),
-      runner: new StubRunner(fixture.store, "done"),
+      legacyPrivateRunner: new StubRunner(fixture.store, "done"),
       store: fixture.store
     });
     await restarted.start();
@@ -176,7 +178,7 @@ test("private text message runs the agent and sends final response", async () =>
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -219,7 +221,7 @@ test("operator notification drain sends queued Feishu notifications", async () =
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -255,7 +257,7 @@ test("operator notification drain fails unauthorized Feishu targets without send
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -316,7 +318,7 @@ test("private text message includes bounded local conversation history", async (
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -354,7 +356,7 @@ test("private text messages queue same-sender follow-ups while a run is active",
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ queuedText: "queued" }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -415,7 +417,7 @@ test("private text messages keep busy response when same-sender follow-up queue 
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ busyText: "busy", queuedText: "queued", followupQueueSize: 1 }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -474,7 +476,7 @@ test("duplicate Feishu message id does not run twice", async () => {
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
     const event = feishuEvent({
@@ -503,7 +505,7 @@ test("allowlist blocks unauthorized private users without replying", async () =>
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -529,7 +531,7 @@ test("authorized Feishu group bootstrap creates a pending runtime session", asyn
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -563,7 +565,7 @@ test("bound Feishu group member messages go to runtime session inbox without run
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -597,15 +599,17 @@ test("bound Feishu group member messages go to runtime session inbox without run
   }
 });
 
-test("bound Feishu group run command executes and records a runtime task run", async () => {
+test("bound Feishu group run command submits one Goal without legacy task state", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "Group final answer.");
+    const runner = new StubRunner(fixture.store, "unused");
+    const goalIngress = stubGoalIngress("goal_feishu_group");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -624,41 +628,61 @@ test("bound Feishu group run command executes and records a runtime task run", a
       text: "/run check service status"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /Feishu group runtime session message received/);
-    assert.match(runner.tasks[0], /Runtime session profile: ops/);
-    assert.match(runner.tasks[0], /check service status/);
+    assert.equal(runner.tasks.length, 0);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /Feishu group runtime session message received/);
+    assert.match(goalIngress.objectives[0]!, /Runtime session profile: ops/);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
     assert.deepEqual(transport.chatSent.map((item) => item.text), [
       "已绑定 runtime session: " + (await listRuntimeSessions(fixture.store))[0]!.id + "\nprofile: ops\n后续普通群消息会进入 inbox；使用 /run 或 @bot 才会执行任务。",
       "收到，正在处理。",
-      "Group final answer."
+      "Goal: goal_feishu_group\nStatus: active\nRun goal continue --goal goal_feishu_group to continue this Goal."
     ]);
 
-    const runs = await listRuntimeTaskRuns(fixture.store);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]?.status, "done");
-    assert.equal(runs[0]?.task, "check service status");
-    assert.equal(runs[0]?.source_kind, "feishu");
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
     const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.id, runs[0]?.id);
-    assert.equal(tasks[0]?.status, "done");
-    const rawRuns = await readJsonl(join(fixture.stateRoot, "runs/index.jsonl"));
-    assert.deepEqual(rawRuns.map((entry) => entry.status), ["queued", "running", "done"]);
-    assert.equal(rawRuns[0]?.id, rawRuns[1]?.id);
-    assert.equal(rawRuns[1]?.id, rawRuns[2]?.id);
-    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
-    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "done"]);
-    assert.match(String(rawQueue[0]?.runner_task), /Feishu group runtime session message received/);
+    assert.equal(tasks.length, 0);
     const outbox = await listRuntimeChannelOutbox(fixture.store);
-    assert.equal(outbox.length, 1);
-    assert.equal(outbox[0]?.source_kind, "feishu");
-    assert.equal(outbox[0]?.purpose, "final");
-    assert.equal(outbox[0]?.status, "sent");
-    assert.equal(outbox[0]?.task_run_id, runs[0]?.id);
-    assert.equal(outbox[0]?.runtime_session_id, runs[0]?.runtime_session_id);
-    assert.equal(outbox[0]?.in_reply_to_message_id, "om_group_run");
-    assert.equal(outbox[0]?.text, "Group final answer.");
+    assert.equal(outbox.length, 0);
+    const delivery = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/outbound/om_group_run.json"), "utf8"));
+    assert.deepEqual({
+      goal_id: delivery.goal_id,
+      goal_status: delivery.goal_status,
+      receipt_id: delivery.receipt_id
+    }, { goal_id: "goal_feishu_group", goal_status: "active", receipt_id: null });
+    assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu group Goal failure stays out of legacy orchestration state", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport,
+      legacyPrivateRunner: new StubRunner(fixture.store, "unused"),
+      goalIngress: failingGoalIngress("goal ingress failed"),
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_fail_bind", chatType: "group", chatId: "oc_group_fail",
+      openId: "ou_operator", text: "/session use ops"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_fail", chatType: "group", chatId: "oc_group_fail",
+      openId: "ou_member", text: "/run fail safely"
+    }));
+
+    assert.deepEqual(transport.chatSent.map((item) => item.text).slice(-2), ["收到，正在处理。", "error"]);
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    const evidence = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/errors/om_group_fail.json"), "utf8"));
+    assert.equal(evidence.error, "goal ingress failed");
   } finally {
     await fixture.cleanup();
   }
@@ -667,11 +691,13 @@ test("bound Feishu group run command executes and records a runtime task run", a
 test("bound Feishu group bot mention executes without leaking the mention into the task", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "Mention final answer.");
+    const runner = new StubRunner(fixture.store, "unused");
+    const goalIngress = stubGoalIngress("goal_feishu_mention");
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport: new MockFeishuTransport(),
-      runner,
+      legacyPrivateRunner: runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -690,9 +716,10 @@ test("bound Feishu group bot mention executes without leaking the mention into t
       text: "@bot check service status"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /check service status/);
-    assert.doesNotMatch(runner.tasks[0], /@bot/i);
+    assert.equal(runner.tasks.length, 0);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /@bot/i);
     const session = (await listRuntimeSessions(fixture.store))[0]!;
     const inbox = await listRuntimeInbox(fixture.store, session.id);
     assert.equal(inbox.at(-1)?.trigger_kind, "mention");
@@ -709,7 +736,7 @@ test("Feishu adapter drains queued provider-neutral outbox replies", async () =>
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
     const queued = await recordRuntimeChannelOutbound(fixture.store, {
@@ -755,7 +782,7 @@ test("Feishu outbox drain can replay p2p replies by chat id", async () => {
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
     await recordRuntimeChannelOutbound(fixture.store, {
@@ -898,7 +925,7 @@ test("operator status command replies from local state without running the agent
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -961,7 +988,7 @@ test("operator config command replies with non-secret runtime config without run
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store,
       configDir: configFixture.configDir
     });
@@ -1067,7 +1094,7 @@ test("operator content command replies with latest daily job and linked run with
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1132,7 +1159,7 @@ test("operator content run command replies with bounded run metadata only", asyn
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1181,7 +1208,7 @@ test("operator content command can inspect a tracked daily job by track and date
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1211,7 +1238,7 @@ test("operator capabilities command replies with local capability catalog withou
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1262,7 +1289,7 @@ test("operator capability acceptance command replies with next-version gates wit
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1381,7 +1408,7 @@ test("operator recap command summarizes latest session without running the agent
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1429,7 +1456,7 @@ test("operator service logs command reads bounded local log tails without runnin
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store,
       homeRoot
     });
@@ -1474,7 +1501,7 @@ test("operator workspace command reads fixed git status without running the agen
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1673,7 +1700,7 @@ test("operator health command replies with bounded service health without runnin
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -1895,7 +1922,7 @@ test("operator governance command replies with aggregate state without running t
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2018,7 +2045,7 @@ test("operator governance command explains decision-closed self-evolution gaps",
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2072,7 +2099,7 @@ test("operator governance commands render selected skill outcome summaries", asy
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2149,7 +2176,7 @@ test("operator opportunities command renders stale daily step service recovery",
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2226,7 +2253,7 @@ test("operator governance commands render working checkpoint backlog summaries",
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2496,7 +2523,7 @@ test("operator opportunities command replies with ranked backlog without running
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2604,7 +2631,7 @@ test("operator review tick commands read tick history without running the agent"
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2699,7 +2726,7 @@ test("operator review report commands read background review history without run
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -2775,7 +2802,7 @@ test("operator completion verification commands read report history without runn
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3006,7 +3033,7 @@ test("operator live run trace commands read bounded run metadata without running
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3165,7 +3192,7 @@ test("operator selected skill outcome commands read usage history without runnin
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3246,7 +3273,7 @@ test("operator skill catalog commands read skill metadata without running the ag
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3305,7 +3332,7 @@ test("operator skill registry health commands inspect active-vault health withou
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3359,7 +3386,7 @@ test("operator skill registry health commands render orphan event retirement gui
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3429,7 +3456,7 @@ test("operator selected skill drift commands read grouped usage summaries withou
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3510,7 +3537,7 @@ test("operator skill registry event commands read active-vault event history wit
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3631,7 +3658,7 @@ test("operator evolution command replies with SOP evolution ledger without runni
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3702,7 +3729,7 @@ test("operator review coverage command reads reused skill coverage without runni
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3781,7 +3808,7 @@ test("operator opportunities command renders pipeline resume guidance without ru
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3849,7 +3876,7 @@ test("operator opportunities command renders repo write guard attention without 
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -3925,7 +3952,7 @@ test("operator context commands read manifest sidecars without running the agent
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store,
       configDir: configFixture.configDir
     });
@@ -4068,7 +4095,7 @@ test("operator working checkpoint commands read bounded checkpoints without runn
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4158,7 +4185,7 @@ test("operator pipeline commands read bounded history without running the agent"
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4227,7 +4254,7 @@ test("operator episode memory commands scan local JSONL without running the agen
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4302,7 +4329,7 @@ test("operator episode archive commands read archive summaries without running t
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4361,7 +4388,7 @@ test("operator archive health commands diagnose archive freshness without runnin
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4465,7 +4492,7 @@ test("operator review inbox command lists active items without running the agent
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4702,7 +4729,7 @@ test("operator review confirmation commands read local confirmations without run
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4843,7 +4870,7 @@ test("operator memory candidate commands read local candidates without running t
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4917,7 +4944,7 @@ test("operator accepted memory commands read local accepted memory without runni
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -4994,7 +5021,7 @@ test("operator memory confirmation commands read local confirmations without run
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      legacyPrivateRunner: runner,
       store: fixture.store
     });
 
@@ -5164,6 +5191,18 @@ class StubRunner implements TaskRunner {
       verdict: "no_sop"
     };
   }
+}
+
+function stubGoalIngress(goalId: string): GoalIngressPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return { objectives, submit: async (objective) => {
+    objectives.push(objective);
+    return { goal_id: goalId, status: "active", receipt: null } as GoalView;
+  } };
+}
+
+function failingGoalIngress(message: string): GoalIngressPort {
+  return { submit: async () => { throw new Error(message); } };
 }
 
 class BlockingRunner implements TaskRunner {

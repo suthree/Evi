@@ -540,7 +540,7 @@ test("service definition accepts configured Discord IM providers with an adapter
         type: "scenario",
         id: "im-discord",
         channel_id: "discord-main",
-        model_id: "test-model",
+        model_id: "unused-missing-model",
         discipline: "query_todo"
       })
     ].join("\n") + "\n", "utf8");
@@ -555,7 +555,6 @@ test("service definition accepts configured Discord IM providers with an adapter
       })
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "auth.jsonl"), [
-      JSON.stringify({ type: "api_key", id: "model-main", key: "sk-test" }),
       JSON.stringify({ type: "api_key", id: "discord-main", key: "discord-test" })
     ].join("\n") + "\n", "utf8");
 
@@ -568,16 +567,16 @@ test("service definition accepts configured Discord IM providers with an adapter
       provider: "discord"
     }, true);
 
-    assert.deepEqual(definition.programArguments.slice(-10, -2), [
+    const serviceArgs = definition.programArguments.slice(2);
+    assert.deepEqual(serviceArgs.slice(serviceArgs.indexOf("--scenario"), serviceArgs.indexOf("--runtime-build")), [
       "--scenario",
       "im-discord",
       "--provider",
       "discord",
       "--channel",
-      "discord-main",
-      "--discipline",
-      "query_todo"
+      "discord-main"
     ]);
+    assert.equal(serviceArgs.includes("--discipline"), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -627,7 +626,7 @@ test("runtime service provider flag overrides stale active IM selectors", async 
         type: "scenario",
         id: "im-telegram",
         channel_id: "telegram-main",
-        model_id: "test-model",
+        model_id: "unused-missing-model",
         discipline: "query_todo"
       })
     ].join("\n") + "\n", "utf8");
@@ -662,10 +661,9 @@ test("runtime service provider flag overrides stale active IM selectors", async 
       "--provider",
       "telegram",
       "--channel",
-      "telegram-main",
-      "--discipline",
-      "query_todo"
+      "telegram-main"
     ]);
+    assert.equal(serviceArgs.includes("--discipline"), false);
     assert.equal(serviceArgs.includes("--no-im"), false);
   } finally {
     await rm(root, { recursive: true, force: true });

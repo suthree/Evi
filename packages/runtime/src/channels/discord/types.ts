@@ -1,4 +1,3 @@
-import type { RunResult } from "../../../../core/src/schemas.js";
 
 export interface DiscordChannelConfig {
   channelId: string;
@@ -47,8 +46,4 @@ export interface DiscordTransport {
   start(onMessage: (message: DiscordMessage) => void | Promise<void>): Promise<void>;
   stop(): Promise<void>;
   sendText(channelId: string, text: string): Promise<DiscordSendResult>;
-}
-
-export interface TaskRunner {
-  runTask(task: string, options?: { recallQuery?: string }): Promise<RunResult>;
 }

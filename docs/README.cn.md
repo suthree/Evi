@@ -110,13 +110,17 @@ Web 提交都只用同一个 Goal 身份执行一次 Start 加一次有界 Conti
 `GoalView`，显示 `goal_id` 并指引 operator 使用 `goal continue` 或 `goal resume`。
 新的 Web 请求不写 legacy task queue、task-run、channel-outbox、episode、iteration、SOP、
 skill 或 deployment state；旧的 `runtime_session_id` 和 `execution_contract` 字段会明确
-拒绝，不会静默映射成 Goal 权限。历史 run/queue 和 session/inbox 仍可只读查看。IM 和 resident
-task queue 仍走 legacy runner，不能与同一个 GoalRuntime Goal 双写，并会在后续子任务中按
-完整 Goal 身份切换。foreground Goal 也不会同步生成 SOP/skill，学习将由后续
+拒绝，不会静默映射成 Goal 权限。Feishu、Telegram、Discord 已绑定 session 的 `/run`
+或有效 mention 也走相同 Goal ingress：每条触发只创建一个 Goal 并执行一个有界 Continue，
+回复 Goal 状态、终态 receipt 摘要和状态感知续作指令；provider Adapter 只保留直接发送和
+带 `goal_id`、Goal 状态、receipt id 的平台证据。这些 session Goal 同样不写 legacy
+控制面。历史 run/queue/outbox 与 session/inbox 仍可只读查看，已排队 provider row 仍可兼容投递。
+Feishu p2p/private chat 因为仍拥有对话历史、follow-up queue 和 operator commands，明确保留为
+独立 legacy ingress，不能声称已经 Goal 化。foreground Goal 也不会同步生成 SOP/skill，学习将由后续
 receipt-driven LearningRuntime 异步处理。
 详细合同见 `docs/RUNTIME_CONTRACT.md` 的 `GoalRuntime Local Control Plane`。
 
-仍由 IM、daemon resident worker 使用的 legacy `LiveAgentRunner` context
+仍由 Feishu p2p/private chat 使用的 legacy `LiveAgentRunner` context
 在持久化和调用模型前会执行硬预算：优先采用当前模型配置推导出的
 `total_hard_limit_chars`，模型未声明上下文窗口时使用 64,000 字符兜底。装配前先按任务选择
 `focused`、`governance` 或 `recovery` 注意力 profile；普通 legacy runner 任务不再常驻加载治理、trace、
@@ -277,7 +281,7 @@ pnpm run runtime -- live --task "Verify the local agent runtime." --state-root .
 `paused`，应保留同一个 `goal_id`，再使用 `goal continue` 或 `goal resume`；不能新建
 替代任务。Web 不写 legacy queue/task-run/channel-outbox state，但历史 run/queue 仍可查看。
 `--query-todo` 属于旧 runner，在 `live` 上会在创建 Goal 前明确拒绝，避免同一个目标同时
-写入两套控制面。IM 和 resident task queue 仍等待各自的完整入口切换。
+写入两套控制面。Runtime-session IM 已整体切到 Goal；Feishu p2p/private chat 仍是独立 legacy 入口。
 
 查看仍由 IM、daemon 等 legacy runner 生成的最近 run trace：
 
@@ -299,8 +303,8 @@ pnpm run runtime -- pipeline runs --pipeline <ref-or-id> --state-root .runtime/s
 pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
 ```
 
-Web console 用于查看 runtime sessions、channel inbox 和 task runs，也可以把
-pending 的 channel session 绑定到某个 profile，并显式提交一次本地 task run。
+Web console 用于查看 runtime sessions、channel inbox 和历史 task runs，也可以把
+pending 的 channel session 绑定到某个 profile，并显式提交一个 canonical Goal。
 这个绑定走 Feishu、Telegram、Discord 共用的 provider-neutral route key。
 它只是 localhost 操作者界面，不是托管、多用户、带登录体系或桌面版 GUI。
 
@@ -353,48 +357,50 @@ Feishu channel health 会把无敏感信息的入站连接态写入结构化
 
 IM 消息进入 runtime session 前会先变成统一 source envelope：channel kind、
 channel id、conversation type/id、thread id、actor id 和 profile。session
-route key、inbox 和 task run 都从这个结构派生，避免把 Feishu `chat_id`
+route key 和 inbox 从这个结构派生，避免把 Feishu `chat_id`
 这类平台字段扩散到 runtime core。
 
 归一后的入站消息会进入共享 runtime channel dispatcher；dispatcher 负责
 `/session use`、pending session 创建、inbox append，以及 `/run` 或 mention
 触发分类。Adapter 只保留平台解析和回复发送。
 
-legacy IM 触发的显式任务会先写入本地 runtime task queue，然后同步领取同一条
-任务并调用 runner。task-run index 会用同一个 id 追加 `queued`、`running` 和最终
-状态，供 Web 查看历史；queue read model 也能列出 queued 或 stale running 任务。
-常驻 daemon 只在 legacy IM 启用时启动有界 queue worker，消费过期 queued/running
-项并写回最终 task-run 状态。Feishu/Telegram/Discord 来源的 recovery 结果会以
-queued outbound row 写入统一 `channels/outbox.jsonl`，再由对应 Adapter 投递回原
-会话；直接 Adapter 回复会记录本地 sent row。新的 Web Goal 不进入这条 queue 或
-outbox 链。真实发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不
+Runtime-session Goal 的唯一模型 owner 是 `goal_cognition`。Telegram/Discord
+scenario 中残留的 `model_id` 或 discipline 不参与执行，也不阻断 daemon、service 或
+doctor readiness；只有 Feishu p2p/private chat 明确保留独立命名的 legacy private
+model 与 discipline。
+
+已绑定 Feishu、Telegram、Discord session 的 `/run` 或有效 mention 会提交一个
+canonical Goal，只执行一次有界 Continue，再由 Adapter 直接回复 Goal 状态、终态
+receipt 摘要和续作指令。新 session Goal 不写 task queue、task-run 或统一
+`channels/outbox.jsonl`；直接发送证据留在对应 provider 目录并记录 `goal_id`、Goal
+状态和 receipt id。常驻 daemon 不再为当前 session 工作启动 queue worker。
+历史 queue/task-run/outbox 仍可只读，已排队的 Feishu/Telegram/Discord provider row
+仍可由对应 Adapter 兼容投递。真实发送和 provider SDK 细节仍由各 Adapter 管理。匹配 provider 但不
 属于当前 channel 的 queued row 会被对应 Adapter 标记为 skipped，避免常驻轮询
 反复处理。
 
-daemon 停止时，queue worker 会先拒绝新 tick，等待 startup/current run 与已开始的
-status 写入完成，再同步落盘 `stopped`；daemon 会等待该 stop promise。heartbeat
-若已有写入进行中，也会先等待该写入，再落盘最终 `stopping`/`stopped`，避免 stop
-返回后出现延迟的 queue-worker 或 heartbeat 状态写入。
+daemon 停止时会先停止 resident loops；heartbeat 若已有写入进行中，会先等待该写入，
+再落盘最终 `stopping`/`stopped`，避免 stop 返回后出现延迟 heartbeat 状态写入。
 
-任务状态只读取 live run 的结构化 `completion_status` 与
+历史/manual task queue compatibility 只读取 live run 的结构化 `completion_status` 与
 `verification_status`，不会再从 verdict 文本中搜索 `blocked`、`failed` 或
-`unverified`。结构化 `not_done`/`blocked` 的 legacy IM 任务会保留同一个 task id、
+`unverified`。结构化 `not_done`/`blocked` 的历史 queue 任务会保留同一个 task id、
 runtime session、worktree、首次 live session、working-checkpoint ref 和最新
 `next_action`，并把同一条 queue entry 重新排队；不会创建替代 continuation
 任务。checkpoint 带有非空实际 `worktree` 时，settlement 会先用它更新 queue；
-checkpoint 缺失该字段（包括旧记录）时则保留 queue 现有路径。daemon resume
+checkpoint 缺失该字段（包括旧记录）时则保留 queue 现有路径。保留的 worker resume
 prompt 会携带更新后的稳定字段和当前 attempt，最多领取三次；
 第三次仍未完成时进入终态 `blocked`，后续 tick 不再重复执行。
 
-历史 legacy queue row 可能保留单任务结构化 `execution_contract`；这是 daemon
+历史 legacy queue row 可能保留单任务结构化 `execution_contract`；这是 manual/historical
 recovery 的兼容读取能力，不是当前 ingress 可以创建的新授权入口。该快照必须记录
 operator Decision Owner、authority basis、允许/
 禁止效果、外部命令 allowlist、禁止参数、model-round/tool-call 预算、side-effect
 ceiling，并同时要求 `operator_confirmed=true`、`expires_with_task=true`。该快照会随
-append-only queue row 持久化，在同步执行和 daemon resume 中保持同一份身份；不会从
+append-only queue row 持久化，在 historical worker resume 中保持同一份身份；不会从
 自由文本推断权限，也不是全局角色或可复用授权。runtime 会计算 SHA-256
 `authority_digest`；持久化内容与 digest 不一致时，read model 会 fail closed，不保留该
-授权。当前 IM enqueue 路径不接受或创建该快照；新的 Web `POST /api/runs` 也明确拒绝
+授权。当前 Web 和 runtime-session IM ingress 不入队也不创建该快照；新的 Web `POST /api/runs` 也明确拒绝
 `execution_contract` 和 `runtime_session_id`，直接启动由 `GoalRuntime` 管理 effect
 confirmation 的独立 Goal。
 
@@ -406,8 +412,8 @@ fail closed 拒绝 shell、通用解释器、`code.execute_node` 以及 package-
 等间接命令载体；外部操作必须使用直接 binary argv，不能把 `gh` 或 `git push` 藏在
 脚本字符串中。外层 task contract 不会削弱
 `codex.run` 自己的 immutable worktree/model/sandbox/budget authority snapshot，最终
-完成判断仍属于 `main_harness`。当前 IM 任务保持原有本地 runner 行为，也不会自动获得
-external-write 权限；历史兼容 JSON 形状见
+完成判断仍属于 `main_harness`。Feishu p2p/private-chat 任务仍保持本地 legacy runner
+行为，也不会从任务文本自动获得 external-write 权限；历史兼容 JSON 形状见
 `docs/LOCAL_RUNTIME.md`。
 
 固定 workspace git 诊断会为 `git status --porcelain=v1 -b` 强制设置
@@ -423,7 +429,7 @@ selected-skill usage telemetry 仍单独记录，但不得覆盖这条
 Feishu 群会映射到本地 runtime session。未知群只有授权 operator 的消息能创建
 pending/unassigned session；绑定方式是在群里发送 `/session use <profile>`，
 或在 Web console 里选中 session 后绑定 profile。普通群消息只进入 inbox；
-只有 `/run <task>` 或显式 `@bot` 才会请求执行。
+只有 `/run <task>` 或显式 `@bot` 才会提交一个 canonical Goal；普通群消息不执行。
 
 本仓库推荐把 repo-local runtime 产物统一放在 `.runtime/` 下：
 `.runtime/state` 是默认交互状态根，`.runtime/stage` 可用于 pipeline

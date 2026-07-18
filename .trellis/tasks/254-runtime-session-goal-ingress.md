@@ -120,6 +120,37 @@ inside this provider-neutral slice.
   complete runtime-session boundary rather than a provider-wide partial rewrite.
 - Live inventory before activation: 181 historical queue tasks with no
   queued/running entry; 245 outbox rows with no queued entry.
-- Implementation, focused/full verification, independent review, PR,
-  deployment, controller handoff, installed-artifact acceptance, and live
-  health remain pending.
+- Implementation Goal `goal_20260718000336_3423dbb2` read this task once,
+  proposed the exact bounded `codex.run` effect, and Codex confirmed that
+  effect in the bound worktree at start HEAD `2a609492`. The delegated Codex
+  observation then failed after 265 seconds but left 14 attributable changed
+  paths. Task254 allowed only one coding delegation, so Codex did not permit a
+  replacement delegation.
+- Codex supervisor inspected the entire residual diff, removed session error
+  writes to the provider-neutral outbox, added terminal receipt presentation,
+  made Telegram/Discord Goal ingress mandatory, removed the Feishu `runner`
+  compatibility alias, kept only `legacyPrivateRunner` for p2p, updated current
+  capability/docs facts, and added success/failure/no-dual-write evidence for
+  all three providers.
+- Standards review found that generic scenario `model_id` still gated
+  Telegram/Discord even though session execution had moved to independently
+  configured `goal_cognition`. Codex fixed the owner, not the adapters:
+  `ImScenarioBase` no longer exposes a generic execution model or discipline;
+  only Feishu carries explicit `legacyPrivate*` execution fields for p2p, and
+  CLI/service/doctor no longer consume unused Telegram/Discord scenario model
+  auth. Config, doctor, and service tests prove an absent unused scenario model
+  does not block Goal-backed providers.
+- Evi's implementation Goal was explicitly abandoned rather than allowed to
+  claim supervisor-owned recovery. Receipt
+  `goal_receipt_20260718001958_88003f55` records the failed observation,
+  attributable paths, and `verification.status=not_run`; this is an honest
+  orchestration receipt, not an implementation acceptance receipt.
+- Targeted adapter/daemon/Web/Goal tests passed 84/84, capability contract
+  tests passed 6/6, TypeScript and `git diff --check` passed. Full
+  `pnpm run check` after the final owner fix passed build, 962/962 tests, active-vault skill validation,
+  and neutral naming across 129 implementation files.
+- Independent Spec and Standards reviews both returned PASS after their
+  document and model-owner findings were repaired.
+- PR integration, exact-commit deployment, controller handoff,
+  installed-artifact synthetic adapter acceptance, and live service health
+  remain pending.

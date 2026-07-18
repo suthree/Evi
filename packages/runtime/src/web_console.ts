@@ -12,7 +12,7 @@ import {
   runtimeChannelSourceFromRouteKey
 } from "../../core/src/runtime_channel_messages.js";
 import { AgentStore } from "../../core/src/store.js";
-import type { GoalIngressPort } from "./goal_ingress.js";
+import { goalContinuationHint, type GoalIngressPort } from "./goal_ingress.js";
 import type { GoalView } from "./goal_runtime.js";
 
 export interface RuntimeWebConsoleOptions {
@@ -157,24 +157,7 @@ async function handleRequest(
   }
 }
 
-export function goalContinuationHint(goal: GoalView): string {
-  if (goal.status === "completed") {
-    return `Goal ${goal.goal_id} is completed; no continuation command is required.`;
-  }
-  if (goal.status === "abandoned") {
-    return `Goal ${goal.goal_id} is abandoned; no continuation command is allowed.`;
-  }
-  if (goal.status === "paused" && goal.pending_effect?.state === "awaiting_confirmation") {
-    return `Run goal resume --goal ${goal.goal_id} --confirm-effect ${goal.pending_effect.effect_id} to confirm this exact effect.`;
-  }
-  if (goal.status === "paused" && goal.pending_effect?.state === "outcome_unknown") {
-    return `No safe continuation command: effect ${goal.pending_effect.effect_id} has an unknown outcome and must be reconciled from evidence before any new action.`;
-  }
-  if (goal.status === "paused") {
-    return `Run goal resume --goal ${goal.goal_id} to resume this manually paused Goal.`;
-  }
-  return `Run goal continue --goal ${goal.goal_id} to continue this Goal.`;
-}
+export { goalContinuationHint } from "./goal_ingress.js";
 
 async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];

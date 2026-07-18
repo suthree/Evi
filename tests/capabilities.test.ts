@@ -79,7 +79,9 @@ test("capability catalog mirrors core tool and harness action contracts", () => 
   assert.equal(runtimeSessions?.commands?.includes("pnpm run runtime -- web"), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("pending/unassigned")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("ordinary bound group messages")), true);
-  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("legacy IM") && boundary.includes("new Web submissions") && boundary.includes("do not enter this queue")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("bound /run") && boundary.includes("one canonical Goal")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("new runtime-session Goals") && boundary.includes("no legacy queue")), true);
+  assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("resident daemon no longer starts a queue worker")), true);
   assert.equal(runtimeSessions?.boundaries?.some((boundary) => boundary.includes("explicit IM and web task runs")), false);
   const feishuSession = runtimeService?.capabilities.find((capability) => capability.id === "feishu.private_chat");
   assert.equal(feishuSession?.summary.includes("Feishu groups"), true);

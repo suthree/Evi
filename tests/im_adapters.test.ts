@@ -14,6 +14,8 @@ import {
   createRuntimeImAdapter
 } from "../packages/runtime/src/im_adapters.js";
 import type { DiscordImScenarioConfig, FeishuImScenarioConfig, TelegramImScenarioConfig } from "../packages/runtime/src/im_config.js";
+import type { GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 
 test("runtime IM adapter seam creates Feishu adapters from provider-neutral scenarios", async () => {
   const fixture = await createFixture();
@@ -21,7 +23,8 @@ test("runtime IM adapter seam creates Feishu adapters from provider-neutral scen
     const adapter = createRuntimeImAdapter({
       scenario: feishuScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      legacyPrivateRunner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       feishuTransportFactory: () => new FakeFeishuTransport()
     });
 
@@ -39,7 +42,7 @@ test("runtime IM adapter seam creates Telegram adapters from provider-neutral sc
     const adapter = createRuntimeImAdapter({
       scenario: telegramScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       telegramTransportFactory: () => new FakeTelegramTransport()
     });
 
@@ -57,7 +60,7 @@ test("runtime IM adapter seam creates Discord adapters from provider-neutral sce
     const adapter = createRuntimeImAdapter({
       scenario: discordScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       discordTransportFactory: () => new FakeDiscordTransport()
     });
 
@@ -69,15 +72,19 @@ test("runtime IM adapter seam creates Discord adapters from provider-neutral sce
   }
 });
 
+function stubGoalIngress(): GoalIngressPort {
+  return { submit: async () => ({ goal_id: "goal_adapter", status: "active", receipt: null } as GoalView) };
+}
+
 function feishuScenario(): FeishuImScenarioConfig {
   return {
     id: "im-default",
     provider: "feishu",
     channelId: "feishu-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
+    legacyPrivateModelId: "test-model",
+    legacyPrivateDiscipline: "query_todo",
+    legacyPrivateReplyPolicy: "final_response",
+    legacyPrivateConcurrency: "per_sender",
     channelDescriptor: {
       id: "feishu-main",
       kind: "feishu",
@@ -107,10 +114,6 @@ function telegramScenario(): TelegramImScenarioConfig {
     id: "im-telegram",
     provider: "telegram",
     channelId: "telegram-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
     channelDescriptor: {
       id: "telegram-main",
       kind: "telegram",
@@ -137,10 +140,6 @@ function discordScenario(): DiscordImScenarioConfig {
     id: "im-discord",
     provider: "discord",
     channelId: "discord-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
     channelDescriptor: {
       id: "discord-main",
       kind: "discord",
