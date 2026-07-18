@@ -4,6 +4,7 @@ Load this compact index by default. Do not preload every stable document.
 
 - Runtime capabilities, harness, context, tools, and boundaries: `docs/RUNTIME_CONTRACT.md`
 - Current module ownership, own/delegate seams, architecture pressure, and staged replacement order: `docs/ARCHITECTURE.md`
+- Source, directory, dependency, test, and documentation structure: `docs/ENGINEERING.md`
 - Service install, health, rollback, logs, IM, and local operations: `docs/LOCAL_RUNTIME.md`
 - Memory, SOP, skill, active vault, promotion, revision, and retirement: `docs/LOCAL_LEARNING.md`
 - Accepted long-term one-self/many-entry product, context-placed execution, multi-session, harness, and capability-intelligence vision: `docs/PRODUCT_VISION.md`

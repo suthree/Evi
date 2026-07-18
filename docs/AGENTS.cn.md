@@ -22,10 +22,10 @@
 - 本仓库是 local-first、single-machine 的自成长 agent runtime。
 - 稳定模型上下文先读取 `README.md`、`docs/INDEX.md` 和 `memory/index.md`。
   从紧凑索引路由，先搜索标题或标识符，再按任务只读取
-  `docs/ARCHITECTURE.md`、`docs/RUNTIME_CONTRACT.md`、`docs/LOCAL_RUNTIME.md` 或
-  `docs/LOCAL_LEARNING.md` 的相关章节。
+  `docs/ARCHITECTURE.md`、`docs/ENGINEERING.md`、`docs/RUNTIME_CONTRACT.md`、
+  `docs/LOCAL_RUNTIME.md` 或 `docs/LOCAL_LEARNING.md` 的相关章节。
 - 本地 operator 快速阅读优先看 `docs/INDEX.cn.md`、`docs/README.cn.md`、
-  `docs/ARCHITECTURE.cn.md` 和本文件。
+  `docs/ARCHITECTURE.cn.md`、`docs/ENGINEERING.cn.md` 和本文件。
 - 长文档、原始日志、episode 和 archive 是按需证据库，不是常驻 prompt context。
   当前目标、working checkpoint、选中引用和验证证据的注意力优先级高于历史正文。
 - 只有在处理 active-exploration、内容发布、图像生成、小红书适配器或反馈采集时，
@@ -41,6 +41,7 @@
 | `core/soul.md` | 稳定身份、价值观、学习立场、自修改边界 | 项目命令、活跃任务、repo 专属 workflow |
 | `AGENTS.md` | 仓库入口、读取顺序、工作纪律、路由规则 | 详细 runtime contract 或 Trellis 生成上下文 |
 | `docs/ARCHITECTURE.md` | 当前模块归属、own/delegate seam、架构压力和渐进替换顺序 | 已实现行为、产品愿景或活跃任务状态 |
+| `docs/ENGINEERING.md` | 源码、目录、依赖、测试和文档结构 | 产品优先级、runtime 行为或任务治理 |
 | `docs/RUNTIME_CONTRACT.md` | runtime 能力边界、核心/基础能力方向、本地开放演化权限 | 持久身份或 operator 人格 |
 | `docs/LOCAL_LEARNING.md` | SOP、skill、active-vault 和 local-learning promotion gate | 核心 runtime 行为变更 |
 | `.trellis/` | 有边界任务治理、spec、decision、Trellis 维护的 agent context | runtime state、durable memory、active vault、skill promotion authority |

@@ -19,6 +19,9 @@ implemented v0.1 contract or the accepted v0.2 delivery scope.
 - Current module ownership, delegated capability seams, and staged migration:
   [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
   [docs/ARCHITECTURE.cn.md](docs/ARCHITECTURE.cn.md)
+- Source, directory, dependency, test, and documentation structure:
+  [docs/ENGINEERING.md](docs/ENGINEERING.md) and
+  [docs/ENGINEERING.cn.md](docs/ENGINEERING.cn.md)
 - Repository work rules: [AGENTS.md](AGENTS.md) and
   [docs/AGENTS.cn.md](docs/AGENTS.cn.md)
 - Stable identity and learning stance: [core/soul.md](core/soul.md) and
@@ -116,6 +119,6 @@ packages/core/     context, harness, evidence, governance
 packages/runtime/  config, models, service, web and IM adapters
 config/            tracked safe defaults
 core/              stable identity and memory policy
-docs/              runtime and operator documentation
+docs/              architecture, engineering, runtime and operator documentation
 .trellis/          iteration spec, tasks, decisions, generated context
 ```

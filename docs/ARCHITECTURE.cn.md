@@ -1,8 +1,7 @@
 # Evi 架构
 
-状态：当前模块归属与渐进迁移方向；2026-07-18 基于
-`develop@396fd193b35332581503b10818d1883959610c41` 审计。本文提出的 seam
-或迁移项，不代表已经实现。
+状态：当前模块归属与渐进迁移方向；2026-07-18 在稳定化审计和第一轮 outcome-learning
+收敛后更新。当前实现以源码、测试和 live evidence 为准。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
 
@@ -61,7 +60,11 @@ Goal ingress -> GoalRuntime -> cognition proposal
                               v
                    verification / receipt
                               |
-               context, memory, learning read models
+                    +---------+----------+
+                    |                    |
+                operator result   bounded tool competence
+                                         |
+                                  later Goal cognition
 ```
 
 所有权保持单向：入口 Adapter 提交工作；GoalRuntime 拥有生命周期；EffectPolicy 判断
@@ -79,13 +82,16 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
+| Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
 | 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | append-only 或持久事实；projection 可重建 | 产品方向或自动把内容晋升成真相 |
 | 学习 | `packages/runtime/src/background_review.ts`、core SOP/Skill/Memory 模块 | evidence→candidate→audit→promotion→reuse→revision/retirement | 前台完成判定或隐式修改身份 |
 | 入口 | CLI、Web、Feishu、Telegram、Discord Adapter | 解析、绑定渠道 Context、提交、交付、记录 provider evidence | 第二套 GoalRuntime、Memory Store 或执行 owner |
 | 部署 | service/deployment/supervisor 模块 | commit-bound 产物激活、health、rollback、controller handoff | 源码合并或产品发布权限 |
 
-目前仍存在历史 queue、runner、read model 和旧 state 代码。它们是可读兼容/历史，不授权
-创建第二个当前执行 owner。后续删除必须有独立有界 Issue 和真实使用证据。
+目前仍存在历史 queue、runner、project-design、scorecard、iteration read model 和旧
+state 代码。它们只用于按需兼容/历史检查，不进入常驻 Context、不拥有能力选择权限，
+也不授权创建第二个当前执行 owner。后续删除必须有独立有界 Issue、真实 caller 和
+operator 需求证据。
 
 ## 自己拥有、复用与委托
 
@@ -121,19 +127,19 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 
 ## 2026-07-18 架构压力审计
 
-审计基线中，`apps/` 与 `packages/` 有 78,704 行 TypeScript/MJS 源码，测试 66,535
+稳定化审计基线中，`apps/` 与 `packages/` 有 78,704 行 TypeScript/MJS 源码，测试 66,535
 行，顶层 docs 12,024 行。源码/测试中 36 个文件超过 1,000 行，20 个超过 2,000 行，
 11 个超过 3,000 行。自已接受产品愿景 commit `1fc29f7` 以来，`develop` 增加 112 个
 commit，113 个文件共 21,585 行新增、2,000 行删除。
 
 主要注意点：
 
-- `tests/context_harness.test.ts`（11,810 行）大量穿透内部细节测试，而不是通过一个小
+- `tests/context_harness.test.ts` 当时为 11,810 行，大量穿透内部细节测试，而不是通过一个小
   External Interface；
 - `packages/runtime/src/channels/feishu/adapter.ts`（5,554 行）混合 provider transport、
   operator command、history、evidence 和 ingress；
 - `apps/cli/src/main.ts`（3,697 行）是过宽的组合与命令面；
-- `packages/core/src/context.ts`（3,520 行）理解过多内容专属 section，并导出大量
+- `packages/core/src/context.ts` 当时为 3,520 行，理解过多内容专属 section，并导出大量
   compaction helper；
 - `packages/runtime/src/tools.ts`（2,653 行）混合 dispatch、validation、process policy、
   output capture、repo evidence 和 Codex adaptation；
@@ -147,9 +153,19 @@ commit，113 个文件共 21,585 行新增、2,000 行删除。
 行数只是注意力信号，不是验收指标。机械拆文件可能制造更多浅模块。后续重构必须减少
 调用者需要知道的知识、删除一个重复状态 owner 或路径，并以 Interface 级测试抵抗内部变化。
 
+第一轮收敛删除了三类 proof-oriented 常驻 Context section、Project Plan compaction
+helper 和对应的实现形状测试。`context.ts` 现为 3,022 行，
+`context_harness.test.ts` 现为 10,950 行。更重要的是，后续 Goal cognition 已能从
+terminal Goal outcome 得到有界 Projection，而没有新增 state owner。剩余体量仍是
+架构压力；这是替换 checkpoint，不代表 Context/Harness 已完成拆分。
+
 ## 渐进替换顺序
 
 每个阶段必须新建一个已接受 Issue 和一个 Trellis task；同一时间只能激活一个阶段。
+
+Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal evidence 已能产生
+有界 Tool 选择建议，proof-only 常驻 Projection 已被删除。旧诊断命令/源码退役以及更
+完整的 LearningRuntime curation 仍需后续用真实使用证据激活。
 
 1. **Capability execution seam。** 从 `tools.ts` 选择一条完整纵向路径，用至少两个真实
    Adapter 共用的小 definition/execution Interface 替换。统一有界 output spill 和
@@ -168,9 +184,10 @@ commit，113 个文件共 21,585 行新增、2,000 行删除。
 任何阶段都不能把功能扩张藏在重构中。净删除是有用证据但不是硬指标；验收看 Interface
 知识是否减少、重复所有权是否消失。
 
-## 恢复自进化的 Gate
+## 功能激活 Gate
 
-Codex 监督的 Evi 自进化功能工作保持暂停，直到全部满足：
+2026-07-18 的稳定化暂停已在 operator 明确恢复 Issue #56 后，为唯一有界 child #93
+满足。后续每个 feature child 都必须重新满足同一 Gate：
 
 - stabilization Issue 已合并，root/worktree/GitHub/Trellis 状态已一致且干净；
 - operator 明确恢复 Issue #56，或接受 successor program；
@@ -182,4 +199,5 @@ Codex 监督的 Evi 自进化功能工作保持暂停，直到全部满足：
 - 完成由 Interface 行为、独立证据和所有权歧义减少来判断，不以文件数、Tool 数或模型
   自信判断。
 
-Gate 通过前，普通运行和 bug repair 可以继续，但不得再调度新的自动功能成长链路。
+两个 child 之间普通运行和 bug repair 可以继续，但不得并行激活第二条自动功能成长链，
+也不能由派生 scorecard suggestion 自动激活。

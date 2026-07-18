@@ -24,13 +24,17 @@ _Avoid_: Tool protocol, project overlay
 A specialized **Host Runtime** that the agent can ask to perform bounded work, then inspect and verify, such as delegating a coding task to Codex. It is more capable than a **Tool Protocol**, but it still does not become the **Self-Growing Agent Core**.
 _Avoid_: Tool protocol, separate self
 
+**Capability Experience**:
+One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
+_Avoid_: Causal proof, raw tool output, progress score
+
+**Capability Competence**:
+Bounded decision knowledge derived from repeated **Capability Experience**: observed scope, reliability, failures, fallback guidance, and freshness that changes later capability selection. Sparse evidence remains provisional, current evidence wins conflicts, and competence is revised or retired as outcomes change.
+_Avoid_: Capability catalog entry, one successful run, self-reported mastery, scorecard
+
 **Expert Orchestration Contract**:
 The **Core Runtime Capability** boundary that defines advisory expert roles, when they may be consulted, and why the main runtime still owns verification and completion. It is not an autonomous scheduler or a new agent identity.
 _Avoid_: Multi-agent daemon, parallel model fan-out, expert persona, external tool workflow
-
-**Self-Evolution Iteration Contract**:
-A bounded local record made before or during major self-evolution work that declares the capability layer, owner surface, proposed slice, evidence, verification commands, non-goals, and advisory expert roles. It is evidence of iteration discipline, not evidence that the work is complete.
-_Avoid_: Completion proof, task execution, roadmap item, application feature
 
 **Host Instruction File**:
 A file read by a specific host runtime to preload behavior or project guidance, such as Codex `AGENTS.md`, Claude Code `CLAUDE.md`, Hermes `.hermes.md`, or OpenClaw bootstrap files. It adapts the agent to a host and is not the agent core by itself.

@@ -68,6 +68,59 @@ test("GoalRuntime binds new goals to one Git worktree authority", async () => {
   }
 });
 
+test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal outcomes", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read one bounded fact."),
+      outcome("The first bounded Goal is complete."),
+      {
+        type: "blocked",
+        summary: "Stop after inspecting prior experience.",
+        next_action: "Use the prior experience in a later continuation."
+      }
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: { async verify(input) { return passedVerification(input); } }
+    });
+    const first = await runtime.handle(start("competence_first_start", "Create one terminal tool experience."));
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "competence_first_continue",
+      goal_id: first.goal_id
+    });
+    assert.equal(completed.status, "completed");
+
+    const second = await runtime.handle(start("competence_second_start", "Use prior terminal experience."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "competence_second_continue",
+      goal_id: second.goal_id
+    });
+
+    assert.deepEqual(cognition.calls[0]!.tool_competence, []);
+    assert.deepEqual(cognition.calls[1]!.tool_competence, []);
+    assert.deepEqual(cognition.calls[2]!.tool_competence.map((item) => ({
+      tool: item.tool,
+      observations: item.observation_count,
+      successes: item.success_count,
+      accepted: item.accepted_goal_count,
+      abandoned: item.abandoned_goal_count
+    })), [{
+      tool: "file.read",
+      observations: 1,
+      successes: 1,
+      accepted: 1,
+      abandoned: 0
+    }]);
+    assert.match(cognition.calls[2]!.tool_competence[0]!.boundary, /not causal attribution/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime reads legacy goals but refuses to silently bind their continuation", async () => {
   const fixture = await createFixture();
   try {

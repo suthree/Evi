@@ -1,8 +1,8 @@
 # Evi Architecture
 
-Status: current module ownership and staged migration direction, audited at
-`develop@396fd193b35332581503b10818d1883959610c41` on 2026-07-18. This
-document does not claim that a proposed seam or migration has been implemented.
+Status: current module ownership and staged migration direction, updated on
+2026-07-18 after the stabilization audit and the first outcome-learning
+consolidation. Source, tests, and live evidence decide current implementation.
 
 The Simplified Chinese companion is
 [`docs/ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md).
@@ -76,7 +76,11 @@ Goal ingress -> GoalRuntime -> cognition proposal
                               v
                    verification / receipt
                               |
-               context, memory, learning read models
+                    +---------+----------+
+                    |                    |
+              operator result     bounded tool competence
+                                         |
+                                  later Goal cognition
 ```
 
 The flow is intentionally one-way in ownership: entry adapters submit work;
@@ -96,14 +100,16 @@ own the Self or completion.
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
+| Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
 | Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts; derived projections remain rebuildable | Product direction or automatic truth promotion |
 | Learning | `packages/runtime/src/background_review.ts`, core SOP/skill/memory modules | Evidence to candidate, audit, promotion, reuse, revision/retirement | Foreground completion or identity changes by implication |
 | Entrypoints | CLI, Web, Feishu, Telegram, Discord adapters | Parse, bind channel context, submit, deliver, record provider evidence | A second GoalRuntime, memory store, or execution owner |
 | Deployment | service/deployment/supervisor modules | Commit-bound artifact activation, health, rollback and controller handoff | Source integration or product release authority |
 
-Some legacy queue, runner, read-model, and historical state code remains. It is
-readable compatibility/history, not authority for creating another current
-execution owner. Removal requires a later bounded issue with usage evidence.
+Some legacy queue, runner, project-design, scorecard, iteration, and historical
+state code remains. It is on-demand compatibility/history, not resident
+context, capability-selection authority, or another current execution owner.
+Removal requires a later bounded issue with caller and operator-need evidence.
 
 ## Own, Reuse, Delegate
 
@@ -141,7 +147,7 @@ part; discard patterns that add surface area without verified leverage.
 
 ## 2026-07-18 Pressure Audit
 
-The audit baseline contains 78,704 TypeScript/MJS source lines under `apps/`
+The stabilization baseline contained 78,704 TypeScript/MJS source lines under `apps/`
 and `packages/`, plus 66,535 test lines and 12,024 top-level documentation
 lines. Thirty-six source/test files exceed 1,000 lines, twenty exceed 2,000,
 and eleven exceed 3,000. Since the accepted product-vision commit `1fc29f7`,
@@ -150,13 +156,13 @@ and eleven exceed 3,000. Since the accepted product-vision commit `1fc29f7`,
 
 Primary attention points:
 
-- `tests/context_harness.test.ts` (11,810 lines) tests through many internal
-  details rather than one small external interface;
+- `tests/context_harness.test.ts` was 11,810 lines and tested through many
+  internal details rather than one small external interface;
 - `packages/runtime/src/channels/feishu/adapter.ts` (5,554 lines) combines
   provider transport, operator commands, history, evidence, and ingress;
 - `apps/cli/src/main.ts` (3,697 lines) is a wide composition/command surface;
-- `packages/core/src/context.ts` (3,520 lines) knows many content-specific
-  sections and exports many compaction helpers;
+- `packages/core/src/context.ts` was 3,520 lines and knew many content-specific
+  sections while exporting many compaction helpers;
 - `packages/runtime/src/tools.ts` (2,653 lines) combines dispatch, validation,
   process policy, output capture, repository evidence, and Codex adaptation;
 - `docs/RUNTIME_CONTRACT.md` and historical Trellis records are valuable
@@ -172,10 +178,23 @@ splitting can create more shallow modules. A later refactor must reduce caller
 knowledge, eliminate a state owner or duplicated path, and survive internal
 change through interface-level tests.
 
+The first consolidation removed the three proof-oriented resident context
+sections, their project-plan compaction helpers, and implementation-shaped
+tests. `context.ts` is now 3,022 lines and `context_harness.test.ts` is 10,950
+lines. More importantly, later Goal cognition now receives a bounded projection
+from terminal Goal outcomes without a new state owner. Remaining size is still
+architecture pressure; this change is a replacement checkpoint, not a claim
+that context or harness decomposition is finished.
+
 ## Staged Replacement Order
 
 Each stage requires a new accepted Issue and one Trellis task. Only one stage
 may be active at a time.
+
+The outcome-learning consolidation completed the first narrow part of stages 4
+and 5: canonical Goal evidence now drives bounded tool selection guidance, and
+proof-only resident projections were deleted. Legacy diagnostic command/source
+retirement and broader LearningRuntime curation remain later measured work.
 
 1. **Capability execution seam.** Replace one complete `tools.ts` vertical path
    with a small definition/execution interface shared by at least two real
@@ -201,10 +220,11 @@ No stage may hide feature expansion inside refactoring. Net deletion is useful
 evidence but not mandatory; reduced interface knowledge and removed duplicate
 ownership are the completion criteria.
 
-## Resume Gates
+## Feature Activation Gate
 
-Codex-supervised Evi self-evolution feature work remains paused until all of
-the following are true:
+The 2026-07-18 stabilization pause was satisfied for the single bounded Issue
+#93 child after the operator explicitly resumed Issue #56. Every later feature
+child must repeat the same gate:
 
 - the stabilization Issue is merged and root/worktree/GitHub/Trellis state is
   reconciled and clean;
@@ -218,5 +238,6 @@ the following are true:
 - completion is judged by interface behavior, independent evidence, and
   reduced ownership ambiguity, not file count, tool count, or model confidence.
 
-Until those gates pass, ordinary operation and bug repair may continue, but no
-new autonomous feature-growth chain should be scheduled.
+Ordinary operation and bug repair may continue between children, but no second
+autonomous feature-growth chain is activated in parallel or from a derived
+scorecard suggestion.
