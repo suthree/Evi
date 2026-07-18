@@ -222,11 +222,17 @@ async function rollbackCreatedWorkspace(
     if (ownership.ownedBranch) failures.push(`could not inspect owned branch: ${errorMessage(error)}`);
     return failures;
   }
-  if (ownership.ownedBranch && !stillRegistered && branchHead === baseCommit) {
-    try {
-      await git(controlRoot, ["branch", "-D", branch]);
-    } catch (error) {
-      failures.push(`could not remove owned branch: ${errorMessage(error)}`);
+  if (ownership.ownedBranch) {
+    if (stillRegistered) {
+      failures.push("owned branch remains registered to the derived worktree; retained");
+    } else if (branchHead !== baseCommit) {
+      failures.push(`owned branch moved from requested base ${baseCommit}; retained at ${branchHead}`);
+    } else {
+      try {
+        await git(controlRoot, ["branch", "-D", branch]);
+      } catch (error) {
+        failures.push(`could not remove owned branch: ${errorMessage(error)}`);
+      }
     }
   }
   return failures;

@@ -113,6 +113,39 @@ test("execution workspace Module removes exact artifacts left by a failed Git pr
   }
 });
 
+test("execution workspace Module retains and reports an owned branch that moved during failed prepare", async () => {
+  const fixture = await createFixture();
+  try {
+    const control = await inspectGoalRepositoryAuthority(fixture.repoRoot);
+    const hook = join(fixture.repoRoot, ".git", "hooks", "post-checkout");
+    await mkdir(join(fixture.repoRoot, ".git", "hooks"), { recursive: true });
+    await writeFile(hook, [
+      "#!/bin/sh",
+      "echo moved > moved-by-hook.txt",
+      "git add moved-by-hook.txt",
+      "git -c user.email=test@example.invalid -c user.name=Test commit -qm moved-by-hook",
+      "exit 1",
+      ""
+    ].join("\n"), "utf8");
+    await chmod(hook, 0o755);
+
+    const branch = "codex/issue-97-moved-hook-failure";
+    const path = join(fixture.repoRoot, ".worktrees", "issue-97-moved-hook-failure");
+    await assert.rejects(prepareGoalExecutionWorkspace({
+      goal_id: "goal_workspace_moved_hook_failure",
+      control_authority: control,
+      branch,
+      base_commit: control.start_head_commit
+    }), /Rollback incomplete: owned branch moved from requested base .* retained at/);
+
+    assert.notEqual(await gitText(fixture.repoRoot, ["rev-parse", "--verify", `refs/heads/${branch}`]), control.start_head_commit);
+    assert.equal(await pathExists(path), false);
+    assert.doesNotMatch(await gitText(fixture.repoRoot, ["worktree", "list", "--porcelain"]), /issue-97-moved-hook-failure/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("execution workspace Module rejects an unignored derived root without mutation", async () => {
   const fixture = await createFixture({ ignoreWorktrees: false });
   try {

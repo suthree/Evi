@@ -151,8 +151,8 @@ Pre-live implementation checkpoint on 2026-07-18:
   flips `codex.run` readiness after binding, keeps the candidate set bounded
   without displacing an existing core tool, and adds no keyword mapping or
   persisted owner.
-- Focused real-Git, Portfolio, and GoalRuntime suite: 48 tests passed.
-- Full `pnpm run check`: build passed; 968 tests passed; 0 failed; active Skill
+- Focused real-Git, Portfolio, and GoalRuntime suite: 49 tests passed.
+- Full `pnpm run check`: build passed; 969 tests passed; 0 failed; active Skill
   validation passed; neutral naming passed across 131 implementation files.
 - The first independent Standards/Spec review found canonical isolation,
   strict-argument, concurrent rollback-ownership, duplicated branch rule, and
@@ -160,6 +160,9 @@ Pre-live implementation checkpoint on 2026-07-18:
   schema, observation/action/derived-path/live-authority checks, atomic branch
   plus path ownership with explicit cleanup failure, and contract-owned store
   placement; focused probes cover each regression before re-review.
+- Standards re-review then found one retained moved-branch path that was safe but
+  under-reported. A real failing post-checkout hook now proves the moved branch
+  is preserved and the incomplete rollback is explicit in tool evidence.
 - `git diff --check` passed. No live-runtime or Feishu acceptance claim has yet
   been made; Issue #97 and Task 259 remain active until merged exact-commit
   deployment and the fresh resident Goal probe succeed.
