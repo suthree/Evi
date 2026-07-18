@@ -96,6 +96,21 @@ export const coreToolContracts: ToolContract[] = [
     ]
   },
   {
+    tool: "workspace.prepare",
+    side_effect_level: "local_reversible",
+    rationale: "prepare one Goal-bound isolated execution worktree before specialist production",
+    arguments: {
+      branch: "codex/issue-N-slug",
+      base_commit: "Goal control start HEAD"
+    },
+    constraints: [
+      "available only before the Goal has an execution workspace and only from a clean main control checkout",
+      "branch must be a fresh codex/issue-N-slug branch and the worktree path is derived under .worktrees",
+      "base_commit must equal the Goal control start HEAD",
+      "successful canonical observation binds one immutable execution workspace; no registry or automatic cleanup is created"
+    ]
+  },
+  {
     tool: "codex.run",
     side_effect_level: "local_write",
     rationale: "bounded Codex run in isolated worktree",

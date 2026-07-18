@@ -14,6 +14,7 @@ export const effectIntentSchema = z.object({
     "read_public_network",
     "write_local_state",
     "write_local_repo",
+    "prepare_local_workspace",
     "run_local_verification",
     "delegate_local_code",
     "execute_dynamic_code",
@@ -116,6 +117,7 @@ function decideIntent(intent: EffectIntent, envelope: EffectEnvelope): EffectDec
   }
   if (intent.operation === "write_local_repo"
     || intent.operation === "write_local_state"
+    || intent.operation === "prepare_local_workspace"
     || intent.operation === "run_local_verification") {
     return envelope.allow_reversible_local_writes
       ? decision("allow", "Reversible local effect is inside the standing execution envelope.", intent)
@@ -139,6 +141,8 @@ function classifyEffect(action: EffectAction): EffectIntent {
       return httpFetchIntent(stringValue(args.url));
     case "command.run":
       return commandIntent(args);
+    case "workspace.prepare":
+      return workspacePrepareIntent(args);
     case "codex.run":
       return intent("delegate_local_code", codexTarget(args), "conditional", "local_content_to_model");
     case "code.execute_node":
@@ -146,6 +150,17 @@ function classifyEffect(action: EffectAction): EffectIntent {
     default:
       return intent("unknown", `tool:${action.tool}`, "unknown", "unknown");
   }
+}
+
+function workspacePrepareIntent(args: Record<string, unknown>): EffectIntent {
+  const branch = stringValue(args.branch);
+  const baseCommit = stringValue(args.base_commit);
+  const target = `workspace:${branch || "(missing)"}@${baseCommit || "(missing)"}`;
+  if (!/^codex\/issue-[1-9][0-9]*-[a-z0-9](?:[a-z0-9-]{0,78}[a-z0-9])?$/.test(branch)
+    || !/^[a-f0-9]{40}$/.test(baseCommit)) {
+    return intent("unknown", target, "unknown", "none");
+  }
+  return intent("prepare_local_workspace", target, "reversible", "none");
 }
 
 function localReadIntent(scope: string, path: string): EffectIntent {

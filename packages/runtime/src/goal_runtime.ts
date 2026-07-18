@@ -24,6 +24,11 @@ import {
   type GoalRepositoryAuthority
 } from "./repository_authority.js";
 import {
+  assertGoalExecutionWorkspace,
+  type GoalExecutionWorkspace,
+  type GoalToolExecutionContext
+} from "./goal_execution_workspace.js";
+import {
   summarizeGoalToolCompetence,
   type GoalToolCompetence,
   type GoalToolExperienceSignal
@@ -410,6 +415,7 @@ export interface GoalView {
   last_command_id: string;
   receipt: OutcomeReceipt | null;
   repository_authority: GoalRepositoryAuthority | null;
+  execution_workspace: GoalExecutionWorkspace | null;
   boundary: typeof GOAL_BOUNDARY;
 }
 
@@ -455,7 +461,11 @@ export interface GoalCognition {
 }
 
 export interface GoalToolExecutor {
-  execute(action: EffectAction, decision: EffectDecision): Promise<ToolResult>;
+  execute(
+    action: EffectAction,
+    decision: EffectDecision,
+    context: GoalToolExecutionContext
+  ): Promise<ToolResult>;
 }
 
 export interface GoalVerificationInput {
@@ -663,6 +673,7 @@ export class GoalRuntime {
           goal_id: state.view.goal_id,
           objective: state.view.objective,
           repository_authority: state.view.repository_authority,
+          execution_workspace: state.view.execution_workspace,
           tool_competence: structuredClone(toolCompetence)
         });
       } catch (error) {
@@ -768,7 +779,7 @@ export class GoalRuntime {
       const effectDecision = effectDecisionSchema.parse(rawDecision);
       if (effectDecision.outcome !== "deny") {
         try {
-          await assertGoalBoundToolAuthority(action, state.view.repository_authority!, this.store);
+          await assertGoalBoundToolAuthority(action, goalExecutionAuthority(state.view), this.store);
         } catch (error) {
           const summary = `Goal action authority validation failed: ${errorMessage(error)}`.slice(0, 2_000);
           const nextAction = "Keep the proposed action inside the Goal's bound repository authority and continue the same goal.";
@@ -867,7 +878,7 @@ export class GoalRuntime {
       throw new Error(`GoalRuntime confirmation does not match pending effect: ${state.pending.effect_id}`);
     }
     if (!this.toolExecutor) throw new Error("GoalRuntime confirmed effect requires a tool execution adapter");
-    await assertGoalBoundToolAuthority(state.pending.action, state.view.repository_authority!, this.store);
+    await assertGoalBoundToolAuthority(state.pending.action, goalExecutionAuthority(state.view), this.store);
 
     const confirmed = await this.appendEvent(events, {
       ...this.eventBase(state.view, command, commandDigest),
@@ -898,10 +909,12 @@ export class GoalRuntime {
     const toolStarted = this.nowMs();
     let result: ToolResult;
     try {
-      await assertGoalBoundToolAuthority(pending.action, state.view.repository_authority!, this.store);
+      await this.assertExecutableRepositoryAuthority(state.view);
+      await assertGoalBoundToolAuthority(pending.action, goalExecutionAuthority(state.view), this.store);
       result = await this.toolExecutor.execute(
         structuredClone(pending.action),
-        structuredClone(pending.effect_decision)
+        structuredClone(pending.effect_decision),
+        goalToolExecutionContext(state.view)
       );
     } catch (error) {
       result = {
@@ -914,6 +927,7 @@ export class GoalRuntime {
         created_at: this.now()
       };
     }
+    result = validateWorkspacePrepareObservation(pending.action, state.view, result);
     const boundedResult = boundedToolResult(result);
     const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
     const toolUsage = normalizeUsage({
@@ -1123,6 +1137,12 @@ export class GoalRuntime {
       throw new Error("GoalRuntime legacy goal has no repository authority and cannot continue or dispatch an effect; read, pause, or abandon it instead.");
     }
     await assertGoalRepositoryAuthority(view.repository_authority, this.store.repoRoot);
+    if (view.execution_workspace) {
+      await assertGoalRepositoryAuthority(
+        view.execution_workspace.authority,
+        view.execution_workspace.authority.repo_root
+      );
+    }
   }
 
   private async writeProjections(view: GoalView, updatedAt: string): Promise<void> {
@@ -1141,6 +1161,7 @@ export class GoalRuntime {
       next_action: view.next_action,
       pending_effect: view.pending_effect,
       repository_authority: view.repository_authority,
+      execution_workspace: view.execution_workspace,
       last_event_id: view.last_event_id,
       updated_at: updatedAt,
       boundary: GOAL_BOUNDARY
@@ -1481,6 +1502,10 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     target: pending.effect_decision.intent.target,
     reason: pending.effect_decision.reason
   } : null;
+  const repositoryAuthority = started.repository_authority ?? null;
+  const executionWorkspace = repositoryAuthority
+    ? deriveGoalExecutionWorkspace(events, goalId, repositoryAuthority)
+    : null;
   const view: GoalView = {
     goal_id: goalId,
     objective: started.objective,
@@ -1497,10 +1522,76 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     last_event_id: last.id,
     last_command_id: last.command_id,
     receipt,
-    repository_authority: started.repository_authority ?? null,
+    repository_authority: repositoryAuthority,
+    execution_workspace: executionWorkspace,
     boundary: GOAL_BOUNDARY
   };
   return { view, pending, manualPause };
+}
+
+function deriveGoalExecutionWorkspace(
+  events: GoalRuntimeEvent[],
+  goalId: string,
+  control: GoalRepositoryAuthority
+): GoalExecutionWorkspace | null {
+  let selected: GoalExecutionWorkspace | null = null;
+  for (const event of events) {
+    if (event.event_type !== "goal_action_observed"
+      || event.result.tool !== "workspace.prepare"
+      || !event.result.ok) continue;
+    const workspace = assertGoalExecutionWorkspace(
+      event.result.output.execution_workspace,
+      goalId,
+      control
+    );
+    if (selected) {
+      throw new Error(`GoalRuntime history contains more than one successful execution workspace binding: ${goalId}`);
+    }
+    selected = workspace;
+  }
+  return selected;
+}
+
+function goalExecutionAuthority(view: GoalView): GoalRepositoryAuthority {
+  const authority = view.execution_workspace?.authority ?? view.repository_authority;
+  if (!authority) throw new Error("GoalRuntime has no executable repository authority");
+  return authority;
+}
+
+function goalToolExecutionContext(view: GoalView): GoalToolExecutionContext {
+  if (!view.repository_authority) {
+    throw new Error("GoalRuntime legacy goal has no control repository authority");
+  }
+  return {
+    goal_id: view.goal_id,
+    control_repository_authority: structuredClone(view.repository_authority),
+    execution_workspace: view.execution_workspace ? structuredClone(view.execution_workspace) : null
+  };
+}
+
+function validateWorkspacePrepareObservation(
+  action: EffectAction,
+  view: GoalView,
+  result: ToolResult
+): ToolResult {
+  if (action.tool !== "workspace.prepare" || !result.ok) return result;
+  try {
+    if (!view.repository_authority) throw new Error("Goal has no control repository authority");
+    if (view.execution_workspace) throw new Error("Goal already has an execution workspace");
+    assertGoalExecutionWorkspace(
+      result.output.execution_workspace,
+      view.goal_id,
+      view.repository_authority
+    );
+    return result;
+  } catch (error) {
+    return {
+      ...result,
+      ok: false,
+      summary: `workspace.prepare observation was rejected: ${errorMessage(error)}`.slice(0, 2_000),
+      output: { failure_kind: "workspace_prepare_observation_invalid" }
+    };
+  }
 }
 
 function buildCognitionEvidence(events: GoalRuntimeEvent[], goalId: string): GoalEvidenceView[] {
@@ -2203,6 +2294,7 @@ function defaultCapabilityPortfolioProvider(): GoalCapabilityPortfolioProvider {
     async resolve(input) {
       return buildGoalCapabilityPortfolio({
         repository_authority: input.repository_authority,
+        execution_workspace: input.execution_workspace,
         tool_competence: input.tool_competence,
         selected_skills: []
       });

@@ -9,6 +9,10 @@ import {
   buildGoalCapabilityPortfolio,
   validateGoalCapabilitySelection
 } from "../packages/runtime/src/goal_capability_portfolio.js";
+import {
+  GOAL_EXECUTION_WORKSPACE_BOUNDARY,
+  type GoalExecutionWorkspace
+} from "../packages/runtime/src/goal_execution_workspace.js";
 import type { GoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
 
 test("configured Goal capability portfolio resolves bounded tools, selected skills, constraints, and readiness", async () => {
@@ -79,7 +83,8 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     const codex = portfolio.capabilities.find((candidate) => candidate.id === "codex.run");
     assert.equal(codex?.kind, "delegated_executor");
     assert.equal(codex?.readiness, "unavailable");
-    assert.match(codex?.readiness_reason ?? "", /isolated linked worktree/i);
+    assert.match(codex?.readiness_reason ?? "", /isolated execution workspace/i);
+    assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "workspace.prepare")?.readiness, "available");
     assert.deepEqual(portfolio.selected_skills.map((skill) => skill.name), ["source-architecture-review"]);
     assert.match(portfolio.selected_skills[0]!.body, /delegate specialist production/);
     assert.doesNotMatch(JSON.stringify(portfolio), /UNSELECTED_SKILL_BODY/);
@@ -97,6 +102,23 @@ test("Goal capability portfolio marks delegated execution ready in a linked work
   });
   const codex = portfolio.capabilities.find((candidate) => candidate.id === "codex.run");
   assert.equal(codex?.readiness, "available");
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+  assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
+});
+
+test("Goal capability portfolio switches delegated readiness after canonical execution workspace binding", () => {
+  const control = mainCheckoutAuthority("/tmp/evi-main");
+  const portfolio = buildGoalCapabilityPortfolio({
+    repository_authority: control,
+    execution_workspace: executionWorkspace(control),
+    tool_competence: [],
+    selected_skills: []
+  });
+
+  assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "codex.run")?.readiness, "available");
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
 });
 
@@ -187,5 +209,16 @@ function linkedWorktreeAuthority(): GoalRepositoryAuthority {
     branch: "codex/issue-95-goal-capability-selection",
     start_head_commit: "b".repeat(40),
     boundary: "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor"
+  };
+}
+
+function executionWorkspace(control: GoalRepositoryAuthority): GoalExecutionWorkspace {
+  const authority = linkedWorktreeAuthority();
+  return {
+    schema_version: 1,
+    goal_id: "goal_execution_workspace_fixture",
+    control_start_head_commit: control.start_head_commit,
+    authority: { ...authority, start_head_commit: control.start_head_commit },
+    boundary: GOAL_EXECUTION_WORKSPACE_BOUNDARY
   };
 }

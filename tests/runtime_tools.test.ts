@@ -1592,6 +1592,7 @@ test("tool contract renderer covers the core tool surface", () => {
     "repo.search",
     "http.fetch",
     "command.run",
+    "workspace.prepare",
     "codex.run",
     "code.execute_node"
   ]);
@@ -1631,6 +1632,10 @@ test("tool contract renderer covers the core tool surface", () => {
     "purpose",
     "side_effect_level",
     "timeout_ms"
+  ]);
+  assert.deepEqual(Object.keys(contractsByTool.get("workspace.prepare")?.arguments ?? {}).sort(), [
+    "base_commit",
+    "branch"
   ]);
   assert.deepEqual(Object.keys(contractsByTool.get("codex.run")?.arguments ?? {}).sort(), [
     "approval_policy",

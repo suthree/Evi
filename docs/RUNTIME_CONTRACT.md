@@ -253,6 +253,7 @@ Core execution is the tool layer:
 - `repo.search`
 - `http.fetch`
 - `command.run`
+- `workspace.prepare`
 - `codex.run`
 - `code.execute_node`
 
@@ -298,15 +299,28 @@ to the same canonical event stream, and the verifier alone may accept the
 outcome. The model does not author evidence-id matrices or parallel completion
 documents.
 
-Each new Goal persists its real worktree, Git common directory, branch, and
-start HEAD. Continue validates this authority before cognition; exact-effect
-Resume validates it before dispatch. HEAD may advance only through descendants.
-For `codex.run`, GoalRuntime additionally resolves the proposed new target or
-persisted resume handle and requires its actual worktree, common directory,
-branch, and delegated base to equal the Goal authority before it records a
-pending effect. The tool rechecks the same authority immediately before spawn.
-Historical starts without the field remain readable, pausable, and abandonable,
-but cannot Continue or dispatch. Use the same `--repo-root` throughout.
+Each new Goal persists its real control checkout, Git common directory, branch,
+and start HEAD as immutable repository authority. Continue validates this
+control authority before cognition; exact-effect Resume validates it before
+dispatch. Its HEAD may advance only through descendants. Historical starts
+without the field remain readable, pausable, and abandonable, but cannot
+Continue or dispatch. Use the same control `--repo-root` throughout.
+
+A Goal may later derive one isolated execution workspace from one successful
+canonical `workspace.prepare` observation. Preparation requires a fresh
+`codex/issue-N-slug` branch, the exact control start HEAD as base, a clean and
+unchanged main control checkout, the same Git common directory, and a derived
+ignored `.worktrees/<branch-basename>` path. The observation is the only source
+of the execution-workspace projection; there is no registry, second state
+owner, or ingress-time creation. Repo-scoped tools then use this workspace,
+while state-scoped tools keep the original state root. Continue, Resume, and
+immediate pre-dispatch checks live-validate the derived authority.
+
+For `codex.run`, GoalRuntime resolves the proposed new target or persisted
+resume handle against the execution workspace when one is bound, otherwise the
+control authority. It requires actual worktree, common directory, branch, and
+delegated base equality before recording a pending effect. The tool rechecks
+the same effective authority immediately before spawn.
 
 Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
 Pause, Resume, and Abandon construct the local control plane without resolving
@@ -360,9 +374,10 @@ cumulative.
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
 tool contracts and their model-visible constraints, readiness under the Goal's
-repository authority, at most two recalled skill bodies, and bounded capability
-competence. It is a read-only decision context: it invokes no model, executes no
-tool, writes no state, grants no effect authority, and cannot accept completion.
+control and any derived execution authority, at most two recalled skill bodies,
+and bounded capability competence. It is a read-only decision context: it
+invokes no model, executes no tool, writes no state, grants no effect authority,
+and cannot accept completion.
 There is no keyword task router. The existing cognition call chooses from the
 current candidates using the Goal, evidence, readiness, competence, authority,
 cost, risk, reversibility, and verifiability.
@@ -2010,6 +2025,30 @@ Required policy:
 
 `command.run` is how the agent should run `pnpm run check`, `rg`, `git diff
 --check`, and local scripts.
+
+### `workspace.prepare`
+
+Prepares one lazy Goal-bound isolated linked worktree for later repo-scoped
+actions and delegated execution. It is a placement capability, not a task
+router, VCS control plane, or delivery workflow.
+
+Required policy:
+
+- require GoalRuntime execution context; standalone calls fail closed
+- accept only a fresh `codex/issue-N-slug` branch and the exact immutable
+  control-authority start HEAD as `base_commit`
+- require the control authority to be a clean, unchanged main checkout and the
+  target `.worktrees/<branch-basename>` path to be Git-ignored and absent
+- create the branch and registered linked worktree in one bounded operation,
+  then live-validate repository root, Git common directory, branch, and base
+- return one typed `execution_workspace`; GoalRuntime derives it only from the
+  successful canonical observation and rejects a second preparation
+- on preparation failure, remove only the exact newly registered worktree and
+  branch when both can still be proven to match the requested base
+- do not mutate the state root, create a workspace registry, choose a task
+  class, run Codex, commit, push, merge, deploy, or claim completion
+- semantic effect: reversible `prepare_local_workspace`; malformed shapes are
+  denied before dispatch
 
 ### `codex.run`
 

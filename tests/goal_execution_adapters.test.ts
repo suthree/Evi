@@ -148,6 +148,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
   assert.match(requests[0]!.instructions, /controlling Goal runtime owns judgment and acceptance/);
   assert.match(requests[0]!.instructions, /capability_selection/);
+  assert.match(requests[0]!.instructions, /choose workspace\.prepare/);
   assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
   assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
@@ -158,6 +159,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
   assert.match(requests[0]!.input, /"repository_authority"/);
+  assert.match(requests[0]!.input, /"execution_workspace": null/);
   assert.match(requests[0]!.input, /"start_head_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"/);
   assert.match(requests[0]!.input, /"kind": "workspace_path"/);
   assert.match(requests[0]!.input, /"current_tranche"/);
@@ -300,6 +302,7 @@ function fixtureGoalView(): GoalView {
       start_head_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       boundary: "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor"
     },
+    execution_workspace: null,
     boundary: "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections"
   };
 }

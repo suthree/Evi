@@ -131,3 +131,24 @@ ingress classifier or second Goal is introduced.
   then leaves later delegation/continuation work to the next child.
 - Close Issue #97 and this task only from linked source, test, GitHub, live
   runtime, and cleanup evidence.
+
+## Implementation Evidence
+
+Pre-live implementation checkpoint on 2026-07-18:
+
+- `packages/runtime/src/goal_execution_workspace.ts` owns the one-operation
+  prepare Interface, strict branch/base/control checks, ignored derived path,
+  real Git creation, returned authority, and identity-safe failed-attempt
+  rollback.
+- GoalRuntime derives `execution_workspace` only from a successful canonical
+  observation, keeps the original control authority and state root, rejects a
+  second selection, and live-validates both authorities before later execution.
+- Capability Portfolio exposes `workspace.prepare` only while meaningful,
+  flips `codex.run` readiness after binding, retains its eight-candidate bound,
+  and adds no keyword mapping or persisted owner.
+- Focused real-Git, Portfolio, and GoalRuntime suite: 46 tests passed.
+- Full `pnpm run check`: build passed; 965 tests passed; 0 failed; active Skill
+  validation passed; neutral naming passed across 131 implementation files.
+- `git diff --check` passed. No live-runtime or Feishu acceptance claim has yet
+  been made; Issue #97 and Task 259 remain active until merged exact-commit
+  deployment and the fresh resident Goal probe succeed.

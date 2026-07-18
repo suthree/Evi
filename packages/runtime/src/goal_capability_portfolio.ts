@@ -10,6 +10,7 @@ import {
 } from "../../core/src/tool_contracts.js";
 import { loadRuntimeConfigSummary, type ConfigSourceOptions } from "./config.js";
 import type { EffectAction } from "./effect_policy.js";
+import type { GoalExecutionWorkspace } from "./goal_execution_workspace.js";
 import type { GoalRepositoryAuthority } from "./repository_authority.js";
 import type { GoalToolCompetence } from "./goal_tool_competence.js";
 
@@ -65,6 +66,7 @@ export interface GoalCapabilityPortfolioInput {
   goal_id: string;
   objective: string;
   repository_authority: GoalRepositoryAuthority | null;
+  execution_workspace?: GoalExecutionWorkspace | null;
   tool_competence: GoalToolCompetence[];
 }
 
@@ -95,6 +97,7 @@ export type GoalCapabilitySelection = z.infer<typeof goalCapabilitySelectionSche
 
 interface BuildGoalCapabilityPortfolioInput {
   repository_authority: GoalRepositoryAuthority | null;
+  execution_workspace?: GoalExecutionWorkspace | null;
   tool_competence: GoalToolCompetence[];
   selected_skills: GoalSelectedSkill[];
   tool_contracts?: ToolContract[];
@@ -125,6 +128,7 @@ export class ConfiguredGoalCapabilityPortfolioProvider implements GoalCapability
     })));
     return buildGoalCapabilityPortfolio({
       repository_authority: input.repository_authority,
+      execution_workspace: input.execution_workspace,
       tool_competence: input.tool_competence,
       selected_skills: selectedSkills
     });
@@ -136,8 +140,18 @@ export function buildGoalCapabilityPortfolio(
 ): GoalCapabilityPortfolio {
   const competenceByTool = new Map(input.tool_competence.map((item) => [item.tool, item]));
   const capabilities = (input.tool_contracts ?? coreToolContracts)
+    .filter((contract) => contract.tool !== "workspace.prepare"
+      || isWorkspacePreparationMeaningful(
+        input.repository_authority,
+        input.execution_workspace ?? null
+      ))
     .slice(0, MAX_GOAL_CAPABILITIES)
-    .map((contract) => capabilityCandidate(contract, input.repository_authority, competenceByTool.get(contract.tool) ?? null));
+    .map((contract) => capabilityCandidate(
+      contract,
+      input.repository_authority,
+      input.execution_workspace ?? null,
+      competenceByTool.get(contract.tool) ?? null
+    ));
   return {
     capabilities,
     selected_skills: input.selected_skills.slice(0, MAX_GOAL_SELECTED_SKILLS).map((skill) => ({
@@ -185,11 +199,13 @@ export function validateGoalCapabilitySelection(
 
 function capabilityCandidate(
   contract: ToolContract,
-  authority: GoalRepositoryAuthority | null,
+  controlAuthority: GoalRepositoryAuthority | null,
+  executionWorkspace: GoalExecutionWorkspace | null,
   competence: GoalToolCompetence | null
 ): GoalCapabilityCandidate {
   const kind: GoalCapabilityKind = contract.tool === "codex.run" ? "delegated_executor" : "direct_tool";
-  const unavailable = kind === "delegated_executor" && !isLinkedWorktree(authority);
+  const effectiveAuthority = executionWorkspace?.authority ?? controlAuthority;
+  const delegatedUnavailable = kind === "delegated_executor" && !isLinkedWorktree(effectiveAuthority);
   return {
     id: contract.tool,
     kind,
@@ -199,12 +215,21 @@ function capabilityCandidate(
       ? { ...contract.arguments, model: "auto,new,required", reasoning_effort: "auto,new,required" }
       : structuredClone(contract.arguments),
     constraints: [...(contract.constraints ?? [])],
-    readiness: unavailable ? "unavailable" : "available",
-    readiness_reason: unavailable
-      ? "codex.run requires the Goal to be bound to an isolated linked worktree before specialist execution"
+    readiness: delegatedUnavailable ? "unavailable" : "available",
+    readiness_reason: delegatedUnavailable
+      ? "codex.run requires the Goal to bind an isolated execution workspace before specialist execution"
       : "registered core capability is available within current Goal authority; EffectPolicy and tool validation still apply",
     competence: competence ? structuredClone(competence) : null
   };
+}
+
+function isWorkspacePreparationMeaningful(
+  controlAuthority: GoalRepositoryAuthority | null,
+  executionWorkspace: GoalExecutionWorkspace | null
+): boolean {
+  return controlAuthority !== null
+    && executionWorkspace === null
+    && !isLinkedWorktree(controlAuthority);
 }
 
 function isLinkedWorktree(authority: GoalRepositoryAuthority | null): boolean {

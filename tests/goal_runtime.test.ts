@@ -23,6 +23,7 @@ import {
   type GoalVerifier
 } from "../packages/runtime/src/goal_runtime.js";
 import type { ToolResult } from "../packages/runtime/src/tools.js";
+import { RuntimeGoalToolExecutor } from "../packages/runtime/src/goal_execution_adapters.js";
 
 test("GoalRuntime binds new goals to one Git worktree authority", async () => {
   const fixture = await createFixture();
@@ -67,6 +68,191 @@ test("GoalRuntime binds new goals to one Git worktree authority", async () => {
       goal_id: started.goal_id
     });
     assert.equal(completed.status, "completed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime derives one execution workspace and scopes later repo tools without moving state", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const cognition = sequenceCognition([
+      action("workspace.prepare", {
+        branch: "codex/issue-97-runtime-binding",
+        base_commit: baseCommit
+      }, "Prepare one isolated execution workspace."),
+      action("file.write_repo", {
+        path: "bound-repo.txt",
+        text: "execution workspace\n"
+      }, "Write one bounded file in the selected execution workspace."),
+      action("file.write_state", {
+        path: "goal-workspace-scope.txt",
+        text: "canonical state\n"
+      }, "Write one bounded state artifact without moving the state root."),
+      {
+        type: "blocked",
+        summary: "Stop after observing workspace and scope behavior.",
+        next_action: "Inspect the canonical workspace binding evidence."
+      }
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: new RuntimeGoalToolExecutor(fixture.store),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const startCommand = start("execution_workspace_start", "Bind one execution workspace and preserve the control checkout.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 4 };
+    const started = await runtime.handle(startCommand);
+    assert.equal(started.execution_workspace, null);
+
+    const observed = await runtime.handle({
+      type: "continue",
+      command_id: "execution_workspace_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(observed.status, "active");
+    assert.equal(observed.execution_workspace?.authority.branch, "codex/issue-97-runtime-binding");
+    assert.equal(observed.repository_authority?.repo_root, await realpath(fixture.repoRoot));
+    assert.equal(await readFile(join(observed.execution_workspace!.authority.repo_root, "bound-repo.txt"), "utf8"), "execution workspace\n");
+    await assert.rejects(readFile(join(fixture.repoRoot, "bound-repo.txt"), "utf8"), /ENOENT/);
+    assert.equal(await readFile(join(fixture.stateRoot, "goal-workspace-scope.txt"), "utf8"), "canonical state\n");
+    assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.find((item) => item.id === "workspace.prepare")?.readiness, "available");
+    assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.find((item) => item.id === "codex.run")?.readiness, "unavailable");
+    assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.some((item) => item.id === "workspace.prepare"), false);
+    assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.some((item) => item.id === "code.execute_node"), true);
+    assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.find((item) => item.id === "codex.run")?.readiness, "available");
+
+    const replayed = await runtime.read(started.goal_id);
+    assert.deepEqual(replayed.execution_workspace, observed.execution_workspace);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects a second execution workspace selection before another tool mutation", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const branch = "codex/issue-97-single-binding";
+    const cognition = sequenceCognition([
+      action("workspace.prepare", { branch, base_commit: baseCommit }, "Prepare the only execution workspace."),
+      action("workspace.prepare", { branch: "codex/issue-97-second-binding", base_commit: baseCommit }, "Attempt a second workspace binding.")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: new RuntimeGoalToolExecutor(fixture.store),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("execution_workspace_single_start", "Bind at most one execution workspace."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "execution_workspace_single_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(blocked.checkpoint.cursor, "capability_selection_invalid");
+    assert.match(blocked.checkpoint.summary, /unknown capability: workspace\.prepare/i);
+    assert.equal(blocked.execution_workspace?.authority.branch, branch);
+    assert.equal((await goalGitValue(fixture.repoRoot, ["worktree", "list", "--porcelain"]))
+      .split(/\r?\n/).filter((line) => line.startsWith("worktree ")).length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime validates confirmed codex.run against the bound execution workspace from the main control checkout", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const branch = "codex/issue-97-bound-codex";
+    const cognition = sequenceCognition([
+      action("workspace.prepare", { branch, base_commit: baseCommit }, "Prepare the execution workspace before delegation."),
+      action("codex.run", {
+        mode: "new",
+        prompt: "Perform one bounded specialist coding task.",
+        base_commit: baseCommit,
+        branch,
+        worktree: ".",
+        cwd: ".",
+        model: "auto",
+        profile: "fast",
+        reasoning_effort: "auto",
+        service_tier: "fast",
+        sandbox: "workspace-write",
+        approval_policy: "never",
+        selection_rationale: "The Goal selected the available specialist executor after workspace binding.",
+        task_shape: "One bounded coding change with independent later verification.",
+        delegation_strategy: {
+          mode: "single",
+          max_subagents: 0,
+          independent_workstreams: [],
+          integration_owner: "main_codex_thread"
+        },
+        budgets: {
+          timeout_ms: 2_000,
+          max_output_chars: 8_000,
+          max_context_chars: 8_000,
+          max_tool_calls: 4,
+          max_retries: 0
+        }
+      }, "Delegate specialist production in the bound execution workspace.")
+    ]);
+    const realExecutor = new RuntimeGoalToolExecutor(fixture.store);
+    let delegatedCalls = 0;
+    const tools: GoalToolExecutor = {
+      async execute(effectAction, decision, context) {
+        if (effectAction.tool === "workspace.prepare") {
+          return realExecutor.execute(effectAction, decision, context);
+        }
+        delegatedCalls += 1;
+        return {
+          id: "tool_result_bound_codex",
+          tool: "codex.run",
+          ok: true,
+          summary: "Observed one bounded synthetic Codex result after real authority validation.",
+          output: { observed: true },
+          side_effect_level: "local_write",
+          created_at: "2026-07-17T00:11:00.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("bound_codex_start", "Prepare and validate one delegated coding effect."));
+    const awaitingConfirmation = await runtime.handle({
+      type: "continue",
+      command_id: "bound_codex_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(awaitingConfirmation.status, "paused");
+    assert.equal(awaitingConfirmation.pending_effect?.proposed_action.tool, "codex.run");
+    assert.equal(awaitingConfirmation.pending_effect?.operation, "delegate_local_code");
+    assert.equal(awaitingConfirmation.execution_workspace?.authority.branch, branch);
+    assert.equal(delegatedCalls, 0);
+
+    const resumed = await runtime.handle({
+      type: "resume",
+      command_id: "bound_codex_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: awaitingConfirmation.pending_effect!.effect_id
+    });
+    assert.equal(resumed.status, "active");
+    assert.equal(resumed.pending_effect, null);
+    assert.equal(delegatedCalls, 1);
   } finally {
     await fixture.cleanup();
   }

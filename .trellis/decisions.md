@@ -1,5 +1,56 @@
 # Decisions
 
+## 2026-07-18 Goal-Bound Lazy Execution Workspace
+
+Decision Owner: operator, through approval of the bounded real self-evolution
+acceptance Goal and Issue #97 / Task 259.
+
+Decision:
+
+- a Goal's persisted repository authority remains the immutable control
+  checkout used by Continue and Resume; preparing an execution worktree does
+  not replace that authority or move the state root;
+- `workspace.prepare` is a dynamically selected placement capability. It may
+  create one fresh `codex/issue-N-slug` linked worktree from the exact control
+  start HEAD only after EffectPolicy allows the recorded semantic intent;
+- one successful canonical tool observation is the sole source of the Goal's
+  derived execution-workspace projection. Later repo-scoped tools and
+  `codex.run` use that workspace after live authority checks; state-scoped tools
+  keep the original state root;
+- the deep module owns only prepare, validation, and exact local rollback on a
+  failed preparation. It does not own task classification, a workspace
+  registry, lifecycle scheduling, delivery, deployment, or completion;
+- this is a lazy cognition choice, not an ingress side effect, keyword router,
+  second model call, second Goal, or automatic per-task worktree rule.
+
+Authority and supersession:
+
+- this decision extends the Goal-owned authority seam introduced by Issue #78
+  and the dynamic Capability Portfolio from Issue #95;
+- it preserves GoalRuntime, EffectPolicy, canonical evidence, verifier-owned
+  acceptance, and the existing `codex.run` independent authority checks;
+- it does not yet add Feishu same-Goal continuation or confirmation, automate
+  PR/merge/deploy, decompose `app/cli/src/main.ts`, or resume the stopped
+  historical self-evolution Goal.
+
+Verification and recovery:
+
+- real-Git interface tests cover creation, strict branch/base/control checks,
+  replay, second-prepare rejection, repo-versus-state scoping, and exact cleanup
+  after a checkout-hook failure;
+- GoalRuntime tests keep the control checkout authoritative while proving later
+  repo actions and confirmed `codex.run` resolve against the execution workspace;
+- rollback is a normal revert. No state migration is required because the
+  projection derives from canonical observations and historical Goals have no
+  execution workspace.
+
+Re-evaluation:
+
+- add cleanup scheduling, alternative branch namespaces, or another placement
+  host only from observed Goal evidence and a separate bounded Issue;
+- do not add a registry or static routing layer unless measured failures prove
+  the observation-derived one-workspace model inadequate.
+
 ## 2026-07-18 Dynamic Capability Orchestration And Goal-Owned Acceptance
 
 Decision Owner: operator, through explicit approval in the Issue #95 / Task

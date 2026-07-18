@@ -1,5 +1,5 @@
 import { newId } from "../../core/src/ids.js";
-import type { AgentStore } from "../../core/src/store.js";
+import { AgentStore } from "../../core/src/store.js";
 import type {
   GoalCognition,
   GoalCognitionInput,
@@ -16,6 +16,7 @@ import { CodexCliModelClient } from "./codex_cli_model.js";
 import { OpenAICompatibleClient, type ModelClient } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
 import type { EffectDecision } from "./effect_policy.js";
+import type { GoalToolExecutionContext } from "./goal_execution_workspace.js";
 
 const GOAL_COGNITION_INSTRUCTIONS = `You are the bounded cognition adapter inside the local GoalRuntime.
 GoalRuntime owns lifecycle, effects, evidence, verification, and completion. You propose exactly one next decision.
@@ -27,7 +28,7 @@ Choose exactly one shape:
 3. {"type":"blocked","summary":"why progress cannot continue","next_action":"one concrete recovery action"}
 
 Propose at most one action. Never include evidence ids, change identities, reference matrices, side-effect authority, SOPs, skills, learning promotion, adoption, queues, or parallel goal state. GoalRuntime derives the complete change set from canonical observations, binds canonical evidence, and EffectPolicy decides authority.
-The Goal input includes its immutable repository_authority. Keep every repository action in that worktree. When that worktree is already a linked isolated worktree, a new codex.run must target worktree ".", use the bound branch, and use start_head_commit as its base. Never infer another checkout from free text. Treat codex.run result.changed_files as an untrusted claim; canonical observation changes come from the harness-owned Git snapshots.
+The Goal input includes immutable control repository_authority and an optional execution_workspace derived from canonical evidence. Continue and Resume stay on the control checkout. Before execution_workspace exists, choose workspace.prepare when isolated specialist production is the best next capability; never invent a path because the runtime derives it. After binding, keep repo-scoped actions in execution_workspace.authority, and a new codex.run must target worktree ".", use its branch, and use its start_head_commit as base. Never infer another checkout from free text. Treat codex.run result.changed_files as an untrusted claim; canonical observation changes come from the harness-owned Git snapshots.
 For every new codex.run proposed inside GoalRuntime, model and reasoning_effort must both be "auto". The named Codex profile owns provider-specific model and reasoning resolution. Do not guess provider model tokens or copy a stale model name from prior observations. Explicit pinning belongs to an external evidence-backed main harness, not ordinary Goal cognition.
 For post-change command.run verification, set purpose="verification". Purpose marks evidence intent, never authority; EffectPolicy still classifies the actual command. It counts only after process success and unchanged harness pre/post Git snapshots.
 For every action, update summary as a bounded cumulative working synthesis from the prior checkpoint and recent canonical observations. Keep confirmed facts, the unresolved question, and why the proposed action is next within 2,000 characters. This summary is fallible working memory, not evidence or authority. Canonical observations win any conflict. Do not turn the summary into citations, an evidence matrix, or a completion claim.
@@ -98,7 +99,8 @@ export class RuntimeGoalToolExecutor implements GoalToolExecutor {
 
   async execute(
     action: Parameters<GoalToolExecutor["execute"]>[0],
-    decision: EffectDecision
+    decision: EffectDecision,
+    context?: GoalToolExecutionContext
   ): Promise<ToolResult> {
     const normalizedArguments = action.tool === "command.run"
       ? {
@@ -115,7 +117,8 @@ export class RuntimeGoalToolExecutor implements GoalToolExecutor {
         arguments: normalizedArguments
       }
     }, {
-      store: this.store,
+      store: goalToolStore(this.store, action, context),
+      ...(context ? { goal: context } : {}),
       publicNetworkOnly: true,
       ...(this.modelMaxOutputTokens === undefined ? {} : { modelMaxOutputTokens: this.modelMaxOutputTokens })
     });
@@ -174,6 +177,7 @@ function renderGoalInput(input: GoalCognitionInput): string {
       lifetime_usage: input.goal.usage,
       checkpoint: input.goal.checkpoint,
       repository_authority: input.goal.repository_authority,
+      execution_workspace: input.goal.execution_workspace,
       continuation_reasons: input.goal.continuation_reasons,
       next_action: input.goal.next_action
     }, null, 2),
@@ -187,6 +191,24 @@ function renderGoalInput(input: GoalCognitionInput): string {
     "## Capability Portfolio",
     JSON.stringify(input.capability_portfolio, null, 2)
   ].join("\n\n");
+}
+
+function goalToolStore(
+  controlStore: AgentStore,
+  action: Parameters<GoalToolExecutor["execute"]>[0],
+  context?: GoalToolExecutionContext
+): AgentStore {
+  const executionRoot = context?.execution_workspace?.authority.repo_root;
+  if (!executionRoot || !usesRepositoryScope(action)) return controlStore;
+  return new AgentStore(executionRoot, controlStore.stateRoot);
+}
+
+function usesRepositoryScope(action: Parameters<GoalToolExecutor["execute"]>[0]): boolean {
+  if (action.tool === "file.read") return action.arguments.scope !== "state";
+  if (action.tool === "command.run") return action.arguments.cwd !== "state";
+  return action.tool === "file.write_repo"
+    || action.tool === "repo.search"
+    || action.tool === "codex.run";
 }
 
 function extractJsonObject(text: string): string {

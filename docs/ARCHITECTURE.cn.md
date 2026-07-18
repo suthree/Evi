@@ -63,6 +63,8 @@ GoalRuntime validation -> EffectPolicy -> selected execution
                                                 |
                                                 v
                                    canonical observations
+                                   |             |
+                           执行工作区（至多一次） action evidence
                                                 |
                                                 v
                                      verification / receipt
@@ -87,6 +89,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
 | Capability Portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | 只读、有界的候选能力、就绪度、已选 Skill、Competence 与选择校验 | 任务路由、effect 权限、执行、持久化或完成判断 |
+| Goal 执行工作区 | `packages/runtime/src/goal_execution_workspace.ts` | 从不可变控制权限准备并实时校验一个 Goal 绑定的隔离 linked worktree | 任务分类、workspace registry、生命周期调度、迁移 state root 或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
 | Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
 | 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | append-only 或持久事实；projection 可重建 | 产品方向或自动把内容晋升成真相 |
@@ -110,6 +113,13 @@ Skill，以及从证据派生的 Competence。Cognition 选择一个能力，并
 原子化的任务可以直接执行；存在合适执行器时，专业生产通常应委托。就绪度、证据、风险、
 成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
 或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
+
+仓库落点也遵循同一动态边界。Goal 启动时绑定不可变的控制仓库权限；当隔离修改或专业委托
+确实需要 linked worktree 时，cognition 可以从当前 Portfolio 选择 `workspace.prepare`。
+一次成功的 canonical observation 派生该 Goal 唯一的执行工作区；它不是第二个 Goal 或
+状态 owner。之后 repo-scoped 工具和 `codex.run` 使用这个经过实时校验的工作区，
+state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控制 checkout。
+准备过程是惰性、证据门控的，不是入口副作用、关键词路由或每任务自动调度器。
 
 稳定的所有权拆分是：
 
