@@ -15,7 +15,6 @@ import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "./model.js"
 import { createReviewTickLoop } from "./review_tick_service.js";
 import { createConfiguredGoalIngress, type GoalIngressPort } from "./goal_ingress.js";
 import { LiveAgentRunner, type DisciplineMode } from "./runner.js";
-import { createRuntimeTaskQueueWorker } from "./runtime_task_queue_worker.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 import { startRuntimeWebConsole, type RuntimeWebConsoleHandle } from "./web_console.js";
 import { XiaohongshuMcpClient } from "./xiaohongshu_mcp.js";
@@ -55,8 +54,8 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   const target = args.target ?? "runtime";
   const repoRoot = resolve(args.repoRoot);
   const store = new AgentStore(repoRoot, args.config.state.root);
-  const legacyImEnabled = args.im?.enabled !== false && Boolean(args.im?.scenario);
-  const legacyRunner = legacyImEnabled
+  const imEnabled = args.im?.enabled !== false && Boolean(args.im?.scenario);
+  const legacyPrivateRunner = imEnabled && args.im?.scenario?.provider === "feishu"
     ? new LiveAgentRunner({
         repoRoot,
         stateRoot: args.config.state.root,
@@ -68,10 +67,16 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     : null;
   const adapters: RuntimeChannelAdapter[] = [];
 
-  if (legacyRunner && args.im?.scenario) {
+  if (imEnabled && args.im?.scenario) {
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot,
+      configDir: args.configDir,
+      stateRoot: args.config.state.root
+    });
     adapters.push(createRuntimeImAdapter({
       scenario: args.im.scenario,
-      runner: legacyRunner,
+      goalIngress,
+      legacyPrivateRunner: legacyPrivateRunner ?? undefined,
       store,
       vaultRoot: args.config.vault,
       homeRoot: args.config.home.root,
@@ -169,16 +174,6 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     browserCdpPort: args.config.runtime.content_creator_metrics_browser_cdp_port,
     statusRef: serviceRef(target, "content_creator_metrics.json")
   });
-  const taskQueueWorker = legacyRunner
-    ? createRuntimeTaskQueueWorker({
-        store,
-        runTask: async (task, entry) => legacyRunner.runTask(task, {
-          executionContract: entry.execution_contract ?? undefined
-        }),
-        statusRef: serviceRef(target, "task_queue.json")
-      })
-    : null;
-
   await heartbeat.write("starting");
   try {
     await gateway.start();
@@ -187,7 +182,6 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     throw error;
   }
   heartbeat.start();
-  taskQueueWorker?.start();
   reviewTickLoop.start();
   contentDailyLoop.start();
   contentFeedbackRefreshLoop.start();
@@ -203,10 +197,7 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
           contentFeedbackRefreshLoop.stop();
           contentDailyLoop.stop();
           reviewTickLoop.stop();
-          await Promise.all([
-            ...(taskQueueWorker ? [taskQueueWorker.stop()] : []),
-            heartbeat.stop()
-          ]);
+          await heartbeat.stop();
           await heartbeat.write("stopping");
           await gateway.stop();
           await heartbeat.write("stopped");

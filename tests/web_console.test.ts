@@ -11,9 +11,27 @@ import {
   type RuntimeSessionSource
 } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
-import { createGoalIngress, type GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import {
+  createGoalIngress,
+  renderGoalIngressPresentation,
+  type GoalIngressPort
+} from "../packages/runtime/src/goal_ingress.js";
 import { GoalRuntime, type GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { startRuntimeWebConsole } from "../packages/runtime/src/web_console.js";
+
+test("Goal ingress presentation exposes terminal receipt without an invalid continuation", () => {
+  const rendered = renderGoalIngressPresentation(goalView("goal_done", {
+    status: "completed",
+    receipt: { summary: "Session work complete." } as GoalView["receipt"]
+  }));
+
+  assert.equal(rendered, [
+    "Goal: goal_done",
+    "Status: completed",
+    "Result: Session work complete.",
+    "Goal goal_done is completed; no continuation command is required."
+  ].join("\n"));
+});
 
 test("runtime web console preserves session reads and submits one canonical Goal ingress", async () => {
   const fixture = await createFixture();

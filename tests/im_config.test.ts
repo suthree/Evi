@@ -41,7 +41,7 @@ test("IM scenario config resolves implemented Feishu provider through the provid
 
     assert.equal(scenario.provider, "feishu");
     assert.equal(scenario.channelId, "feishu-main");
-    assert.equal(scenario.modelId, "test-model");
+    assert.equal(scenario.legacyPrivateModelId, "test-model");
     assertRuntimeImAdapterSupported(scenario);
     assert.equal(scenario.channel.appId, "cli_app");
   } finally {
@@ -82,6 +82,8 @@ test("IM scenario config resolves Telegram provider through the provider-neutral
 
     assert.equal(scenario.provider, "telegram");
     assert.equal(scenario.channelDescriptor.transport, "long_poll");
+    assert.equal("modelId" in scenario, false);
+    assert.equal("legacyPrivateModelId" in scenario, false);
     assertRuntimeImAdapterSupported(scenario);
     assert.equal(scenario.channel.botToken, "telegram_token");
     assert.deepEqual(scenario.channel.allowedUserIds, ["123"]);
@@ -103,6 +105,39 @@ test("IM scenario config lets explicit provider override stale active selectors"
     assert.equal(scenario.id, "im-telegram");
     assert.equal(scenario.channelId, "telegram-main");
     assert.equal(scenario.channel.botToken, "telegram_token");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Goal-backed Telegram scenario does not require an active or scenario execution model", async () => {
+  const fixture = await createFixture({
+    channel: {
+      type: "channel", id: "telegram-main", kind: "telegram", transport: "long_poll",
+      mode: "bot", auth_id: "telegram-main"
+    },
+    scenario: {
+      type: "scenario", id: "im-telegram", channel_id: "telegram-main",
+      model_id: "unused-missing-model"
+    },
+    auth: { type: "api_key", id: "telegram-main", key: "telegram_token" }
+  });
+  try {
+    await writeFile(join(fixture.configDir, "config.jsonl"), [
+      JSON.stringify({ type: "state", root: fixture.stateRoot }),
+      JSON.stringify({ type: "active_channel", channel_id: "telegram-main" }),
+      JSON.stringify({ type: "active_scenario", scenario_id: "im-telegram" })
+    ].join("\n") + "\n", "utf8");
+
+    const scenario = await loadImScenarioConfig({
+      configDir: fixture.configDir,
+      stateRoot: fixture.stateRoot,
+      provider: "telegram"
+    });
+
+    assert.equal(scenario.provider, "telegram");
+    assert.equal(scenario.channel.botToken, "telegram_token");
+    assert.equal("modelId" in scenario, false);
   } finally {
     await fixture.cleanup();
   }
@@ -175,6 +210,8 @@ test("IM scenario config resolves Discord provider through the provider-neutral 
 
     assert.equal(scenario.provider, "discord");
     assert.equal(scenario.channelDescriptor.transport, "gateway");
+    assert.equal("modelId" in scenario, false);
+    assert.equal("legacyPrivateModelId" in scenario, false);
     assertRuntimeImAdapterSupported(scenario);
     assert.equal(scenario.channel.botToken, "discord_token");
     assert.deepEqual(scenario.channel.allowedUserIds, ["42"]);

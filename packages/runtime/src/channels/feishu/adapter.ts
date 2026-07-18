@@ -95,28 +95,13 @@ import {
   getSopEvolutionLedger,
   renderSopEvolutionLedgerMarkdown
 } from "../../../../core/src/sop_evolution_ledger.js";
-import {
-  recordRuntimeTaskRun,
-  type RuntimeSessionSource,
-  type RuntimeSessionRecord
-} from "../../../../core/src/runtime_sessions.js";
+import { type RuntimeSessionSource, type RuntimeSessionRecord } from "../../../../core/src/runtime_sessions.js";
 import {
   recordRuntimeChannelOutbound,
   recordRuntimeChannelOutboundDelivery,
   type RuntimeChannelOutboundRecord
 } from "../../../../core/src/runtime_channel_outbox.js";
-import {
-  runtimeChannelRouteKey,
-  runtimeChannelSourceKey,
-  type RuntimeChannelSource
-} from "../../../../core/src/runtime_channel_messages.js";
-import {
-  claimRuntimeTask,
-  enqueueRuntimeTask,
-  failRuntimeTask,
-  settleRuntimeTaskFromResult,
-  type RuntimeTaskQueueEntry
-} from "../../../../core/src/runtime_task_queue.js";
+import { runtimeChannelRouteKey, type RuntimeChannelSource } from "../../../../core/src/runtime_channel_messages.js";
 import {
   getPipelineRun,
   listPipelineRuns,
@@ -184,6 +169,7 @@ import { loadRuntimeConfigSummary, type RuntimeConfigSummary } from "../../confi
 import type { DailyContentJobResult, DailyContentJobStep } from "../../content_pipeline.js";
 import { getGovernanceStatus, type GovernanceOpportunitySummary, type GovernanceStatusResult } from "../../governance_status.js";
 import { dispatchRuntimeChannelMessage } from "../../channel_message_dispatcher.js";
+import { renderGoalIngressPresentation, type GoalIngressPort } from "../../goal_ingress.js";
 import type { RuntimeChannelAdapter, RuntimeChannelHealth } from "../../message_gateway.js";
 import { drainRuntimeChannelOutboxForAdapter } from "../../runtime_channel_outbox_drainer.js";
 import type {
@@ -237,7 +223,9 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   readonly channelId: string;
   private readonly config: FeishuChannelConfig;
   private readonly transport: FeishuTransport;
-  private readonly runner: TaskRunner;
+  /** Feishu p2p remains a legacy private-chat runner, outside Goal ownership. */
+  private readonly legacyPrivateRunner: TaskRunner;
+  private readonly goalIngress: GoalIngressPort | null;
   private readonly store: AgentStore;
   private readonly vaultRoot: SkillResolverLike;
   private readonly homeRoot: string;
@@ -259,7 +247,8 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
   constructor(args: {
     config: FeishuChannelConfig;
     transport: FeishuTransport;
-    runner: TaskRunner;
+    legacyPrivateRunner: TaskRunner;
+    goalIngress?: GoalIngressPort;
     store: AgentStore;
     vaultRoot?: SkillResolverLike;
     homeRoot?: string;
@@ -268,7 +257,8 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     this.config = args.config;
     this.channelId = args.config.channelId ?? "feishu";
     this.transport = args.transport;
-    this.runner = args.runner;
+    this.legacyPrivateRunner = args.legacyPrivateRunner;
+    this.goalIngress = args.goalIngress ?? null;
     this.store = args.store;
     this.vaultRoot = args.vaultRoot ?? "vault";
     this.homeRoot = resolve(args.homeRoot ?? process.env.LOCAL_RUNTIME_HOME ?? resolve(homedir(), ".local-runtime"));
@@ -624,13 +614,12 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       return;
     }
 
-    await this.runRuntimeSessionMessage(message, dispatched.session, dispatched.source, dispatched.taskText);
+    await this.runRuntimeSessionMessage(message, dispatched.session, dispatched.taskText);
   }
 
   private async runRuntimeSessionMessage(
     message: NormalizedFeishuTextMessage,
     session: RuntimeSessionRecord,
-    source: RuntimeSessionSource,
     taskText: string
   ): Promise<void> {
     if (this.activeRuntimeSessionIds.has(session.id)) {
@@ -648,76 +637,27 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
     this.activeRuntimeSessionIds.add(session.id);
     let inboundRef = "";
     let outboundRef = "";
-    const sourceKey = runtimeChannelSourceKey(source, session.profile);
-    let queued: RuntimeTaskQueueEntry | null = null;
     try {
-      const task = renderAgentTask(message, [], session, taskText);
-      queued = await enqueueRuntimeTask(this.store, {
-        runtimeSessionId: session.id,
-        source,
-        task: taskText,
-        runnerTask: task
-      });
-      await recordRuntimeTaskRun(this.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId: session.id,
-        sourceKind: source.kind,
-        sourceKey,
-        task: taskText,
-        status: "queued"
-      });
-      const claimed = await claimRuntimeTask(this.store, { id: queued.id });
-      if (!claimed) throw new Error(`runtime task ${queued.id} could not be claimed`);
-      await recordRuntimeTaskRun(this.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId: session.id,
-        sourceKind: source.kind,
-        sourceKey,
-        task: taskText,
-        status: "running"
-      });
       inboundRef = await this.recordInbound(message);
       await this.sendChunksToMessage(message, this.config.ackText);
-      const result = await this.runner.runTask(task, { recallQuery: taskText });
-      const settlement = await settleRuntimeTaskFromResult(this.store, { id: queued.id, result });
-      if (!settlement) throw new Error(`runtime task ${queued.id} could not be settled`);
-      await recordRuntimeTaskRun(this.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId: session.id,
-        sourceKind: source.kind,
-        sourceKey,
-        task: taskText,
-        runResult: result
-      });
-      const finalText = await this.finalTextForRun(result);
+      if (!this.goalIngress) throw new Error("Feishu runtime sessions require Goal ingress");
+      const goal = await this.goalIngress.submit(renderAgentTask(message, [], session, taskText));
+      const finalText = renderGoalIngressPresentation(goal);
       const outbound = await this.sendChunksToMessage(message, finalText);
-      outboundRef = await this.recordOutbound(message, result, finalText, outbound, {
-        source,
-        runtimeSessionId: session.id,
-        taskRunId: queued.id
+      outboundRef = await this.store.writeJson(`channels/feishu/outbound/${message.messageId}.json`, {
+        source_message_id: message.messageId, chat_id: message.chatId, chat_type: message.chatType,
+        thread_id: message.threadId, open_id: message.openId, runtime_session_id: session.id,
+        goal_id: goal.goal_id, goal_status: goal.status, receipt_id: goal.receipt?.id ?? null,
+        text: finalText, sends: outbound, inbound_ref: inboundRef, created_at: utcNow()
       });
-      await this.recordRunEvidence(result, {
-        inboundRef,
-        outboundRef,
-        summary: `Handled Feishu runtime session message ${message.messageId} for ${session.id}.`
+      await this.recordChannelEvent("goal_delivered", `Delivered Feishu Goal ${goal.goal_id}.`, {
+        message_id: message.messageId, chat_id: message.chatId, open_id: message.openId,
+        runtime_session_id: session.id, goal_id: goal.goal_id, goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null, inbound_ref: inboundRef, outbound_ref: outboundRef,
+        provider_message_ids: sentMessageIds(outbound)
       });
     } catch (error) {
       const messageText = errorMessage(error);
-      if (queued) {
-        await failRuntimeTask(this.store, { id: queued.id, error: messageText });
-        await recordRuntimeTaskRun(this.store, {
-          id: queued.id,
-          createdAt: queued.created_at,
-          runtimeSessionId: session.id,
-          sourceKind: source.kind,
-          sourceKey,
-          task: taskText,
-          status: "failed"
-        });
-      }
       const outbound = await this.sendChunksToMessage(message, this.config.errorText);
       outboundRef = await this.store.writeJson(`channels/feishu/errors/${message.messageId}.json`, {
         message_id: message.messageId,
@@ -728,18 +668,6 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
         outbound,
         inbound_ref: inboundRef || null,
         created_at: utcNow()
-      });
-      await recordRuntimeChannelOutbound(this.store, {
-        source,
-        runtimeSessionId: session.id,
-        taskRunId: queued?.id ?? null,
-        inReplyToMessageId: message.messageId,
-        purpose: "error",
-        status: "sent",
-        text: this.config.errorText,
-        providerDeliveryRef: outboundRef,
-        providerMessageIds: sentMessageIds(outbound),
-        error: messageText
       });
       await this.recordChannelEvent("error", `Feishu runtime session message ${message.messageId} failed: ${messageText}`, {
         message_id: message.messageId,
@@ -785,7 +713,7 @@ export class FeishuPrivateChatAdapter implements RuntimeChannelAdapter {
       inboundRef = await this.recordInbound(normalized);
       await this.sendChunks(normalized.openId, this.config.ackText);
       const task = renderAgentTask(normalized, history);
-      const result = await this.runner.runTask(task, { recallQuery: normalized.text });
+      const result = await this.legacyPrivateRunner.runTask(task, { recallQuery: normalized.text });
       const finalText = await this.finalTextForRun(result);
       const outbound = await this.sendChunks(normalized.openId, finalText);
       outboundRef = await this.recordOutbound(normalized, result, finalText, outbound, {

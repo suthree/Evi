@@ -1011,20 +1011,20 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       },
       {
         id: "runtime.sessions",
-        title: "Runtime sessions and task runs",
-        summary: "Map provider-neutral runtime channel messages such as Feishu groups, Telegram chats, or Discord channels to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, classify explicit IM run triggers, and mirror legacy IM queue execution into append-only task-run and provider-neutral outbox history.",
+        title: "Runtime sessions and Goal ingress",
+        summary: "Map provider-neutral Feishu, Telegram, and Discord messages to local runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append inbox entries, and submit each bound /run or accepted mention as one canonical Goal.",
         status: "implemented",
-        commands: ["pnpm run runtime -- web", "Feishu /session use <profile>", "Feishu /run <task>"],
+        commands: ["pnpm run runtime -- web", "IM /session use <profile>", "IM /run <task>", "accepted bot mention"],
         refs: [
           "packages/core/src/runtime_sessions.ts",
           "packages/core/src/runtime_channel_messages.ts",
           "packages/core/src/runtime_channel_outbox.ts",
           "packages/core/src/runtime_task_queue.ts",
+          "packages/runtime/src/goal_ingress.ts",
           "packages/runtime/src/im_config.ts",
           "packages/runtime/src/im_adapters.ts",
           "packages/runtime/src/channel_message_dispatcher.ts",
           "packages/runtime/src/runtime_channel_outbox_drainer.ts",
-          "packages/runtime/src/runtime_task_queue_worker.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
           "packages/runtime/src/channels/telegram/adapter.ts",
           "packages/runtime/src/channels/discord/adapter.ts",
@@ -1033,8 +1033,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "tests/im_adapters.test.ts",
           "tests/runtime_channel_outbox.test.ts",
           "tests/runtime_channel_outbox_drainer.test.ts",
-          "tests/runtime_task_queue.test.ts",
-          "tests/runtime_task_queue_worker.test.ts",
           "tests/runtime_sessions.test.ts",
           "tests/telegram_adapter.test.ts",
           "tests/discord_adapter.test.ts",
@@ -1044,25 +1042,27 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "local append-only state under the configured state root; not a hosted session database",
           "channel source route keys are provider-neutral and keep provider-specific IDs inside source mappings",
           "provider adapters normalize inbound messages before the shared dispatcher handles session binding, inbox append, and run trigger classification",
-          "explicit legacy IM task runs append local queue rows and task-run rows for queued, running, and final states with one shared id; new Web submissions start standalone canonical Goals and do not enter this queue",
-          "the task queue is a single-machine JSONL ledger with recoverable-task inspection and a resident daemon worker for stale queued/running entries",
-          "queue recovery records final run status for self-contained runner tasks; Feishu/Telegram/Discord-sourced recovery replies can be queued for adapter replay, but cross-process scheduling is not implemented",
-          "task final/error outcomes append to channels/outbox.jsonl as a provider-neutral local communication ledger; adapters still own real delivery and provider SDK details",
+          "each bound /run or accepted mention starts one canonical Goal, performs one bounded Continue, and returns status-aware continuation or terminal receipt guidance",
+          "new runtime-session Goals write no legacy queue, task-run, provider-neutral outbox, completion, episode, iteration, SOP, skill, or deployment state",
+          "provider adapters own direct delivery and provider-specific evidence with goal_id, Goal status, and receipt id; Goal failures stay out of the provider-neutral outbox",
+          "goal_cognition is the only execution-model owner for runtime-session Goals; Telegram and Discord scenario model/discipline fields do not gate startup or readiness, while Feishu keeps separately named legacy private execution settings only for p2p",
+          "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
-          "ordinary bound group messages append inbox entries only; legacy IM model execution requires explicit /run or explicit mention, while local Web execution is owned separately by web.console Goal ingress"
+          "ordinary bound group messages append inbox entries only; Feishu p2p/private chat remains a separately named legacy runner ingress with history, follow-up queues, and operator commands"
         ]
       },
       {
         id: "feishu.private_chat",
         title: "Feishu IM sessions",
-        summary: "Receive allowed private messages, map Feishu groups to runtime sessions, preserve local channel evidence, queue private-chat follow-ups in process, and run explicit tasks through the agent.",
+        summary: "Receive allowed private messages through the legacy private runner, map Feishu groups to Goal-backed runtime sessions, preserve local channel evidence, and queue private-chat follow-ups in process.",
         status: "implemented",
         commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
-          "bound group messages are inbox context by default and do not execute unless explicitly triggered",
+          "bound group messages are inbox context by default; /run or accepted mention submits one canonical Goal without using the private runner",
+          "private chat remains explicitly legacy and must not be represented as Goal-owned",
           "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
         ]
       }
@@ -1103,7 +1103,7 @@ function entrypointsCategory(): CapabilityCategoryDraft {
       {
         id: "web.console",
         title: "Local web console",
-        summary: "Serve a localhost operator console for runtime sessions, channel inbox review, profile binding, local task submission, and task-run history; when run under the runtime daemon it is a Web channel adapter managed by the MessageGateway.",
+        summary: "Serve a localhost operator console for runtime sessions, channel inbox review, profile binding, canonical Goal submission, and historical task-run reads; when run under the runtime daemon it is a Web channel adapter managed by the MessageGateway.",
         status: "implemented",
         commands: ["pnpm run runtime -- web --host 127.0.0.1 --port 8765", "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765"],
         refs: ["packages/runtime/src/web_console.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/runtime_daemon.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts", "tests/message_gateway.test.ts"],
@@ -1120,14 +1120,14 @@ function entrypointsCategory(): CapabilityCategoryDraft {
         summary: "Run a unified local daemon that manages channel adapters through a small lifecycle interface. Web, Feishu, Telegram, and Discord are the first adapters.",
         status: "implemented",
         commands: ["pnpm run runtime -- daemon serve", "pnpm run runtime -- service start --target runtime", "pnpm run runtime -- service status --target runtime", "pnpm run runtime -- service health --target runtime"],
-        refs: ["packages/runtime/src/im_config.ts", "packages/runtime/src/im_adapters.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/runtime/src/runtime_channel_outbox_drainer.ts", "packages/runtime/src/runtime_task_queue_worker.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/service.ts", "packages/runtime/src/channels/telegram/adapter.ts", "packages/runtime/src/channels/discord/adapter.ts", "apps/cli/src/main.ts", "tests/im_config.test.ts", "tests/im_adapters.test.ts", "tests/message_gateway.test.ts", "tests/runtime_daemon.test.ts", "tests/channel_message_dispatcher.test.ts", "tests/runtime_channel_outbox_drainer.test.ts", "tests/runtime_task_queue_worker.test.ts", "tests/telegram_adapter.test.ts", "tests/discord_adapter.test.ts", "tests/service.test.ts", "tests/cli.test.ts"],
+        refs: ["packages/runtime/src/goal_ingress.ts", "packages/runtime/src/im_config.ts", "packages/runtime/src/im_adapters.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/runtime/src/runtime_channel_outbox_drainer.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/service.ts", "packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channels/telegram/adapter.ts", "packages/runtime/src/channels/discord/adapter.ts", "apps/cli/src/main.ts", "tests/im_config.test.ts", "tests/im_adapters.test.ts", "tests/message_gateway.test.ts", "tests/runtime_daemon.test.ts", "tests/channel_message_dispatcher.test.ts", "tests/runtime_channel_outbox_drainer.test.ts", "tests/feishu_adapter.test.ts", "tests/telegram_adapter.test.ts", "tests/discord_adapter.test.ts", "tests/service.test.ts", "tests/cli.test.ts"],
         boundaries: [
           "local single-user daemon only; not hosted service governance",
           "provider-neutral IM config selection supports Feishu, Telegram, and Discord kinds; all three are implemented",
           "channel adapters own provider-specific IDs and SDK details",
-          "the shared dispatcher standardizes inbound IM session routing and leaves legacy IM execution durability to the local runtime task queue",
-          "the daemon queue worker runs only for the legacy IM path, consumes stale queued/running entries, and writes services/<target>/task_queue.json status",
-          "legacy IM task results are mirrored into the provider-neutral channel outbox; Feishu, Telegram, and Discord adapters can drain queued provider rows without making the daemon a provider send adapter",
+          "the shared dispatcher standardizes inbound IM session routing; bound /run and accepted mentions use one canonical Goal ingress for all three providers",
+          "the daemon constructs a Goal ingress for runtime-session work and constructs a legacy private runner only for Feishu p2p/private chat",
+          "the daemon starts no runtime task queue worker; historical provider outbox rows can still be drained without making the daemon a provider send adapter",
           "this slice standardizes lifecycle and status; it does not yet provide a retry broker, durable cross-process task scheduling, Telegram features beyond the long-polling Bot API adapter, or Discord features beyond the Gateway/REST bot adapter"
         ]
       },

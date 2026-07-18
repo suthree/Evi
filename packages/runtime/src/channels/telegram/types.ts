@@ -1,4 +1,3 @@
-import type { RunResult } from "../../../../core/src/schemas.js";
 
 export interface TelegramChannelConfig {
   channelId: string;
@@ -54,8 +53,4 @@ export interface TelegramTransport {
   ): Promise<void>;
   stop(): Promise<void>;
   sendText(chatId: string, text: string, options?: { threadId?: string | null }): Promise<TelegramSendResult>;
-}
-
-export interface TaskRunner {
-  runTask(task: string, options?: { recallQuery?: string }): Promise<RunResult>;
 }

@@ -13,12 +13,14 @@ import { DiscordGatewayTransport } from "./channels/discord/client.js";
 import { assertDiscordConfigReady } from "./channels/discord/config.js";
 import type { DiscordChannelConfig, DiscordTransport } from "./channels/discord/types.js";
 import type { DiscordImScenarioConfig, FeishuImScenarioConfig, ImScenarioConfig, TelegramImScenarioConfig } from "./im_config.js";
+import type { GoalIngressPort } from "./goal_ingress.js";
 import type { RuntimeChannelAdapter } from "./message_gateway.js";
 
 export interface RuntimeImAdapterOptions {
   scenario: ImScenarioConfig;
   store: AgentStore;
-  runner: TaskRunner;
+  goalIngress: GoalIngressPort;
+  legacyPrivateRunner?: TaskRunner;
   vaultRoot?: SkillResolverLike;
   homeRoot?: string;
   configDir?: string;
@@ -40,7 +42,8 @@ export function createRuntimeImAdapter(args: RuntimeImAdapterOptions): RuntimeCh
     return new FeishuPrivateChatAdapter({
       config: args.scenario.channel,
       transport: args.feishuTransportFactory?.(args.scenario.channel) ?? new LarkSdkFeishuTransport(args.scenario.channel),
-      runner: args.runner,
+      legacyPrivateRunner: requiredLegacyPrivateRunner(args),
+      goalIngress: args.goalIngress,
       store: args.store,
       vaultRoot: args.vaultRoot,
       homeRoot: args.homeRoot,
@@ -52,7 +55,7 @@ export function createRuntimeImAdapter(args: RuntimeImAdapterOptions): RuntimeCh
     return new TelegramBotAdapter({
       config: args.scenario.channel,
       transport: args.telegramTransportFactory?.(args.scenario.channel) ?? new TelegramBotApiTransport(args.scenario.channel),
-      runner: args.runner,
+      goalIngress: args.goalIngress,
       store: args.store
     });
   }
@@ -60,7 +63,12 @@ export function createRuntimeImAdapter(args: RuntimeImAdapterOptions): RuntimeCh
   return new DiscordBotAdapter({
     config: args.scenario.channel,
     transport: args.discordTransportFactory?.(args.scenario.channel) ?? new DiscordGatewayTransport(args.scenario.channel),
-    runner: args.runner,
+    goalIngress: args.goalIngress,
     store: args.store
   });
+}
+
+function requiredLegacyPrivateRunner(args: RuntimeImAdapterOptions): TaskRunner {
+  if (!args.legacyPrivateRunner) throw new Error("Feishu private chat requires a legacyPrivateRunner");
+  return args.legacyPrivateRunner;
 }

@@ -460,9 +460,16 @@ surfaces remain readable; the Web request does not bind a new Goal to a session.
 Legacy `runtime_session_id` and `execution_contract` request fields fail closed
 instead of being ignored or translated into Goal authority.
 
-IM and the resident task queue remain on the legacy runner in this bounded
-slice. Their later cutover must happen by whole goal identity and retire the
-relevant queue/session orchestration rather than map one Goal into both owners.
+Bound Feishu, Telegram, and Discord runtime-session `/run` or accepted-mention
+messages use the same canonical Goal ingress. Each trigger starts one Goal and
+executes one bounded Continue, then replies with Goal status, receipt summary
+when terminal, and status-aware continuation guidance. These new session Goals
+write no legacy queue, task-run, provider-neutral outbox, completion, episode,
+iteration, SOP, skill, or deployment state. Provider adapters retain direct
+delivery and provider-specific evidence containing `goal_id`, Goal status, and
+receipt id. Feishu p2p/private chat remains a separately named legacy ingress
+because it still owns conversation history, follow-up queuing, and operator
+commands; it must not be represented as Goal-owned.
 Foreground learning remains deferred to a receipt-driven asynchronous
 `LearningRuntime`.
 
@@ -490,6 +497,10 @@ starts Feishu, Telegram, and Discord adapters.
 Provider startability and concrete adapter construction live in
 `packages/runtime/src/im_adapters.ts`; the config loader only resolves the
 provider-neutral scenario.
+Runtime-session Goal execution is owned exclusively by `goal_cognition`;
+Telegram and Discord scenario `model_id`/discipline fields are not execution
+selectors and do not gate daemon, service, or doctor readiness. Feishu keeps a
+separately named legacy private model and discipline only for p2p/private chat.
 The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` renders the
 heartbeat-carried gateway summary, but it must not read provider logs, provider
@@ -531,27 +542,25 @@ database. A channel source can map to one runtime session through a source
 route key. Unknown Feishu groups can be bootstrapped only by an authorized
 operator and start as pending/unassigned. A profile can be bound through
 `/session use <profile>` in the group or through the web console. Ordinary
-bound group messages append session inbox entries; model execution requires
-`/run <task>`, an explicit mention, or an authorized private/direct task.
-Explicit IM task runs append `queued`, `running`, and final
-task-run rows with the same run id; read models show the latest status per run
-id.
+bound group messages append session inbox entries; `/run <task>` and accepted
+mentions submit one canonical Goal through the shared Goal ingress. Adapters
+send the returned presentation directly and persist only provider-specific
+delivery evidence. Telegram and Discord receive no `TaskRunner`; Feishu group
+execution receives Goal ingress while Feishu p2p receives a clearly named
+legacy private runner.
 
-Explicit IM task runs write a local runtime task queue
-ledger under `runs/task_queue.jsonl`. The queue is single-machine and
-append-only: enqueue, strict claim, recoverable claim, complete, fail, list, and
-recoverable-task inspection. Feishu group runs synchronously claim their own
-queued task before invoking the runner, while the task-run index mirrors
-`queued`, `running`, and final rows for historical visibility. The resident
-daemon also runs a bounded queue worker that consumes
-stale queued or stale running entries and writes `services/<target>/task_queue.json`
-status. This is local durability and best-effort recovery for self-contained
-runner tasks, not a remote broker, cancellation system, or multi-process
-scheduler.
+The resident daemon does not start a runtime task-queue worker for current
+session work. Existing queue, task-run, and provider-neutral outbox ledgers
+remain readable, and adapters may drain already-queued provider rows for
+delivery compatibility. The queue implementation remains a historical/manual
+compatibility surface; it is not an ingress owner, resident scheduler, remote
+broker, cancellation system, or multi-process scheduler. New Goal failures
+also stay out of the provider-neutral outbox and are recorded only in the
+provider adapter's error evidence.
 
 Historical legacy queue rows may retain an explicit `execution_contract` for
 one operator-confirmed task. The append-only queue read model preserves that
-stored contract during daemon recovery. This is compatibility for existing
+stored contract when a historical/manual recovery path reads it. This is compatibility for existing
 rows, not a current Web or IM ingress capability. The contract names the
 operator as Decision Owner, records the
 authority basis, allowed and forbidden effects, an external-command allowlist,
@@ -572,15 +581,16 @@ indirection so external tools cannot be hidden inside script text instead of
 direct binary argv. A rejection is a failed harness tool result and therefore
 cannot support a false `done` claim. The outer task contract does not weaken the
 narrower immutable `codex.run` authority snapshot or move completion authority
-away from `main_harness`. Current IM enqueue paths do not accept or create an
-`execution_contract`; their tasks keep the legacy local runner behavior and do
-not receive external-write authority. New Web submissions reject the field and
-use GoalRuntime effect confirmation instead.
+away from `main_harness`. Current Web and runtime-session IM ingress never
+enqueue this object; they reject legacy authority fields and use GoalRuntime
+effect confirmation instead. Feishu p2p/private chat also does not create
+external-write authority from task prose.
 
-Queue-worker shutdown clears future ticks, rejects new runs, waits for the
-startup/current run and every accepted status write, then persists `stopped`
-before its stop promise resolves. Runtime-daemon shutdown awaits that promise.
-Heartbeat shutdown likewise drains an already-started heartbeat write before
+The retained historical/manual queue worker's own shutdown clears future
+ticks, rejects new runs, waits for its startup/current run and every accepted
+status write, then persists `stopped` before its stop promise resolves. The
+resident daemon no longer constructs or awaits this worker. Heartbeat shutdown
+still drains an already-started heartbeat write before
 the daemon writes its final `stopping` and `stopped` states, so these components
 do not append or replace state after daemon stop returns.
 
@@ -588,7 +598,7 @@ Queue completion is derived only from the structured live-run
 `completion_status` and `verification_status`; verdict prose never changes a
 task to `done`, `blocked`, or `failed`. A verified structured `done` completes
 the task, a structured `done` with failed or skipped verification fails it,
-and `not_done` or `blocked` remains unfinished. An unfinished legacy IM run
+and `not_done` or `blocked` remains unfinished. An unfinished historical/manual queue run
 retains the same task id, runtime session id, worktree, first live session id,
 working-checkpoint ref, and latest concrete `next_action`. It requeues that same
 entry for a later stale-queue resume and stops after at most three claimed
@@ -611,14 +621,15 @@ completion and verification statuses plus the selected checkpoint ref and
 next action, and the checkpoint's optional actual worktree, so the local queue
 can persist continuity without reading verdict text.
 
-Outbound legacy IM communication also has a provider-neutral local ledger under
-`channels/outbox.jsonl`. Feishu final/error replies and daemon recovery
-final/error outcomes append rows with source
+Legacy Feishu p2p communication and historical/manual queue recovery also have
+a provider-neutral local ledger under `channels/outbox.jsonl`. Feishu p2p
+final/error replies and queue-worker final/error outcomes append rows with source
 kind, source route/source key when available, runtime session id, task run id,
 reply purpose, text, provider delivery ref when a real adapter sent the reply,
-and status. Feishu/Telegram/Discord-sourced daemon recovery rows are queued for adapter
+and status. Feishu/Telegram/Discord-sourced historical recovery rows are queued for adapter
 replay; rows without a deliverable provider source remain skipped. This outbox
-is the standard local communication read model. Provider adapters must mark
+is a compatibility communication read model, not the owner of new session Goal
+replies. Provider adapters must mark
 rows that match their provider but not their configured channel as skipped
 instead of leaving them queued forever. It is not a retry broker, provider SDK
 wrapper, or hosted messaging system.

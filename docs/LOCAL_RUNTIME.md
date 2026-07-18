@@ -207,17 +207,19 @@ pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
 pnpm run runtime -- show-events --state-root .runtime/state
 ```
 
-`live`, standalone `web`, and daemon-hosted Web now create one canonical
-GoalRuntime identity and run exactly one bounded Continue tranche. A Web
+`live`, standalone `web`, daemon-hosted Web, and bound Feishu/Telegram/Discord
+runtime-session `/run` or accepted-mention messages create one canonical
+GoalRuntime identity and run exactly one bounded Continue tranche. A Web or IM
 submission returns its `GoalView`, displays the `goal_id`, and directs the
 operator to `goal continue` or `goal resume`; it never starts a replacement
-Goal automatically. New Web work writes no legacy task queue, task-run, or
+Goal automatically. New Web and runtime-session IM work writes no legacy task queue, task-run, or
 channel-outbox state, although historical run and queue rows remain readable.
 Query/todo discipline belongs to the still-legacy runner and is rejected on
-`live` rather than written beside the Goal. IM and the resident task queue
-remain legacy until their own whole-ingress cutovers.
+`live` rather than written beside the Goal. Feishu p2p/private chat remains a
+separate legacy ingress because it still owns history, follow-up queues, and
+operator commands.
 
-The still-legacy IM runner may expand bounded repo-local task references:
+The still-legacy Feishu p2p/private-chat runner may expand bounded repo-local task references:
 
 ```text
 @file:docs/RUNTIME_CONTRACT.md
@@ -246,7 +248,10 @@ It should check:
 - repository readability
 - JSONL config parsing
 - active model selection
-- active IM scenario model selection and model-layer resolution
+- `goal_cognition` selection for Goal-backed runtime sessions; Telegram and
+  Discord scenario model fields do not gate readiness
+- Feishu legacy private-chat scenario model selection and model-layer
+  resolution
 - model auth unless `--no-auth` is passed
 - non-secret model auth source diagnostics: auth id, source ref, direct/env
   mode, and whether an explicitly named env value is present
@@ -1840,18 +1845,16 @@ channel dispatcher. That dispatcher handles `/session use`, pending-session
 creation, inbox append, and `/run` or mention trigger classification. Provider
 adapters still own provider parsing and replies.
 
-Explicit IM task runs first append to the local runtime task queue, then
-synchronously claim that same task before invoking the runner. The task-run
-index mirrors the queue with append-only `queued`, `running`, and final rows
-using the same id. The task-run read model shows the latest row, and the queue
-read model can list queued or stale running tasks for recovery inspection. The
-resident daemon also starts a bounded runtime task queue worker:
-it waits for queued entries to pass a short stale threshold, reclaims stale
-running entries after a longer threshold, invokes the ordinary runner with the
-stored `runner_task` when present, and writes `services/<target>/task_queue.json`
-for `service status`. It records final task-run status and can queue
-Feishu/Telegram/Discord provider replies for adapter replay; it is still not a remote broker,
-cancellation system, or cross-process scheduler.
+Bound runtime-session `/run` or accepted-mention messages submit one Goal
+through the shared Goal ingress. Feishu, Telegram, and Discord adapters send
+the Goal presentation directly and write provider-specific evidence containing
+`goal_id`, Goal status, and receipt id. They do not append queue, task-run, or
+provider-neutral outbox rows for new session work; failures also remain in
+provider-specific error evidence. The resident daemon no longer starts a task
+queue worker for current session work. Historical queue/task-run rows remain
+readable, and already-queued provider outbox rows may still be drained for
+delivery compatibility. This historical/manual queue surface is not a current
+ingress owner, remote broker, cancellation system, or cross-process scheduler.
 
 Historical legacy queue rows may retain a one-task operator execution contract
 in their persisted envelope. This is a compatibility schema for recovery, not
@@ -1886,23 +1889,24 @@ ceiling also fails closed on shell/interpreter carriers, `code.execute_node`,
 and package-manager exec/dlx indirection; authorized external operations must
 use direct binary argv rather than hiding `gh` or `git push` in script text.
 The snapshot expires with that historical queue task and is not a reusable role
-or global grant. Current IM enqueue paths do not accept or create this object,
-and tasks without it keep the default local runner behavior. Task prose alone
-cannot grant external writes. New Web submissions also reject both
+or global grant. Current Web and runtime-session IM ingress never enqueue or
+create this object; Feishu p2p/private-chat task prose also cannot grant
+external writes. New Web submissions reject both
 `execution_contract` and `runtime_session_id`; they start a standalone canonical
 Goal whose effect confirmation is owned by `GoalRuntime`.
 
-On shutdown, the queue worker rejects new ticks, waits for its startup/current
-run and inflight status writes, and persists `stopped` before returning. The
-daemon awaits that stop promise. It also waits for any heartbeat write already
+On shutdown, the retained historical/manual queue worker rejects new ticks,
+waits for its startup/current run and inflight status writes, and persists
+`stopped` before returning. The resident daemon no longer constructs or awaits
+that worker. It still waits for any heartbeat write already
 in progress before writing the terminal heartbeat states, preventing a late
-queue-worker or heartbeat write after daemon stop returns.
+heartbeat write after daemon stop returns.
 
 The queue reads `completion_status` and `verification_status` from the live
 run result; operator-facing verdict text is communication only. A `not_done` or
-`blocked` legacy IM result keeps the same queue task and runtime session, persists
+`blocked` historical/manual queue result keeps the same queue task and runtime session, persists
 the worktree, first live session id, current checkpoint ref, and latest
-`next_action`, then requeues the same id. The daemon resume prompt carries
+`next_action`, then requeues the same id. The retained queue-worker resume prompt carries
 those fields and the current attempt. A non-empty actual worktree from the
 selected checkpoint replaces a stale queued path; if the checkpoint omits it,
 including legacy checkpoints, settlement retains the existing queue path. The shared limit is three claimed
@@ -1917,10 +1921,10 @@ concrete next action. The optional checkpoint `worktree` records the actual
 local path for a later queue resume. Selected-skill usage telemetry does not replace it. If no
 valid run checkpoint exists, the harness records a bounded resume fallback.
 
-Task communication results are also mirrored into the provider-neutral
-`channels/outbox.jsonl` ledger. Feishu records real delivery refs and provider
-message ids for final/error replies; daemon recovery records queued
-Feishu/Telegram/Discord outbound rows when a
+Legacy Feishu p2p communication and historical/manual queue recovery are also
+mirrored into the provider-neutral `channels/outbox.jsonl` ledger. Feishu p2p
+records real delivery refs and provider message ids for final/error replies;
+the retained queue worker records queued Feishu/Telegram/Discord outbound rows when a
 source route is available, or skipped rows when there is no deliverable provider
 source. Provider adapters mark rows that match their provider but not their
 configured channel as skipped, so bad queued rows do not loop forever.

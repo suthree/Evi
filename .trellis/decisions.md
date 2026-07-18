@@ -243,6 +243,31 @@ Goal lifecycle. This decision adds no Goal scheduler, queue projection,
 provider-specific Goal adapter, compatibility result mapper, service, database,
 or dependency.
 
+## 2026-07-18 Runtime-Session IM Goal Ingress
+
+Issue #86 activates the provider-neutral runtime-session cutover as the next
+complete ingress identity. A bound Feishu, Telegram, or Discord session that
+receives `/run` or an accepted mention starts one canonical Goal and executes
+exactly one bounded Continue. Session binding, inbox append, trigger
+classification, busy/ack handling, and direct provider replies remain channel
+adapter responsibilities; GoalRuntime alone owns execution lifecycle,
+continuity, verification, and receipt.
+
+A new runtime-session Goal writes no legacy task queue, task-run,
+provider-neutral channel-outbox, completion, episode, iteration, SOP, or skill
+state. Provider-specific outbound delivery evidence records canonical Goal and
+receipt identity rather than creating a second task owner. Historical queue,
+task-run, and outbox records remain readable; the live activation inventory had
+no queued/running task and no queued outbox row, so resident legacy task-queue
+recovery is not kept alive for new session work.
+
+Feishu private-chat execution, bounded conversation history, follow-up queue,
+and operator commands form a separate provider-specific ingress. They remain
+explicitly legacy for a later whole-ingress child. Until then, only the Feishu
+scenario may construct a clearly named legacy private runner. This decision
+does not add automatic Goal continuation, a queue-backed Goal projection,
+provider SDK behavior, a channel-session-to-Goal mapper, or a new service.
+
 ## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
 
 The operator accepts Evi's long-term product identity as a local-first general

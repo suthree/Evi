@@ -33,6 +33,34 @@ export interface GoalIngressPort {
   submit(objective: string): Promise<GoalView>;
 }
 
+/** Render one canonical Goal view for every interactive ingress without reviving RunResult. */
+export function goalContinuationHint(goal: GoalView): string {
+  if (goal.status === "completed") return `Goal ${goal.goal_id} is completed; no continuation command is required.`;
+  if (goal.status === "abandoned") return `Goal ${goal.goal_id} is abandoned; no continuation command is allowed.`;
+  if (goal.status === "paused" && goal.pending_effect?.state === "awaiting_confirmation") {
+    return `Run goal resume --goal ${goal.goal_id} --confirm-effect ${goal.pending_effect.effect_id} to confirm this exact effect.`;
+  }
+  if (goal.status === "paused" && goal.pending_effect?.state === "outcome_unknown") {
+    return `No safe continuation command: effect ${goal.pending_effect.effect_id} has an unknown outcome and must be reconciled from evidence before any new action.`;
+  }
+  if (goal.status === "paused") return `Run goal resume --goal ${goal.goal_id} to resume this manually paused Goal.`;
+  return `Run goal continue --goal ${goal.goal_id} to continue this Goal.`;
+}
+
+export function renderGoalIngressPresentation(goal: GoalView): string {
+  const detail = goal.receipt?.summary?.trim()
+    ? `Result: ${goal.receipt.summary.trim()}`
+    : goal.next_action?.trim()
+      ? `Next: ${goal.next_action.trim()}`
+      : null;
+  return [
+    `Goal: ${goal.goal_id}`,
+    `Status: ${goal.status}`,
+    ...(detail ? [detail] : []),
+    goalContinuationHint(goal)
+  ].join("\n");
+}
+
 /** Build the configured control plane without resolving cognition until Continue. */
 export async function createConfiguredGoalRuntime(options: ConfiguredGoalRuntimeOptions): Promise<GoalRuntimePort> {
   const selectors = await loadConfigSelectors({
