@@ -29,8 +29,10 @@ command dispatch and delegates the deployment command once.
   owner, compatibility dispatcher, command registry, framework, or facade.
 - Do not broadly alter `parseArgs`, `CliOptions`, `printUsage`, governance,
   scorecard, iteration, or retirement surfaces.
-- No deployment, restart, external action, state migration, new dependency,
-  or public API expansion.
+- The bounded Codex source-edit tranche performs no deployment, restart,
+  external action, state migration, dependency change, or public API
+  expansion. This does not remove the Issue-level integration and exact
+  deployment acceptance owned by Evi and the task harness after source review.
 
 ## Design, Data, And Recovery
 
@@ -55,8 +57,16 @@ command dispatch and delegates the deployment command once.
   `pnpm run check`.
 - Inspect the final diff for one deployment execution owner and no accidental
   change outside the stated scope.
-- One main owner; no subagents, retries, deployment, push, PR, merge, or
-  external mutation. Commit locally only after the evidence passes.
+- The bounded Codex implementation tranche has one main owner and no
+  subagents, retries, deployment, push, PR, merge, or external mutation. It may
+  hand off one local implementation commit only after the source evidence
+  passes.
+- After source acceptance, Evi remains the outcome owner for the separately
+  evidenced integration tranche: publish the isolated branch, open and review
+  the PR, merge only the accepted head, deploy the exact merge commit, verify
+  healthy/current runtime and live Feishu ingress, and preserve rollback refs.
+  External effects remain subject to the GoalRuntime effect policy and exact
+  operator confirmation where required.
 - Completion requires a separately evidenced implementation commit; this
   activation commit does not claim Issue #101 acceptance.
 
