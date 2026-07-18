@@ -13,7 +13,7 @@ import {
 import { AgentStore } from "../packages/core/src/store.js";
 import {
   createGoalIngress,
-  GoalIngressError,
+  GoalInteractionError,
   renderGoalIngressPresentation,
   type GoalIngressPort,
   type GoalRuntimePort
@@ -54,9 +54,9 @@ test("Goal ingress errors preserve the Goal identity created before Continue", a
   };
 
   await assert.rejects(createGoalIngress(runtime).submit("preserve failed Goal identity"), (error) => {
-    assert.equal(error instanceof GoalIngressError, true);
-    assert.equal((error as GoalIngressError).goalId, "goal_started_before_failure");
-    assert.deepEqual((error as GoalIngressError).goal, latest);
+    assert.equal(error instanceof GoalInteractionError, true);
+    assert.equal((error as GoalInteractionError).goalId, "goal_started_before_failure");
+    assert.deepEqual((error as GoalInteractionError).goal, latest);
     assert.equal((error as Error).message, "continue failed");
     return true;
   });
@@ -75,12 +75,68 @@ test("Goal ingress errors leave status unknown when canonical recovery also fail
   };
 
   await assert.rejects(createGoalIngress(runtime).submit("do not invent current Goal state"), (error) => {
-    assert.equal(error instanceof GoalIngressError, true);
-    assert.equal((error as GoalIngressError).goalId, "goal_identity_only");
-    assert.equal((error as GoalIngressError).goal, null);
+    assert.equal(error instanceof GoalInteractionError, true);
+    assert.equal((error as GoalInteractionError).goalId, "goal_identity_only");
+    assert.equal((error as GoalInteractionError).goal, null);
     assert.equal((error as Error).message, "continue failed");
     return true;
   });
+});
+
+test("Goal interaction port translates read, Continue, manual Resume, and exact confirmation", async () => {
+  const commands: Array<Record<string, unknown>> = [];
+  const runtime: GoalRuntimePort = {
+    async handle(command) {
+      commands.push(command as unknown as Record<string, unknown>);
+      return goalView("goal_interaction_123", {
+        status: command.type === "resume" && command.confirm_effect_id ? "completed" : "active"
+      });
+    },
+    async read(goalId) {
+      commands.push({ type: "read", goal_id: goalId });
+      return goalView(goalId);
+    }
+  };
+  const interaction = createGoalIngress(runtime);
+
+  await interaction.read("goal_interaction_123");
+  await interaction.continue("goal_interaction_123");
+  await interaction.resume("goal_interaction_123");
+  await interaction.resume("goal_interaction_123", "goal_effect_interaction_123");
+  assert.throws(() => interaction.resume("goal_interaction_123", ""), /goal confirmation requires an effect id/);
+
+  assert.deepEqual(commands.map((command) => ({
+    type: command.type,
+    goal_id: command.goal_id,
+    confirm_effect_id: command.confirm_effect_id ?? null
+  })), [
+    { type: "read", goal_id: "goal_interaction_123", confirm_effect_id: null },
+    { type: "continue", goal_id: "goal_interaction_123", confirm_effect_id: null },
+    { type: "resume", goal_id: "goal_interaction_123", confirm_effect_id: null },
+    { type: "resume", goal_id: "goal_interaction_123", confirm_effect_id: "goal_effect_interaction_123" }
+  ]);
+  const commandIds = commands
+    .filter((command) => typeof command.command_id === "string")
+    .map((command) => command.command_id);
+  assert.equal(new Set(commandIds).size, 3);
+});
+
+test("Feishu Goal presentation keeps canonical lifecycle separate from outcome prose", () => {
+  const rendered = renderGoalIngressPresentation(goalView("goal_feishu_done", {
+    status: "completed",
+    receipt: {
+      id: "goal_receipt_feishu_done",
+      summary: "Model prose incorrectly says status=active."
+    } as GoalView["receipt"]
+  }), { surface: "feishu" });
+
+  assert.equal(rendered, [
+    "Goal: goal_feishu_done",
+    "Canonical status: completed",
+    "Receipt: goal_receipt_feishu_done",
+    "Outcome (receipt content; canonical lifecycle is shown above): Model prose incorrectly says status=active.",
+    "Goal goal_feishu_done is completed; no continuation command is required."
+  ].join("\n"));
 });
 
 test("runtime web console preserves session reads and submits one canonical Goal ingress", async () => {

@@ -13,13 +13,13 @@ import { DiscordGatewayTransport } from "./channels/discord/client.js";
 import { assertDiscordConfigReady } from "./channels/discord/config.js";
 import type { DiscordChannelConfig, DiscordTransport } from "./channels/discord/types.js";
 import type { DiscordImScenarioConfig, FeishuImScenarioConfig, ImScenarioConfig, TelegramImScenarioConfig } from "./im_config.js";
-import type { GoalIngressPort } from "./goal_ingress.js";
+import type { GoalInteractionPort } from "./goal_ingress.js";
 import type { RuntimeChannelAdapter } from "./message_gateway.js";
 
 export interface RuntimeImAdapterOptions {
   scenario: ImScenarioConfig;
   store: AgentStore;
-  goalIngress: GoalIngressPort;
+  goalIngress: GoalInteractionPort;
   vaultRoot?: SkillResolverLike;
   homeRoot?: string;
   configDir?: string;

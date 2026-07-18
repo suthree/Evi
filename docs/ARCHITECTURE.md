@@ -103,7 +103,7 @@ own the Self or completion.
 | --- | --- | --- | --- |
 | Stable Self | `core/soul.md`, `core/memory.md`, `core/runtimes.md` | Identity, memory policy, reference/runtime ontology | Task progress or execution state |
 | Goal lifecycle | `packages/runtime/src/goal_runtime.ts` | `GoalRuntimePort`, commands, canonical event stream, checkpoints, verification, one receipt | Channel transport or executor internals |
-| Goal ingress | `packages/runtime/src/goal_ingress.ts`, entry adapters | Normalize one accepted request into one Goal | Independent task/session truth |
+| Goal interaction | `packages/runtime/src/goal_ingress.ts`, entry adapters | Translate one accepted submission or one explicitly named interaction into canonical GoalRuntime commands | Goal state, latest-Goal inference, or independent task/session truth |
 | Context compilation | `packages/core/src/context.ts`, `context_budget.ts`, runtime context manifest | Bounded rendered snapshot plus provenance and omissions | Raw archive ownership or ambient full recall |
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |

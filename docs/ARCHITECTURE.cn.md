@@ -84,7 +84,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | --- | --- | --- | --- |
 | 稳定 Self | `core/soul.md`、`core/memory.md`、`core/runtimes.md` | 身份、记忆策略、Reference/Runtime 本体 | 任务进度或执行状态 |
 | Goal 生命周期 | `packages/runtime/src/goal_runtime.ts` | `GoalRuntimePort`、command、canonical event、checkpoint、验证和一个 receipt | 渠道传输或执行器内部 |
-| Goal 入口 | `packages/runtime/src/goal_ingress.ts`、各入口 Adapter | 把一个已接受请求标准化为一个 Goal | 独立的 task/session 真相 |
+| Goal 交互 | `packages/runtime/src/goal_ingress.ts`、各入口 Adapter | 把一个已接受提交或显式命名的交互翻译为 canonical GoalRuntime command | Goal 状态、latest-Goal 推断或独立的 task/session 真相 |
 | Context 编译 | `packages/core/src/context.ts`、`context_budget.ts`、runtime context manifest | 有预算的 snapshot、来源和 omission | 原始 archive owner 或全量常驻 recall |
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
