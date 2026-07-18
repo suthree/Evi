@@ -1,8 +1,10 @@
 export type ToolSideEffectLevel = "none" | "local_reversible" | "local_write" | "external_write";
+export type GoalToolStorePlacement = "control" | "execution" | "scope_argument" | "cwd_argument";
 
 export interface ToolContract {
   tool: string;
   side_effect_level: ToolSideEffectLevel;
+  goal_store_placement: GoalToolStorePlacement;
   rationale: string;
   arguments: Record<string, unknown>;
   constraints?: string[];
@@ -12,6 +14,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "file.read",
     side_effect_level: "none",
+    goal_store_placement: "scope_argument",
     rationale: "need to read repo or state context",
     arguments: {
       scope: "repo | state",
@@ -30,6 +33,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "file.write_state",
     side_effect_level: "local_write",
+    goal_store_placement: "control",
     rationale: "need to write a generated artifact into state",
     arguments: {
       path: "relative/path",
@@ -39,6 +43,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "file.write_repo",
     side_effect_level: "local_write",
+    goal_store_placement: "execution",
     rationale: "need to write a bounded repository file with workspace guard evidence",
     arguments: {
       path: "relative/path",
@@ -48,6 +53,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "repo.search",
     side_effect_level: "none",
+    goal_store_placement: "execution",
     rationale: "need to search repository text",
     arguments: {
       query: "needle",
@@ -64,6 +70,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "http.fetch",
     side_effect_level: "none",
+    goal_store_placement: "control",
     rationale: "need to fetch an HTTP resource",
     arguments: {
       url: "https://example.com",
@@ -75,6 +82,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "command.run",
     side_effect_level: "local_reversible",
+    goal_store_placement: "cwd_argument",
     rationale: "bounded command",
     arguments: {
       command: "pnpm",
@@ -96,8 +104,25 @@ export const coreToolContracts: ToolContract[] = [
     ]
   },
   {
+    tool: "workspace.prepare",
+    side_effect_level: "local_reversible",
+    goal_store_placement: "control",
+    rationale: "prepare one Goal-bound isolated execution worktree before specialist production",
+    arguments: {
+      branch: "codex/issue-N-slug",
+      base_commit: "Goal control start HEAD"
+    },
+    constraints: [
+      "available only before the Goal has an execution workspace and only from a clean main control checkout",
+      "branch must be a fresh codex/issue-N-slug branch and the worktree path is derived under .worktrees",
+      "base_commit must equal the Goal control start HEAD",
+      "successful canonical observation binds one immutable execution workspace; no registry or automatic cleanup is created"
+    ]
+  },
+  {
     tool: "codex.run",
     side_effect_level: "local_write",
+    goal_store_placement: "execution",
     rationale: "bounded Codex run in isolated worktree",
     arguments: {
       mode: "new|resume",
@@ -139,6 +164,7 @@ export const coreToolContracts: ToolContract[] = [
   {
     tool: "code.execute_node",
     side_effect_level: "local_reversible",
+    goal_store_placement: "control",
     rationale: "need bounded JavaScript execution",
     arguments: {
       code: "console.log('ok')",
@@ -148,6 +174,18 @@ export const coreToolContracts: ToolContract[] = [
     }
   }
 ];
+
+export function resolveGoalToolStorePlacement(
+  tool: string,
+  args: Record<string, unknown>,
+  contracts: ToolContract[] = coreToolContracts
+): "control" | "execution" {
+  const placement = contracts.find((contract) => contract.tool === tool)?.goal_store_placement;
+  if (!placement) throw new Error(`Unknown Goal tool placement: ${tool}`);
+  if (placement === "scope_argument") return args.scope === "state" ? "control" : "execution";
+  if (placement === "cwd_argument") return args.cwd === "state" ? "control" : "execution";
+  return placement;
+}
 
 export function renderCoreToolExamples(contracts = coreToolContracts): string {
   return contracts.map((contract) => JSON.stringify({

@@ -32,6 +32,10 @@ _Avoid_: Static task router, capability catalog, permission grant, planner
 The model-proposed choice of one candidate from the current **Capability Portfolio**, including its execution purpose, selected skill refs, rationale, verification plan, and fallback. The **Harness Kernel** validates it before effect policy or execution; Evi still owns evidence and acceptance.
 _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 
+**Goal Execution Workspace**:
+The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
+_Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root
+
 **Capability Experience**:
 One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
 _Avoid_: Causal proof, raw tool output, progress score

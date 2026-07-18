@@ -79,6 +79,9 @@ GoalRuntime validation -> EffectPolicy -> selected execution
                                                 |
                                                 v
                                    canonical observations
+                                   |             |
+                         execution workspace    action evidence
+                         (when selected once)          |
                                                 |
                                                 v
                                      verification / receipt
@@ -105,6 +108,7 @@ own the Self or completion.
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
 | Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded candidates, readiness, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
+| Goal execution workspace | `packages/runtime/src/goal_execution_workspace.ts` | Prepare and live-validate one Goal-bound isolated linked worktree from the immutable control authority | Task classification, workspace registry, lifecycle scheduling, state-root movement, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
 | Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
 | Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts; derived projections remain rebuildable | Product direction or automatic truth promotion |
@@ -134,6 +138,22 @@ normally delegated when a suitable executor is available. Readiness, evidence,
 risk, cost, reversibility, and verifiability may change the choice; no keyword
 map decides it. If no credible capability is available, Evi blocks or chooses
 an explicit verifiable fallback instead of silently becoming the worker.
+
+Repository placement follows the same dynamic boundary. A Goal starts with an
+immutable control-repository authority. When isolated mutation or specialist
+delegation needs a linked worktree, cognition may select `workspace.prepare`
+from the current Portfolio. One successful canonical observation derives the
+Goal's only execution workspace; it is not a second Goal or state owner. Later
+repo-scoped tools and `codex.run` use that live-validated workspace, while
+state-scoped tools retain the original state root and Continue/Resume still
+validate the control checkout. Preparation is lazy and evidence-gated, not an
+ingress side effect, keyword route, or automatic per-task scheduler.
+
+The core tool contract also owns each tool's Goal store-placement metadata.
+The execution adapter resolves dynamic `scope`/`cwd` placement from that shared
+contract instead of maintaining another tool-name routing list. This metadata
+selects only control versus execution storage; it does not classify tasks or
+grant effect authority.
 
 The stable ownership split is:
 

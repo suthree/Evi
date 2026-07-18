@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import { z } from "zod";
+import { prepareGoalExecutionWorkspaceArgumentsSchema } from "./goal_execution_workspace.js";
 
 const shortTextSchema = z.string().trim().min(1).max(2_000);
 const toolSchema = z.string().trim().min(1).max(128);
@@ -14,6 +15,7 @@ export const effectIntentSchema = z.object({
     "read_public_network",
     "write_local_state",
     "write_local_repo",
+    "prepare_local_workspace",
     "run_local_verification",
     "delegate_local_code",
     "execute_dynamic_code",
@@ -116,6 +118,7 @@ function decideIntent(intent: EffectIntent, envelope: EffectEnvelope): EffectDec
   }
   if (intent.operation === "write_local_repo"
     || intent.operation === "write_local_state"
+    || intent.operation === "prepare_local_workspace"
     || intent.operation === "run_local_verification") {
     return envelope.allow_reversible_local_writes
       ? decision("allow", "Reversible local effect is inside the standing execution envelope.", intent)
@@ -139,6 +142,8 @@ function classifyEffect(action: EffectAction): EffectIntent {
       return httpFetchIntent(stringValue(args.url));
     case "command.run":
       return commandIntent(args);
+    case "workspace.prepare":
+      return workspacePrepareIntent(args);
     case "codex.run":
       return intent("delegate_local_code", codexTarget(args), "conditional", "local_content_to_model");
     case "code.execute_node":
@@ -146,6 +151,17 @@ function classifyEffect(action: EffectAction): EffectIntent {
     default:
       return intent("unknown", `tool:${action.tool}`, "unknown", "unknown");
   }
+}
+
+function workspacePrepareIntent(args: Record<string, unknown>): EffectIntent {
+  const parsed = prepareGoalExecutionWorkspaceArgumentsSchema.safeParse(args);
+  if (!parsed.success) return intent("unknown", "workspace:(invalid)", "unknown", "none");
+  return intent(
+    "prepare_local_workspace",
+    `workspace:${parsed.data.branch}@${parsed.data.base_commit}`,
+    "reversible",
+    "none"
+  );
 }
 
 function localReadIntent(scope: string, path: string): EffectIntent {

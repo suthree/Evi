@@ -30,6 +30,32 @@ test("EffectPolicy distinguishes read, local write, and protected Goal state", (
   }).outcome, "deny");
 });
 
+test("EffectPolicy allows only a strictly shaped reversible workspace preparation", () => {
+  const policy = new EffectPolicy();
+  const accepted = policy.decide({
+    tool: "workspace.prepare",
+    arguments: {
+      branch: "codex/issue-97-effect-policy",
+      base_commit: "a".repeat(40)
+    }
+  });
+  assert.equal(accepted.outcome, "allow");
+  assert.equal(accepted.intent.operation, "prepare_local_workspace");
+  assert.equal(accepted.intent.reversibility, "reversible");
+  assert.equal(policy.decide({
+    tool: "workspace.prepare",
+    arguments: { branch: "feature/unsafe", base_commit: "a".repeat(40) }
+  }).outcome, "deny");
+  assert.equal(policy.decide({
+    tool: "workspace.prepare",
+    arguments: {
+      branch: "codex/issue-97-effect-policy",
+      base_commit: "a".repeat(40),
+      path: "/tmp/operator-supplied"
+    }
+  }).outcome, "deny");
+});
+
 test("EffectPolicy classifies command semantics instead of model side-effect labels", () => {
   const policy = new EffectPolicy();
   const read = policy.decide({

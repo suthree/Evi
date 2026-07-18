@@ -26,12 +26,17 @@ import {
 } from "../../core/src/codex_run_contract.js";
 import { newId, utcNow } from "../../core/src/ids.js";
 import type { ActionProposal } from "../../core/src/schemas.js";
-import type { AgentStore } from "../../core/src/store.js";
+import { AgentStore } from "../../core/src/store.js";
 import {
   getWorkspaceStatus,
   type WorkspaceStatusResult
 } from "../../core/src/workspace_status.js";
 import { isPrivateNetworkHost, type EffectAction } from "./effect_policy.js";
+import {
+  prepareGoalExecutionWorkspaceArgumentsSchema,
+  prepareGoalExecutionWorkspace,
+  type GoalToolExecutionContext as GoalWorkspaceToolExecutionContext
+} from "./goal_execution_workspace.js";
 import type { GoalRepositoryAuthority } from "./repository_authority.js";
 
 export interface ToolResult {
@@ -68,12 +73,14 @@ type ToolFailureKind =
   | "spawn_error"
   | "timeout"
   | "unsupported_tool"
-  | "verification_failed";
+  | "verification_failed"
+  | "workspace_prepare_failed";
 
 type CommandPurpose = "execute" | "verification";
 
 export interface ToolExecutionContext {
   store: AgentStore;
+  goal?: GoalWorkspaceToolExecutionContext;
   modelMaxOutputTokens?: number;
   publicNetworkOnly?: boolean;
 }
@@ -113,6 +120,9 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
   if (tool === "command.run") {
     return runCommandRun(args, context);
   }
+  if (tool === "workspace.prepare") {
+    return runWorkspacePrepare(args, context);
+  }
   if (tool === CODEX_RUN_TOOL) {
     return runCodexRun(args, context);
   }
@@ -123,6 +133,39 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
   return toolResult(tool || "unknown", false, `Unsupported tool: ${tool || "(missing)"}`, {
     received_payload: payload
   }, "none", "unsupported_tool");
+}
+
+async function runWorkspacePrepare(
+  args: Record<string, unknown>,
+  context: ToolExecutionContext
+): Promise<ToolResult> {
+  const parsedArgs = prepareGoalExecutionWorkspaceArgumentsSchema.safeParse(args);
+  if (!parsedArgs.success) {
+    return toolResult("workspace.prepare", false, "workspace.prepare requires only a strict branch and base_commit.", {}, "local_reversible", "invalid_request");
+  }
+  if (!context.goal) {
+    return toolResult("workspace.prepare", false, "workspace.prepare requires GoalRuntime execution context.", {}, "local_reversible", "invalid_request");
+  }
+  if (context.goal.execution_workspace) {
+    return toolResult("workspace.prepare", false, "The Goal already has an execution workspace.", {
+      execution_workspace: context.goal.execution_workspace
+    }, "local_reversible", "invalid_request");
+  }
+  try {
+    const executionWorkspace = await prepareGoalExecutionWorkspace({
+      goal_id: context.goal.goal_id,
+      control_authority: context.goal.control_repository_authority,
+      branch: parsedArgs.data.branch,
+      base_commit: parsedArgs.data.base_commit
+    });
+    return toolResult("workspace.prepare", true, `Prepared Goal execution workspace ${executionWorkspace.authority.branch}.`, {
+      execution_workspace: executionWorkspace
+    }, "local_reversible");
+  } catch (error) {
+    return toolResult("workspace.prepare", false, errorMessage(error), {
+      failure_kind: "workspace_prepare_failed"
+    }, "local_reversible", "workspace_prepare_failed");
+  }
 }
 
 async function runFileRead(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -1072,9 +1115,10 @@ export async function assertGoalBoundToolAuthority(
   store: AgentStore
 ): Promise<void> {
   if (action.tool !== CODEX_RUN_TOOL) return;
+  const authorityStore = new AgentStore(expected.repo_root, store.stateRoot);
   const request = parseCodexRunRequest(action.arguments);
   if (request.mode === "new") {
-    const actual = await inspectCodexGitAuthority(store.repoRoot, request.worktree, request.cwd);
+    const actual = await inspectCodexGitAuthority(authorityStore.repoRoot, request.worktree, request.cwd);
     assertCodexGoalAuthority(expected, {
       repoRoot: actual.repoRoot,
       gitCommonDir: actual.gitCommonDir,
@@ -1087,7 +1131,7 @@ export async function assertGoalBoundToolAuthority(
   }
 
   const prior = parseVerifiableCodexThreadRecord(
-    await store.readStateJson<unknown>(codexThreadRecordPath(request.thread_id))
+    await authorityStore.readStateJson<unknown>(codexThreadRecordPath(request.thread_id))
   );
   if (!prior
     || prior.thread_id !== request.thread_id
