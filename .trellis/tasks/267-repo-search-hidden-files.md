@@ -5,6 +5,10 @@ Status: active
 ## Identity And Ownership
 
 - Issue: GitHub Issue #114, repository-owned hidden files in `repo.search`.
+- Milestone: not assigned; this is an urgent live-acceptance repair inside the
+  current stabilization tranche, not a new roadmap item.
+- Target version: not applicable; the repair preserves the existing tool API
+  and requires no version or state-schema change.
 - Owner repository / implementation owner: Evi / Codex in this isolated
   worktree.
 - Decision Owner / authority basis: Issue #114 and the operator-authorized
@@ -36,6 +40,18 @@ Non-goals:
 - no Goal event/checkpoint rewrite and no new Goal;
 - no broad file-reading, context, or CLI refactor.
 
+- Dependencies/blockers/cross-repository links: no code dependency and no
+  cross-repository work; terminal validation depends only on integrating and
+  locally deploying this Evi commit before continuing the existing Goal.
+- Architecture impact: the existing `packages/runtime/src/tools.ts`
+  repo-search adapter remains the sole owner. Capability Portfolio, GoalRuntime,
+  state, context, and CLI ownership do not change.
+- External effects and sensitive-data gate: source/tests have no external
+  effect. GitHub Issue/PR updates and the local runtime deployment are covered
+  by the operator's explicit authorization. The broader hidden search surface
+  must still exclude Git metadata, repo-local runtime state, dependencies, and
+  generated output so their contents are not exposed to cognition.
+
 ## Design, Evidence, And Recovery
 
 - Reuse the existing `runRipgrep` and Node fallback implementations. Inspect
@@ -49,7 +65,15 @@ Non-goals:
 
 ## Verification And Budgets
 
-- One implementation owner; no subagents or independent file owners.
+- Context budget: Issue #114, Task267, the repo-search adapter, its focused test,
+  and the relevant engineering/runtime-contract sections only; no raw Goal log
+  bodies are resident implementation context.
+- Time/retry budget: at most three focused red/green correction cycles and one
+  full repository gate per accepted corrected head. A repeated unexplained
+  failure stops integration rather than expanding scope.
+- Tool/delegation budget: one implementation owner, no implementation
+  subagents, and two read-only independent review agents for Spec and Standards;
+  no delegated mutation or competing file owner.
 - Targeted loop: `tests/runtime_tools.test.ts`, TypeScript build/no-emit, and
   `git diff --check`.
 - Repository gate: `pnpm run check`.
@@ -100,3 +124,37 @@ Non-goals:
 - Pending: independent standards/spec review, accepted commit, PR, exact merge
   deployment, controller handoff, healthy/current and connected Feishu checks,
   then same-Goal live acceptance.
+
+## Review Cycle 1
+
+- Spec review found one P1: `!.git/**` excludes a Git directory subtree but
+  not the root `.git` file used by linked worktrees. A caller glob of `.git`
+  could therefore return the `gitdir:` pointer. The Node fallback had the same
+  exact-root omission, and the first test incorrectly modeled `.git` only as a
+  directory.
+- The corrected public-tool test now writes a root `.git` file and explicitly
+  includes `.git` in caller globs. TDD red returned both `.git` and the intended
+  `.trellis` evidence.
+- Ripgrep now appends both `!.git` and `!.git/**` after caller globs. The Node
+  fallback rejects both `path === ".git"` and `.git/` descendants. The repeated
+  focused suite passed 33/33.
+- Pending: full repository gate and independent cycle-2 re-review against the
+  corrected diff.
+
+## Review Cycle 1 Standards Follow-Up
+
+- Standards review found one P1 engine mismatch: after `--hidden`, root files
+  matching `.runtime-*`, `.runtime_*`, or `.local-runtime*` escaped ripgrep's
+  subtree-only globs even though the Node fallback excluded them. The wider
+  audit also found exact root files named `.runtime`, `node_modules`, and `dist`
+  had the same shape.
+- The public-tool fixture now includes exact protected roots and root prefix
+  files, with caller globs that would re-include them. TDD red returned all six
+  protected entries in addition to `.trellis`.
+- Ripgrep now appends exact-root, root-prefix, and subtree exclusions after all
+  caller globs. The fallback explicitly excludes exact `node_modules` and
+  `dist`, joining its existing exact `.git`/`.runtime` and prefix rules.
+- Standards review also found missing required governance fields. Milestone,
+  target-version rationale, dependencies, architecture impact, external and
+  sensitive-data gates, plus context/time/retry/tool/delegation budgets are now
+  explicit above.

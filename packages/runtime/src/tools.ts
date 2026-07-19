@@ -2369,17 +2369,31 @@ function runRipgrep(options: {
   }
   args.push(
     "--glob",
+    "!.git",
+    "--glob",
     "!.git/**",
+    "--glob",
+    "!node_modules",
     "--glob",
     "!node_modules/**",
     "--glob",
+    "!dist",
+    "--glob",
     "!dist/**",
+    "--glob",
+    "!.runtime",
     "--glob",
     "!.runtime/**",
     "--glob",
+    "!.runtime-*",
+    "--glob",
     "!.runtime-*/**",
     "--glob",
+    "!.runtime_*",
+    "--glob",
     "!.runtime_*/**",
+    "--glob",
+    "!.local-runtime*",
     "--glob",
     "!.local-runtime*/**"
   );
@@ -2478,8 +2492,11 @@ async function walkFiles(absDir: string, relDir: string, files: string[]): Promi
 }
 
 function isIgnoredSearchPath(path: string): boolean {
-  return path.startsWith(".git/")
+  return path === ".git"
+    || path.startsWith(".git/")
+    || path === "node_modules"
     || path.startsWith("node_modules/")
+    || path === "dist"
     || path.startsWith("dist/")
     || path === ".runtime"
     || path.startsWith(".runtime/")

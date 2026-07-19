@@ -465,13 +465,18 @@ test("repo.search finds repo text with bounded output", async () => {
       "accepted head 6c90aa2 maps to its merge commit\n",
       "utf8"
     );
-    await mkdir(join(fixture.repoRoot, ".git"), { recursive: true });
-    await writeFile(join(fixture.repoRoot, ".git/private-evidence.md"), "6c90aa2 must stay private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".git"), "gitdir: 6c90aa2 must stay private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, "node_modules"), "6c90aa2 dependency root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, "dist"), "6c90aa2 generated root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime"), "6c90aa2 runtime root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime-private.md"), "6c90aa2 runtime private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime_private.md"), "6c90aa2 runtime private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".local-runtime-private.md"), "6c90aa2 local runtime private\n", "utf8");
 
     const hiddenEvidence = await executeTool(useTool("repo.search", {
       query: "6c90aa2",
       path: ".",
-      globs: ["*.md", "*.json", "*.ts"],
+      globs: ["*.md", "*.json", "*.ts", ".git", "node_modules", "dist", ".runtime"],
       max_results: 20,
       max_output_chars: 12000
     }), { store: fixture.store });
@@ -482,6 +487,8 @@ test("repo.search finds repo text with bounded output", async () => {
       line: 1,
       text: "accepted head 6c90aa2 maps to its merge commit"
     }]);
+
+    await rm(join(fixture.repoRoot, ".runtime"));
 
     await writeFile(join(fixture.repoRoot, "gamma.md"), "needle three\n", "utf8");
     const truncated = await executeTool(useTool("repo.search", {
