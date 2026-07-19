@@ -14,9 +14,11 @@ import {
 } from "./service.js";
 import {
   checkRuntimeReadiness,
+  DEPLOYMENT_STATUSES,
   type DeploymentFailureObservation,
   type DeploymentFailureSignal,
   type DeploymentRecord,
+  type DeploymentStatus,
   type SupervisorManifest
 } from "./service_supervisor.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
@@ -61,6 +63,22 @@ export interface DeploymentControllerReadiness {
   reason: string;
   handoff_command?: string;
   boundary: string;
+}
+
+export type DeploymentStateReadStatus = "ok" | "missing" | "invalid" | "unreadable";
+
+export interface DeploymentStateSourceRead {
+  ref: string;
+  status: DeploymentStateReadStatus;
+  reason?: "invalid_json" | "invalid_value" | "read_failed";
+}
+
+export interface LocalDeploymentStateSources {
+  current: DeploymentStateSourceRead;
+  request: DeploymentStateSourceRead;
+  supervisor: DeploymentStateSourceRead;
+  failure: DeploymentStateSourceRead;
+  latest_observation: DeploymentStateSourceRead;
 }
 
 export class DeploymentControllerHandoffRequiredError extends Error {
@@ -489,22 +507,34 @@ export async function getLocalDeploymentStatus(stateRoot: string): Promise<{
   supervisor: Record<string, unknown> | null;
   failure: DeploymentFailureSignal | null;
   latest_observation: DeploymentFailureObservation | null;
+  sources: LocalDeploymentStateSources;
 }> {
   const paths = deploymentPaths(stateRoot);
   const [current, pending, supervisor, failure, latestObservation] = await Promise.all([
-    readJson<DeploymentRecord>(paths.current),
-    readJson<DeploymentRecord>(paths.request),
-    readJson<Record<string, unknown>>(paths.supervisor),
-    readJson<DeploymentFailureSignal>(paths.failure),
-    readJson<DeploymentFailureObservation>(paths.latestObservation)
+    readDeploymentStateSource(paths.current, "deployments/current.json", isDeploymentRecordForStatus),
+    readDeploymentStateSource(paths.request, "deployments/request.json", isDeploymentRecordForStatus),
+    readDeploymentStateSource(paths.supervisor, "deployments/supervisor.json", isRecord),
+    readDeploymentStateSource(paths.failure, "deployments/failure.json", isDeploymentFailureSignal),
+    readDeploymentStateSource(
+      paths.latestObservation,
+      "deployments/observations/latest.json",
+      isDeploymentFailureObservationForStatus
+    )
   ]);
   return {
     boundary: "read-only local deployment status; does not stage builds, manage services, read logs, invoke the model, or mutate state",
-    current,
-    pending,
-    supervisor,
-    failure,
-    latest_observation: latestObservation
+    current: current.value,
+    pending: pending.value,
+    supervisor: supervisor.value,
+    failure: failure.value,
+    latest_observation: latestObservation.value,
+    sources: {
+      current: current.source,
+      request: pending.source,
+      supervisor: supervisor.source,
+      failure: failure.source,
+      latest_observation: latestObservation.source
+    }
   };
 }
 
@@ -623,6 +653,103 @@ async function readJson<T>(path: string): Promise<T | null> {
   } catch {
     return null;
   }
+}
+
+async function readDeploymentStateSource<T>(
+  path: string,
+  ref: string,
+  validate: (value: unknown) => value is T
+): Promise<{ value: T | null; source: DeploymentStateSourceRead }> {
+  let source: string;
+  try {
+    source = await readFile(path, "utf8");
+  } catch (error) {
+    return {
+      value: null,
+      source: errorCode(error) === "ENOENT"
+        ? { ref, status: "missing" }
+        : { ref, status: "unreadable", reason: "read_failed" }
+    };
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    return { value: null, source: { ref, status: "invalid", reason: "invalid_json" } };
+  }
+  if (!validate(value)) {
+    return { value: null, source: { ref, status: "invalid", reason: "invalid_value" } };
+  }
+  return { value, source: { ref, status: "ok" } };
+}
+
+function isDeploymentRecordForStatus(value: unknown): value is DeploymentRecord {
+  if (!isRecord(value)
+    || value.schema_version !== 1
+    || value.type !== "local_runtime_deployment"
+    || !isStringField(value, "id")
+    || !isStringField(value, "release_id")
+    || !isStringField(value, "source_commit")
+    || !isStringField(value, "repo_root")
+    || !isStringField(value, "state_root")
+    || !isStringField(value, "bundle_digest")
+    || typeof value.state_schema_version !== "number"
+    || !isStringArray(value.verification_refs)
+    || !isStringField(value, "repair_chain_id")
+    || typeof value.repair_attempt !== "number"
+    || !isDeploymentStatus(value.status)
+    || !isStringField(value, "requested_at")
+    || !isStringField(value, "updated_at")
+    || !isStringField(value, "boundary")) return false;
+  return optionalStringField(value, "source_branch")
+    && optionalStringField(value, "stable_at")
+    && optionalStringField(value, "previous_source_commit")
+    && (value.evidence_refs === undefined || isStringArray(value.evidence_refs));
+}
+
+function isDeploymentFailureSignal(value: unknown): value is DeploymentFailureSignal {
+  return isRecord(value)
+    && value.schema_version === 1
+    && isStringField(value, "deployment_id")
+    && isStringField(value, "reason")
+    && isStringArray(value.evidence_refs)
+    && isStringField(value, "reported_at");
+}
+
+function isDeploymentFailureObservationForStatus(value: unknown): value is DeploymentFailureObservation {
+  return isRecord(value)
+    && value.schema_version === 1
+    && value.type === "local_runtime_deployment_observation"
+    && value.kind === "deployment_failed_recovered"
+    && isStringField(value, "id")
+    && isStringField(value, "deployment_id");
+}
+
+function isDeploymentStatus(value: unknown): value is DeploymentStatus {
+  return typeof value === "string" && (DEPLOYMENT_STATUSES as readonly string[]).includes(value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringField(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === "string";
+}
+
+function optionalStringField(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || typeof value[key] === "string";
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function errorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
 }
 
 async function writeJsonAtomic(path: string, value: unknown): Promise<void> {

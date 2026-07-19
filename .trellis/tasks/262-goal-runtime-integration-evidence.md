@@ -191,3 +191,22 @@ Explicit non-goals:
   build, 982/982 tests, active Skill validation, and neutral naming across 133
   implementation files. Both review axes must pass again on the corrected
   commit before publication.
+- The second two-axis review found two remaining fail-open cases, so
+  publication stayed paused. The canonical deployment status read model now
+  distinguishes `ok`, `missing`, `invalid`, and `unreadable` for each compact
+  owner ref, validates deployment status unions and the fields consumed by the
+  public snapshot at runtime, and never returns corrupt payload text.
+- `runtime.inspect` exposes those bounded source-read states and becomes
+  `incomplete` for any invalid or unreadable deployment source. Focused tests
+  reject both a 10,000-character status and a non-string status, distinguish
+  invalid JSON from missing optional files, and prove corrupt request/failure
+  files cannot yield `consistent` evidence.
+- Corrected deployment-supervisor plus integration-inspection verification
+  passed 20/20 tests, TypeScript build, and `git diff --check`. A live read-only
+  probe against the resident control state remained `consistent` at
+  `7067c1bd97ff48389e20d713101cb89fbdaf9710`; all five canonical deployment
+  source refs were explicitly `ok` or `missing`, with no truncation.
+- The second correction also passed full `pnpm run check`: TypeScript build,
+  984/984 tests, active Skill validation, and neutral naming across 133
+  implementation files. A final two-axis zero-finding review remains required
+  before publication.

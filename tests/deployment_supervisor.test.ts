@@ -927,6 +927,44 @@ test("supervisor-stable deployment evidence keeps the current clean bundle known
   }
 });
 
+test("local deployment status distinguishes corrupt sources and rejects untyped deployment statuses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-status-read-"));
+  const stateRoot = resolve(root, "state");
+  const deploymentRoot = resolve(stateRoot, "deployments");
+  const longStatus = "x".repeat(10_000);
+  try {
+    await mkdir(deploymentRoot, { recursive: true });
+    await writeJson(resolve(deploymentRoot, "current.json"), {
+      ...deploymentRecord("current-commit", "stable"),
+      status: longStatus
+    });
+    await writeJson(resolve(deploymentRoot, "request.json"), {
+      ...deploymentRecord("pending-commit", "pending"),
+      status: { unexpected: true }
+    });
+    await writeFile(resolve(deploymentRoot, "failure.json"), "{invalid-json", "utf8");
+    await writeJson(resolve(deploymentRoot, "supervisor.json"), []);
+
+    const status = await getLocalDeploymentStatus(stateRoot);
+
+    assert.equal(status.current, null);
+    assert.equal(status.pending, null);
+    assert.equal(status.failure, null);
+    assert.equal(status.supervisor, null);
+    assert.equal(status.latest_observation, null);
+    assert.deepEqual(status.sources, {
+      current: { ref: "deployments/current.json", status: "invalid", reason: "invalid_value" },
+      request: { ref: "deployments/request.json", status: "invalid", reason: "invalid_value" },
+      supervisor: { ref: "deployments/supervisor.json", status: "invalid", reason: "invalid_value" },
+      failure: { ref: "deployments/failure.json", status: "invalid", reason: "invalid_json" },
+      latest_observation: { ref: "deployments/observations/latest.json", status: "missing" }
+    });
+    assert.doesNotMatch(JSON.stringify(status), new RegExp(longStatus.slice(0, 1_000)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function buildManifest(root: string): SupervisorManifest {
   const runtimeRoot = resolve(root, "service/runtime");
   return {

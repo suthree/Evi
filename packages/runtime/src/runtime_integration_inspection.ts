@@ -12,7 +12,9 @@ import { AgentStore } from "../../core/src/store.js";
 import {
   getLocalDeploymentStatus,
   inspectDeploymentControllerReadiness,
-  type DeploymentControllerReadiness
+  type DeploymentControllerReadiness,
+  type DeploymentStateSourceRead,
+  type LocalDeploymentStateSources
 } from "./deployment.js";
 import { resolveServiceDefinition, type ServiceDefinition } from "./service.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
@@ -40,6 +42,7 @@ export interface RuntimeIntegrationInspection {
     head_commit?: string;
   } | null;
   deployment: {
+    source_reads: LocalDeploymentStateSources | null;
     current: {
       id: string;
       release_id: string;
@@ -199,6 +202,9 @@ export async function inspectRuntimeIntegration(
   const current = localDeployment?.current ?? null;
   const pending = localDeployment?.pending ?? null;
   const failure = localDeployment?.failure ?? null;
+  const deploymentSourceIssues = localDeployment
+    ? deploymentStateSourceIssues(localDeployment.sources)
+    : [];
   const controller = controllerSource?.ok ? controllerSource.value : null;
   const previousBuild = previousBuildSource?.ok ? previousBuildSource.value : null;
   const repoHead = health?.service.repo_head ?? null;
@@ -220,6 +226,7 @@ export async function inspectRuntimeIntegration(
 
   const reasons = compactReasons([
     ...sourceErrors.map((item) => `${item.source}_unreadable`),
+    ...deploymentSourceIssues.map(([name, source]) => `deployment_${name}_${source.status}`),
     !repoHead ? "repository_identity_unavailable" : undefined,
     repoHead && repoHead.read_status !== "ok" ? `repository_identity_${repoHead.read_status}` : undefined,
     !repoCommit ? "repository_commit_missing" : undefined,
@@ -254,6 +261,7 @@ export async function inspectRuntimeIntegration(
     !expectedPreviousCommit && previousBuild?.source_commit ? "previous_runtime_unbound" : undefined
   ]);
   const evidenceState: RuntimeIntegrationInspection["evidence_state"] = sourceErrors.length > 0
+    || deploymentSourceIssues.length > 0
     || reasons.some((reason) => INCOMPLETE_REASONS.has(reason))
     ? "incomplete"
     : reasons.length > 0
@@ -305,6 +313,7 @@ export async function inspectRuntimeIntegration(
       ...(repoHead.head_commit ? { head_commit: boundedText(repoHead.head_commit, MAX_TEXT_CHARS, truncation) } : {})
     } : null,
     deployment: {
+      source_reads: localDeployment?.sources ?? null,
       current: current ? {
         id: boundedText(current.id, MAX_TEXT_CHARS, truncation),
         release_id: boundedText(current.release_id, MAX_TEXT_CHARS, truncation),
@@ -425,6 +434,13 @@ async function captureSource<T>(source: string, read: () => Promise<T>): Promise
 
 function compactReasons(values: Array<string | undefined>): string[] {
   return unique(values.filter((value): value is string => Boolean(value)));
+}
+
+function deploymentStateSourceIssues(
+  sources: LocalDeploymentStateSources
+): Array<[keyof LocalDeploymentStateSources, DeploymentStateSourceRead]> {
+  return (Object.entries(sources) as Array<[keyof LocalDeploymentStateSources, DeploymentStateSourceRead]>)
+    .filter(([, source]) => source.status === "invalid" || source.status === "unreadable");
 }
 
 function unique(values: string[]): string[] {

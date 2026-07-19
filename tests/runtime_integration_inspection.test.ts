@@ -224,6 +224,74 @@ test("runtime integration inspection bounds external refs and failure text with 
   }
 });
 
+test("runtime integration inspection fails closed on corrupt optional deployment sources", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-runtime-integration-corrupt-state-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const deploymentRoot = join(stateRoot, "deployments");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const commit = "4".repeat(40);
+  const previousCommit = "5".repeat(40);
+  try {
+    await writeRepoHead(repoRoot, commit);
+    await writeHealthyHeartbeat(store, repoRoot, commit);
+    await mkdir(deploymentRoot, { recursive: true });
+    const fixture = deploymentStatus(repoRoot, stateRoot, commit, previousCommit);
+    await writeFile(join(deploymentRoot, "current.json"), `${JSON.stringify(fixture.current)}\n`, "utf8");
+    await writeFile(join(deploymentRoot, "request.json"), "{invalid-request", "utf8");
+    await writeFile(join(deploymentRoot, "failure.json"), "{invalid-failure", "utf8");
+    await writeFile(join(deploymentRoot, "supervisor.json"), `${JSON.stringify(fixture.supervisor)}\n`, "utf8");
+    const controller: DeploymentControllerReadiness = {
+      schema_version: 1,
+      action: "deployment_request_preflight",
+      ok: true,
+      status: "matched",
+      stable_source_commit: commit,
+      installed_source_commit: commit,
+      stable_controller_digest: "6".repeat(64),
+      installed_controller_digest: "6".repeat(64),
+      reason: "synthetic matched controller fixture",
+      boundary: "synthetic read-only controller fixture"
+    };
+
+    const inspection = await inspectRuntimeIntegration(store, {
+      dependencies: {
+        serviceHealth: () => getServiceHealth(store, { now: "2026-07-19T00:00:30.000Z" }),
+        controllerReadiness: async () => controller,
+        previousRuntimeBuild: async () => ({
+          schema_version: 1,
+          target: "runtime",
+          runtime_current_root: "/synthetic/runtime/current",
+          repo_root: repoRoot,
+          built_at: "2026-07-18T23:59:00.000Z",
+          node_version: "v22.0.0",
+          source_commit: previousCommit,
+          source_is_dirty: false
+        })
+      }
+    });
+
+    assert.equal(inspection.evidence_state, "incomplete");
+    assert.ok(inspection.reasons.includes("deployment_request_invalid"));
+    assert.ok(inspection.reasons.includes("deployment_failure_invalid"));
+    assert.deepEqual(inspection.deployment.source_reads?.request, {
+      ref: "deployments/request.json",
+      status: "invalid",
+      reason: "invalid_json"
+    });
+    assert.deepEqual(inspection.deployment.source_reads?.failure, {
+      ref: "deployments/failure.json",
+      status: "invalid",
+      reason: "invalid_json"
+    });
+    assert.equal(inspection.deployment.pending, null);
+    assert.equal(inspection.deployment.failure, null);
+    assert.doesNotMatch(inspection.summary, /consistent at/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function deploymentStatus(
   repoRoot: string,
   stateRoot: string,
@@ -268,7 +336,16 @@ function deploymentStatus(
       updated_at: "2026-07-19T00:00:20.000Z"
     },
     failure: options.failure ?? null,
-    latest_observation: null
+    latest_observation: null,
+    sources: {
+      current: { ref: "deployments/current.json", status: "ok" },
+      request: { ref: "deployments/request.json", status: "missing" },
+      supervisor: { ref: "deployments/supervisor.json", status: "ok" },
+      failure: options.failure
+        ? { ref: "deployments/failure.json", status: "ok" }
+        : { ref: "deployments/failure.json", status: "missing" },
+      latest_observation: { ref: "deployments/observations/latest.json", status: "missing" }
+    }
   };
 }
 

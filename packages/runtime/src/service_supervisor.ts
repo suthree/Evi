@@ -13,17 +13,20 @@ const LAUNCHCTL_RETRY_BASE_DELAY_MS = 250;
 const LAUNCHCTL_RETRY_MAX_DELAY_MS = 8_000;
 const DEFAULT_RECOVERY_ATTEMPTS = 6;
 
-export type DeploymentStatus =
-  | "pending"
-  | "activating"
-  | "starting"
-  | "probation"
-  | "stable"
-  | "rolling_back"
-  | "recovering"
-  | "recovered"
-  | "rolled_back"
-  | "rollback_failed";
+export const DEPLOYMENT_STATUSES = [
+  "pending",
+  "activating",
+  "starting",
+  "probation",
+  "stable",
+  "rolling_back",
+  "recovering",
+  "recovered",
+  "rolled_back",
+  "rollback_failed"
+] as const;
+
+export type DeploymentStatus = typeof DEPLOYMENT_STATUSES[number];
 
 export interface SupervisorManifest {
   schema_version: 1;
