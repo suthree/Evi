@@ -170,6 +170,7 @@ const INCOMPLETE_REASONS = new Set([
   "previous_deployment_history_invalid",
   "previous_deployment_history_unreadable",
   "previous_deployment_missing",
+  "previous_deployment_not_stable",
   "previous_deployment_repository_mismatch",
   "previous_deployment_state_root_mismatch",
   "previous_deployment_stable_at_missing_or_invalid",

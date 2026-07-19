@@ -396,6 +396,42 @@ test("runtime integration inspection rejects foreign or unstamped prior deployme
   }
 });
 
+test("runtime integration inspection treats a non-stable prior deployment as incomplete", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-runtime-integration-history-nonstable-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const commit = "b".repeat(40);
+  const previousCommit = "c".repeat(40);
+  try {
+    await writeRepoHead(repoRoot, commit);
+    await writeHealthyHeartbeat(store, repoRoot, commit);
+    const deployment = deploymentStatus(repoRoot, stateRoot, commit, previousCommit);
+    const nonStableLookup = previousDeploymentLookup(repoRoot, stateRoot, previousCommit);
+    nonStableLookup.record = {
+      ...nonStableLookup.record!,
+      status: "recovered",
+      stable_at: undefined
+    };
+    const inspection = await inspectRuntimeIntegration(store, {
+      dependencies: {
+        serviceHealth: () => getServiceHealth(store, { now: "2026-07-19T00:00:30.000Z" }),
+        deploymentStatus: async () => deployment,
+        controllerReadiness: async () => matchedController(commit),
+        previousRuntimeBuild: async () => previousRuntimeBuild(repoRoot, previousCommit),
+        previousDeploymentHistory: async () => nonStableLookup,
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit)
+      }
+    });
+
+    assert.equal(inspection.evidence_state, "incomplete");
+    assert.deepEqual(inspection.reasons, ["previous_deployment_not_stable"]);
+    assert.equal(inspection.rollback.previous_deployment?.status, "recovered");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function deploymentStatus(
   repoRoot: string,
   stateRoot: string,

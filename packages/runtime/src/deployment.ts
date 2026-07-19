@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
+import { constants, existsSync } from "node:fs";
 import { copyFile, mkdir, open, opendir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
@@ -836,8 +836,11 @@ async function readBoundedUtf8File(
   path: string,
   maxBytes: number
 ): Promise<{ text: string; exceeded: boolean }> {
-  const handle = await open(path, "r");
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
+    if (!(await handle.stat()).isFile()) {
+      throw new Error("deployment history candidate is not a regular file");
+    }
     const buffer = Buffer.allocUnsafe(Math.min(64 * 1_024, maxBytes + 1));
     const chunks: Buffer[] = [];
     let total = 0;

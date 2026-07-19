@@ -175,3 +175,20 @@ Explicit non-goals:
   source error or truncation.
 - Review cycle 2, PR integration, exact deployment/controller handoff, and
   same-Goal terminal acceptance remain pending.
+
+## Review Cycle 2 Corrections
+
+- Cycle 2 Standards review closed all first-cycle findings. Cycle 2 Spec
+  review found one remaining evidence-state error: an exact historical record
+  that never reached `stable` was reported as `inconsistent`, even though the
+  required prior-stable evidence was incomplete.
+- `previous_deployment_not_stable` now belongs to the explicit incomplete set,
+  with a focused recovered-record regression. The bounded file reader was also
+  strengthened to open candidates with `O_NOFOLLOW` and verify the opened file
+  handle is regular, closing the directory-entry/open race rather than relying
+  only on `Dirent.isFile()`.
+- The direct history/Git/composition suite passed 17/17. Full `pnpm run check`
+  passed with 997/997 tests, skill validation, and neutral naming validation
+  across 133 implementation files. `git diff --check` passed.
+- Review cycle 3, PR integration, exact deployment/controller handoff, and
+  same-Goal terminal acceptance remain pending.
