@@ -1,6 +1,7 @@
 # Task 262: Goal Runtime Integration Evidence
 
-Status: active
+Status: implementation ready for review; PR integration, exact deployment,
+controller handoff, and same-Goal live acceptance pending
 
 ## Identity And Ownership
 
@@ -124,3 +125,40 @@ Explicit non-goals:
 - This activation record does not claim implementation, integration, runtime,
   or same-Goal acceptance.
 
+## Pre-Commit Implementation Evidence
+
+- Added one `runtime.inspect` core tool contract with control-store placement,
+  ordinary dynamic Portfolio selection, EffectPolicy local-read
+  classification, and strict no-argument execution. No task router or automatic
+  selection path was added.
+- `packages/runtime/src/runtime_integration_inspection.ts` reads the existing
+  service-health, deployment, installed-controller, previous-runtime, and
+  repository owners at call time. It returns `consistent`, `inconsistent`, or
+  `incomplete` evidence plus exact commits and bounded refs, but writes no
+  acceptance record and owns no lifecycle decision.
+- The tool loads the integration module only when invoked. A first focused run
+  exposed an ESM initialization cycle through deployment -> service -> Feishu
+  -> GoalRuntime -> tools; on-demand loading removed that cycle without moving
+  ownership or adding a compatibility facade.
+- Focused TypeScript and 48 tool/portfolio/policy/executor/read-model tests
+  passed. The read-model tests cover a synthetic consistent snapshot, a
+  controller-source failure plus commit drift, no state write, and
+  control-store placement after execution-workspace binding.
+- A real read-only probe against the resident control checkout returned
+  `consistent` at `7067c1bd97ff48389e20d713101cb89fbdaf9710`, with stable
+  deployment `deployment_20260718165413_7067c1bd97ff`, matched installed
+  controller digest/source, healthy/current service, connected Feishu inbound,
+  and prior commit/runtime rollback refs. This validates the unmerged reader;
+  it does not claim the new tool is resident yet.
+- The first full test run exposed that adding a capability exceeded the
+  context-bundle bound by 43 characters and changed one acceptance-summary
+  phrase. The capability descriptions were compacted without raising the
+  budget, and the required acceptance wording was preserved. The focused
+  context/acceptance regressions then passed.
+- Final `git diff --check` and `pnpm run check` passed: TypeScript build,
+  981/981 tests, active Skill validation, and neutral naming across 133
+  implementation files.
+- Stable docs were updated narrowly in English plus the existing Simplified
+  Chinese architecture companion. Integration and live same-Goal evidence
+  remain explicitly pending review, PR merge, exact deployment, controller
+  handoff, and resident invocation.

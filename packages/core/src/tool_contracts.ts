@@ -68,6 +68,17 @@ export const coreToolContracts: ToolContract[] = [
     ]
   },
   {
+    tool: "runtime.inspect",
+    side_effect_level: "none",
+    goal_store_placement: "control",
+    rationale: "inspect fresh bounded runtime integration evidence",
+    arguments: {},
+    constraints: [
+      "reads existing repository, deployment, controller, service-health, previous-runtime, and channel-liveness owners only",
+      "returns typed current evidence without writing a ledger, choosing another tool, deploying, restarting, or granting completion authority"
+    ]
+  },
+  {
     tool: "http.fetch",
     side_effect_level: "none",
     goal_store_placement: "control",

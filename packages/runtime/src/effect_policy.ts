@@ -134,6 +134,8 @@ function classifyEffect(action: EffectAction): EffectIntent {
       return localReadIntent(stringValue(args.scope) || "repo", stringValue(args.path));
     case "repo.search":
       return localReadIntent("repo", stringValue(args.path) || ".");
+    case "runtime.inspect":
+      return intent("read_local", "runtime:integration-evidence", "read_only", "local_content_to_model");
     case "file.write_state":
       return localWriteIntent("state", stringValue(args.path));
     case "file.write_repo":

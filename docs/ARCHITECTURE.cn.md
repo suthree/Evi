@@ -125,6 +125,12 @@ state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控�
 解析动态 `scope`/`cwd` 落点，不再维护另一份工具名路由清单。这份元数据只选择 control
 或 execution storage；它不做任务分类，也不授予 effect 权限。
 
+`runtime.inspect` 是一个窄的 control-plane 例外：Goal 已经绑定 execution worktree，
+但仍需核验 harness 完成的集成结果时，它从现有控制仓库、deployment ledger、已安装
+controller、resident service health、previous runtime 与 channel liveness owner 现场派生
+一份有类型的快照。它不新建 evidence ledger，不通过任务路由选择自己，也不能部署、
+重启或验收 Goal。
+
 稳定的所有权拆分是：
 
 | 决策关注点 | Owner |

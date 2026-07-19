@@ -121,7 +121,7 @@ export async function createConfiguredGoalRuntime(options: ConfiguredGoalRuntime
       stateRoot: selectors.stateRoot
     }),
     verifier: new CanonicalGoalVerifier(),
-    toolExecutor: new RuntimeGoalToolExecutor(store)
+    toolExecutor: new RuntimeGoalToolExecutor(store, undefined, selectors.configDir)
   });
 }
 

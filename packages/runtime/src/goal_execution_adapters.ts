@@ -96,7 +96,8 @@ export class ModelGoalCognition implements GoalCognition {
 export class RuntimeGoalToolExecutor implements GoalToolExecutor {
   constructor(
     private readonly store: AgentStore,
-    private readonly modelMaxOutputTokens?: number
+    private readonly modelMaxOutputTokens?: number,
+    private readonly configDir?: string
   ) {}
 
   async execute(
@@ -121,6 +122,7 @@ export class RuntimeGoalToolExecutor implements GoalToolExecutor {
     }, {
       store: goalToolStore(this.store, action, context),
       ...(context ? { goal: context } : {}),
+      ...(this.configDir ? { configDir: this.configDir } : {}),
       publicNetworkOnly: true,
       ...(this.modelMaxOutputTokens === undefined ? {} : { modelMaxOutputTokens: this.modelMaxOutputTokens })
     });

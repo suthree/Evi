@@ -1617,6 +1617,7 @@ test("tool contract renderer covers the core tool surface", () => {
     "file.write_state",
     "file.write_repo",
     "repo.search",
+    "runtime.inspect",
     "http.fetch",
     "command.run",
     "workspace.prepare",
@@ -1627,6 +1628,7 @@ test("tool contract renderer covers the core tool surface", () => {
   assert.equal(resolveGoalToolStorePlacement("file.read", { scope: "state" }), "control");
   assert.equal(resolveGoalToolStorePlacement("command.run", { cwd: "repo" }), "execution");
   assert.equal(resolveGoalToolStorePlacement("command.run", { cwd: "state" }), "control");
+  assert.equal(resolveGoalToolStorePlacement("runtime.inspect", {}), "control");
   assert.equal(resolveGoalToolStorePlacement("workspace.prepare", {}), "control");
   assert.equal(resolveGoalToolStorePlacement("codex.run", {}), "execution");
 
@@ -1649,6 +1651,7 @@ test("tool contract renderer covers the core tool surface", () => {
     "path",
     "query"
   ]);
+  assert.deepEqual(contractsByTool.get("runtime.inspect")?.arguments, {});
   assert.deepEqual(Object.keys(contractsByTool.get("http.fetch")?.arguments ?? {}).sort(), [
     "max_chars",
     "response_type",

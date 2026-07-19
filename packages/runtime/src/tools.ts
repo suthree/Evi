@@ -81,6 +81,7 @@ type CommandPurpose = "execute" | "verification";
 export interface ToolExecutionContext {
   store: AgentStore;
   goal?: GoalWorkspaceToolExecutionContext;
+  configDir?: string;
   modelMaxOutputTokens?: number;
   publicNetworkOnly?: boolean;
 }
@@ -114,6 +115,9 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
   if (tool === "repo.search") {
     return runRepoSearch(args, context);
   }
+  if (tool === "runtime.inspect") {
+    return runRuntimeInspect(args, context);
+  }
   if (tool === "http.fetch") {
     return runHttpFetch(args, context);
   }
@@ -133,6 +137,26 @@ export async function executeTool(action: ActionProposal, context: ToolExecution
   return toolResult(tool || "unknown", false, `Unsupported tool: ${tool || "(missing)"}`, {
     received_payload: payload
   }, "none", "unsupported_tool");
+}
+
+async function runRuntimeInspect(
+  args: Record<string, unknown>,
+  context: ToolExecutionContext
+): Promise<ToolResult> {
+  if (Object.keys(args).length > 0) {
+    return toolResult("runtime.inspect", false, "runtime.inspect accepts no arguments.", {
+      received_arguments: Object.keys(args).sort()
+    }, "none", "invalid_request");
+  }
+  try {
+    const { inspectRuntimeIntegration } = await import("./runtime_integration_inspection.js");
+    const inspection = await inspectRuntimeIntegration(context.store, {
+      ...(context.configDir ? { configDir: context.configDir } : {})
+    });
+    return toolResult("runtime.inspect", true, inspection.summary, { ...inspection }, "none");
+  } catch (error) {
+    return toolResult("runtime.inspect", false, `runtime.inspect failed: ${errorMessage(error)}`, {}, "none", "fetch_error");
+  }
 }
 
 async function runWorkspacePrepare(
