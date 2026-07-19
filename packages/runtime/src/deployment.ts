@@ -50,6 +50,9 @@ export interface ControllerHandoffResult {
 }
 
 const CONTROLLER_HANDOFF_BOUNDARY = "canonical-stable local supervisor controller handoff only; no runtime restart, build, slot mutation, model invocation, remote deployment, or resource creation";
+const SOURCE_COMMIT_PATTERN = /^[a-f0-9]{40}$/;
+const HISTORY_ENTRY_PATTERN = /^[a-zA-Z0-9_-]+\.json$/;
+const MAX_EXACT_HISTORY_CANDIDATES = 16;
 
 export interface DeploymentControllerReadiness {
   schema_version: 1;
@@ -70,7 +73,7 @@ export type DeploymentStateReadStatus = "ok" | "missing" | "invalid" | "unreadab
 export interface DeploymentStateSourceRead {
   ref: string;
   status: DeploymentStateReadStatus;
-  reason?: "invalid_json" | "invalid_value" | "read_failed";
+  reason?: "invalid_json" | "invalid_value" | "read_failed" | "ambiguous_match" | "scan_limit_exceeded";
 }
 
 export interface LocalDeploymentStateSources {
@@ -79,6 +82,13 @@ export interface LocalDeploymentStateSources {
   supervisor: DeploymentStateSourceRead;
   failure: DeploymentStateSourceRead;
   latest_observation: DeploymentStateSourceRead;
+}
+
+export interface LocalDeploymentHistoryLookup {
+  source_commit: string;
+  record: DeploymentRecord | null;
+  source: DeploymentStateSourceRead;
+  boundary: string;
 }
 
 export class DeploymentControllerHandoffRequiredError extends Error {
@@ -536,6 +546,103 @@ export async function getLocalDeploymentStatus(stateRoot: string): Promise<{
       latest_observation: latestObservation.source
     }
   };
+}
+
+export async function inspectLocalDeploymentHistoryBySourceCommit(
+  stateRoot: string,
+  sourceCommit: string
+): Promise<LocalDeploymentHistoryLookup> {
+  const paths = deploymentPaths(stateRoot);
+  const historyRef = "deployments/history";
+  const boundary = "bounded exact-commit deployment history lookup; no state write, history repair, deployment, restart, model invocation, or external claim";
+  if (!SOURCE_COMMIT_PATTERN.test(sourceCommit)) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: { ref: historyRef, status: "invalid", reason: "invalid_value" },
+      boundary
+    };
+  }
+
+  let names: string[];
+  try {
+    names = await readdir(paths.historyRoot);
+  } catch (error) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: errorCode(error) === "ENOENT"
+        ? { ref: historyRef, status: "missing" }
+        : { ref: historyRef, status: "unreadable", reason: "read_failed" },
+      boundary
+    };
+  }
+
+  const suffix = `_${sourceCommit.slice(0, 12)}.json`;
+  const matchingNames = names.filter((name) => name.endsWith(suffix)).sort();
+  if (matchingNames.some((name) => name.length > 200 || !HISTORY_ENTRY_PATTERN.test(name))) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: { ref: historyRef, status: "invalid", reason: "invalid_value" },
+      boundary
+    };
+  }
+  if (matchingNames.length === 0) {
+    return { source_commit: sourceCommit, record: null, source: { ref: historyRef, status: "missing" }, boundary };
+  }
+  if (matchingNames.length > MAX_EXACT_HISTORY_CANDIDATES) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: { ref: historyRef, status: "invalid", reason: "scan_limit_exceeded" },
+      boundary
+    };
+  }
+
+  const reads = await Promise.all(matchingNames.map(async (name) => {
+    const ref = `${historyRef}/${name}`;
+    return {
+      name,
+      ...await readDeploymentStateSource(
+        resolve(paths.historyRoot, name),
+        ref,
+        isDeploymentRecordForStatus
+      )
+    };
+  }));
+  const readIssues = reads.filter((item) => item.source.status !== "ok");
+  const identityIssues = reads.filter((item) => item.value && item.name !== `${item.value.id}.json`);
+  const exact = reads.filter((item): item is typeof item & { value: DeploymentRecord } =>
+    item.value?.source_commit === sourceCommit && item.name === `${item.value.id}.json`);
+  if (exact.length > 1 || (exact.length === 1 && (readIssues.length > 0 || identityIssues.length > 0))) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: { ref: historyRef, status: "invalid", reason: "ambiguous_match" },
+      boundary
+    };
+  }
+  if (exact.length === 1) {
+    return {
+      source_commit: sourceCommit,
+      record: exact[0]!.value,
+      source: exact[0]!.source,
+      boundary
+    };
+  }
+  if (readIssues.length > 0) {
+    return { source_commit: sourceCommit, record: null, source: readIssues[0]!.source, boundary };
+  }
+  if (identityIssues.length > 0) {
+    return {
+      source_commit: sourceCommit,
+      record: null,
+      source: { ref: identityIssues[0]!.source.ref, status: "invalid", reason: "invalid_value" },
+      boundary
+    };
+  }
+  return { source_commit: sourceCommit, record: null, source: { ref: historyRef, status: "missing" }, boundary };
 }
 
 export async function listLocalDeployments(stateRoot: string, limit = 20): Promise<DeploymentRecord[]> {

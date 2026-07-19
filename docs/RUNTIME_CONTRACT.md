@@ -397,11 +397,14 @@ decision, not as a second authority.
 
 When integration was performed outside a Goal's bound execution worktree, the
 control-placed `runtime.inspect` tool may supply one fresh bounded snapshot of
-the current control repository, local deployment, installed controller,
-service-health, previous-runtime, and channel-liveness owners. The snapshot is
-derived on demand and persists nothing. Its `consistent`, `inconsistent`, or
-`incomplete` evidence state is verification input only: it neither routes a
-task nor grants effect or completion authority.
+the current control repository and local Git provenance, current and exact
+prior deployment, installed controller, service-health, previous-runtime, and
+channel-liveness owners. Prior deployment lineage requires one validated
+exact-commit history record and bounded local Git parents/ancestry; missing,
+corrupt, ambiguous, or unreadable input remains explicit and fails closed. The
+snapshot is derived on demand and persists nothing. Its `consistent`,
+`inconsistent`, or `incomplete` evidence state is verification input only: it
+neither routes a task nor grants effect or completion authority.
 
 Capability competence is derived from action observations belonging only to
 previously terminal Goals with current OutcomeReceipts.

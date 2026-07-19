@@ -126,10 +126,11 @@ state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控�
 或 execution storage；它不做任务分类，也不授予 effect 权限。
 
 `runtime.inspect` 是一个窄的 control-plane 例外：Goal 已经绑定 execution worktree，
-但仍需核验 harness 完成的集成结果时，它从现有控制仓库、deployment ledger、已安装
-controller、resident service health、previous runtime 与 channel liveness owner 现场派生
-一份有类型的快照。它不新建 evidence ledger，不通过任务路由选择自己，也不能部署、
-重启或验收 Goal。
+但仍需核验 harness 完成的集成结果时，它从现有控制仓库与本地 Git 来源关系、当前及
+精确匹配的历史 deployment record、已安装 controller、resident service health、previous
+runtime 与 channel liveness owner 现场派生一份有类型的快照。历史来源只接受一条经过
+校验的精确 commit 记录，以及有界的本地 Git 父提交与祖先关系。它不新建 evidence
+ledger，不通过任务路由选择自己，也不能部署、重启、抓取远端声明或验收 Goal。
 
 稳定的所有权拆分是：
 

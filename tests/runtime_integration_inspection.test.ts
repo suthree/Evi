@@ -7,8 +7,13 @@ import { getServiceHealth } from "../packages/core/src/service_health.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import {
   getLocalDeploymentStatus,
-  type DeploymentControllerReadiness
+  type DeploymentControllerReadiness,
+  type LocalDeploymentHistoryLookup
 } from "../packages/runtime/src/deployment.js";
+import {
+  REPOSITORY_COMMIT_PROVENANCE_BOUNDARY,
+  type RepositoryCommitProvenance
+} from "../packages/runtime/src/repository_authority.js";
 import { inspectRuntimeIntegration } from "../packages/runtime/src/runtime_integration_inspection.js";
 import type { ServiceRuntimeBuild } from "../packages/runtime/src/service_runtime_build.js";
 import type { DeploymentRecord } from "../packages/runtime/src/service_supervisor.js";
@@ -57,6 +62,8 @@ test("runtime integration inspection composes fresh canonical owners without wri
         deploymentStatus: async () => deployment,
         controllerReadiness: async () => controller,
         previousRuntimeBuild: async () => previousBuild,
+        previousDeploymentHistory: async () => previousDeploymentLookup(repoRoot, stateRoot, previousCommit),
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit, ["c".repeat(40)]),
         now: () => new Date("2026-07-19T00:00:31.000Z")
       }
     });
@@ -69,9 +76,15 @@ test("runtime integration inspection composes fresh canonical owners without wri
     assert.equal(inspection.controller?.installed_source_commit, commit);
     assert.equal(inspection.feishu?.inbound_state, "connected");
     assert.equal(inspection.rollback.previous_source_commit, previousCommit);
+    assert.equal(inspection.rollback.previous_deployment?.source_commit, previousCommit);
+    assert.equal(inspection.rollback.previous_deployment?.status, "stable");
+    assert.deepEqual(inspection.rollback.previous_commit_provenance?.parent_commits, ["c".repeat(40)]);
+    assert.equal(inspection.rollback.previous_commit_provenance?.ancestor_of_head, true);
     assert.deepEqual(inspection.rollback.refs, [
       "deployments/history/deployment_fixture.json",
-      "service:runtime-previous-build"
+      "service:runtime-previous-build",
+      `deployments/history/deployment_previous_${previousCommit.slice(0, 12)}.json`,
+      "repository:commit-provenance"
     ]);
     assert.match(inspection.boundary, /does not write evidence/);
     assert.deepEqual(await store.listStateFiles(""), beforeRefs);
@@ -109,6 +122,12 @@ test("runtime integration inspection reports source failure and commit drift wit
           source_commit: "c".repeat(40),
           source_is_dirty: true
         }),
+        previousDeploymentHistory: async () => previousDeploymentLookup(
+          repoRoot,
+          stateRoot,
+          "f".repeat(40)
+        ),
+        previousCommitProvenance: async () => commitProvenance("f".repeat(40), repoCommit),
         now: () => new Date("2026-07-19T00:00:31.000Z")
       }
     });
@@ -195,7 +214,12 @@ test("runtime integration inspection bounds external refs and failure text with 
           node_version: "v22.0.0",
           source_commit: previousCommit,
           source_is_dirty: false
-        })
+        }),
+        previousDeploymentHistory: async () => previousDeploymentLookup(repoRoot, stateRoot, previousCommit, {
+          verificationRefs: Array.from({ length: 24 }, (_, index) => `${index}:${longText}`),
+          evidenceRefs: Array.from({ length: 24 }, (_, index) => `${index}:${longText}`)
+        }),
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit, [longText])
       }
     });
 
@@ -213,6 +237,10 @@ test("runtime integration inspection bounds external refs and failure text with 
     assert.equal(inspection.service?.runtime_commit?.length, inspection.limits.max_text_chars);
     assert.equal(inspection.rollback.previous_source_commit?.length, inspection.limits.max_text_chars);
     assert.equal(inspection.rollback.previous_runtime_commit?.length, inspection.limits.max_text_chars);
+    assert.equal(inspection.rollback.previous_deployment?.source_commit.length, inspection.limits.max_text_chars);
+    assert.equal(inspection.rollback.previous_deployment?.verification_refs.length, inspection.limits.max_items_per_list);
+    assert.equal(inspection.rollback.previous_commit_provenance?.commit.length, inspection.limits.max_text_chars);
+    assert.equal(inspection.rollback.previous_commit_provenance?.parent_commits[0]?.length, inspection.limits.max_text_chars);
     assert.ok(inspection.deployment.current?.verification_refs.every((ref) => ref.length <= inspection.limits.max_ref_chars));
     assert.equal(inspection.deployment.failure?.ref, "deployments/failure.json");
     assert.ok(inspection.refs.includes("deployments/failure.json"));
@@ -267,7 +295,9 @@ test("runtime integration inspection fails closed on corrupt optional deployment
           node_version: "v22.0.0",
           source_commit: previousCommit,
           source_is_dirty: false
-        })
+        }),
+        previousDeploymentHistory: async () => previousDeploymentLookup(repoRoot, stateRoot, previousCommit),
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit)
       }
     });
 
@@ -287,6 +317,42 @@ test("runtime integration inspection fails closed on corrupt optional deployment
     assert.equal(inspection.deployment.pending, null);
     assert.equal(inspection.deployment.failure, null);
     assert.doesNotMatch(inspection.summary, /consistent at/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime integration inspection fails closed when prior deployment history is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-runtime-integration-history-missing-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const commit = "7".repeat(40);
+  const previousCommit = "8".repeat(40);
+  try {
+    await writeRepoHead(repoRoot, commit);
+    await writeHealthyHeartbeat(store, repoRoot, commit);
+    const deployment = deploymentStatus(repoRoot, stateRoot, commit, previousCommit);
+    const inspection = await inspectRuntimeIntegration(store, {
+      dependencies: {
+        serviceHealth: () => getServiceHealth(store, { now: "2026-07-19T00:00:30.000Z" }),
+        deploymentStatus: async () => deployment,
+        controllerReadiness: async () => matchedController(commit),
+        previousRuntimeBuild: async () => previousRuntimeBuild(repoRoot, previousCommit),
+        previousDeploymentHistory: async () => ({
+          source_commit: previousCommit,
+          record: null,
+          source: { ref: "deployments/history", status: "missing" },
+          boundary: "synthetic missing deployment history"
+        }),
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit)
+      }
+    });
+
+    assert.equal(inspection.evidence_state, "incomplete");
+    assert.ok(inspection.reasons.includes("previous_deployment_history_missing"));
+    assert.equal(inspection.rollback.previous_deployment, null);
+    assert.equal(inspection.rollback.previous_deployment_source?.status, "missing");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -346,6 +412,84 @@ function deploymentStatus(
         : { ref: "deployments/failure.json", status: "missing" },
       latest_observation: { ref: "deployments/observations/latest.json", status: "missing" }
     }
+  };
+}
+
+function previousDeploymentLookup(
+  repoRoot: string,
+  stateRoot: string,
+  commit: string,
+  options: { verificationRefs?: string[]; evidenceRefs?: string[] } = {}
+): LocalDeploymentHistoryLookup {
+  const id = `deployment_previous_${commit.slice(0, 12)}`;
+  return {
+    source_commit: commit,
+    record: {
+      schema_version: 1,
+      type: "local_runtime_deployment",
+      id,
+      release_id: `${commit}:previous`,
+      source_commit: commit,
+      source_branch: "develop",
+      repo_root: repoRoot,
+      state_root: stateRoot,
+      bundle_digest: "9".repeat(64),
+      state_schema_version: 1,
+      verification_refs: options.verificationRefs ?? ["tests/runtime_integration_inspection.test.ts"],
+      repair_chain_id: id,
+      repair_attempt: 0,
+      status: "stable",
+      requested_at: "2026-07-18T23:58:00.000Z",
+      updated_at: "2026-07-18T23:59:00.000Z",
+      stable_at: "2026-07-18T23:59:00.000Z",
+      evidence_refs: options.evidenceRefs ?? ["services/runtime/heartbeat.json"],
+      boundary: "synthetic previous deployment fixture"
+    },
+    source: { ref: `deployments/history/${id}.json`, status: "ok" },
+    boundary: "synthetic exact deployment history lookup"
+  };
+}
+
+function commitProvenance(
+  commit: string,
+  headCommit: string,
+  parentCommits: string[] = []
+): RepositoryCommitProvenance {
+  return {
+    schema_version: 1,
+    commit,
+    parent_commits: parentCommits,
+    head_commit: headCommit,
+    ancestor_of_head: true,
+    boundary: REPOSITORY_COMMIT_PROVENANCE_BOUNDARY
+  };
+}
+
+function matchedController(commit: string): DeploymentControllerReadiness {
+  return {
+    schema_version: 1,
+    action: "deployment_request_preflight",
+    ok: true,
+    status: "matched",
+    stable_source_commit: commit,
+    installed_source_commit: commit,
+    stable_controller_digest: "6".repeat(64),
+    installed_controller_digest: "6".repeat(64),
+    reason: "synthetic matched controller fixture",
+    boundary: "synthetic read-only controller fixture"
+  };
+}
+
+function previousRuntimeBuild(repoRoot: string, commit: string): ServiceRuntimeBuild {
+  return {
+    schema_version: 1,
+    target: "runtime",
+    runtime_current_root: "/synthetic/runtime/current",
+    repo_root: repoRoot,
+    built_at: "2026-07-18T23:59:00.000Z",
+    node_version: "v22.0.0",
+    source_commit: commit,
+    source_is_dirty: false
   };
 }
 

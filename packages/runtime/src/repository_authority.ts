@@ -6,6 +6,7 @@ import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+const MAX_COMMIT_PARENTS = 16;
 
 export const GOAL_REPOSITORY_AUTHORITY_BOUNDARY =
   "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor" as const;
@@ -21,6 +22,20 @@ export const goalRepositoryAuthoritySchema = z.object({
 }).strict();
 
 export type GoalRepositoryAuthority = z.infer<typeof goalRepositoryAuthoritySchema>;
+
+export const REPOSITORY_COMMIT_PROVENANCE_BOUNDARY =
+  "bounded read-only local Git commit provenance; no fetch, checkout, ref mutation, repository write, or external claim" as const;
+
+export const repositoryCommitProvenanceSchema = z.object({
+  schema_version: z.literal(1),
+  commit: z.string().regex(SHA_PATTERN),
+  parent_commits: z.array(z.string().regex(SHA_PATTERN)).max(MAX_COMMIT_PARENTS),
+  head_commit: z.string().regex(SHA_PATTERN),
+  ancestor_of_head: z.boolean(),
+  boundary: z.literal(REPOSITORY_COMMIT_PROVENANCE_BOUNDARY)
+}).strict();
+
+export type RepositoryCommitProvenance = z.infer<typeof repositoryCommitProvenanceSchema>;
 
 export async function inspectGoalRepositoryAuthority(repoRoot: string): Promise<GoalRepositoryAuthority> {
   const configuredRoot = await realpath(resolve(repoRoot));
@@ -66,6 +81,36 @@ export async function assertGoalRepositoryAuthority(
   }
 }
 
+export async function inspectRepositoryCommitProvenance(
+  repoRoot: string,
+  commit: string
+): Promise<RepositoryCommitProvenance> {
+  const parsedCommit = z.string().regex(SHA_PATTERN).parse(commit);
+  const authority = await inspectGoalRepositoryAuthority(repoRoot);
+  const revision = (await gitText(authority.worktree, [
+    "rev-list",
+    "--parents",
+    "--max-count=1",
+    parsedCommit,
+    "--"
+  ])).split(/\s+/);
+  if (revision[0] !== parsedCommit || revision.some((item) => !SHA_PATTERN.test(item))) {
+    throw new Error("GoalRuntime repository commit provenance returned an invalid revision identity.");
+  }
+  const parentCommits = revision.slice(1);
+  if (parentCommits.length > MAX_COMMIT_PARENTS) {
+    throw new Error(`GoalRuntime repository commit provenance exceeds ${MAX_COMMIT_PARENTS} parents.`);
+  }
+  return repositoryCommitProvenanceSchema.parse({
+    schema_version: 1,
+    commit: parsedCommit,
+    parent_commits: parentCommits,
+    head_commit: authority.start_head_commit,
+    ancestor_of_head: await gitIsAncestor(authority.worktree, parsedCommit, authority.start_head_commit),
+    boundary: REPOSITORY_COMMIT_PROVENANCE_BOUNDARY
+  });
+}
+
 async function gitText(cwd: string, args: string[]): Promise<string> {
   try {
     const result = await execFileAsync("git", args, {
@@ -87,6 +132,19 @@ async function gitSucceeds(cwd: string, args: string[]): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function gitIsAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+  try {
+    await execFileAsync("git", ["merge-base", "--is-ancestor", ancestor, descendant], {
+      cwd,
+      maxBuffer: 64 * 1024
+    });
+    return true;
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === 1) return false;
+    throw new Error(`GoalRuntime could not inspect Git repository authority: ${errorMessage(error)}`);
   }
 }
 

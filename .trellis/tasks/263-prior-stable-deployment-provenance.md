@@ -119,3 +119,34 @@ Explicit non-goals:
   head `6c90aa2`.
 - This activation record does not claim implementation, review, integration,
   deployment, or same-Goal acceptance.
+
+## Pre-Review Implementation Evidence
+
+- The bounded deployment owner now performs an exact 40-character source
+  commit lookup against canonical history entries, validates both record
+  content and record-id/file ownership, and rejects missing, corrupt,
+  ambiguous, over-limit, or unreadable candidates without mutation.
+- Repository authority now exposes one validated local commit plus at most 16
+  parent commits, current control HEAD, and the local ancestor relationship.
+  It performs no fetch, checkout, ref mutation, or repository write.
+- `runtime.inspect` composes those owners only for the current deployment's
+  `previous_source_commit`, bounds every returned string/list, and treats
+  missing or unreadable sources as incomplete rather than inferred evidence.
+- Focused tests passed 53/53 across the changed inspection, tool-contract,
+  portfolio, EffectPolicy, adapter, and runtime-tool seams. The new direct
+  history/Git/composition suite passed 12/12, including synthetic corrupt,
+  ambiguous, identity-mismatch, unmerged-commit, missing-source, and output
+  truncation cases.
+- Full `pnpm run check` passed: TypeScript build, 992/992 tests, skill
+  validation, and neutral naming validation across 133 implementation files.
+  `git diff --check` also passed.
+- A read-only live-shape probe against the control repository and runtime state
+  returned `consistent` with no reasons, source errors, or truncation. It
+  resolved prior stable deployment
+  `deployment_20260718165413_7067c1bd97ff`, commit `7067c1b`, and local parents
+  `a0f5ce1` plus accepted Issue #101 head `6c90aa2`; the commit is an ancestor
+  of current control HEAD `90a7858`. Resident health remained
+  `healthy/current` and Feishu inbound remained `connected`.
+- These are implementation and pre-integration checks only. Independent
+  reviews, PR merge, exact deployment, controller handoff, and same-Goal
+  terminal acceptance remain pending.
