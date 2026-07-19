@@ -42,6 +42,11 @@ import {
   type GoalCapabilityPortfolioProvider,
   type GoalCapabilitySelection
 } from "./goal_capability_portfolio.js";
+import {
+  inspectGoalWorkspaceFreshness,
+  latestObservedWorkspaceHead,
+  type GoalWorkspaceFreshnessView
+} from "./goal_workspace_freshness.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -451,6 +456,7 @@ export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
   observation_obligation: GoalObservationObligationView;
+  workspace_freshness: GoalWorkspaceFreshnessView;
   evidence: GoalContinueEvidenceView[];
   capability_portfolio: GoalCapabilityPortfolio;
 }
@@ -707,10 +713,12 @@ export class GoalRuntime {
       const cognitionStarted = this.nowMs();
       let cognition: GoalCognitionResult;
       try {
+        const workspaceFreshness = await goalWorkspaceFreshness(events, state.view);
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           observation_obligation: goalObservationObligation(events, command.goal_id),
+          workspace_freshness: structuredClone(workspaceFreshness),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
         }));
@@ -1253,6 +1261,25 @@ export class GoalRuntime {
     if (!parsed.success) throw new Error(`GoalRuntime id factory returned unsafe ${prefix} id: ${value}`);
     return parsed.data;
   }
+}
+
+async function goalWorkspaceFreshness(
+  events: GoalRuntimeEvent[],
+  goal: GoalView
+): Promise<GoalWorkspaceFreshnessView> {
+  const workspace = goal.execution_workspace;
+  if (!workspace) return inspectGoalWorkspaceFreshness({
+    execution_workspace: null,
+    observed_head_commit: null
+  });
+  const results = events
+    .filter((event): event is z.infer<typeof actionObservedEventSchema> => event.goal_id === goal.goal_id
+      && event.event_type === "goal_action_observed")
+    .map((event) => event.result);
+  return inspectGoalWorkspaceFreshness({
+    execution_workspace: workspace,
+    observed_head_commit: latestObservedWorkspaceHead(workspace.authority.start_head_commit, results)
+  });
 }
 
 /** Minimal deterministic verifier for the local CLI ingress. */

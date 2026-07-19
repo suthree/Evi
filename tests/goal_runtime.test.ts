@@ -148,6 +148,85 @@ test("GoalRuntime derives one execution workspace and scopes later repo tools wi
   }
 });
 
+test("GoalRuntime exposes external workspace advancement until an execution-scoped observation binds the new HEAD", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const calls: GoalCognitionInput[] = [];
+    const cognition: GoalCognition = {
+      async next(input) {
+        calls.push(structuredClone(input));
+        if (calls.length === 1) {
+          assert.equal(input.workspace_freshness.status, "unbound");
+          return action("workspace.prepare", {
+            branch: "codex/issue-110-runtime-freshness",
+            base_commit: baseCommit
+          }, "Prepare one isolated workspace.");
+        }
+        if (calls.length === 2) {
+          assert.equal(input.workspace_freshness.status, "changed_unobserved");
+          return action("file.read", {
+            scope: "repo",
+            path: "evidence.md",
+            max_lines: 40,
+            max_chars: 4_000
+          }, "Read the externally advanced evidence ref.");
+        }
+        assert.equal(input.workspace_freshness.status, "aligned");
+        return outcome("新 worktree HEAD 已由执行域读取观察绑定。");
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: new RuntimeGoalToolExecutor(fixture.store),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("workspace_freshness_start", "Refresh evidence after an external worktree advance."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    const prepared = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_freshness_prepare",
+      goal_id: started.goal_id
+    });
+    const workspaceRoot = prepared.execution_workspace!.authority.repo_root;
+    await writeFile(join(workspaceRoot, "evidence.md"), "exact integration evidence\n", "utf8");
+    await runGoalGit(workspaceRoot, ["add", "evidence.md"]);
+    await runGoalGit(workspaceRoot, ["commit", "-m", "record external integration evidence"]);
+    const externalHead = await goalGitValue(workspaceRoot, ["rev-parse", "HEAD"]);
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_freshness_read",
+      goal_id: started.goal_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_freshness_finish",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(calls[1]!.workspace_freshness.observed_head_commit, baseCommit);
+    assert.equal(calls[1]!.workspace_freshness.live_head_commit, externalHead);
+    assert.equal(calls[2]!.workspace_freshness.observed_head_commit, externalHead);
+    assert.equal(calls[2]!.workspace_freshness.live_head_commit, externalHead);
+    assert.equal(completed.status, "completed");
+    assert.doesNotMatch(JSON.stringify(completed.receipt), /workspace_freshness|changed_unobserved/);
+    const events = await readEvents(fixture.stateRoot);
+    const readObservation = events.find((event) => event.event_type === "goal_action_observed"
+      && (event.result as { tool?: string } | undefined)?.tool === "file.read") as {
+        result?: { output?: { workspace_observation?: { head_commit?: string } } };
+      } | undefined;
+    assert.equal(readObservation?.result?.output?.workspace_observation?.head_commit, externalHead);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime rejects a second execution workspace selection before another tool mutation", async () => {
   const fixture = await createFixture();
   try {

@@ -16,7 +16,9 @@ import {
   type GoalView
 } from "../packages/runtime/src/goal_runtime.js";
 import type { GoalCapabilityPortfolio } from "../packages/runtime/src/goal_capability_portfolio.js";
+import { GOAL_EXECUTION_WORKSPACE_BOUNDARY } from "../packages/runtime/src/goal_execution_workspace.js";
 import type { ModelClient, ModelRequest } from "../packages/runtime/src/model.js";
+import { inspectGoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
 
 test("RuntimeGoalToolExecutor replaces model command side-effect labels with policy semantics", async () => {
   const root = join(tmpdir(), `evi-goal-tool-${process.pid}-${Date.now()}-${Math.random()}`);
@@ -137,6 +139,65 @@ test("RuntimeGoalToolExecutor keeps runtime inspection on the control store afte
     assert.equal(result.side_effect_level, "none");
     assert.equal((result.output.repository as { repo_root?: string } | null)?.repo_root, repoRoot);
     assert.equal(result.output.evidence_state, "incomplete");
+    assert.equal(result.output.workspace_observation, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("RuntimeGoalToolExecutor binds execution-scoped observations to the live workspace HEAD", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-tool-workspace-observation-"));
+  const repoRoot = join(root, "control");
+  const executionRoot = join(root, "execution");
+  const stateRoot = join(root, "state");
+  await mkdir(repoRoot, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  try {
+    await runGit(repoRoot, ["init", "-b", "develop"]);
+    await runGit(repoRoot, ["config", "user.name", "Goal Adapter Test"]);
+    await runGit(repoRoot, ["config", "user.email", "goal-adapter@example.test"]);
+    await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
+    await writeFile(join(repoRoot, "README.md"), "workspace observation\n", "utf8");
+    await runGit(repoRoot, ["add", "README.md"]);
+    await runGit(repoRoot, ["commit", "-m", "fixture base"]);
+    await runGit(repoRoot, ["worktree", "add", "-b", "codex/issue-110-adapter", executionRoot]);
+    const controlAuthority = await inspectGoalRepositoryAuthority(repoRoot);
+    const executionAuthority = await inspectGoalRepositoryAuthority(executionRoot);
+    const executor = new RuntimeGoalToolExecutor(new AgentStore(repoRoot, stateRoot));
+
+    const result = await executor.execute({
+      tool: "file.read",
+      arguments: { scope: "repo", path: "README.md", max_lines: 20, max_chars: 2_000 }
+    }, {
+      outcome: "allow",
+      reason: "Bounded local read.",
+      intent: {
+        operation: "read_local",
+        target: "repo:README.md",
+        reversibility: "read_only",
+        data_exposure: "local_content_to_model",
+        authority: "standing_local_evolution"
+      }
+    }, {
+      goal_id: "goal_workspace_observation_fixture",
+      control_repository_authority: controlAuthority,
+      execution_workspace: {
+        schema_version: 1,
+        goal_id: "goal_workspace_observation_fixture",
+        control_start_head_commit: controlAuthority.start_head_commit,
+        authority: executionAuthority,
+        boundary: GOAL_EXECUTION_WORKSPACE_BOUNDARY
+      }
+    });
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.output.workspace_observation, {
+      status: "observed",
+      head_commit: executionAuthority.start_head_commit,
+      branch: executionAuthority.branch,
+      worktree: executionAuthority.worktree,
+      authority: "harness-owned post-tool workspace observation"
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -182,6 +243,13 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 119_000 }
     },
     observation_obligation: { status: "satisfied" },
+    workspace_freshness: {
+      status: "unbound",
+      observed_head_commit: null,
+      live_head_commit: null,
+      reason: null,
+      boundary: "derived live-vs-canonical Goal workspace freshness; routing context only, never canonical change evidence or completion authority"
+    },
     evidence: [{
       event_id: "goal_event_1",
       kind: "intent",
@@ -222,11 +290,15 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /observation_obligation.*required.*satisfied/i);
   assert.match(requests[0]!.instructions, /Do not reacquire.*solely because.*prior_continue/i);
   assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
+  assert.match(requests[0]!.instructions, /changed_unobserved.*selected ref.*repository fact/i);
+  assert.match(requests[0]!.instructions, /not.*canonical change evidence.*completion authority/i);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"continue_scope": "prior_continue"/);
   assert.match(requests[0]!.input, /"continue_scope": "current_continue"/);
   assert.match(requests[0]!.input, /"observation_obligation"/);
   assert.match(requests[0]!.input, /"status": "satisfied"/);
+  assert.match(requests[0]!.input, /Execution Workspace Freshness/);
+  assert.match(requests[0]!.input, /"status": "unbound"/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
   assert.match(requests[0]!.input, /"repository_authority"/);

@@ -70,3 +70,19 @@ canonical evidence.
   accepted while it remained resident. Task265 does not change that evidence
   or its acceptance semantics.
 
+## Implementation Evidence
+
+- The derived view has no persisted owner and distinguishes `unbound`,
+  `aligned`, `changed_unobserved`, and `unavailable`. Live inspection reuses
+  repository authority and requires the same worktree, Git common directory,
+  and branch.
+- Execution-scoped tool observations receive a harness-owned post-tool HEAD
+  marker. Control-scoped `runtime.inspect` does not receive one, so it cannot
+  accidentally clear an unobserved worktree advance.
+- GoalRuntime derives the most recent observed HEAD from existing canonical Git
+  changes, verification snapshots, and the new post-tool marker. The view is
+  rendered outside Canonical Evidence and is absent from terminal receipts.
+- Focused GoalRuntime, cognition-adapter, and freshness tests passed 38/38
+  before the full run. `pnpm run check` then passed on 2026-07-19: TypeScript
+  build, 1008/1008 tests, active Skill validation, and neutral naming across
+  134 implementation files. `git diff --check` also passed.
