@@ -412,6 +412,17 @@ There is no keyword task router. The existing cognition call chooses from the
 current candidates using the Goal, evidence, readiness, competence, authority,
 cost, risk, reversibility, and verifiability.
 
+The same input carries a derived execution-workspace freshness view comparing
+the live bound-worktree HEAD with the latest harness-owned workspace
+observation. `changed_unobserved` is context, not change evidence, but it is a
+fail-closed terminal condition: a model blocker or outcome is rejected until a
+canonical execution-scoped result aligns the two HEADs. A control-scoped
+observation may satisfy an independent temporal observation obligation, but it
+cannot clear this workspace-specific condition. Capability candidates expose
+their existing workspace-placement contract so cognition can choose a relevant
+execution-scoped action dynamically; GoalRuntime does not prescribe a tool or
+persist another freshness owner.
+
 Every new cognition action must include a typed `capability_selection` with
 `capability_id`, `execution_purpose`, `skill_refs`, `rationale`,
 `verification_plan`, and `fallback`. GoalRuntime validates before EffectPolicy

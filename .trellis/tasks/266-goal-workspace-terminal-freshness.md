@@ -88,3 +88,30 @@ post-tool marker; capability choice remains dynamic.
   remained `6c90aa2`.
 - This activation record claims no implementation, review, integration,
   deployment, or live acceptance.
+
+## Pre-Review Implementation Evidence
+
+- Two red behavioral regressions reproduced the live defect: after an external
+  worktree advance, a successful control-scoped `runtime.inspect` allowed both
+  a stale blocker (`blocked` instead of `workspace_observation_required`) and a
+  stale outcome (`completed` instead of `verification_failed`).
+- GoalRuntime now re-inspects the derived execution-workspace freshness before
+  either terminal proposal. `changed_unobserved` rejects a blocker through a
+  bounded checkpoint and rejects an outcome through the existing verification
+  failure path. The condition is not persisted and changes no event or receipt
+  schema.
+- The existing ToolContract placement is exposed in the bounded Capability
+  Portfolio as `workspace_placement`. Cognition can therefore select any action
+  whose effective placement resolves to the execution workspace; no tool or
+  task keyword is routed by the harness.
+- Green regressions prove that control-only observations cannot align the
+  worktree and that later execution-scoped `file.read` or `repo.search`
+  observations align it through the existing harness marker, after which the
+  same Goal can complete normally.
+- Focused GoalRuntime, adapter, and portfolio tests passed. TypeScript build and
+  `git diff --check` passed. Full `pnpm run check` passed on 2026-07-19,
+  including the complete test suite, active Skill validation, and neutral
+  naming validation.
+- These are pre-review checks only. Independent review, PR integration, exact
+  deployment/controller handoff, and unchanged-Goal live acceptance remain
+  pending.

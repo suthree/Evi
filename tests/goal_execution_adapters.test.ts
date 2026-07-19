@@ -291,6 +291,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Do not reacquire.*solely because.*prior_continue/i);
   assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
   assert.match(requests[0]!.instructions, /changed_unobserved.*selected ref.*repository fact/i);
+  assert.match(requests[0]!.instructions, /control-placed result cannot align/i);
+  assert.match(requests[0]!.instructions, /workspace_placement resolves to execution/i);
   assert.match(requests[0]!.instructions, /not.*canonical change evidence.*completion authority/i);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"continue_scope": "prior_continue"/);
@@ -308,6 +310,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"current_tranche"/);
   assert.match(requests[0]!.input, /Cumulative lifetime usage does not exhaust a later Continue/);
   assert.match(requests[0]!.input, /Capability Portfolio/);
+  assert.match(requests[0]!.input, /"workspace_placement": "scope_argument"/);
   assert.match(requests[0]!.input, /source-review/);
   assert.match(requests[0]!.input, /max_lines must be an integer from 1 through 400/);
   assert.match(requests[0]!.input, /"status": "degraded"/);
@@ -457,6 +460,7 @@ function fixtureCapabilityPortfolio(): GoalCapabilityPortfolio {
       kind: "direct_tool" as const,
       summary: "need to read repo or state context",
       side_effect_level: "none" as const,
+      workspace_placement: "scope_argument" as const,
       arguments: {
         scope: "repo | state",
         path: "relative/path",
@@ -490,6 +494,7 @@ function fixtureCapabilityPortfolio(): GoalCapabilityPortfolio {
       kind: "delegated_executor",
       summary: "need specialist coding execution in the bound linked worktree",
       side_effect_level: "local_write",
+      workspace_placement: "execution",
       arguments: {
         worktree: "relative/path",
         task: "bounded task",

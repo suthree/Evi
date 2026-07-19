@@ -747,6 +747,25 @@ export class GoalRuntime {
       operationUsage = addUsage(operationUsage, modelUsage);
 
       if (cognition.type === "blocked") {
+        const terminalWorkspaceFreshness = await goalWorkspaceFreshness(events, state.view);
+        if (terminalWorkspaceFreshness.status === "changed_unobserved") {
+          const summary = "Goal blocked decision rejected because the changed execution workspace remains unobserved.";
+          const nextAction = "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one harness-owned workspace observation, and then re-evaluate the blocker.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "workspace_observation_required",
+            summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: modelUsage
+          })).view;
+        }
         if (goalObservationObligation(events, command.goal_id).status === "required") {
           const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
           const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation, and then re-evaluate the blocker.";
@@ -782,7 +801,15 @@ export class GoalRuntime {
       }
 
       if (cognition.type === "outcome") {
-        return this.verifyOutcome(events, state, command, commandDigest, cognition.outcome, modelUsage);
+        return this.verifyOutcome(
+          events,
+          state,
+          command,
+          commandDigest,
+          cognition.outcome,
+          modelUsage,
+          await goalWorkspaceFreshness(events, state.view)
+        );
       }
 
       const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
@@ -1005,7 +1032,8 @@ export class GoalRuntime {
     command: z.infer<typeof continueCommandSchema>,
     commandDigest: string,
     proposal: GoalOutcomeProposal,
-    usageDelta: GoalUsage
+    usageDelta: GoalUsage,
+    workspaceFreshness: GoalWorkspaceFreshnessView
   ): Promise<GoalView> {
     const lineage = goalChangeLineage(events, command.goal_id);
     if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
@@ -1038,7 +1066,19 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    if (goalObservationObligation(events, command.goal_id).status === "required") {
+    if (workspaceFreshness.status === "changed_unobserved") {
+      verification = parseVerificationResult({
+        status: "failed",
+        summary: "Outcome verification requires a canonical observation of the changed execution workspace.",
+        checks: [{
+          id: "execution_workspace_observation",
+          status: "failed",
+          summary: "The live bound-worktree HEAD differs from the latest harness-owned workspace observation.",
+          evidence_event_ids: [evidenceEventIds.at(-1)!]
+        }],
+        next_action: "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one harness-owned workspace observation, and continue the same goal."
+      });
+    } else if (goalObservationObligation(events, command.goal_id).status === "required") {
       verification = parseVerificationResult({
         status: "failed",
         summary: "Outcome verification requires a canonical observation after the latest continuation boundary.",
