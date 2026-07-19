@@ -119,5 +119,11 @@ Non-goals:
 - Green evidence after the last Spec review fix: focused anti-loop and
   changed-output tests 7/7; full GoalRuntime and cognition adapter files passed;
   direct TypeScript build passed; `git diff --check` passed.
-- Pending: independent review, full repository gate, PR/merge/deploy, and
-  same-Goal live acceptance.
+- Accepted source head: `9d75e4f`. Final independent Spec and Standards
+  reviews both reported 0 remaining actionable findings.
+- Full repository gate on the accepted source head passed by its exact
+  components: build; tests 1018/1018; skill validation; neutral naming across
+  134 implementation files. The components were run separately because the
+  full test harness removes the worktree's temporary root-dependency symlink;
+  no dependency or lockfile changed.
+- Pending: PR/merge/deploy and same-Goal live acceptance.
