@@ -711,6 +711,221 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
   }
 });
 
+test("GoalRuntime refreshes blocked goals with explicit prior and current Continue evidence", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The observed runtime state does not yet satisfy the Goal.",
+        next_action: "Continue after the runtime state may have changed."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      outcome("已刷新运行态证据并完成同一 Goal。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("freshness_start", "Refresh mutable evidence after a blocked Continue."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "freshness_continue_one",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
+
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "freshness_continue_two",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+
+    const inheritedObservation = cognition.calls[2]!.evidence.find((item) => item.kind === "observation");
+    assert.equal(inheritedObservation?.continue_scope, "prior_continue");
+    const refreshedObservations = cognition.calls[3]!.evidence.filter((item) => item.kind === "observation");
+    assert.deepEqual(
+      refreshedObservations.map((item) => item.continue_scope),
+      ["prior_continue", "current_continue"]
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects a repeated blocker without a post-boundary observation", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Continue after the runtime may have changed."
+      },
+      {
+        type: "blocked",
+        summary: "Repeat the historical runtime blocker without another observation.",
+        next_action: "Keep waiting on the historical snapshot."
+      }
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("stale_blocker_start", "Do not repeat a stale mutable-state blocker."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_one",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.checkpoint.cursor, "post_boundary_observation_required");
+    assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(rejected.checkpoint.summary, /Repeat the historical runtime blocker/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects an outcome that reuses only prior Continue observations", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Continue after the runtime may have changed."
+      },
+      outcome("错误地用历史运行态 observation 宣称完成。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("stale_outcome_start", "Require current evidence after a blocked Continue."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "stale_outcome_continue_one",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "stale_outcome_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    assert.equal(
+      rejected.receipt,
+      null
+    );
+    const events = await readEvents(fixture.stateRoot);
+    const failed = events.at(-1)!;
+    assert.equal(failed.event_type, "goal_verification_failed");
+    assert.equal(
+      (failed.verification as { checks: Array<{ id: string; status: string }> }).checks.some((check) => check.id === "post_boundary_observation" && check.status === "failed"),
+      true
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime keeps a blocked freshness obligation across manual pause and resume", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Continue after the runtime may have changed."
+      },
+      outcome("错误地让 pause/resume 遮蔽历史 blocker。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("paused_freshness_start", "Preserve freshness obligations across manual lifecycle events."));
+    await runtime.handle({ type: "continue", command_id: "paused_freshness_continue_one", goal_id: started.goal_id });
+    await runtime.handle({ type: "pause", command_id: "paused_freshness_pause", goal_id: started.goal_id, reason: "Manual checkpoint." });
+    await runtime.handle({ type: "resume", command_id: "paused_freshness_resume", goal_id: started.goal_id });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "paused_freshness_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    const failed = (await readEvents(fixture.stateRoot)).at(-1)!;
+    assert.equal(failed.event_type, "goal_verification_failed");
+    assert.equal(
+      (failed.verification as { checks: Array<{ id: string }> }).checks.some((check) => check.id === "post_boundary_observation"),
+      true
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime keeps a blocked freshness obligation across denied action soft checkpoints", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      {
+        type: "blocked",
+        summary: "A current observation is required before completion.",
+        next_action: "Obtain one bounded observation."
+      },
+      action("file.write_state", { path: "goals/events.jsonl", text: "forbidden" }, "Attempt a denied control-plane write."),
+      outcome("错误地让 denied action 和 soft checkpoint 清除 freshness obligation。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: { verify: passedVerification }
+    });
+    const started = await runtime.handle({
+      ...start("denied_soft_freshness_start", "Do not let neutral events erase freshness obligations."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    await runtime.handle({ type: "continue", command_id: "denied_soft_freshness_one", goal_id: started.goal_id });
+    const checkpointed = await runtime.handle({
+      type: "continue",
+      command_id: "denied_soft_freshness_two",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(checkpointed.continuation_reasons, ["soft_budget_reached"]);
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "denied_soft_freshness_three",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    assert.equal(rejected.receipt, null);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime replays historical planned events without capability selection metadata", async () => {
   const fixture = await createFixture();
   try {
@@ -814,12 +1029,69 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     const softBudgetEvidence = cognition.calls[1]!.evidence.find((item) => item.kind === "pause");
     assert.equal(softBudgetEvidence?.summary, "Soft execution budget reached; continue the same Goal in a new tranche.");
     assert.deepEqual(softBudgetEvidence?.refs, []);
+    const priorObservation = cognition.calls[1]!.evidence.find((item) => item.kind === "observation");
+    assert.equal(priorObservation?.continue_scope, "prior_continue");
     assert.deepEqual(cognition.calls[1]!.execution_budget, {
       scope: "per_continue_command",
       limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },
       used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
       remaining: { model_rounds: 1, tool_calls: 4, elapsed_ms: 10_000 }
     });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime exposes a satisfied observation obligation so one-round cognition can terminate", async () => {
+  const fixture = await createFixture();
+  try {
+    const calls: GoalCognitionInput[] = [];
+    const cognition: GoalCognition = {
+      async next(input) {
+        calls.push(structuredClone(input));
+        if (calls.length === 1) {
+          return {
+            type: "blocked",
+            summary: "Current evidence is insufficient.",
+            next_action: "Obtain one bounded observation after this boundary."
+          };
+        }
+        const obligation = input.observation_obligation;
+        if (obligation?.status === "satisfied") {
+          return outcome("边界后的观察已满足义务；在下一轮评估并完成。")
+        }
+        return action("runtime.inspect", {}, "Obtain one bounded post-boundary observation.");
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("obligation_liveness_start", "Finish after a fresh observation across a one-round soft checkpoint."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_block",
+      goal_id: started.goal_id
+    });
+    const observed = await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_observe",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(observed.continuation_reasons, ["soft_budget_reached"]);
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_finish",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.equal(calls[1]!.observation_obligation.status, "required");
+    assert.equal(calls[2]!.observation_obligation.status, "satisfied");
   } finally {
     await fixture.cleanup();
   }
@@ -999,6 +1271,7 @@ test("GoalRuntime keeps verification failure and later success on one identity",
     const runtime = createRuntime(fixture.store, {
       cognition: sequenceCognition([
         outcome("第一次候选仍需验证。", "degraded"),
+        action("runtime.inspect", {}, "Observe current runtime state before retrying verification."),
         outcome("修复后候选已就绪。", "healthy")
       ]),
       tools: recordingTools(),
