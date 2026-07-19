@@ -243,6 +243,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 119_000 }
     },
     observation_obligation: { status: "satisfied" },
+    decision_feedback: [],
     workspace_freshness: {
       status: "unbound",
       observed_head_commit: null,
@@ -289,6 +290,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /prior_continue.*historical event/i);
   assert.match(requests[0]!.instructions, /observation_obligation.*required.*satisfied/i);
   assert.match(requests[0]!.instructions, /Do not reacquire.*solely because.*prior_continue/i);
+  assert.match(requests[0]!.instructions, /repeated_non_progress_observation/);
+  assert.match(requests[0]!.instructions, /No particular fallback tool is mandatory/);
   assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
   assert.match(requests[0]!.instructions, /changed_unobserved.*selected ref.*repository fact/i);
   assert.match(requests[0]!.instructions, /control-placed result cannot align/i);
@@ -299,6 +302,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"continue_scope": "current_continue"/);
   assert.match(requests[0]!.input, /"observation_obligation"/);
   assert.match(requests[0]!.input, /"status": "satisfied"/);
+  assert.match(requests[0]!.input, /Current Decision Feedback/);
   assert.match(requests[0]!.input, /Execution Workspace Freshness/);
   assert.match(requests[0]!.input, /"status": "unbound"/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);

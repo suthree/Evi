@@ -1196,6 +1196,329 @@ test("GoalRuntime refreshes blocked goals with explicit prior and current Contin
   }
 });
 
+test("GoalRuntime replans after a repeated non-progress observation loop", async () => {
+  const fixture = await createFixture();
+  try {
+    const firstBlocker = {
+      type: "blocked" as const,
+      summary: "The observed runtime state still does not satisfy the Goal.",
+      next_action: "Continue after the runtime state may have changed."
+    };
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      firstBlocker,
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The refreshed snapshot leaves the same unresolved runtime gap.",
+        next_action: "Wait for external runtime progress before checking again."
+      },
+      action("file.read", { scope: "repo", path: "CONTEXT.md" }, "Try a different evidence source after the unchanged refresh.")
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("non_progress_start", "Replan instead of repeating an unchanged observation loop."));
+    const firstBlocked = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_continue_one",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(firstBlocked.continuation_reasons, ["blocked"]);
+
+    const replanned = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.deepEqual(tools.calls.map((item) => item.tool), [
+      "runtime.inspect",
+      "runtime.inspect",
+      "file.read"
+    ]);
+    assert.equal(cognition.calls.length, 5);
+    assert.deepEqual(cognition.calls[4]!.decision_feedback.map((item) => item.code), [
+      "repeated_non_progress_observation"
+    ]);
+    assert.deepEqual(replanned.continuation_reasons, ["soft_budget_reached"]);
+    assert.doesNotMatch(replanned.checkpoint.summary, /runtime state still does not satisfy/i);
+    assert.equal(replanned.usage.model_rounds, 5);
+    assert.equal(replanned.usage.tool_calls, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime permits a blocker when the repeated action observes changed progress", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after an external change."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The changed runtime snapshot exposes a different unresolved boundary.",
+        next_action: "Address the newly observed boundary before continuing."
+      }
+    ]);
+    const calls: EffectAction[] = [];
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        calls.push(structuredClone(effectAction));
+        return {
+          id: `changed_result_${calls.length}`,
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Observed the current bounded source.",
+          output: { observed: true, text: calls.length === 1 ? "alpha" : "bravo" },
+          side_effect_level: "none",
+          created_at: `2026-07-17T00:20:0${calls.length}.000Z`
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("changed_progress_start", "Allow a fresh blocker after material observation progress."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "changed_progress_continue_one",
+      goal_id: started.goal_id
+    });
+    const changedBlocker = await runtime.handle({
+      type: "continue",
+      command_id: "changed_progress_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(changedBlocker.checkpoint.cursor, "blocked");
+    assert.match(changedBlocker.checkpoint.summary, /different unresolved boundary/i);
+    assert.equal(cognition.calls.length, 4);
+    assert.equal(calls.length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime detects non-progress across one-model-round Continue tranches", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the equivalent observation as progress.",
+        next_action: "Repeat the same runtime refresh."
+      }
+    ]);
+    const startCommand = start("non_progress_single_round_start", "Derive progress across one-model-round tranches.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 1 };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    for (const commandId of [
+      "non_progress_single_round_continue_one",
+      "non_progress_single_round_continue_two",
+      "non_progress_single_round_continue_three"
+    ]) {
+      await runtime.handle({ type: "continue", command_id: commandId, goal_id: started.goal_id });
+    }
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_single_round_continue_four",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(rejected.checkpoint.summary, /Incorrectly accept/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime checkpoints rejected non-progress feedback when the model budget is exhausted", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The equivalent refresh leaves the same unresolved boundary.",
+        next_action: "Wait and repeat the same runtime refresh."
+      },
+      action("file.read", { scope: "repo", path: "CONTEXT.md" }, "Choose a different evidence path in the next tranche."),
+      outcome("已通过不同证据路径完成同一 Goal。")
+    ]);
+    const startCommand = start("non_progress_budget_start", "Carry rejected decision feedback across a budget checkpoint.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 2 };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_budget_continue_one",
+      goal_id: started.goal_id
+    });
+    const checkpointed = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_budget_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(checkpointed.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(checkpointed.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(checkpointed.checkpoint.summary, /equivalent refresh leaves/i);
+    assert.equal(checkpointed.usage.model_rounds, 4);
+
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_budget_continue_three",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.equal(cognition.calls[4]!.observation_obligation.status, "satisfied");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime does not redispatch the same action after non-progress feedback", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The equivalent refresh leaves the same unresolved boundary.",
+        next_action: "Wait and repeat the same runtime refresh."
+      },
+      action("runtime.inspect", {}, "Incorrectly repeat the action rejected by decision feedback."),
+      action("file.read", { scope: "repo", path: "CONTEXT.md" }, "Choose a materially different evidence path.")
+    ]);
+    const startCommand = start("non_progress_redispatch_start", "Do not dispatch an action already identified as non-progressing.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 4 };
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_redispatch_continue_one",
+      goal_id: started.goal_id
+    });
+    const replanned = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_redispatch_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.deepEqual(tools.calls.map((item) => item.tool), [
+      "runtime.inspect",
+      "runtime.inspect",
+      "file.read"
+    ]);
+    assert.deepEqual(replanned.continuation_reasons, ["soft_budget_reached"]);
+    assert.equal(replanned.usage.model_rounds, 6);
+    assert.equal(replanned.usage.tool_calls, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime preserves the non-progress guard across its budget checkpoint", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The equivalent refresh leaves the same unresolved boundary.",
+        next_action: "Wait and repeat the same runtime refresh."
+      },
+      action("runtime.inspect", {}, "Incorrectly repeat the same action in the next tranche."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the repeated blocker after the harness checkpoint.",
+        next_action: "Repeat the same runtime refresh again."
+      }
+    ]);
+    const startCommand = start("non_progress_checkpoint_guard_start", "Keep the original blocker visible across a harness checkpoint.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 2 };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_one",
+      goal_id: started.goal_id
+    });
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_two",
+      goal_id: started.goal_id
+    });
+    const guardedAgain = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_three",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(guardedAgain.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(guardedAgain.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(guardedAgain.checkpoint.summary, /Incorrectly accept/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime rejects a repeated blocker without a post-boundary observation", async () => {
   const fixture = await createFixture();
   try {
@@ -1210,6 +1533,12 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
         type: "blocked",
         summary: "Repeat the historical runtime blocker without another observation.",
         next_action: "Keep waiting on the historical snapshot."
+      },
+      action("runtime.inspect", {}, "Refresh after the freshness harness rejection."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the same blocker after an equivalent refresh.",
+        next_action: "Repeat the same refresh again."
       }
     ]);
     const runtime = createRuntime(fixture.store, {
@@ -1217,7 +1546,9 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
-    const started = await runtime.handle(start("stale_blocker_start", "Do not repeat a stale mutable-state blocker."));
+    const startCommand = start("stale_blocker_start", "Do not repeat a stale mutable-state blocker.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 2 };
+    const started = await runtime.handle(startCommand);
     await runtime.handle({
       type: "continue",
       command_id: "stale_blocker_continue_one",
@@ -1232,6 +1563,15 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
     assert.equal(rejected.checkpoint.cursor, "post_boundary_observation_required");
     assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
     assert.doesNotMatch(rejected.checkpoint.summary, /Repeat the historical runtime blocker/);
+
+    const guarded = await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_three",
+      goal_id: started.goal_id
+    });
+    assert.equal(guarded.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(guarded.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(guarded.checkpoint.summary, /Incorrectly accept/);
   } finally {
     await fixture.cleanup();
   }
@@ -3116,7 +3456,15 @@ function recordingTools(): GoalToolExecutor & { calls: EffectAction[] } {
                 observed: true,
                 change: { kind: "state_change", identity: effectAction.arguments.path }
               }
-            : { observed: true },
+            : effectAction.tool === "runtime.inspect"
+              ? {
+                  observed: true,
+                  updated_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`,
+                  channel: {
+                    last_accepted_at: `2026-07-17T00:09:${String(calls.length).padStart(2, "0")}.000Z`
+                  }
+                }
+              : { observed: true },
         side_effect_level: effectAction.tool === "file.read" ? "none" : "local_write",
         created_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`
       } satisfies ToolResult;

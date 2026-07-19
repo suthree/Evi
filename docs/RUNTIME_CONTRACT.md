@@ -401,6 +401,31 @@ create the hard obligation; otherwise a one-model-round tranche could never
 accept the observation it was forced to checkpoint immediately after
 recording.
 
+A fresh observation is not automatically progress. After a model-authored
+blocker, GoalRuntime compares the canonical observations that follow it with
+the last observation that preceded it, independent of Continue tranche
+boundaries. If their action digests and decision-facing identities remain
+equivalent and cognition proposes another blocker, the proposal is rejected
+inside the remaining tranche rather than ending the Continue. The
+decision-facing identity uses the tool result's bounded normalized output plus
+its semantic summary, success, effect, refs, typed changes, failure,
+verification, and workspace control markers. Result-envelope ids and
+recognized observation timestamps do not manufacture progress, while changed
+file text or other bounded semantic output remains progress. Cognition
+then receives ephemeral `repeated_non_progress_observation` decision feedback
+and must dynamically choose a materially different evidence path or propose a
+supported outcome. While that feedback is active, the same action digest is
+not dispatched again. The feedback is not canonical evidence and names no
+mandatory fallback tool. If no model round remains, the existing blocked event
+shape records a `non_progress_replan_required` checkpoint and the rejected
+round's usage; this harness checkpoint does not create a new observation
+obligation or mask the last model-authored blocker during a later comparison.
+The existing `post_boundary_observation_required` freshness rejection is also
+transparent only to that model-blocker lookup; it still owns its normal fresh
+observation obligation until a later canonical observation satisfies it.
+The projection is derived from existing events and adds no event
+schema, progress ledger, mutable score, task router, or second lifecycle owner.
+
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
 tool contracts and their model-visible constraints, readiness under the Goal's
