@@ -98,3 +98,38 @@ command dispatch and delegates the deployment command once.
   shared Git metadata needed for a commit. The main harness therefore owns the
   exact local commit handoff; this does not widen Codex sandbox authority or
   change the four-file implementation scope.
+
+## Integration Evidence
+
+- PR #102 was accepted at exact head
+  `6c90aa2e76109efc0f2af3480ffcc51b79ff4e6d` and merged to `develop` as
+  `7067c1bd97ff48389e20d713101cb89fbdaf9710`. The merge object's parents are
+  the pre-change base `a0f5ce17195c5d884606c29ea8be90a751cc9a17`
+  and the accepted PR head; do not conflate the PR head with the merge commit
+  required by the deployment acceptance.
+- Canonical deployment history
+  `deployments/history/deployment_20260718165413_7067c1bd97ff.json` records
+  exact source commit `7067c1bd97ff48389e20d713101cb89fbdaf9710`,
+  release `7067c1bd97ff48389e20d713101cb89fbdaf9710:6cac4b554d1b83fc`,
+  `status=stable`, `stable_at=2026-07-18T16:56:03.047Z`, zero failures, and
+  previous source `a0f5ce17195c5d884606c29ea8be90a751cc9a17` as the rollback
+  source.
+- The next canonical deployment history entry,
+  `deployments/history/deployment_20260719045942_90a785879c56.json`, records
+  `7067c1bd97ff48389e20d713101cb89fbdaf9710` as both the previous stable
+  source and the installed controller source before the 90a candidate
+  activation. This independently confirms that the exact Issue #101 merge
+  release remained the resident installed runtime until its successor.
+- While that exact release was resident and before the 90a deployment request,
+  the Feishu canonical event ledger accepted and delivered multiple real p2p
+  Goal controls. The first bounded pair is inbound message
+  `om_x100b6af0da99f0a0b3ffcae1c9e2a07` at
+  `2026-07-19T03:49:25Z` and its delivered `confirm` result at
+  `2026-07-19T03:49:29Z`; later `continue` controls through
+  `2026-07-19T03:57:35Z` provide repeated ingress evidence.
+- Later cumulative releases (90a, e562, and a53) do not replace or weaken the
+  exact historical deployment evidence above. The current a53 runtime is a
+  separately verified healthy/current successor and the Issue #101 CLI files
+  are unchanged between `6c90aa2` and a53.
+- Issue #101 remains open and this task remains active until the same real
+  Feishu Goal produces a terminal receipt and the outcome owner audits it.
