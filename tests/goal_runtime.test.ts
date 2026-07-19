@@ -711,6 +711,51 @@ test("GoalRuntime owns safe action, observation, verification, and one receipt",
   }
 });
 
+test("GoalRuntime refreshes blocked goals with explicit prior and current Continue evidence", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The observed runtime state does not yet satisfy the Goal.",
+        next_action: "Continue after the runtime state may have changed."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      outcome("已刷新运行态证据并完成同一 Goal。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("freshness_start", "Refresh mutable evidence after a blocked Continue."));
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "freshness_continue_one",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
+
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "freshness_continue_two",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+
+    const inheritedObservation = cognition.calls[2]!.evidence.find((item) => item.kind === "observation");
+    assert.equal(inheritedObservation?.continue_scope, "prior_continue");
+    const refreshedObservations = cognition.calls[3]!.evidence.filter((item) => item.kind === "observation");
+    assert.deepEqual(
+      refreshedObservations.map((item) => item.continue_scope),
+      ["prior_continue", "current_continue"]
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime replays historical planned events without capability selection metadata", async () => {
   const fixture = await createFixture();
   try {
@@ -814,6 +859,8 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
     const softBudgetEvidence = cognition.calls[1]!.evidence.find((item) => item.kind === "pause");
     assert.equal(softBudgetEvidence?.summary, "Soft execution budget reached; continue the same Goal in a new tranche.");
     assert.deepEqual(softBudgetEvidence?.refs, []);
+    const priorObservation = cognition.calls[1]!.evidence.find((item) => item.kind === "observation");
+    assert.equal(priorObservation?.continue_scope, "prior_continue");
     assert.deepEqual(cognition.calls[1]!.execution_budget, {
       scope: "per_continue_command",
       limit: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 },

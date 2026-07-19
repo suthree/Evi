@@ -186,13 +186,15 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       kind: "intent",
       summary: "Read package metadata.",
       refs: [],
-      occurred_at: "2026-07-17T00:00:00.000Z"
+      occurred_at: "2026-07-17T00:00:00.000Z",
+      continue_scope: "prior_continue"
     }, {
       event_id: "goal_event_2",
       kind: "observation",
       summary: "Codex introduced one observed path.",
       refs: ["packages/runtime/src/goal_runtime.ts"],
       occurred_at: "2026-07-17T00:00:01.000Z",
+      continue_scope: "current_continue",
       operation: "execute_dynamic_code",
       tool: "codex.run",
       ok: true,
@@ -215,7 +217,12 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Do not guess provider model tokens/);
   assert.match(requests[0]!.instructions, /set purpose="verification"/);
   assert.match(requests[0]!.instructions, /Purpose marks evidence intent, never authority/);
+  assert.match(requests[0]!.instructions, /prior_continue.*historical event/i);
+  assert.match(requests[0]!.instructions, /Before repeating a blocker or proposing an outcome.*drift/i);
+  assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
   assert.match(requests[0]!.input, /Canonical Evidence/);
+  assert.match(requests[0]!.input, /"continue_scope": "prior_continue"/);
+  assert.match(requests[0]!.input, /"continue_scope": "current_continue"/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
   assert.match(requests[0]!.input, /"repository_authority"/);

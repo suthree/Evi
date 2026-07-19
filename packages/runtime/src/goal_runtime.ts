@@ -443,10 +443,14 @@ export interface GoalEvidenceView {
   details?: string;
 }
 
+export interface GoalCognitionEvidenceView extends GoalEvidenceView {
+  continue_scope: "current_continue" | "prior_continue";
+}
+
 export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
-  evidence: GoalEvidenceView[];
+  evidence: GoalCognitionEvidenceView[];
   capability_portfolio: GoalCapabilityPortfolio;
 }
 
@@ -701,7 +705,7 @@ export class GoalRuntime {
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
-          evidence: structuredClone(buildCognitionEvidence(events, command.goal_id)),
+          evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
         }));
       } catch (error) {
@@ -1606,10 +1610,19 @@ async function validateWorkspacePrepareObservation(
   }
 }
 
-function buildCognitionEvidence(events: GoalRuntimeEvent[], goalId: string): GoalEvidenceView[] {
+function buildCognitionEvidence(
+  events: GoalRuntimeEvent[],
+  goalId: string,
+  activeContinueCommandId: string
+): GoalCognitionEvidenceView[] {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   const selected = goalEvents.filter((event) => event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned").slice(-16);
-  return selected.map(evidenceView);
+  return selected.map((event) => ({
+    ...evidenceView(event),
+    continue_scope: event.command_id === activeContinueCommandId
+      ? "current_continue"
+      : "prior_continue"
+  }));
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {
