@@ -72,6 +72,10 @@ const VOLATILE_OBSERVATION_TIMESTAMP_KEYS = new Set([
   "observed_at",
   "last_accepted_at"
 ]);
+const NON_PROGRESS_TRANSPARENT_BLOCKER_CURSORS = new Set([
+  "non_progress_replan_required",
+  "post_boundary_observation_required"
+]);
 
 interface StateRootMutationQueue {
   tail: Promise<void>;
@@ -1872,7 +1876,9 @@ function repeatedNonProgressObservationFeedback(
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
     const event = goalEvents[index]!;
     if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
-    if (event.event_type === "goal_blocked" && event.checkpoint.cursor === "non_progress_replan_required") continue;
+    if (event.event_type === "goal_blocked"
+      && event.checkpoint.cursor !== null
+      && NON_PROGRESS_TRANSPARENT_BLOCKER_CURSORS.has(event.checkpoint.cursor)) continue;
     if (event.event_type !== "goal_blocked" || event.checkpoint.cursor !== "blocked") return null;
     priorBoundaryIndex = index;
     break;

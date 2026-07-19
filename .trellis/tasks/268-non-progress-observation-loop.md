@@ -113,9 +113,11 @@ Non-goals:
   another observation obligation or mask the original model blocker. Event
   pairing now follows canonical order across Continue commands, and normalized
   bounded output preserves semantic changes while ignoring recognized
-  observation timestamps.
-- Green evidence after review fixes: focused non-progress and changed-output
-  tests 6/6; full GoalRuntime and cognition adapter files passed; direct
-  TypeScript build passed; `git diff --check` passed.
+  observation timestamps. Freshness and non-progress harness rejection cursors
+  stay transparent to the model-blocker lookup without weakening the freshness
+  observation obligation.
+- Green evidence after the last Spec review fix: focused anti-loop and
+  changed-output tests 7/7; full GoalRuntime and cognition adapter files passed;
+  direct TypeScript build passed; `git diff --check` passed.
 - Pending: independent review, full repository gate, PR/merge/deploy, and
   same-Goal live acceptance.

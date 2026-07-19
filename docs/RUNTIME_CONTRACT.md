@@ -420,6 +420,9 @@ mandatory fallback tool. If no model round remains, the existing blocked event
 shape records a `non_progress_replan_required` checkpoint and the rejected
 round's usage; this harness checkpoint does not create a new observation
 obligation or mask the last model-authored blocker during a later comparison.
+The existing `post_boundary_observation_required` freshness rejection is also
+transparent only to that model-blocker lookup; it still owns its normal fresh
+observation obligation until a later canonical observation satisfies it.
 The projection is derived from existing events and adds no event
 schema, progress ledger, mutable score, task router, or second lifecycle owner.
 

@@ -1533,6 +1533,12 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
         type: "blocked",
         summary: "Repeat the historical runtime blocker without another observation.",
         next_action: "Keep waiting on the historical snapshot."
+      },
+      action("runtime.inspect", {}, "Refresh after the freshness harness rejection."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the same blocker after an equivalent refresh.",
+        next_action: "Repeat the same refresh again."
       }
     ]);
     const runtime = createRuntime(fixture.store, {
@@ -1540,7 +1546,9 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
       tools: recordingTools(),
       verifier: new CanonicalGoalVerifier()
     });
-    const started = await runtime.handle(start("stale_blocker_start", "Do not repeat a stale mutable-state blocker."));
+    const startCommand = start("stale_blocker_start", "Do not repeat a stale mutable-state blocker.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 2 };
+    const started = await runtime.handle(startCommand);
     await runtime.handle({
       type: "continue",
       command_id: "stale_blocker_continue_one",
@@ -1555,6 +1563,15 @@ test("GoalRuntime rejects a repeated blocker without a post-boundary observation
     assert.equal(rejected.checkpoint.cursor, "post_boundary_observation_required");
     assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
     assert.doesNotMatch(rejected.checkpoint.summary, /Repeat the historical runtime blocker/);
+
+    const guarded = await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_three",
+      goal_id: started.goal_id
+    });
+    assert.equal(guarded.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(guarded.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(guarded.checkpoint.summary, /Incorrectly accept/);
   } finally {
     await fixture.cleanup();
   }
