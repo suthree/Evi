@@ -119,13 +119,27 @@ test("latest observed workspace HEAD trusts only harness-owned workspace observa
   assert.equal(latestObservedWorkspaceHead(base, results), snapshotHead);
   assert.equal(latestObservedWorkspaceHead(base, results.slice(0, 2)), verificationHead);
   assert.equal(latestObservedWorkspaceHead(base, [toolResult({ repository: { head_commit: unrelatedRuntimeHead } })]), base);
+  assert.equal(latestObservedWorkspaceHead(base, [toolResult({ workspace_observation: {
+    status: "observed",
+    head_commit: snapshotHead,
+    branch: "codex/issue-110-fixture",
+    worktree: "/tmp/worktree",
+    authority: "harness-owned post-tool workspace observation"
+  } }, false)]), snapshotHead);
+  assert.equal(latestObservedWorkspaceHead(base, [toolResult({ workspace_observation: {
+    status: "observed",
+    head_commit: snapshotHead,
+    branch: "codex/issue-110-fixture",
+    worktree: "/tmp/worktree",
+    authority: "tool-declared workspace observation"
+  } }, false)]), base);
 });
 
-function toolResult(output: Record<string, unknown>): ToolResult {
+function toolResult(output: Record<string, unknown>, ok = true): ToolResult {
   return {
     id: `tool_result_${Math.random()}`,
     tool: "fixture",
-    ok: true,
+    ok,
     summary: "fixture observation",
     output,
     side_effect_level: "none",

@@ -18,6 +18,14 @@ export interface GoalWorkspaceFreshnessInput {
   observed_head_commit: string | null;
 }
 
+export interface GoalWorkspaceObservation {
+  status: "observed";
+  head_commit: string;
+  branch: string;
+  worktree: string;
+  authority: "harness-owned post-tool workspace observation";
+}
+
 export async function inspectGoalWorkspaceFreshness(
   input: GoalWorkspaceFreshnessInput
 ): Promise<GoalWorkspaceFreshnessView> {
@@ -50,23 +58,43 @@ export function latestObservedWorkspaceHead(
 ): string {
   let head = commit(initialHead) ?? initialHead;
   for (const result of results) {
-    if (!result.ok) continue;
-    const changes = Array.isArray(result.output.changes) ? result.output.changes : [];
-    for (const change of changes) {
-      if (!record(change) || change.kind !== "git_commit") continue;
-      head = commit(change.identity) ?? head;
+    if (result.ok) {
+      const changes = Array.isArray(result.output.changes) ? result.output.changes : [];
+      for (const change of changes) {
+        if (!record(change) || change.kind !== "git_commit") continue;
+        head = commit(change.identity) ?? head;
+      }
+      const singular = record(result.output.change) ? result.output.change : null;
+      if (singular?.kind === "git_commit") head = commit(singular.identity) ?? head;
     }
-    const singular = record(result.output.change) ? result.output.change : null;
-    if (singular?.kind === "git_commit") head = commit(singular.identity) ?? head;
     const verification = record(result.output.verification) ? result.output.verification : null;
     const after = verification && record(verification.after) ? verification.after : null;
     head = commit(after?.head_commit) ?? head;
-    const observation = record(result.output.workspace_observation)
-      ? result.output.workspace_observation
-      : null;
-    if (observation?.status === "observed") head = commit(observation.head_commit) ?? head;
+    const observation = parseGoalWorkspaceObservation(result.output.workspace_observation);
+    if (observation) head = observation.head_commit;
   }
   return head;
+}
+
+export function parseGoalWorkspaceObservation(value: unknown): GoalWorkspaceObservation | null {
+  if (!record(value)
+    || value.status !== "observed"
+    || value.authority !== "harness-owned post-tool workspace observation") return null;
+  const headCommit = commit(value.head_commit);
+  if (!headCommit
+    || typeof value.branch !== "string"
+    || !value.branch.trim()
+    || value.branch.length > 200
+    || typeof value.worktree !== "string"
+    || !value.worktree.startsWith("/")
+    || value.worktree.length > 2_000) return null;
+  return {
+    status: "observed",
+    head_commit: headCommit,
+    branch: value.branch,
+    worktree: value.worktree,
+    authority: "harness-owned post-tool workspace observation"
+  };
 }
 
 function view(

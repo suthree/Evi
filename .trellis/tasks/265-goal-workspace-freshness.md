@@ -86,3 +86,13 @@ canonical evidence.
   before the full run. `pnpm run check` then passed on 2026-07-19: TypeScript
   build, 1008/1008 tests, active Skill validation, and neutral naming across
   134 implementation files. `git diff --check` also passed.
+- Independent review of `f6b06de` found two P2 freshness-loss paths: a failed
+  execution-scoped tool result did not advance the observed HEAD, and an
+  output larger than the canonical 80,000-character bound dropped the
+  workspace marker. Regression tests reproduced both failures before the fix.
+- Workspace observations and harness verification snapshots now remain usable
+  for freshness even when the tool's domain result fails. Oversized canonical
+  results preserve only a strictly parsed harness-owned marker; a forged
+  authority marker remains ignored. The post-review focused suite passed, and
+  the final `pnpm run check` again passed 1008/1008 tests plus build, active
+  Skill validation, and neutral naming across 134 implementation files.

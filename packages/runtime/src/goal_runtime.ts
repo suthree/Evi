@@ -45,6 +45,7 @@ import {
 import {
   inspectGoalWorkspaceFreshness,
   latestObservedWorkspaceHead,
+  parseGoalWorkspaceObservation,
   type GoalWorkspaceFreshnessView
 } from "./goal_workspace_freshness.js";
 
@@ -2130,6 +2131,8 @@ function boundedToolResult(value: ToolResult): ToolResult {
     if (changes.success) controlFields.changes = changes.data;
     const verification = localVerificationMarker(cloned.output.verification);
     if (verification) controlFields.verification = verification;
+    const workspaceObservation = parseGoalWorkspaceObservation(cloned.output.workspace_observation);
+    if (workspaceObservation) controlFields.workspace_observation = workspaceObservation;
     for (const key of ["failure_kind", "path", "ref", "artifact_ref", "worktree"] as const) {
       const field = cloned.output[key];
       if (typeof field === "string" && field.length <= 2_000) controlFields[key] = field;

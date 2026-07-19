@@ -179,9 +179,23 @@ test("GoalRuntime exposes external workspace advancement until an execution-scop
         return outcome("新 worktree HEAD 已由执行域读取观察绑定。");
       }
     };
+    const realExecutor = new RuntimeGoalToolExecutor(fixture.store);
+    const tools: GoalToolExecutor = {
+      async execute(effectAction, decision, context) {
+        const result = await realExecutor.execute(effectAction, decision, context);
+        if (effectAction.tool !== "file.read") return result;
+        return {
+          ...result,
+          output: {
+            ...result.output,
+            oversized_diagnostic: "x".repeat(81_000)
+          }
+        };
+      }
+    };
     const runtime = createRuntime(fixture.store, {
       cognition,
-      tools: new RuntimeGoalToolExecutor(fixture.store),
+      tools,
       verifier: new CanonicalGoalVerifier()
     });
     const started = await runtime.handle({
@@ -219,9 +233,10 @@ test("GoalRuntime exposes external workspace advancement until an execution-scop
     const events = await readEvents(fixture.stateRoot);
     const readObservation = events.find((event) => event.event_type === "goal_action_observed"
       && (event.result as { tool?: string } | undefined)?.tool === "file.read") as {
-        result?: { output?: { workspace_observation?: { head_commit?: string } } };
+        result?: { output?: { workspace_observation?: { head_commit?: string }; truncated?: boolean } };
       } | undefined;
     assert.equal(readObservation?.result?.output?.workspace_observation?.head_commit, externalHead);
+    assert.equal(readObservation?.result?.output?.truncated, true);
   } finally {
     await fixture.cleanup();
   }
