@@ -129,9 +129,8 @@ command dispatch and delegates the deployment command once.
   `2026-07-19T03:57:35Z` provide repeated ingress evidence.
 - Later cumulative releases do not replace or weaken the exact historical
   deployment evidence above. The current `5a2bbb2c64d57d38f5684ffa8496113195edc7b0`
-  runtime is a separately verified stable, healthy/current successor with a
-  matched installed controller, connected Feishu inbound, zero deployment
-  failures, and rollback source
+  runtime is a separately verified stable, healthy/current successor with
+  connected Feishu inbound, zero deployment failures, and rollback source
   `43dd4ec3d9c36db5011c77b6b34285902d97b601`.
 - The unchanged real Feishu Goal `goal_20260718155814_357c4361` reached
   canonical sequence 235 with `event_type=goal_completed` and terminal receipt
