@@ -113,10 +113,11 @@ Non-goals:
   new worktree had no installed dependencies (`tsc: command not found`).
   `pnpm install --offline --frozen-lockfile` reused 55 packages from the local
   pnpm store without changing the lockfile or dependency declarations.
-- The repeated full `pnpm run check` passed: TypeScript build, 1012/1012 tests,
-  active Skill validation, and neutral naming across 134 implementation files.
-- `git diff --check` passed. The corrected source/test diff is 118 insertions
-  and 15
+- The repeated full `pnpm run check` passed on exact corrected head `78ced61`:
+  TypeScript build, 1012/1012 tests, active Skill validation, and neutral naming
+  across 134 implementation files.
+- `git diff --check` passed. The corrected source/test diff is 180 insertions
+  and 18
   deletions across `packages/runtime/src/tools.ts` and
   `tests/runtime_tools.test.ts`; Task267 remains the only governance artifact.
 
@@ -178,3 +179,22 @@ Non-goals:
   passed 33/33, TypeScript build passed, and `git diff --check` passed.
 - Pending: full repository gate and independent cycle-3 review of this final
   corrected diff.
+
+## Review Cycle 3
+
+- Spec review returned zero findings on exact head `78ced61` and independently
+  passed the focused 33/33 suite, the full 1012/1012 repository gate, build,
+  and diff check. It found no Goal specialization, static routing, new owner,
+  dependency, or scope expansion.
+- Standards review confirmed the protected-path, traversal-pruning, PATH
+  restoration, and prior evidence findings were closed, then found one P2
+  engine mismatch: caller include/exclude globs were sent only to ripgrep and
+  silently ignored by the Node fallback.
+- The public-tool regression first failed 32/33: with ripgrep unavailable,
+  `globs: ["*.ts"]` returned a Markdown file that ripgrep excluded. The fallback
+  now receives the bounded caller glob list and applies the same ordered
+  basename/path include-exclude selection before reading file bodies. Public
+  tests cover positive include and later exclude globs in both engines; the
+  focused suite then passed 33/33, build passed, and `git diff --check` passed.
+- Pending: full repository gate and independent cycle-4 review of the final
+  corrected head.

@@ -510,6 +510,7 @@ test("repo.search finds repo text with bounded output", async () => {
     const nestedRipgrepEvidence = await executeTool(useTool("repo.search", {
       query: "fallback-protected",
       path: ".",
+      globs: ["*.md"],
       max_results: 20,
       max_output_chars: 12000
     }), { store: fixture.store });
@@ -522,14 +523,39 @@ test("repo.search finds repo text with bounded output", async () => {
       text: "fallback-protected allowed evidence"
     }]);
 
+    const nestedRipgrepExcluded = await executeTool(useTool("repo.search", {
+      query: "fallback-protected",
+      path: ".",
+      globs: ["*.md", "!nested/.trellis/**"],
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(nestedRipgrepExcluded.ok, true);
+    assert.equal(nestedRipgrepExcluded.output.engine, "rg");
+    assert.deepEqual(nestedRipgrepExcluded.output.matches, []);
+
     const previousPath = process.env.PATH;
     const emptyBin = join(fixture.repoRoot, "empty-bin");
     await mkdir(emptyBin);
     process.env.PATH = emptyBin;
     try {
+      const fallbackIncludedElsewhere = await executeTool(useTool("repo.search", {
+        query: "fallback-protected",
+        path: ".",
+        globs: ["*.ts"],
+        max_results: 20,
+        max_output_chars: 12000
+      }), { store: fixture.store });
+
+      assert.equal(fallbackIncludedElsewhere.ok, true);
+      assert.equal(fallbackIncludedElsewhere.output.engine, "node");
+      assert.deepEqual(fallbackIncludedElsewhere.output.matches, []);
+
       const fallbackEvidence = await executeTool(useTool("repo.search", {
         query: "fallback-protected",
         path: ".",
+        globs: ["*.md"],
         max_results: 20,
         max_output_chars: 12000
       }), { store: fixture.store });
@@ -541,6 +567,18 @@ test("repo.search finds repo text with bounded output", async () => {
         line: 1,
         text: "fallback-protected allowed evidence"
       }]);
+
+      const fallbackExcluded = await executeTool(useTool("repo.search", {
+        query: "fallback-protected",
+        path: ".",
+        globs: ["*.md", "!nested/.trellis/**"],
+        max_results: 20,
+        max_output_chars: 12000
+      }), { store: fixture.store });
+
+      assert.equal(fallbackExcluded.ok, true);
+      assert.equal(fallbackExcluded.output.engine, "node");
+      assert.deepEqual(fallbackExcluded.output.matches, []);
     } finally {
       process.env.PATH = previousPath;
     }

@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { lstat, readlink, readdir, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { basename, relative, resolve } from "node:path";
+import { basename, matchesGlob, relative, resolve } from "node:path";
 import {
   blockedCodexStructuredResult,
   buildCodexRunArgv,
@@ -603,6 +603,7 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
   const fallback = await fallbackSearch(context.store, {
     query,
     path: searchPath,
+    globs,
     maxResults,
     maxOutputChars
   });
@@ -2441,7 +2442,7 @@ function parseRipgrepLine(line: string): Record<string, unknown> {
 
 async function fallbackSearch(
   store: AgentStore,
-  options: { query: string; path: string; maxResults: number; maxOutputChars: number }
+  options: { query: string; path: string; globs: string[]; maxResults: number; maxOutputChars: number }
 ): Promise<{ matches: Array<Record<string, unknown>>; truncated: boolean }> {
   const relFiles = await collectRepoFiles(store, options.path);
   const matches: Array<Record<string, unknown>> = [];
@@ -2449,7 +2450,7 @@ async function fallbackSearch(
   let truncated = false;
 
   for (const rel of relFiles) {
-    if (isIgnoredSearchPath(rel)) continue;
+    if (isIgnoredSearchPath(rel) || !matchesSearchGlobs(rel, options.globs)) continue;
     const text = await store.readRepoText(rel, options.maxOutputChars).catch(() => "");
     if (!text) continue;
     const lines = text.split(/\r?\n/);
@@ -2500,6 +2501,26 @@ function isIgnoredSearchPath(path: string): boolean {
     || component.startsWith(".runtime-")
     || component.startsWith(".runtime_")
     || component.startsWith(".local-runtime"));
+}
+
+function matchesSearchGlobs(path: string, globs: string[]): boolean {
+  if (globs.length === 0) return true;
+  let included = !globs.some((glob) => !glob.startsWith("!"));
+
+  for (const glob of globs) {
+    const excluded = glob.startsWith("!");
+    const pattern = excluded ? glob.slice(1) : glob;
+    if (!pattern) continue;
+    const candidate = pattern.includes("/") ? normalizeRelativePath(path) : basename(path);
+    try {
+      if (matchesGlob(candidate, pattern)) included = !excluded;
+    } catch {
+      // ripgrep owns invalid-glob diagnostics when available; fallback ignores
+      // a malformed pattern instead of widening the selected file set.
+    }
+  }
+
+  return included;
 }
 
 interface BoundedOutput {
