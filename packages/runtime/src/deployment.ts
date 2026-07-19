@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { constants, existsSync } from "node:fs";
-import { copyFile, mkdir, open, opendir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, open, opendir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   isCurrentRuntimeKnownGood,
@@ -571,8 +571,28 @@ export async function inspectLocalDeploymentHistoryBySourceCommit(
   let scannedEntries = 0;
   let invalidCandidateRef: string | null = null;
   let scanLimitExceeded = false;
+  let canonicalHistoryRoot: string;
   try {
-    const historyDirectory = await opendir(paths.historyRoot);
+    const historyInfo = await lstat(paths.historyRoot);
+    if (!historyInfo.isDirectory()) {
+      return {
+        source_commit: sourceCommit,
+        record: null,
+        source: { ref: historyRef, status: "invalid", reason: "invalid_value" },
+        boundary
+      };
+    }
+    const canonicalStateRoot = await realpath(stateRoot);
+    canonicalHistoryRoot = await realpath(paths.historyRoot);
+    if (canonicalHistoryRoot !== resolve(canonicalStateRoot, "deployments/history")) {
+      return {
+        source_commit: sourceCommit,
+        record: null,
+        source: { ref: historyRef, status: "invalid", reason: "invalid_value" },
+        boundary
+      };
+    }
+    const historyDirectory = await opendir(canonicalHistoryRoot);
     for await (const entry of historyDirectory) {
       scannedEntries += 1;
       if (scannedEntries > MAX_HISTORY_ENTRIES_SCANNED) {
@@ -626,7 +646,7 @@ export async function inspectLocalDeploymentHistoryBySourceCommit(
     return {
       name,
       ...await readDeploymentStateSource(
-        resolve(paths.historyRoot, name),
+        resolve(canonicalHistoryRoot, name),
         ref,
         isDeploymentRecordForStatus,
         MAX_HISTORY_RECORD_BYTES

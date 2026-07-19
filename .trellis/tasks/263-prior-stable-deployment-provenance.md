@@ -192,3 +192,20 @@ Explicit non-goals:
   across 133 implementation files. `git diff --check` passed.
 - Review cycle 3, PR integration, exact deployment/controller handoff, and
   same-Goal terminal acceptance remain pending.
+
+## Review Cycle 3 Corrections
+
+- Cycle 3 Spec and Standards reviews reproduced one remaining parent-owner
+  escape: a symlinked `deployments/history` directory could leave the canonical
+  state root before candidate-level `O_NOFOLLOW` applied.
+- The lookup now requires the history root itself to be a real directory and
+  its realpath to equal `<canonical-state-root>/deployments/history`; scanning
+  and candidate reads use that validated path. A dedicated outside-owner
+  history-directory symlink regression fails closed with `invalid_value`.
+- The direct history/Git/composition suite passed 18/18. Full `pnpm run check`,
+  skill validation, neutral naming validation across 133 implementation files,
+  and `git diff --check` passed. A fresh live-shape probe remained `consistent`
+  with exact prior deployment `7067c1b`, Issue #101 parent `6c90aa2`, local
+  ancestor `true`, no source errors/truncation, and connected Feishu inbound.
+- Review cycle 4, PR integration, exact deployment/controller handoff, and
+  same-Goal terminal acceptance remain pending.

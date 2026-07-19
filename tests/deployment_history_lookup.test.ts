@@ -149,6 +149,30 @@ test("deployment history lookup rejects matching symlinks and oversized candidat
   }
 });
 
+test("deployment history lookup rejects a history directory symlink outside the state owner", async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-root-link-"));
+  const outsideRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-outside-"));
+  const commit = "3".repeat(40);
+  try {
+    const deploymentsRoot = join(stateRoot, "deployments");
+    await mkdir(deploymentsRoot, { recursive: true });
+    const record = deploymentRecord(stateRoot, commit, "deployment_outside");
+    await writeFile(join(outsideRoot, `${record.id}.json`), `${JSON.stringify(record)}\n`, "utf8");
+    await symlink(outsideRoot, join(deploymentsRoot, "history"));
+
+    const lookup = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, commit);
+    assert.equal(lookup.record, null);
+    assert.deepEqual(lookup.source, {
+      ref: "deployments/history",
+      status: "invalid",
+      reason: "invalid_value"
+    });
+  } finally {
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(outsideRoot, { recursive: true, force: true });
+  }
+});
+
 test("deployment history lookup bounds the total number of inspected entries", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-scan-limit-"));
   const historyRoot = join(stateRoot, "deployments", "history");
