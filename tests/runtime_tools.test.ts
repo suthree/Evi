@@ -540,35 +540,7 @@ test("repo.search finds repo text with bounded output", async () => {
     await mkdir(emptyBin);
     process.env.PATH = emptyBin;
     try {
-      const fallbackIncludedElsewhere = await executeTool(useTool("repo.search", {
-        query: "fallback-protected",
-        path: ".",
-        globs: ["*.ts"],
-        max_results: 20,
-        max_output_chars: 12000
-      }), { store: fixture.store });
-
-      assert.equal(fallbackIncludedElsewhere.ok, true);
-      assert.equal(fallbackIncludedElsewhere.output.engine, "node");
-      assert.deepEqual(fallbackIncludedElsewhere.output.matches, []);
-
-      const fallbackEvidence = await executeTool(useTool("repo.search", {
-        query: "fallback-protected",
-        path: ".",
-        globs: ["*.md"],
-        max_results: 20,
-        max_output_chars: 12000
-      }), { store: fixture.store });
-
-      assert.equal(fallbackEvidence.ok, true);
-      assert.equal(fallbackEvidence.output.engine, "node");
-      assert.deepEqual(fallbackEvidence.output.matches, [{
-        path: "nested/.trellis/inside.md",
-        line: 1,
-        text: "fallback-protected allowed evidence"
-      }]);
-
-      const fallbackExcluded = await executeTool(useTool("repo.search", {
+      const unavailableSearch = await executeTool(useTool("repo.search", {
         query: "fallback-protected",
         path: ".",
         globs: ["*.md", "!nested/.trellis/**"],
@@ -576,9 +548,10 @@ test("repo.search finds repo text with bounded output", async () => {
         max_output_chars: 12000
       }), { store: fixture.store });
 
-      assert.equal(fallbackExcluded.ok, true);
-      assert.equal(fallbackExcluded.output.engine, "node");
-      assert.deepEqual(fallbackExcluded.output.matches, []);
+      assert.equal(unavailableSearch.ok, false);
+      assert.equal(unavailableSearch.output.engine, "unavailable");
+      assert.match(unavailableSearch.summary, /requires ripgrep/);
+      assertFailureKind(unavailableSearch, "search_error");
     } finally {
       process.env.PATH = previousPath;
     }

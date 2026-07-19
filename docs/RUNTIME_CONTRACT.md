@@ -2048,6 +2048,8 @@ Searches repository text.
 Required policy:
 
 - use `rg` when available
+- when `rg` is unavailable, fail closed with typed `search_error` evidence
+  rather than emulate a second glob/search engine inside the runtime
 - reject searches rooted inside repo-local runtime state paths such as
   `.runtime/`, `.runtime-*`, `.runtime_*`, and `.local-runtime*`
 - exclude repo-local runtime state paths from broad repo searches

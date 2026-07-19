@@ -2,10 +2,10 @@ import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { createReadStream } from "node:fs";
-import { lstat, readlink, readdir, realpath, stat } from "node:fs/promises";
+import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { basename, matchesGlob, relative, resolve } from "node:path";
+import { basename, relative, resolve } from "node:path";
 import {
   blockedCodexStructuredResult,
   buildCodexRunArgv,
@@ -600,22 +600,13 @@ async function runRepoSearch(args: Record<string, unknown>, context: ToolExecuti
     }, "none", ok ? undefined : "search_error");
   }
 
-  const fallback = await fallbackSearch(context.store, {
+  return toolResult("repo.search", false, "repo.search requires ripgrep (rg), but it is not available.", {
     query,
     path: searchPath,
-    globs,
-    maxResults,
-    maxOutputChars
-  });
-  return toolResult("repo.search", true, `repo.search found ${fallback.matches.length} result(s) for "${query}" with fallback search.`, {
-    query,
-    path: searchPath,
-    engine: "node",
+    engine: "unavailable",
     max_results: maxResults,
-    max_output_chars: maxOutputChars,
-    matches: fallback.matches,
-    truncated: fallback.truncated
-  }, "none");
+    max_output_chars: maxOutputChars
+  }, "none", "search_error");
 }
 
 async function runHttpFetch(args: Record<string, unknown>, context: ToolExecutionContext): Promise<ToolResult> {
@@ -2438,89 +2429,6 @@ function parseRipgrepLine(line: string): Record<string, unknown> {
     line: Number.parseInt(lineNumber, 10) || null,
     text: rest.join(":")
   };
-}
-
-async function fallbackSearch(
-  store: AgentStore,
-  options: { query: string; path: string; globs: string[]; maxResults: number; maxOutputChars: number }
-): Promise<{ matches: Array<Record<string, unknown>>; truncated: boolean }> {
-  const relFiles = await collectRepoFiles(store, options.path);
-  const matches: Array<Record<string, unknown>> = [];
-  let usedChars = 0;
-  let truncated = false;
-
-  for (const rel of relFiles) {
-    if (isIgnoredSearchPath(rel) || !matchesSearchGlobs(rel, options.globs)) continue;
-    const text = await store.readRepoText(rel, options.maxOutputChars).catch(() => "");
-    if (!text) continue;
-    const lines = text.split(/\r?\n/);
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (!line.includes(options.query)) continue;
-      const outputText = truncateOutput(line, 1000);
-      usedChars += outputText.length;
-      if (matches.length >= options.maxResults || usedChars > options.maxOutputChars) {
-        truncated = true;
-        return { matches, truncated };
-      }
-      matches.push({
-        path: rel,
-        line: index + 1,
-        text: outputText
-      });
-    }
-  }
-  return { matches, truncated };
-}
-
-async function collectRepoFiles(store: AgentStore, relPath: string): Promise<string[]> {
-  const abs = store.repoPath(relPath);
-  const files: string[] = [];
-  await walkFiles(abs, relPath === "." ? "" : relPath.replace(/\/$/, ""), files).catch(() => {});
-  return files.sort();
-}
-
-async function walkFiles(absDir: string, relDir: string, files: string[]): Promise<void> {
-  for (const entry of await readdir(absDir, { withFileTypes: true })) {
-    const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
-    const abs = resolve(absDir, entry.name);
-    if (isIgnoredSearchPath(rel)) continue;
-    if (entry.isDirectory()) {
-      await walkFiles(abs, rel, files);
-    } else {
-      files.push(rel);
-    }
-  }
-}
-
-function isIgnoredSearchPath(path: string): boolean {
-  return path.split("/").some((component) => component === ".git"
-    || component === "node_modules"
-    || component === "dist"
-    || component === ".runtime"
-    || component.startsWith(".runtime-")
-    || component.startsWith(".runtime_")
-    || component.startsWith(".local-runtime"));
-}
-
-function matchesSearchGlobs(path: string, globs: string[]): boolean {
-  if (globs.length === 0) return true;
-  let included = !globs.some((glob) => !glob.startsWith("!"));
-
-  for (const glob of globs) {
-    const excluded = glob.startsWith("!");
-    const pattern = excluded ? glob.slice(1) : glob;
-    if (!pattern) continue;
-    const candidate = pattern.includes("/") ? normalizeRelativePath(path) : basename(path);
-    try {
-      if (matchesGlob(candidate, pattern)) included = !excluded;
-    } catch {
-      // ripgrep owns invalid-glob diagnostics when available; fallback ignores
-      // a malformed pattern instead of widening the selected file set.
-    }
-  }
-
-  return included;
 }
 
 interface BoundedOutput {

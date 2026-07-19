@@ -54,8 +54,9 @@ Non-goals:
 
 ## Design, Evidence, And Recovery
 
-- Reuse the existing `runRipgrep` and Node fallback implementations. Inspect
-  both so their hidden-path semantics remain aligned.
+- Reuse the existing `runRipgrep` adapter as the single specialist search
+  engine. If `rg` is unavailable, return typed `search_error` evidence instead
+  of maintaining a second partial glob/search implementation in the runtime.
 - Add a focused failing regression proving a root-scoped search finds a value
   under `.trellis`, while `.git` and `.runtime` remain absent.
 - Prefer the smallest flag/filter change that makes the public tool contract
@@ -104,9 +105,9 @@ Non-goals:
   exclusions are appended after caller globs, so a broad or matching caller
   glob cannot re-include `.git`, `node_modules`, `dist`, `.runtime*`, or the
   local-runtime surfaces.
-- The Node fallback continues to walk repository-owned hidden paths and now
-  applies the same protected-component exclusions as ripgrep; no second search
-  contract or compatibility path was added.
+- The former Node fallback was retired after repeated independent review proved
+  it could not preserve ripgrep's hidden-file, glob-order, traversal, anchoring,
+  and case semantics without becoming a second search engine.
 - TDD green: the focused runtime-tools suite passed 33/33, including the exact
   real-Goal query/glob shape and an adjacent `.git` exclusion fixture.
 - The first `pnpm run check` attempt stopped before compilation because this
@@ -116,9 +117,8 @@ Non-goals:
 - The repeated full `pnpm run check` passed on exact corrected head `78ced61`:
   TypeScript build, 1012/1012 tests, active Skill validation, and neutral naming
   across 134 implementation files.
-- `git diff --check` passed. The corrected source/test diff is 180 insertions
-  and 18
-  deletions across `packages/runtime/src/tools.ts` and
+- `git diff --check` passed. The corrected source/test diff is 126 insertions
+  and 83 deletions across `packages/runtime/src/tools.ts` and
   `tests/runtime_tools.test.ts`; Task267 remains the only governance artifact.
 
 ## Integration Checkpoint
@@ -198,3 +198,24 @@ Non-goals:
   focused suite then passed 33/33, build passed, and `git diff --check` passed.
 - Pending: full repository gate and independent cycle-4 review of the final
   corrected head.
+
+## Review Cycle 4
+
+- Spec and Standards reviews both rejected the attempted Node glob emulation.
+  Public-tool comparisons found mismatches for hidden basenames, `**/*.md`,
+  case sensitivity, root anchoring, ordered directory exclusion/re-inclusion,
+  and malformed globs. Standards also found that `node:path.matchesGlob` is not
+  available across the repository's full declared Node 22 range.
+- The architecture correction removes `matchesGlob` and the recursive Node
+  search fallback entirely. `repo.search` now delegates glob/search semantics
+  to ripgrep and returns typed `search_error` with `engine: unavailable` when
+  that specialist tool is absent. This removes duplicate traversal, filtering,
+  body-reading, and glob code from the runtime rather than expanding it.
+- TDD red: with PATH constrained to an empty bin, the public-tool test expected
+  typed failure but the former fallback returned success. TDD green: the same
+  test now receives typed `search_error`; the rg-backed hidden/protected and
+  include/exclude cases still pass. The focused repo-search test, TypeScript
+  build, and `git diff --check` passed.
+- `docs/RUNTIME_CONTRACT.md` now makes the single-engine fail-closed boundary
+  explicit. Pending: full repository gate and independent cycle-5 review of
+  the corrected exact head.
