@@ -143,12 +143,12 @@ Explicit non-goals:
   observations. It also found that the implemented Runtime Contract change was
   absent from the stable owner document.
 - TDD added negative regressions for both stale decisions. After a prior
-  `goal_blocked` or `goal_verification_failed`, GoalRuntime now requires at
-  least one canonical observation in the active Continue before it accepts a
-  new model blocker or invokes outcome verification. A repeated stale blocker
-  is replaced by `current_continue_observation_required`; a stale outcome is
-  recorded as failed `current_continue_observation` verification. Capability
-  choice remains dynamic and no specific tool or effect target is prescribed.
+  `goal_blocked` or `goal_verification_failed`, GoalRuntime now requires a
+  later canonical observation before it accepts a new model blocker or invokes
+  outcome verification. A repeated stale blocker is replaced by
+  `post_boundary_observation_required`; a stale outcome is recorded as failed
+  `post_boundary_observation` verification. Capability choice remains dynamic
+  and no specific tool or effect target is prescribed.
 - Verifier evidence now carries the same typed Continue scope as cognition
   evidence. The correction changes no canonical event or receipt schema and
   writes no new state owner.
@@ -160,3 +160,26 @@ Explicit non-goals:
   validation, neutral naming across 133 implementation files, and
   `git diff --check`. Review cycle 2, PR integration, exact
   deployment/controller handoff, and same-Goal live acceptance remain pending.
+
+## Review Cycle 2 Corrections
+
+- Both independent reviews found the same lifecycle ordering defect: the first
+  gate inspected only the latest event from another command, so pause/resume,
+  a denied plan, or a soft-budget checkpoint could hide an earlier blocker and
+  let a stale outcome complete. Standards review also identified duplicate
+  Continue-scope projection code.
+- Two red regressions reproduced the false completion across manual
+  pause/resume and denied-action soft checkpoints. The harness now locates the
+  most recent `goal_blocked` or `goal_verification_failed` boundary and keeps
+  its observation obligation active across neutral events. Only a later
+  canonical `goal_action_observed` clears it; an observation followed by a
+  necessary soft-budget checkpoint remains usable in the next tranche.
+- Cognition and verifier projections now share one `continueEvidenceView`
+  helper. The event-order gate remains independent of capability selection and
+  adds no state owner, event schema, router, TTL, or tool-specific rule.
+- The two new regressions pass, and the corrected focused TypeScript build plus
+  GoalRuntime/adapter suites pass 49/49 with `git diff --check`. Full
+  `pnpm run check` passes with 1,003/1,003 tests, active-skill validation, and
+  neutral naming across 133 implementation files. Review cycle 3, PR
+  integration, exact deployment/controller handoff, and same-Goal live
+  acceptance remain pending.

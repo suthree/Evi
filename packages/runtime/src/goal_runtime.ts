@@ -732,11 +732,11 @@ export class GoalRuntime {
       operationUsage = addUsage(operationUsage, modelUsage);
 
       if (cognition.type === "blocked") {
-        if (continueNeedsCurrentObservation(events, command.goal_id, command.command_id)) {
-          const summary = "Goal blocked decision rejected because this Continue has no canonical observation after the prior continuation boundary.";
-          const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation in this Continue, and then re-evaluate the blocker.";
+        if (goalNeedsObservationAfterContinuationBoundary(events, command.goal_id)) {
+          const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
+          const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation, and then re-evaluate the blocker.";
           const checkpoint = normalizeCheckpoint({
-            cursor: "current_continue_observation_required",
+            cursor: "post_boundary_observation_required",
             summary,
             next_action: nextAction,
             selected_refs: state.view.checkpoint.selected_refs
@@ -1023,14 +1023,14 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    if (continueNeedsCurrentObservation(events, command.goal_id, command.command_id)) {
+    if (goalNeedsObservationAfterContinuationBoundary(events, command.goal_id)) {
       verification = parseVerificationResult({
         status: "failed",
-        summary: "Outcome verification requires a canonical observation from the current Continue after the prior continuation boundary.",
+        summary: "Outcome verification requires a canonical observation after the latest continuation boundary.",
         checks: [{
-          id: "current_continue_observation",
+          id: "post_boundary_observation",
           status: "failed",
-          summary: "Prior Continue observations remain historical evidence and cannot alone support this outcome.",
+          summary: "No canonical observation follows the latest blocked or failed-verification boundary.",
           evidence_event_ids: [evidenceEventIds.at(-1)!]
         }],
         next_action: "Choose an available capability dynamically, obtain one fresh bounded observation, and continue the same goal."
@@ -1649,30 +1649,23 @@ function buildCognitionEvidence(
 ): GoalContinueEvidenceView[] {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   const selected = goalEvents.filter((event) => event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned").slice(-16);
-  return selected.map((event) => ({
-    ...evidenceView(event),
-    continue_scope: event.command_id === activeContinueCommandId
-      ? "current_continue"
-      : "prior_continue"
-  }));
+  return selected.map((event) => continueEvidenceView(event, activeContinueCommandId));
 }
 
-function continueNeedsCurrentObservation(
+function goalNeedsObservationAfterContinuationBoundary(
   events: GoalRuntimeEvent[],
-  goalId: string,
-  activeContinueCommandId: string
+  goalId: string
 ): boolean {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
-  if (goalEvents.some((event) => event.command_id === activeContinueCommandId
-    && event.event_type === "goal_action_observed")) return false;
-  let latestPriorEvent: GoalRuntimeEvent | undefined;
+  let latestBoundaryIndex = -1;
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
-    if (goalEvents[index]!.command_id === activeContinueCommandId) continue;
-    latestPriorEvent = goalEvents[index];
+    const event = goalEvents[index]!;
+    if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
+    latestBoundaryIndex = index;
     break;
   }
-  return latestPriorEvent?.event_type === "goal_blocked"
-    || latestPriorEvent?.event_type === "goal_verification_failed";
+  if (latestBoundaryIndex < 0) return false;
+  return !goalEvents.slice(latestBoundaryIndex + 1).some((event) => event.event_type === "goal_action_observed");
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {
@@ -1712,13 +1705,20 @@ function buildEvidenceViews(
   const byId = new Map(events.filter((event) => event.goal_id === goalId).map((event) => [event.id, event]));
   return requestedIds.map((id) => {
     const event = byId.get(id)!;
-    return {
-      ...evidenceView(event),
-      continue_scope: event.command_id === activeContinueCommandId
-        ? "current_continue"
-        : "prior_continue"
-    };
+    return continueEvidenceView(event, activeContinueCommandId);
   });
+}
+
+function continueEvidenceView(
+  event: GoalRuntimeEvent,
+  activeContinueCommandId: string
+): GoalContinueEvidenceView {
+  return {
+    ...evidenceView(event),
+    continue_scope: event.command_id === activeContinueCommandId
+      ? "current_continue"
+      : "prior_continue"
+  };
 }
 
 function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {

@@ -378,16 +378,22 @@ proof of the historical event; it is not by itself proof that mutable state is
 still current. Cognition must acquire a fresh bounded observation before it
 repeats a drift-sensitive blocker or proposes a drift-sensitive outcome, while
 choosing the capability dynamically from the current Portfolio. The harness is
-the fail-closed backstop after `goal_blocked` or `goal_verification_failed`: a
-later Continue cannot repeat a model-authored blocker or accept an outcome
-until that Continue has recorded at least one canonical observation. Rejected
-blockers receive the `current_continue_observation_required` checkpoint;
-rejected outcomes receive a failed `current_continue_observation` verification
-check. This temporal projection writes no new event, ledger, cache, state
-owner, task router, or tool-specific refresh rule. A soft-budget boundary still
-marks earlier evidence as `prior_continue`, but does not impose this hard gate;
-otherwise a one-model-round tranche could never accept the observation it was
-forced to checkpoint immediately after recording.
+the fail-closed backstop after `goal_blocked` or `goal_verification_failed`:
+the most recent such boundary creates an observation obligation. Pause,
+resume, denied planning, soft-budget checkpoints, and other neutral lifecycle
+events do not erase it; only a later canonical `goal_action_observed` event
+satisfies it. A model-authored blocker or outcome is rejected while the
+obligation remains. Rejected blockers receive the
+`post_boundary_observation_required` checkpoint; rejected outcomes receive a
+failed `post_boundary_observation` verification check. The satisfying
+observation can precede a later soft-budget checkpoint, so it need not belong
+to the Continue command that finally proposes the outcome. Cognition still
+sees that observation as `prior_continue` and remains responsible for
+refreshing it again when the underlying fact can drift. This temporal
+projection writes no new event, ledger, cache, state owner, task router, or
+tool-specific refresh rule. A soft-budget boundary alone does not create the
+hard obligation; otherwise a one-model-round tranche could never accept the
+observation it was forced to checkpoint immediately after recording.
 
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
