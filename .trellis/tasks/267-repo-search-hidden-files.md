@@ -104,9 +104,9 @@ Non-goals:
   exclusions are appended after caller globs, so a broad or matching caller
   glob cannot re-include `.git`, `node_modules`, `dist`, `.runtime*`, or the
   local-runtime surfaces.
-- The existing Node fallback already walks hidden paths and applies the same
-  protected-prefix exclusions; no second search contract or compatibility path
-  was added.
+- The Node fallback continues to walk repository-owned hidden paths and now
+  applies the same protected-component exclusions as ripgrep; no second search
+  contract or compatibility path was added.
 - TDD green: the focused runtime-tools suite passed 33/33, including the exact
   real-Goal query/glob shape and an adjacent `.git` exclusion fixture.
 - The first `pnpm run check` attempt stopped before compilation because this
@@ -115,7 +115,8 @@ Non-goals:
   pnpm store without changing the lockfile or dependency declarations.
 - The repeated full `pnpm run check` passed: TypeScript build, 1012/1012 tests,
   active Skill validation, and neutral naming across 134 implementation files.
-- `git diff --check` passed. The source/test diff is 31 insertions and 6
+- `git diff --check` passed. The corrected source/test diff is 118 insertions
+  and 15
   deletions across `packages/runtime/src/tools.ts` and
   `tests/runtime_tools.test.ts`; Task267 remains the only governance artifact.
 
@@ -158,3 +159,22 @@ Non-goals:
   target-version rationale, dependencies, architecture impact, external and
   sensitive-data gates, plus context/time/retry/tool/delegation budgets are now
   explicit above.
+
+## Review Cycle 2
+
+- Spec review returned zero findings on corrected head `e75242e` and confirmed
+  both engines excluded a linked-worktree root `.git` file through the public
+  `repo.search` contract.
+- Standards review found one remaining P1 engine mismatch: ripgrep's basename
+  exclusions protect matching directories at any depth, while the Node
+  fallback checked only repository-root prefixes. A forced fallback public-tool
+  reproduction returned nested `.git`, `node_modules`, `dist`, `.runtime-*`,
+  `.runtime_*`, and `.local-runtime*` paths. It also identified the stale
+  source/test diff count above.
+- The forced-fallback regression first failed 32/33 with every nested protected
+  path in its result. The fallback now evaluates every path component and
+  prunes protected directory traversal; both ripgrep and Node public-tool calls
+  return only the allowed nested `.trellis` evidence. The focused suite then
+  passed 33/33, TypeScript build passed, and `git diff --check` passed.
+- Pending: full repository gate and independent cycle-3 review of this final
+  corrected diff.

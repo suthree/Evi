@@ -2483,6 +2483,7 @@ async function walkFiles(absDir: string, relDir: string, files: string[]): Promi
   for (const entry of await readdir(absDir, { withFileTypes: true })) {
     const rel = relDir ? `${relDir}/${entry.name}` : entry.name;
     const abs = resolve(absDir, entry.name);
+    if (isIgnoredSearchPath(rel)) continue;
     if (entry.isDirectory()) {
       await walkFiles(abs, rel, files);
     } else {
@@ -2492,17 +2493,13 @@ async function walkFiles(absDir: string, relDir: string, files: string[]): Promi
 }
 
 function isIgnoredSearchPath(path: string): boolean {
-  return path === ".git"
-    || path.startsWith(".git/")
-    || path === "node_modules"
-    || path.startsWith("node_modules/")
-    || path === "dist"
-    || path.startsWith("dist/")
-    || path === ".runtime"
-    || path.startsWith(".runtime/")
-    || path.startsWith(".runtime-")
-    || path.startsWith(".runtime_")
-    || path.startsWith(".local-runtime");
+  return path.split("/").some((component) => component === ".git"
+    || component === "node_modules"
+    || component === "dist"
+    || component === ".runtime"
+    || component.startsWith(".runtime-")
+    || component.startsWith(".runtime_")
+    || component.startsWith(".local-runtime"));
 }
 
 interface BoundedOutput {

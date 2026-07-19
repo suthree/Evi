@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   codexAuthorityDigest,
@@ -487,6 +487,63 @@ test("repo.search finds repo text with bounded output", async () => {
       line: 1,
       text: "accepted head 6c90aa2 maps to its merge commit"
     }]);
+
+    const nestedProtectedPaths = [
+      "nested/.git/inside.md",
+      "nested/node_modules/inside.md",
+      "nested/dist/inside.md",
+      "nested/.runtime-x/inside.md",
+      "nested/.runtime_private/inside.md",
+      "nested/.local-runtime-x/inside.md"
+    ];
+    for (const path of nestedProtectedPaths) {
+      await mkdir(dirname(join(fixture.repoRoot, path)), { recursive: true });
+      await writeFile(join(fixture.repoRoot, path), "fallback-protected evidence\n", "utf8");
+    }
+    await mkdir(join(fixture.repoRoot, "nested/.trellis"), { recursive: true });
+    await writeFile(
+      join(fixture.repoRoot, "nested/.trellis/inside.md"),
+      "fallback-protected allowed evidence\n",
+      "utf8"
+    );
+
+    const nestedRipgrepEvidence = await executeTool(useTool("repo.search", {
+      query: "fallback-protected",
+      path: ".",
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(nestedRipgrepEvidence.ok, true);
+    assert.equal(nestedRipgrepEvidence.output.engine, "rg");
+    assert.deepEqual(nestedRipgrepEvidence.output.matches, [{
+      path: "nested/.trellis/inside.md",
+      line: 1,
+      text: "fallback-protected allowed evidence"
+    }]);
+
+    const previousPath = process.env.PATH;
+    const emptyBin = join(fixture.repoRoot, "empty-bin");
+    await mkdir(emptyBin);
+    process.env.PATH = emptyBin;
+    try {
+      const fallbackEvidence = await executeTool(useTool("repo.search", {
+        query: "fallback-protected",
+        path: ".",
+        max_results: 20,
+        max_output_chars: 12000
+      }), { store: fixture.store });
+
+      assert.equal(fallbackEvidence.ok, true);
+      assert.equal(fallbackEvidence.output.engine, "node");
+      assert.deepEqual(fallbackEvidence.output.matches, [{
+        path: "nested/.trellis/inside.md",
+        line: 1,
+        text: "fallback-protected allowed evidence"
+      }]);
+    } finally {
+      process.env.PATH = previousPath;
+    }
 
     await rm(join(fixture.repoRoot, ".runtime"));
 
