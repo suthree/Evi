@@ -1,6 +1,6 @@
 # Task 261: Deployment CLI Command Module
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -127,9 +127,19 @@ command dispatch and delegates the deployment command once.
   `2026-07-19T03:49:25Z` and its delivered `confirm` result at
   `2026-07-19T03:49:29Z`; later `continue` controls through
   `2026-07-19T03:57:35Z` provide repeated ingress evidence.
-- Later cumulative releases (90a, e562, and a53) do not replace or weaken the
-  exact historical deployment evidence above. The current a53 runtime is a
-  separately verified healthy/current successor and the Issue #101 CLI files
-  are unchanged between `6c90aa2` and a53.
-- Issue #101 remains open and this task remains active until the same real
-  Feishu Goal produces a terminal receipt and the outcome owner audits it.
+- Later cumulative releases do not replace or weaken the exact historical
+  deployment evidence above. The current `5a2bbb2c64d57d38f5684ffa8496113195edc7b0`
+  runtime is a separately verified stable, healthy/current successor with a
+  matched installed controller, connected Feishu inbound, zero deployment
+  failures, and rollback source
+  `43dd4ec3d9c36db5011c77b6b34285902d97b601`.
+- The unchanged real Feishu Goal `goal_20260718155814_357c4361` reached
+  canonical sequence 235 with `event_type=goal_completed` and terminal receipt
+  `goal_receipt_20260719150711_125a50d2`. The receipt decision is `accepted`
+  and explicitly distinguishes PR #102 head `6c90aa2` from exact merge commit
+  `7067c1bd`, binds the historical stable deployment, rollback provenance, and
+  live p2p ingress evidence, and records the bounded outcome as verified.
+- Operator-visible Feishu delivery reported `Canonical status: completed` and
+  that no continuation command is required. This closes the same-Goal source,
+  integration, runtime, and OutcomeReceipt acceptance gate without creating or
+  restoring another Goal.
