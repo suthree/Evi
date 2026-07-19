@@ -82,6 +82,66 @@ test("RuntimeGoalToolExecutor fails closed when a forged public-read decision ta
   }
 });
 
+test("RuntimeGoalToolExecutor keeps runtime inspection on the control store after workspace binding", async () => {
+  const root = join(tmpdir(), `evi-goal-runtime-inspect-${process.pid}-${Date.now()}-${Math.random()}`);
+  const repoRoot = join(root, "control");
+  const executionRoot = join(root, "execution");
+  const stateRoot = join(root, "state");
+  await mkdir(repoRoot, { recursive: true });
+  await mkdir(executionRoot, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  try {
+    const executor = new RuntimeGoalToolExecutor(new AgentStore(repoRoot, stateRoot));
+    const result = await executor.execute({
+      tool: "runtime.inspect",
+      arguments: {}
+    }, {
+      outcome: "allow",
+      reason: "Bounded integration evidence read.",
+      intent: {
+        operation: "read_local",
+        target: "runtime:integration-evidence",
+        reversibility: "read_only",
+        data_exposure: "local_content_to_model",
+        authority: "standing_local_evolution"
+      }
+    }, {
+      goal_id: "goal_runtime_inspect_fixture",
+      control_repository_authority: {
+        schema_version: 1,
+        repo_root: repoRoot,
+        git_common_dir: join(repoRoot, ".git"),
+        worktree: repoRoot,
+        branch: "develop",
+        start_head_commit: "a".repeat(40),
+        boundary: "fixture control authority"
+      },
+      execution_workspace: {
+        schema_version: 1,
+        goal_id: "goal_runtime_inspect_fixture",
+        control_start_head_commit: "a".repeat(40),
+        authority: {
+          schema_version: 1,
+          repo_root: executionRoot,
+          git_common_dir: join(repoRoot, ".git"),
+          worktree: executionRoot,
+          branch: "codex/issue-103-runtime-integration-evidence",
+          start_head_commit: "a".repeat(40),
+          boundary: "fixture execution authority"
+        },
+        boundary: "fixture execution workspace"
+      }
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.side_effect_level, "none");
+    assert.equal((result.output.repository as { repo_root?: string } | null)?.repo_root, repoRoot);
+    assert.equal(result.output.evidence_state, "incomplete");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("ModelGoalCognition parses one decision and persists no model artifact", async () => {
   const requests: ModelRequest[] = [];
   const model: ModelClient = {

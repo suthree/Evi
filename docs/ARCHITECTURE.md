@@ -155,6 +155,14 @@ contract instead of maintaining another tool-name routing list. This metadata
 selects only control versus execution storage; it does not classify tasks or
 grant effect authority.
 
+`runtime.inspect` is the narrow control-plane exception for a Goal that has
+already bound an execution worktree but must verify integration performed by
+the harness. It derives one fresh, typed snapshot from the existing control
+repository, deployment ledger, installed controller, resident service health,
+previous runtime, and channel-liveness owners. It creates no evidence ledger,
+does not choose itself through task routing, and cannot deploy, restart, or
+accept the Goal.
+
 The stable ownership split is:
 
 | Decision concern | Owner |

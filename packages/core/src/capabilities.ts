@@ -280,7 +280,7 @@ export function getCapabilityAcceptanceAudit(
       {
         id: "core_execution",
         title: "Core execution",
-        summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, Node execution, and auditable bounded result metadata.",
+        summary: "Core tool contracts cover bounded read, write, search, fetch, command, Node execution, runtime integration inspection, and auditable bounded result metadata.",
         status: "ready",
         layer: "core_runtime",
         evidence_refs: [
@@ -518,7 +518,7 @@ function coreToolsCategory(): CapabilityCategoryDraft {
   return {
     id: "core_tools",
     title: "Core tools",
-    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution with auditable output budgets and failure kinds.",
+    summary: "Bounded read, write, search, fetch, command, JavaScript, and runtime-integration contracts with auditable failures.",
     status: "implemented",
     layer: "core_runtime",
     capabilities: coreToolContracts.map((contract) => ({

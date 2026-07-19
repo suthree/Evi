@@ -8,6 +8,12 @@ test("EffectPolicy distinguishes read, local write, and protected Goal state", (
     tool: "file.read",
     arguments: { scope: "repo", path: "README.md" }
   }).outcome, "allow");
+  const runtimeInspection = policy.decide({
+    tool: "runtime.inspect",
+    arguments: {}
+  });
+  assert.equal(runtimeInspection.outcome, "allow");
+  assert.equal(runtimeInspection.intent.operation, "read_local");
   assert.equal(policy.decide({
     tool: "file.write_state",
     arguments: { path: "scratch/result.json", text: "ok" }

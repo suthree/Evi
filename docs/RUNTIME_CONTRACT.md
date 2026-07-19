@@ -395,6 +395,14 @@ Historical `goal_action_planned` events without selection metadata remain
 readable; new planned events retain the validated selection as evidence of the
 decision, not as a second authority.
 
+When integration was performed outside a Goal's bound execution worktree, the
+control-placed `runtime.inspect` tool may supply one fresh bounded snapshot of
+the current control repository, local deployment, installed controller,
+service-health, previous-runtime, and channel-liveness owners. The snapshot is
+derived on demand and persists nothing. Its `consistent`, `inconsistent`, or
+`incomplete` evidence state is verification input only: it neither routes a
+task nor grants effect or completion authority.
+
 Capability competence is derived from action observations belonging only to
 previously terminal Goals with current OutcomeReceipts.
 `packages/runtime/src/goal_tool_competence.ts` limits the recent signal window,

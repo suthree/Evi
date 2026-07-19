@@ -73,7 +73,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
       }]
     });
 
-    assert.equal(portfolio.capabilities.length, 9);
+    assert.equal(portfolio.capabilities.length, 10);
     const fileRead = portfolio.capabilities.find((candidate) => candidate.id === "file.read");
     assert.ok(fileRead);
     assert.equal(fileRead.kind, "direct_tool");
@@ -86,6 +86,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     assert.match(codex?.readiness_reason ?? "", /isolated execution workspace/i);
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "workspace.prepare")?.readiness, "available");
     assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+    assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "runtime.inspect")?.readiness, "available");
     assert.deepEqual(portfolio.selected_skills.map((skill) => skill.name), ["source-architecture-review"]);
     assert.match(portfolio.selected_skills[0]!.body, /delegate specialist production/);
     assert.doesNotMatch(JSON.stringify(portfolio), /UNSELECTED_SKILL_BODY/);
@@ -105,6 +106,7 @@ test("Goal capability portfolio marks delegated execution ready in a linked work
   assert.equal(codex?.readiness, "available");
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "runtime.inspect"), true);
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
 });
 
@@ -120,6 +122,7 @@ test("Goal capability portfolio switches delegated readiness after canonical exe
   assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "codex.run")?.readiness, "available");
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "runtime.inspect"), true);
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
 });
 
