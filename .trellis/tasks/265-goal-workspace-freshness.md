@@ -1,6 +1,6 @@
 # Task 265: Goal Workspace Freshness
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -99,3 +99,17 @@ canonical evidence.
 - A second independent review of `5454f05` found no remaining actionable
   defect in behavior or the freshness-routing contract; its reviewer also ran
   the relevant GoalRuntime tests and TypeScript build successfully.
+
+## Final Integration And Acceptance
+
+- PR #111 was accepted at exact head `3c97f4f0a62a0250976caa086d77a081109e311e`
+  and merged as `ac399a08d3630d61b8f3d7201d0c776496afc758`.
+  Canonical deployment
+  `deployment_20260719110610_ac399a08d363` reached `stable` with zero
+  failures, previous source `a53ceccf788467f02cde11fed2aa0a9ed71b41a3`,
+  controller handoff, healthy/current service, and connected Feishu inbound.
+- The same Goal retained its exact Issue #101 worktree binding while later
+  external branch advances became visible to cognition. Terminal receipt
+  `goal_receipt_20260719150711_125a50d2` was accepted at sequence 235 without
+  changing worktree authority, switching repositories, or restoring another
+  Goal.

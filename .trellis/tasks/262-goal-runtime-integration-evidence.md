@@ -1,7 +1,6 @@
 # Task 262: Goal Runtime Integration Evidence
 
-Status: implementation ready for review; PR integration, exact deployment,
-controller handoff, and same-Goal live acceptance pending
+Status: completed
 
 ## Identity And Ownership
 
@@ -211,3 +210,17 @@ Explicit non-goals:
   implementation files. The final independent review of source commit
   `b2f21ea` returned zero remaining Spec findings and zero remaining Standards
   findings. PR integration and live same-Goal acceptance remain pending.
+
+## Final Integration And Acceptance
+
+- PR #104 was accepted at exact head `05ca5d703d0f1a43a92ab2a54efed0012e362d35`
+  and merged as `90a785879c56c61170457a7919fff5b514cedc1d`.
+  Canonical deployment
+  `deployment_20260719045942_90a785879c56` reached `stable` with zero
+  failures, previous source `7067c1bd97ff48389e20d713101cb89fbdaf9710`,
+  controller handoff, healthy/current service, and connected Feishu inbound.
+- The unchanged real Feishu Goal `goal_20260718155814_357c4361` subsequently
+  used the bounded integration evidence through the cumulative repair chain
+  and reached terminal sequence 235. Receipt
+  `goal_receipt_20260719150711_125a50d2` was accepted with verification passed;
+  no new Goal or competing evidence owner was introduced.

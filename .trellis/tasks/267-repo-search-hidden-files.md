@@ -1,6 +1,6 @@
 # Task 267: Repository Search Hidden Files
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -237,3 +237,17 @@ Non-goals:
 - Source acceptance is complete. PR publication, exact-head merge, exact merge
   deployment, controller handoff, live runtime checks, and same-Goal acceptance
   remain pending.
+
+## Final Integration And Acceptance
+
+- PR #115 was accepted at exact head `635e440e5cc433d22680e5e5cdeb8be95789134e`
+  and merged as `43dd4ec3d9c36db5011c77b6b34285902d97b601`.
+  Canonical deployment
+  `deployment_20260719140044_43dd4ec3d9c3` reached `stable` with zero
+  failures, previous source `00ab868a4ba0c22ba1d92d947b5d61126e68e6db`,
+  controller handoff, healthy/current service, and connected Feishu inbound.
+- In the real acceptance path, repository-owned hidden Task261 evidence was
+  reachable without a second search engine or static Goal route. The unchanged
+  Goal reached accepted terminal receipt
+  `goal_receipt_20260719150711_125a50d2` at sequence 235; `rg` remains the sole
+  search engine and missing-engine behavior remains typed and fail-closed.
