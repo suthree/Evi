@@ -114,7 +114,7 @@ Non-goals:
   new worktree had no installed dependencies (`tsc: command not found`).
   `pnpm install --offline --frozen-lockfile` reused 55 packages from the local
   pnpm store without changing the lockfile or dependency declarations.
-- The repeated full `pnpm run check` passed on exact corrected head `78ced61`:
+- The final full `pnpm run check` passed on exact corrected head `7f2570a`:
   TypeScript build, 1012/1012 tests, active Skill validation, and neutral naming
   across 134 implementation files.
 - `git diff --check` passed. The corrected source/test diff is 126 insertions
@@ -219,3 +219,21 @@ Non-goals:
 - `docs/RUNTIME_CONTRACT.md` now makes the single-engine fail-closed boundary
   explicit. Pending: full repository gate and independent cycle-5 review of
   the corrected exact head.
+
+## Review Cycle 5
+
+- Spec and Standards reviews returned zero findings on exact head `7f2570a`.
+  Both confirmed the worktree was clean, the full Node search/glob fallback was
+  removed, missing `rg` fails with typed bounded evidence, and caller globs
+  cannot re-include protected paths.
+- Spec independently exercised the real Issue #101 worktree with the Goal's
+  original `*.md`, `*.json`, and `*.ts` globs and observed the hidden Task261
+  evidence at the expected lines. Standards independently passed the focused
+  33/33 suite and `git diff --check`.
+- Main-harness full gate on the same exact source head passed build, 1012/1012
+  tests, active Skill validation, and neutral naming across 134 implementation
+  files. No Goal/Task specialization, static routing, second search engine,
+  dependency, or state owner remains.
+- Source acceptance is complete. PR publication, exact-head merge, exact merge
+  deployment, controller handoff, live runtime checks, and same-Goal acceptance
+  remain pending.
