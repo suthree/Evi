@@ -158,10 +158,12 @@ grant effect authority.
 `runtime.inspect` is the narrow control-plane exception for a Goal that has
 already bound an execution worktree but must verify integration performed by
 the harness. It derives one fresh, typed snapshot from the existing control
-repository, deployment ledger, installed controller, resident service health,
-previous runtime, and channel-liveness owners. It creates no evidence ledger,
-does not choose itself through task routing, and cannot deploy, restart, or
-accept the Goal.
+repository and local Git provenance, current and exact prior deployment
+records, installed controller, resident service health, previous runtime, and
+channel-liveness owners. Prior lineage is accepted only from one validated
+exact-commit history record plus bounded local Git parents and ancestry. It
+creates no evidence ledger, does not choose itself through task routing, and
+cannot deploy, restart, fetch remote claims, or accept the Goal.
 
 The stable ownership split is:
 

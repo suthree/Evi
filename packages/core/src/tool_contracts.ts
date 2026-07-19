@@ -74,7 +74,7 @@ export const coreToolContracts: ToolContract[] = [
     rationale: "inspect fresh bounded runtime integration evidence",
     arguments: {},
     constraints: [
-      "reads existing repository, deployment, controller, service-health, previous-runtime, and channel-liveness owners only",
+      "reads existing repository and local Git provenance, current and prior deployment, controller, service-health, previous-runtime, and channel-liveness owners only",
       "external lists and text are bounded with explicit truncation metadata",
       "returns typed current evidence without writing a ledger, choosing another tool, deploying, restarting, or granting completion authority"
     ]

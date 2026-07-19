@@ -11,11 +11,17 @@ import {
 import { AgentStore } from "../../core/src/store.js";
 import {
   getLocalDeploymentStatus,
+  inspectLocalDeploymentHistoryBySourceCommit,
   inspectDeploymentControllerReadiness,
   type DeploymentControllerReadiness,
   type DeploymentStateSourceRead,
+  type LocalDeploymentHistoryLookup,
   type LocalDeploymentStateSources
 } from "./deployment.js";
+import {
+  inspectRepositoryCommitProvenance,
+  type RepositoryCommitProvenance
+} from "./repository_authority.js";
 import { resolveServiceDefinition, type ServiceDefinition } from "./service.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 import type { DeploymentStatus } from "./service_supervisor.js";
@@ -27,6 +33,8 @@ export interface RuntimeIntegrationInspectionDependencies {
   deploymentStatus?: () => Promise<LocalDeploymentStatus>;
   controllerReadiness?: () => Promise<DeploymentControllerReadiness>;
   previousRuntimeBuild?: () => Promise<ServiceRuntimeBuild | null>;
+  previousDeploymentHistory?: (sourceCommit: string) => Promise<LocalDeploymentHistoryLookup>;
+  previousCommitProvenance?: (commit: string) => Promise<RepositoryCommitProvenance>;
   now?: () => Date;
 }
 
@@ -106,6 +114,24 @@ export interface RuntimeIntegrationInspection {
   rollback: {
     previous_source_commit: string | null;
     previous_runtime_commit: string | null;
+    previous_deployment_source: DeploymentStateSourceRead | null;
+    previous_deployment: {
+      id: string;
+      source_commit: string;
+      source_branch?: string;
+      status: DeploymentStatus;
+      stable_at?: string;
+      verification_refs: string[];
+      evidence_refs: string[];
+      history_ref: string;
+    } | null;
+    previous_commit_provenance: {
+      commit: string;
+      parent_commits: string[];
+      head_commit: string;
+      ancestor_of_head: boolean;
+      owner_ref: "local-git-commit-provenance";
+    } | null;
     refs: string[];
   };
   source_errors: Array<{ source: string; error: string }>;
@@ -125,7 +151,7 @@ export interface RuntimeIntegrationInspection {
   boundary: string;
 }
 
-const BOUNDARY = "fresh read-only Goal runtime integration evidence derived from the control repository, local deployment ledger, installed controller, resident service health, previous runtime build, and channel liveness; it does not write evidence, invoke a model, select a tool, mutate Goal state, deploy, restart, fetch remote state, or grant completion authority";
+const BOUNDARY = "fresh read-only Goal runtime integration evidence derived from the control repository and local Git provenance, current and prior deployment ledgers, installed controller, resident service health, previous runtime build, and channel liveness; it does not write evidence, invoke a model, select a tool, mutate Goal state, deploy, restart, fetch remote state, or grant completion authority";
 const MAX_ITEMS_PER_LIST = 16;
 const MAX_REF_CHARS = 500;
 const MAX_TEXT_CHARS = 1_000;
@@ -140,6 +166,15 @@ const INCOMPLETE_REASONS = new Set([
   "controller_readiness_unavailable",
   "feishu_channel_missing",
   "previous_runtime_missing_or_invalid",
+  "previous_deployment_history_missing",
+  "previous_deployment_history_invalid",
+  "previous_deployment_history_unreadable",
+  "previous_deployment_missing",
+  "previous_deployment_not_stable",
+  "previous_deployment_repository_mismatch",
+  "previous_deployment_state_root_mismatch",
+  "previous_deployment_stable_at_missing_or_invalid",
+  "previous_commit_provenance_unavailable",
   "rollback_source_missing"
 ]);
 
@@ -213,6 +248,35 @@ export async function inspectRuntimeIntegration(
   const repoCommit = repoHead?.head_commit;
   const feishuChannel = health?.service.gateway?.channels.find((channel) => channel.kind === "feishu") ?? null;
   const expectedPreviousCommit = current?.previous_source_commit;
+  const previousDeploymentHistorySource = expectedPreviousCommit
+    ? await captureSource(
+      "previous_deployment_history",
+      () => dependencies.previousDeploymentHistory
+        ? dependencies.previousDeploymentHistory(expectedPreviousCommit)
+        : inspectLocalDeploymentHistoryBySourceCommit(store.stateRoot, expectedPreviousCommit)
+    )
+    : null;
+  const previousCommitProvenanceSource = expectedPreviousCommit
+    ? await captureSource(
+      "previous_commit_provenance",
+      () => dependencies.previousCommitProvenance
+        ? dependencies.previousCommitProvenance(expectedPreviousCommit)
+        : inspectRepositoryCommitProvenance(store.repoRoot, expectedPreviousCommit)
+    )
+    : null;
+  if (previousDeploymentHistorySource && !previousDeploymentHistorySource.ok) {
+    sourceErrors.push(previousDeploymentHistorySource.error);
+  }
+  if (previousCommitProvenanceSource && !previousCommitProvenanceSource.ok) {
+    sourceErrors.push(previousCommitProvenanceSource.error);
+  }
+  const previousDeploymentHistory = previousDeploymentHistorySource?.ok
+    ? previousDeploymentHistorySource.value
+    : null;
+  const previousDeployment = previousDeploymentHistory?.record ?? null;
+  const previousCommitProvenance = previousCommitProvenanceSource?.ok
+    ? previousCommitProvenanceSource.value
+    : null;
   const previousRuntimeMissing = Boolean(expectedPreviousCommit) && !previousBuild;
   const previousRuntimePathMismatch = Boolean(previousBuild && runtimeCurrentRoot
     && resolve(previousBuild.runtime_current_root) !== resolve(runtimeCurrentRoot));
@@ -251,6 +315,43 @@ export async function inspectRuntimeIntegration(
     feishuChannel?.inbound?.connection_state !== "connected" ? "feishu_inbound_not_connected" : undefined,
     !expectedPreviousCommit && !previousBuild?.source_commit ? "rollback_source_missing" : undefined,
     previousRuntimeMissing ? "previous_runtime_missing_or_invalid" : undefined,
+    previousDeploymentHistory && previousDeploymentHistory.source.status !== "ok"
+      ? `previous_deployment_history_${previousDeploymentHistory.source.status}`
+      : undefined,
+    expectedPreviousCommit
+      && previousDeploymentHistory?.source.status === "ok"
+      && !previousDeployment
+      ? "previous_deployment_missing"
+      : undefined,
+    previousDeployment && previousDeployment.source_commit !== expectedPreviousCommit
+      ? "previous_deployment_commit_mismatch"
+      : undefined,
+    previousDeployment && previousDeployment.status !== "stable"
+      ? "previous_deployment_not_stable"
+      : undefined,
+    previousDeployment && resolve(previousDeployment.repo_root) !== resolve(store.repoRoot)
+      ? "previous_deployment_repository_mismatch"
+      : undefined,
+    previousDeployment && resolve(previousDeployment.state_root) !== resolve(store.stateRoot)
+      ? "previous_deployment_state_root_mismatch"
+      : undefined,
+    previousDeployment
+      && previousDeployment.status === "stable"
+      && !isCanonicalIsoTimestamp(previousDeployment.stable_at)
+      ? "previous_deployment_stable_at_missing_or_invalid"
+      : undefined,
+    expectedPreviousCommit && !previousCommitProvenance
+      ? "previous_commit_provenance_unavailable"
+      : undefined,
+    previousCommitProvenance && previousCommitProvenance.commit !== expectedPreviousCommit
+      ? "previous_commit_provenance_commit_mismatch"
+      : undefined,
+    previousCommitProvenance && repoCommit && previousCommitProvenance.head_commit !== repoCommit
+      ? "previous_commit_provenance_head_mismatch"
+      : undefined,
+    previousCommitProvenance && !previousCommitProvenance.ancestor_of_head
+      ? "previous_commit_not_ancestor_of_head"
+      : undefined,
     previousBuild && previousBuild.target !== "runtime" ? "previous_runtime_target_mismatch" : undefined,
     previousBuild && resolve(previousBuild.repo_root) !== resolve(store.repoRoot) ? "previous_runtime_repository_mismatch" : undefined,
     previousRuntimePathMismatch ? "previous_runtime_path_mismatch" : undefined,
@@ -272,11 +373,24 @@ export async function inspectRuntimeIntegration(
   const currentVerificationRefs = boundedStringList(current?.verification_refs ?? [], truncation);
   const currentEvidenceRefs = boundedStringList(current?.evidence_refs ?? [], truncation);
   const failureEvidenceRefs = boundedStringList(failure?.evidence_refs ?? [], truncation);
+  const previousDeploymentVerificationRefs = boundedStringList(
+    previousDeployment?.verification_refs ?? [],
+    truncation
+  );
+  const previousDeploymentEvidenceRefs = boundedStringList(
+    previousDeployment?.evidence_refs ?? [],
+    truncation
+  );
   const serviceStatusReasons = boundedStringList(health?.status_reasons ?? [], truncation, MAX_TEXT_CHARS);
   const boundedSourceErrors = boundedSourceErrorList(sourceErrors, truncation);
+  const previousDeploymentHistoryRef = previousDeployment && previousDeploymentHistory?.source.status === "ok"
+    ? previousDeploymentHistory.source.ref
+    : null;
   const rollbackRefs = boundedStringList(unique([
     ...(deploymentHistoryRef ? [deploymentHistoryRef] : []),
-    ...(previousBuild?.source_commit ? ["service:runtime-previous-build"] : [])
+    ...(previousBuild?.source_commit ? ["service:runtime-previous-build"] : []),
+    ...(previousDeploymentHistoryRef ? [previousDeploymentHistoryRef] : []),
+    ...(previousCommitProvenance ? ["repository:commit-provenance"] : [])
   ]), truncation);
   const refs = boundedStringList(unique([
     ...(health?.service.heartbeat_ref ? [health.service.heartbeat_ref] : []),
@@ -397,6 +511,44 @@ export async function inspectRuntimeIntegration(
       previous_runtime_commit: previousBuild?.source_commit
         ? boundedText(previousBuild.source_commit, MAX_TEXT_CHARS, truncation)
         : null,
+      previous_deployment_source: previousDeploymentHistory
+        ? {
+          ref: boundedText(previousDeploymentHistory.source.ref, MAX_REF_CHARS, truncation),
+          status: previousDeploymentHistory.source.status,
+          ...(previousDeploymentHistory.source.reason
+            ? { reason: previousDeploymentHistory.source.reason }
+            : {})
+        }
+        : null,
+      previous_deployment: previousDeployment && previousDeploymentHistoryRef
+        ? {
+          id: boundedText(previousDeployment.id, MAX_TEXT_CHARS, truncation),
+          source_commit: boundedText(previousDeployment.source_commit, MAX_TEXT_CHARS, truncation),
+          ...(previousDeployment.source_branch
+            ? { source_branch: boundedText(previousDeployment.source_branch, MAX_TEXT_CHARS, truncation) }
+            : {}),
+          status: previousDeployment.status,
+          ...(previousDeployment.stable_at
+            ? { stable_at: boundedText(previousDeployment.stable_at, MAX_TEXT_CHARS, truncation) }
+            : {}),
+          verification_refs: previousDeploymentVerificationRefs,
+          evidence_refs: previousDeploymentEvidenceRefs,
+          history_ref: boundedText(previousDeploymentHistoryRef, MAX_REF_CHARS, truncation)
+        }
+        : null,
+      previous_commit_provenance: previousCommitProvenance
+        ? {
+          commit: boundedText(previousCommitProvenance.commit, MAX_TEXT_CHARS, truncation),
+          parent_commits: boundedStringList(
+            previousCommitProvenance.parent_commits,
+            truncation,
+            MAX_TEXT_CHARS
+          ),
+          head_commit: boundedText(previousCommitProvenance.head_commit, MAX_TEXT_CHARS, truncation),
+          ancestor_of_head: previousCommitProvenance.ancestor_of_head,
+          owner_ref: "local-git-commit-provenance"
+        }
+        : null,
       refs: rollbackRefs
     },
     source_errors: boundedSourceErrors,
@@ -488,4 +640,10 @@ function stringField(record: Record<string, unknown>, key: string): string | und
 
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
   return typeof record[key] === "number" ? record[key] : undefined;
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 64) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
