@@ -1,7 +1,6 @@
 # Task 266: Goal Workspace Terminal Freshness
 
-Status: active; implementation, review, integration, exact deployment, and
-same-Goal live acceptance pending
+Status: completed
 
 ## Identity And Ownership
 
@@ -160,3 +159,17 @@ post-tool marker; capability choice remains dynamic.
   receipt schema field, dependency, cache, watcher, or deployment semantic.
 - Source and review acceptance are complete. PR integration, exact deployment
   and controller handoff, and unchanged-Goal live acceptance remain pending.
+
+## Final Integration And Acceptance
+
+- PR #113 was accepted at exact head `a06ecd1a219a24d1d2cd26080572d1616bf80453`
+  and merged as `00ab868a4ba0c22ba1d92d947b5d61126e68e6db`.
+  Canonical deployment
+  `deployment_20260719130329_00ab868a4ba0` reached `stable` with zero
+  failures, previous source `ac399a08d3630d61b8f3d7201d0c776496afc758`,
+  controller handoff, healthy/current service, and connected Feishu inbound.
+- Subsequent real Goal tranches could not write a terminal receipt from stale
+  workspace evidence; the bound worktree was freshly observed before the
+  cumulative acceptance path continued. The unchanged Goal reached accepted
+  receipt `goal_receipt_20260719150711_125a50d2` at sequence 235 with the same
+  execution placement and no receipt-schema or state-owner expansion.

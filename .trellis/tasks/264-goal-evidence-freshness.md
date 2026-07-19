@@ -1,7 +1,6 @@
 # Task 264: Goal Evidence Freshness Across Continue Tranches
 
-Status: active; implementation, review, integration, deployment, and same-Goal
-acceptance pending
+Status: completed
 
 ## Identity And Ownership
 
@@ -229,3 +228,18 @@ Explicit non-goals:
   the implementation worktree remained clean. PR integration, exact
   deployment/controller handoff, and terminal acceptance of the unchanged
   Feishu Goal remain pending and are not claimed here.
+
+## Final Integration And Acceptance
+
+- PR #108 was accepted at exact head `3b362a8d8e00d2417f2019e8fd2e97c6fa47d8f9`
+  and merged as `a53ceccf788467f02cde11fed2aa0a9ed71b41a3`.
+  Canonical deployment
+  `deployment_20260719101911_a53ceccf7884` reached `stable` with zero
+  failures, exact rollback source
+  `e56272b496095ea58f72b3bf32584fec59584477`, controller handoff,
+  healthy/current service, and connected Feishu inbound.
+- Later Continue tranches preserved the post-boundary observation obligation
+  across commands instead of accepting a stale blocker. The unchanged Goal
+  ultimately reached accepted terminal receipt
+  `goal_receipt_20260719150711_125a50d2` at sequence 235, proving the freshness
+  contract in the real cumulative path rather than in a synthetic replay only.

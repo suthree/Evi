@@ -1,7 +1,6 @@
 # Task 263: Prior Stable Deployment Provenance
 
-Status: active; implementation, review, integration, deployment, and same-Goal
-acceptance pending
+Status: completed
 
 ## Identity And Ownership
 
@@ -209,3 +208,18 @@ Explicit non-goals:
   ancestor `true`, no source errors/truncation, and connected Feishu inbound.
 - Review cycle 4, PR integration, exact deployment/controller handoff, and
   same-Goal terminal acceptance remain pending.
+
+## Final Integration And Acceptance
+
+- PR #106 was accepted at exact head `b5ad089485eefc734ad0d0e740c3a8f3e947e048`
+  and merged as `e56272b496095ea58f72b3bf32584fec59584477`.
+  Canonical deployment
+  `deployment_20260719055832_e56272b49609` reached `stable` with zero
+  failures, exact previous stable source
+  `90a785879c56c61170457a7919fff5b514cedc1d`, controller handoff,
+  healthy/current service, and connected Feishu inbound.
+- The same real Goal later consumed the composed prior-deployment and local
+  commit provenance, then reached accepted terminal receipt
+  `goal_receipt_20260719150711_125a50d2` at sequence 235. The completion uses
+  canonical deployment history and repository provenance only; no new ledger
+  or second owner was added.

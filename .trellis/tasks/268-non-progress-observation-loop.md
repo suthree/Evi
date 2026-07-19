@@ -1,6 +1,6 @@
 # Task 268: Non-Progress Observation Loop
 
-Status: active
+Status: completed
 
 ## Identity And Ownership
 
@@ -127,3 +127,33 @@ Non-goals:
   full test harness removes the worktree's temporary root-dependency symlink;
   no dependency or lockfile changed.
 - Pending: PR/merge/deploy and same-Goal live acceptance.
+
+## Final Integration And Acceptance
+
+- PR #117 was accepted at exact head `f5e02ac45c4eb564c821aca08e08fb4a0fdfb0c2`
+  and merged as `5a2bbb2c64d57d38f5684ffa8496113195edc7b0`.
+  Canonical deployment
+  `deployment_20260719145935_5a2bbb2c64d5` reached `stable` with zero
+  failures and exact rollback source
+  `43dd4ec3d9c36db5011c77b6b34285902d97b601`. The outer harness completed the
+  supervisor controller handoff from PID 31393 to PID 45744; an immediate
+  second handoff returned `already_matched`. Runtime health was
+  `healthy/current` at `5a2bbb2`, and Feishu inbound remained connected.
+- Live same-Goal sequences 227-235 show that the unchanged Goal escaped the old
+  repeated blocker loop and completed, but they do not directly trigger the
+  non-progress rejection branch. Evi first chose a different bounded
+  deployment read at sequence 227; sequence 230 is the existing
+  `post_boundary_observation_required` freshness rejection, after which
+  cognition dynamically selected two bounded Task261 reads at sequences 231
+  and 233. No `non_progress_replan_required` event occurred in this live path.
+- The focused deterministic 7/7 regression remains the direct evidence that
+  identical action plus equivalent observation plus repeated blocker invokes
+  the non-progress feedback and prevents same-action redispatch. The live path
+  confirms compatibility and terminal progress without claiming that the
+  anti-loop branch itself fired; no static route or mandatory alternative tool
+  was introduced.
+- The unchanged Goal reached `goal_completed` at sequence 235 with accepted
+  terminal receipt `goal_receipt_20260719150711_125a50d2`. The receipt correctly
+  distinguishes PR #102 head `6c90aa2` from exact merge commit `7067c1bd`,
+  verifies historical deployment/rollback/live-ingress evidence, and reports
+  to Feishu that no continuation command is required.
