@@ -108,8 +108,8 @@ Non-goals:
   ephemeral decision feedback. A changed observation remains a valid blocker;
   the same action digest cannot be redispatched while that feedback is active;
   budget exhaustion uses the existing blocked-event schema and does not create
-  another observation obligation.
-- Green evidence: focused non-progress tests 3/3; full GoalRuntime and cognition
+  another observation obligation or mask the original model blocker.
+- Green evidence: focused non-progress tests 4/4; full GoalRuntime and cognition
   adapter files passed; direct TypeScript build passed; `git diff --check`
   passed.
 - Pending: independent review, full repository gate, PR/merge/deploy, and

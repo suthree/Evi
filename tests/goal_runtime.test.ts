@@ -1418,6 +1418,61 @@ test("GoalRuntime does not redispatch the same action after non-progress feedbac
   }
 });
 
+test("GoalRuntime preserves the non-progress guard across its budget checkpoint", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The equivalent refresh leaves the same unresolved boundary.",
+        next_action: "Wait and repeat the same runtime refresh."
+      },
+      action("runtime.inspect", {}, "Incorrectly repeat the same action in the next tranche."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the repeated blocker after the harness checkpoint.",
+        next_action: "Repeat the same runtime refresh again."
+      }
+    ]);
+    const startCommand = start("non_progress_checkpoint_guard_start", "Keep the original blocker visible across a harness checkpoint.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 2 };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_one",
+      goal_id: started.goal_id
+    });
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_two",
+      goal_id: started.goal_id
+    });
+    const guardedAgain = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_checkpoint_guard_continue_three",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(guardedAgain.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(guardedAgain.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(guardedAgain.checkpoint.summary, /Incorrectly accept/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime rejects a repeated blocker without a post-boundary observation", async () => {
   const fixture = await createFixture();
   try {

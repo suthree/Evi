@@ -1877,6 +1877,7 @@ function repeatedNonProgressObservationFeedback(
   for (let index = currentIndex - 1; index >= 0; index -= 1) {
     const event = goalEvents[index]!;
     if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
+    if (event.event_type === "goal_blocked" && event.checkpoint.cursor === "non_progress_replan_required") continue;
     priorBoundaryIndex = index;
     break;
   }

@@ -417,7 +417,8 @@ not dispatched again. The feedback is not canonical evidence and names no
 mandatory fallback tool. If no model round remains, the existing blocked event
 shape records a `non_progress_replan_required` checkpoint and the rejected
 round's usage; this harness checkpoint does not create a new observation
-obligation. The projection is derived from existing events and adds no event
+obligation or mask the last model-authored blocker during a later comparison.
+The projection is derived from existing events and adds no event
 schema, progress ledger, mutable score, task router, or second lifecycle owner.
 
 Before the same cognition call, GoalRuntime resolves one bounded Capability
