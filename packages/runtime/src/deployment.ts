@@ -63,15 +63,6 @@ export interface DeploymentControllerReadiness {
   boundary: string;
 }
 
-export interface DeploymentControllerInspectionDefinition {
-  repoRoot: string;
-  stateRoot: string;
-  runtimeCurrentRoot: string;
-  runtimeBuildPath: string;
-  supervisorManifestPath: string;
-  supervisorEntryPath: string;
-}
-
 export class DeploymentControllerHandoffRequiredError extends Error {
   readonly code = "controller_handoff_required";
 
@@ -82,7 +73,7 @@ export class DeploymentControllerHandoffRequiredError extends Error {
 }
 
 export async function inspectDeploymentControllerReadiness(
-  definition: DeploymentControllerInspectionDefinition
+  definition: ServiceDefinition
 ): Promise<DeploymentControllerReadiness> {
   const identity = await readDeploymentControllerIdentity(definition);
   const matched = identity.installedDigest === identity.stableDigest
@@ -543,7 +534,7 @@ interface DeploymentControllerIdentity {
 }
 
 async function readDeploymentControllerIdentity(
-  definition: DeploymentControllerInspectionDefinition
+  definition: ServiceDefinition
 ): Promise<DeploymentControllerIdentity> {
   const paths = deploymentPaths(definition.stateRoot);
   const [current, build, manifest] = await Promise.all([

@@ -162,3 +162,32 @@ Explicit non-goals:
   Chinese architecture companion. Integration and live same-Goal evidence
   remain explicitly pending review, PR merge, exact deployment, controller
   handoff, and resident invocation.
+
+## Independent Review Corrections
+
+- The first two-axis review reported three Spec and three Standards findings.
+  No finding was deferred.
+- `runtime.inspect` now surfaces any canonical deployment failure signal,
+  distinguishes current/pending/orphaned ownership, includes its bounded ref,
+  and refuses a `consistent` snapshot while the signal exists.
+- Previous-runtime evidence now checks target, repository, installed runtime
+  root, clean-source posture, and exact agreement with
+  `current.previous_source_commit`; missing/invalid evidence remains
+  `incomplete`, while drift remains explicit.
+- Manual service/runtime/supervisor path reconstruction and the temporary
+  deployment parameter-type change were removed. The module reuses
+  `resolveServiceDefinition` and the existing deployment/controller readers.
+- Canonical owner union types are preserved for repository, deployment,
+  heartbeat, service-deployment, gateway, and inbound states instead of
+  weakening them to generic strings.
+- All externally sourced lists and text now have explicit item/character
+  limits plus aggregate truncation metadata. A synthetic large-input test
+  verifies capped verification/failure refs and failure/controller text.
+- Corrected focused verification passed 66 deployment/tool/portfolio/policy/
+  executor/read-model tests plus the two context-budget and acceptance-summary
+  regressions. The real read-only probe remains `consistent` for the resident
+  `7067c1bd97ff48389e20d713101cb89fbdaf9710` deployment with no truncation.
+- Corrected `git diff --check` and full `pnpm run check` passed: TypeScript
+  build, 982/982 tests, active Skill validation, and neutral naming across 133
+  implementation files. Both review axes must pass again on the corrected
+  commit before publication.
