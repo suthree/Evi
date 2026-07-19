@@ -387,13 +387,19 @@ obligation remains. Rejected blockers receive the
 `post_boundary_observation_required` checkpoint; rejected outcomes receive a
 failed `post_boundary_observation` verification check. The satisfying
 observation can precede a later soft-budget checkpoint, so it need not belong
-to the Continue command that finally proposes the outcome. Cognition still
-sees that observation as `prior_continue` and remains responsible for
-refreshing it again when the underlying fact can drift. This temporal
-projection writes no new event, ledger, cache, state owner, task router, or
-tool-specific refresh rule. A soft-budget boundary alone does not create the
-hard obligation; otherwise a one-model-round tranche could never accept the
-observation it was forced to checkpoint immediately after recording.
+to the Continue command that finally proposes the outcome. Goal cognition sees
+the same ordering as a derived `observation_obligation` status: `none`,
+`required`, or `satisfied`. `satisfied` tells cognition that a
+post-boundary observation cleared the harness obligation even when that
+observation is now `prior_continue`; it must not reacquire the observation
+solely because of that scope change. Cognition still evaluates whether the
+canonical observation supports the next decision and refreshes when evidence
+indicates material drift or the decision requires a different fact. This
+temporal projection writes no new event, ledger, cache, state owner, task
+router, or tool-specific refresh rule. A soft-budget boundary alone does not
+create the hard obligation; otherwise a one-model-round tranche could never
+accept the observation it was forced to checkpoint immediately after
+recording.
 
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current

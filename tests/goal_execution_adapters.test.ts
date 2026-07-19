@@ -181,6 +181,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
       used: { model_rounds: 1, tool_calls: 1, elapsed_ms: 1_000 },
       remaining: { model_rounds: 2, tool_calls: 3, elapsed_ms: 119_000 }
     },
+    observation_obligation: { status: "satisfied" },
     evidence: [{
       event_id: "goal_event_1",
       kind: "intent",
@@ -218,11 +219,14 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /set purpose="verification"/);
   assert.match(requests[0]!.instructions, /Purpose marks evidence intent, never authority/);
   assert.match(requests[0]!.instructions, /prior_continue.*historical event/i);
-  assert.match(requests[0]!.instructions, /Before repeating a blocker or proposing an outcome.*drift/i);
+  assert.match(requests[0]!.instructions, /observation_obligation.*required.*satisfied/i);
+  assert.match(requests[0]!.instructions, /Do not reacquire.*solely because.*prior_continue/i);
   assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
   assert.match(requests[0]!.input, /Canonical Evidence/);
   assert.match(requests[0]!.input, /"continue_scope": "prior_continue"/);
   assert.match(requests[0]!.input, /"continue_scope": "current_continue"/);
+  assert.match(requests[0]!.input, /"observation_obligation"/);
+  assert.match(requests[0]!.input, /"status": "satisfied"/);
   assert.match(requests[0]!.input, /"budget_scope": "per_continue_command"/);
   assert.match(requests[0]!.input, /"lifetime_usage"/);
   assert.match(requests[0]!.input, /"repository_authority"/);

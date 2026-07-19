@@ -450,6 +450,7 @@ export interface GoalContinueEvidenceView extends GoalEvidenceView {
 export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
+  observation_obligation: GoalObservationObligationView;
   evidence: GoalContinueEvidenceView[];
   capability_portfolio: GoalCapabilityPortfolio;
 }
@@ -459,6 +460,10 @@ export interface GoalExecutionBudgetView {
   limit: GoalSoftBudget;
   used: GoalUsage;
   remaining: GoalUsage;
+}
+
+export interface GoalObservationObligationView {
+  status: "none" | "required" | "satisfied";
 }
 
 export interface GoalCognition {
@@ -705,6 +710,7 @@ export class GoalRuntime {
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
+          observation_obligation: goalObservationObligation(events, command.goal_id),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
         }));
@@ -732,7 +738,7 @@ export class GoalRuntime {
       operationUsage = addUsage(operationUsage, modelUsage);
 
       if (cognition.type === "blocked") {
-        if (goalNeedsObservationAfterContinuationBoundary(events, command.goal_id)) {
+        if (goalObservationObligation(events, command.goal_id).status === "required") {
           const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
           const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation, and then re-evaluate the blocker.";
           const checkpoint = normalizeCheckpoint({
@@ -1023,7 +1029,7 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    if (goalNeedsObservationAfterContinuationBoundary(events, command.goal_id)) {
+    if (goalObservationObligation(events, command.goal_id).status === "required") {
       verification = parseVerificationResult({
         status: "failed",
         summary: "Outcome verification requires a canonical observation after the latest continuation boundary.",
@@ -1652,10 +1658,10 @@ function buildCognitionEvidence(
   return selected.map((event) => continueEvidenceView(event, activeContinueCommandId));
 }
 
-function goalNeedsObservationAfterContinuationBoundary(
+function goalObservationObligation(
   events: GoalRuntimeEvent[],
   goalId: string
-): boolean {
+): GoalObservationObligationView {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   let latestBoundaryIndex = -1;
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
@@ -1664,8 +1670,10 @@ function goalNeedsObservationAfterContinuationBoundary(
     latestBoundaryIndex = index;
     break;
   }
-  if (latestBoundaryIndex < 0) return false;
-  return !goalEvents.slice(latestBoundaryIndex + 1).some((event) => event.event_type === "goal_action_observed");
+  if (latestBoundaryIndex < 0) return { status: "none" };
+  const satisfied = goalEvents.slice(latestBoundaryIndex + 1)
+    .some((event) => event.event_type === "goal_action_observed");
+  return { status: satisfied ? "satisfied" : "required" };
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {

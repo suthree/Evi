@@ -183,3 +183,33 @@ Explicit non-goals:
   neutral naming across 133 implementation files. Review cycle 3, PR
   integration, exact deployment/controller handoff, and same-Goal live
   acceptance remain pending.
+
+## Review Cycle 3 Correction
+
+- Spec review reported 0 findings and independently verified that the
+  post-boundary observation obligation survives neutral events, clears only on
+  a canonical observation, and can progress across a soft checkpoint without
+  changing capability ownership.
+- Standards review found one remaining liveness defect: with
+  `max_model_rounds=1`, the harness accepted an observation from the preceding
+  tranche, but cognition saw only `prior_continue` plus an instruction to
+  refresh in the active Continue. A contract-following model could therefore
+  refresh forever instead of evaluating the result.
+- A red behavioral regression introduced cognition that branches on the
+  freshness contract rather than a scripted outcome sequence. It blocks,
+  observes in a one-round tranche, crosses the necessary soft checkpoint, and
+  can terminate only when GoalRuntime exposes the derived obligation as
+  `satisfied`.
+- Goal cognition now receives one bounded, read-only
+  `observation_obligation: none | required | satisfied` view derived by the
+  same canonical event-order function used by the harness gates. The adapter
+  says not to reacquire solely because satisfying evidence became
+  `prior_continue`; evidence sufficiency and any material drift remain dynamic
+  cognition decisions. No persisted state, router, event/receipt schema, tool
+  mandate, or competing owner was added.
+- The new liveness regression and the cognition rendering/contract regression
+  pass 2/2. The expanded TypeScript build and GoalRuntime/adapter suites pass
+  50/50. Full `pnpm run check` passes with 1,004/1,004 tests, active-skill
+  validation, neutral naming across 133 implementation files, and
+  `git diff --check`. Review cycle 4, PR integration, exact
+  deployment/controller handoff, and same-Goal live acceptance remain pending.

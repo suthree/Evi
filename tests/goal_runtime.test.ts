@@ -1042,6 +1042,61 @@ test("GoalRuntime soft budget checkpoints and continues the same identity", asyn
   }
 });
 
+test("GoalRuntime exposes a satisfied observation obligation so one-round cognition can terminate", async () => {
+  const fixture = await createFixture();
+  try {
+    const calls: GoalCognitionInput[] = [];
+    const cognition: GoalCognition = {
+      async next(input) {
+        calls.push(structuredClone(input));
+        if (calls.length === 1) {
+          return {
+            type: "blocked",
+            summary: "Current evidence is insufficient.",
+            next_action: "Obtain one bounded observation after this boundary."
+          };
+        }
+        const obligation = input.observation_obligation;
+        if (obligation?.status === "satisfied") {
+          return outcome("边界后的观察已满足义务；在下一轮评估并完成。")
+        }
+        return action("runtime.inspect", {}, "Obtain one bounded post-boundary observation.");
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("obligation_liveness_start", "Finish after a fresh observation across a one-round soft checkpoint."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_block",
+      goal_id: started.goal_id
+    });
+    const observed = await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_observe",
+      goal_id: started.goal_id
+    });
+    assert.deepEqual(observed.continuation_reasons, ["soft_budget_reached"]);
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "obligation_liveness_finish",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.equal(calls[1]!.observation_obligation.status, "required");
+    assert.equal(calls[2]!.observation_obligation.status, "satisfied");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime preserves working synthesis while canonical evidence carries a failed observation", async () => {
   const fixture = await createFixture();
   try {
