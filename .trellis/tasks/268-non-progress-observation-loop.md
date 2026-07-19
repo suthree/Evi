@@ -94,5 +94,22 @@ Non-goals:
 
 ## Integration Checkpoint
 
-- Pending: red-capable regression, diagnosis, bounded source fix, independent
-  review, PR/merge/deploy, and same-Goal live acceptance.
+- Red evidence: the focused non-progress test failed twice because the second
+  Continue executed only the repeated `runtime.inspect`; the expected dynamic
+  alternative action was never requested.
+- Diagnosis: canonical history already retained the repeated action digest,
+  both observations, and the prior blocker. The freshness gate checked only
+  that a post-boundary observation existed, and the blocker branch returned
+  immediately without comparing progress or returning rejection feedback to
+  cognition.
+- Implemented source checkpoint: derive equivalent action/observation loops
+  from existing events, reject the repeated blocker inside the remaining
+  tranche, carry exact usage until the next canonical event, and expose only
+  ephemeral decision feedback. A changed observation remains a valid blocker;
+  budget exhaustion uses the existing blocked-event schema and does not create
+  another observation obligation.
+- Green evidence: focused non-progress tests 2/2; full GoalRuntime and cognition
+  adapter files passed; direct TypeScript build passed; `git diff --check`
+  passed.
+- Pending: independent review, full repository gate, PR/merge/deploy, and
+  same-Goal live acceptance.

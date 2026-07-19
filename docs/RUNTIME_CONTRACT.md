@@ -401,6 +401,24 @@ create the hard obligation; otherwise a one-model-round tranche could never
 accept the observation it was forced to checkpoint immediately after
 recording.
 
+A fresh observation is not automatically progress. After a model-authored
+blocker, GoalRuntime compares the first observation in the next Continue with
+the last observation that preceded that blocker. If the canonical action
+digest and the observation's decision-facing identity are equivalent and
+cognition proposes another blocker, the proposal is rejected inside the
+remaining tranche rather than ending the Continue. The decision-facing
+identity uses the tool result's bounded semantic summary plus its success,
+effect, refs, typed changes, failure, verification, and workspace control
+markers; transport ids and timestamps do not manufacture progress. Cognition
+then receives ephemeral `repeated_non_progress_observation` decision feedback
+and must dynamically choose a materially different evidence path or propose a
+supported outcome. The feedback is not canonical evidence and names no
+mandatory fallback tool. If no model round remains, the existing blocked event
+shape records a `non_progress_replan_required` checkpoint and the rejected
+round's usage; this harness checkpoint does not create a new observation
+obligation. The projection is derived from existing events and adds no event
+schema, progress ledger, mutable score, task router, or second lifecycle owner.
+
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
 tool contracts and their model-visible constraints, readiness under the Goal's

@@ -458,6 +458,7 @@ export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
   observation_obligation: GoalObservationObligationView;
+  decision_feedback: GoalDecisionFeedbackView[];
   workspace_freshness: GoalWorkspaceFreshnessView;
   evidence: GoalContinueEvidenceView[];
   capability_portfolio: GoalCapabilityPortfolio;
@@ -472,6 +473,18 @@ export interface GoalExecutionBudgetView {
 
 export interface GoalObservationObligationView {
   status: "none" | "required" | "satisfied";
+}
+
+export interface GoalDecisionFeedbackView {
+  code: "repeated_non_progress_observation";
+  summary: string;
+  prior_blocker_event_id: string;
+  prior_observation_event_id: string;
+  current_observation_event_id: string;
+  repeated_action: {
+    tool: string;
+    action_digest: string;
+  };
 }
 
 export interface GoalCognition {
@@ -670,9 +683,29 @@ export class GoalRuntime {
     let events = initialEvents;
     let state = initialState;
     let operationUsage = usageForCommand(events, command.command_id);
+    let deferredUsage = normalizeUsage({});
+    let decisionFeedback: GoalDecisionFeedbackView[] = [];
 
     while (true) {
       if (budgetReached(operationUsage, state.view.budget)) {
+        const nonProgressFeedback = decisionFeedback.find((item) => item.code === "repeated_non_progress_observation");
+        if (nonProgressFeedback) {
+          const nextAction = "Continue the same Goal and dynamically choose a different evidence path, or propose a supported outcome from canonical evidence.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "non_progress_replan_required",
+            summary: nonProgressFeedback.summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary: nonProgressFeedback.summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: deferredUsage
+          })).view;
+        }
         const checkpoint = normalizeCheckpoint({
           ...state.view.checkpoint,
           next_action: "Continue the same goal with another soft execution tranche."
@@ -708,7 +741,7 @@ export class GoalRuntime {
           summary,
           next_action: checkpoint.next_action!,
           checkpoint,
-          usage_delta: normalizeUsage({})
+          usage_delta: deferredUsage
         })).view;
       }
 
@@ -720,13 +753,14 @@ export class GoalRuntime {
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           observation_obligation: goalObservationObligation(events, command.goal_id),
+          decision_feedback: structuredClone(decisionFeedback),
           workspace_freshness: structuredClone(workspaceFreshness),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
         }));
       } catch (error) {
         const elapsed = elapsedSince(cognitionStarted, this.nowMs());
-        const usageDelta = normalizeUsage({ model_rounds: 1, elapsed_ms: elapsed });
+        const usageDelta = addUsage(deferredUsage, normalizeUsage({ model_rounds: 1, elapsed_ms: elapsed }));
         const summary = `Goal cognition failed: ${errorMessage(error)}`.slice(0, 2_000);
         const checkpoint = normalizeCheckpoint({
           ...state.view.checkpoint,
@@ -744,8 +778,11 @@ export class GoalRuntime {
       }
 
       const cognitionElapsed = elapsedSince(cognitionStarted, this.nowMs());
-      const modelUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
-      operationUsage = addUsage(operationUsage, modelUsage);
+      const roundUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
+      const decisionUsage = addUsage(deferredUsage, roundUsage);
+      operationUsage = addUsage(operationUsage, roundUsage);
+      deferredUsage = normalizeUsage({});
+      decisionFeedback = [];
 
       if (cognition.type === "blocked") {
         const terminalWorkspaceFreshness = await goalWorkspaceFreshness(events, state.view);
@@ -763,7 +800,7 @@ export class GoalRuntime {
             summary: workspaceFailure.summary,
             next_action: workspaceFailure.next_action,
             checkpoint,
-            usage_delta: modelUsage
+            usage_delta: decisionUsage
           })).view;
         }
         if (goalObservationObligation(events, command.goal_id).status === "required") {
@@ -781,8 +818,18 @@ export class GoalRuntime {
             summary,
             next_action: nextAction,
             checkpoint,
-            usage_delta: modelUsage
+            usage_delta: decisionUsage
           })).view;
+        }
+        const nonProgressFeedback = repeatedNonProgressObservationFeedback(
+          events,
+          command.goal_id,
+          command.command_id
+        );
+        if (nonProgressFeedback) {
+          deferredUsage = decisionUsage;
+          decisionFeedback = [nonProgressFeedback];
+          continue;
         }
         const checkpoint = normalizeCheckpoint({
           cursor: "blocked",
@@ -796,7 +843,7 @@ export class GoalRuntime {
           summary: cognition.summary,
           next_action: cognition.next_action,
           checkpoint,
-          usage_delta: modelUsage
+          usage_delta: decisionUsage
         })).view;
       }
 
@@ -807,7 +854,7 @@ export class GoalRuntime {
           command,
           commandDigest,
           cognition.outcome,
-          modelUsage,
+          decisionUsage,
           await goalWorkspaceFreshness(events, state.view)
         );
       }
@@ -835,7 +882,7 @@ export class GoalRuntime {
           summary,
           next_action: nextAction,
           checkpoint,
-          usage_delta: modelUsage
+          usage_delta: decisionUsage
         })).view;
       }
       const actionDigest = digestAction(action);
@@ -860,7 +907,7 @@ export class GoalRuntime {
             summary,
             next_action: nextAction,
             checkpoint,
-            usage_delta: modelUsage
+            usage_delta: decisionUsage
           })).view;
         }
       }
@@ -884,7 +931,7 @@ export class GoalRuntime {
           summary,
           next_action: nextAction,
           checkpoint,
-          usage_delta: modelUsage
+          usage_delta: decisionUsage
         })).view;
       }
       const persistedAction = effectDecision.outcome === "deny" ? redactedDeniedAction(action) : action;
@@ -898,7 +945,7 @@ export class GoalRuntime {
         action_digest: actionDigest,
         effect_id: effectId,
         effect_decision: effectDecision,
-        usage_delta: modelUsage
+        usage_delta: decisionUsage
       });
       events = planned.events;
       state = planned.state;
@@ -1793,6 +1840,7 @@ function goalObservationObligation(
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
     const event = goalEvents[index]!;
     if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
+    if (event.event_type === "goal_blocked" && event.checkpoint.cursor === "non_progress_replan_required") continue;
     latestBoundaryIndex = index;
     break;
   }
@@ -1800,6 +1848,75 @@ function goalObservationObligation(
   const satisfied = goalEvents.slice(latestBoundaryIndex + 1)
     .some((event) => event.event_type === "goal_action_observed");
   return { status: satisfied ? "satisfied" : "required" };
+}
+
+function repeatedNonProgressObservationFeedback(
+  events: GoalRuntimeEvent[],
+  goalId: string,
+  activeContinueCommandId: string
+): GoalDecisionFeedbackView | null {
+  const goalEvents = events.filter((event) => event.goal_id === goalId);
+  const currentObservations = goalEvents.filter(
+    (event): event is Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> =>
+      event.event_type === "goal_action_observed" && event.command_id === activeContinueCommandId
+  );
+  if (currentObservations.length !== 1) return null;
+  const currentObservation = currentObservations[0]!;
+  const currentIndex = goalEvents.indexOf(currentObservation);
+  if (currentIndex < 1) return null;
+
+  let priorBoundaryIndex = -1;
+  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+    const event = goalEvents[index]!;
+    if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
+    priorBoundaryIndex = index;
+    break;
+  }
+  if (priorBoundaryIndex < 0) return null;
+  const priorBoundary = goalEvents[priorBoundaryIndex]!;
+  if (priorBoundary.event_type !== "goal_blocked" || priorBoundary.checkpoint.cursor !== "blocked") return null;
+
+  let priorObservation: Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> | null = null;
+  for (let index = priorBoundaryIndex - 1; index >= 0; index -= 1) {
+    const event = goalEvents[index]!;
+    if (event.command_id !== priorBoundary.command_id) continue;
+    if (event.event_type === "goal_action_observed") {
+      priorObservation = event;
+      break;
+    }
+  }
+  if (!priorObservation
+    || priorObservation.action_digest !== currentObservation.action_digest
+    || goalObservationProgressDigest(priorObservation.result) !== goalObservationProgressDigest(currentObservation.result)) {
+    return null;
+  }
+
+  return {
+    code: "repeated_non_progress_observation",
+    summary: `Blocked decision rejected because ${currentObservation.result.tool} repeated the same action and produced an equivalent canonical observation after the latest blocked boundary. Replan dynamically from the unresolved fact instead of repeating this observation loop, or propose a supported outcome from canonical evidence.`,
+    prior_blocker_event_id: priorBoundary.id,
+    prior_observation_event_id: priorObservation.id,
+    current_observation_event_id: currentObservation.id,
+    repeated_action: {
+      tool: currentObservation.result.tool,
+      action_digest: currentObservation.action_digest
+    }
+  };
+}
+
+function goalObservationProgressDigest(result: ToolResult): string {
+  const failureKind = typeof result.output.failure_kind === "string" ? result.output.failure_kind : null;
+  return createHash("sha256").update(canonicalJson({
+    tool: result.tool,
+    ok: result.ok,
+    summary: result.summary,
+    side_effect_level: result.side_effect_level,
+    refs: toolResultRefs(result),
+    changes: observedChanges(result),
+    failure_kind: failureKind,
+    verification: localVerificationMarker(result.output.verification),
+    workspace_observation: parseGoalWorkspaceObservation(result.output.workspace_observation)
+  })).digest("hex");
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {
