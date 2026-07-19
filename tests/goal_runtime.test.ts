@@ -1366,6 +1366,58 @@ test("GoalRuntime checkpoints rejected non-progress feedback when the model budg
   }
 });
 
+test("GoalRuntime does not redispatch the same action after non-progress feedback", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The equivalent refresh leaves the same unresolved boundary.",
+        next_action: "Wait and repeat the same runtime refresh."
+      },
+      action("runtime.inspect", {}, "Incorrectly repeat the action rejected by decision feedback."),
+      action("file.read", { scope: "repo", path: "CONTEXT.md" }, "Choose a materially different evidence path.")
+    ]);
+    const startCommand = start("non_progress_redispatch_start", "Do not dispatch an action already identified as non-progressing.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 4 };
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_redispatch_continue_one",
+      goal_id: started.goal_id
+    });
+    const replanned = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_redispatch_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.deepEqual(tools.calls.map((item) => item.tool), [
+      "runtime.inspect",
+      "runtime.inspect",
+      "file.read"
+    ]);
+    assert.deepEqual(replanned.continuation_reasons, ["soft_budget_reached"]);
+    assert.equal(replanned.usage.model_rounds, 6);
+    assert.equal(replanned.usage.tool_calls, 3);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime rejects a repeated blocker without a post-boundary observation", async () => {
   const fixture = await createFixture();
   try {

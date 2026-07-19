@@ -780,6 +780,7 @@ export class GoalRuntime {
       const cognitionElapsed = elapsedSince(cognitionStarted, this.nowMs());
       const roundUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
       const decisionUsage = addUsage(deferredUsage, roundUsage);
+      const activeDecisionFeedback = decisionFeedback;
       operationUsage = addUsage(operationUsage, roundUsage);
       deferredUsage = normalizeUsage({});
       decisionFeedback = [];
@@ -860,6 +861,14 @@ export class GoalRuntime {
       }
 
       const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
+      const actionDigest = digestAction(action);
+      const repeatedActionFeedback = activeDecisionFeedback.find((item) =>
+        item.code === "repeated_non_progress_observation" && item.repeated_action.action_digest === actionDigest);
+      if (repeatedActionFeedback) {
+        deferredUsage = decisionUsage;
+        decisionFeedback = [repeatedActionFeedback];
+        continue;
+      }
       let capabilitySelection: GoalCapabilitySelection;
       try {
         capabilitySelection = validateGoalCapabilitySelection(
@@ -885,7 +894,6 @@ export class GoalRuntime {
           usage_delta: decisionUsage
         })).view;
       }
-      const actionDigest = digestAction(action);
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
       const effectDecision = effectDecisionSchema.parse(rawDecision);

@@ -106,9 +106,10 @@ Non-goals:
   from existing events, reject the repeated blocker inside the remaining
   tranche, carry exact usage until the next canonical event, and expose only
   ephemeral decision feedback. A changed observation remains a valid blocker;
+  the same action digest cannot be redispatched while that feedback is active;
   budget exhaustion uses the existing blocked-event schema and does not create
   another observation obligation.
-- Green evidence: focused non-progress tests 2/2; full GoalRuntime and cognition
+- Green evidence: focused non-progress tests 3/3; full GoalRuntime and cognition
   adapter files passed; direct TypeScript build passed; `git diff --check`
   passed.
 - Pending: independent review, full repository gate, PR/merge/deploy, and

@@ -412,7 +412,8 @@ effect, refs, typed changes, failure, verification, and workspace control
 markers; transport ids and timestamps do not manufacture progress. Cognition
 then receives ephemeral `repeated_non_progress_observation` decision feedback
 and must dynamically choose a materially different evidence path or propose a
-supported outcome. The feedback is not canonical evidence and names no
+supported outcome. While that feedback is active, the same action digest is
+not dispatched again. The feedback is not canonical evidence and names no
 mandatory fallback tool. If no model round remains, the existing blocked event
 shape records a `non_progress_replan_required` checkpoint and the rejected
 round's usage; this harness checkpoint does not create a new observation
