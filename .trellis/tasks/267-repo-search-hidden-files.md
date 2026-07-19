@@ -70,3 +70,33 @@ Non-goals:
   and deployed commit `7067c1b`.
 - Root `develop` contains unrelated, concurrent Dream/identity/memory changes;
   they remain preserved outside this worktree and this task.
+
+## Implementation And Verification Evidence
+
+- TDD red: `node --import tsx --test tests/runtime_tools.test.ts` failed only
+  the new hidden-evidence assertion because `repo.search` returned `[]` for a
+  value under `.trellis/tasks`.
+- The ripgrep adapter now opts into hidden repository paths. Protected
+  exclusions are appended after caller globs, so a broad or matching caller
+  glob cannot re-include `.git`, `node_modules`, `dist`, `.runtime*`, or the
+  local-runtime surfaces.
+- The existing Node fallback already walks hidden paths and applies the same
+  protected-prefix exclusions; no second search contract or compatibility path
+  was added.
+- TDD green: the focused runtime-tools suite passed 33/33, including the exact
+  real-Goal query/glob shape and an adjacent `.git` exclusion fixture.
+- The first `pnpm run check` attempt stopped before compilation because this
+  new worktree had no installed dependencies (`tsc: command not found`).
+  `pnpm install --offline --frozen-lockfile` reused 55 packages from the local
+  pnpm store without changing the lockfile or dependency declarations.
+- The repeated full `pnpm run check` passed: TypeScript build, 1012/1012 tests,
+  active Skill validation, and neutral naming across 134 implementation files.
+- `git diff --check` passed. The source/test diff is 31 insertions and 6
+  deletions across `packages/runtime/src/tools.ts` and
+  `tests/runtime_tools.test.ts`; Task267 remains the only governance artifact.
+
+## Integration Checkpoint
+
+- Pending: independent standards/spec review, accepted commit, PR, exact merge
+  deployment, controller handoff, healthy/current and connected Feishu checks,
+  then same-Goal live acceptance.

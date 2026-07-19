@@ -459,6 +459,30 @@ test("repo.search finds repo text with bounded output", async () => {
     assert.equal(matches.some((match) => match.path === "alpha.md"), true);
     assert.equal(matches.some((match) => match.path === "nested/beta.ts"), true);
 
+    await mkdir(join(fixture.repoRoot, ".trellis/tasks"), { recursive: true });
+    await writeFile(
+      join(fixture.repoRoot, ".trellis/tasks/evidence.md"),
+      "accepted head 6c90aa2 maps to its merge commit\n",
+      "utf8"
+    );
+    await mkdir(join(fixture.repoRoot, ".git"), { recursive: true });
+    await writeFile(join(fixture.repoRoot, ".git/private-evidence.md"), "6c90aa2 must stay private\n", "utf8");
+
+    const hiddenEvidence = await executeTool(useTool("repo.search", {
+      query: "6c90aa2",
+      path: ".",
+      globs: ["*.md", "*.json", "*.ts"],
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(hiddenEvidence.ok, true);
+    assert.deepEqual(hiddenEvidence.output.matches, [{
+      path: ".trellis/tasks/evidence.md",
+      line: 1,
+      text: "accepted head 6c90aa2 maps to its merge commit"
+    }]);
+
     await writeFile(join(fixture.repoRoot, "gamma.md"), "needle three\n", "utf8");
     const truncated = await executeTool(useTool("repo.search", {
       query: "needle",

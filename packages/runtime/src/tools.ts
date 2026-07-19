@@ -2362,17 +2362,18 @@ function runRipgrep(options: {
     "--color",
     "never",
     "--fixed-strings",
-    "--glob",
-    "!.git/**",
-    "--glob",
-    "!node_modules/**",
-    "--glob",
-    "!dist/**"
+    "--hidden"
   ];
   for (const glob of options.globs) {
     args.push("--glob", glob);
   }
   args.push(
+    "--glob",
+    "!.git/**",
+    "--glob",
+    "!node_modules/**",
+    "--glob",
+    "!dist/**",
     "--glob",
     "!.runtime/**",
     "--glob",
