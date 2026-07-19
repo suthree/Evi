@@ -97,12 +97,13 @@ test("workspace freshness distinguishes unbound, aligned, changed, and unavailab
   }
 });
 
-test("latest observed workspace HEAD trusts only harness-owned workspace observations and Git changes", () => {
+test("latest observed workspace HEAD trusts only matching harness-owned workspace observations", () => {
   const base = "a".repeat(40);
   const commitChange = "b".repeat(40);
   const verificationHead = "c".repeat(40);
   const snapshotHead = "d".repeat(40);
   const unrelatedRuntimeHead = "e".repeat(40);
+  const expected = { branch: "codex/issue-110-fixture", worktree: "/tmp/worktree" };
   const results: ToolResult[] = [
     toolResult({ changes: [{ kind: "git_commit", identity: commitChange }] }),
     toolResult({ verification: { after: { head_commit: verificationHead } } }),
@@ -116,23 +117,30 @@ test("latest observed workspace HEAD trusts only harness-owned workspace observa
     toolResult({ repository: { head_commit: unrelatedRuntimeHead } })
   ];
 
-  assert.equal(latestObservedWorkspaceHead(base, results), snapshotHead);
-  assert.equal(latestObservedWorkspaceHead(base, results.slice(0, 2)), verificationHead);
-  assert.equal(latestObservedWorkspaceHead(base, [toolResult({ repository: { head_commit: unrelatedRuntimeHead } })]), base);
+  assert.equal(latestObservedWorkspaceHead(base, results, expected), snapshotHead);
+  assert.equal(latestObservedWorkspaceHead(base, results.slice(0, 2), expected), base);
+  assert.equal(latestObservedWorkspaceHead(base, [toolResult({ repository: { head_commit: unrelatedRuntimeHead } })], expected), base);
   assert.equal(latestObservedWorkspaceHead(base, [toolResult({ workspace_observation: {
     status: "observed",
     head_commit: snapshotHead,
     branch: "codex/issue-110-fixture",
     worktree: "/tmp/worktree",
     authority: "harness-owned post-tool workspace observation"
-  } }, false)]), snapshotHead);
+  } }, false)], expected), snapshotHead);
   assert.equal(latestObservedWorkspaceHead(base, [toolResult({ workspace_observation: {
     status: "observed",
     head_commit: snapshotHead,
     branch: "codex/issue-110-fixture",
     worktree: "/tmp/worktree",
     authority: "tool-declared workspace observation"
-  } }, false)]), base);
+  } }, false)], expected), base);
+  assert.equal(latestObservedWorkspaceHead(base, [toolResult({ workspace_observation: {
+    status: "observed",
+    head_commit: snapshotHead,
+    branch: "codex/issue-110-foreign",
+    worktree: "/tmp/worktree",
+    authority: "harness-owned post-tool workspace observation"
+  } })], expected), base);
 });
 
 function toolResult(output: Record<string, unknown>, ok = true): ToolResult {

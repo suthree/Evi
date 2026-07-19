@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { newId, utcNow } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
+import { resolveGoalToolStorePlacement } from "../../core/src/tool_contracts.js";
 import {
   EffectPolicy,
   effectActionSchema,
@@ -747,6 +748,24 @@ export class GoalRuntime {
       operationUsage = addUsage(operationUsage, modelUsage);
 
       if (cognition.type === "blocked") {
+        const terminalWorkspaceFreshness = await goalWorkspaceFreshness(events, state.view);
+        const workspaceFailure = workspaceTerminalFailure(terminalWorkspaceFreshness);
+        if (workspaceFailure) {
+          const checkpoint = normalizeCheckpoint({
+            cursor: workspaceFailure.cursor,
+            summary: workspaceFailure.summary,
+            next_action: workspaceFailure.next_action,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary: workspaceFailure.summary,
+            next_action: workspaceFailure.next_action,
+            checkpoint,
+            usage_delta: modelUsage
+          })).view;
+        }
         if (goalObservationObligation(events, command.goal_id).status === "required") {
           const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
           const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation, and then re-evaluate the blocker.";
@@ -782,7 +801,15 @@ export class GoalRuntime {
       }
 
       if (cognition.type === "outcome") {
-        return this.verifyOutcome(events, state, command, commandDigest, cognition.outcome, modelUsage);
+        return this.verifyOutcome(
+          events,
+          state,
+          command,
+          commandDigest,
+          cognition.outcome,
+          modelUsage,
+          await goalWorkspaceFreshness(events, state.view)
+        );
       }
 
       const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
@@ -1005,7 +1032,8 @@ export class GoalRuntime {
     command: z.infer<typeof continueCommandSchema>,
     commandDigest: string,
     proposal: GoalOutcomeProposal,
-    usageDelta: GoalUsage
+    usageDelta: GoalUsage,
+    workspaceFreshness: GoalWorkspaceFreshnessView
   ): Promise<GoalView> {
     const lineage = goalChangeLineage(events, command.goal_id);
     if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
@@ -1038,7 +1066,10 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    if (goalObservationObligation(events, command.goal_id).status === "required") {
+    const initialWorkspaceFailure = workspaceTerminalFailure(workspaceFreshness);
+    if (initialWorkspaceFailure) {
+      verification = workspaceVerificationFailure(initialWorkspaceFailure, evidenceEventIds.at(-1)!);
+    } else if (goalObservationObligation(events, command.goal_id).status === "required") {
       verification = parseVerificationResult({
         status: "failed",
         summary: "Outcome verification requires a canonical observation after the latest continuation boundary.",
@@ -1069,6 +1100,14 @@ export class GoalRuntime {
           }],
           next_action: "Repair the verifier or evidence and continue the same goal."
         });
+      }
+    }
+    if (verification.status === "passed") {
+      const finalWorkspaceFailure = workspaceTerminalFailure(
+        await goalWorkspaceFreshness(events, state.view)
+      );
+      if (finalWorkspaceFailure) {
+        verification = workspaceVerificationFailure(finalWorkspaceFailure, evidenceEventIds.at(-1)!);
       }
     }
     assertVerificationEvidence(verification, candidate);
@@ -1273,13 +1312,72 @@ async function goalWorkspaceFreshness(
     execution_workspace: null,
     observed_head_commit: null
   });
-  const results = events
-    .filter((event): event is z.infer<typeof actionObservedEventSchema> => event.goal_id === goal.goal_id
-      && event.event_type === "goal_action_observed")
-    .map((event) => event.result);
+  const plannedById = new Map(events
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> => event.goal_id === goal.goal_id
+      && event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  const results = events.flatMap((event) => {
+    if (event.goal_id !== goal.goal_id || event.event_type !== "goal_action_observed") return [];
+    const planned = plannedById.get(event.intent_event_id);
+    if (!planned || !usesExecutionWorkspace(planned.action)) return [];
+    return [event.result];
+  });
   return inspectGoalWorkspaceFreshness({
     execution_workspace: workspace,
-    observed_head_commit: latestObservedWorkspaceHead(workspace.authority.start_head_commit, results)
+    observed_head_commit: latestObservedWorkspaceHead(
+      workspace.authority.start_head_commit,
+      results,
+      workspace.authority
+    )
+  });
+}
+
+function usesExecutionWorkspace(action: EffectAction): boolean {
+  try {
+    return resolveGoalToolStorePlacement(action.tool, action.arguments) === "execution";
+  } catch {
+    return false;
+  }
+}
+
+interface WorkspaceTerminalFailure {
+  cursor: "workspace_observation_required" | "workspace_observation_unavailable";
+  summary: string;
+  next_action: string;
+}
+
+function workspaceTerminalFailure(
+  freshness: GoalWorkspaceFreshnessView
+): WorkspaceTerminalFailure | null {
+  if (freshness.status === "unbound" || freshness.status === "aligned") return null;
+  if (freshness.status === "changed_unobserved") {
+    return {
+      cursor: "workspace_observation_required",
+      summary: "Goal terminal decision rejected because the changed execution workspace remains unobserved.",
+      next_action: "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one matching harness-owned workspace observation, and re-evaluate the same goal."
+    };
+  }
+  return {
+    cursor: "workspace_observation_unavailable",
+    summary: "Goal terminal decision rejected because the bound execution workspace is unavailable or no longer matches its canonical authority.",
+    next_action: "Recover the exact bound worktree authority, obtain one matching harness-owned workspace observation, and continue the same goal."
+  };
+}
+
+function workspaceVerificationFailure(
+  failure: WorkspaceTerminalFailure,
+  evidenceEventId: string
+): GoalVerificationResult {
+  return parseVerificationResult({
+    status: "failed",
+    summary: failure.summary,
+    checks: [{
+      id: "execution_workspace_observation",
+      status: "failed",
+      summary: failure.summary,
+      evidence_event_ids: [evidenceEventId]
+    }],
+    next_action: failure.next_action
   });
 }
 

@@ -242,6 +242,352 @@ test("GoalRuntime exposes external workspace advancement until an execution-scop
   }
 });
 
+test("GoalRuntime rejects a blocker after a control observation while the execution workspace remains unobserved", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const calls: GoalCognitionInput[] = [];
+    const cognition: GoalCognition = {
+      async next(input) {
+        const index = calls.length;
+        calls.push(structuredClone(input));
+        if (index === 0) {
+          return action("workspace.prepare", {
+            branch: "codex/issue-112-blocker-freshness",
+            base_commit: baseCommit
+          }, "Prepare one isolated workspace.");
+        }
+        if (index === 1) {
+          assert.equal(input.workspace_freshness.status, "changed_unobserved");
+          return action("runtime.inspect", {}, "Inspect control runtime state without observing the execution workspace.");
+        }
+        if (index === 2) {
+          assert.equal(input.workspace_freshness.status, "changed_unobserved");
+          return {
+            type: "blocked",
+            summary: "Control runtime evidence cannot establish the changed execution workspace.",
+            next_action: "Request external completion evidence."
+          };
+        }
+        if (index === 3) {
+          assert.equal(input.workspace_freshness.status, "changed_unobserved");
+          return action("file.read", {
+            scope: "repo",
+            path: "evidence.md",
+            max_lines: 40,
+            max_chars: 4_000
+          }, "Observe the selected execution-workspace evidence.");
+        }
+        assert.equal(input.workspace_freshness.status, "aligned");
+        return outcome("执行工作区已由 canonical observation 对齐。");
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: new RuntimeGoalToolExecutor(fixture.store),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("workspace_terminal_blocker_start", "Reject stale blockers after control-only observation."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    const prepared = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_blocker_prepare",
+      goal_id: started.goal_id
+    });
+    const workspaceRoot = prepared.execution_workspace!.authority.repo_root;
+    await writeFile(join(workspaceRoot, "evidence.md"), "changed execution evidence\n", "utf8");
+    await runGoalGit(workspaceRoot, ["add", "evidence.md"]);
+    await runGoalGit(workspaceRoot, ["commit", "-m", "advance execution evidence"]);
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_blocker_control_observe",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_blocker_reject",
+      goal_id: started.goal_id
+    });
+    assert.equal(rejected.checkpoint.cursor, "workspace_observation_required");
+    assert.match(rejected.checkpoint.summary, /execution workspace.*unobserved/i);
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_blocker_execution_observe",
+      goal_id: started.goal_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_blocker_finish",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects an outcome after a control observation while the execution workspace remains unobserved", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    const calls: GoalCognitionInput[] = [];
+    const cognition: GoalCognition = {
+      async next(input) {
+        const index = calls.length;
+        calls.push(structuredClone(input));
+        if (index === 0) {
+          return action("workspace.prepare", {
+            branch: "codex/issue-112-outcome-freshness",
+            base_commit: baseCommit
+          }, "Prepare one isolated workspace.");
+        }
+        if (index === 1) {
+          assert.equal(input.workspace_freshness.status, "changed_unobserved");
+          return action("runtime.inspect", {}, "Inspect only the control runtime state.");
+        }
+        if (index === 2) return outcome("控制域观察后尝试过早完成。");
+        if (index === 3) {
+          return action("repo.search", {
+            query: "changed execution evidence",
+            path: ".",
+            globs: ["*.md"],
+            max_results: 10,
+            max_output_chars: 4_000
+          }, "Observe a relevant execution-workspace repository fact.");
+        }
+        assert.equal(input.workspace_freshness.status, "aligned");
+        return outcome("执行工作区观察后完成。");
+      }
+    };
+    const executor = new RuntimeGoalToolExecutor(fixture.store);
+    let workspaceRoot = "";
+    let workspaceBranch = "";
+    let externalHead = "";
+    const tools: GoalToolExecutor = {
+      async execute(effectAction, decision, context) {
+        const result = await executor.execute(effectAction, decision, context);
+        if (effectAction.tool !== "runtime.inspect") return result;
+        return {
+          ...result,
+          output: {
+            ...result.output,
+            workspace_observation: {
+              status: "observed",
+              head_commit: externalHead,
+              branch: workspaceBranch,
+              worktree: workspaceRoot,
+              authority: "harness-owned post-tool workspace observation"
+            }
+          }
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("workspace_terminal_outcome_start", "Reject stale outcomes after control-only observation."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    const prepared = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_outcome_prepare",
+      goal_id: started.goal_id
+    });
+    workspaceRoot = prepared.execution_workspace!.authority.repo_root;
+    workspaceBranch = prepared.execution_workspace!.authority.branch;
+    await writeFile(join(workspaceRoot, "evidence.md"), "changed execution evidence\n", "utf8");
+    await runGoalGit(workspaceRoot, ["add", "evidence.md"]);
+    await runGoalGit(workspaceRoot, ["commit", "-m", "advance execution evidence"]);
+    externalHead = await goalGitValue(workspaceRoot, ["rev-parse", "HEAD"]);
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_outcome_control_observe",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_outcome_reject",
+      goal_id: started.goal_id
+    });
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    assert.equal(rejected.receipt, null);
+    const events = await readEvents(fixture.stateRoot);
+    const failed = events.find((event) => event.command_id === "workspace_terminal_outcome_reject"
+      && event.event_type === "goal_verification_failed") as {
+        verification?: { checks?: Array<{ id?: string; status?: string }> };
+      } | undefined;
+    assert.ok(failed?.verification?.checks?.some((check) => check.id === "execution_workspace_observation"
+      && check.status === "failed"));
+
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_outcome_execution_observe",
+      goal_id: started.goal_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_terminal_outcome_finish",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects blocker and outcome decisions when a bound execution workspace becomes unavailable during cognition", async () => {
+  for (const terminal of ["blocked", "outcome"] as const) {
+    const fixture = await createFixture();
+    try {
+      await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+      await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+      await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+      const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+      let workspaceRoot = "";
+      const cognition: GoalCognition = {
+        async next() {
+          if (!workspaceRoot) {
+            return action("workspace.prepare", {
+              branch: `codex/issue-112-unavailable-${terminal}`,
+              base_commit: baseCommit
+            }, "Prepare one isolated workspace.");
+          }
+          await runGoalGit(workspaceRoot, ["switch", "-c", `codex/issue-112-foreign-${terminal}`]);
+          return terminal === "blocked"
+            ? {
+                type: "blocked",
+                summary: "The execution workspace became unavailable.",
+                next_action: "Accept an unsafe model blocker."
+              }
+            : outcome("执行工作区不可用时尝试过早完成。");
+        }
+      };
+      const runtime = createRuntime(fixture.store, {
+        cognition,
+        tools: new RuntimeGoalToolExecutor(fixture.store),
+        verifier: new CanonicalGoalVerifier()
+      }, terminal);
+      const started = await runtime.handle({
+        ...start(`workspace_unavailable_${terminal}_start`, "Fail closed when the execution workspace becomes unavailable."),
+        budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+      });
+      const prepared = await runtime.handle({
+        type: "continue",
+        command_id: `workspace_unavailable_${terminal}_prepare`,
+        goal_id: started.goal_id
+      });
+      workspaceRoot = prepared.execution_workspace!.authority.repo_root;
+
+      const rejected = await runtime.handle({
+        type: "continue",
+        command_id: `workspace_unavailable_${terminal}_reject`,
+        goal_id: started.goal_id
+      });
+      assert.equal(rejected.status, "active");
+      assert.equal(rejected.receipt, null);
+      if (terminal === "blocked") {
+        assert.equal(rejected.checkpoint.cursor, "workspace_observation_unavailable");
+        assert.match(rejected.checkpoint.summary, /execution workspace.*unavailable/i);
+      } else {
+        assert.equal(rejected.checkpoint.cursor, "verification_failed");
+        const events = await readEvents(fixture.stateRoot);
+        const failed = events.find((event) => event.command_id === `workspace_unavailable_${terminal}_reject`
+          && event.event_type === "goal_verification_failed") as {
+            verification?: { checks?: Array<{ id?: string; status?: string }> };
+          } | undefined;
+        assert.ok(failed?.verification?.checks?.some((check) => check.id === "execution_workspace_observation"
+          && check.status === "failed"));
+      }
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});
+
+test("GoalRuntime rechecks execution workspace freshness after verifier completion", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, ".gitignore"), ".worktrees/\n", "utf8");
+    await runGoalGit(fixture.repoRoot, ["add", ".gitignore"]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "ignore linked worktrees"]);
+    const baseCommit = await goalGitValue(fixture.repoRoot, ["rev-parse", "HEAD"]);
+    let workspaceRoot = "";
+    const cognition = sequenceCognition([
+      action("workspace.prepare", {
+        branch: "codex/issue-112-verifier-drift",
+        base_commit: baseCommit
+      }, "Prepare one isolated workspace."),
+      action("file.read", {
+        scope: "repo",
+        path: "README.md",
+        max_lines: 20,
+        max_chars: 2_000
+      }, "Observe the aligned execution workspace."),
+      outcome("验证期间工作区不会漂移。")
+    ]);
+    const verifier: GoalVerifier = {
+      async verify(input) {
+        await writeFile(join(workspaceRoot, "verifier-drift.md"), "advanced during verification\n", "utf8");
+        await runGoalGit(workspaceRoot, ["add", "verifier-drift.md"]);
+        await runGoalGit(workspaceRoot, ["commit", "-m", "advance during verification"]);
+        return passedVerification(input);
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: new RuntimeGoalToolExecutor(fixture.store),
+      verifier
+    });
+    const started = await runtime.handle({
+      ...start("workspace_verifier_drift_start", "Recheck workspace freshness after verification."),
+      budget: { max_model_rounds: 1, max_tool_calls: 4, max_elapsed_ms: 10_000 }
+    });
+    const prepared = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_verifier_drift_prepare",
+      goal_id: started.goal_id
+    });
+    workspaceRoot = prepared.execution_workspace!.authority.repo_root;
+    await runtime.handle({
+      type: "continue",
+      command_id: "workspace_verifier_drift_observe",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "workspace_verifier_drift_reject",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.receipt, null);
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    const events = await readEvents(fixture.stateRoot);
+    const failed = events.find((event) => event.command_id === "workspace_verifier_drift_reject"
+      && event.event_type === "goal_verification_failed") as {
+        verification?: { checks?: Array<{ id?: string; status?: string }> };
+      } | undefined;
+    assert.ok(failed?.verification?.checks?.some((check) => check.id === "execution_workspace_observation"
+      && check.status === "failed"));
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime rejects a second execution workspace selection before another tool mutation", async () => {
   const fixture = await createFixture();
   try {

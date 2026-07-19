@@ -77,6 +77,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     const fileRead = portfolio.capabilities.find((candidate) => candidate.id === "file.read");
     assert.ok(fileRead);
     assert.equal(fileRead.kind, "direct_tool");
+    assert.equal(fileRead.workspace_placement, "scope_argument");
     assert.equal(fileRead.readiness, "available");
     assert.ok(fileRead.constraints.includes("max_lines must be an integer from 1 through 400"));
     assert.equal(fileRead.competence?.status, "degraded");
@@ -87,6 +88,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "workspace.prepare")?.readiness, "available");
     assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "runtime.inspect")?.readiness, "available");
+    assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "runtime.inspect")?.workspace_placement, "control");
     assert.deepEqual(portfolio.selected_skills.map((skill) => skill.name), ["source-architecture-review"]);
     assert.match(portfolio.selected_skills[0]!.body, /delegate specialist production/);
     assert.doesNotMatch(JSON.stringify(portfolio), /UNSELECTED_SKILL_BODY/);

@@ -5,6 +5,7 @@ import type { SkillResolverLike } from "../../core/src/skill_resolver.js";
 import { AgentStore } from "../../core/src/store.js";
 import {
   coreToolContracts,
+  type GoalToolStorePlacement,
   type ToolContract,
   type ToolSideEffectLevel
 } from "../../core/src/tool_contracts.js";
@@ -32,6 +33,7 @@ export interface GoalCapabilityCandidate {
   kind: GoalCapabilityKind;
   summary: string;
   side_effect_level: ToolSideEffectLevel;
+  workspace_placement: GoalToolStorePlacement;
   arguments: Record<string, unknown>;
   constraints: string[];
   readiness: GoalCapabilityReadiness;
@@ -211,6 +213,7 @@ function capabilityCandidate(
     kind,
     summary: contract.rationale,
     side_effect_level: contract.side_effect_level,
+    workspace_placement: contract.goal_store_placement,
     arguments: contract.tool === "codex.run"
       ? { ...contract.arguments, model: "auto,new,required", reasoning_effort: "auto,new,required" }
       : structuredClone(contract.arguments),
