@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, open, opendir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import {
   isCurrentRuntimeKnownGood,
@@ -53,6 +53,8 @@ const CONTROLLER_HANDOFF_BOUNDARY = "canonical-stable local supervisor controlle
 const SOURCE_COMMIT_PATTERN = /^[a-f0-9]{40}$/;
 const HISTORY_ENTRY_PATTERN = /^[a-zA-Z0-9_-]+\.json$/;
 const MAX_EXACT_HISTORY_CANDIDATES = 16;
+const MAX_HISTORY_ENTRIES_SCANNED = 4_096;
+const MAX_HISTORY_RECORD_BYTES = 256 * 1_024;
 
 export interface DeploymentControllerReadiness {
   schema_version: 1;
@@ -73,7 +75,7 @@ export type DeploymentStateReadStatus = "ok" | "missing" | "invalid" | "unreadab
 export interface DeploymentStateSourceRead {
   ref: string;
   status: DeploymentStateReadStatus;
-  reason?: "invalid_json" | "invalid_value" | "read_failed" | "ambiguous_match" | "scan_limit_exceeded";
+  reason?: "invalid_json" | "invalid_value" | "read_failed" | "ambiguous_match" | "scan_limit_exceeded" | "content_limit_exceeded";
 }
 
 export interface LocalDeploymentStateSources {
@@ -564,9 +566,30 @@ export async function inspectLocalDeploymentHistoryBySourceCommit(
     };
   }
 
-  let names: string[];
+  const suffix = `_${sourceCommit.slice(0, 12)}.json`;
+  const matchingNames: string[] = [];
+  let scannedEntries = 0;
+  let invalidCandidateRef: string | null = null;
+  let scanLimitExceeded = false;
   try {
-    names = await readdir(paths.historyRoot);
+    const historyDirectory = await opendir(paths.historyRoot);
+    for await (const entry of historyDirectory) {
+      scannedEntries += 1;
+      if (scannedEntries > MAX_HISTORY_ENTRIES_SCANNED) {
+        scanLimitExceeded = true;
+        break;
+      }
+      if (!entry.name.endsWith(suffix)) continue;
+      if (entry.name.length > 200 || !HISTORY_ENTRY_PATTERN.test(entry.name) || !entry.isFile()) {
+        invalidCandidateRef = `${historyRef}/${entry.name}`;
+        break;
+      }
+      matchingNames.push(entry.name);
+      if (matchingNames.length > MAX_EXACT_HISTORY_CANDIDATES) {
+        scanLimitExceeded = true;
+        break;
+      }
+    }
   } catch (error) {
     return {
       source_commit: sourceCommit,
@@ -577,27 +600,25 @@ export async function inspectLocalDeploymentHistoryBySourceCommit(
       boundary
     };
   }
-
-  const suffix = `_${sourceCommit.slice(0, 12)}.json`;
-  const matchingNames = names.filter((name) => name.endsWith(suffix)).sort();
-  if (matchingNames.some((name) => name.length > 200 || !HISTORY_ENTRY_PATTERN.test(name))) {
+  if (invalidCandidateRef) {
     return {
       source_commit: sourceCommit,
       record: null,
-      source: { ref: historyRef, status: "invalid", reason: "invalid_value" },
+      source: { ref: invalidCandidateRef, status: "invalid", reason: "invalid_value" },
       boundary
     };
   }
-  if (matchingNames.length === 0) {
-    return { source_commit: sourceCommit, record: null, source: { ref: historyRef, status: "missing" }, boundary };
-  }
-  if (matchingNames.length > MAX_EXACT_HISTORY_CANDIDATES) {
+  if (scanLimitExceeded) {
     return {
       source_commit: sourceCommit,
       record: null,
       source: { ref: historyRef, status: "invalid", reason: "scan_limit_exceeded" },
       boundary
     };
+  }
+  matchingNames.sort();
+  if (matchingNames.length === 0) {
+    return { source_commit: sourceCommit, record: null, source: { ref: historyRef, status: "missing" }, boundary };
   }
 
   const reads = await Promise.all(matchingNames.map(async (name) => {
@@ -607,14 +628,22 @@ export async function inspectLocalDeploymentHistoryBySourceCommit(
       ...await readDeploymentStateSource(
         resolve(paths.historyRoot, name),
         ref,
-        isDeploymentRecordForStatus
+        isDeploymentRecordForStatus,
+        MAX_HISTORY_RECORD_BYTES
       )
     };
   }));
   const readIssues = reads.filter((item) => item.source.status !== "ok");
-  const identityIssues = reads.filter((item) => item.value && item.name !== `${item.value.id}.json`);
+  const identityIssues = reads.filter((item) => item.value && (
+    item.name !== `${item.value.id}.json`
+    || resolve(item.value.state_root) !== resolve(stateRoot)
+    || (item.value.status === "stable" && !isCanonicalIsoTimestamp(item.value.stable_at))
+  ));
   const exact = reads.filter((item): item is typeof item & { value: DeploymentRecord } =>
-    item.value?.source_commit === sourceCommit && item.name === `${item.value.id}.json`);
+    item.value?.source_commit === sourceCommit
+      && item.name === `${item.value.id}.json`
+      && resolve(item.value.state_root) === resolve(stateRoot)
+      && (item.value.status !== "stable" || isCanonicalIsoTimestamp(item.value.stable_at)));
   if (exact.length > 1 || (exact.length === 1 && (readIssues.length > 0 || identityIssues.length > 0))) {
     return {
       source_commit: sourceCommit,
@@ -765,11 +794,23 @@ async function readJson<T>(path: string): Promise<T | null> {
 async function readDeploymentStateSource<T>(
   path: string,
   ref: string,
-  validate: (value: unknown) => value is T
+  validate: (value: unknown) => value is T,
+  maxBytes?: number
 ): Promise<{ value: T | null; source: DeploymentStateSourceRead }> {
   let source: string;
   try {
-    source = await readFile(path, "utf8");
+    if (maxBytes === undefined) {
+      source = await readFile(path, "utf8");
+    } else {
+      const bounded = await readBoundedUtf8File(path, maxBytes);
+      if (bounded.exceeded) {
+        return {
+          value: null,
+          source: { ref, status: "invalid", reason: "content_limit_exceeded" }
+        };
+      }
+      source = bounded.text;
+    }
   } catch (error) {
     return {
       value: null,
@@ -789,6 +830,29 @@ async function readDeploymentStateSource<T>(
     return { value: null, source: { ref, status: "invalid", reason: "invalid_value" } };
   }
   return { value, source: { ref, status: "ok" } };
+}
+
+async function readBoundedUtf8File(
+  path: string,
+  maxBytes: number
+): Promise<{ text: string; exceeded: boolean }> {
+  const handle = await open(path, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(Math.min(64 * 1_024, maxBytes + 1));
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= maxBytes) {
+      const requested = Math.min(buffer.length, maxBytes + 1 - total);
+      const { bytesRead } = await handle.read(buffer, 0, requested, null);
+      if (bytesRead === 0) break;
+      chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+      total += bytesRead;
+    }
+    if (total > maxBytes) return { text: "", exceeded: true };
+    return { text: Buffer.concat(chunks, total).toString("utf8"), exceeded: false };
+  } finally {
+    await handle.close();
+  }
 }
 
 function isDeploymentRecordForStatus(value: unknown): value is DeploymentRecord {
@@ -835,6 +899,12 @@ function isDeploymentFailureObservationForStatus(value: unknown): value is Deplo
 
 function isDeploymentStatus(value: unknown): value is DeploymentStatus {
   return typeof value === "string" && (DEPLOYMENT_STATUSES as readonly string[]).includes(value);
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 64) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

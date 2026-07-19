@@ -170,6 +170,9 @@ const INCOMPLETE_REASONS = new Set([
   "previous_deployment_history_invalid",
   "previous_deployment_history_unreadable",
   "previous_deployment_missing",
+  "previous_deployment_repository_mismatch",
+  "previous_deployment_state_root_mismatch",
+  "previous_deployment_stable_at_missing_or_invalid",
   "previous_commit_provenance_unavailable",
   "rollback_source_missing"
 ]);
@@ -324,6 +327,17 @@ export async function inspectRuntimeIntegration(
       : undefined,
     previousDeployment && previousDeployment.status !== "stable"
       ? "previous_deployment_not_stable"
+      : undefined,
+    previousDeployment && resolve(previousDeployment.repo_root) !== resolve(store.repoRoot)
+      ? "previous_deployment_repository_mismatch"
+      : undefined,
+    previousDeployment && resolve(previousDeployment.state_root) !== resolve(store.stateRoot)
+      ? "previous_deployment_state_root_mismatch"
+      : undefined,
+    previousDeployment
+      && previousDeployment.status === "stable"
+      && !isCanonicalIsoTimestamp(previousDeployment.stable_at)
+      ? "previous_deployment_stable_at_missing_or_invalid"
       : undefined,
     expectedPreviousCommit && !previousCommitProvenance
       ? "previous_commit_provenance_unavailable"
@@ -625,4 +639,10 @@ function stringField(record: Record<string, unknown>, key: string): string | und
 
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
   return typeof record[key] === "number" ? record[key] : undefined;
+}
+
+function isCanonicalIsoTimestamp(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 64) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }

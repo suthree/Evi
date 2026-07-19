@@ -358,6 +358,44 @@ test("runtime integration inspection fails closed when prior deployment history 
   }
 });
 
+test("runtime integration inspection rejects foreign or unstamped prior deployment ownership", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-runtime-integration-history-owner-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const commit = "9".repeat(40);
+  const previousCommit = "a".repeat(40);
+  try {
+    await writeRepoHead(repoRoot, commit);
+    await writeHealthyHeartbeat(store, repoRoot, commit);
+    const deployment = deploymentStatus(repoRoot, stateRoot, commit, previousCommit);
+    const foreignLookup = previousDeploymentLookup(repoRoot, stateRoot, previousCommit);
+    foreignLookup.record = {
+      ...foreignLookup.record!,
+      repo_root: join(root, "foreign-repo"),
+      state_root: join(root, "foreign-state"),
+      stable_at: undefined
+    };
+    const inspection = await inspectRuntimeIntegration(store, {
+      dependencies: {
+        serviceHealth: () => getServiceHealth(store, { now: "2026-07-19T00:00:30.000Z" }),
+        deploymentStatus: async () => deployment,
+        controllerReadiness: async () => matchedController(commit),
+        previousRuntimeBuild: async () => previousRuntimeBuild(repoRoot, previousCommit),
+        previousDeploymentHistory: async () => foreignLookup,
+        previousCommitProvenance: async () => commitProvenance(previousCommit, commit)
+      }
+    });
+
+    assert.equal(inspection.evidence_state, "incomplete");
+    assert.ok(inspection.reasons.includes("previous_deployment_repository_mismatch"));
+    assert.ok(inspection.reasons.includes("previous_deployment_state_root_mismatch"));
+    assert.ok(inspection.reasons.includes("previous_deployment_stable_at_missing_or_invalid"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function deploymentStatus(
   repoRoot: string,
   stateRoot: string,

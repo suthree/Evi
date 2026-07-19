@@ -150,3 +150,28 @@ Explicit non-goals:
 - These are implementation and pre-integration checks only. Independent
   reviews, PR merge, exact deployment, controller handoff, and same-Goal
   terminal acceptance remain pending.
+
+## Review Cycle 1 Corrections
+
+- Independent Spec and Standards reviews found three fail-open families at
+  source commit `ddc0f22`: a foreign repo/state record could contribute prior
+  evidence, a `stable` record did not require a canonical `stable_at`, and the
+  history reader bounded matching names but not total directory entries,
+  candidate bytes, or symlink targets.
+- The deployment owner now streams at most 4,096 directory entries, accepts at
+  most 16 exact-prefix candidates, reads at most 256 KiB from a regular
+  candidate, rejects matching symlinks/non-files, requires record-id/file and
+  state-root ownership, and requires a canonical ISO timestamp for a stable
+  record. Composition independently checks repo root, state root, and the
+  stable timestamp before evidence can be `consistent`.
+- New regressions cover foreign owner, missing timestamp, symlink escape,
+  oversized JSON, total-scan overflow, and defensive composition. The direct
+  history/Git/composition suite passed 16/16; full `pnpm run check` passed with
+  996/996 tests, skill validation, and neutral naming validation across 133
+  implementation files. `git diff --check` passed.
+- A fresh live-shape probe after the corrections remained `consistent` with
+  the same exact prior deployment, merge parents, ancestor relationship,
+  `healthy/current` resident service, and connected Feishu inbound; it had no
+  source error or truncation.
+- Review cycle 2, PR integration, exact deployment/controller handoff, and
+  same-Goal terminal acceptance remain pending.

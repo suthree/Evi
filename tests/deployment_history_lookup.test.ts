@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -85,6 +85,88 @@ test("deployment history lookup rejects a record whose identity does not own its
   }
 });
 
+test("deployment history lookup rejects foreign state ownership and missing stable timestamp", async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-owner-"));
+  const commit = "f".repeat(40);
+  try {
+    const foreign = deploymentRecord(stateRoot, commit, "deployment_foreign");
+    foreign.state_root = join(stateRoot, "other-state");
+    await writeHistory(stateRoot, foreign);
+    const foreignLookup = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, commit);
+    assert.equal(foreignLookup.record, null);
+    assert.equal(foreignLookup.source.status, "invalid");
+    assert.equal(foreignLookup.source.reason, "invalid_value");
+
+    await rm(join(stateRoot, "deployments", "history"), { recursive: true, force: true });
+    const unstamped = deploymentRecord(stateRoot, commit, "deployment_unstamped");
+    delete unstamped.stable_at;
+    await writeHistory(stateRoot, unstamped);
+    const unstampedLookup = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, commit);
+    assert.equal(unstampedLookup.record, null);
+    assert.equal(unstampedLookup.source.status, "invalid");
+    assert.equal(unstampedLookup.source.reason, "invalid_value");
+  } finally {
+    await rm(stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("deployment history lookup rejects matching symlinks and oversized candidate JSON", async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-bounds-"));
+  const commit = "1".repeat(40);
+  const historyRoot = join(stateRoot, "deployments", "history");
+  try {
+    await mkdir(historyRoot, { recursive: true });
+    const record = deploymentRecord(stateRoot, commit, "deployment_linked");
+    const outside = join(stateRoot, "outside-history.json");
+    await writeFile(outside, `${JSON.stringify(record)}\n`, "utf8");
+    const linkName = `${record.id}.json`;
+    await symlink(outside, join(historyRoot, linkName));
+    const linked = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, commit);
+    assert.equal(linked.record, null);
+    assert.deepEqual(linked.source, {
+      ref: `deployments/history/${linkName}`,
+      status: "invalid",
+      reason: "invalid_value"
+    });
+
+    await rm(join(historyRoot, linkName), { force: true });
+    const oversized = {
+      ...record,
+      id: `deployment_oversized_${commit.slice(0, 12)}`,
+      padding: "x".repeat(300_000)
+    };
+    const oversizedName = `${oversized.id}.json`;
+    await writeFile(join(historyRoot, oversizedName), JSON.stringify(oversized), "utf8");
+    const oversizedLookup = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, commit);
+    assert.equal(oversizedLookup.record, null);
+    assert.deepEqual(oversizedLookup.source, {
+      ref: `deployments/history/${oversizedName}`,
+      status: "invalid",
+      reason: "content_limit_exceeded"
+    });
+  } finally {
+    await rm(stateRoot, { recursive: true, force: true });
+  }
+});
+
+test("deployment history lookup bounds the total number of inspected entries", async () => {
+  const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-scan-limit-"));
+  const historyRoot = join(stateRoot, "deployments", "history");
+  try {
+    await mkdir(historyRoot, { recursive: true });
+    await writeNoiseEntries(historyRoot, 4_097);
+    const lookup = await inspectLocalDeploymentHistoryBySourceCommit(stateRoot, "2".repeat(40));
+    assert.equal(lookup.record, null);
+    assert.deepEqual(lookup.source, {
+      ref: "deployments/history",
+      status: "invalid",
+      reason: "scan_limit_exceeded"
+    });
+  } finally {
+    await rm(stateRoot, { recursive: true, force: true });
+  }
+});
+
 test("deployment history lookup distinguishes missing and invalid commit input", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "evi-deployment-history-missing-"));
   try {
@@ -135,4 +217,14 @@ function deploymentRecord(stateRoot: string, commit: string, id: string): Deploy
     evidence_refs: ["services/runtime/heartbeat.json"],
     boundary: "synthetic deployment history fixture"
   };
+}
+
+async function writeNoiseEntries(historyRoot: string, count: number): Promise<void> {
+  const batchSize = 128;
+  for (let start = 0; start < count; start += batchSize) {
+    await Promise.all(Array.from(
+      { length: Math.min(batchSize, count - start) },
+      (_, offset) => writeFile(join(historyRoot, `noise_${start + offset}.tmp`), "", "utf8")
+    ));
+  }
 }
