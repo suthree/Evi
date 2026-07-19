@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { newId, utcNow } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
+import { resolveGoalToolStorePlacement } from "../../core/src/tool_contracts.js";
 import {
   EffectPolicy,
   effectActionSchema,
@@ -748,20 +749,19 @@ export class GoalRuntime {
 
       if (cognition.type === "blocked") {
         const terminalWorkspaceFreshness = await goalWorkspaceFreshness(events, state.view);
-        if (terminalWorkspaceFreshness.status === "changed_unobserved") {
-          const summary = "Goal blocked decision rejected because the changed execution workspace remains unobserved.";
-          const nextAction = "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one harness-owned workspace observation, and then re-evaluate the blocker.";
+        const workspaceFailure = workspaceTerminalFailure(terminalWorkspaceFreshness);
+        if (workspaceFailure) {
           const checkpoint = normalizeCheckpoint({
-            cursor: "workspace_observation_required",
-            summary,
-            next_action: nextAction,
+            cursor: workspaceFailure.cursor,
+            summary: workspaceFailure.summary,
+            next_action: workspaceFailure.next_action,
             selected_refs: state.view.checkpoint.selected_refs
           });
           return (await this.appendEvent(events, {
             ...this.eventBase(state.view, command, commandDigest),
             event_type: "goal_blocked",
-            summary,
-            next_action: nextAction,
+            summary: workspaceFailure.summary,
+            next_action: workspaceFailure.next_action,
             checkpoint,
             usage_delta: modelUsage
           })).view;
@@ -1066,18 +1066,9 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    if (workspaceFreshness.status === "changed_unobserved") {
-      verification = parseVerificationResult({
-        status: "failed",
-        summary: "Outcome verification requires a canonical observation of the changed execution workspace.",
-        checks: [{
-          id: "execution_workspace_observation",
-          status: "failed",
-          summary: "The live bound-worktree HEAD differs from the latest harness-owned workspace observation.",
-          evidence_event_ids: [evidenceEventIds.at(-1)!]
-        }],
-        next_action: "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one harness-owned workspace observation, and continue the same goal."
-      });
+    const initialWorkspaceFailure = workspaceTerminalFailure(workspaceFreshness);
+    if (initialWorkspaceFailure) {
+      verification = workspaceVerificationFailure(initialWorkspaceFailure, evidenceEventIds.at(-1)!);
     } else if (goalObservationObligation(events, command.goal_id).status === "required") {
       verification = parseVerificationResult({
         status: "failed",
@@ -1109,6 +1100,14 @@ export class GoalRuntime {
           }],
           next_action: "Repair the verifier or evidence and continue the same goal."
         });
+      }
+    }
+    if (verification.status === "passed") {
+      const finalWorkspaceFailure = workspaceTerminalFailure(
+        await goalWorkspaceFreshness(events, state.view)
+      );
+      if (finalWorkspaceFailure) {
+        verification = workspaceVerificationFailure(finalWorkspaceFailure, evidenceEventIds.at(-1)!);
       }
     }
     assertVerificationEvidence(verification, candidate);
@@ -1313,13 +1312,72 @@ async function goalWorkspaceFreshness(
     execution_workspace: null,
     observed_head_commit: null
   });
-  const results = events
-    .filter((event): event is z.infer<typeof actionObservedEventSchema> => event.goal_id === goal.goal_id
-      && event.event_type === "goal_action_observed")
-    .map((event) => event.result);
+  const plannedById = new Map(events
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> => event.goal_id === goal.goal_id
+      && event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  const results = events.flatMap((event) => {
+    if (event.goal_id !== goal.goal_id || event.event_type !== "goal_action_observed") return [];
+    const planned = plannedById.get(event.intent_event_id);
+    if (!planned || !usesExecutionWorkspace(planned.action)) return [];
+    return [event.result];
+  });
   return inspectGoalWorkspaceFreshness({
     execution_workspace: workspace,
-    observed_head_commit: latestObservedWorkspaceHead(workspace.authority.start_head_commit, results)
+    observed_head_commit: latestObservedWorkspaceHead(
+      workspace.authority.start_head_commit,
+      results,
+      workspace.authority
+    )
+  });
+}
+
+function usesExecutionWorkspace(action: EffectAction): boolean {
+  try {
+    return resolveGoalToolStorePlacement(action.tool, action.arguments) === "execution";
+  } catch {
+    return false;
+  }
+}
+
+interface WorkspaceTerminalFailure {
+  cursor: "workspace_observation_required" | "workspace_observation_unavailable";
+  summary: string;
+  next_action: string;
+}
+
+function workspaceTerminalFailure(
+  freshness: GoalWorkspaceFreshnessView
+): WorkspaceTerminalFailure | null {
+  if (freshness.status === "unbound" || freshness.status === "aligned") return null;
+  if (freshness.status === "changed_unobserved") {
+    return {
+      cursor: "workspace_observation_required",
+      summary: "Goal terminal decision rejected because the changed execution workspace remains unobserved.",
+      next_action: "Choose an available capability dynamically whose action resolves to the execution workspace, obtain one matching harness-owned workspace observation, and re-evaluate the same goal."
+    };
+  }
+  return {
+    cursor: "workspace_observation_unavailable",
+    summary: "Goal terminal decision rejected because the bound execution workspace is unavailable or no longer matches its canonical authority.",
+    next_action: "Recover the exact bound worktree authority, obtain one matching harness-owned workspace observation, and continue the same goal."
+  };
+}
+
+function workspaceVerificationFailure(
+  failure: WorkspaceTerminalFailure,
+  evidenceEventId: string
+): GoalVerificationResult {
+  return parseVerificationResult({
+    status: "failed",
+    summary: failure.summary,
+    checks: [{
+      id: "execution_workspace_observation",
+      status: "failed",
+      summary: failure.summary,
+      evidence_event_ids: [evidenceEventId]
+    }],
+    next_action: failure.next_action
   });
 }
 

@@ -1,5 +1,6 @@
 import type { GoalExecutionWorkspace } from "./goal_execution_workspace.js";
 import { inspectGoalRepositoryAuthority } from "./repository_authority.js";
+import type { GoalRepositoryAuthority } from "./repository_authority.js";
 import type { ToolResult } from "./tools.js";
 
 export const GOAL_WORKSPACE_FRESHNESS_BOUNDARY =
@@ -54,24 +55,15 @@ export async function inspectGoalWorkspaceFreshness(
 
 export function latestObservedWorkspaceHead(
   initialHead: string,
-  results: ToolResult[]
+  results: ToolResult[],
+  expected: Pick<GoalRepositoryAuthority, "branch" | "worktree">
 ): string {
   let head = commit(initialHead) ?? initialHead;
   for (const result of results) {
-    if (result.ok) {
-      const changes = Array.isArray(result.output.changes) ? result.output.changes : [];
-      for (const change of changes) {
-        if (!record(change) || change.kind !== "git_commit") continue;
-        head = commit(change.identity) ?? head;
-      }
-      const singular = record(result.output.change) ? result.output.change : null;
-      if (singular?.kind === "git_commit") head = commit(singular.identity) ?? head;
-    }
-    const verification = record(result.output.verification) ? result.output.verification : null;
-    const after = verification && record(verification.after) ? verification.after : null;
-    head = commit(after?.head_commit) ?? head;
     const observation = parseGoalWorkspaceObservation(result.output.workspace_observation);
-    if (observation) head = observation.head_commit;
+    if (observation
+      && observation.branch === expected.branch
+      && observation.worktree === expected.worktree) head = observation.head_commit;
   }
   return head;
 }

@@ -414,14 +414,18 @@ cost, risk, reversibility, and verifiability.
 
 The same input carries a derived execution-workspace freshness view comparing
 the live bound-worktree HEAD with the latest harness-owned workspace
-observation. `changed_unobserved` is context, not change evidence, but it is a
-fail-closed terminal condition: a model blocker or outcome is rejected until a
-canonical execution-scoped result aligns the two HEADs. A control-scoped
-observation may satisfy an independent temporal observation obligation, but it
-cannot clear this workspace-specific condition. Capability candidates expose
-their existing workspace-placement contract so cognition can choose a relevant
+observation. For a bound workspace, only `aligned` permits a model blocker or
+outcome; both `changed_unobserved` and `unavailable` fail closed. A workspace
+observation counts only when its canonical planned action resolves to execution
+placement and its branch and worktree match the bound authority. A
+control-scoped observation may satisfy an independent temporal observation
+obligation, but it cannot clear this workspace-specific condition even if its
+result contains a workspace-shaped marker. Capability candidates expose their
+existing workspace-placement contract so cognition can choose a relevant
 execution-scoped action dynamically; GoalRuntime does not prescribe a tool or
-persist another freshness owner.
+persist another freshness owner. Outcome verification rechecks the same derived
+condition after the verifier returns and before a receipt is appended, so an
+external worktree advance during verification fails closed.
 
 Every new cognition action must include a typed `capability_selection` with
 `capability_id`, `execution_purpose`, `skill_refs`, `rationale`,

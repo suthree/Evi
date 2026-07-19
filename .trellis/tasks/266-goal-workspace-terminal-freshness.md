@@ -115,3 +115,33 @@ post-tool marker; capability choice remains dynamic.
 - These are pre-review checks only. Independent review, PR integration, exact
   deployment/controller handoff, and unchanged-Goal live acceptance remain
   pending.
+
+## Review Cycle 1 Corrections
+
+- Spec review reported 0 findings and independently passed 60/60 related tests,
+  TypeScript no-emit, and fixed-base `git diff --check` at `0618cdb`.
+- Standards review found two P1 terminal-authority gaps and one P2 verifier
+  race. A bound workspace in `unavailable` state was not fail-closed; canonical
+  result fields were scanned without pairing the observation to an
+  execution-placed planned action; and a verifier could pass before an external
+  HEAD advance that occurred during verification.
+- Red adversarial regressions reproduced all three paths. A control-scoped
+  `runtime.inspect` result carrying an otherwise matching workspace marker
+  incorrectly aligned the HEAD; branch drift during cognition allowed a model
+  blocker; and a verifier-time commit still produced a completed receipt.
+- Workspace HEAD projection now pairs every canonical observation with its
+  planned action and accepts only effective execution placement. The result
+  must also carry the existing harness-owned marker with the exact bound branch
+  and worktree; untrusted `change`, `changes`, or verification fields no longer
+  advance this freshness owner by themselves.
+- For a bound workspace, only `aligned` permits a model blocker or outcome.
+  `changed_unobserved` requires a matching execution observation, while
+  `unavailable` requires recovery of the exact canonical worktree authority.
+  Unbound Goals retain their prior behavior.
+- A passed verifier is followed by one final derived freshness read before the
+  terminal event is appended. Drift during verification becomes the existing
+  `goal_verification_failed` path and no receipt is written.
+- The corrected adversarial and focused suites passed, TypeScript build and
+  `git diff --check` passed, and the full `pnpm run check` passed again on
+  2026-07-19. Review cycle 2, PR integration, exact deployment/controller
+  handoff, and unchanged-Goal live acceptance remain pending.
