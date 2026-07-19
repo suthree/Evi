@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { chmod, mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import {
   codexAuthorityDigest,
@@ -458,6 +458,105 @@ test("repo.search finds repo text with bounded output", async () => {
     assert.equal(matches.length, 2);
     assert.equal(matches.some((match) => match.path === "alpha.md"), true);
     assert.equal(matches.some((match) => match.path === "nested/beta.ts"), true);
+
+    await mkdir(join(fixture.repoRoot, ".trellis/tasks"), { recursive: true });
+    await writeFile(
+      join(fixture.repoRoot, ".trellis/tasks/evidence.md"),
+      "accepted head 6c90aa2 maps to its merge commit\n",
+      "utf8"
+    );
+    await writeFile(join(fixture.repoRoot, ".git"), "gitdir: 6c90aa2 must stay private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, "node_modules"), "6c90aa2 dependency root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, "dist"), "6c90aa2 generated root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime"), "6c90aa2 runtime root\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime-private.md"), "6c90aa2 runtime private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".runtime_private.md"), "6c90aa2 runtime private\n", "utf8");
+    await writeFile(join(fixture.repoRoot, ".local-runtime-private.md"), "6c90aa2 local runtime private\n", "utf8");
+
+    const hiddenEvidence = await executeTool(useTool("repo.search", {
+      query: "6c90aa2",
+      path: ".",
+      globs: ["*.md", "*.json", "*.ts", ".git", "node_modules", "dist", ".runtime"],
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(hiddenEvidence.ok, true);
+    assert.deepEqual(hiddenEvidence.output.matches, [{
+      path: ".trellis/tasks/evidence.md",
+      line: 1,
+      text: "accepted head 6c90aa2 maps to its merge commit"
+    }]);
+
+    const nestedProtectedPaths = [
+      "nested/.git/inside.md",
+      "nested/node_modules/inside.md",
+      "nested/dist/inside.md",
+      "nested/.runtime-x/inside.md",
+      "nested/.runtime_private/inside.md",
+      "nested/.local-runtime-x/inside.md"
+    ];
+    for (const path of nestedProtectedPaths) {
+      await mkdir(dirname(join(fixture.repoRoot, path)), { recursive: true });
+      await writeFile(join(fixture.repoRoot, path), "fallback-protected evidence\n", "utf8");
+    }
+    await mkdir(join(fixture.repoRoot, "nested/.trellis"), { recursive: true });
+    await writeFile(
+      join(fixture.repoRoot, "nested/.trellis/inside.md"),
+      "fallback-protected allowed evidence\n",
+      "utf8"
+    );
+
+    const nestedRipgrepEvidence = await executeTool(useTool("repo.search", {
+      query: "fallback-protected",
+      path: ".",
+      globs: ["*.md"],
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(nestedRipgrepEvidence.ok, true);
+    assert.equal(nestedRipgrepEvidence.output.engine, "rg");
+    assert.deepEqual(nestedRipgrepEvidence.output.matches, [{
+      path: "nested/.trellis/inside.md",
+      line: 1,
+      text: "fallback-protected allowed evidence"
+    }]);
+
+    const nestedRipgrepExcluded = await executeTool(useTool("repo.search", {
+      query: "fallback-protected",
+      path: ".",
+      globs: ["*.md", "!nested/.trellis/**"],
+      max_results: 20,
+      max_output_chars: 12000
+    }), { store: fixture.store });
+
+    assert.equal(nestedRipgrepExcluded.ok, true);
+    assert.equal(nestedRipgrepExcluded.output.engine, "rg");
+    assert.deepEqual(nestedRipgrepExcluded.output.matches, []);
+
+    const previousPath = process.env.PATH;
+    const emptyBin = join(fixture.repoRoot, "empty-bin");
+    await mkdir(emptyBin);
+    process.env.PATH = emptyBin;
+    try {
+      const unavailableSearch = await executeTool(useTool("repo.search", {
+        query: "fallback-protected",
+        path: ".",
+        globs: ["*.md", "!nested/.trellis/**"],
+        max_results: 20,
+        max_output_chars: 12000
+      }), { store: fixture.store });
+
+      assert.equal(unavailableSearch.ok, false);
+      assert.equal(unavailableSearch.output.engine, "unavailable");
+      assert.match(unavailableSearch.summary, /requires ripgrep/);
+      assertFailureKind(unavailableSearch, "search_error");
+    } finally {
+      process.env.PATH = previousPath;
+    }
+
+    await rm(join(fixture.repoRoot, ".runtime"));
 
     await writeFile(join(fixture.repoRoot, "gamma.md"), "needle three\n", "utf8");
     const truncated = await executeTool(useTool("repo.search", {
