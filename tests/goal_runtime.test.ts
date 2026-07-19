@@ -756,6 +756,94 @@ test("GoalRuntime refreshes blocked goals with explicit prior and current Contin
   }
 });
 
+test("GoalRuntime rejects a repeated blocker without a current Continue observation", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Continue after the runtime may have changed."
+      },
+      {
+        type: "blocked",
+        summary: "Repeat the historical runtime blocker without another observation.",
+        next_action: "Keep waiting on the historical snapshot."
+      }
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("stale_blocker_start", "Do not repeat a stale mutable-state blocker."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_one",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "stale_blocker_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.checkpoint.cursor, "current_continue_observation_required");
+    assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(rejected.checkpoint.summary, /Repeat the historical runtime blocker/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects an outcome that reuses only prior Continue observations", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The first runtime snapshot does not satisfy the Goal.",
+        next_action: "Continue after the runtime may have changed."
+      },
+      outcome("错误地用历史运行态 observation 宣称完成。")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("stale_outcome_start", "Require current evidence after a blocked Continue."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "stale_outcome_continue_one",
+      goal_id: started.goal_id
+    });
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "stale_outcome_continue_two",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    assert.equal(
+      rejected.receipt,
+      null
+    );
+    const events = await readEvents(fixture.stateRoot);
+    const failed = events.at(-1)!;
+    assert.equal(failed.event_type, "goal_verification_failed");
+    assert.equal(
+      (failed.verification as { checks: Array<{ id: string; status: string }> }).checks.some((check) => check.id === "current_continue_observation" && check.status === "failed"),
+      true
+    );
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime replays historical planned events without capability selection metadata", async () => {
   const fixture = await createFixture();
   try {
@@ -1046,6 +1134,7 @@ test("GoalRuntime keeps verification failure and later success on one identity",
     const runtime = createRuntime(fixture.store, {
       cognition: sequenceCognition([
         outcome("第一次候选仍需验证。", "degraded"),
+        action("runtime.inspect", {}, "Observe current runtime state before retrying verification."),
         outcome("修复后候选已就绪。", "healthy")
       ]),
       tools: recordingTools(),

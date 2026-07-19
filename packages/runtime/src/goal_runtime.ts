@@ -443,14 +443,14 @@ export interface GoalEvidenceView {
   details?: string;
 }
 
-export interface GoalCognitionEvidenceView extends GoalEvidenceView {
+export interface GoalContinueEvidenceView extends GoalEvidenceView {
   continue_scope: "current_continue" | "prior_continue";
 }
 
 export interface GoalCognitionInput {
   goal: GoalView;
   execution_budget: GoalExecutionBudgetView;
-  evidence: GoalCognitionEvidenceView[];
+  evidence: GoalContinueEvidenceView[];
   capability_portfolio: GoalCapabilityPortfolio;
 }
 
@@ -476,7 +476,7 @@ export interface GoalToolExecutor {
 export interface GoalVerificationInput {
   goal: GoalView;
   candidate: OutcomeCandidate;
-  evidence: GoalEvidenceView[];
+  evidence: GoalContinueEvidenceView[];
 }
 
 export interface GoalVerifier {
@@ -732,6 +732,24 @@ export class GoalRuntime {
       operationUsage = addUsage(operationUsage, modelUsage);
 
       if (cognition.type === "blocked") {
+        if (continueNeedsCurrentObservation(events, command.goal_id, command.command_id)) {
+          const summary = "Goal blocked decision rejected because this Continue has no canonical observation after the prior continuation boundary.";
+          const nextAction = "Choose an available capability dynamically, obtain one fresh bounded observation in this Continue, and then re-evaluate the blocker.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "current_continue_observation_required",
+            summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: modelUsage
+          })).view;
+        }
         const checkpoint = normalizeCheckpoint({
           cursor: "blocked",
           summary: cognition.summary,
@@ -994,7 +1012,7 @@ export class GoalRuntime {
       })).view;
     }
     const evidenceEventIds = candidateEvidenceEventIds(events, command.goal_id, lineage.eventIds);
-    const evidence = buildEvidenceViews(events, command.goal_id, evidenceEventIds);
+    const evidence = buildEvidenceViews(events, command.goal_id, evidenceEventIds, command.command_id);
     const candidate = outcomeCandidateSchema.parse({
       ...proposal,
       changes: lineage.changes,
@@ -1005,24 +1023,38 @@ export class GoalRuntime {
       evidence_event_ids: evidenceEventIds
     });
     let verification: GoalVerificationResult;
-    try {
-      verification = parseVerificationResult(await this.verifier.verify({
-        goal: structuredClone(state.view),
-        candidate: structuredClone(candidate),
-        evidence: structuredClone(evidence)
-      }));
-    } catch (error) {
+    if (continueNeedsCurrentObservation(events, command.goal_id, command.command_id)) {
       verification = parseVerificationResult({
         status: "failed",
-        summary: `Outcome verification failed: ${errorMessage(error)}`.slice(0, 2_000),
+        summary: "Outcome verification requires a canonical observation from the current Continue after the prior continuation boundary.",
         checks: [{
-          id: "verifier_adapter",
+          id: "current_continue_observation",
           status: "failed",
-          summary: "The verifier adapter did not return a valid decision.",
+          summary: "Prior Continue observations remain historical evidence and cannot alone support this outcome.",
           evidence_event_ids: [evidenceEventIds.at(-1)!]
         }],
-        next_action: "Repair the verifier or evidence and continue the same goal."
+        next_action: "Choose an available capability dynamically, obtain one fresh bounded observation, and continue the same goal."
       });
+    } else {
+      try {
+        verification = parseVerificationResult(await this.verifier.verify({
+          goal: structuredClone(state.view),
+          candidate: structuredClone(candidate),
+          evidence: structuredClone(evidence)
+        }));
+      } catch (error) {
+        verification = parseVerificationResult({
+          status: "failed",
+          summary: `Outcome verification failed: ${errorMessage(error)}`.slice(0, 2_000),
+          checks: [{
+            id: "verifier_adapter",
+            status: "failed",
+            summary: "The verifier adapter did not return a valid decision.",
+            evidence_event_ids: [evidenceEventIds.at(-1)!]
+          }],
+          next_action: "Repair the verifier or evidence and continue the same goal."
+        });
+      }
     }
     assertVerificationEvidence(verification, candidate);
     const checkpoint = normalizeCheckpoint({
@@ -1614,7 +1646,7 @@ function buildCognitionEvidence(
   events: GoalRuntimeEvent[],
   goalId: string,
   activeContinueCommandId: string
-): GoalCognitionEvidenceView[] {
+): GoalContinueEvidenceView[] {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   const selected = goalEvents.filter((event) => event.event_type !== "goal_completed" && event.event_type !== "goal_abandoned").slice(-16);
   return selected.map((event) => ({
@@ -1623,6 +1655,24 @@ function buildCognitionEvidence(
       ? "current_continue"
       : "prior_continue"
   }));
+}
+
+function continueNeedsCurrentObservation(
+  events: GoalRuntimeEvent[],
+  goalId: string,
+  activeContinueCommandId: string
+): boolean {
+  const goalEvents = events.filter((event) => event.goal_id === goalId);
+  if (goalEvents.some((event) => event.command_id === activeContinueCommandId
+    && event.event_type === "goal_action_observed")) return false;
+  let latestPriorEvent: GoalRuntimeEvent | undefined;
+  for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
+    if (goalEvents[index]!.command_id === activeContinueCommandId) continue;
+    latestPriorEvent = goalEvents[index];
+    break;
+  }
+  return latestPriorEvent?.event_type === "goal_blocked"
+    || latestPriorEvent?.event_type === "goal_verification_failed";
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {
@@ -1653,9 +1703,22 @@ function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence
   return summarizeGoalToolCompetence(signals);
 }
 
-function buildEvidenceViews(events: GoalRuntimeEvent[], goalId: string, requestedIds: string[]): GoalEvidenceView[] {
+function buildEvidenceViews(
+  events: GoalRuntimeEvent[],
+  goalId: string,
+  requestedIds: string[],
+  activeContinueCommandId: string
+): GoalContinueEvidenceView[] {
   const byId = new Map(events.filter((event) => event.goal_id === goalId).map((event) => [event.id, event]));
-  return requestedIds.map((id) => evidenceView(byId.get(id)!));
+  return requestedIds.map((id) => {
+    const event = byId.get(id)!;
+    return {
+      ...evidenceView(event),
+      continue_scope: event.command_id === activeContinueCommandId
+        ? "current_continue"
+        : "prior_continue"
+    };
+  });
 }
 
 function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {

@@ -371,6 +371,24 @@ not another persisted budget store. Only its `used` value is compared with the
 tranche limit; a later Continue begins at zero while lifetime usage remains
 cumulative.
 
+Every canonical evidence view supplied to Goal cognition or outcome
+verification also carries `continue_scope: current_continue | prior_continue`
+relative to the active Continue command. `prior_continue` remains canonical
+proof of the historical event; it is not by itself proof that mutable state is
+still current. Cognition must acquire a fresh bounded observation before it
+repeats a drift-sensitive blocker or proposes a drift-sensitive outcome, while
+choosing the capability dynamically from the current Portfolio. The harness is
+the fail-closed backstop after `goal_blocked` or `goal_verification_failed`: a
+later Continue cannot repeat a model-authored blocker or accept an outcome
+until that Continue has recorded at least one canonical observation. Rejected
+blockers receive the `current_continue_observation_required` checkpoint;
+rejected outcomes receive a failed `current_continue_observation` verification
+check. This temporal projection writes no new event, ledger, cache, state
+owner, task router, or tool-specific refresh rule. A soft-budget boundary still
+marks earlier evidence as `prior_continue`, but does not impose this hard gate;
+otherwise a one-model-round tranche could never accept the observation it was
+forced to checkpoint immediately after recording.
+
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
 tool contracts and their model-visible constraints, readiness under the Goal's

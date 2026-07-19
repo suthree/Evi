@@ -78,8 +78,9 @@ Explicit non-goals:
 - Existing tools can compose the remaining live acceptance evidence: a fresh
   `runtime.inspect`, bounded state search/read, and local Git read in the bound
   Issue #101 worktree. This task does not widen those interfaces.
-- No dependency, migration, compatibility layer, or stable-doc change is
-  required. Removal is a normal focused revert.
+- No dependency, migration, or compatibility layer is required. The implemented
+  GoalRuntime contract is mirrored once in `docs/RUNTIME_CONTRACT.md`; removal
+  is a normal focused source/test/doc revert.
 
 ## Authority, Effects, Recovery, And Evidence
 
@@ -131,3 +132,31 @@ Explicit non-goals:
 - These are implementation and pre-integration checks only. Independent
   reviews, PR merge, exact deployment/controller handoff, and same-Goal live
   acceptance remain pending.
+
+## Review Cycle 1 Corrections
+
+- Spec review reported 0 findings and independently passed 34/34 focused tests
+  plus `git diff --check` at `f8b6ee1`.
+- Standards review found that the first implementation exposed freshness only
+  to cognition, so a non-compliant model could still repeat a historical
+  blocker or let the verifier accept an outcome using only prior-Continue
+  observations. It also found that the implemented Runtime Contract change was
+  absent from the stable owner document.
+- TDD added negative regressions for both stale decisions. After a prior
+  `goal_blocked` or `goal_verification_failed`, GoalRuntime now requires at
+  least one canonical observation in the active Continue before it accepts a
+  new model blocker or invokes outcome verification. A repeated stale blocker
+  is replaced by `current_continue_observation_required`; a stale outcome is
+  recorded as failed `current_continue_observation` verification. Capability
+  choice remains dynamic and no specific tool or effect target is prescribed.
+- Verifier evidence now carries the same typed Continue scope as cognition
+  evidence. The correction changes no canonical event or receipt schema and
+  writes no new state owner.
+- `docs/RUNTIME_CONTRACT.md` now records the implemented temporal semantics,
+  fail-closed gates, and the deliberate soft-budget exception needed to keep a
+  one-model-round tranche completable.
+- Corrected focused suites passed 47/47 with TypeScript build. Full
+  `pnpm run check` passed with all 1,001 declared tests, active-skill
+  validation, neutral naming across 133 implementation files, and
+  `git diff --check`. Review cycle 2, PR integration, exact
+  deployment/controller handoff, and same-Goal live acceptance remain pending.
