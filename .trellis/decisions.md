@@ -1,5 +1,52 @@
 # Decisions
 
+## 2026-07-19 One-Time Stabilization Evidence Reconciliation
+
+Decision Owner: operator, through explicit authorization to complete the
+stabilization and architecture audit, reconcile GitHub/Trellis state, merge to
+`develop`, deploy exact commits, and stop only after the real self-evolution
+Goal reached terminal acceptance.
+
+Decision:
+
+- use `Issue: none` for one small post-completion maintenance change on branch
+  `codex/stabilization-evidence-reconciliation`, worktree
+  `.worktrees/stabilization-evidence-reconciliation`, and PR #118;
+- record already-observed PR, merge, deployment, rollback, Issue closure, and
+  same-Goal terminal evidence for Tasks262-268 without creating another
+  closure task whose only purpose would be to close this reconciliation;
+- keep Task267 and Issue #114 open because the required post-deployment
+  same-Goal `repo.search` observation did not occur. Do not create a new Goal
+  solely to make that document status green;
+- describe Task268 live evidence narrowly: the unchanged Goal escaped its old
+  blocker loop and completed, while the deterministic regression suite remains
+  the evidence for the `non_progress_replan_required` branch itself.
+
+Authority and boundary:
+
+- this exception is governance maintenance only. It introduces no product
+  direction, runtime behavior, architecture owner, schema, dependency,
+  capability, tool route, deployment semantic, or learning surface;
+- the operator remains the Decision Owner. GitHub PRs, deployment history,
+  canonical Goal events, the terminal OutcomeReceipt, and live runtime reads
+  remain the owners of the facts being reconciled;
+- this decision does not reopen the completed Goal, authorize `/new`, or
+  resume the older stopped Goal.
+
+Verification, recovery, and expiry:
+
+- verify exact PR heads and merge commits, stable zero-failure deployment
+  records and rollback sources, GitHub Issue state, Goal sequence 235 and
+  receipt `goal_receipt_20260719150711_125a50d2`, final diff, and independent
+  Spec/Standards review before merging PR #118;
+- rollback is a normal PR revert. Closed Issues can be reopened, as demonstrated
+  for #114, and the docs-only worktree can be reconstructed from its remote
+  branch;
+- this exception expires when PR #118 is merged, the final exact `develop`
+  commit is deployed and audited, and completed feature worktrees are removed.
+  Any later behavior change or unresolved acceptance work uses the normal
+  Issue/task governance path.
+
 ## 2026-07-18 Goal-Bound Lazy Execution Workspace
 
 Decision Owner: operator, through approval of the bounded real self-evolution

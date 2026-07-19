@@ -1,6 +1,7 @@
 # Task 267: Repository Search Hidden Files
 
-Status: completed
+Status: implementation, review, merge, and deployment completed;
+post-deployment same-Goal live acceptance pending
 
 ## Identity And Ownership
 
@@ -238,7 +239,7 @@ Non-goals:
   deployment, controller handoff, live runtime checks, and same-Goal acceptance
   remain pending.
 
-## Final Integration And Acceptance
+## Integration Evidence And Residual Acceptance
 
 - PR #115 was accepted at exact head `635e440e5cc433d22680e5e5cdeb8be95789134e`
   and merged as `43dd4ec3d9c36db5011c77b6b34285902d97b601`.
@@ -246,8 +247,13 @@ Non-goals:
   `deployment_20260719140044_43dd4ec3d9c3` reached `stable` with zero
   failures, previous source `00ab868a4ba0c22ba1d92d947b5d61126e68e6db`,
   controller handoff, healthy/current service, and connected Feishu inbound.
-- In the real acceptance path, repository-owned hidden Task261 evidence was
-  reachable without a second search engine or static Goal route. The unchanged
-  Goal reached accepted terminal receipt
-  `goal_receipt_20260719150711_125a50d2` at sequence 235; `rg` remains the sole
-  search engine and missing-engine behavior remains typed and fail-closed.
+- The only same-Goal `repo.search` observation was sequence 216 at
+  `2026-07-19T13:07:36Z`, before PR #115 was merged and deployed; it returned
+  zero results. After the `43dd4ec` deployment, sequences 231 and 233 used
+  exact-path `file.read`, not `repo.search`. The terminal receipt therefore
+  does not prove the required post-deployment hidden-search acceptance.
+- Issue #114 is reopened and this task remains non-terminal until an
+  operator-authorized future Goal naturally exercises the deployed
+  `repo.search` path. Source tests and deployment evidence remain valid, but no
+  new Goal will be created solely to manufacture this acceptance. `rg` remains
+  the sole engine and missing-engine behavior remains typed and fail-closed.

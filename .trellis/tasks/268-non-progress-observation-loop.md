@@ -139,13 +139,19 @@ Non-goals:
   supervisor controller handoff from PID 31393 to PID 45744; an immediate
   second handoff returned `already_matched`. Runtime health was
   `healthy/current` at `5a2bbb2`, and Feishu inbound remained connected.
-- Live same-Goal sequences 227-235 exercise the repair rather than merely
-  restating its tests. Evi first chose a different bounded deployment read at
-  sequence 227; the harness then rejected a direct post-boundary blocker at
-  sequence 230, preserved that decision across the tranche boundary, and let
-  cognition dynamically select two bounded Task261 reads at sequences 231 and
-  233. It did not force `repo.search`, ban `runtime.inspect`, or use a static
-  task-to-tool route.
+- Live same-Goal sequences 227-235 show that the unchanged Goal escaped the old
+  repeated blocker loop and completed, but they do not directly trigger the
+  non-progress rejection branch. Evi first chose a different bounded
+  deployment read at sequence 227; sequence 230 is the existing
+  `post_boundary_observation_required` freshness rejection, after which
+  cognition dynamically selected two bounded Task261 reads at sequences 231
+  and 233. No `non_progress_replan_required` event occurred in this live path.
+- The focused deterministic 7/7 regression remains the direct evidence that
+  identical action plus equivalent observation plus repeated blocker invokes
+  the non-progress feedback and prevents same-action redispatch. The live path
+  confirms compatibility and terminal progress without claiming that the
+  anti-loop branch itself fired; no static route or mandatory alternative tool
+  was introduced.
 - The unchanged Goal reached `goal_completed` at sequence 235 with accepted
   terminal receipt `goal_receipt_20260719150711_125a50d2`. The receipt correctly
   distinguishes PR #102 head `6c90aa2` from exact merge commit `7067c1bd`,
