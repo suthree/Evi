@@ -101,16 +101,21 @@ Non-goals:
   both observations, and the prior blocker. The freshness gate checked only
   that a post-boundary observation existed, and the blocker branch returned
   immediately without comparing progress or returning rejection feedback to
-  cognition.
+  cognition. Review then exposed two boundary gaps: one-model-round tranches
+  separate observations from blockers across commands, and summary-only
+  identity can hide changed bounded output such as `file.read` text.
 - Implemented source checkpoint: derive equivalent action/observation loops
   from existing events, reject the repeated blocker inside the remaining
   tranche, carry exact usage until the next canonical event, and expose only
   ephemeral decision feedback. A changed observation remains a valid blocker;
   the same action digest cannot be redispatched while that feedback is active;
   budget exhaustion uses the existing blocked-event schema and does not create
-  another observation obligation or mask the original model blocker.
-- Green evidence: focused non-progress tests 4/4; full GoalRuntime and cognition
-  adapter files passed; direct TypeScript build passed; `git diff --check`
-  passed.
+  another observation obligation or mask the original model blocker. Event
+  pairing now follows canonical order across Continue commands, and normalized
+  bounded output preserves semantic changes while ignoring recognized
+  observation timestamps.
+- Green evidence after review fixes: focused non-progress and changed-output
+  tests 6/6; full GoalRuntime and cognition adapter files passed; direct
+  TypeScript build passed; `git diff --check` passed.
 - Pending: independent review, full repository gate, PR/merge/deploy, and
   same-Goal live acceptance.

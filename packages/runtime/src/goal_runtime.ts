@@ -66,6 +66,12 @@ const MAX_OUTCOME_CHANGES = MAX_CODEX_CANONICAL_CHANGES * 2;
 const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
 const MAX_OUTCOME_EVIDENCE_EVENTS = (MAX_CHANGE_EVIDENCE_EVENTS * 2) + RECENT_OUTCOME_EVIDENCE_EVENTS;
+const VOLATILE_OBSERVATION_TIMESTAMP_KEYS = new Set([
+  "created_at",
+  "updated_at",
+  "observed_at",
+  "last_accepted_at"
+]);
 
 interface StateRootMutationQueue {
   tail: Promise<void>;
@@ -824,8 +830,7 @@ export class GoalRuntime {
         }
         const nonProgressFeedback = repeatedNonProgressObservationFeedback(
           events,
-          command.goal_id,
-          command.command_id
+          command.goal_id
         );
         if (nonProgressFeedback) {
           deferredUsage = decisionUsage;
@@ -1860,45 +1865,40 @@ function goalObservationObligation(
 
 function repeatedNonProgressObservationFeedback(
   events: GoalRuntimeEvent[],
-  goalId: string,
-  activeContinueCommandId: string
+  goalId: string
 ): GoalDecisionFeedbackView | null {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
-  const currentObservations = goalEvents.filter(
-    (event): event is Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> =>
-      event.event_type === "goal_action_observed" && event.command_id === activeContinueCommandId
-  );
-  if (currentObservations.length !== 1) return null;
-  const currentObservation = currentObservations[0]!;
-  const currentIndex = goalEvents.indexOf(currentObservation);
-  if (currentIndex < 1) return null;
-
   let priorBoundaryIndex = -1;
-  for (let index = currentIndex - 1; index >= 0; index -= 1) {
+  for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
     const event = goalEvents[index]!;
     if (event.event_type !== "goal_blocked" && event.event_type !== "goal_verification_failed") continue;
     if (event.event_type === "goal_blocked" && event.checkpoint.cursor === "non_progress_replan_required") continue;
+    if (event.event_type !== "goal_blocked" || event.checkpoint.cursor !== "blocked") return null;
     priorBoundaryIndex = index;
     break;
   }
   if (priorBoundaryIndex < 0) return null;
-  const priorBoundary = goalEvents[priorBoundaryIndex]!;
-  if (priorBoundary.event_type !== "goal_blocked" || priorBoundary.checkpoint.cursor !== "blocked") return null;
+  const priorBoundary = goalEvents[priorBoundaryIndex] as Extract<GoalRuntimeEvent, { event_type: "goal_blocked" }>;
 
   let priorObservation: Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> | null = null;
   for (let index = priorBoundaryIndex - 1; index >= 0; index -= 1) {
     const event = goalEvents[index]!;
-    if (event.command_id !== priorBoundary.command_id) continue;
     if (event.event_type === "goal_action_observed") {
       priorObservation = event;
       break;
     }
   }
-  if (!priorObservation
-    || priorObservation.action_digest !== currentObservation.action_digest
-    || goalObservationProgressDigest(priorObservation.result) !== goalObservationProgressDigest(currentObservation.result)) {
-    return null;
-  }
+  if (!priorObservation) return null;
+  const priorActionDigest = priorObservation.action_digest;
+  const priorProgressDigest = goalObservationProgressDigest(priorObservation.result);
+  const postBoundaryObservations = goalEvents.slice(priorBoundaryIndex + 1).filter(
+    (event): event is Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> =>
+      event.event_type === "goal_action_observed"
+  );
+  if (postBoundaryObservations.length === 0 || postBoundaryObservations.some((observation) =>
+    observation.action_digest !== priorActionDigest
+      || goalObservationProgressDigest(observation.result) !== priorProgressDigest)) return null;
+  const currentObservation = postBoundaryObservations.at(-1)!;
 
   return {
     code: "repeated_non_progress_observation",
@@ -1924,8 +1924,22 @@ function goalObservationProgressDigest(result: ToolResult): string {
     changes: observedChanges(result),
     failure_kind: failureKind,
     verification: localVerificationMarker(result.output.verification),
-    workspace_observation: parseGoalWorkspaceObservation(result.output.workspace_observation)
+    workspace_observation: parseGoalWorkspaceObservation(result.output.workspace_observation),
+    output: normalizeGoalObservationProgressOutput(result.output)
   })).digest("hex");
+}
+
+function normalizeGoalObservationProgressOutput(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => normalizeGoalObservationProgressOutput(item));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key, item]) => !isVolatileObservationTimestamp(key, item))
+    .map(([key, item]) => [key, normalizeGoalObservationProgressOutput(item)]));
+}
+
+function isVolatileObservationTimestamp(key: string, value: unknown): boolean {
+  if (!VOLATILE_OBSERVATION_TIMESTAMP_KEYS.has(key)) return false;
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence[] {

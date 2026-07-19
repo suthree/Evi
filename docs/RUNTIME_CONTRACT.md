@@ -402,14 +402,16 @@ accept the observation it was forced to checkpoint immediately after
 recording.
 
 A fresh observation is not automatically progress. After a model-authored
-blocker, GoalRuntime compares the first observation in the next Continue with
-the last observation that preceded that blocker. If the canonical action
-digest and the observation's decision-facing identity are equivalent and
-cognition proposes another blocker, the proposal is rejected inside the
-remaining tranche rather than ending the Continue. The decision-facing
-identity uses the tool result's bounded semantic summary plus its success,
-effect, refs, typed changes, failure, verification, and workspace control
-markers; transport ids and timestamps do not manufacture progress. Cognition
+blocker, GoalRuntime compares the canonical observations that follow it with
+the last observation that preceded it, independent of Continue tranche
+boundaries. If their action digests and decision-facing identities remain
+equivalent and cognition proposes another blocker, the proposal is rejected
+inside the remaining tranche rather than ending the Continue. The
+decision-facing identity uses the tool result's bounded normalized output plus
+its semantic summary, success, effect, refs, typed changes, failure,
+verification, and workspace control markers. Result-envelope ids and
+recognized observation timestamps do not manufacture progress, while changed
+file text or other bounded semantic output remains progress. Cognition
 then receives ephemeral `repeated_non_progress_observation` decision feedback
 and must dynamically choose a materially different evidence path or propose a
 supported outcome. While that feedback is active, the same action digest is

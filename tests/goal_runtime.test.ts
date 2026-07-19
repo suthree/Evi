@@ -1278,8 +1278,8 @@ test("GoalRuntime permits a blocker when the repeated action observes changed pr
           id: `changed_result_${calls.length}`,
           tool: effectAction.tool,
           ok: true,
-          summary: `Observed runtime generation ${calls.length}.`,
-          output: { observed: true, generation: calls.length },
+          summary: "Observed the current bounded source.",
+          output: { observed: true, text: calls.length === 1 ? "alpha" : "bravo" },
           side_effect_level: "none",
           created_at: `2026-07-17T00:20:0${calls.length}.000Z`
         };
@@ -1306,6 +1306,52 @@ test("GoalRuntime permits a blocker when the repeated action observes changed pr
     assert.match(changedBlocker.checkpoint.summary, /different unresolved boundary/i);
     assert.equal(cognition.calls.length, 4);
     assert.equal(calls.length, 2);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime detects non-progress across one-model-round Continue tranches", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("runtime.inspect", {}, "Inspect the current runtime integration state."),
+      {
+        type: "blocked",
+        summary: "The runtime snapshot does not satisfy the Goal.",
+        next_action: "Refresh the runtime state after external progress."
+      },
+      action("runtime.inspect", {}, "Refresh the drift-prone runtime integration state."),
+      {
+        type: "blocked",
+        summary: "Incorrectly accept the equivalent observation as progress.",
+        next_action: "Repeat the same runtime refresh."
+      }
+    ]);
+    const startCommand = start("non_progress_single_round_start", "Derive progress across one-model-round tranches.");
+    startCommand.budget = { ...startCommand.budget!, max_model_rounds: 1 };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(startCommand);
+    for (const commandId of [
+      "non_progress_single_round_continue_one",
+      "non_progress_single_round_continue_two",
+      "non_progress_single_round_continue_three"
+    ]) {
+      await runtime.handle({ type: "continue", command_id: commandId, goal_id: started.goal_id });
+    }
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "non_progress_single_round_continue_four",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(rejected.checkpoint.cursor, "non_progress_replan_required");
+    assert.match(rejected.checkpoint.summary, /blocked decision rejected/i);
+    assert.doesNotMatch(rejected.checkpoint.summary, /Incorrectly accept/);
   } finally {
     await fixture.cleanup();
   }
@@ -3393,7 +3439,15 @@ function recordingTools(): GoalToolExecutor & { calls: EffectAction[] } {
                 observed: true,
                 change: { kind: "state_change", identity: effectAction.arguments.path }
               }
-            : { observed: true },
+            : effectAction.tool === "runtime.inspect"
+              ? {
+                  observed: true,
+                  updated_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`,
+                  channel: {
+                    last_accepted_at: `2026-07-17T00:09:${String(calls.length).padStart(2, "0")}.000Z`
+                  }
+                }
+              : { observed: true },
         side_effect_level: effectAction.tool === "file.read" ? "none" : "local_write",
         created_at: `2026-07-17T00:10:${String(calls.length).padStart(2, "0")}.000Z`
       } satisfies ToolResult;
