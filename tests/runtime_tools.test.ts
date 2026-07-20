@@ -1301,6 +1301,9 @@ process.stdin.on("end", () => {
     assert.equal(result.ok, true);
     const effectivePrompt = await readFile(promptCapture, "utf8");
     assert.match(effectivePrompt, /Delegation supervision:/);
+    assert.match(effectivePrompt, /done requires blockers=\[\]/);
+    assert.match(effectivePrompt, /blocked or failed requires at least one blocker/);
+    assert.match(effectivePrompt, /List every file actually changed/);
     assert.match(effectivePrompt, /at most 2 subagents/);
     assert.match(effectivePrompt, /Workstream 1: contract and authority/);
     assert.match(effectivePrompt, /Integration owner: main_codex_thread/);

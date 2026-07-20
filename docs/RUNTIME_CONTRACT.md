@@ -571,7 +571,9 @@ terminal record after the same authority checks and fixed post-run workspace
 observation. A later Goal command may append the missing canonical observation
 only from a matching, validated terminal record. Missing, active, malformed, or
 mismatched records preserve `effect_outcome_unknown` and cannot replay the
-effect.
+effect. A matching terminal `blocked` or `failed` result is instead a canonical
+non-success observation: its checkpoint names the recorded terminal result and
+requires inspection before any new action, never replay of that effect.
 
 Denied actions are redacted before canonical persistence. A secret-bearing or
 private URL is classified with a query-free target; only a non-sensitive query
@@ -2267,7 +2269,8 @@ Required policy:
   prefix and suffix evidence, and record observed, retained, truncated, and
   effective-limit metadata
 - parse the terminal strict structured `done|blocked|failed` output separately
-  from diagnostic retention; spawn, nonzero exit, timeout, tool-call budget,
+  from diagnostic retention; `done` requires an empty `blockers` list while
+  `blocked` and `failed` require a non-empty one. Spawn, nonzero exit, timeout, tool-call budget,
   invalid JSONL, missing or mismatched thread authority, invalid schema, or
   absent/invalid structured output failures cannot claim completion
 - on POSIX, run in an independent process group and clean up the whole group

@@ -2089,6 +2089,7 @@ function codexExecutionPrompt(
     `Budgets: timeout_ms=${budgets.timeout_ms}, max_output_chars=${budgets.max_output_chars}, max_context_chars=${budgets.max_context_chars}, max_tool_calls=${budgets.max_tool_calls}, max_retries=${budgets.max_retries}.`,
     "Do not create worktrees, commit, push, create a pull request, merge, deploy, use web search, add writable directories, bypass approvals, or bypass the sandbox.",
     "Return only the required structured result. Its status is execution evidence; completion_authority must remain main_harness.",
+    "Keep status and blockers internally consistent: done requires blockers=[]; blocked or failed requires at least one blocker. List every file actually changed in changed_files; never report done when a blocker remains.",
     ...codexDelegationSupervisionBlock(delegationStrategy),
     "Task:",
     task

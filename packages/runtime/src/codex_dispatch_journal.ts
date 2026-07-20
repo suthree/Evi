@@ -44,6 +44,9 @@ const dispatchRecordSchema = z.object({
   if (record.state !== "terminal" && record.result) {
     context.addIssue({ code: "custom", message: "nonterminal dispatch record cannot contain result" });
   }
+  if (record.result && !isConsistentCodexTerminalResult(record.result)) {
+    context.addIssue({ code: "custom", message: "terminal Codex dispatch result has contradictory status" });
+  }
 });
 
 export type DurableCodexDispatchIdentity = z.infer<typeof dispatchIdentitySchema>;
@@ -178,6 +181,14 @@ export async function readTerminalDurableCodexDispatchResultForEffect(
   store: AgentStore,
   identityInput: Pick<DurableCodexDispatchIdentity, "goal_id" | "effect_id" | "action_digest">
 ): Promise<ToolResult | null> {
+  const record = await readDurableCodexDispatchForEffect(store, identityInput);
+  return record?.state === "terminal" ? record.result ?? null : null;
+}
+
+export async function readDurableCodexDispatchForEffect(
+  store: AgentStore,
+  identityInput: Pick<DurableCodexDispatchIdentity, "goal_id" | "effect_id" | "action_digest">
+): Promise<DurableCodexDispatchRecord | null> {
   const identity = dispatchIdentitySchema.pick({
     goal_id: true,
     effect_id: true,
@@ -201,9 +212,8 @@ export async function readTerminalDurableCodexDispatchResultForEffect(
   if (!record.success
     || record.data.goal_id !== identity.goal_id
     || record.data.effect_id !== identity.effect_id
-    || record.data.action_digest !== identity.action_digest
-    || record.data.state !== "terminal") return null;
-  return record.data.result ?? null;
+    || record.data.action_digest !== identity.action_digest) return null;
+  return record.data;
 }
 
 async function requireOwnedDispatch(
@@ -260,4 +270,15 @@ function isNotFound(error: unknown): boolean {
 
 function isNodeError(error: unknown, code: string): boolean {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === code;
+}
+
+function isConsistentCodexTerminalResult(result: ToolResult): boolean {
+  if (result.tool !== "codex.run") return false;
+  const status = result.output.status;
+  const structured = result.output.result;
+  if ((status !== "done" && status !== "blocked" && status !== "failed")
+    || typeof structured !== "object" || structured === null
+    || Array.isArray(structured)
+    || (structured as Record<string, unknown>).status !== status) return false;
+  return result.ok === (status === "done");
 }

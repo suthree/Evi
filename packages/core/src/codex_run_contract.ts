@@ -140,7 +140,27 @@ export const CODEX_STRUCTURED_RESULT_SCHEMA = Object.freeze({
     },
     next_action: { type: "string", minLength: 1, maxLength: 1000 },
     completion_authority: { type: "string", const: "main_harness" }
-  }
+  },
+  allOf: [
+    {
+      if: {
+        properties: { status: { type: "string", const: "done" } },
+        required: ["status"]
+      },
+      then: {
+        properties: { blockers: { type: "array", maxItems: 0 } }
+      }
+    },
+    {
+      if: {
+        properties: { status: { type: "string", enum: ["blocked", "failed"] } },
+        required: ["status"]
+      },
+      then: {
+        properties: { blockers: { type: "array", minItems: 1 } }
+      }
+    }
+  ]
 });
 
 export const CODEX_STRUCTURED_RESULT_SCHEMA_TEXT = `${JSON.stringify(CODEX_STRUCTURED_RESULT_SCHEMA, null, 2)}\n`;

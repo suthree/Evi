@@ -247,6 +247,10 @@ test("codex.run structured result is strict, sanitized, and cannot claim failed 
     next_action: "retry",
     completion_authority: "main_harness"
   })), /must contain a blocker/);
+  assert.throws(() => parseCodexStructuredResult(JSON.stringify({
+    ...done,
+    blockers: ["a remaining blocker"]
+  })), /cannot contain blockers/);
   assert.throws(() => parseCodexStructuredResult(JSON.stringify({ ...done, extra: true })), /unsupported fields/);
 });
 
