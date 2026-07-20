@@ -15,6 +15,22 @@ import {
 import { resolveSkillResolver } from "../packages/core/src/skill_resolver.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
+test("active-vault shorthand has no implicit repository seed roots", () => {
+  const resolver = resolveSkillResolver("/node/vault/evi");
+
+  assert.equal(resolver.active_root, "/node/vault/evi");
+  assert.deepEqual(resolver.seed_roots, []);
+  assert.deepEqual(resolver.project_roots, []);
+  assert.deepEqual(resolver.search_roots, [
+    {
+      root: "/node/vault/evi",
+      skills_dir: "/node/vault/evi/skills",
+      source: "personal",
+      writable: true
+    }
+  ]);
+});
+
 test("same-name same-content skills merge deterministically with complete provenance", async () => {
   const fixture = await createFixture();
   try {
