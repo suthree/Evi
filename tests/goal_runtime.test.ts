@@ -776,6 +776,108 @@ test("GoalRuntime validates confirmed codex.run against the bound execution work
   }
 });
 
+test("GoalRuntime bridges successful no-change codex.run through Harness-owned verification", async () => {
+  const fixture = await createFixture();
+  try {
+    const boundRoot = join(fixture.root, "verification-bridge-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/verification-bridge", boundRoot]);
+    const calls: EffectAction[] = [];
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        calls.push(structuredClone(effectAction));
+        if (effectAction.tool === "codex.run") {
+          return {
+            id: "tool_result_no_change_codex",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Delegated specialist reported a successful no-change verification.",
+            output: { observed: true, self_reported_tests: "untrusted" },
+            side_effect_level: "local_write",
+            created_at: "2026-07-17T00:00:01.000Z"
+          };
+        }
+        return {
+          id: "tool_result_independent_verification",
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Harness-owned verification passed without changing the workspace.",
+          output: { verification: passedVerificationMarker() },
+          side_effect_level: "local_reversible",
+          created_at: "2026-07-17T00:00:02.000Z"
+        };
+      }
+    };
+    const cognition = sequenceCognition([
+      action("codex.run", {
+        task: "Implement and verify one bounded runtime change.",
+        task_shape: "One bounded coding task with independent verification."
+      }, "Delegate the bounded specialist implementation."),
+      action("codex.run", {
+        task: "Repeat the same delegated verification.",
+        task_shape: "One repeated no-change coding verification."
+      }, "Incorrectly try to use the delegated executor as its own verifier."),
+      outcome("委派自述不能直接作为完成证明。"),
+      action("command.run", {
+        command: "pnpm",
+        args: ["run", "check"],
+        cwd: "repo",
+        purpose: "verification",
+        side_effect_level: "local_reversible"
+      }, "Run the bounded Harness-owned independent verification."),
+      outcome("独立 Harness 验证已经完成。")
+    ]);
+    const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start(
+      "verification_bridge_start",
+      "Require independent verification after a no-change delegated coding result."
+    ));
+    const codexPaused = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_delegate",
+      goal_id: started.goal_id
+    });
+    assert.equal(codexPaused.pending_effect?.proposed_action.tool, "codex.run");
+    await runtime.handle({
+      type: "resume",
+      command_id: "verification_bridge_delegate_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: codexPaused.pending_effect!.effect_id
+    });
+
+    const verificationPaused = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_replan",
+      goal_id: started.goal_id
+    });
+    assert.equal(verificationPaused.pending_effect?.proposed_action.tool, "command.run");
+    assert.deepEqual(calls.map((item) => item.tool), ["codex.run"]);
+    assert.deepEqual(
+      cognition.calls.slice(1, 4).map((input) => input.decision_feedback.map((item) => item.code)),
+      [["independent_verification_required"], ["independent_verification_required"], ["independent_verification_required"]]
+    );
+
+    await runtime.handle({
+      type: "resume",
+      command_id: "verification_bridge_command_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: verificationPaused.pending_effect!.effect_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_outcome",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(calls.map((item) => item.tool), ["codex.run", "command.run"]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal outcomes", async () => {
   const fixture = await createFixture();
   try {

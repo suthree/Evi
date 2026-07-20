@@ -8,6 +8,10 @@ The agent is a context for designing one continuous autonomous self-growing agen
 The long-lived self of the agent: one stable autonomous agent across repositories, interfaces, models, and runtimes. It owns the seed mission, durable values, operating boundaries, learning policy, and continuity of growth.
 _Avoid_: Personal assistant, workspace persona, per-repo agent, split identity
 
+**Learning Orchestrator**:
+The **Self-Growing Agent Core** in its operating role: it discovers, compares, selects, combines, and evaluates tools, skills, and **Delegated Agent Surfaces** to expand capability. It need not internalize every tool protocol or become the default worker; bounded direct execution remains an evidence and recovery surface while specialists perform suitable production work.
+_Avoid_: Generic command agent, fixed workflow router, tool wrapper
+
 **Project Overlay**:
 A temporary context layer applied to the **Self-Growing Agent Core** for a specific repository, task domain, organization, or collaboration setting. It may constrain behavior and recall project knowledge, but it does not create a separate self.
 _Avoid_: Project personality, workspace self
@@ -131,6 +135,10 @@ _Avoid_: Human review, unchecked self-approval
 **Capability Flywheel**:
 The core growth loop of the agent: use tools or delegated agent surfaces, record evidence, extract reusable experience into SOPs, audit them, promote valid SOPs into skills, recall them later, and revise them from outcomes.
 _Avoid_: Feature list, broad assistant coverage
+
+**Independent Verification Bridge**:
+The bounded transition from a successful **Delegated Agent Surface** result to harness-owned evidence sufficient for outcome verification. Delegated self-reports remain execution evidence only; when an unresolved verification obligation exists, the **Learning Orchestrator** selects a bounded non-delegated verification action and the **Harness Kernel** validates its result.
+_Avoid_: Delegated self-certification, automatic test pipeline, generic command work
 
 **Dream Consolidation**:
 An idle-time, proposal-only learning mode that reviews bounded conversation and episodic evidence together with semantic memory, procedural memory, and capability experience. It may compress, classify, connect, or challenge prior experience and propose memory, SOP, skill, capability-profile, or exploration candidates. It never converts reflection into fact, executes work, or promotes a candidate by itself.

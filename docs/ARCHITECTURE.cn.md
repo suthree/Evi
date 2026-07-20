@@ -118,6 +118,12 @@ id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRu
 成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
 或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
 
+独立验证桥是针对“成功但无改动的委派 coding result”的狭义例外：Evi 不接受 specialist
+自己的 test report，也不重复相同委派。GoalRuntime 派生短暂的证据义务，cognition 从
+Portfolio 中选择一条受限的 `command.run` verification；Harness 拥有约束、observation 与
+receipt acceptance。这样既让验证保持独立、可复现，也让 Evi 仍是学习型调度者，而非通用
+命令执行员工。
+
 约束按其保护对象分类。canonical evidence、仓库边界、secret/private-data 边界、不可逆的
 外部 effect 与完成权属于硬不变量；effect confirmation 只对其精确 effect 构成硬 gate。
 能力选择、是否需要新 workspace、SOP 草案与实现的先后顺序则是自适应默认值：当前就绪度和

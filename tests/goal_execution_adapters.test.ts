@@ -375,6 +375,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /observation_obligation.*required.*satisfied/i);
   assert.match(requests[0]!.instructions, /Do not reacquire.*solely because.*prior_continue/i);
   assert.match(requests[0]!.instructions, /repeated_non_progress_observation/);
+  assert.match(requests[0]!.instructions, /independent_verification_required/);
+  assert.match(requests[0]!.instructions, /Harness-owned check/);
   assert.match(requests[0]!.instructions, /No particular fallback tool is mandatory/);
   assert.match(requests[0]!.instructions, /choose.*Capability Portfolio dynamically/i);
   assert.match(requests[0]!.instructions, /changed_unobserved.*selected ref.*repository fact/i);

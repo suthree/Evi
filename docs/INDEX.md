@@ -18,6 +18,7 @@ Load this compact index by default. Do not preload every stable document.
 - Shared control state, per-Goal worktrees, and PR-only delivery: `docs/adr/0003-shared-control-state-and-pr-only-delivery.md`
 - Node-local active vaults and Evi-controlled LuBan promotion: `docs/adr/0004-node-local-vault-and-luban-promotion.md`
 - Typed cognition envelopes and fail-closed model-decision parsing: `docs/adr/0005-typed-cognition-envelope.md`
+- Independent verification after no-change delegated execution: `docs/adr/0006-independent-verification-bridge.md`
 - Historical Trellis evidence only, never default context: `.trellis/`
 
 Read on demand:

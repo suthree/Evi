@@ -451,6 +451,19 @@ observation obligation until a later canonical observation satisfies it.
 The projection is derived from existing events and adds no event
 schema, progress ledger, mutable score, task router, or second lifecycle owner.
 
+A successful no-change `codex.run` observation is delegated execution evidence,
+not independent verification. Until a later successful Harness-owned
+`command.run` observation with `purpose="verification"` clears that boundary,
+GoalRuntime supplies derived `independent_verification_required` feedback. It
+rejects a further delegated action, a direct-tool substitute, a blocker while
+`command.run` is available, and an outcome proposal within the same Continue;
+cognition must select one bounded command verification instead. This is a
+hard evidence bridge for that unresolved delegated result, not a task router or
+automatic test pipeline: cognition still chooses the narrow command from the
+Capability Portfolio, while Harness contains, executes, observes, and accepts
+it. The feedback is ephemeral and derived from canonical events; it creates no
+new state owner, effect authority, or automatic command executor.
+
 Before the same cognition call, GoalRuntime resolves one bounded Capability
 Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
 tool contracts and their model-visible constraints, readiness under the Goal's
@@ -2267,6 +2280,12 @@ verification, permissions, commit, pull request, merge, deploy, and completion
 authority remain exclusively with `main_harness`. The tool is strictly separate
 from advisory-only `delegate_agent` and does not change its payload, result,
 tool, write, or completion authority.
+
+When a successful `codex.run` has no canonical workspace or commit change, its
+self-reported tests and checks remain diagnostics. The current GoalRuntime
+derives the independent-verification bridge above before another delegation or
+outcome may proceed; only the later Harness-owned `command.run` observation can
+clear it.
 
 `max_output_chars` is an evidence/diagnostic retention limit, not a process
 termination budget. An explicit caller value wins. When omitted for a new run,

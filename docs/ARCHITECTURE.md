@@ -144,6 +144,15 @@ risk, cost, reversibility, and verifiability may change the choice; no keyword
 map decides it. If no credible capability is available, Evi blocks or chooses
 an explicit verifiable fallback instead of silently becoming the worker.
 
+The independent-verification bridge is a narrow exception for a successful
+no-change delegated coding result: Evi does not accept the specialist's own
+test report or repeat the same delegation. GoalRuntime derives a temporary
+evidence obligation, and cognition selects one bounded `command.run`
+verification from the Portfolio. Harness owns containment, observation, and
+receipt acceptance. This preserves Evi as a learning orchestrator rather than
+a generic command worker, while keeping verification independent and
+reproducible.
+
 Constraints are classified by what they protect. Canonical evidence, repository
 containment, secret/private-data boundaries, irreversible external effects, and
 completion ownership are hard invariants. Effect confirmation is a hard gate

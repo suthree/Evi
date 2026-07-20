@@ -489,7 +489,7 @@ export interface GoalObservationObligationView {
   status: "none" | "required" | "satisfied";
 }
 
-export interface GoalDecisionFeedbackView {
+export interface GoalRepeatedNonProgressFeedbackView {
   code: "repeated_non_progress_observation";
   summary: string;
   prior_blocker_event_id: string;
@@ -500,6 +500,16 @@ export interface GoalDecisionFeedbackView {
     action_digest: string;
   };
 }
+
+export interface GoalIndependentVerificationFeedbackView {
+  code: "independent_verification_required";
+  summary: string;
+  delegated_observation_event_id: string;
+  delegated_action_digest: string;
+}
+
+export type GoalDecisionFeedbackView = GoalRepeatedNonProgressFeedbackView
+  | GoalIndependentVerificationFeedbackView;
 
 export interface GoalCognition {
   next(input: GoalCognitionInput): Promise<GoalCognitionResult>;
@@ -771,13 +781,23 @@ export class GoalRuntime {
 
       const cognitionStarted = this.nowMs();
       let cognition: GoalCognitionResult;
+      const independentVerificationFeedback = independentVerificationBridgeFeedback(
+        events,
+        command.goal_id
+      );
+      const activeCognitionFeedback = independentVerificationFeedback
+        ? [
+            ...decisionFeedback.filter((item) => item.code !== "independent_verification_required"),
+            independentVerificationFeedback
+          ]
+        : decisionFeedback;
       try {
         const workspaceFreshness = await goalWorkspaceFreshness(events, state.view);
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           observation_obligation: goalObservationObligation(events, command.goal_id),
-          decision_feedback: structuredClone(decisionFeedback),
+          decision_feedback: structuredClone(activeCognitionFeedback),
           workspace_freshness: structuredClone(workspaceFreshness),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
@@ -804,7 +824,7 @@ export class GoalRuntime {
       const cognitionElapsed = elapsedSince(cognitionStarted, this.nowMs());
       const roundUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
       const decisionUsage = addUsage(deferredUsage, roundUsage);
-      const activeDecisionFeedback = decisionFeedback;
+      const activeDecisionFeedback = activeCognitionFeedback;
       operationUsage = addUsage(operationUsage, roundUsage);
       deferredUsage = normalizeUsage({});
       decisionFeedback = [];
@@ -827,6 +847,15 @@ export class GoalRuntime {
             checkpoint,
             usage_delta: decisionUsage
           })).view;
+        }
+        const verificationBridgeFeedback = activeDecisionFeedback.find(
+          (item): item is GoalIndependentVerificationFeedbackView =>
+            item.code === "independent_verification_required"
+        );
+        if (verificationBridgeFeedback && commandRunVerificationIsAvailable(capabilityPortfolio)) {
+          deferredUsage = decisionUsage;
+          decisionFeedback = [verificationBridgeFeedback];
+          continue;
         }
         if (goalObservationObligation(events, command.goal_id).status === "required") {
           const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
@@ -872,6 +901,15 @@ export class GoalRuntime {
       }
 
       if (cognition.type === "outcome") {
+        const verificationBridgeFeedback = activeDecisionFeedback.find(
+          (item): item is GoalIndependentVerificationFeedbackView =>
+            item.code === "independent_verification_required"
+        );
+        if (verificationBridgeFeedback) {
+          deferredUsage = decisionUsage;
+          decisionFeedback = [verificationBridgeFeedback];
+          continue;
+        }
         return this.verifyOutcome(
           events,
           state,
@@ -943,6 +981,15 @@ export class GoalRuntime {
       if (repeatedActionFeedback) {
         deferredUsage = decisionUsage;
         decisionFeedback = [repeatedActionFeedback];
+        continue;
+      }
+      const verificationBridgeFeedback = activeDecisionFeedback.find(
+        (item): item is GoalIndependentVerificationFeedbackView =>
+          item.code === "independent_verification_required"
+      );
+      if (verificationBridgeFeedback && !isIndependentVerificationBridgeAction(action, capabilitySelection)) {
+        deferredUsage = decisionUsage;
+        decisionFeedback = [verificationBridgeFeedback];
         continue;
       }
       const effectId = this.nextSafeId("goal_effect");
@@ -1988,7 +2035,7 @@ function goalObservationObligation(
 function repeatedNonProgressObservationFeedback(
   events: GoalRuntimeEvent[],
   goalId: string
-): GoalDecisionFeedbackView | null {
+): GoalRepeatedNonProgressFeedbackView | null {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   let priorBoundaryIndex = -1;
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
@@ -2035,6 +2082,34 @@ function repeatedNonProgressObservationFeedback(
       action_digest: currentObservation.action_digest
     }
   };
+}
+
+function independentVerificationBridgeFeedback(
+  events: GoalRuntimeEvent[],
+  goalId: string
+): GoalIndependentVerificationFeedbackView | null {
+  const goalEvents = events.filter((event) => event.goal_id === goalId);
+  const plannedById = new Map(goalEvents
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> =>
+      event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
+    const event = goalEvents[index]!;
+    if (event.event_type !== "goal_action_observed") continue;
+    const planned = plannedById.get(event.intent_event_id);
+    if (planned?.action.tool !== "codex.run") continue;
+    if (!event.result.ok || observedChanges(event.result).length > 0) return null;
+    const laterIndependentVerification = goalEvents.slice(index + 1).some((candidate) =>
+      candidate.event_type === "goal_action_observed" && isSuccessfulLocalVerificationEvent(candidate));
+    if (laterIndependentVerification) return null;
+    return {
+      code: "independent_verification_required",
+      summary: "A successful no-change delegated Codex observation remains execution evidence only. Select one bounded command.run action with purpose=verification; do not repeat delegated verification, block, or claim an outcome until the Harness records independent verification.",
+      delegated_observation_event_id: event.id,
+      delegated_action_digest: event.action_digest
+    };
+  }
+  return null;
 }
 
 function goalObservationProgressDigest(result: ToolResult): string {
@@ -2708,6 +2783,21 @@ function isSuccessfulLocalVerificationEvent(
       || (event.evidence_semantics === undefined
         && event.evidence_role === undefined
         && event.effect_intent.operation === "run_local_verification"));
+}
+
+function commandRunVerificationIsAvailable(portfolio: GoalCapabilityPortfolio): boolean {
+  return portfolio.capabilities.some((candidate) =>
+    candidate.id === "command.run" && candidate.readiness === "available");
+}
+
+function isIndependentVerificationBridgeAction(
+  action: EffectAction,
+  selection: GoalCapabilitySelection
+): boolean {
+  return action.tool === "command.run"
+    && action.arguments.purpose === "verification"
+    && selection.capability_id === "command.run"
+    && selection.execution_purpose === "verification";
 }
 
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {

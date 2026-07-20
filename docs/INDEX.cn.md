@@ -18,6 +18,7 @@
 - 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - 节点本地 active vault 与 Evi 控制的 LuBan 晋升：`docs/adr/0004-node-local-vault-and-luban-promotion.cn.md`
 - Typed cognition envelope 与 fail-closed 模型决策解析：`docs/adr/0005-typed-cognition-envelope.cn.md`
+- 无改动委派执行后的独立验证：`docs/adr/0006-independent-verification-bridge.cn.md`
 - Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：
