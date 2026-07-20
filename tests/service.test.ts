@@ -508,6 +508,99 @@ test("service restart preserves installed current and previous bundles", async (
   }
 });
 
+test("service stop accepts a no-such-process bootout only when the exact job is absent on postcondition inspection", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+    let prints = 0;
+
+    const result = await runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") {
+          prints += 1;
+          return prints === 1
+            ? { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 }
+            : { stdout: "", stderr: "Could not find service", exitCode: 3 };
+        }
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.action, "stop");
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`],
+      ["print", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
+test("service stop rejects a no-such-process bootout when the exact job remains loaded", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+
+    await assert.rejects(runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    }), /launchctl bootout failed: Boot-out failed: 3: No such process/);
+
+    assert.deepEqual(calls, [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`],
+      ["print", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
+test("service stop preserves unrelated bootout failures without postcondition inspection", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+
+    await assert.rejects(runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 5: Input/output error", exitCode: 5 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    }), /launchctl bootout failed: Boot-out failed: 5: Input\/output error/);
+
+    assert.deepEqual(calls, [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
 test("service definition accepts configured Discord IM providers with an adapter", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-provider-"));
   const repoRoot = join(root, "repo");
@@ -1057,6 +1150,28 @@ test("runtime service status points operators to runtime bounded health", async 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+async function withServiceStopDefinition(
+  callback: (definition: ReturnType<typeof buildRuntimeServiceDefinition>) => Promise<void>
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-stop-"));
+  try {
+    const definition = buildRuntimeServiceDefinition({
+      repoRoot: join(root, "repo"),
+      configDir: join(root, "repo/config"),
+      stateRoot: join(root, "state"),
+      homeRoot: join(root, "home"),
+      nodePath: process.execPath
+    });
+    await callback({
+      ...definition,
+      plistPath: join(root, "LaunchAgents/local.runtime.runtime.plist"),
+      supervisorPlistPath: join(root, "LaunchAgents/local.runtime.runtime.supervisor.plist")
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
 
 async function writeTestRuntimeBundle(root: string, sourceCommit: string, repoRoot = "/repo"): Promise<void> {
   await mkdir(join(root, "dist/apps/cli/src"), { recursive: true });

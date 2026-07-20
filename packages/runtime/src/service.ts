@@ -1057,11 +1057,7 @@ async function startLaunchdJob(
   job: { domain: string; label: string; plistPath: string },
   run: CommandRunner
 ): Promise<void> {
-  const current = await inspectLaunchdJob(job, run);
-  if (current.loaded) {
-    const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
-    if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed before start: ${bootout.stderr || bootout.stdout}`);
-  }
+  await stopLaunchdJob(job, run, "launchctl bootout failed before start");
   let bootstrap: CommandResult | null = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     bootstrap = await run("launchctl", ["bootstrap", job.domain, job.plistPath], { timeoutMs: 30000 });
@@ -1107,12 +1103,18 @@ async function stopSupervisor(definition: ServiceDefinition, run: CommandRunner)
 
 async function stopLaunchdJob(
   job: { domain: string; label: string; plistPath: string },
-  run: CommandRunner
+  run: CommandRunner,
+  failurePrefix = "launchctl bootout failed"
 ): Promise<void> {
   const current = await inspectLaunchdJob(job, run);
   if (!current.loaded) return;
   const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
-  if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed: ${bootout.stderr || bootout.stdout}`);
+  if (bootout.exitCode === 0) return;
+  const detail = bootout.stderr || bootout.stdout;
+  if (!/no such process/i.test(detail)) throw new Error(`${failurePrefix}: ${detail}`);
+  const postcondition = await inspectLaunchdJob(job, run);
+  if (!postcondition.loaded) return;
+  throw new Error(`${failurePrefix}: ${detail}`);
 }
 
 async function inspectLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<LaunchdStatus> {

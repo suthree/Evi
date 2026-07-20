@@ -191,6 +191,87 @@ test("deployment supervisor activates, rolls back, preserves evidence, and emits
   }
 });
 
+test("candidate activation accepts a no-such-process bootout only after the job is absent on postcondition inspection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-absent-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return calls.filter(([action]) => action === "print").length === 1
+          ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+          : { stdout: "", stderr: "Could not find service", exitCode: 3 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    });
+
+    assert.equal(result.deployment?.status, "starting");
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"],
+      ["print", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation rejects a no-such-process bootout when postcondition inspection still finds the job loaded", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-still-loaded-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.deployment?.status, "recovering");
+    assert.match(result.deployment?.failure_reason ?? "", /launchctl bootout failed: Boot-out failed: 3: No such process/);
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"],
+      ["print", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation preserves unrelated bootout failures without postcondition inspection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-error-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 5: Input/output error", exitCode: 5 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.deployment?.status, "recovering");
+    assert.match(result.deployment?.failure_reason ?? "", /launchctl bootout failed: Boot-out failed: 5: Input\/output error/);
+    assert.deepEqual(calls.slice(0, 2), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("candidate activation retries a transient kickstart failure with persisted attempt evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-kickstart-retry-"));
   const manifest = buildManifest(root);
@@ -1025,6 +1106,32 @@ function deploymentRecord(commit: string, status: DeploymentRecord["status"]): D
     updated_at: "2026-07-15T00:00:00.000Z",
     boundary: "test"
   };
+}
+
+async function preparePendingActivation(root: string): Promise<SupervisorManifest> {
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+  await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+  await mkdir(paths.historyRoot, { recursive: true });
+  await mkdir(resolve(root, "logs"), { recursive: true });
+  await writeFile(manifest.stdout_path, "", "utf8");
+  await writeFile(manifest.stderr_path, "", "utf8");
+  const stable = {
+    ...deploymentRecord("stable-commit", "stable"),
+    id: "deployment_test_stable",
+    repo_root: manifest.repo_root,
+    state_root: manifest.state_root
+  };
+  const request = {
+    ...deploymentRecord("candidate-commit", "pending"),
+    repo_root: manifest.repo_root,
+    state_root: manifest.state_root
+  };
+  await writeJson(resolve(manifest.state_root, "deployments/current.json"), stable);
+  await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+  await writeJson(paths.request, request);
+  return manifest;
 }
 
 async function writeRuntimeBundle(root: string, commit: string, repoRoot = "/work/repo"): Promise<void> {
