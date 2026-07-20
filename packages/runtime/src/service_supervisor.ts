@@ -1023,10 +1023,16 @@ async function startRuntime(manifest: SupervisorManifest, deps: SupervisorDeps):
 }
 
 async function stopRuntime(manifest: SupervisorManifest, deps: SupervisorDeps): Promise<void> {
-  const print = await runLaunchctl(["print", `${manifest.domain}/${manifest.runtime_label}`], deps);
+  const job = `${manifest.domain}/${manifest.runtime_label}`;
+  const print = await runLaunchctl(["print", job], deps);
   if (print.exitCode !== 0) return;
-  const bootout = await runLaunchctl(["bootout", `${manifest.domain}/${manifest.runtime_label}`], deps);
-  if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed: ${bootout.stderr || bootout.stdout}`);
+  const bootout = await runLaunchctl(["bootout", job], deps);
+  if (bootout.exitCode === 0) return;
+  const detail = bootout.stderr || bootout.stdout;
+  if (!/no such process/i.test(detail)) throw new Error(`launchctl bootout failed: ${detail}`);
+  const postcondition = await runLaunchctl(["print", job], deps);
+  if (postcondition.exitCode !== 0) return;
+  throw new Error(`launchctl bootout failed: ${detail}`);
 }
 
 async function launchctlWithRetry(
