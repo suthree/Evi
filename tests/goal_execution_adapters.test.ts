@@ -407,6 +407,7 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   const configDir = join(root, "config");
+  const homeRoot = join(root, "home");
   await mkdir(repoRoot, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
   await mkdir(configDir, { recursive: true });
@@ -418,10 +419,10 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
     await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
     await runGit(repoRoot, ["add", "package.json"]);
     await runGit(repoRoot, ["commit", "-m", "fixture base"]);
-    await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
-      type: "state",
-      root: stateRoot
-    })}\n`, "utf8");
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot })
+    ].join("\n") + "\n", "utf8");
     let repairedModelCalls = 0;
     const cognition = new ConfiguredGoalCognition({ configDir, stateRoot }, async (selection) => {
       if (selection.provider === "active_model") throw new Error("fixture active model unavailable");

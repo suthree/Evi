@@ -366,10 +366,12 @@ test("goal cognition summary exposes a missing selected model without resolving 
   const root = await mkdtemp(join(tmpdir(), "agent-goal-cognition-gap-"));
   const configDir = join(root, "config");
   const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
   await mkdir(configDir, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
   try {
     await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
       JSON.stringify({ type: "active_model", model_id: "missing-model" })
     ].join("\n") + "\n", "utf8");

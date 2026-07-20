@@ -212,6 +212,7 @@ test("live CLI routes through one canonical GoalRuntime identity without legacy 
   const configDir = join(root, "config");
   const stateRoot = join(root, "state");
   const repoRoot = join(root, "repo");
+  const homeRoot = join(root, "home");
   await mkdir(configDir, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
   await mkdir(repoRoot, { recursive: true });
@@ -224,6 +225,7 @@ test("live CLI routes through one canonical GoalRuntime identity without legacy 
     await runGit(repoRoot, ["add", "README.md"]);
     await runGit(repoRoot, ["commit", "-m", "fixture base"]);
     await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
       JSON.stringify({ type: "active_model", model_id: "missing-live-model" })
     ].join("\n") + "\n", "utf8");
@@ -343,6 +345,7 @@ test("local goal lifecycle remains usable when the selected active model is miss
   const configDir = join(root, "config");
   const stateRoot = join(root, "state");
   const repoRoot = join(root, "repo");
+  const homeRoot = join(root, "home");
   await mkdir(configDir, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
   await mkdir(repoRoot, { recursive: true });
@@ -355,6 +358,7 @@ test("local goal lifecycle remains usable when the selected active model is miss
     await runGit(repoRoot, ["add", "README.md"]);
     await runGit(repoRoot, ["commit", "-m", "fixture base"]);
     await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
       JSON.stringify({ type: "active_model", model_id: "primary-model" })
     ].join("\n") + "\n", "utf8");
