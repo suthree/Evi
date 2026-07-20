@@ -44,6 +44,10 @@ import {
   type GoalCapabilitySelection
 } from "./goal_capability_portfolio.js";
 import {
+  deriveCodexSpecialistInvocation,
+  parseCodexResumeHandle
+} from "./goal_specialist_executor.js";
+import {
   inspectGoalWorkspaceFreshness,
   latestObservedWorkspaceHead,
   parseGoalWorkspaceObservation,
@@ -507,6 +511,11 @@ export interface GoalToolExecutor {
     decision: EffectDecision,
     context: GoalToolExecutionContext
   ): Promise<ToolResult>;
+  recover?(
+    action: EffectAction,
+    decision: EffectDecision,
+    context: GoalToolExecutionContext
+  ): Promise<ToolResult | null>;
 }
 
 export interface GoalVerificationInput {
@@ -589,6 +598,11 @@ export class GoalRuntime {
     const command = parsed.data;
     const commandDigest = digestCommand(command);
     let events = await this.readCanonicalEvents();
+    if (command.type !== "start") {
+      const current = deriveGoalState(events, command.goal_id);
+      const reconciled = await this.recoverDurablePendingEffect(events, current, command, commandDigest);
+      events = reconciled.events;
+    }
     const replayEvents = events.filter((event) => event.command_id === command.command_id);
     if (replayEvents.length > 0) {
       assertCommandReplay(replayEvents, commandDigest);
@@ -869,20 +883,12 @@ export class GoalRuntime {
         );
       }
 
-      const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
-      const actionDigest = digestAction(action);
-      const repeatedActionFeedback = activeDecisionFeedback.find((item) =>
-        item.code === "repeated_non_progress_observation" && item.repeated_action.action_digest === actionDigest);
-      if (repeatedActionFeedback) {
-        deferredUsage = decisionUsage;
-        decisionFeedback = [repeatedActionFeedback];
-        continue;
-      }
+      const modelAction = normalizeGoalEffectAction(parseEffectAction(cognition.action));
       let capabilitySelection: GoalCapabilitySelection;
       try {
         capabilitySelection = validateGoalCapabilitySelection(
           cognition.capability_selection,
-          action,
+          modelAction,
           capabilityPortfolio
         );
       } catch (error) {
@@ -902,6 +908,42 @@ export class GoalRuntime {
           checkpoint,
           usage_delta: decisionUsage
         })).view;
+      }
+      let action: EffectAction;
+      try {
+        action = modelAction.tool === "codex.run"
+          ? deriveCodexSpecialistInvocation({
+              intent: modelAction.arguments,
+              selection: capabilitySelection,
+              authority: goalExecutionAuthority(state.view),
+              resume_handle: latestGoalCodexResumeHandle(events, command.goal_id)
+            })
+          : modelAction;
+      } catch (error) {
+        const summary = `Goal specialist executor intent validation failed: ${errorMessage(error)}`.slice(0, 2_000);
+        const nextAction = "State only the bounded specialist task and task_shape; GoalRuntime derives Codex invocation authority from the bound Goal state.";
+        const checkpoint = normalizeCheckpoint({
+          cursor: "specialist_intent_invalid",
+          summary,
+          next_action: nextAction,
+          selected_refs: state.view.checkpoint.selected_refs
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: nextAction,
+          checkpoint,
+          usage_delta: decisionUsage
+        })).view;
+      }
+      const actionDigest = digestAction(action);
+      const repeatedActionFeedback = activeDecisionFeedback.find((item) =>
+        item.code === "repeated_non_progress_observation" && item.repeated_action.action_digest === actionDigest);
+      if (repeatedActionFeedback) {
+        deferredUsage = decisionUsage;
+        decisionFeedback = [repeatedActionFeedback];
+        continue;
       }
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
@@ -1043,7 +1085,7 @@ export class GoalRuntime {
       result = await this.toolExecutor.execute(
         structuredClone(pending.action),
         structuredClone(pending.effect_decision),
-        goalToolExecutionContext(state.view)
+        goalToolExecutionContext(state.view, pending)
       );
     } catch (error) {
       result = {
@@ -1088,6 +1130,57 @@ export class GoalRuntime {
       checkpoint,
       usage_delta: toolUsage
     });
+  }
+
+  private async recoverDurablePendingEffect(
+    events: GoalRuntimeEvent[],
+    state: DerivedGoalState,
+    command: Exclude<GoalCommand, { type: "start" }>,
+    commandDigest: string
+  ): Promise<{ events: GoalRuntimeEvent[]; state: DerivedGoalState }> {
+    const pending = state.pending;
+    if (pending?.state !== "outcome_unknown" || !this.toolExecutor?.recover) {
+      return { events, state };
+    }
+    let recovered: ToolResult | null;
+    try {
+      recovered = await this.toolExecutor.recover(
+        structuredClone(pending.action),
+        structuredClone(pending.effect_decision),
+        goalToolExecutionContext(state.view, pending)
+      );
+    } catch {
+      return { events, state };
+    }
+    if (!recovered) return { events, state };
+    const boundedResult = boundedToolResult(recovered);
+    const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
+    const checkpoint = normalizeCheckpoint({
+      cursor: `effect:${pending.effect_id}:reconciled`,
+      summary: pending.working_summary,
+      next_action: boundedResult.ok
+        ? "Evaluate the recovered child observation and continue toward an outcome."
+        : "Recover from the reconciled child failure before proposing completion.",
+      selected_refs: mergeCheckpointRefs(
+        state.view.checkpoint.selected_refs,
+        toolResultRefs(boundedResult)
+      )
+    });
+    const appended = await this.appendEvent(events, {
+      ...this.eventBase(state.view, command, commandDigest),
+      event_type: "goal_action_observed",
+      intent_event_id: pending.event_id,
+      authorization_event_id: pending.authorization_event_id,
+      effect_id: pending.effect_id,
+      action_digest: pending.action_digest,
+      effect_intent: pending.effect_decision.intent,
+      evidence_semantics: "verification_role_v1",
+      ...(evidenceRole ? { evidence_role: evidenceRole } : {}),
+      result: boundedResult,
+      checkpoint,
+      usage_delta: normalizeUsage({ tool_calls: 1 })
+    });
+    return { events: appended.events, state: appended.state };
   }
 
   private async verifyOutcome(
@@ -1394,6 +1487,24 @@ async function goalWorkspaceFreshness(
       workspace.authority
     )
   });
+}
+
+/** The latest observed Codex handle is evidence only; tools re-verify it from state before resume. */
+function latestGoalCodexResumeHandle(
+  events: GoalRuntimeEvent[],
+  goalId: string
+): ReturnType<typeof parseCodexResumeHandle> {
+  const plannedById = new Map(events
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> => event.goal_id === goalId
+      && event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  for (const event of [...events].reverse()) {
+    if (event.goal_id !== goalId || event.event_type !== "goal_action_observed") continue;
+    const planned = plannedById.get(event.intent_event_id);
+    if (planned?.action.tool !== "codex.run") continue;
+    return parseCodexResumeHandle(event.result.output.resume_handle);
+  }
+  return null;
 }
 
 function usesExecutionWorkspace(action: EffectAction): boolean {
@@ -1799,12 +1910,19 @@ function goalExecutionAuthority(view: GoalView): GoalRepositoryAuthority {
   return authority;
 }
 
-function goalToolExecutionContext(view: GoalView): GoalToolExecutionContext {
+function goalToolExecutionContext(
+  view: GoalView,
+  pending?: Pick<PendingEffectInternal, "effect_id" | "action_digest">
+): GoalToolExecutionContext {
   if (!view.repository_authority) {
     throw new Error("GoalRuntime legacy goal has no control repository authority");
   }
   return {
     goal_id: view.goal_id,
+    ...(pending ? {
+      effect_id: pending.effect_id,
+      action_digest: pending.action_digest
+    } : {}),
     control_repository_authority: structuredClone(view.repository_authority),
     execution_workspace: view.execution_workspace ? structuredClone(view.execution_workspace) : null
   };

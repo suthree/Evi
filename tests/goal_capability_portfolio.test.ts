@@ -106,6 +106,11 @@ test("Goal capability portfolio marks delegated execution ready in a linked work
   });
   const codex = portfolio.capabilities.find((candidate) => candidate.id === "codex.run");
   assert.equal(codex?.readiness, "available");
+  assert.deepEqual(codex?.arguments, {
+    task: "bounded specialist task",
+    task_shape: "bounded task shape"
+  });
+  assert.match(codex?.constraints.join(" ") ?? "", /GoalRuntime derives new or resume mode/);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "runtime.inspect"), true);
@@ -154,6 +159,17 @@ test("Goal capability selection validates availability, action agreement, execut
     tool: "file.read",
     arguments: { scope: "repo", path: "apps/cli/src/main.ts", start_line: 1, max_lines: 200 }
   }, portfolio), valid);
+  assert.deepEqual(validateGoalCapabilitySelection({
+    ...valid,
+    capability_fit_assessment: {
+      considered_capability_ids: [],
+      considered_skill_refs: [],
+      conclusion: "Not used for this direct bounded read."
+    }
+  }, {
+    tool: "file.read",
+    arguments: { scope: "repo", path: "apps/cli/src/main.ts", start_line: 1, max_lines: 200 }
+  }, portfolio).capability_fit_assessment?.considered_capability_ids, []);
 
   assert.throws(() => validateGoalCapabilitySelection({
     ...valid,
@@ -177,6 +193,38 @@ test("Goal capability selection validates availability, action agreement, execut
     tool: "codex.run",
     arguments: {}
   }, portfolio), /specialist_execution/i);
+  const delegated = {
+    ...valid,
+    capability_id: "codex.run",
+    execution_purpose: "specialist_execution" as const,
+    skill_refs: ["skills/source-architecture-review/SKILL.md"],
+    capability_fit_assessment: {
+      considered_capability_ids: portfolio.capabilities.map((candidate) => candidate.id),
+      considered_skill_refs: portfolio.selected_skills.map((skill) => skill.instructions_ref),
+      conclusion: "The linked-worktree specialist executor is the best current fit after comparing every capability and selected skill."
+    }
+  };
+  assert.deepEqual(validateGoalCapabilitySelection(delegated, {
+    tool: "codex.run",
+    arguments: { task: "Implement one bounded change.", task_shape: "One bounded coding task." }
+  }, portfolio), delegated);
+  assert.throws(() => validateGoalCapabilitySelection({
+    ...delegated,
+    capability_fit_assessment: undefined
+  }, {
+    tool: "codex.run",
+    arguments: { task: "Implement one bounded change.", task_shape: "One bounded coding task." }
+  }, portfolio), /requires capability_fit_assessment/i);
+  assert.throws(() => validateGoalCapabilitySelection({
+    ...delegated,
+    capability_fit_assessment: {
+      ...delegated.capability_fit_assessment,
+      considered_capability_ids: ["codex.run"]
+    }
+  }, {
+    tool: "codex.run",
+    arguments: { task: "Implement one bounded change.", task_shape: "One bounded coding task." }
+  }, portfolio), /must cover exactly the current Capability Portfolio/i);
 
   const unavailable = buildGoalCapabilityPortfolio({
     repository_authority: mainCheckoutAuthority("/tmp/evi-main"),

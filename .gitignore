@@ -7,7 +7,6 @@ dist/
 .env.*
 !.env.example
 *.log
-.runtime/
 config/auth.jsonl
 config/*.local.jsonl
 .trellis/blobs/

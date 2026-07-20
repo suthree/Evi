@@ -759,7 +759,7 @@ test("service config selectors prefer installed manifest state and preserve expl
       target: "runtime",
       configDir
     });
-    assert.equal(defaultSelectors.stateRoot, join(homeRoot, "state/runtime"));
+    assert.equal(defaultSelectors.stateRoot, repoStateRoot);
 
     await mkdir(join(homeRoot, "service"), { recursive: true });
     await writeFile(join(homeRoot, "service/runtime.json"), `${JSON.stringify({
@@ -786,7 +786,7 @@ test("service config selectors prefer installed manifest state and preserve expl
       target: "runtime",
       configDir
     });
-    assert.equal(malformedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+    assert.equal(malformedManifestSelectors.stateRoot, repoStateRoot);
 
     for (const manifest of [
       { target: "other", home_root: homeRoot, state_root: installedStateRoot },
@@ -798,7 +798,7 @@ test("service config selectors prefer installed manifest state and preserve expl
         target: "runtime",
         configDir
       });
-      assert.equal(rejectedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+      assert.equal(rejectedManifestSelectors.stateRoot, repoStateRoot);
     }
   } finally {
     await rm(root, { recursive: true, force: true });

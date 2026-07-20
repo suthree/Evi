@@ -12,10 +12,10 @@ runtime for resident channel intake and a localhost operator web console.
 The approved v0.2 target is specified separately in
 `docs/V0.2_MULTI_NODE_EVOLUTION.md`. That target adds private Git-backed asset
 distribution and per-node activation while preserving node-local execution,
-raw memory, state, and failure isolation. Until a v0.2 Trellis task is
-implemented and verified, this document remains the authority for current
-runtime behavior and the v0.2 document must not be used to claim that a
-multi-node capability already exists.
+raw memory, state, and failure isolation. Until a corresponding accepted
+native-control-plane Goal is implemented and verified, this document remains
+the authority for current runtime behavior and the v0.2 document must not be
+used to claim that a multi-node capability already exists.
 
 ## Scope
 
@@ -63,7 +63,7 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 - Operator-facing discussion and final responses default to Simplified Chinese.
 - Keep model-facing default entrypoints and instruction files in English when
   that keeps the runtime contract clearer: `README.md`, `AGENTS.md`,
-  `.trellis/agents/AGENTS.md`, `core/soul.md`, and related prompt/context files.
+  `core/soul.md`, and related prompt/context files.
 - Use paired docs for important human-facing entrypoints. The first pair is
   `README.md` for models/tools and `docs/README.cn.md` for local Simplified
   Chinese reading. Root README files stay thin and link into Chinese companions
@@ -89,11 +89,10 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 - `docs/LOCAL_LEARNING.md` is SOP, skill, and active-vault guidance.
 - `docs/ACTIVE_EXPLORATION.md` is opt-in design and acceptance material for
   content/publishing/image-generation work only.
-- `.trellis/spec/` and `.trellis/tasks/` are repo-local governance records, not
-  runtime state or durable memory.
-- Trellis-generated agent context is tool-owned project governance context. It
-  should be refreshed through Trellis commands instead of hand-owned as the
-  runtime contract.
+- `docs/adr/` holds accepted durable architectural and governance decisions.
+- `.trellis/` is a frozen historical archive and evidence source, not runtime
+  state, durable memory, active governance, or default context. Its generated
+  agent context must not be refreshed or loaded as active instruction.
 
 ## Reference Stance
 
@@ -198,10 +197,13 @@ validation before creating a parallel path.
 model sees, validate what the model asks to do, preserve evidence, and decide
 whether completion claims are acceptable.
 
-Trellis is the project self-iteration maintenance tool for bounded tasks,
-specs, decisions, and command-maintained agent context. It is not runtime
-state, durable memory, the active vault, the skill promotion gate, or the
-authority for current runtime behavior.
+The active self-evolution control plane is `GoalRuntime`, `Harness`, canonical
+evidence, and `OutcomeReceipt`, with stable direction in project docs and
+accepted ADRs. Dynamic controls scale with scope, risk, evidence, verification,
+recovery, reversibility, and current operator intent. `.trellis/` remains
+frozen historical evidence only; it is not runtime state, durable memory, the
+active vault, the skill promotion gate, active governance, or authority for
+current runtime behavior.
 
 ### Dynamic Authority And Decision Ownership
 
@@ -307,20 +309,37 @@ without the field remain readable, pausable, and abandonable, but cannot
 Continue or dispatch. Use the same control `--repo-root` throughout.
 
 A Goal may later derive one isolated execution workspace from one successful
-canonical `workspace.prepare` observation. Preparation requires a fresh
-`codex/issue-N-slug` branch, the exact control start HEAD as base, a clean and
-unchanged main control checkout, the same Git common directory, and a derived
-ignored `.worktrees/<branch-basename>` path. The observation is the only source
-of the execution-workspace projection; there is no registry, second state
-owner, or ingress-time creation. Repo-scoped tools then use this workspace,
-while state-scoped tools keep the original state root. Continue, Resume, and
-immediate pre-dispatch checks live-validate the derived authority.
+canonical `workspace.prepare` observation. Current implementation compatibility
+requires a fresh `codex/issue-N-slug` branch, the exact control start HEAD as
+base, a clean and unchanged main control checkout, the same Git common
+directory, and a derived ignored `.worktrees/<branch-basename>` path. The
+legacy branch pattern does not require a live GitHub Issue; ADR 0001 records
+its replacement by a Goal-derived format as a separate, unimplemented runtime
+slice. The observation is the only source of the execution-workspace projection;
+there is no registry, second state owner, or ingress-time creation. Repo-scoped
+tools then use this workspace, while state-scoped tools keep the original state
+root. Continue, Resume, and immediate pre-dispatch checks live-validate the
+derived authority.
 
-For `codex.run`, GoalRuntime resolves the proposed new target or persisted
-resume handle against the execution workspace when one is bound, otherwise the
-control authority. It requires actual worktree, common directory, branch, and
+For `codex.run`, Goal cognition proposes only a bounded `task` and `task_shape`.
+Its Capability Selection carries the explicit capability-fit assessment,
+verification plan, and fallback. GoalRuntime derives `new` versus `resume`,
+the new-worktree fields, auto-selected profile/model settings, budgets,
+delegation strategy, and any resume handle from its bound authority and
+retained canonical observations; low-level invocation fields supplied by the
+model are rejected. It resolves the resulting target or persisted resume handle
+against the execution workspace when one is bound, otherwise the control
+authority. It requires actual worktree, common directory, branch, and
 delegated base equality before recording a pending effect. The tool rechecks
 the same effective authority immediately before spawn.
+
+`workspace.prepare` is an adaptive isolation default, not an unconditional
+precondition: when the current repository authority is already a linked
+isolated worktree and `codex.run` is ready, that authority is the direct bounded
+target. Direct Goal writes cannot create `sop/`, `skills/`, or `vault/` assets;
+verified evidence enters the existing background-review and promotion path
+instead. Canonical evidence, containment, sensitive-data boundaries, exact
+effect confirmation, and completion ownership remain mandatory controls.
 
 Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
 Pause, Resume, and Abandon construct the local control plane without resolving
@@ -510,6 +529,17 @@ confirmation-document chain. Local `goal resume
 --confirm-effect <effect-id>` authorizes only that stored action. Manual pause,
 resume, abandon, soft-budget continuation, verification failure, and later
 repair retain the original goal identity.
+
+For a Goal-owned `codex.run`, the parent reserves
+`goals/dispatches/<goal-id>/<effect-id>.json` before launching a detached child
+worker. The journal is bound to the Goal id, effect id, action digest, and
+provisional authority digest; it contains only lifecycle metadata and the
+bounded terminal tool result, never raw prompts. The child writes its own
+terminal record after the same authority checks and fixed post-run workspace
+observation. A later Goal command may append the missing canonical observation
+only from a matching, validated terminal record. Missing, active, malformed, or
+mismatched records preserve `effect_outcome_unknown` and cannot replay the
+effect.
 
 Denied actions are redacted before canonical persistence. A secret-bearing or
 private URL is classified with a query-free target; only a non-sensitive query
@@ -857,13 +887,14 @@ path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 
-The CLI also exposes `workspace runtime` as a read-only repo-local runtime
-workspace diagnostic. It may scan only top-level directory names under the
-configured repo root and report unsupported `.runtime-*` and `.runtime_*`
-directories. The only supported repo-local runtime layout is `.runtime/state`,
-`.runtime/stage`, and `.runtime/smoke/<name>`. It must not read file bodies,
-move, delete, migrate, mutate state, accept shell text, invoke the model, write
-the repo, or write the active vault.
+The CLI also exposes `workspace runtime` as a read-only repository workspace
+diagnostic. It may scan only top-level directory names under the configured
+repo root and report every `.runtime/`, `.runtime-*`, and `.runtime_*`
+directory as forbidden. The supported state locations are
+`~/.local-runtime/state/evi`, `~/.local-runtime/state-baselines/<name>`, and
+`~/.local-runtime/archives/<archive-id>` outside the checkout. It must not
+read file bodies, move, delete, migrate, mutate state, accept shell text,
+invoke the model, write the repo, or write the active vault.
 
 ### Capability Catalog Read Model
 
@@ -892,8 +923,9 @@ mutate state, write the repo, or write the active vault.
 iterations` remain readable for historical state inspection and migration
 diagnostics. They are not resident context sections, capability-selection
 authority, active-work owners, or completion truth. New engineering delivery
-is activated through one GitHub Issue and one Trellis task; new runtime
-learning derives from canonical Goal events and one OutcomeReceipt.
+is activated through a bounded Goal, Decision Owner acceptance, and the native
+harness; new runtime learning derives from canonical Goal events and one
+OutcomeReceipt.
 
 These legacy commands may read their existing bounded state and may preserve
 historical write commands for compatibility during staged retirement. They
@@ -988,7 +1020,7 @@ Local service runtime is a resident mode for one user on this machine. It may:
 Service lifecycle and service health commands resolve state root with one
 ordered contract: explicit `--state-root`, then the valid absolute `state_root`
 in the installed `<LOCAL_RUNTIME_HOME>/service/runtime.json` manifest, then
-`<LOCAL_RUNTIME_HOME>/state/runtime` as the safe fallback. A missing, malformed,
+`~/.local-runtime/state/evi` as the safe fallback. A missing, malformed,
 wrong-target, wrong-home, or relative-root manifest must not redirect the
 command. This rule is limited to the resident service harness and does not
 change ordinary interactive runtime state selection for live, pipeline,
@@ -2131,9 +2163,11 @@ Required policy:
 - require GoalRuntime execution context; standalone calls fail closed
 - accept only the strict `branch` and `base_commit` fields; unknown fields are
   denied before dispatch
-- accept only a fresh `codex/issue-N-slug` branch and the exact immutable
-  control-authority start HEAD as `base_commit`; current control HEAD must still
-  equal that start HEAD at preparation time
+- current implementation accepts only a fresh legacy `codex/issue-N-slug`
+  branch and the exact immutable control-authority start HEAD as `base_commit`;
+  current control HEAD must still equal that start HEAD at preparation time.
+  This compatibility pattern does not require a live GitHub Issue and is slated
+  for Goal-derived replacement in a separately verified runtime slice
 - require the control authority to be a clean, unchanged main checkout and the
   target `.worktrees/<branch-basename>` path to be Git-ignored and absent
 - atomically acquire the fresh branch, reserve the derived path, create the
@@ -2179,6 +2213,11 @@ Required policy:
   timeout/output-capture/context/tool/retry budgets in an immutable v2 digest
 - construct allowlisted argv without shell concatenation; prohibit
   danger-full-access, bypass flags, add-dir, and search
+- when invoked by GoalRuntime, reserve one child-owned durable dispatch record
+  before spawning the detached worker; preserve only Goal/effect/action and
+  authority digests plus bounded terminal evidence, never raw prompts; recover
+  a missing parent observation only from that exact validated terminal record
+  and never by replaying an unknown effect
 - support one bounded `new` execution or `resume <thread-id>` bound to the same
   authority snapshot, without another worktree, scheduler, or automatic retry;
   standalone resume inherits recorded `auto` or explicit selection and
@@ -2490,7 +2529,7 @@ command, and explicit restart guidance for the operator. They must not inspect
 launchd, read service logs, restart services, invoke the model, mutate state,
 read source file bodies, or run shell commands.
 Because service lifecycle and service health share the
-`<LOCAL_RUNTIME_HOME>/state/runtime` default, generated `service_health` inspect and
+`~/.local-runtime/state/evi` default, generated `service_health` inspect and
 restart guidance should omit `--state-root <state-root>` by default. Explicit
 state-root guidance is reserved for an operator-selected alternate service
 state root.
@@ -3998,79 +4037,79 @@ packages/runtime/src/channels/feishu/ # first IM provider
 Target first-version commands:
 The list includes available inspection, application, local-learning, and
 legacy diagnostic surfaces. It does not select active work. Engineering
-activation belongs to GitHub Issues and Trellis tasks; runtime continuity and
-outcomes belong to GoalRuntime and OutcomeReceipt.
+activation belongs to bounded Goals, their Decision Owner, and the native
+harness; runtime continuity and outcomes belong to GoalRuntime and
+OutcomeReceipt.
 
 ```bash
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime/state
-pnpm run runtime -- live --task "..." --state-root .runtime/state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
-pnpm run runtime -- pipeline runs --state-root .runtime/state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
-pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
+pnpm run runtime -- config --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- live --task "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root ~/.local-runtime/state-baselines/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
-pnpm run runtime -- workspace status --state-root .runtime/state
-pnpm run runtime -- workspace runtime --state-root .runtime/state
+pnpm run runtime -- workspace status --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- workspace runtime --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
-pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root .runtime/state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
-pnpm run runtime -- memory layers --state-root .runtime/state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
-pnpm run runtime -- memory dream --state-root .runtime/state
-pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root .runtime/state
-pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root .runtime/state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
-pnpm run runtime -- review background --state-root .runtime/state
-pnpm run runtime -- review reports --state-root .runtime/state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
-pnpm run runtime -- review completions --state-root .runtime/state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review traces --state-root .runtime/state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review tick --state-root .runtime/state
-pnpm run runtime -- review ticks --state-root .runtime/state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
-pnpm run runtime -- show-events --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory layers --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dream --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --review background_review_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --completion completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --trace completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review tick --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --tick review_tick_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review audit-sop --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review chain --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review coverage --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- show-events --state-root ~/.local-runtime/state/evi
 ```
 
 Implementation note: the core-tool surface and IM command surface match this
 first-version command contract.
 
-Repo-local runtime artifacts should stay under `.runtime/`: `.runtime/state`
-for default interactive state, `.runtime/stage` for pipeline experiments, and
-`.runtime/smoke/<name>` for one-off smoke runs. Top-level `.runtime-*` and
-`.runtime_*` directories are unsupported and should be deleted or moved into
-the supported `.runtime/` layout. Resident service state keeps its existing
-checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime` unless
-an operator explicitly passes `--state-root`.
+The shared Evi control state is `~/.local-runtime/state/evi`. Isolated
+rehearsals and migration evidence use `~/.local-runtime/state-baselines/<name>`.
+No project-local `.runtime/`, `.runtime-*`, or `.runtime_*` layout is supported;
+after attributable evidence is migrated or archived, the checkout-local
+directory must be removed. The resident service uses the same absolute Evi
+state root after its verified migration cutover.
 
 ## Explicit Non-Goals
 

@@ -143,7 +143,7 @@ export function getCapabilityCatalog(): CapabilityCatalog {
       "docs/RUNTIME_CONTRACT.md",
       "docs/LOCAL_RUNTIME.md",
       "docs/LOCAL_LEARNING.md",
-      ".trellis/spec/local-single-machine-mvp.md",
+      "docs/adr/0001-native-evolution-control-plane.md",
       "packages/core/src/capabilities.ts",
       "packages/core/src/action_contracts.ts",
       "packages/core/src/tool_contracts.ts",
@@ -502,8 +502,7 @@ export function getCapabilityAcceptanceAudit(
       "docs/LOCAL_RUNTIME.md",
       "docs/LOCAL_LEARNING.md",
       "docs/ACTIVE_EXPLORATION.md",
-      ".trellis/spec/local-single-machine-mvp.md",
-      ".trellis/decisions.md",
+      "docs/adr/0001-native-evolution-control-plane.md",
       "packages/core/src/capabilities.ts"
     ],
     boundary: "read-only acceptance read model over repo-owned contracts plus one bounded commit-bound entrypoint evidence record; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
@@ -1151,7 +1150,7 @@ function boundariesCategory(): CapabilityCategoryDraft {
         title: "Local-only single machine",
         summary: "The local runtime is scoped to one local user and one machine for the first version.",
         status: "guarded",
-        refs: ["docs/RUNTIME_CONTRACT.md", ".trellis/spec/local-single-machine-mvp.md"],
+        refs: ["docs/RUNTIME_CONTRACT.md", "docs/adr/0001-native-evolution-control-plane.md"],
         boundaries: ["no hosted service, multi-user runtime, cross-machine state, Docker/Kubernetes deployment, or production daemon governance"]
       },
       {

@@ -37,6 +37,7 @@ export class AgentStore {
       "autonomy/reports",
       "autonomy/ticks",
       "goals/checkpoints",
+      "goals/dispatches",
       "goals/receipts",
       "operator/notifications/outbox"
     ]) {

@@ -463,7 +463,7 @@ export async function resolveServiceConfigSelectors(
     : await readInstalledServiceStateRoot(options.target, selectors.homeRoot);
   const serviceStateRoot = options.stateRoot
     ? selectors.stateRoot
-    : installedStateRoot ?? resolve(selectors.homeRoot, "state/runtime");
+    : installedStateRoot ?? selectors.stateRoot;
   const serviceSelectors = await loadConfigSelectors({
     configDir: options.configDir,
     stateRoot: serviceStateRoot

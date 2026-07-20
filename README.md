@@ -58,38 +58,42 @@ shared runtime-state system, or autonomous rewrite system.
 
 ## Development flow
 
-`main` is the release branch. Each `f/*` branch starts from `main`, is
-validated and merged into `develop`, then validated `develop` changes merge
-back into `main`.
+`main` is the release branch. `develop` is the protected integration branch.
+Every source change begins and remains in one isolated worktree branch until a
+pull request has passed its required verification and is merged into `develop`.
+No source change is committed or pushed directly to `develop`.
 
 ```text
-main -> f/* -> develop -> main
+main -> feature worktree -> PR -> develop -> main
 ```
 
-The integration branch is `develop`. A release candidate is verified from an
-isolated local environment before `develop` merges into `main` and receives a
-version tag.
+The root checkout stays clean on `develop` as the control plane. A release
+candidate is verified from an isolated local environment before `develop`
+merges into `main` and receives a version tag.
 
 Runtime identifiers, config fields, capability IDs, scripts, and persisted
 state use capability-oriented names such as `local-runtime`, `project_design`,
 `model`, and `im-channel`. Names of this repository or external reference
 projects must not become implementation contracts.
 
-## Trellis owns iteration governance
+## Native evolution control plane
 
-Trellis is the source of truth for bounded iteration work:
+Active self-evolution is owned by `GoalRuntime`, `Harness`, canonical evidence,
+and `OutcomeReceipt`. Stable direction lives in project docs and accepted ADRs;
+the control boundary is [ADR 0001](docs/adr/0001-native-evolution-control-plane.md).
+Shared state and source-delivery isolation are defined by
+[ADR 0003](docs/adr/0003-shared-control-state-and-pr-only-delivery.md).
 
 | Need | Source |
 | --- | --- |
-| Implemented v0.1 scope | [.trellis/spec/local-single-machine-mvp.md](.trellis/spec/local-single-machine-mvp.md) |
-| Approved v0.2 target | [.trellis/spec/v0.2-multi-node-evolution.md](.trellis/spec/v0.2-multi-node-evolution.md) |
-| Work slices | [.trellis/tasks/](.trellis/tasks/) |
-| Direction decisions | [.trellis/decisions.md](.trellis/decisions.md) |
-| Trellis agent context | [.trellis/agents/](.trellis/agents/) |
+| Implemented behavior | source, tests, and `docs/RUNTIME_CONTRACT.md` |
+| Accepted durable direction | `docs/adr/` and stable project docs |
+| Goal execution and verified terminal result | `GoalRuntime`, `Harness`, evidence, `OutcomeReceipt` |
+| Reflection before material evolution | `grill-me` -> bounded `Direction Proposal` |
+| Historical task/spec/decision evidence | frozen [.trellis/](.trellis/) archive |
 
-Do not manually duplicate or edit Trellis-generated agent context. Use the
-project's configured Trellis workflow and supported CLI commands to refresh
-that surface.
+Do not refresh or preload Trellis-generated agent context. It is retained only
+as historical evidence and is not the default workflow for new work.
 
 ## Local development
 
@@ -97,14 +101,14 @@ that surface.
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm run release:verify
-pnpm run runtime -- doctor --state-root .runtime/state
+pnpm run runtime -- doctor --state-root ~/.local-runtime/state/evi
 ```
 
 Start the local runtime after configuring ignored local credentials:
 
 ```bash
-pnpm run runtime -- service restart --target runtime --state-root .runtime/state
-pnpm run runtime -- service health --target runtime --state-root .runtime/state
+pnpm run runtime -- service restart --target runtime --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- service health --target runtime --state-root ~/.local-runtime/state/evi
 ```
 
 Tracked files under `config/` are safe defaults. API keys and app secrets
@@ -120,5 +124,5 @@ packages/runtime/  config, models, service, web and IM adapters
 config/            tracked safe defaults
 core/              stable identity and memory policy
 docs/              architecture, engineering, runtime and operator documentation
-.trellis/          iteration spec, tasks, decisions, generated context
+.trellis/          frozen historical specs, tasks, decisions, generated context
 ```

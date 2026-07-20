@@ -29,7 +29,7 @@ packages/core/     host-independent contracts, pure policy, state/read models
 packages/runtime/  Goal execution, adapters, services, providers, host effects
 core/              stable Self and memory policy text
 docs/              stable architecture, behavior, operations, and learning docs
-.trellis/          bounded task specs, decisions, and delivery evidence
+.trellis/          frozen historical task specs, decisions, and delivery evidence
 tests/              interface, integration, and acceptance protection
 ```
 
@@ -95,8 +95,10 @@ runtime -X-> apps
 - `docs/RUNTIME_CONTRACT.md` owns implemented runtime behavior;
   `docs/LOCAL_RUNTIME.md` owns commands and operations;
   `docs/LOCAL_LEARNING.md` owns SOP/skill/memory promotion.
-- GitHub and Trellis own active delivery and history. Stable docs must not copy
-  progress, proof matrices, or task-specific completion state.
+- `GoalRuntime`, `Harness`, canonical evidence, and `OutcomeReceipt` own active
+  self-evolution delivery. GitHub can carry optional external collaboration or
+  release evidence; `.trellis/` preserves history only. Stable docs must not
+  copy transient progress, proof matrices, or Goal-specific completion state.
 - Material edits to a stable English/Chinese pair update both sides together.
 
 ## Change Standard

@@ -11,7 +11,7 @@ const root = await mkdtemp(resolve(tmpdir(), "local-runtime-release-"));
 const sourceRoot = resolve(root, "source");
 const userHome = resolve(root, "user-home");
 const runtimeHome = resolve(root, "runtime-home");
-const stateRoot = resolve(runtimeHome, "state/runtime");
+const stateRoot = resolve(runtimeHome, "state/shared");
 const logRoot = resolve(root, "logs");
 let completed = false;
 

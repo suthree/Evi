@@ -100,7 +100,7 @@ pnpm run runtime -- content run --dry-run \
   --live-sources \
   --topic "daily AI news and semiconductor stock hotspots" \
   --image-model gpt-image-2 \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 When no source URLs or tickers are supplied, live-source mode uses the current
@@ -137,22 +137,22 @@ proposal-only and does not call models, block a run, or publish externally.
 Inspect generated plans:
 
 ```bash
-pnpm run runtime -- content runs --state-root .runtime/state
-pnpm run runtime -- content show --run content_run_... --state-root .runtime/state
-pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root .runtime/state
-pnpm run runtime -- content daily-readiness --state-root .runtime/state
-pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root .runtime/state
-pnpm run runtime -- content feedback-history --state-root .runtime/state
-pnpm run runtime -- content feedback-review --state-root .runtime/state
-pnpm run runtime -- content feedback-needed --state-root .runtime/state
-pnpm run runtime -- content creator-metrics-needed --state-root .runtime/state
-pnpm run runtime -- content feedback-trends --state-root .runtime/state
-pnpm run runtime -- content feedback-strategy --state-root .runtime/state
-pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime/state
-pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root .runtime/state
-pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root .runtime/state
-pnpm run runtime -- governance gaps --state-root .runtime/state
-pnpm run runtime -- governance opportunities --limit 10 --state-root .runtime/state
+pnpm run runtime -- content runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content show --run content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily-readiness --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-history --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-review --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-needed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content creator-metrics-needed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-trends --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-strategy --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance gaps --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance opportunities --limit 10 --state-root ~/.local-runtime/state/evi
 ```
 
 Copy-paste local runbook:
@@ -182,13 +182,13 @@ pnpm run runtime -- content daily \
   --topic "daily AI news and semiconductor stock hotspots" \
   --ticker NVDA \
   --ticker AMD \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 # 5. Copy the run_id from content/daily/2026-07-01.json, then generate image.
 pnpm run runtime -- content generate-image \
   --run content_run_... \
   --image-model gpt-image-2 \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 # Or advance the existing date-keyed daily job through image generation and
 # optional read-only publish preflight without publishing.
@@ -198,7 +198,7 @@ pnpm run runtime -- content daily-advance \
   --preflight \
   --server-url http://localhost:18060/mcp \
   --tool publish_content \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 # 6. Probe readiness. With --server-url, Local Runtime probes MCP tools and login
 # automatically unless --login-status or --adapter-available is explicitly set.
@@ -207,7 +207,7 @@ pnpm run runtime -- content publish-preflight \
   --adapter xiaohongshu-mcp \
   --server-url http://localhost:18060/mcp \
   --tool publish_content \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 # 7. Only after inspecting the run and accepting the external write:
 pnpm run runtime -- content publish-execute \
@@ -218,7 +218,7 @@ pnpm run runtime -- content publish-execute \
   --external-write \
   --confirmed \
   --login-status logged_in \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 ```json
@@ -317,7 +317,7 @@ pnpm run runtime -- content daily \
   --preflight \
   --login-status logged_in \
   --adapter-available \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 `content daily` writes `content/daily/YYYY-MM-DD.json` for the untracked
@@ -340,7 +340,7 @@ pnpm run runtime -- content daily-advance \
   --preflight \
   --server-url http://localhost:18060/mcp \
   --tool publish_content \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 `content daily-advance` reads the existing default or tracked daily job,
@@ -356,7 +356,7 @@ Before changing resident automation gates, inspect daily readiness:
 ```bash
 pnpm run runtime -- content daily-readiness \
   --date 2026-07-01 \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It reads non-secret runtime gate fields and typed daily job/run metadata, then
@@ -415,7 +415,7 @@ record typed evidence in one step:
 pnpm run runtime -- content generate-image \
   --run content_run_... \
   --image-model gpt-image-2 \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 This calls the configured `active_image_model` endpoint, writes the returned
@@ -432,7 +432,7 @@ pnpm run runtime -- content image-evidence \
   --image /absolute/path/to/cover.png \
   --image-status generated \
   --image-model gpt-image-2 \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 This checks that the image file exists, records path/size/model metadata,
@@ -447,7 +447,7 @@ pnpm run runtime -- content publish-preflight \
   --adapter xiaohongshu-mcp \
   --server-url http://localhost:18060/mcp \
   --tool publish_content \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 When `--server-url` is present and the adapter is `xiaohongshu-mcp`, the CLI
@@ -477,7 +477,7 @@ pnpm run runtime -- content publish-execute \
   --external-write \
   --confirmed \
   --login-status logged_in \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 `content publish-execute` and `content daily --preflight --external-write
@@ -500,7 +500,7 @@ If the adapter publishes but does not return platform proof, use browser or
 manual verification to record completion:
 
 ```bash
-pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root .runtime/state
+pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root ~/.local-runtime/state/evi
 # If the browser route is ready, capture operator/browser proof outside the local runtime,
 # then record the screenshot path as typed evidence:
 pnpm run runtime -- content publish-evidence \
@@ -512,7 +512,7 @@ pnpm run runtime -- content publish-evidence \
   --confirmed \
   --login-status logged_in \
   --screenshot /tmp/local-runtime-xhs-published.png \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 If `agent-browser` or another operator-controlled tool has already executed
@@ -529,7 +529,7 @@ pnpm run runtime -- content publish-evidence \
   --login-status logged_in \
   --post-url https://www.xiaohongshu.com/explore/... \
   --screenshot channels/xhs/published/content_run_....png \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 For `published`, Local Runtime requires typed external-write evidence, explicit
@@ -557,7 +557,7 @@ only in screenshots or chat:
 pnpm run runtime -- content feedback-capture \
   --run content_run_... \
   --server-url http://localhost:18060/mcp \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 `feedback-capture` reads the logged-in account's current-user feed through
@@ -573,7 +573,7 @@ items that need a first, retry, or follow-up snapshot:
 ```bash
 pnpm run runtime -- content feedback-refresh \
   --server-url http://localhost:18060/mcp \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It reads `feedback-needed --captured-by xiaohongshu-mcp`, calls the same
@@ -612,7 +612,7 @@ read-only creator metrics queue before changing strategy:
 ```bash
 pnpm run runtime -- content creator-metrics-needed \
   --captured-by xiaohongshu-mcp \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It lists the published posts whose latest typed feedback cannot prove
@@ -632,17 +632,17 @@ backend counters:
 pnpm run runtime -- content creator-metrics-capture \
   --run content_run_... \
   --browser-auto-connect \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 pnpm run runtime -- content creator-metrics-capture \
   --run content_run_... \
   --browser-session-name runtime-creator-metrics \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 
 pnpm run runtime -- content creator-metrics-capture \
   --run content_run_... \
   --page-text-file creator-page.txt \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It requires prior publish completion proof. With `--browser-auto-connect` or
@@ -670,7 +670,7 @@ pnpm run runtime -- content feedback-evidence \
   --collects 2 \
   --shares 1 \
   --screenshot channels/xhs/feedback/content_run_....png \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 Feedback evidence requires prior publish completion proof. It records only
@@ -682,7 +682,7 @@ bounded next-iteration signal:
 ```bash
 pnpm run runtime -- content feedback-review \
   --captured-by operator \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 The review ranks the latest feedback snapshot per post by views and engagement,
@@ -717,7 +717,7 @@ Use `content feedback-needed` when the operator needs a concrete capture queue:
 ```bash
 pnpm run runtime -- content feedback-needed \
   --captured-by operator \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It lists published posts that need a first, retry, or follow-up feedback
@@ -738,7 +738,7 @@ compare cumulative counters:
 ```bash
 pnpm run runtime -- content feedback-trends \
   --run content_run_... \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 The trend view reports view and engagement deltas, marks single-snapshot posts
@@ -752,7 +752,7 @@ needed queues into concrete next-run examples:
 ```bash
 pnpm run runtime -- content feedback-strategy \
   --run content_run_... \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 It emits title, cover, opening-hook, CTA, and source-focus examples for the next
@@ -765,7 +765,7 @@ pnpm run runtime -- content daily \
   --dry-run \
   --track ai_applications \
   --strategy-from content_run_... \
-  --state-root .runtime/state
+  --state-root ~/.local-runtime/state/evi
 ```
 
 The new run records feedback strategy provenance in `run.json`, `brief.md`, and
@@ -785,13 +785,13 @@ of publishing a duplicate post:
 
 ```bash
 pnpm run runtime -- content reconcile-publish-evidence \
-  --source-state-root .runtime/state \
+  --source-state-root ~/.local-runtime/state/evi \
   --dry-run \
-  --state-root ~/.local-runtime/state/runtime
+  --state-root ~/.local-runtime/state/evi
 
 pnpm run runtime -- content reconcile-publish-evidence \
-  --source-state-root .runtime/state \
-  --state-root ~/.local-runtime/state/runtime
+  --source-state-root ~/.local-runtime/state/evi \
+  --state-root ~/.local-runtime/state/evi
 ```
 
 The reconcile command only reads both state roots and writes typed evidence to
@@ -827,9 +827,9 @@ creator-backend `view_count`, it derives a creator-metrics readiness gap so the
 system can focus metric capture before changing content strategy.
 
 ```bash
-pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_content_run_... --state-root .runtime/state
-pnpm run runtime -- governance gaps --gap gap_active_exploration_source_quality_content_run_... --state-root .runtime/state
-pnpm run runtime -- governance gaps --gap gap_creator_metrics_incomplete_content_run_... --state-root .runtime/state
+pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance gaps --gap gap_active_exploration_source_quality_content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance gaps --gap gap_creator_metrics_incomplete_content_run_... --state-root ~/.local-runtime/state/evi
 ```
 
 The derived gap stays proposal-only. It can enter Opportunity Backlog and be

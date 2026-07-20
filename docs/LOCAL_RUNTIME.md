@@ -8,8 +8,8 @@ The approved v0.2 direction allows the same single-user runtime to be deployed
 to multiple independently operated nodes. It does not introduce shared runtime
 state or a hosted control plane. Target topology, LuBan asset identity, and
 node activation are defined in `docs/V0.2_MULTI_NODE_EVOLUTION.md`; current
-commands below remain the v0.1 command contract until corresponding Trellis
-tasks are implemented and verified.
+commands below remain the v0.1 command contract until corresponding accepted
+native-control-plane Goals are implemented and verified.
 
 ## Owner Process
 
@@ -102,99 +102,100 @@ to Simplified Chinese unless the operator explicitly requests another language.
 Command names, option names, JSON fields, and evidence refs remain literal.
 The command reference below includes application, local-learning, and legacy
 diagnostic surfaces for explicit inspection. It does not select active work.
-Engineering activation belongs to GitHub Issues and Trellis tasks; runtime
-continuity and outcomes belong to GoalRuntime and OutcomeReceipt.
+Engineering activation belongs to bounded Goals, their Decision Owner, and the
+native harness; runtime continuity and outcomes belong to GoalRuntime and
+OutcomeReceipt. GitHub remains optional external delivery evidence.
 
 ```bash
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime/state
+pnpm run runtime -- config --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- capabilities
 pnpm run runtime -- capabilities acceptance
-pnpm run runtime -- capabilities verify-entrypoints --state-root .runtime/state
-pnpm run runtime -- live --task "..." --state-root .runtime/state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
-pnpm run runtime -- pipeline runs --state-root .runtime/state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
-pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root .runtime/state
-pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root .runtime/state
-pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root .runtime/state
-pnpm run runtime -- content daily-readiness --date 2026-07-01 --state-root .runtime/state
-pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root .runtime/state
-pnpm run runtime -- content daily-advance --date 2026-07-01 --image-model gpt-image-2 --preflight --server-url http://localhost:18060/mcp --tool publish_content --state-root .runtime/state
-pnpm run runtime -- content runs --state-root .runtime/state
-pnpm run runtime -- content show --run content_run_... --state-root .runtime/state
-pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root .runtime/state
-pnpm run runtime -- content feedback-evidence --run content_run_... --views 0 --likes 0 --comments 0 --state-root .runtime/state
-pnpm run runtime -- content feedback-history --captured-by operator --state-root .runtime/state
-pnpm run runtime -- content feedback-review --captured-by operator --state-root .runtime/state
-pnpm run runtime -- content feedback-needed --captured-by operator --state-root .runtime/state
-pnpm run runtime -- content creator-metrics-needed --captured-by xiaohongshu-mcp --state-root .runtime/state
-pnpm run runtime -- content feedback-trends --captured-by operator --state-root .runtime/state
-pnpm run runtime -- content feedback-strategy --captured-by operator --state-root .runtime/state
-pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root .runtime/state
-pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root .runtime/state
-pnpm run runtime -- content generate-image --run content_run_... --image-model gpt-image-2 --state-root .runtime/state
-pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png --image-status generated --state-root .runtime/state
-pnpm run runtime -- content publish-preflight --run content_run_... --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --adapter-available --state-root .runtime/state
-pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --state-root .runtime/state
-pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root .runtime/state
-pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state --dry-run --state-root ~/.local-runtime/state/runtime
-pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
+pnpm run runtime -- capabilities verify-entrypoints --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- live --task "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root ~/.local-runtime/state-baselines/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content run --dry-run [--live-sources] --topic "daily AI news and semiconductor stock hotspots" --image-model gpt-image-2 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily --date 2026-07-01 --image-model gpt-image-2 --preflight --login-status logged_in --adapter-available --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily --dry-run --track ai_applications --strategy-from content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily-readiness --date 2026-07-01 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content channel-readiness --server-url http://localhost:18060/mcp --browser-launch-check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content daily-advance --date 2026-07-01 --image-model gpt-image-2 --preflight --server-url http://localhost:18060/mcp --tool publish_content --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content show --run content_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content publish-history --adapter xiaohongshu-mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-evidence --run content_run_... --views 0 --likes 0 --comments 0 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-history --captured-by operator --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-review --captured-by operator --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-needed --captured-by operator --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content creator-metrics-needed --captured-by xiaohongshu-mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-trends --captured-by operator --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-strategy --captured-by operator --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-capture --run content_run_... --server-url http://localhost:18060/mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content feedback-refresh --server-url http://localhost:18060/mcp --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content generate-image --run content_run_... --image-model gpt-image-2 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png --image-status generated --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content publish-preflight --run content_run_... --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --adapter-available --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed --adapter xiaohongshu-mcp --server-url http://localhost:18060/mcp --tool publish_content --login-status logged_in --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published --adapter xiaohongshu-mcp --tool publish_content --external-write --confirmed --login-status logged_in --post-url https://www.xiaohongshu.com/explore/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- content reconcile-publish-evidence --source-state-root ~/.local-runtime/state/evi --dry-run --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
-pnpm run runtime -- workspace status --state-root .runtime/state
-pnpm run runtime -- workspace runtime --state-root .runtime/state
+pnpm run runtime -- workspace status --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- workspace runtime --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills health [--skill-name skill-name] --state-root .runtime/state
-pnpm run runtime -- skills outcomes [--outcome skill_usage_...] --state-root .runtime/state
-pnpm run runtime -- skills drifts [--skill-name skill-name] --state-root .runtime/state
-pnpm run runtime -- skills events [--event skill_event_...] [--skill-name skill-name] --state-root .runtime/state
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
-pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root .runtime/state
-pnpm run runtime -- memory recap --session session_... --state-root .runtime/state
-pnpm run runtime -- memory archives --archive 2026-06-30 --state-root .runtime/state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
-pnpm run runtime -- memory dream --state-root .runtime/state
-pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root .runtime/state
-pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root .runtime/state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_... --state-root .runtime/state
-pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] --state-root .runtime/state
-pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." --state-root .runtime/state
-pnpm run runtime -- governance resume-autonomy --reason "..." --state-root .runtime/state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
-pnpm run runtime -- review background --state-root .runtime/state
-pnpm run runtime -- review reports --state-root .runtime/state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
-pnpm run runtime -- review tick --state-root .runtime/state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations [--gate all|current|stale|executed] --state-root .runtime/state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
-pnpm run runtime -- show-events --state-root .runtime/state
+pnpm run runtime -- skills health [--skill-name skill-name] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills outcomes [--outcome skill_usage_...] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills drifts [--skill-name skill-name] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills events [--event skill_event_...] [--skill-name skill-name] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory recap --session session_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archives --archive 2026-06-30 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dream --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance gaps --gap gap_external_publish_evidence_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance resume-autonomy --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --review background_review_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review tick --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations [--gate all|current|stale|executed] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review audit-sop --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review chain --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review coverage --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- show-events --state-root ~/.local-runtime/state/evi
 ```
 
 `live`, standalone `web`, daemon-hosted Web, ordinary allowed Feishu p2p tasks,
@@ -249,21 +250,22 @@ downgrade. They should not be the default health posture.
 
 ## Local State
 
-Repo-local runtime artifacts are grouped under `.runtime/` to avoid scattered
-top-level `.runtime-*` directories:
+Evi runtime state is outside every repository checkout:
 
-- `.runtime/state` is the default repo-local interactive state root.
-- `.runtime/stage` is for explicit pipeline experiments.
-- `.runtime/smoke/<name>` is for one-off smoke runs.
-- Top-level `.runtime-*` and `.runtime_*` directories are unsupported. Delete
-  them, or move needed evidence into `.runtime/state`, `.runtime/stage`, or
-  `.runtime/smoke/<name>`.
+- `~/.local-runtime/state/evi` is the single shared Evi control state root.
+- `~/.local-runtime/state-baselines/<name>` is for isolated rehearsals, smoke
+  runs, and migration evidence; it is never implicit active state.
+- Any `.runtime/`, `.runtime-*`, or `.runtime_*` directory under a checkout is
+  forbidden. Migrate attributable evidence into the Evi root or a named
+  baseline, then remove the project-local directory.
 
-Runtime state is local, ignored by git, and safe to delete for throwaway smoke
-runs when the operator no longer needs the evidence:
+Named baseline state is local, ignored by git, and may be deleted only after
+the operator no longer needs its smoke or migration evidence. The shared Evi
+root is active control state: archive or migrate attributable records first;
+do not delete it as smoke cleanup.
 
 ```text
-.runtime/state/
+~/.local-runtime/state/evi/
 ├── memory/episodes/
 ├── memory/archives/
 ├── memory/index/
@@ -292,12 +294,12 @@ Repo-scoped tools treat `.runtime/`, `.runtime-*`, `.runtime_*`, and
 Use `file.read` with `scope=state`, `file.write_state`, or explicit
 `--state-root` commands for runtime artifacts.
 
-The resident runtime service remains separate by default. Service lifecycle
-and health commands resolve state in this order: an explicit `--state-root`,
-the absolute `state_root` recorded by the installed service manifest, then
-`<LOCAL_RUNTIME_HOME>/state/runtime` when no valid manifest exists. This keeps
-operator diagnostics aligned with an installed service that intentionally uses
-`.runtime/state` while preserving the checkout-independent fallback.
+The resident runtime service and all worktrees use the same absolute Evi state
+root. Service lifecycle and health commands resolve state in this order: an
+explicit `--state-root`, the absolute `state_root` recorded by the installed
+service manifest, then `~/.local-runtime/state/evi` when no valid manifest
+exists. A migration changes the manifest only after its state snapshot and
+verification evidence are complete.
 
 Content dry-runs write local publish-plan artifacts under `content/runs/`.
 They are planning artifacts for active exploration. Default dry-runs do not
@@ -488,8 +490,9 @@ Any generated image output path must remain under the state root.
 while the old self-proof chain is retired in bounded slices. They no longer
 select active work, appear as resident context sections, or own completion.
 
-Use GitHub Issues and Trellis tasks for engineering activation. Use canonical
-Goal events and one OutcomeReceipt for runtime outcome evidence. Later Goal
+Use bounded Goals, Decision Owner acceptance, and the native harness for
+engineering activation. Use canonical Goal events and one OutcomeReceipt for
+runtime outcome evidence. Later Goal
 cognition receives bounded Prior Tool Experience derived from previously
 terminal Goals; it does not read raw tool output or treat Goal association as
 causal proof.
@@ -912,13 +915,13 @@ communication surfaces rather than runtime core. The default foreground daemon
 enables Web and Feishu when Feishu config is present:
 
 ```bash
-pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root .runtime/state
+pnpm run runtime -- daemon serve --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
 ```
 
 For a Web-only local operator surface, skip IM provider startup:
 
 ```bash
-pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root .runtime/state
+pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
 ```
 
 `service --target runtime` installs or starts the same daemon under launchd:
@@ -1092,7 +1095,7 @@ After local code changes, use:
 
 ```bash
 pnpm run check
-pnpm run runtime -- workspace status --state-root .runtime/state
+pnpm run runtime -- workspace status --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- service restart --target runtime --scenario im-default --channel feishu-main
 pnpm run runtime -- service status --target runtime
 pnpm run runtime -- service health --target runtime
@@ -1129,7 +1132,7 @@ If review tick still records an `active` focus but a later executed manual
 `governance act-next` action covers the same focus, service health may render
 that focus as `covered_by_manual_action` and point at the action artifact
 instead of reporting a stale backlog status. Without `--state-root`,
-it uses the same `<LOCAL_RUNTIME_HOME>/state/runtime` default as `service restart`;
+it uses the same `~/.local-runtime/state/evi` default as `service restart`;
 with `--state-root`, it reads that explicit state root. It does not inspect
 launchd, read service logs, invoke the model, restart services, run shell
 commands, read source file bodies, fetch platform state, publish externally, or
@@ -1273,12 +1276,14 @@ command uses `LANG=C` and `LC_ALL=C`; only spawn resource failures `EAGAIN`,
 errors are preserved without retry. These diagnostics do not
 read file bodies, stage, commit, reset, checkout, mutate state, invoke the
 model, write the repo, or write the active vault.
-`workspace runtime` is the companion repo-local runtime workspace diagnostic.
-It scans top-level directory names only and reports unsupported `.runtime-*`
-and `.runtime_*` directories. The only supported repo-local runtime layout is
-`.runtime/state`, `.runtime/stage`, and `.runtime/smoke/<name>`. It does not
-read file bodies, move, delete, mutate state, invoke the model, write the repo,
-or write the active vault.
+`workspace runtime` is the companion repository workspace diagnostic. It scans
+top-level directory names only and reports every `.runtime/`, `.runtime-*`, and
+`.runtime_*` directory as forbidden. Supported state locations are outside the
+checkout: `~/.local-runtime/state/evi`,
+`~/.local-runtime/state-baselines/<name>`, and
+`~/.local-runtime/archives/<archive-id>`. It does not read file bodies, move,
+delete, mutate state, invoke the model, write the repo, or write the active
+vault.
 Live context includes the same bounded `Workspace Status` section so the agent
 can see checkout cleanliness before proposing repo edits. The section is
 orientation only: a clean workspace does not prove resident service deployment,
@@ -1848,7 +1853,7 @@ state-only request under `operator/notifications/outbox/`. The CLI does not call
 Feishu. The resident Feishu service polls queued requests, reuses the configured
 allowlist and text chunking, records `channels/feishu/events.jsonl`, and marks
 each request `sent` or `failed`. Use the resident service state root, normally
-`~/.local-runtime/state/runtime`, when the notification should be sent by the
+`~/.local-runtime/state/evi`, when the notification should be sent by the
 running runtime service.
 
 The first version does not need group chat, attachments, cards, multi-user

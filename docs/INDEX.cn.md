@@ -14,7 +14,9 @@
 - 记忆策略和分层归属：`core/memory.md`
 - 当前常驻指针：`memory/index.md`
 - 共享词汇：`CONTEXT.md`
-- 仅 Trellis 方向或任务治理：`.trellis/agents/AGENTS.md`、`.trellis/spec/local-single-machine-mvp.md`、`.trellis/spec/v0.2-multi-node-evolution.md`、`.trellis/decisions.md`
+- 原生自进化控制、反思与交付治理：`docs/adr/0001-native-evolution-control-plane.cn.md`
+- 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
+- Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：
 

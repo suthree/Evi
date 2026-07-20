@@ -14,7 +14,9 @@ Load this compact index by default. Do not preload every stable document.
 - Memory policy and layer ownership: `core/memory.md`
 - Current resident pointers: `memory/index.md`
 - Shared vocabulary: `CONTEXT.md`
-- Trellis direction or task governance only: `.trellis/agents/AGENTS.md`, `.trellis/spec/local-single-machine-mvp.md`, `.trellis/spec/v0.2-multi-node-evolution.md`, `.trellis/decisions.md`
+- Native evolution control, reflection, and delivery governance: `docs/adr/0001-native-evolution-control-plane.md`
+- Shared control state, per-Goal worktrees, and PR-only delivery: `docs/adr/0003-shared-control-state-and-pr-only-delivery.md`
+- Historical Trellis evidence only, never default context: `.trellis/`
 
 Read on demand:
 

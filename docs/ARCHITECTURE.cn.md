@@ -18,7 +18,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - 命令、服务运维和恢复：`docs/LOCAL_RUNTIME.md`；
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
-- 活跃工作和持久决策：GitHub Issue 与 `.trellis/`；
+- 活跃自进化和持久决策：`GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与已接受
+  ADR；GitHub 是可选的外部交付 evidence；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -89,10 +90,11 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
 | Capability Portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | 只读、有界的候选能力、就绪度、已选 Skill、Competence 与选择校验 | 任务路由、effect 权限、执行、持久化或完成判断 |
+| 专业执行器 Adapter | `packages/runtime/src/goal_specialist_executor.ts` | 依据 Goal 权限与保留证据，把有界专业执行意图转换为完整的有类型调用 | 模型编写 worktree/model/thread/authority 协议字段，或拥有完成权限 |
 | Goal 执行工作区 | `packages/runtime/src/goal_execution_workspace.ts` | 从不可变控制权限准备并实时校验一个 Goal 绑定的隔离 linked worktree | 任务分类、workspace registry、生命周期调度、迁移 state root 或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
 | Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
-| 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | append-only 或持久事实；projection 可重建 | 产品方向或自动把内容晋升成真相 |
+| 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | checkout 独立的共享 Evi state root 中的 append-only 或持久事实；projection 可重建 | 产品方向、source authority 或自动把内容晋升成真相 |
 | 学习 | `packages/runtime/src/background_review.ts`、core SOP/Skill/Memory 模块 | evidence→candidate→audit→promotion→reuse→revision/retirement | 前台完成判定或隐式修改身份 |
 | 入口 | CLI、Web、Feishu、Telegram、Discord Adapter | 解析、绑定渠道 Context、提交、交付、记录 provider evidence | 第二套 GoalRuntime、Memory Store 或执行 owner |
 | 部署 | service/deployment/supervisor 模块 | commit-bound 产物激活、health、rollback、controller handoff | 源码合并或产品发布权限 |
@@ -107,19 +109,39 @@ operator 需求证据。
 架构只规定决策边界，不维护任务到工具的路由表。每次 cognition 前，GoalRuntime 提供一份
 有界 Capability Portfolio，内容来自当前工具契约与约束、Goal 绑定权限下的就绪度、已选
 Skill，以及从证据派生的 Competence。Cognition 选择一个能力，并声明用途、理由、验证
-方案、回退方式及所引用的已选 Skill；GoalRuntime 在 EffectPolicy 和 dispatch 之前校验。
+方案、回退方式及所引用的已选 Skill；若选择委托执行器，还必须给出覆盖当前全部 capability
+id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRuntime 在 EffectPolicy
+和 dispatch 之前校验。
 
 直接工具和委托执行器描述的是执行角色，不是固定任务类别。有界定位、验证、恢复或真正
 原子化的任务可以直接执行；存在合适执行器时，专业生产通常应委托。就绪度、证据、风险、
 成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
 或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
 
-仓库落点也遵循同一动态边界。Goal 启动时绑定不可变的控制仓库权限；当隔离修改或专业委托
-确实需要 linked worktree 时，cognition 可以从当前 Portfolio 选择 `workspace.prepare`。
-一次成功的 canonical observation 派生该 Goal 唯一的执行工作区；它不是第二个 Goal 或
-状态 owner。之后 repo-scoped 工具和 `codex.run` 使用这个经过实时校验的工作区，
-state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控制 checkout。
-准备过程是惰性、证据门控的，不是入口副作用、关键词路由或每任务自动调度器。
+约束按其保护对象分类。canonical evidence、仓库边界、secret/private-data 边界、不可逆的
+外部 effect 与完成权属于硬不变量；effect confirmation 只对其精确 effect 构成硬 gate。
+能力选择、是否需要新 workspace、SOP 草案与实现的先后顺序则是自适应默认值：当前就绪度和
+权限可以用记录在案的证据覆盖默认路径。Skill 的建议是 guidance，不是 authority。若一个
+workflow 规则与已经满足的不变量冲突，就不能继续强制；例如控制工作树已是 linked worktree
+且 `codex.run` 就绪时，它可直接成为有界 Codex target，无需嵌套 `workspace.prepare`。
+
+仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
+linked execution worktree；后续 session 与工具复用它。Goal 可以通过 `workspace.prepare`
+派生该 worktree，或绑定一个已存在的 linked worktree，但绝不为每个 session 新建一个。
+受保护 `develop` 上干净的根 checkout 只承担 control 与 PR integration。repo-scoped 工具和
+`codex.run` 使用经过实时校验的 worktree，state-scoped 工具使用共享的绝对 Evi state root。
+准备过程仍是证据门控的，而不是入口副作用、关键词路由或每任务自动调度器。
+
+`codex.run` 在 Goal 内的模型可见表面刻意比独立 typed tool protocol 更窄。Goal cognition
+只能提供 `task` 与 `task_shape`，Capability Selection 承载适配评估、验证与回退。专业执行器
+Adapter 从绑定的 Goal 权限和保留的 canonical evidence 派生 `new` 或 `resume`、worktree、
+branch、base commit、profile/model 选择、authority handle、delegation plan 与 budgets；typed
+tool 在 dispatch 前仍会再次校验派生权限。这样把“发现、选择和正确使用工具”保留为核心能力，
+而不把 provider 专属的 Codex 调用细节内化成模型能力或权限。
+
+受保护的本地学习位置（`sop/`、`skills/`、`vault/`）不是 Goal 直接 file-write 的目标。
+经验证的 Goal 可以向既有 background-review 与 promotion 路径提供 evidence，由该路径决定
+是否需要本地 candidate。这样保留学习 gate，同时不把“先代码还是先 SOP”的特定顺序做成强制。
 
 核心工具契约同时拥有各工具的 Goal store-placement 元数据。执行 Adapter 从这份共享契约
 解析动态 `scope`/`cwd` 落点，不再维护另一份工具名路由清单。这份元数据只选择 control
@@ -196,7 +218,8 @@ terminal Goal outcome 得到有界 Projection，而没有新增 state owner。�
 
 ## 渐进替换顺序
 
-每个阶段必须新建一个已接受 Issue 和一个 Trellis task；同一时间只能激活一个阶段。
+每个阶段必须有一个有边界的活跃 Goal、具名的 Decision Owner、明确的接受 evidence，以及
+verification 或 recovery 标准。只有 effect boundary 和 owner 不冲突时，才可以并存多个 Goal。
 
 Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal evidence 已能产生
 有界 Tool 选择建议，proof-only 常驻 Projection 已被删除。旧诊断命令/源码退役以及更
@@ -224,7 +247,8 @@ Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal
 2026-07-18 的稳定化暂停已在 operator 明确恢复 Issue #56 后，为唯一有界 child #93
 满足。后续每个 feature child 都必须重新满足同一 Gate：
 
-- stabilization Issue 已合并，root/worktree/GitHub/Trellis 状态已一致且干净；
+- stabilization Goal 已有经验证的 `OutcomeReceipt`，且 root/worktree、可选 GitHub
+  delivery evidence 和 live runtime 状态已核对一致；
 - operator 明确恢复 Issue #56，或接受 successor program；
 - 只存在一个有界 child Issue，并明确 owner module、Interface、非目标、替换/删除路径、
   验证和 rollback；

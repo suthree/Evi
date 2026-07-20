@@ -61,7 +61,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程任务和决策 | GitHub Issue、`.trellis/tasks/`、`.trellis/decisions.md` |
+| 活跃工程方向和已接受决策 | `GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)、[`adr/0003-shared-control-state-and-pr-only-delivery.cn.md`](adr/0003-shared-control-state-and-pr-only-delivery.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。
@@ -72,14 +72,14 @@ Goal owner 或完成判定 owner。
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm run release:verify
-pnpm run runtime -- doctor --state-root .runtime/state
+pnpm run runtime -- doctor --state-root ~/.local-runtime/state/evi
 ```
 
 配置好 ignored local credentials 后管理 resident runtime：
 
 ```bash
-pnpm run runtime -- service restart --target runtime --state-root .runtime/state
-pnpm run runtime -- service health --target runtime --state-root .runtime/state
+pnpm run runtime -- service restart --target runtime --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- service health --target runtime --state-root ~/.local-runtime/state/evi
 ```
 
 健康不能只看进程存在。至少核对：
@@ -100,12 +100,15 @@ packages/runtime/  Goal、Effect、Tool、Service、Web 与 IM 运行面
 config/            可提交的安全默认配置
 core/              Self、Memory 与 Runtime Reference 策略
 docs/              架构、工程、行为、运维、学习与愿景文档
-.trellis/          有界任务 Spec、Decision 与历史证据
+.trellis/          冻结的历史 Spec、Task、Decision 与生成 context
 ```
 
-根 `develop` 是干净控制面。实质性工程工作通过 GitHub Issue、一个 Trellis Task、
-`codex/issue-<number>-<slug>` 分支和隔离 worktree 完成。`main` 仍是 operator-gated
-release 分支。
+活跃自进化控制面是 `GoalRuntime`、`Harness`、canonical evidence 和 `OutcomeReceipt`。
+稳定方向由项目文档和 ADR 记录；动态控制根据 scope、evidence、risk、verification 和
+recovery 升级。GitHub Issue、PR、branch 和隔离 worktree 是按需要使用的协作与隔离机制，
+不再默认拥有 Evi 的演化闭环。当前 `codex/issue-<number>-<slug>` 仅是
+`GoalExecutionWorkspace` 的遗留兼容格式，不要求真实 Issue。`.trellis/` 逻辑退役，
+只保留为历史 evidence。
 
 ## 安全与非目标
 

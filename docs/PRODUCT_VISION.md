@@ -21,10 +21,11 @@ When this vision differs from current implementation, use this order:
    [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) describe current placement and
    implemented behavior. Code and live evidence remain the final current-fact
    authority.
-2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and the
-   matching Trellis spec describe the accepted current delivery target.
+2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and
+   accepted ADRs describe the accepted current delivery target.
 3. This document describes the long-term product and runtime north star.
-4. GitHub direction and one bounded Trellis task activate actual work.
+4. A bounded Goal, its Decision Owner, and the native harness activate actual
+   work. GitHub may carry optional external collaboration or delivery evidence.
 
 This vision alone does not prove completion, open an implementation slice, or
 override a narrower acceptance, verification, privacy, or external-effect
@@ -298,7 +299,7 @@ Use the owner that matches the information's lifetime and effect:
 | Subtask input and output | `TaskEnvelope` and `ResultEnvelope` |
 | Current objective, decisions, and progress | Goal Ledger and Session Checkpoint |
 | Code, reports, images, datasets, generated files | Artifact ref plus hash or commit |
-| Stable project rules and decisions | Project docs, GitHub Issue, and Trellis |
+| Stable project rules and decisions | Project docs and accepted ADRs; optional GitHub evidence |
 | Long-term personal or workspace facts | Semantic memory with provenance |
 | Raw conversations and tool history | Session archive with on-demand search |
 | Reusable way of working | Evi Capability Manager and LuBan asset |
@@ -464,8 +465,8 @@ goal at a time. The default dependency order is:
 
 This order is not a release promise or fixed backlog. After each goal, Evi must
 use measured evidence to keep, reorder, narrow, or retire the next candidate.
-The active goal belongs in GitHub and one bounded Trellis task, not in this
-document.
+The active Goal belongs in `GoalRuntime`, the native harness, and its bounded
+evidence, not in this document.
 
 ## Success Measures
 

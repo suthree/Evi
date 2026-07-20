@@ -32,6 +32,18 @@ _Avoid_: Static task router, capability catalog, permission grant, planner
 The model-proposed choice of one candidate from the current **Capability Portfolio**, including its execution purpose, selected skill refs, rationale, verification plan, and fallback. The **Harness Kernel** validates it before effect policy or execution; Evi still owns evidence and acceptance.
 _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 
+**Capability Fit Assessment**:
+For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
+_Avoid_: Static router, authority token, delegated completion claim
+
+**Evolution Constraint**:
+A rule classified by the boundary it protects. Canonical evidence, containment, sensitive data, irreversible external effects, and completion ownership are hard invariants; an exact-effect confirmation is a hard gate; workflow sequence is an adaptive default; a skill is advisory guidance. A default yields to current evidence when the protected invariant is already satisfied.
+_Avoid_: Universal workflow mandate, capability router, silent override
+
+**Specialist Executor Intent**:
+The narrow, model-authored request to a **Delegated Agent Surface**: a bounded `task` and `task_shape`. The **GoalRuntime** adapter derives protocol details such as new/resume mode, worktree, profile, model, authority handle, and budgets from bound state and canonical evidence before the typed tool validates them again.
+_Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, completion claim
+
 **Goal Execution Workspace**:
 The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
 _Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root
@@ -43,6 +55,10 @@ _Avoid_: Causal proof, raw tool output, progress score
 **Capability Competence**:
 Bounded decision knowledge derived from repeated **Capability Experience**: observed scope, reliability, failures, fallback guidance, and freshness that changes later capability selection. Sparse evidence remains provisional, current evidence wins conflicts, and competence is revised or retired as outcomes change.
 _Avoid_: Capability catalog entry, one successful run, self-reported mastery, scorecard
+
+**Capability Profile**:
+A scoped, evidence-derived operating description of one direct tool or **Delegated Agent Surface**. It combines the capability's declared contract and readiness with observed scope, competence, cost, risk, failure modes, fallback guidance, and freshness to inform later selection. It neither grants authority nor proves that the capability caused a Goal outcome, and it is not a semantic fact or a procedural skill.
+_Avoid_: Permission grant, causal claim, capability catalog, SOP, skill, static provider configuration
 
 **Expert Orchestration Contract**:
 The **Core Runtime Capability** boundary that defines advisory expert roles, when they may be consulted, and why the main runtime still owns verification and completion. It is not an autonomous scheduler or a new agent identity.
@@ -111,6 +127,22 @@ _Avoid_: Human review, unchecked self-approval
 **Capability Flywheel**:
 The core growth loop of the agent: use tools or delegated agent surfaces, record evidence, extract reusable experience into SOPs, audit them, promote valid SOPs into skills, recall them later, and revise them from outcomes.
 _Avoid_: Feature list, broad assistant coverage
+
+**Dream Consolidation**:
+An idle-time, proposal-only learning mode that reviews bounded conversation and episodic evidence together with semantic memory, procedural memory, and capability experience. It may compress, classify, connect, or challenge prior experience and propose memory, SOP, skill, capability-profile, or exploration candidates. It never converts reflection into fact, executes work, or promotes a candidate by itself.
+_Avoid_: Autonomous executor, hidden chain of thought, completion authority, automatic memory write
+
+**Direction Proposal**:
+A bounded, evidence-linked recommendation that names an unresolved need, assumptions, candidate directions, risk, verification, and a recommendation before a material self-evolution decision. It is a Goal checkpoint or event, not a hidden reasoning trace, task queue, persistent state owner, or authority to act.
+_Avoid_: Autonomous execution plan, persistent reflection ledger, completion proof, implicit approval
+
+**Environment Baseline**:
+The observable, recoverable condition required before a new self-evolution Goal may mutate source: active work has an owner and disposition, historical state is classified and archived, current changes are assigned and isolated or committed, and runtime identity and health are checked. It preserves evidence rather than erasing history.
+_Avoid_: Git status clean alone, state wipe, blanket deletion, abstract IDE workspace
+
+**Historical Archive**:
+Recoverable, dated evidence retained outside an active Goal's default context. It is available only through explicit retrieval with origin and status preserved; current accepted ADRs, active-Goal evidence, and verified runtime facts take precedence. A conflict makes the archive superseded or excluded from active context, not silently deleted.
+_Avoid_: Resident prompt, active instruction source, undocumented memory deletion
 
 **Active Learning Signal**:
 A recurring demand, repeated failure, repeated correction, repeated successful workflow, or environmental opportunity that should trigger autonomous skill drafting. Three independent occurrences is the default threshold for repeated demand.

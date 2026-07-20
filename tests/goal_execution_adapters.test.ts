@@ -19,6 +19,10 @@ import type { GoalCapabilityPortfolio } from "../packages/runtime/src/goal_capab
 import { GOAL_EXECUTION_WORKSPACE_BOUNDARY } from "../packages/runtime/src/goal_execution_workspace.js";
 import type { ModelClient, ModelRequest } from "../packages/runtime/src/model.js";
 import { inspectGoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
+import {
+  completeDurableCodexDispatch,
+  reserveDurableCodexDispatch
+} from "../packages/runtime/src/codex_dispatch_journal.js";
 
 test("RuntimeGoalToolExecutor replaces model command side-effect labels with policy semantics", async () => {
   const root = join(tmpdir(), `evi-goal-tool-${process.pid}-${Date.now()}-${Math.random()}`);
@@ -203,6 +207,74 @@ test("RuntimeGoalToolExecutor binds execution-scoped observations to the live wo
   }
 });
 
+test("RuntimeGoalToolExecutor recovers Codex evidence only from the matching terminal dispatch record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-codex-recovery-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const identity = {
+    goal_id: "goal_codex_recovery_fixture",
+    effect_id: "goal_effect_codex_recovery_fixture",
+    action_digest: "a".repeat(64),
+    authority_digest: "b".repeat(64)
+  };
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    const executor = new RuntimeGoalToolExecutor(store);
+    const context = {
+      goal_id: identity.goal_id,
+      effect_id: identity.effect_id,
+      action_digest: identity.action_digest,
+      control_repository_authority: {
+        schema_version: 1 as const,
+        repo_root: repoRoot,
+        git_common_dir: join(repoRoot, ".git"),
+        worktree: repoRoot,
+        branch: "develop",
+        start_head_commit: "a".repeat(40),
+        boundary: "fixture control authority"
+      },
+      execution_workspace: null
+    };
+    const decision = {
+      outcome: "allow" as const,
+      reason: "Bounded local specialist execution.",
+      intent: {
+        operation: "write_local" as const,
+        target: "codex:fixture",
+        reversibility: "reversible",
+        data_exposure: "local_content_to_model",
+        authority: "standing_local_evolution" as const
+      }
+    };
+    assert.equal(await executor.recover({ tool: "codex.run", arguments: {} }, decision, context), null);
+
+    await reserveDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: "codex_dispatch_recovery_fixture",
+      created_at: "2026-07-20T00:00:00.000Z"
+    });
+    const terminal = {
+      id: "tool_result_codex_recovery_fixture",
+      tool: "codex.run",
+      ok: true,
+      summary: "Verified child terminal result.",
+      output: { status: "done" },
+      side_effect_level: "local_write" as const,
+      created_at: "2026-07-20T00:00:01.000Z"
+    };
+    await completeDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: "codex_dispatch_recovery_fixture",
+      result: terminal,
+      completed_at: "2026-07-20T00:00:02.000Z"
+    });
+    assert.deepEqual(await executor.recover({ tool: "codex.run", arguments: {} }, decision, context), terminal);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("ModelGoalCognition parses one decision and persists no model artifact", async () => {
   const requests: ModelRequest[] = [];
   const model: ModelClient = {
@@ -280,10 +352,15 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
   assert.match(requests[0]!.instructions, /controlling Goal runtime owns judgment and acceptance/);
   assert.match(requests[0]!.instructions, /capability_selection/);
-  assert.match(requests[0]!.instructions, /choose workspace\.prepare/);
-  assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
+  assert.match(requests[0]!.instructions, /Only for delegated codex\.run, add capability_selection\.capability_fit_assessment/);
+  assert.match(requests[0]!.instructions, /Omit it for direct tools/);
+  assert.match(requests[0]!.instructions, /select workspace\.prepare only when it is currently listed as available/);
+  assert.match(requests[0]!.instructions, /repository_authority is already an isolated linked worktree/);
+  assert.match(requests[0]!.instructions, /Never use file\.write_state to write sop\/, skills\/, or vault\//);
+  assert.match(requests[0]!.instructions, /action\.arguments must contain only/);
+  assert.match(requests[0]!.instructions, /Never provide mode, worktree, branch, base_commit/);
+  assert.match(requests[0]!.instructions, /GoalRuntime derives new versus resume/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
-  assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
   assert.match(requests[0]!.instructions, /Do not guess provider model tokens/);
   assert.match(requests[0]!.instructions, /set purpose="verification"/);
   assert.match(requests[0]!.instructions, /Purpose marks evidence intent, never authority/);
@@ -320,9 +397,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"status": "degraded"/);
   assert.match(requests[0]!.input, /associations, not causal attribution/);
   assert.doesNotMatch(requests[0]!.input, /raw tool output/);
-  assert.match(requests[0]!.input, /"model": "auto,new,required"/);
-  assert.match(requests[0]!.input, /"reasoning_effort": "auto,new,required"/);
-  assert.match(requests[0]!.input, /"purpose": "execute\|verification"/);
+  assert.match(requests[0]!.input, /"task": "bounded specialist task"/);
+  assert.match(requests[0]!.input, /"task_shape": "bounded task shape"/);
   assert.doesNotMatch(requests[0]!.input, /safe-token|minimal\|low\|medium\|high\|xhigh/);
 });
 
@@ -500,13 +576,10 @@ function fixtureCapabilityPortfolio(): GoalCapabilityPortfolio {
       side_effect_level: "local_write",
       workspace_placement: "execution",
       arguments: {
-        worktree: "relative/path",
-        task: "bounded task",
-        model: "auto,new,required",
-        reasoning_effort: "auto,new,required",
-        purpose: "execute|verification"
+        task: "bounded specialist task",
+        task_shape: "bounded task shape"
       },
-      constraints: ["model and reasoning_effort must remain auto"],
+      constraints: ["GoalRuntime derives low-level Codex invocation authority."],
       readiness: "available",
       readiness_reason: "Bound linked worktree is available.",
       competence: null

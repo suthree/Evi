@@ -25,6 +25,13 @@ Durable facts, operator-provided preferences, project conventions, known pitfall
 **Procedural Memory**:
 Reusable methods: SOPs, skills, scripts, playbooks, templates, evaluation cases, and known workflows. These belong in `skills/` or supporting references when they become executable.
 
+**Capability Profile**:
+Scoped, evidence-linked decision support for one tool or delegated agent surface:
+its declared contract and readiness together with observed scope, competence,
+cost, risk, failure modes, fallback guidance, and freshness. It helps choose how
+to use a capability in a later task; it is neither a permission grant, a causal
+claim about Goal completion, a semantic-memory fact, nor a procedural skill.
+
 **Shared Knowledge Pack (v0.2 target)**:
 A deliberately promoted, scoped, redacted semantic summary stored as a
 versioned LuBan asset. It is imported as bounded read-only context. It is not a

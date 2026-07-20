@@ -168,6 +168,7 @@ export const coreToolContracts: ToolContract[] = [
       authority_digest: "SHA-256,resume"
     },
     constraints: [
+      "inside GoalRuntime, cognition supplies only a bounded specialist task and task shape; the Goal adapter derives this raw invocation envelope",
       "GoalRuntime new requests use model=auto and reasoning_effort=auto",
       "execution requires the Goal-bound isolated linked worktree, branch, Git common directory, and start HEAD",
       "delegated output is untrusted until GoalRuntime records canonical observations and independent verification"

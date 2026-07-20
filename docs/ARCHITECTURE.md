@@ -25,7 +25,9 @@ may replace shallow paths. It does not own:
 - SOP, skill, vault, promotion, and retirement policy:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
-- active work or durable decisions: GitHub Issues and `.trellis/`;
+- active self-evolution and durable decisions: `GoalRuntime`, `Harness`,
+  `OutcomeReceipt`, stable docs, and accepted ADRs; GitHub is optional external
+  delivery evidence;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -108,10 +110,11 @@ own the Self or completion.
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
 | Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded candidates, readiness, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
+| Specialist executor adapter | `packages/runtime/src/goal_specialist_executor.ts` | Convert bounded specialist intent into a complete typed invocation from Goal authority and retained evidence | Model-authored worktree/model/thread/authority protocol fields or completion authority |
 | Goal execution workspace | `packages/runtime/src/goal_execution_workspace.ts` | Prepare and live-validate one Goal-bound isolated linked worktree from the immutable control authority | Task classification, workspace registry, lifecycle scheduling, state-root movement, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
 | Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
-| Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts; derived projections remain rebuildable | Product direction or automatic truth promotion |
+| Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts in the shared checkout-independent Evi state root; derived projections remain rebuildable | Product direction, source authority, or automatic truth promotion |
 | Learning | `packages/runtime/src/background_review.ts`, core SOP/skill/memory modules | Evidence to candidate, audit, promotion, reuse, revision/retirement | Foreground completion or identity changes by implication |
 | Entrypoints | CLI, Web, Feishu, Telegram, Discord adapters | Parse, bind channel context, submit, deliver, record provider evidence | A second GoalRuntime, memory store, or execution owner |
 | Deployment | service/deployment/supervisor modules | Commit-bound artifact activation, health, rollback and controller handoff | Source integration or product release authority |
@@ -128,8 +131,10 @@ each cognition turn, GoalRuntime supplies a bounded Capability Portfolio built
 from current tool contracts and constraints, readiness under the bound
 authority, selected skills, and evidence-derived competence. Cognition chooses
 one capability and states its purpose, rationale, verification plan, fallback,
-and any selected skill refs. GoalRuntime validates that selection before
-EffectPolicy or dispatch.
+and any selected skill refs. A delegated selection additionally records a
+Capability Fit Assessment covering exactly the current capability ids and
+selected skill refs, with a bounded conclusion. GoalRuntime validates that
+selection before EffectPolicy or dispatch.
 
 Direct tools and delegated executors describe execution roles, not fixed task
 categories. Direct action remains appropriate for bounded orientation,
@@ -139,15 +144,42 @@ risk, cost, reversibility, and verifiability may change the choice; no keyword
 map decides it. If no credible capability is available, Evi blocks or chooses
 an explicit verifiable fallback instead of silently becoming the worker.
 
-Repository placement follows the same dynamic boundary. A Goal starts with an
-immutable control-repository authority. When isolated mutation or specialist
-delegation needs a linked worktree, cognition may select `workspace.prepare`
-from the current Portfolio. One successful canonical observation derives the
-Goal's only execution workspace; it is not a second Goal or state owner. Later
-repo-scoped tools and `codex.run` use that live-validated workspace, while
-state-scoped tools retain the original state root and Continue/Resume still
-validate the control checkout. Preparation is lazy and evidence-gated, not an
-ingress side effect, keyword route, or automatic per-task scheduler.
+Constraints are classified by what they protect. Canonical evidence, repository
+containment, secret/private-data boundaries, irreversible external effects, and
+completion ownership are hard invariants. Effect confirmation is a hard gate
+only for its exact effect. Capability choice, whether a new workspace is needed,
+and the order of an SOP draft versus implementation are adaptive defaults:
+current readiness and authority may override the default path with recorded
+evidence. Advice from a skill is guidance, not authority. A workflow rule must
+not remain mandatory when it conflicts with an already-satisfied invariant; for
+example, an already-linked control worktree may be the bounded Codex target
+when `codex.run` is ready, without nesting `workspace.prepare`.
+
+Repository placement follows the same dynamic boundary. Every source-mutating
+Goal has one immutable, linked execution worktree for its full delivery
+lineage; later sessions and tools reuse it. A Goal may derive that worktree by
+`workspace.prepare` or bind an already-linked worktree, but never creates one
+per session. The clean root checkout on protected `develop` is control and PR
+integration only. Repo-scoped tools and `codex.run` use the live-validated
+worktree, while state-scoped tools use the shared absolute Evi state root.
+Preparation remains evidence-gated rather than an ingress side effect,
+keyword route, or automatic per-task scheduler.
+
+`codex.run` has a deliberately narrower Goal-facing surface than its standalone
+typed tool protocol. Goal cognition may supply only `task` and `task_shape`,
+while its Capability Selection carries fit, verification, and fallback. The
+specialist-executor adapter derives `new` versus `resume`, worktree, branch,
+base commit, profile/model selection, authority handle, delegation plan, and
+budgets from bound Goal authority and retained canonical evidence. The typed
+tool still re-validates the derived authority before dispatch. This makes tool
+discovery and selection a core capability without turning provider-specific
+Codex invocation details into model-internal skill or authority.
+
+Protected local-learning locations (`sop/`, `skills/`, and `vault/`) are not
+direct Goal file-write targets. A verified Goal may provide evidence to the
+existing background-review and promotion path, which decides whether a local
+candidate is warranted. This preserves the learning gate without making a
+particular code-first or SOP-first sequence mandatory.
 
 The core tool contract also owns each tool's Goal store-placement metadata.
 The execution adapter resolves dynamic `scope`/`cwd` placement from that shared
@@ -238,8 +270,9 @@ that context or harness decomposition is finished.
 
 ## Staged Replacement Order
 
-Each stage requires a new accepted Issue and one Trellis task. Only one stage
-may be active at a time.
+Each stage requires one bounded active Goal, a named Decision Owner, explicit
+acceptance evidence, and verification or recovery criteria. More than one Goal
+may exist only when their effect boundaries and ownership do not conflict.
 
 The outcome-learning consolidation completed the first narrow part of stages 4
 and 5: canonical Goal evidence now drives bounded tool selection guidance, and
@@ -276,8 +309,8 @@ The 2026-07-18 stabilization pause was satisfied for the single bounded Issue
 #93 child after the operator explicitly resumed Issue #56. Every later feature
 child must repeat the same gate:
 
-- the stabilization Issue is merged and root/worktree/GitHub/Trellis state is
-  reconciled and clean;
+- the stabilization Goal has a verified `OutcomeReceipt`, and root/worktree,
+  optional GitHub delivery evidence, and live runtime state are reconciled;
 - the operator explicitly resumes Issue #56 or accepts a successor program;
 - exactly one bounded child Issue names its owner module, interface, non-goals,
   replacement/deletion path, verification, and rollback;
