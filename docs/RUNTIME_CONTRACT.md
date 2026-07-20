@@ -333,6 +333,14 @@ authority. It requires actual worktree, common directory, branch, and
 delegated base equality before recording a pending effect. The tool rechecks
 the same effective authority immediately before spawn.
 
+`workspace.prepare` is an adaptive isolation default, not an unconditional
+precondition: when the current repository authority is already a linked
+isolated worktree and `codex.run` is ready, that authority is the direct bounded
+target. Direct Goal writes cannot create `sop/`, `skills/`, or `vault/` assets;
+verified evidence enters the existing background-review and promotion path
+instead. Canonical evidence, containment, sensitive-data boundaries, exact
+effect confirmation, and completion ownership remain mandatory controls.
+
 Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
 Pause, Resume, and Abandon construct the local control plane without resolving
 a model. Continue lazily resolves exactly one `goal_cognition` provider from

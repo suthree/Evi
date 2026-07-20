@@ -118,6 +118,13 @@ id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRu
 成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
 或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
 
+约束按其保护对象分类。canonical evidence、仓库边界、secret/private-data 边界、不可逆的
+外部 effect 与完成权属于硬不变量；effect confirmation 只对其精确 effect 构成硬 gate。
+能力选择、是否需要新 workspace、SOP 草案与实现的先后顺序则是自适应默认值：当前就绪度和
+权限可以用记录在案的证据覆盖默认路径。Skill 的建议是 guidance，不是 authority。若一个
+workflow 规则与已经满足的不变量冲突，就不能继续强制；例如控制工作树已是 linked worktree
+且 `codex.run` 就绪时，它可直接成为有界 Codex target，无需嵌套 `workspace.prepare`。
+
 仓库落点也遵循同一动态边界。Goal 启动时绑定不可变的控制仓库权限；当隔离修改或专业委托
 确实需要 linked worktree 时，cognition 可以从当前 Portfolio 选择 `workspace.prepare`。
 一次成功的 canonical observation 派生该 Goal 唯一的执行工作区；它不是第二个 Goal 或
@@ -131,6 +138,10 @@ Adapter 从绑定的 Goal 权限和保留的 canonical evidence 派生 `new` 或
 branch、base commit、profile/model 选择、authority handle、delegation plan 与 budgets；typed
 tool 在 dispatch 前仍会再次校验派生权限。这样把“发现、选择和正确使用工具”保留为核心能力，
 而不把 provider 专属的 Codex 调用细节内化成模型能力或权限。
+
+受保护的本地学习位置（`sop/`、`skills/`、`vault/`）不是 Goal 直接 file-write 的目标。
+经验证的 Goal 可以向既有 background-review 与 promotion 路径提供 evidence，由该路径决定
+是否需要本地 candidate。这样保留学习 gate，同时不把“先代码还是先 SOP”的特定顺序做成强制。
 
 核心工具契约同时拥有各工具的 Goal store-placement 元数据。执行 Adapter 从这份共享契约
 解析动态 `scope`/`cwd` 落点，不再维护另一份工具名路由清单。这份元数据只选择 control

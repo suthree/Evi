@@ -54,6 +54,11 @@ this accepted direction from implemented behavior.
    bounded specialist intent for `codex.run`; GoalRuntime derives the actual
    invocation authority from bound state and canonical evidence, and requires
    explicit capability-fit assessment before specialist dispatch.
+8. Controls are classified as hard invariants, exact-effect gates, adaptive
+   defaults, or advisory guidance. Only the first two are mandatory. A workflow
+   default yields when current canonical evidence shows its protected invariant
+   is already satisfied; an already-isolated linked worktree, for example, is a
+   valid bounded Codex target without a nested workspace-preparation step.
 
 ## Consequences
 
@@ -75,6 +80,10 @@ this accepted direction from implemented behavior.
 - The current specialist-executor adapter is an implemented bootstrap repair.
   It removes low-level Codex protocol composition from Goal cognition; durable
   child-owned dispatch journaling remains a separate later slice.
+- Protected local-learning paths remain outside direct Goal file writes. A
+  verified outcome feeds the existing background-review and promotion gates;
+  this is a sequencing boundary, not a requirement to write an SOP before a
+  bounded implementation.
 
 ## Re-evaluation
 

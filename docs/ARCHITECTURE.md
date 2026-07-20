@@ -144,6 +144,17 @@ risk, cost, reversibility, and verifiability may change the choice; no keyword
 map decides it. If no credible capability is available, Evi blocks or chooses
 an explicit verifiable fallback instead of silently becoming the worker.
 
+Constraints are classified by what they protect. Canonical evidence, repository
+containment, secret/private-data boundaries, irreversible external effects, and
+completion ownership are hard invariants. Effect confirmation is a hard gate
+only for its exact effect. Capability choice, whether a new workspace is needed,
+and the order of an SOP draft versus implementation are adaptive defaults:
+current readiness and authority may override the default path with recorded
+evidence. Advice from a skill is guidance, not authority. A workflow rule must
+not remain mandatory when it conflicts with an already-satisfied invariant; for
+example, an already-linked control worktree may be the bounded Codex target
+when `codex.run` is ready, without nesting `workspace.prepare`.
+
 Repository placement follows the same dynamic boundary. A Goal starts with an
 immutable control-repository authority. When isolated mutation or specialist
 delegation needs a linked worktree, cognition may select `workspace.prepare`
@@ -163,6 +174,12 @@ budgets from bound Goal authority and retained canonical evidence. The typed
 tool still re-validates the derived authority before dispatch. This makes tool
 discovery and selection a core capability without turning provider-specific
 Codex invocation details into model-internal skill or authority.
+
+Protected local-learning locations (`sop/`, `skills/`, and `vault/`) are not
+direct Goal file-write targets. A verified Goal may provide evidence to the
+existing background-review and promotion path, which decides whether a local
+candidate is warranted. This preserves the learning gate without making a
+particular code-first or SOP-first sequence mandatory.
 
 The core tool contract also owns each tool's Goal store-placement metadata.
 The execution adapter resolves dynamic `scope`/`cwd` placement from that shared

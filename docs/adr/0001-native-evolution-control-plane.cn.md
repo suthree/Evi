@@ -41,6 +41,9 @@ Goal 派生的 workspace branch format 仍是后续 runtime slice。文档必须
    provider 专属用法保留在 skill 或 adapter 中。特别是，Goal cognition 对 `codex.run`
    只能提供有界专业执行意图；GoalRuntime 从绑定状态和 canonical evidence 派生实际调用
    权限，并在专业执行 dispatch 前要求显式 Capability Fit Assessment。
+8. 控制按硬不变量、精确 effect gate、自适应默认值或 advisory guidance 分类。只有前两类
+   是强制性的。当前 canonical evidence 已证明受保护不变量满足时，workflow 默认值必须让位；
+   例如，已隔离的 linked worktree 是合法的有界 Codex target，无需再嵌套 workspace prepare。
 
 ## 后果
 
@@ -55,6 +58,8 @@ Goal 派生的 workspace branch format 仍是后续 runtime slice。文档必须
   运行边界。
 - 当前专业执行器 Adapter 是已实现的 bootstrap 修复：它从 Goal cognition 中移除了低层
   Codex 协议组合；durable、child-owned dispatch journal 仍是后续独立 slice。
+- 受保护的本地学习路径仍不允许 Goal 直接 file write。经验证的 outcome 进入既有
+  background-review 与 promotion gate；这是顺序边界，不要求在有界实现之前先写 SOP。
 
 ## 重评估
 

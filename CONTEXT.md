@@ -36,6 +36,10 @@ _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
 _Avoid_: Static router, authority token, delegated completion claim
 
+**Evolution Constraint**:
+A rule classified by the boundary it protects. Canonical evidence, containment, sensitive data, irreversible external effects, and completion ownership are hard invariants; an exact-effect confirmation is a hard gate; workflow sequence is an adaptive default; a skill is advisory guidance. A default yields to current evidence when the protected invariant is already satisfied.
+_Avoid_: Universal workflow mandate, capability router, silent override
+
 **Specialist Executor Intent**:
 The narrow, model-authored request to a **Delegated Agent Surface**: a bounded `task` and `task_shape`. The **GoalRuntime** adapter derives protocol details such as new/resume mode, worktree, profile, model, authority handle, and budgets from bound state and canonical evidence before the typed tool validates them again.
 _Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, completion claim
