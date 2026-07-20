@@ -620,6 +620,11 @@ export class GoalRuntime {
     if (command.type !== "start") {
       const current = deriveGoalState(events, command.goal_id);
       const reconciled = await this.recoverDurablePendingEffect(events, current, command, commandDigest);
+      if (reconciled.events.length > events.length) {
+        const recoveredEvent = reconciled.events.at(-1)!;
+        await this.writeProjections(reconciled.state.view, recoveredEvent.occurred_at);
+        return reconciled.state.view;
+      }
       events = reconciled.events;
     }
     const replayEvents = events.filter((event) => event.command_id === command.command_id);
