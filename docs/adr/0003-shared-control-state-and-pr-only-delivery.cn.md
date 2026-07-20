@@ -33,9 +33,11 @@ branch 无法隔离并行 source mutation；linked worktree 才可以。反过�
 
 - worktree 隔离源码和 PR lineage，但不丢失共享 context 与 harness evidence。
 - 驻留服务迁移需要显式 cutover 与 health verification；修改源码默认值不会移动或重启已安装服务。
-- 下一控制面 slice 是 child-owned durable dispatch journal：它必须恢复 child 的终态结果，
-  但绝不重放 `outcome_unknown` effect。
+- child-owned durable Codex dispatch journal 现会在启动前预留一个
+  `goals/dispatches/<goal>/<effect>.json` record，不保存 raw prompt，且只从匹配的
+  terminal record 恢复；active、损坏或不匹配的 record 让 `outcome_unknown` 保持 paused。
 
 ## 重新评估
 
-在 journal 支持跨进程恢复、第一次 state migration cutover 完成，或接受未来多机边界后重新评估。
+在第一次 state migration cutover、一次真实的 interrupted-child recovery rehearsal 完成，或接受
+未来多机边界后重新评估。

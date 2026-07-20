@@ -19,6 +19,10 @@ import type { GoalCapabilityPortfolio } from "../packages/runtime/src/goal_capab
 import { GOAL_EXECUTION_WORKSPACE_BOUNDARY } from "../packages/runtime/src/goal_execution_workspace.js";
 import type { ModelClient, ModelRequest } from "../packages/runtime/src/model.js";
 import { inspectGoalRepositoryAuthority } from "../packages/runtime/src/repository_authority.js";
+import {
+  completeDurableCodexDispatch,
+  reserveDurableCodexDispatch
+} from "../packages/runtime/src/codex_dispatch_journal.js";
 
 test("RuntimeGoalToolExecutor replaces model command side-effect labels with policy semantics", async () => {
   const root = join(tmpdir(), `evi-goal-tool-${process.pid}-${Date.now()}-${Math.random()}`);
@@ -198,6 +202,74 @@ test("RuntimeGoalToolExecutor binds execution-scoped observations to the live wo
       worktree: executionAuthority.worktree,
       authority: "harness-owned post-tool workspace observation"
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("RuntimeGoalToolExecutor recovers Codex evidence only from the matching terminal dispatch record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-codex-recovery-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const identity = {
+    goal_id: "goal_codex_recovery_fixture",
+    effect_id: "goal_effect_codex_recovery_fixture",
+    action_digest: "a".repeat(64),
+    authority_digest: "b".repeat(64)
+  };
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    const executor = new RuntimeGoalToolExecutor(store);
+    const context = {
+      goal_id: identity.goal_id,
+      effect_id: identity.effect_id,
+      action_digest: identity.action_digest,
+      control_repository_authority: {
+        schema_version: 1 as const,
+        repo_root: repoRoot,
+        git_common_dir: join(repoRoot, ".git"),
+        worktree: repoRoot,
+        branch: "develop",
+        start_head_commit: "a".repeat(40),
+        boundary: "fixture control authority"
+      },
+      execution_workspace: null
+    };
+    const decision = {
+      outcome: "allow" as const,
+      reason: "Bounded local specialist execution.",
+      intent: {
+        operation: "write_local" as const,
+        target: "codex:fixture",
+        reversibility: "reversible",
+        data_exposure: "local_content_to_model",
+        authority: "standing_local_evolution" as const
+      }
+    };
+    assert.equal(await executor.recover({ tool: "codex.run", arguments: {} }, decision, context), null);
+
+    await reserveDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: "codex_dispatch_recovery_fixture",
+      created_at: "2026-07-20T00:00:00.000Z"
+    });
+    const terminal = {
+      id: "tool_result_codex_recovery_fixture",
+      tool: "codex.run",
+      ok: true,
+      summary: "Verified child terminal result.",
+      output: { status: "done" },
+      side_effect_level: "local_write" as const,
+      created_at: "2026-07-20T00:00:01.000Z"
+    };
+    await completeDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: "codex_dispatch_recovery_fixture",
+      result: terminal,
+      completed_at: "2026-07-20T00:00:02.000Z"
+    });
+    assert.deepEqual(await executor.recover({ tool: "codex.run", arguments: {} }, decision, context), terminal);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

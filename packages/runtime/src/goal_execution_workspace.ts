@@ -48,6 +48,8 @@ export interface ExpectedGoalExecutionWorkspace {
 
 export interface GoalToolExecutionContext {
   goal_id: string;
+  effect_id?: string;
+  action_digest?: string;
   control_repository_authority: GoalRepositoryAuthority;
   execution_workspace: GoalExecutionWorkspace | null;
 }

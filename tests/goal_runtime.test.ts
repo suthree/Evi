@@ -3132,6 +3132,65 @@ test("Unobserved allowed effect becomes outcome-unknown and is never repeated", 
   }
 });
 
+test("GoalRuntime reconciles an outcome-unknown effect only from a terminal child result", async () => {
+  const fixture = await createFixture();
+  try {
+    const baseTools = recordingTools();
+    let recoveryCalls = 0;
+    const tools: GoalToolExecutor & { calls: EffectAction[] } = {
+      ...baseTools,
+      async recover(effectAction) {
+        recoveryCalls += 1;
+        return {
+          id: "tool_result_recovered_child",
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Recovered only from a durable terminal child record.",
+          output: { path: "README.md", text: "durable child observation" },
+          side_effect_level: "none",
+          created_at: "2026-07-20T00:00:00.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([
+        action("file.read", { scope: "repo", path: "README.md" }, "Read once through the child-owned dispatch."),
+        outcome("读取完成。")
+      ]),
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("journal_recovery_start", "Recover only verified child evidence."));
+    await runtime.handle({
+      type: "continue",
+      command_id: "journal_recovery_continue",
+      goal_id: started.goal_id
+    });
+    const events = await readEvents(fixture.stateRoot);
+    await writeFile(
+      join(fixture.stateRoot, "goals/events.jsonl"),
+      `${events.slice(0, 2).map((event) => JSON.stringify(event)).join("\n")}\n`,
+      "utf8"
+    );
+
+    const reconciled = await runtime.handle({
+      type: "continue",
+      command_id: "journal_recovery_continue",
+      goal_id: started.goal_id
+    });
+    assert.equal(reconciled.status, "active");
+    assert.equal(reconciled.pending_effect, null);
+    assert.equal(baseTools.calls.length, 1);
+    assert.equal(recoveryCalls, 1);
+    const after = await readEvents(fixture.stateRoot);
+    const observed = after.at(-1)!;
+    assert.equal(observed.event_type, "goal_action_observed");
+    assert.match(String((observed.result as { summary?: string }).summary), /Recovered only/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime writes no legacy orchestration or synchronous-learning state", async () => {
   const fixture = await createFixture();
   try {

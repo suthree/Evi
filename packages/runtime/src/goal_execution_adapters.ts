@@ -19,6 +19,7 @@ import { executeTool, type ToolResult } from "./tools.js";
 import type { EffectDecision } from "./effect_policy.js";
 import type { GoalToolExecutionContext } from "./goal_execution_workspace.js";
 import { inspectGoalRepositoryAuthority } from "./repository_authority.js";
+import { readTerminalDurableCodexDispatchResultForEffect } from "./codex_dispatch_journal.js";
 
 const GOAL_COGNITION_INSTRUCTIONS = `You are the bounded cognition adapter inside the local GoalRuntime.
 GoalRuntime owns lifecycle, effects, evidence, verification, and completion. You propose exactly one next decision.
@@ -135,6 +136,20 @@ export class RuntimeGoalToolExecutor implements GoalToolExecutor {
     return placement === "execution"
       ? attachWorkspaceObservation(result, context)
       : result;
+  }
+
+  async recover(
+    action: Parameters<GoalToolExecutor["execute"]>[0],
+    _decision: Parameters<GoalToolExecutor["execute"]>[1],
+    context: GoalToolExecutionContext
+  ): Promise<ToolResult | null> {
+    if (action.tool !== "codex.run" || !context.effect_id || !context.action_digest) return null;
+    const terminal = await readTerminalDurableCodexDispatchResultForEffect(this.store, {
+      goal_id: context.goal_id,
+      effect_id: context.effect_id,
+      action_digest: context.action_digest
+    });
+    return terminal ? attachWorkspaceObservation(terminal, context) : null;
   }
 }
 

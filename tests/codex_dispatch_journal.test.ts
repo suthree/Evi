@@ -1,0 +1,122 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { AgentStore } from "../packages/core/src/store.js";
+import {
+  completeDurableCodexDispatch,
+  markDurableCodexDispatchRunning,
+  readDurableCodexDispatch,
+  readTerminalDurableCodexDispatchResult,
+  readTerminalDurableCodexDispatchResultForEffect,
+  reserveDurableCodexDispatch
+} from "../packages/runtime/src/codex_dispatch_journal.js";
+import { runDurableCodexDispatchWorker } from "../packages/runtime/src/tools.js";
+
+test("durable Codex dispatch journal binds one owner and exposes only a verified terminal result", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-codex-dispatch-journal-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  const identity = {
+    goal_id: "goal_dispatch_fixture",
+    effect_id: "goal_effect_dispatch_fixture",
+    action_digest: "a".repeat(64),
+    authority_digest: "b".repeat(64)
+  };
+  const ownerId = "codex_dispatch_fixture";
+  try {
+    const reserved = await reserveDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: ownerId,
+      created_at: "2026-07-20T00:00:00.000Z"
+    });
+    assert.equal(reserved.created, true);
+    assert.equal(reserved.record.state, "reserved");
+    assert.equal(await readTerminalDurableCodexDispatchResult(store, identity), null);
+
+    const duplicate = await reserveDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: "codex_dispatch_other",
+      created_at: "2026-07-20T00:00:01.000Z"
+    });
+    assert.equal(duplicate.created, false);
+    assert.equal(duplicate.record.owner_id, ownerId);
+
+    const running = await markDurableCodexDispatchRunning(store, {
+      ...identity,
+      owner_id: ownerId,
+      worker_pid: process.pid,
+      updated_at: "2026-07-20T00:00:02.000Z"
+    });
+    assert.equal(running.state, "running");
+    assert.equal(running.result, undefined);
+
+    const result = {
+      id: "tool_result_dispatch_fixture",
+      tool: "codex.run",
+      ok: true,
+      summary: "Bounded child result.",
+      output: { authority_digest: identity.authority_digest, raw_prompts_persisted: false },
+      side_effect_level: "local_write" as const,
+      created_at: "2026-07-20T00:00:03.000Z"
+    };
+    const completed = await completeDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: ownerId,
+      result,
+      completed_at: "2026-07-20T00:00:04.000Z"
+    });
+    assert.equal(completed.state, "terminal");
+    assert.deepEqual(await readTerminalDurableCodexDispatchResult(store, identity), result);
+    assert.deepEqual(await readTerminalDurableCodexDispatchResultForEffect(store, {
+      goal_id: identity.goal_id,
+      effect_id: identity.effect_id,
+      action_digest: identity.action_digest
+    }), result);
+    assert.equal(await readTerminalDurableCodexDispatchResultForEffect(store, {
+      goal_id: identity.goal_id,
+      effect_id: identity.effect_id,
+      action_digest: "c".repeat(64)
+    }), null);
+    const persisted = await readDurableCodexDispatch(store, identity);
+    assert.equal(JSON.stringify(persisted).includes("\"prompt\""), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("durable Codex worker records a terminal failure without retaining its launch payload", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-codex-dispatch-worker-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  const identity = {
+    goal_id: "goal_worker_fixture",
+    effect_id: "goal_effect_worker_fixture",
+    action_digest: "d".repeat(64),
+    authority_digest: "e".repeat(64)
+  };
+  const ownerId = "codex_dispatch_worker_fixture";
+  try {
+    await reserveDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: ownerId,
+      created_at: "2026-07-20T00:00:00.000Z"
+    });
+    await runDurableCodexDispatchWorker({
+      schema_version: 1,
+      store_repo_root: repoRoot,
+      state_root: stateRoot,
+      owner_id: ownerId,
+      identity,
+      arguments: { mode: "not-a-real-codex-mode", prompt: "must-not-be-persisted" }
+    });
+    const result = await readTerminalDurableCodexDispatchResult(store, identity);
+    assert.equal(result?.ok, false);
+    assert.equal(result?.output.failure_kind, "codex_invalid_request");
+    const record = await readDurableCodexDispatch(store, identity);
+    assert.equal(JSON.stringify(record).includes("must-not-be-persisted"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

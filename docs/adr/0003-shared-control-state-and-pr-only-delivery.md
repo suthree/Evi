@@ -45,11 +45,12 @@ and must not be silently merged with Evi.
   context or harness evidence.
 - Resident service migration needs an explicit cutover and health verification;
   changing source defaults does not move or restart an installed service.
-- The next control-plane slice is a child-owned durable dispatch journal. It
-  must recover a terminal child result without replaying an `outcome_unknown`
-  effect.
+- A child-owned durable Codex dispatch journal now reserves one
+  `goals/dispatches/<goal>/<effect>.json` record before launch, stores no raw
+  prompts, and accepts recovery only from its matching terminal record; active,
+  malformed, or mismatched records leave `outcome_unknown` paused.
 
 ## Re-evaluation
 
-Re-evaluate after the journal supports cross-process recovery, after the first
-state migration cutover, or if a future multi-machine boundary is accepted.
+Re-evaluate after the first state migration cutover, a real interrupted-child
+recovery rehearsal, or if a future multi-machine boundary is accepted.

@@ -70,6 +70,10 @@
   state 固定在 `~/.local-runtime/state/evi`，不再使用项目内 `.runtime/`。当前
   `GoalExecutionWorkspace` 仍接受遗留 `codex/issue-N-slug` 名称；这不要求真实 GitHub Issue。
   替换该命名规则必须作为单独、经验证的 runtime slice。
+- Goal 拥有的 `codex.run` 必须在 child 启动前预留精确的 Goal/effect/action-digest dispatch
+  record。只有匹配的 terminal child record 可以协调 `effect_outcome_unknown`；record 缺失、仍
+  active、无效或不匹配时 effect 保持 paused，绝不授权 replay。raw prompt 不得进入持久
+  dispatch record。
 - 改动保持小、局部，并符合现有 local runtime 边界。
 - 已接受的本地自成长使命构成持续授权。本地 agent 可以主动修改仓库源码、测试、文档、
   本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且

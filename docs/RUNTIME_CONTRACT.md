@@ -530,6 +530,17 @@ confirmation-document chain. Local `goal resume
 resume, abandon, soft-budget continuation, verification failure, and later
 repair retain the original goal identity.
 
+For a Goal-owned `codex.run`, the parent reserves
+`goals/dispatches/<goal-id>/<effect-id>.json` before launching a detached child
+worker. The journal is bound to the Goal id, effect id, action digest, and
+provisional authority digest; it contains only lifecycle metadata and the
+bounded terminal tool result, never raw prompts. The child writes its own
+terminal record after the same authority checks and fixed post-run workspace
+observation. A later Goal command may append the missing canonical observation
+only from a matching, validated terminal record. Missing, active, malformed, or
+mismatched records preserve `effect_outcome_unknown` and cannot replay the
+effect.
+
 Denied actions are redacted before canonical persistence. A secret-bearing or
 private URL is classified with a query-free target; only a non-sensitive query
 that can legitimately reach `confirm` is exposed in the pending proposed
@@ -2202,6 +2213,11 @@ Required policy:
   timeout/output-capture/context/tool/retry budgets in an immutable v2 digest
 - construct allowlisted argv without shell concatenation; prohibit
   danger-full-access, bypass flags, add-dir, and search
+- when invoked by GoalRuntime, reserve one child-owned durable dispatch record
+  before spawning the detached worker; preserve only Goal/effect/action and
+  authority digests plus bounded terminal evidence, never raw prompts; recover
+  a missing parent observation only from that exact validated terminal record
+  and never by replaying an unknown effect
 - support one bounded `new` execution or `resume <thread-id>` bound to the same
   authority snapshot, without another worktree, scheduler, or automatic retry;
   standalone resume inherits recorded `auto` or explicit selection and

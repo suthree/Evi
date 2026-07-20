@@ -5,7 +5,8 @@ import { createReadStream } from "node:fs";
 import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { basename, relative, resolve } from "node:path";
+import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   blockedCodexStructuredResult,
   buildCodexRunArgv,
@@ -38,6 +39,13 @@ import {
   type GoalToolExecutionContext as GoalWorkspaceToolExecutionContext
 } from "./goal_execution_workspace.js";
 import type { GoalRepositoryAuthority } from "./repository_authority.js";
+import {
+  completeDurableCodexDispatch,
+  markDurableCodexDispatchRunning,
+  readTerminalDurableCodexDispatchResult,
+  reserveDurableCodexDispatch,
+  type DurableCodexDispatchIdentity
+} from "./codex_dispatch_journal.js";
 
 export interface ToolResult {
   id: string;
@@ -83,6 +91,7 @@ export interface ToolExecutionContext {
   goal?: GoalWorkspaceToolExecutionContext;
   configDir?: string;
   modelMaxOutputTokens?: number;
+  expectedCodexAuthorityDigest?: string;
   publicNetworkOnly?: boolean;
 }
 
@@ -1288,6 +1297,23 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
     effective_prompt: effectivePrompt,
     budgets
   });
+  const provisionalAuthorityDigest = codexAuthorityDigest(provisional);
+  if (context.expectedCodexAuthorityDigest
+    && context.expectedCodexAuthorityDigest !== provisionalAuthorityDigest) {
+    return codexFailure("codex_authority_mismatch", "Codex durable dispatch authority changed before child execution.", failedCodexStructuredResult(
+      "Codex child authority mismatch.",
+      "The worker could not reproduce the parent-owned authority snapshot.",
+      "Inspect the bound worktree and start a new effect only through GoalRuntime."
+    ));
+  }
+  if (context.goal?.effect_id && context.goal.action_digest) {
+    return dispatchDurableGoalCodexRun(args, context, {
+      goal_id: context.goal.goal_id,
+      effect_id: context.goal.effect_id,
+      action_digest: context.goal.action_digest,
+      authority_digest: provisionalAuthorityDigest
+    });
+  }
   const schemaRef = await context.store.writeText("codex/schema/structured-result-v1.json", CODEX_STRUCTURED_RESULT_SCHEMA_TEXT);
   const schemaPath = context.store.statePath(schemaRef);
   const argv = buildCodexRunArgv(provisional, schemaPath);
@@ -1414,6 +1440,195 @@ async function runCodexRun(args: Record<string, unknown>, context: ToolExecution
   return toolResult(CODEX_RUN_TOOL, ok, `Codex execution evidence status=${structured.status}; completion authority remains with the main harness.`, {
     ...codexAttributedOutput(metadata, structured)
   }, "local_write", ok ? undefined : structured.status === "blocked" ? "codex_blocked" : "codex_failed");
+}
+
+interface DurableCodexDispatchWorkerPayload {
+  schema_version: 1;
+  store_repo_root: string;
+  state_root: string;
+  owner_id: string;
+  identity: DurableCodexDispatchIdentity;
+  arguments: Record<string, unknown>;
+  model_max_output_tokens?: number;
+}
+
+async function dispatchDurableGoalCodexRun(
+  args: Record<string, unknown>,
+  context: ToolExecutionContext,
+  identity: DurableCodexDispatchIdentity
+): Promise<ToolResult> {
+  const ownerId = newId("codex_dispatch");
+  let reservation;
+  try {
+    reservation = await reserveDurableCodexDispatch(context.store, {
+      ...identity,
+      owner_id: ownerId,
+      created_at: utcNow()
+    });
+  } catch (error) {
+    return codexFailure("codex_failed", `Codex durable dispatch reservation failed: ${errorMessage(error)}`, failedCodexStructuredResult(
+      "Codex child dispatch was not reserved.",
+      "The durable ownership record could not be created before child launch.",
+      "Inspect the Goal effect evidence; do not repeat an unknown effect."
+    ));
+  }
+  if (!reservation.created) {
+    const terminal = await readTerminalDurableCodexDispatchResult(context.store, identity);
+    if (terminal) return terminal;
+    return codexFailure("codex_blocked", "Codex durable dispatch is already owned by another child.", blockedCodexStructuredResult(
+      "Codex child dispatch remains in progress or lacks terminal evidence.",
+      "The effect has an existing durable ownership record.",
+      "Reconcile only a verified terminal child record; do not replay the effect."
+    ));
+  }
+
+  const payload: DurableCodexDispatchWorkerPayload = {
+    schema_version: 1,
+    store_repo_root: context.store.repoRoot,
+    state_root: context.store.stateRoot,
+    owner_id: ownerId,
+    identity,
+    arguments: structuredClone(args),
+    ...(context.modelMaxOutputTokens === undefined
+      ? {}
+      : { model_max_output_tokens: context.modelMaxOutputTokens })
+  };
+  const invocation = codexDispatchWorkerInvocation();
+  let worker;
+  try {
+    worker = spawn(invocation.command, invocation.args, {
+      cwd: context.store.repoRoot,
+      env: codexEnv(),
+      stdio: ["pipe", "ignore", "ignore"],
+      detached: process.platform !== "win32"
+    });
+  } catch (error) {
+    return completeDurableDispatchFailure(context.store, identity, ownerId, `Codex durable dispatch worker could not start: ${errorMessage(error)}`);
+  }
+
+  return new Promise<ToolResult>((resolveResult) => {
+    let settled = false;
+    const settle = async (fallbackSummary: string): Promise<void> => {
+      if (settled) return;
+      settled = true;
+      const terminal = await readTerminalDurableCodexDispatchResult(context.store, identity).catch(() => null);
+      if (terminal) {
+        resolveResult(terminal);
+        return;
+      }
+      resolveResult(await completeDurableDispatchFailure(context.store, identity, ownerId, fallbackSummary));
+    };
+    worker.once("error", () => {
+      void settle("Codex durable dispatch worker reported a launch error.");
+    });
+    worker.once("close", () => {
+      void settle("Codex durable dispatch worker exited without terminal evidence.");
+    });
+    worker.stdin.once("error", () => {
+      void settle("Codex durable dispatch worker did not accept its in-memory launch payload.");
+    });
+    worker.stdin.end(JSON.stringify(payload));
+  });
+}
+
+export async function runDurableCodexDispatchWorker(rawPayload: unknown): Promise<void> {
+  const payload = parseDurableCodexDispatchWorkerPayload(rawPayload);
+  const store = new AgentStore(payload.store_repo_root, payload.state_root);
+  try {
+    const running = await markDurableCodexDispatchRunning(store, {
+      ...payload.identity,
+      owner_id: payload.owner_id,
+      worker_pid: process.pid,
+      updated_at: utcNow()
+    });
+    if (running.state === "terminal") return;
+    const result = await runCodexRun(payload.arguments, {
+      store,
+      ...(payload.model_max_output_tokens === undefined
+        ? {}
+        : { modelMaxOutputTokens: payload.model_max_output_tokens }),
+      expectedCodexAuthorityDigest: payload.identity.authority_digest
+    });
+    await completeDurableCodexDispatch(store, {
+      ...payload.identity,
+      owner_id: payload.owner_id,
+      result,
+      completed_at: utcNow()
+    });
+  } catch (error) {
+    await completeDurableDispatchFailure(
+      store,
+      payload.identity,
+      payload.owner_id,
+      `Codex durable dispatch worker failed: ${errorMessage(error)}`
+    );
+  }
+}
+
+function parseDurableCodexDispatchWorkerPayload(value: unknown): DurableCodexDispatchWorkerPayload {
+  if (!isPlainRecord(value)
+    || value.schema_version !== 1
+    || !isPlainRecord(value.identity)
+    || !isPlainRecord(value.arguments)
+    || typeof value.owner_id !== "string"
+    || typeof value.store_repo_root !== "string"
+    || typeof value.state_root !== "string"
+    || !isAbsolute(value.store_repo_root)
+    || !isAbsolute(value.state_root)) {
+    throw new Error("Durable Codex dispatch worker payload is invalid.");
+  }
+  const modelMaxOutputTokens = value.model_max_output_tokens;
+  if (modelMaxOutputTokens !== undefined
+    && (typeof modelMaxOutputTokens !== "number"
+      || !Number.isInteger(modelMaxOutputTokens)
+      || modelMaxOutputTokens <= 0)) {
+    throw new Error("Durable Codex dispatch worker model output limit is invalid.");
+  }
+  return {
+    schema_version: 1,
+    store_repo_root: value.store_repo_root,
+    state_root: value.state_root,
+    owner_id: value.owner_id,
+    identity: value.identity as DurableCodexDispatchIdentity,
+    arguments: structuredClone(value.arguments),
+    ...(modelMaxOutputTokens === undefined
+      ? {}
+      : { model_max_output_tokens: modelMaxOutputTokens })
+  };
+}
+
+async function completeDurableDispatchFailure(
+  store: AgentStore,
+  identity: DurableCodexDispatchIdentity,
+  ownerId: string,
+  summary: string
+): Promise<ToolResult> {
+  const result = codexFailure("codex_failed", summary.slice(0, 2_000), failedCodexStructuredResult(
+    "Codex child dispatch has no verified terminal result.",
+    summary.slice(0, 2_000),
+    "Reconcile the durable child record before any new Goal action."
+  ));
+  try {
+    const terminal = await completeDurableCodexDispatch(store, {
+      ...identity,
+      owner_id: ownerId,
+      result,
+      completed_at: utcNow()
+    });
+    return terminal.result ?? result;
+  } catch {
+    const terminal = await readTerminalDurableCodexDispatchResult(store, identity).catch(() => null);
+    return terminal ?? result;
+  }
+}
+
+function codexDispatchWorkerInvocation(): { command: string; args: string[] } {
+  const currentPath = fileURLToPath(import.meta.url);
+  const extension = extname(currentPath);
+  const workerPath = resolve(dirname(currentPath), `codex_dispatch_worker${extension}`);
+  return extension === ".ts"
+    ? { command: process.execPath, args: ["--import", "tsx", workerPath] }
+    : { command: process.execPath, args: [workerPath] };
 }
 
 function codexFailure(
