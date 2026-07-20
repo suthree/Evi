@@ -53,6 +53,12 @@ import {
   parseGoalWorkspaceObservation,
   type GoalWorkspaceFreshnessView
 } from "./goal_workspace_freshness.js";
+import {
+  captureGoalWorkspaceBaseline,
+  goalWorkspaceBaselineSchema,
+  inheritedWorkspaceBaselinePaths,
+  type GoalWorkspaceBaseline
+} from "./goal_workspace_baseline.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -176,6 +182,7 @@ const outcomeReceiptSchema = z.object({
   decision: z.enum(["accepted", "abandoned"]),
   summary: textSchema,
   changes: changeSetSchema,
+  inherited_changes: changeSetSchema.default([]),
   verification: z.object({
     status: z.enum(["passed", "not_run"]),
     summary: shortTextSchema,
@@ -283,7 +290,8 @@ const startedEventSchema = z.object({
   objective: textSchema,
   budget: goalSoftBudgetSchema,
   checkpoint: goalCheckpointSchema,
-  repository_authority: goalRepositoryAuthoritySchema.optional()
+  repository_authority: goalRepositoryAuthoritySchema.optional(),
+  workspace_baseline: goalWorkspaceBaselineSchema.optional()
 }).strict();
 
 const actionPlannedEventSchema = z.object({
@@ -437,6 +445,7 @@ export interface GoalView {
   last_command_id: string;
   receipt: OutcomeReceipt | null;
   repository_authority: GoalRepositoryAuthority | null;
+  workspace_baseline: GoalWorkspaceBaseline | null;
   execution_workspace: GoalExecutionWorkspace | null;
   boundary: typeof GOAL_BOUNDARY;
 }
@@ -489,7 +498,7 @@ export interface GoalObservationObligationView {
   status: "none" | "required" | "satisfied";
 }
 
-export interface GoalDecisionFeedbackView {
+export interface GoalRepeatedNonProgressFeedbackView {
   code: "repeated_non_progress_observation";
   summary: string;
   prior_blocker_event_id: string;
@@ -500,6 +509,16 @@ export interface GoalDecisionFeedbackView {
     action_digest: string;
   };
 }
+
+export interface GoalIndependentVerificationFeedbackView {
+  code: "independent_verification_required";
+  summary: string;
+  delegated_observation_event_id: string;
+  delegated_action_digest: string;
+}
+
+export type GoalDecisionFeedbackView = GoalRepeatedNonProgressFeedbackView
+  | GoalIndependentVerificationFeedbackView;
 
 export interface GoalCognition {
   next(input: GoalCognitionInput): Promise<GoalCognitionResult>;
@@ -601,6 +620,11 @@ export class GoalRuntime {
     if (command.type !== "start") {
       const current = deriveGoalState(events, command.goal_id);
       const reconciled = await this.recoverDurablePendingEffect(events, current, command, commandDigest);
+      if (reconciled.events.length > events.length) {
+        const recoveredEvent = reconciled.events.at(-1)!;
+        await this.writeProjections(reconciled.state.view, recoveredEvent.occurred_at);
+        return reconciled.state.view;
+      }
       events = reconciled.events;
     }
     const replayEvents = events.filter((event) => event.command_id === command.command_id);
@@ -673,6 +697,7 @@ export class GoalRuntime {
       throw new Error(`GoalRuntime generated duplicate goal id: ${goalId}`);
     }
     const repositoryAuthority = await inspectGoalRepositoryAuthority(this.store.repoRoot);
+    const workspaceBaseline = await captureGoalWorkspaceBaseline(repositoryAuthority);
     return (await this.appendEvent(events, {
       schema_version: 2,
       type: "goal_runtime_event",
@@ -687,6 +712,7 @@ export class GoalRuntime {
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
       repository_authority: repositoryAuthority,
+      workspace_baseline: workspaceBaseline,
       boundary: GOAL_BOUNDARY
     })).view;
   }
@@ -771,13 +797,23 @@ export class GoalRuntime {
 
       const cognitionStarted = this.nowMs();
       let cognition: GoalCognitionResult;
+      const independentVerificationFeedback = independentVerificationBridgeFeedback(
+        events,
+        command.goal_id
+      );
+      const activeCognitionFeedback = independentVerificationFeedback
+        ? [
+            ...decisionFeedback.filter((item) => item.code !== "independent_verification_required"),
+            independentVerificationFeedback
+          ]
+        : decisionFeedback;
       try {
         const workspaceFreshness = await goalWorkspaceFreshness(events, state.view);
         cognition = parseGoalCognitionResult(await this.cognition.next({
           goal: structuredClone(state.view),
           execution_budget: cognitionExecutionBudget(state.view.budget, operationUsage),
           observation_obligation: goalObservationObligation(events, command.goal_id),
-          decision_feedback: structuredClone(decisionFeedback),
+          decision_feedback: structuredClone(activeCognitionFeedback),
           workspace_freshness: structuredClone(workspaceFreshness),
           evidence: structuredClone(buildCognitionEvidence(events, command.goal_id, command.command_id)),
           capability_portfolio: structuredClone(capabilityPortfolio)
@@ -804,7 +840,7 @@ export class GoalRuntime {
       const cognitionElapsed = elapsedSince(cognitionStarted, this.nowMs());
       const roundUsage = normalizeUsage({ model_rounds: 1, elapsed_ms: cognitionElapsed });
       const decisionUsage = addUsage(deferredUsage, roundUsage);
-      const activeDecisionFeedback = decisionFeedback;
+      const activeDecisionFeedback = activeCognitionFeedback;
       operationUsage = addUsage(operationUsage, roundUsage);
       deferredUsage = normalizeUsage({});
       decisionFeedback = [];
@@ -827,6 +863,15 @@ export class GoalRuntime {
             checkpoint,
             usage_delta: decisionUsage
           })).view;
+        }
+        const verificationBridgeFeedback = activeDecisionFeedback.find(
+          (item): item is GoalIndependentVerificationFeedbackView =>
+            item.code === "independent_verification_required"
+        );
+        if (verificationBridgeFeedback && commandRunVerificationIsAvailable(capabilityPortfolio)) {
+          deferredUsage = decisionUsage;
+          decisionFeedback = [verificationBridgeFeedback];
+          continue;
         }
         if (goalObservationObligation(events, command.goal_id).status === "required") {
           const summary = "Goal blocked decision rejected because no canonical observation follows the latest continuation boundary.";
@@ -872,6 +917,15 @@ export class GoalRuntime {
       }
 
       if (cognition.type === "outcome") {
+        const verificationBridgeFeedback = activeDecisionFeedback.find(
+          (item): item is GoalIndependentVerificationFeedbackView =>
+            item.code === "independent_verification_required"
+        );
+        if (verificationBridgeFeedback) {
+          deferredUsage = decisionUsage;
+          decisionFeedback = [verificationBridgeFeedback];
+          continue;
+        }
         return this.verifyOutcome(
           events,
           state,
@@ -943,6 +997,15 @@ export class GoalRuntime {
       if (repeatedActionFeedback) {
         deferredUsage = decisionUsage;
         decisionFeedback = [repeatedActionFeedback];
+        continue;
+      }
+      const verificationBridgeFeedback = activeDecisionFeedback.find(
+        (item): item is GoalIndependentVerificationFeedbackView =>
+          item.code === "independent_verification_required"
+      );
+      if (verificationBridgeFeedback && !isIndependentVerificationBridgeAction(action, capabilitySelection)) {
+        deferredUsage = decisionUsage;
+        decisionFeedback = [verificationBridgeFeedback];
         continue;
       }
       const effectId = this.nextSafeId("goal_effect");
@@ -1335,6 +1398,7 @@ export class GoalRuntime {
       decision: "accepted",
       summary: candidate.summary,
       changes: candidate.changes,
+      inherited_changes: inheritedGoalChanges(current.workspace_baseline),
       verification: {
         status: "passed",
         summary: verification.summary,
@@ -1363,6 +1427,7 @@ export class GoalRuntime {
       terminalEventId,
       createdAt,
       changes: lineage.changes,
+      inheritedChanges: inheritedGoalChanges(current.workspace_baseline),
       evidenceEventIds: lineage.eventIds
     });
   }
@@ -1409,6 +1474,7 @@ export class GoalRuntime {
       next_action: view.next_action,
       pending_effect: view.pending_effect,
       repository_authority: view.repository_authority,
+      workspace_baseline: view.workspace_baseline,
       execution_workspace: view.execution_workspace,
       last_event_id: view.last_event_id,
       updated_at: updatedAt,
@@ -1573,6 +1639,8 @@ export class CanonicalGoalVerifier implements GoalVerifier {
       return changeObservationIndex < 0 || !input.evidence.some((item, index) => index > changeObservationIndex
         && isSuccessfulLocalVerification(item));
     });
+    const inheritedChanges = inheritedGoalChanges(input.goal.workspace_baseline);
+    const inheritedVerification = input.evidence.find(isSuccessfulLocalVerification);
     const checks: GoalVerificationResult["checks"] = [{
       id: "canonical_evidence",
       status: input.evidence.length > 0 ? "passed" : "failed",
@@ -1619,6 +1687,18 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         status: "failed",
         summary: "Every Git commit or delegated workspace path requires a later successful local verification observation.",
         evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    if (inheritedChanges.length > 0) {
+      checks.push({
+        id: "inherited_workspace_baseline_verification",
+        status: inheritedVerification ? "passed" : "failed",
+        summary: inheritedVerification
+          ? "A later successful Harness-owned local verification covers the inherited Goal-start workspace baseline."
+          : "Inherited Goal-start workspace paths require a later successful Harness-owned local verification.",
+        evidence_event_ids: inheritedVerification
+          ? [inheritedVerification.event_id]
+          : input.candidate.evidence_event_ids
       });
     }
     const failed = checks.some((check) => check.status === "failed");
@@ -1847,6 +1927,14 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     reason: pending.effect_decision.reason
   } : null;
   const repositoryAuthority = started.repository_authority ?? null;
+  const workspaceBaseline = started.workspace_baseline ?? null;
+  // Older Goal starts may carry incidental baseline data without the later
+  // repository-authority binding. Keep those historical records readable;
+  // their continuation remains fail-closed through the missing authority.
+  if (workspaceBaseline && repositoryAuthority
+    && workspaceBaseline.head_commit !== repositoryAuthority.start_head_commit) {
+    throw new Error("GoalRuntime workspace baseline is not bound to the Goal start repository authority");
+  }
   const executionWorkspace = repositoryAuthority
     ? deriveGoalExecutionWorkspace(events, goalId, repositoryAuthority)
     : null;
@@ -1867,6 +1955,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     last_command_id: last.command_id,
     receipt,
     repository_authority: repositoryAuthority,
+    workspace_baseline: workspaceBaseline,
     execution_workspace: executionWorkspace,
     boundary: GOAL_BOUNDARY
   };
@@ -1988,7 +2077,7 @@ function goalObservationObligation(
 function repeatedNonProgressObservationFeedback(
   events: GoalRuntimeEvent[],
   goalId: string
-): GoalDecisionFeedbackView | null {
+): GoalRepeatedNonProgressFeedbackView | null {
   const goalEvents = events.filter((event) => event.goal_id === goalId);
   let priorBoundaryIndex = -1;
   for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
@@ -2035,6 +2124,34 @@ function repeatedNonProgressObservationFeedback(
       action_digest: currentObservation.action_digest
     }
   };
+}
+
+function independentVerificationBridgeFeedback(
+  events: GoalRuntimeEvent[],
+  goalId: string
+): GoalIndependentVerificationFeedbackView | null {
+  const goalEvents = events.filter((event) => event.goal_id === goalId);
+  const plannedById = new Map(goalEvents
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> =>
+      event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  for (let index = goalEvents.length - 1; index >= 0; index -= 1) {
+    const event = goalEvents[index]!;
+    if (event.event_type !== "goal_action_observed") continue;
+    const planned = plannedById.get(event.intent_event_id);
+    if (planned?.action.tool !== "codex.run") continue;
+    if (!event.result.ok || observedChanges(event.result).length > 0) return null;
+    const laterIndependentVerification = goalEvents.slice(index + 1).some((candidate) =>
+      candidate.event_type === "goal_action_observed" && isSuccessfulLocalVerificationEvent(candidate));
+    if (laterIndependentVerification) return null;
+    return {
+      code: "independent_verification_required",
+      summary: "A successful no-change delegated Codex observation remains execution evidence only. Select one bounded command.run action with purpose=verification; do not repeat delegated verification, block, or claim an outcome until the Harness records independent verification.",
+      delegated_observation_event_id: event.id,
+      delegated_action_digest: event.action_digest
+    };
+  }
+  return null;
 }
 
 function goalObservationProgressDigest(result: ToolResult): string {
@@ -2294,6 +2411,7 @@ function assertAcceptedReceipt(
   }
   if (receipt.created_at !== event.occurred_at
     || canonicalJson(receipt.changes) !== canonicalJson(event.candidate.changes)
+    || canonicalJson(receipt.inherited_changes) !== canonicalJson(inheritedGoalChanges(started.workspace_baseline ?? null))
     || receipt.summary !== event.candidate.summary
     || canonicalJson(receipt.runtime_result) !== canonicalJson(event.candidate.runtime_result)
     || canonicalJson(receipt.residual_risks) !== canonicalJson(event.candidate.residual_risks)
@@ -2320,6 +2438,7 @@ function assertAbandonmentReceipt(
     terminalEventId: event.id,
     createdAt: event.occurred_at,
     changes: lineage.changes,
+    inheritedChanges: inheritedGoalChanges(started.workspace_baseline ?? null),
     evidenceEventIds: lineage.eventIds
   });
   if (canonicalJson(receipt) !== canonicalJson(expected)) {
@@ -2335,6 +2454,7 @@ function buildAbandonmentReceipt(args: {
   terminalEventId: string;
   createdAt: string;
   changes: GoalChangeIdentity[];
+  inheritedChanges: GoalChangeIdentity[];
   evidenceEventIds: string[];
 }): OutcomeReceipt {
   return outcomeReceiptSchema.parse({
@@ -2346,6 +2466,7 @@ function buildAbandonmentReceipt(args: {
     decision: "abandoned",
     summary: args.reason,
     changes: args.changes,
+    inherited_changes: args.inheritedChanges,
     verification: {
       status: "not_run",
       summary: ABANDON_VERIFICATION_SUMMARY,
@@ -2361,6 +2482,10 @@ function buildAbandonmentReceipt(args: {
     created_at: args.createdAt,
     boundary: GOAL_BOUNDARY
   });
+}
+
+function inheritedGoalChanges(baseline: GoalWorkspaceBaseline | null): GoalChangeIdentity[] {
+  return inheritedWorkspaceBaselinePaths(baseline).map((identity) => ({ kind: "workspace_path", identity }));
 }
 
 function assertReplayStatus(actual: GoalStatus, expected: GoalStatus, event: GoalRuntimeEvent): void {
@@ -2708,6 +2833,21 @@ function isSuccessfulLocalVerificationEvent(
       || (event.evidence_semantics === undefined
         && event.evidence_role === undefined
         && event.effect_intent.operation === "run_local_verification"));
+}
+
+function commandRunVerificationIsAvailable(portfolio: GoalCapabilityPortfolio): boolean {
+  return portfolio.capabilities.some((candidate) =>
+    candidate.id === "command.run" && candidate.readiness === "available");
+}
+
+function isIndependentVerificationBridgeAction(
+  action: EffectAction,
+  selection: GoalCapabilitySelection
+): boolean {
+  return action.tool === "command.run"
+    && action.arguments.purpose === "verification"
+    && selection.capability_id === "command.run"
+    && selection.execution_purpose === "verification";
 }
 
 function effectSideEffectLevel(intent: EffectIntent): ToolResult["side_effect_level"] {

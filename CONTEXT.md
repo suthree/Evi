@@ -8,6 +8,10 @@ The agent is a context for designing one continuous autonomous self-growing agen
 The long-lived self of the agent: one stable autonomous agent across repositories, interfaces, models, and runtimes. It owns the seed mission, durable values, operating boundaries, learning policy, and continuity of growth.
 _Avoid_: Personal assistant, workspace persona, per-repo agent, split identity
 
+**Learning Orchestrator**:
+The **Self-Growing Agent Core** in its operating role: it discovers, compares, selects, combines, and evaluates tools, skills, and **Delegated Agent Surfaces** to expand capability. It need not internalize every tool protocol or become the default worker; bounded direct execution remains an evidence and recovery surface while specialists perform suitable production work.
+_Avoid_: Generic command agent, fixed workflow router, tool wrapper
+
 **Project Overlay**:
 A temporary context layer applied to the **Self-Growing Agent Core** for a specific repository, task domain, organization, or collaboration setting. It may constrain behavior and recall project knowledge, but it does not create a separate self.
 _Avoid_: Project personality, workspace self
@@ -36,6 +40,10 @@ _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
 _Avoid_: Static router, authority token, delegated completion claim
 
+**Typed Cognition Envelope**:
+The schema-bound `decision` envelope from model cognition to **GoalRuntime**. It declares exactly one complete `action`, `outcome`, or `blocked` shape before the runtime performs its separate semantic validation and effect-policy checks.
+_Avoid_: JSON-in-a-string, repairable model prose, authority grant
+
 **Evolution Constraint**:
 A rule classified by the boundary it protects. Canonical evidence, containment, sensitive data, irreversible external effects, and completion ownership are hard invariants; an exact-effect confirmation is a hard gate; workflow sequence is an adaptive default; a skill is advisory guidance. A default yields to current evidence when the protected invariant is already satisfied.
 _Avoid_: Universal workflow mandate, capability router, silent override
@@ -47,6 +55,10 @@ _Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, comple
 **Goal Execution Workspace**:
 The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
 _Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root
+
+**Goal Workspace Baseline**:
+The Harness-owned, read-only Goal-start snapshot containing only Git HEAD and normalized tracked or untracked status paths. Non-empty paths are inherited lineage, not Goal-produced changes, and require later successful Harness-owned local verification before acceptance; an empty baseline creates no synthetic verification obligation.
+_Avoid_: Diff body, file content, task parser, test-command policy, task router, automatic test pipeline
 
 **Capability Experience**:
 One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
@@ -127,6 +139,10 @@ _Avoid_: Human review, unchecked self-approval
 **Capability Flywheel**:
 The core growth loop of the agent: use tools or delegated agent surfaces, record evidence, extract reusable experience into SOPs, audit them, promote valid SOPs into skills, recall them later, and revise them from outcomes.
 _Avoid_: Feature list, broad assistant coverage
+
+**Independent Verification Bridge**:
+The bounded transition from a successful **Delegated Agent Surface** result to harness-owned evidence sufficient for outcome verification. Delegated self-reports remain execution evidence only; when an unresolved verification obligation exists, the **Learning Orchestrator** selects a bounded non-delegated verification action and the **Harness Kernel** validates its result.
+_Avoid_: Delegated self-certification, automatic test pipeline, generic command work
 
 **Dream Consolidation**:
 An idle-time, proposal-only learning mode that reviews bounded conversation and episodic evidence together with semantic memory, procedural memory, and capability experience. It may compress, classify, connect, or challenge prior experience and propose memory, SOP, skill, capability-profile, or exploration candidates. It never converts reflection into fact, executes work, or promotes a candidate by itself.

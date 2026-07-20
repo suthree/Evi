@@ -84,7 +84,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | 关注点 | 当前 owner | Interface 与不变量 | 不负责 |
 | --- | --- | --- | --- |
 | 稳定 Self | `core/soul.md`、`core/memory.md`、`core/runtimes.md` | 身份、记忆策略、Reference/Runtime 本体 | 任务进度或执行状态 |
-| Goal 生命周期 | `packages/runtime/src/goal_runtime.ts` | `GoalRuntimePort`、command、canonical event、checkpoint、验证和一个 receipt | 渠道传输或执行器内部 |
+| Goal 生命周期 | `packages/runtime/src/goal_runtime.ts`、`goal_workspace_baseline.ts` | `GoalRuntimePort`、Harness-owned 起始基线、command、canonical event、checkpoint、验证和一个 receipt | 渠道传输、任务路由或执行器内部 |
 | Goal 交互 | `packages/runtime/src/goal_ingress.ts`、各入口 Adapter | 把一个已接受提交或显式命名的交互翻译为 canonical GoalRuntime command | Goal 状态、latest-Goal 推断或独立的 task/session 真相 |
 | Context 编译 | `packages/core/src/context.ts`、`context_budget.ts`、runtime context manifest | 有预算的 snapshot、来源和 omission | 原始 archive owner 或全量常驻 recall |
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
@@ -117,6 +117,17 @@ id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRu
 原子化的任务可以直接执行；存在合适执行器时，专业生产通常应委托。就绪度、证据、风险、
 成本、可逆性与可验证性都可能改变选择，不由关键词映射决定。没有可信能力时，Evi 应阻塞
 或选择显式、可验证的 fallback，而不是悄悄把自己变成执行员工。
+
+独立验证桥是针对“成功但无改动的委派 coding result”的狭义例外：Evi 不接受 specialist
+自己的 test report，也不重复相同委派。GoalRuntime 派生短暂的证据义务，cognition 从
+Portfolio 中选择一条受限的 `command.run` verification；Harness 拥有约束、observation 与
+receipt acceptance。这样既让验证保持独立、可复现，也让 Evi 仍是学习型调度者，而非通用
+命令执行员工。
+
+Goal start 还会采集一份 Harness-owned、只读的 workspace baseline：仅包含 Git HEAD 和
+规范化的 tracked/untracked 状态路径。非空 baseline 会作为继承变更谱系保留在终态 receipt 中，
+并要求在接受前出现一次后续成功的 Harness-owned 本地验证。它不解析目标文本、不选择 capability
+或测试命令、不路由任务，也不创建自动测试管道；干净 baseline 不会生成合成验证义务。
 
 约束按其保护对象分类。canonical evidence、仓库边界、secret/private-data 边界、不可逆的
 外部 effect 与完成权属于硬不变量；effect confirmation 只对其精确 effect 构成硬 gate。

@@ -25,6 +25,7 @@ import {
 import type { ToolResult } from "../packages/runtime/src/tools.js";
 import { RuntimeGoalToolExecutor } from "../packages/runtime/src/goal_execution_adapters.js";
 import { GOAL_EXECUTION_WORKSPACE_BOUNDARY } from "../packages/runtime/src/goal_execution_workspace.js";
+import { MAX_GOAL_WORKSPACE_BASELINE_PATHS } from "../packages/runtime/src/goal_workspace_baseline.js";
 
 test("GoalRuntime binds new goals to one Git worktree authority", async () => {
   const fixture = await createFixture();
@@ -44,6 +45,9 @@ test("GoalRuntime binds new goals to one Git worktree authority", async () => {
     assert.equal(started.repository_authority?.worktree, await realpath(fixture.repoRoot));
     assert.equal(started.repository_authority?.branch, "develop");
     assert.match(started.repository_authority?.start_head_commit ?? "", /^[a-f0-9]{40}$/);
+    assert.deepEqual(started.workspace_baseline?.tracked_paths, []);
+    assert.deepEqual(started.workspace_baseline?.untracked_paths, []);
+    assert.equal(started.workspace_baseline?.head_commit, started.repository_authority?.start_head_commit);
     const [startEvent] = await readEvents(fixture.stateRoot);
     assert.deepEqual(startEvent?.repository_authority, started.repository_authority);
 
@@ -69,6 +73,127 @@ test("GoalRuntime binds new goals to one Git worktree authority", async () => {
       goal_id: started.goal_id
     });
     assert.equal(completed.status, "completed");
+    assert.deepEqual(completed.receipt?.inherited_changes, []);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime records dirty start paths as inherited receipt lineage and requires later Harness verification", async () => {
+  const fixture = await createFixture();
+  try {
+    await writeFile(join(fixture.repoRoot, "README.md"), "modified before Goal start\n", "utf8");
+    await writeFile(join(fixture.repoRoot, "inherited-untracked.txt"), "preexisting\n", "utf8");
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read bounded inherited workspace context."),
+      outcome("未验证的继承路径不能直接完成。"),
+      action("command.run", {
+        command: "pnpm",
+        args: ["run", "check"],
+        cwd: "repo",
+        purpose: "verification",
+        side_effect_level: "local_reversible"
+      }, "Choose a bounded Harness-owned local verification from the current portfolio."),
+      outcome("继承的工作树路径已经由 Harness 本地验证。")
+    ]);
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        if (effectAction.tool === "command.run") {
+          return {
+            id: "tool_result_baseline_verification",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Harness-owned local verification passed.",
+            output: { verification: passedVerificationMarker() },
+            side_effect_level: "local_reversible",
+            created_at: "2026-07-20T00:00:02.000Z"
+          };
+        }
+        return {
+          id: "tool_result_baseline_read",
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Read inherited workspace context.",
+          output: { path: "README.md", text: "bounded fixture content" },
+          side_effect_level: "none",
+          created_at: "2026-07-20T00:00:01.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+
+    const started = await runtime.handle(start("workspace_baseline_start", "Preserve inherited workspace provenance."));
+    assert.deepEqual(started.workspace_baseline?.tracked_paths, ["README.md"]);
+    assert.deepEqual(started.workspace_baseline?.untracked_paths, ["inherited-untracked.txt"]);
+    assert.equal(started.workspace_baseline?.head_commit, started.repository_authority?.start_head_commit);
+
+    const failed = await runtime.handle({ type: "continue", command_id: "workspace_baseline_unverified", goal_id: started.goal_id });
+    assert.equal(failed.status, "active");
+    assert.equal(failed.continuation_reasons.includes("verification_failed"), true);
+    const failedEvents = await readEvents(fixture.stateRoot);
+    const failedVerification = failedEvents.find((event) => event.event_type === "goal_verification_failed") as {
+      verification?: { checks?: Array<{ id?: string; status?: string }> };
+    } | undefined;
+    assert.equal(failedVerification?.verification?.checks?.some((check) =>
+      check.id === "inherited_workspace_baseline_verification" && check.status === "failed"
+    ), true);
+
+    const awaitingVerification = await runtime.handle({ type: "continue", command_id: "workspace_baseline_verified", goal_id: started.goal_id });
+    assert.equal(awaitingVerification.status, "paused");
+    const verified = await runtime.handle({
+      type: "resume",
+      command_id: "workspace_baseline_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: awaitingVerification.pending_effect!.effect_id
+    });
+    assert.equal(verified.status, "active");
+    const completed = await runtime.handle({ type: "continue", command_id: "workspace_baseline_finish", goal_id: started.goal_id });
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(completed.receipt?.changes, []);
+    assert.deepEqual(completed.receipt?.inherited_changes, [
+      { kind: "workspace_path", identity: "README.md" },
+      { kind: "workspace_path", identity: "inherited-untracked.txt" }
+    ]);
+    assert.equal(completed.receipt?.verification.checks.some((check) =>
+      check.id === "inherited_workspace_baseline_verification" && check.status === "passed"
+    ), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime bounds the combined tracked and untracked start baseline before canonical state", async () => {
+  const fixture = await createFixture();
+  try {
+    const trackedCount = MAX_GOAL_WORKSPACE_BASELINE_PATHS - 1;
+    const trackedPaths = Array.from({ length: trackedCount }, (_, index) =>
+      `tracked-${String(index).padStart(4, "0")}.txt`
+    );
+    await Promise.all(trackedPaths.map((path) => writeFile(join(fixture.repoRoot, path), "committed\n", "utf8")));
+    await runGoalGit(fixture.repoRoot, ["add", ...trackedPaths]);
+    await runGoalGit(fixture.repoRoot, ["commit", "-m", "add tracked baseline paths"]);
+    await Promise.all(trackedPaths.map((path) => writeFile(join(fixture.repoRoot, path), "modified before Goal start\n", "utf8")));
+    await writeFile(join(fixture.repoRoot, "inherited-untracked-0000.txt"), "preexisting\n", "utf8");
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+
+    const started = await runtime.handle(start("workspace_baseline_capacity_exact", "Keep inherited receipt lineage bounded."));
+    assert.equal(started.workspace_baseline?.tracked_paths.length, trackedCount);
+    assert.deepEqual(started.workspace_baseline?.untracked_paths, ["inherited-untracked-0000.txt"]);
+
+    await writeFile(join(fixture.repoRoot, "inherited-untracked-0001.txt"), "overflow\n", "utf8");
+    await assert.rejects(
+      runtime.handle(start("workspace_baseline_capacity_overflow", "Keep inherited receipt lineage bounded.")),
+      new RegExp(`workspace baseline exceeds ${MAX_GOAL_WORKSPACE_BASELINE_PATHS} total paths`)
+    );
+    assert.equal((await readEvents(fixture.stateRoot)).length, 1);
   } finally {
     await fixture.cleanup();
   }
@@ -776,6 +901,108 @@ test("GoalRuntime validates confirmed codex.run against the bound execution work
   }
 });
 
+test("GoalRuntime bridges successful no-change codex.run through Harness-owned verification", async () => {
+  const fixture = await createFixture();
+  try {
+    const boundRoot = join(fixture.root, "verification-bridge-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/verification-bridge", boundRoot]);
+    const calls: EffectAction[] = [];
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        calls.push(structuredClone(effectAction));
+        if (effectAction.tool === "codex.run") {
+          return {
+            id: "tool_result_no_change_codex",
+            tool: effectAction.tool,
+            ok: true,
+            summary: "Delegated specialist reported a successful no-change verification.",
+            output: { observed: true, self_reported_tests: "untrusted" },
+            side_effect_level: "local_write",
+            created_at: "2026-07-17T00:00:01.000Z"
+          };
+        }
+        return {
+          id: "tool_result_independent_verification",
+          tool: effectAction.tool,
+          ok: true,
+          summary: "Harness-owned verification passed without changing the workspace.",
+          output: { verification: passedVerificationMarker() },
+          side_effect_level: "local_reversible",
+          created_at: "2026-07-17T00:00:02.000Z"
+        };
+      }
+    };
+    const cognition = sequenceCognition([
+      action("codex.run", {
+        task: "Implement and verify one bounded runtime change.",
+        task_shape: "One bounded coding task with independent verification."
+      }, "Delegate the bounded specialist implementation."),
+      action("codex.run", {
+        task: "Repeat the same delegated verification.",
+        task_shape: "One repeated no-change coding verification."
+      }, "Incorrectly try to use the delegated executor as its own verifier."),
+      outcome("委派自述不能直接作为完成证明。"),
+      action("command.run", {
+        command: "pnpm",
+        args: ["run", "check"],
+        cwd: "repo",
+        purpose: "verification",
+        side_effect_level: "local_reversible"
+      }, "Run the bounded Harness-owned independent verification."),
+      outcome("独立 Harness 验证已经完成。")
+    ]);
+    const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start(
+      "verification_bridge_start",
+      "Require independent verification after a no-change delegated coding result."
+    ));
+    const codexPaused = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_delegate",
+      goal_id: started.goal_id
+    });
+    assert.equal(codexPaused.pending_effect?.proposed_action.tool, "codex.run");
+    await runtime.handle({
+      type: "resume",
+      command_id: "verification_bridge_delegate_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: codexPaused.pending_effect!.effect_id
+    });
+
+    const verificationPaused = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_replan",
+      goal_id: started.goal_id
+    });
+    assert.equal(verificationPaused.pending_effect?.proposed_action.tool, "command.run");
+    assert.deepEqual(calls.map((item) => item.tool), ["codex.run"]);
+    assert.deepEqual(
+      cognition.calls.slice(1, 4).map((input) => input.decision_feedback.map((item) => item.code)),
+      [["independent_verification_required"], ["independent_verification_required"], ["independent_verification_required"]]
+    );
+
+    await runtime.handle({
+      type: "resume",
+      command_id: "verification_bridge_command_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: verificationPaused.pending_effect!.effect_id
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "verification_bridge_outcome",
+      goal_id: started.goal_id
+    });
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(calls.map((item) => item.tool), ["codex.run", "command.run"]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal outcomes", async () => {
   const fixture = await createFixture();
   try {
@@ -941,6 +1168,7 @@ test("GoalRuntime reads legacy goals but refuses to silently bind their continua
 
     const legacy = await runtime.read(started.goal_id);
     assert.equal(legacy.repository_authority, null);
+    assert.deepEqual(legacy.workspace_baseline, started.workspace_baseline);
     await assert.rejects(runtime.handle({
       type: "continue",
       command_id: "legacy_authority_continue",

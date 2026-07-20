@@ -16,13 +16,22 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
   const homeRoot = join(root, "home");
+  const configDir = join(root, "config");
   const heartbeatPath = join(stateRoot, "services/runtime/heartbeat.json");
   try {
     await mkdir(repoRoot, { recursive: true });
+    await mkdir(configDir, { recursive: true });
     await initializeGitRepository(repoRoot);
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "missing-daemon-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), "", "utf8");
     const handle = await startRuntimeDaemon({
       repoRoot,
       config: runtimeConfig({ stateRoot, homeRoot }),
+      configDir,
       target: "runtime",
       web: {
         enabled: true,
