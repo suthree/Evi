@@ -37,6 +37,10 @@ Goal 派生的 workspace branch format 仍是后续 runtime slice。文档必须
 6. `.trellis/` 即刻逻辑退役。它保留为冻结的历史 archive 和有效 evidence source，
    但不再是活跃 task 来源、默认 context 路由、生成 agent context 表面，或新工作的
    source of truth。是否物理删除由后续独立决策处理。
+7. 核心自成长学习的是发现、比较、选择、调用、验证和恢复工具及委托面；领域流程和
+   provider 专属用法保留在 skill 或 adapter 中。特别是，Goal cognition 对 `codex.run`
+   只能提供有界专业执行意图；GoalRuntime 从绑定状态和 canonical evidence 派生实际调用
+   权限，并在专业执行 dispatch 前要求显式 Capability Fit Assessment。
 
 ## 后果
 
@@ -49,6 +53,8 @@ Goal 派生的 workspace branch format 仍是后续 runtime slice。文档必须
   迁移测试，并提供 verification 与 recovery evidence。
 - 本决策不声称自成才或完整自监督环已完成；它只是为后续以可测证据完成这些能力确定
   运行边界。
+- 当前专业执行器 Adapter 是已实现的 bootstrap 修复：它从 Goal cognition 中移除了低层
+  Codex 协议组合；durable、child-owned dispatch journal 仍是后续独立 slice。
 
 ## 重评估
 

@@ -321,9 +321,15 @@ tools then use this workspace, while state-scoped tools keep the original state
 root. Continue, Resume, and immediate pre-dispatch checks live-validate the
 derived authority.
 
-For `codex.run`, GoalRuntime resolves the proposed new target or persisted
-resume handle against the execution workspace when one is bound, otherwise the
-control authority. It requires actual worktree, common directory, branch, and
+For `codex.run`, Goal cognition proposes only a bounded `task` and `task_shape`.
+Its Capability Selection carries the explicit capability-fit assessment,
+verification plan, and fallback. GoalRuntime derives `new` versus `resume`,
+the new-worktree fields, auto-selected profile/model settings, budgets,
+delegation strategy, and any resume handle from its bound authority and
+retained canonical observations; low-level invocation fields supplied by the
+model are rejected. It resolves the resulting target or persisted resume handle
+against the execution workspace when one is bound, otherwise the control
+authority. It requires actual worktree, common directory, branch, and
 delegated base equality before recording a pending effect. The tool rechecks
 the same effective authority immediately before spawn.
 

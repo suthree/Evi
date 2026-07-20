@@ -110,6 +110,7 @@ own the Self or completion.
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
 | Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded candidates, readiness, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
+| Specialist executor adapter | `packages/runtime/src/goal_specialist_executor.ts` | Convert bounded specialist intent into a complete typed invocation from Goal authority and retained evidence | Model-authored worktree/model/thread/authority protocol fields or completion authority |
 | Goal execution workspace | `packages/runtime/src/goal_execution_workspace.ts` | Prepare and live-validate one Goal-bound isolated linked worktree from the immutable control authority | Task classification, workspace registry, lifecycle scheduling, state-root movement, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
 | Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
@@ -130,8 +131,10 @@ each cognition turn, GoalRuntime supplies a bounded Capability Portfolio built
 from current tool contracts and constraints, readiness under the bound
 authority, selected skills, and evidence-derived competence. Cognition chooses
 one capability and states its purpose, rationale, verification plan, fallback,
-and any selected skill refs. GoalRuntime validates that selection before
-EffectPolicy or dispatch.
+and any selected skill refs. A delegated selection additionally records a
+Capability Fit Assessment covering exactly the current capability ids and
+selected skill refs, with a bounded conclusion. GoalRuntime validates that
+selection before EffectPolicy or dispatch.
 
 Direct tools and delegated executors describe execution roles, not fixed task
 categories. Direct action remains appropriate for bounded orientation,
@@ -150,6 +153,16 @@ repo-scoped tools and `codex.run` use that live-validated workspace, while
 state-scoped tools retain the original state root and Continue/Resume still
 validate the control checkout. Preparation is lazy and evidence-gated, not an
 ingress side effect, keyword route, or automatic per-task scheduler.
+
+`codex.run` has a deliberately narrower Goal-facing surface than its standalone
+typed tool protocol. Goal cognition may supply only `task` and `task_shape`,
+while its Capability Selection carries fit, verification, and fallback. The
+specialist-executor adapter derives `new` versus `resume`, worktree, branch,
+base commit, profile/model selection, authority handle, delegation plan, and
+budgets from bound Goal authority and retained canonical evidence. The typed
+tool still re-validates the derived authority before dispatch. This makes tool
+discovery and selection a core capability without turning provider-specific
+Codex invocation details into model-internal skill or authority.
 
 The core tool contract also owns each tool's Goal store-placement metadata.
 The execution adapter resolves dynamic `scope`/`cwd` placement from that shared

@@ -48,6 +48,12 @@ this accepted direction from implemented behavior.
    and valid evidence source, but is not an active task source, default context
    route, generated-agent-context surface, or source of truth for new work. A
    later, separately approved decision may decide physical removal.
+7. Core self-growth learns to discover, compare, select, invoke, verify, and
+   recover tools and delegated surfaces. Domain procedures and provider-specific
+   usage remain skills or adapters. In particular, Goal cognition supplies only
+   bounded specialist intent for `codex.run`; GoalRuntime derives the actual
+   invocation authority from bound state and canonical evidence, and requires
+   explicit capability-fit assessment before specialist dispatch.
 
 ## Consequences
 
@@ -66,6 +72,9 @@ this accepted direction from implemented behavior.
 - The decision deliberately does not claim that self-achievement or the full
   self-supervision loop is complete. It establishes the operating boundary for
   completing those capabilities with measurable evidence.
+- The current specialist-executor adapter is an implemented bootstrap repair.
+  It removes low-level Codex protocol composition from Goal cognition; durable
+  child-owned dispatch journaling remains a separate later slice.
 
 ## Re-evaluation
 

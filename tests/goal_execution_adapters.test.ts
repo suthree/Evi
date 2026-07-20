@@ -281,9 +281,10 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /controlling Goal runtime owns judgment and acceptance/);
   assert.match(requests[0]!.instructions, /capability_selection/);
   assert.match(requests[0]!.instructions, /choose workspace\.prepare/);
-  assert.match(requests[0]!.instructions, /codex\.run must target worktree "\."/);
+  assert.match(requests[0]!.instructions, /action\.arguments must contain only/);
+  assert.match(requests[0]!.instructions, /Never provide mode, worktree, branch, base_commit/);
+  assert.match(requests[0]!.instructions, /GoalRuntime derives new versus resume/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
-  assert.match(requests[0]!.instructions, /model and reasoning_effort must both be "auto"/);
   assert.match(requests[0]!.instructions, /Do not guess provider model tokens/);
   assert.match(requests[0]!.instructions, /set purpose="verification"/);
   assert.match(requests[0]!.instructions, /Purpose marks evidence intent, never authority/);
@@ -320,9 +321,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.input, /"status": "degraded"/);
   assert.match(requests[0]!.input, /associations, not causal attribution/);
   assert.doesNotMatch(requests[0]!.input, /raw tool output/);
-  assert.match(requests[0]!.input, /"model": "auto,new,required"/);
-  assert.match(requests[0]!.input, /"reasoning_effort": "auto,new,required"/);
-  assert.match(requests[0]!.input, /"purpose": "execute\|verification"/);
+  assert.match(requests[0]!.input, /"task": "bounded specialist task"/);
+  assert.match(requests[0]!.input, /"task_shape": "bounded task shape"/);
   assert.doesNotMatch(requests[0]!.input, /safe-token|minimal\|low\|medium\|high\|xhigh/);
 });
 
@@ -500,13 +500,10 @@ function fixtureCapabilityPortfolio(): GoalCapabilityPortfolio {
       side_effect_level: "local_write",
       workspace_placement: "execution",
       arguments: {
-        worktree: "relative/path",
-        task: "bounded task",
-        model: "auto,new,required",
-        reasoning_effort: "auto,new,required",
-        purpose: "execute|verification"
+        task: "bounded specialist task",
+        task_shape: "bounded task shape"
       },
-      constraints: ["model and reasoning_effort must remain auto"],
+      constraints: ["GoalRuntime derives low-level Codex invocation authority."],
       readiness: "available",
       readiness_reason: "Bound linked worktree is available.",
       competence: null

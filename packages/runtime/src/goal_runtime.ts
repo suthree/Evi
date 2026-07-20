@@ -44,6 +44,10 @@ import {
   type GoalCapabilitySelection
 } from "./goal_capability_portfolio.js";
 import {
+  deriveCodexSpecialistInvocation,
+  parseCodexResumeHandle
+} from "./goal_specialist_executor.js";
+import {
   inspectGoalWorkspaceFreshness,
   latestObservedWorkspaceHead,
   parseGoalWorkspaceObservation,
@@ -869,20 +873,12 @@ export class GoalRuntime {
         );
       }
 
-      const action = normalizeGoalEffectAction(parseEffectAction(cognition.action));
-      const actionDigest = digestAction(action);
-      const repeatedActionFeedback = activeDecisionFeedback.find((item) =>
-        item.code === "repeated_non_progress_observation" && item.repeated_action.action_digest === actionDigest);
-      if (repeatedActionFeedback) {
-        deferredUsage = decisionUsage;
-        decisionFeedback = [repeatedActionFeedback];
-        continue;
-      }
+      const modelAction = normalizeGoalEffectAction(parseEffectAction(cognition.action));
       let capabilitySelection: GoalCapabilitySelection;
       try {
         capabilitySelection = validateGoalCapabilitySelection(
           cognition.capability_selection,
-          action,
+          modelAction,
           capabilityPortfolio
         );
       } catch (error) {
@@ -902,6 +898,42 @@ export class GoalRuntime {
           checkpoint,
           usage_delta: decisionUsage
         })).view;
+      }
+      let action: EffectAction;
+      try {
+        action = modelAction.tool === "codex.run"
+          ? deriveCodexSpecialistInvocation({
+              intent: modelAction.arguments,
+              selection: capabilitySelection,
+              authority: goalExecutionAuthority(state.view),
+              resume_handle: latestGoalCodexResumeHandle(events, command.goal_id)
+            })
+          : modelAction;
+      } catch (error) {
+        const summary = `Goal specialist executor intent validation failed: ${errorMessage(error)}`.slice(0, 2_000);
+        const nextAction = "State only the bounded specialist task and task_shape; GoalRuntime derives Codex invocation authority from the bound Goal state.";
+        const checkpoint = normalizeCheckpoint({
+          cursor: "specialist_intent_invalid",
+          summary,
+          next_action: nextAction,
+          selected_refs: state.view.checkpoint.selected_refs
+        });
+        return (await this.appendEvent(events, {
+          ...this.eventBase(state.view, command, commandDigest),
+          event_type: "goal_blocked",
+          summary,
+          next_action: nextAction,
+          checkpoint,
+          usage_delta: decisionUsage
+        })).view;
+      }
+      const actionDigest = digestAction(action);
+      const repeatedActionFeedback = activeDecisionFeedback.find((item) =>
+        item.code === "repeated_non_progress_observation" && item.repeated_action.action_digest === actionDigest);
+      if (repeatedActionFeedback) {
+        deferredUsage = decisionUsage;
+        decisionFeedback = [repeatedActionFeedback];
+        continue;
       }
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
@@ -1394,6 +1426,24 @@ async function goalWorkspaceFreshness(
       workspace.authority
     )
   });
+}
+
+/** The latest observed Codex handle is evidence only; tools re-verify it from state before resume. */
+function latestGoalCodexResumeHandle(
+  events: GoalRuntimeEvent[],
+  goalId: string
+): ReturnType<typeof parseCodexResumeHandle> {
+  const plannedById = new Map(events
+    .filter((event): event is z.infer<typeof actionPlannedEventSchema> => event.goal_id === goalId
+      && event.event_type === "goal_action_planned")
+    .map((event) => [event.id, event]));
+  for (const event of [...events].reverse()) {
+    if (event.goal_id !== goalId || event.event_type !== "goal_action_observed") continue;
+    const planned = plannedById.get(event.intent_event_id);
+    if (planned?.action.tool !== "codex.run") continue;
+    return parseCodexResumeHandle(event.result.output.resume_handle);
+  }
+  return null;
 }
 
 function usesExecutionWorkspace(action: EffectAction): boolean {

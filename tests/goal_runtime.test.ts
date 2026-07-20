@@ -693,33 +693,8 @@ test("GoalRuntime validates confirmed codex.run against the bound execution work
     const cognition = sequenceCognition([
       action("workspace.prepare", { branch, base_commit: baseCommit }, "Prepare the execution workspace before delegation."),
       action("codex.run", {
-        mode: "new",
-        prompt: "Perform one bounded specialist coding task.",
-        base_commit: baseCommit,
-        branch,
-        worktree: ".",
-        cwd: ".",
-        model: "auto",
-        profile: "fast",
-        reasoning_effort: "auto",
-        service_tier: "fast",
-        sandbox: "workspace-write",
-        approval_policy: "never",
-        selection_rationale: "The Goal selected the available specialist executor after workspace binding.",
-        task_shape: "One bounded coding change with independent later verification.",
-        delegation_strategy: {
-          mode: "single",
-          max_subagents: 0,
-          independent_workstreams: [],
-          integration_owner: "main_codex_thread"
-        },
-        budgets: {
-          timeout_ms: 2_000,
-          max_output_chars: 8_000,
-          max_context_chars: 8_000,
-          max_tool_calls: 4,
-          max_retries: 0
-        }
+        task: "Perform one bounded specialist coding task.",
+        task_shape: "One bounded coding change with independent later verification."
       }, "Delegate specialist production in the bound execution workspace.")
     ]);
     const realExecutor = new RuntimeGoalToolExecutor(fixture.store);
@@ -757,6 +732,34 @@ test("GoalRuntime validates confirmed codex.run against the bound execution work
     assert.equal(awaitingConfirmation.pending_effect?.proposed_action.tool, "codex.run");
     assert.equal(awaitingConfirmation.pending_effect?.operation, "delegate_local_code");
     assert.equal(awaitingConfirmation.execution_workspace?.authority.branch, branch);
+    assert.deepEqual(awaitingConfirmation.pending_effect?.proposed_action.arguments, {
+      mode: "new",
+      prompt: "Perform one bounded specialist coding task.",
+      base_commit: baseCommit,
+      branch,
+      worktree: ".",
+      cwd: ".",
+      model: "auto",
+      profile: "fast",
+      reasoning_effort: "auto",
+      service_tier: "fast",
+      sandbox: "workspace-write",
+      approval_policy: "never",
+      selection_rationale: "Use the current codex.run capability for this bounded step.",
+      task_shape: "One bounded coding change with independent later verification.",
+      delegation_strategy: {
+        mode: "single",
+        max_subagents: 0,
+        independent_workstreams: [],
+        integration_owner: "main_codex_thread"
+      },
+      budgets: {
+        timeout_ms: 300_000,
+        max_context_chars: 40_000,
+        max_tool_calls: 32,
+        max_retries: 0
+      }
+    });
     assert.equal(delegatedCalls, 0);
 
     const resumed = await runtime.handle({
@@ -841,11 +844,8 @@ test("GoalRuntime rejects invalid capability selections before policy or tool di
   }, {
     name: "unavailable delegated executor",
     cognition: action("codex.run", {
-      worktree: ".",
       task: "Implement one bounded change in the current repository.",
-      model: "auto",
-      reasoning_effort: "auto",
-      purpose: "execute"
+      task_shape: "One bounded coding task."
     }, "Delegate specialist execution.", {
       capability_id: "codex.run",
       execution_purpose: "specialist_execution"
@@ -952,43 +952,16 @@ test("GoalRuntime reads legacy goals but refuses to silently bind their continua
   }
 });
 
-test("GoalRuntime rejects a codex.run target in a sibling worktree before planning or execution", async () => {
+test("GoalRuntime rejects model-supplied Codex authority fields before planning or execution", async () => {
   const fixture = await createFixture();
   try {
     const boundRoot = join(fixture.root, "bound-worktree");
-    const siblingRoot = join(fixture.root, "sibling-codex-worktree");
     await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-bound", boundRoot]);
-    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-sibling", siblingRoot]);
-    const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
     const tools = recordingTools();
     const cognition = sequenceCognition([action("codex.run", {
-      mode: "new",
-      prompt: "Mutate the wrong sibling worktree.",
-      base_commit: startHead,
-      branch: "codex/goal-sibling",
-      worktree: siblingRoot,
-      cwd: siblingRoot,
-      model: "auto",
-      profile: "fast",
-      reasoning_effort: "auto",
-      service_tier: "fast",
-      sandbox: "workspace-write",
-      approval_policy: "never",
-      selection_rationale: "Synthetic authority mismatch fixture.",
+      task: "Attempt a bounded specialist task.",
       task_shape: "One bounded coding task.",
-      delegation_strategy: {
-        mode: "single",
-        max_subagents: 0,
-        independent_workstreams: [],
-        integration_owner: "main_codex_thread"
-      },
-      budgets: {
-        timeout_ms: 2_000,
-        max_output_chars: 8_000,
-        max_context_chars: 8_000,
-        max_tool_calls: 4,
-        max_retries: 0
-      }
+      worktree: "../sibling-codex-worktree"
     }, "Attempt a delegated mutation outside the Goal authority.")]);
     const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
       cognition,
@@ -1004,7 +977,7 @@ test("GoalRuntime rejects a codex.run target in a sibling worktree before planni
 
     assert.equal(blocked.status, "active");
     assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
-    assert.match(blocked.checkpoint.summary, /codex\.run.*Goal.*worktree authority/i);
+    assert.match(blocked.checkpoint.summary, /specialist executor intent validation failed/i);
     assert.equal(tools.calls.length, 0);
     const events = await readEvents(fixture.stateRoot);
     assert.equal(events.some((event) => event.event_type === "goal_action_planned"), false);
@@ -1013,41 +986,16 @@ test("GoalRuntime rejects a codex.run target in a sibling worktree before planni
   }
 });
 
-test("GoalRuntime rejects provider-pinned codex.run selection before planning or execution", async () => {
+test("GoalRuntime rejects provider-pinned Codex settings supplied by the model before planning or execution", async () => {
   const fixture = await createFixture();
   try {
     const boundRoot = join(fixture.root, "auto-selection-worktree");
     await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-auto-selection", boundRoot]);
-    const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
     const tools = recordingTools();
     const cognition = sequenceCognition([action("codex.run", {
-      mode: "new",
-      prompt: "Use a provider-pinned selection inside GoalRuntime.",
-      base_commit: startHead,
-      branch: "codex/goal-auto-selection",
-      worktree: ".",
-      cwd: ".",
-      model: "gpt-5",
-      profile: "fast",
-      reasoning_effort: "minimal",
-      service_tier: "fast",
-      sandbox: "workspace-write",
-      approval_policy: "never",
-      selection_rationale: "Synthetic stale provider-selection fixture.",
+      task: "Use a specialist executor inside GoalRuntime.",
       task_shape: "One bounded coding task.",
-      delegation_strategy: {
-        mode: "single",
-        max_subagents: 0,
-        independent_workstreams: [],
-        integration_owner: "main_codex_thread"
-      },
-      budgets: {
-        timeout_ms: 2_000,
-        max_output_chars: 8_000,
-        max_context_chars: 8_000,
-        max_tool_calls: 4,
-        max_retries: 0
-      }
+      model: "gpt-5",
     }, "Attempt to pin provider details inside the Goal-owned seam.")]);
     const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
       cognition,
@@ -1063,7 +1011,7 @@ test("GoalRuntime rejects provider-pinned codex.run selection before planning or
 
     assert.equal(blocked.status, "active");
     assert.deepEqual(blocked.continuation_reasons, ["blocked"]);
-    assert.match(blocked.checkpoint.summary, /GoalRuntime codex\.run selection must use auto/i);
+    assert.match(blocked.checkpoint.summary, /specialist executor intent validation failed/i);
     assert.equal(tools.calls.length, 0);
     const events = await readEvents(fixture.stateRoot);
     assert.equal(events.some((event) => event.event_type === "goal_action_planned"), false);
@@ -2544,11 +2492,10 @@ test("GoalRuntime rejects purpose markers without equal harness snapshots", asyn
 });
 
 test("GoalRuntime accepts one bounded 200-path codex.run lineage after later verification", async () => {
-  const fixture = await createFixture();
+    const fixture = await createFixture();
   try {
     const boundRoot = join(fixture.root, "capacity-worktree");
     await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-capacity", boundRoot]);
-    const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
     const changes = Array.from({ length: 200 }, (_, index) => ({
       kind: "workspace_path" as const,
       identity: `generated/path-${String(index).padStart(3, "0")}.ts`
@@ -2578,33 +2525,8 @@ test("GoalRuntime accepts one bounded 200-path codex.run lineage after later ver
     };
     const cognition = sequenceCognition([
       action("codex.run", {
-        mode: "new",
-        prompt: "Create the bounded generated path set.",
-        base_commit: startHead,
-        branch: "codex/goal-capacity",
-        worktree: ".",
-        cwd: ".",
-        model: "auto",
-        profile: "fast",
-        reasoning_effort: "auto",
-        service_tier: "fast",
-        sandbox: "workspace-write",
-        approval_policy: "never",
-        selection_rationale: "Synthetic bounded capacity fixture.",
-        task_shape: "One bounded coding task with 200 paths.",
-        delegation_strategy: {
-          mode: "single",
-          max_subagents: 0,
-          independent_workstreams: [],
-          integration_owner: "main_codex_thread"
-        },
-        budgets: {
-          timeout_ms: 2_000,
-          max_output_chars: 8_000,
-          max_context_chars: 8_000,
-          max_tool_calls: 4,
-          max_retries: 0
-        }
+        task: "Create the bounded generated path set.",
+        task_shape: "One bounded coding task with 200 paths."
       }, "Delegate one bounded 200-path change set."),
       action("command.run", {
         command: "pnpm",
@@ -2855,11 +2777,10 @@ test("GoalRuntime retains early changes beyond the recent evidence window", asyn
 });
 
 test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains abandonable", async () => {
-  const fixture = await createFixture();
+    const fixture = await createFixture();
   try {
     const boundRoot = join(fixture.root, "capacity-guard-worktree");
     await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/goal-capacity-guard", boundRoot]);
-    const startHead = await goalGitValue(boundRoot, ["rev-parse", "HEAD"]);
     const retainedChanges = Array.from({ length: 201 }, (_, index) => ({
       kind: "state_change" as const,
       identity: `docs/capacity-retained-${String(index).padStart(2, "0")}.md`
@@ -2884,33 +2805,8 @@ test("GoalRuntime blocks a capacity-breaking effect before dispatch and remains 
       cognition: sequenceCognition([
         action("file.write_repo", { path: "docs/capacity-seed.md", text: "seed" }, "Observe one bounded multi-identity harness mutation."),
         action("codex.run", {
-          mode: "new",
-          prompt: "Attempt an atomic delegated observation after capacity is no longer sufficient.",
-          base_commit: startHead,
-          branch: "codex/goal-capacity-guard",
-          worktree: ".",
-          cwd: ".",
-          model: "auto",
-          profile: "fast",
-          reasoning_effort: "auto",
-          service_tier: "fast",
-          sandbox: "workspace-write",
-          approval_policy: "never",
-          selection_rationale: "Synthetic atomic-capacity reservation fixture.",
-          task_shape: "One bounded coding task that may emit 200 paths and one commit.",
-          delegation_strategy: {
-            mode: "single",
-            max_subagents: 0,
-            independent_workstreams: [],
-            integration_owner: "main_codex_thread"
-          },
-          budgets: {
-            timeout_ms: 2_000,
-            max_output_chars: 8_000,
-            max_context_chars: 8_000,
-            max_tool_calls: 4,
-            max_retries: 0
-          }
+          task: "Attempt an atomic delegated observation after capacity is no longer sufficient.",
+          task_shape: "One bounded coding task that may emit 200 paths and one commit."
         }, "Reserve the full atomic Codex change envelope before dispatch.")
       ]),
       tools,
@@ -3399,6 +3295,23 @@ function action(
       rationale: `Use the current ${tool} capability for this bounded step.`,
       verification_plan: "Inspect the canonical observation before choosing the next step or accepting an outcome.",
       fallback: "Block with the observed failure and choose an explicit available fallback.",
+      ...(tool === "codex.run" ? {
+        capability_fit_assessment: {
+          considered_capability_ids: [
+            "file.read",
+            "file.write_state",
+            "file.write_repo",
+            "repo.search",
+            "runtime.inspect",
+            "http.fetch",
+            "command.run",
+            "codex.run",
+            "code.execute_node"
+          ],
+          considered_skill_refs: [],
+          conclusion: "The bounded specialist executor is the selected fit after comparing the current available capability portfolio."
+        }
+      } : {}),
       ...selection
     },
     action: { tool, arguments: args }

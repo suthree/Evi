@@ -32,6 +32,14 @@ _Avoid_: Static task router, capability catalog, permission grant, planner
 The model-proposed choice of one candidate from the current **Capability Portfolio**, including its execution purpose, selected skill refs, rationale, verification plan, and fallback. The **Harness Kernel** validates it before effect policy or execution; Evi still owns evidence and acceptance.
 _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 
+**Capability Fit Assessment**:
+For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
+_Avoid_: Static router, authority token, delegated completion claim
+
+**Specialist Executor Intent**:
+The narrow, model-authored request to a **Delegated Agent Surface**: a bounded `task` and `task_shape`. The **GoalRuntime** adapter derives protocol details such as new/resume mode, worktree, profile, model, authority handle, and budgets from bound state and canonical evidence before the typed tool validates them again.
+_Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, completion claim
+
 **Goal Execution Workspace**:
 The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
 _Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root

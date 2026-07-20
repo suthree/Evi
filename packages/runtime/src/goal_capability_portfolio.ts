@@ -76,6 +76,19 @@ export interface GoalCapabilityPortfolioProvider {
   resolve(input: GoalCapabilityPortfolioInput): Promise<GoalCapabilityPortfolio>;
 }
 
+const capabilityFitAssessmentSchema = z.object({
+  considered_capability_ids: z.array(z.string().trim().min(1).max(128)).min(1).max(MAX_GOAL_CAPABILITIES),
+  considered_skill_refs: z.array(z.string().trim().min(1).max(1_000)).max(MAX_GOAL_SELECTED_SKILLS),
+  conclusion: z.string().trim().min(1).max(2_000)
+}).strict().superRefine((value, context) => {
+  if (new Set(value.considered_capability_ids).size !== value.considered_capability_ids.length) {
+    context.addIssue({ code: "custom", path: ["considered_capability_ids"], message: "considered_capability_ids must be unique" });
+  }
+  if (new Set(value.considered_skill_refs).size !== value.considered_skill_refs.length) {
+    context.addIssue({ code: "custom", path: ["considered_skill_refs"], message: "considered_skill_refs must be unique" });
+  }
+});
+
 export const goalCapabilitySelectionSchema = z.object({
   capability_id: z.string().trim().min(1).max(128),
   execution_purpose: z.enum([
@@ -88,7 +101,8 @@ export const goalCapabilitySelectionSchema = z.object({
   skill_refs: z.array(z.string().trim().min(1).max(1_000)).max(MAX_GOAL_SELECTED_SKILLS),
   rationale: z.string().trim().min(1).max(2_000),
   verification_plan: z.string().trim().min(1).max(2_000),
-  fallback: z.string().trim().min(1).max(2_000)
+  fallback: z.string().trim().min(1).max(2_000),
+  capability_fit_assessment: capabilityFitAssessmentSchema.optional()
 }).strict().superRefine((value, context) => {
   if (new Set(value.skill_refs).size !== value.skill_refs.length) {
     context.addIssue({ code: "custom", path: ["skill_refs"], message: "skill_refs must be unique" });
@@ -196,7 +210,39 @@ export function validateGoalCapabilitySelection(
   const selectedSkillRefs = new Set(portfolio.selected_skills.map((skill) => skill.instructions_ref));
   const unselected = selection.skill_refs.find((ref) => !selectedSkillRefs.has(ref));
   if (unselected) throw new Error(`Goal capability selection cites unselected skill: ${unselected}`);
+  if (capability.kind === "delegated_executor") {
+    validateDelegatedCapabilityFitAssessment(selection, portfolio);
+  }
   return selection;
+}
+
+function validateDelegatedCapabilityFitAssessment(
+  selection: GoalCapabilitySelection,
+  portfolio: GoalCapabilityPortfolio
+): void {
+  const assessment = selection.capability_fit_assessment;
+  if (!assessment) {
+    throw new Error("Delegated capability selection requires capability_fit_assessment before specialist execution");
+  }
+  assertExactReferences(
+    assessment.considered_capability_ids,
+    portfolio.capabilities.map((candidate) => candidate.id),
+    "capability_fit_assessment.considered_capability_ids"
+  );
+  assertExactReferences(
+    assessment.considered_skill_refs,
+    portfolio.selected_skills.map((skill) => skill.instructions_ref),
+    "capability_fit_assessment.considered_skill_refs"
+  );
+}
+
+function assertExactReferences(actual: string[], expected: string[], field: string): void {
+  const actualSet = new Set(actual);
+  const expectedSet = new Set(expected);
+  if (actualSet.size !== expectedSet.size
+    || [...actualSet].some((item) => !expectedSet.has(item))) {
+    throw new Error(`${field} must cover exactly the current Capability Portfolio`);
+  }
 }
 
 function capabilityCandidate(
@@ -215,9 +261,18 @@ function capabilityCandidate(
     side_effect_level: contract.side_effect_level,
     workspace_placement: contract.goal_store_placement,
     arguments: contract.tool === "codex.run"
-      ? { ...contract.arguments, model: "auto,new,required", reasoning_effort: "auto,new,required" }
+      ? {
+          task: "bounded specialist task",
+          task_shape: "bounded task shape"
+        }
       : structuredClone(contract.arguments),
-    constraints: [...(contract.constraints ?? [])],
+    constraints: contract.tool === "codex.run"
+      ? [
+          "Goal cognition supplies only task and task_shape; low-level Codex invocation fields are rejected",
+          "GoalRuntime derives new or resume mode, worktree, branch, base commit, model/profile, authority handle, delegation plan, and budgets from bound authority and canonical evidence",
+          "the typed tool adapter re-verifies derived authority before dispatch; delegated output remains untrusted until canonical observation and independent verification"
+        ]
+      : [...(contract.constraints ?? [])],
     readiness: delegatedUnavailable ? "unavailable" : "available",
     readiness_reason: delegatedUnavailable
       ? "codex.run requires the Goal to bind an isolated execution workspace before specialist execution"
