@@ -18,7 +18,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - 命令、服务运维和恢复：`docs/LOCAL_RUNTIME.md`；
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
-- 活跃工作和持久决策：GitHub Issue 与 `.trellis/`；
+- 活跃自进化和持久决策：`GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与已接受
+  ADR；GitHub 是可选的外部交付 evidence；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -196,7 +197,8 @@ terminal Goal outcome 得到有界 Projection，而没有新增 state owner。�
 
 ## 渐进替换顺序
 
-每个阶段必须新建一个已接受 Issue 和一个 Trellis task；同一时间只能激活一个阶段。
+每个阶段必须有一个有边界的活跃 Goal、具名的 Decision Owner、明确的接受 evidence，以及
+verification 或 recovery 标准。只有 effect boundary 和 owner 不冲突时，才可以并存多个 Goal。
 
 Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal evidence 已能产生
 有界 Tool 选择建议，proof-only 常驻 Projection 已被删除。旧诊断命令/源码退役以及更
@@ -224,7 +226,8 @@ Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal
 2026-07-18 的稳定化暂停已在 operator 明确恢复 Issue #56 后，为唯一有界 child #93
 满足。后续每个 feature child 都必须重新满足同一 Gate：
 
-- stabilization Issue 已合并，root/worktree/GitHub/Trellis 状态已一致且干净；
+- stabilization Goal 已有经验证的 `OutcomeReceipt`，且 root/worktree、可选 GitHub
+  delivery evidence 和 live runtime 状态已核对一致；
 - operator 明确恢复 Issue #56，或接受 successor program；
 - 只存在一个有界 child Issue，并明确 owner module、Interface、非目标、替换/删除路径、
   验证和 rollback；

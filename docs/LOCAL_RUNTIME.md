@@ -8,8 +8,8 @@ The approved v0.2 direction allows the same single-user runtime to be deployed
 to multiple independently operated nodes. It does not introduce shared runtime
 state or a hosted control plane. Target topology, LuBan asset identity, and
 node activation are defined in `docs/V0.2_MULTI_NODE_EVOLUTION.md`; current
-commands below remain the v0.1 command contract until corresponding Trellis
-tasks are implemented and verified.
+commands below remain the v0.1 command contract until corresponding accepted
+native-control-plane Goals are implemented and verified.
 
 ## Owner Process
 
@@ -102,8 +102,9 @@ to Simplified Chinese unless the operator explicitly requests another language.
 Command names, option names, JSON fields, and evidence refs remain literal.
 The command reference below includes application, local-learning, and legacy
 diagnostic surfaces for explicit inspection. It does not select active work.
-Engineering activation belongs to GitHub Issues and Trellis tasks; runtime
-continuity and outcomes belong to GoalRuntime and OutcomeReceipt.
+Engineering activation belongs to bounded Goals, their Decision Owner, and the
+native harness; runtime continuity and outcomes belong to GoalRuntime and
+OutcomeReceipt. GitHub remains optional external delivery evidence.
 
 ```bash
 pnpm run runtime -- doctor
@@ -488,8 +489,9 @@ Any generated image output path must remain under the state root.
 while the old self-proof chain is retired in bounded slices. They no longer
 select active work, appear as resident context sections, or own completion.
 
-Use GitHub Issues and Trellis tasks for engineering activation. Use canonical
-Goal events and one OutcomeReceipt for runtime outcome evidence. Later Goal
+Use bounded Goals, Decision Owner acceptance, and the native harness for
+engineering activation. Use canonical Goal events and one OutcomeReceipt for
+runtime outcome evidence. Later Goal
 cognition receives bounded Prior Tool Experience derived from previously
 terminal Goals; it does not read raw tool output or treat Goal association as
 causal proof.

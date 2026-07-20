@@ -25,7 +25,9 @@ may replace shallow paths. It does not own:
 - SOP, skill, vault, promotion, and retirement policy:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
-- active work or durable decisions: GitHub Issues and `.trellis/`;
+- active self-evolution and durable decisions: `GoalRuntime`, `Harness`,
+  `OutcomeReceipt`, stable docs, and accepted ADRs; GitHub is optional external
+  delivery evidence;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -238,8 +240,9 @@ that context or harness decomposition is finished.
 
 ## Staged Replacement Order
 
-Each stage requires a new accepted Issue and one Trellis task. Only one stage
-may be active at a time.
+Each stage requires one bounded active Goal, a named Decision Owner, explicit
+acceptance evidence, and verification or recovery criteria. More than one Goal
+may exist only when their effect boundaries and ownership do not conflict.
 
 The outcome-learning consolidation completed the first narrow part of stages 4
 and 5: canonical Goal evidence now drives bounded tool selection guidance, and
@@ -276,8 +279,8 @@ The 2026-07-18 stabilization pause was satisfied for the single bounded Issue
 #93 child after the operator explicitly resumed Issue #56. Every later feature
 child must repeat the same gate:
 
-- the stabilization Issue is merged and root/worktree/GitHub/Trellis state is
-  reconciled and clean;
+- the stabilization Goal has a verified `OutcomeReceipt`, and root/worktree,
+  optional GitHub delivery evidence, and live runtime state are reconciled;
 - the operator explicitly resumes Issue #56 or accepts a successor program;
 - exactly one bounded child Issue names its owner module, interface, non-goals,
   replacement/deletion path, verification, and rollback;

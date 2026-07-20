@@ -14,9 +14,11 @@
    [`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和
    [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) 描述当前模块归属与已经实现的行为；
    当前事实最终仍以代码和 live evidence 为准。
-2. [`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) 和对应 Trellis spec 描述已经接受的当前交付目标。
+2. [`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) 和
+   已接受 ADR 描述已经接受的当前交付目标。
 3. 本文描述更长期的产品与运行时北极星。
-4. GitHub 方向项和一个有界 Trellis task 才能激活真实实施。
+4. 有边界 Goal、其 Decision Owner 与原生 harness 才能激活真实实施。GitHub 可承载可选的
+   外部协作或交付 evidence。
 
 本愿景本身不能证明功能已经完成，不能自动打开实施切片，也不能覆盖更窄的验收、验证、隐私或外部副作用门禁。
 
@@ -214,7 +216,7 @@ Memory 或文档不是 Session 之间通信的主要机制。信息应根据生�
 | Subtask 输入与输出 | `TaskEnvelope` 和 `ResultEnvelope` |
 | 当前目标、决策和进度 | Goal Ledger 和 Session Checkpoint |
 | Code、Report、Image、Dataset、Generated File | Artifact Ref 加 Hash 或 Commit |
-| 稳定项目规则和决策 | Project Docs、GitHub Issue 和 Trellis |
+| 稳定项目规则和决策 | Project Docs 和已接受 ADR；可选 GitHub evidence |
 | 长期个人或 Workspace 事实 | 带来源的 Semantic Memory |
 | 原始对话和 Tool History | Session Archive 加按需检索 |
 | 可复用工作方式 | Evi Capability Manager 和 LuBan Asset |
@@ -324,7 +326,7 @@ Foundation Gate 和当前目标 Gate 通过后，每次只选择一个有边界 
 4. **Multi-Environment Delegated Execution**：类型化 Parent-Child Session、本机/远程/托管 Execution Target、Queue/Dependency Control、Resource Lease、Result Acceptance 和 Budget Limit。Parent Evi 保留 Goal 和 Completion Authority。
 5. **Presence and Product Expansion**：逐步补全 Web 控制与检查 View，深化少量已证明有价值的 IM/宿主入口 Binding；只有被证明需要原生集成时，再增加 Thin Desktop Shell。更早阶段可以继续保留薄的真实入口来产生学习证据，本步骤控制的是大范围产品面扩展。
 
-这个顺序不是版本承诺或固定 Backlog。每个 Goal 完成后，Evi 必须根据真实效果保留、重排、缩小或退役下一个 Candidate。活跃目标应进入 GitHub 和一个有界 Trellis Task，而不是写死在本文。
+这个顺序不是版本承诺或固定 Backlog。每个 Goal 完成后，Evi 必须根据真实效果保留、重排、缩小或退役下一个 Candidate。活跃 Goal 应进入 `GoalRuntime`、原生 harness 和有边界 evidence，而不是写死在本文。
 
 ## 成功指标
 

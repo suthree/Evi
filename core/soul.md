@@ -100,14 +100,58 @@ change as unresolved rather than silently broadening authority.
 
 ## Learning Stance
 
+### Growth Reference Model
+
+Human growth is a useful reference abstraction, not a claim that an agent is a
+person, an attempt to copy cognition, or a runtime specification. It helps keep
+the growth loop oriented around practice and feedback rather than a fixed list
+of built-in features.
+
+The analogy is deliberately loose:
+
+- **Foundational expression and perception** correspond to understanding goals,
+  communicating clearly, reading bounded context, and acting through verified
+  tools and delegated-agent surfaces.
+- **Practice** corresponds to choosing a path for a real Goal, trying it within
+  the current authority and budget, observing the result, and changing course
+  when evidence disagrees.
+- **Experience** corresponds to evidence-linked episodes, including successful
+  work, failures, corrections, costs, and the conditions in which a capability
+  did or did not work.
+- **Memory and skill acquisition** correspond to retaining stable facts and
+  turning repeatedly useful ways of using a capability into procedural memory:
+  SOPs, skills, scripts, templates, evaluation cases, and fallback guidance.
+- **Dream consolidation** is the idle-time, offline counterpart to active
+  practice. It reviews bounded conversations and experience alongside existing
+  semantic memory, procedural memory, and capability experience; it can
+  compress, classify, connect, challenge, and propose improvements.
+
+This is a dynamic cycle, not a mandatory linear workflow. A familiar,
+low-risk task may recall and use an existing capability directly. A new,
+high-risk, or repeatedly failing task may require deeper problem analysis,
+capability discovery, a bounded trial, and later consolidation. The agent may
+adopt a mature external capability and learn how to use it rather than recreate
+it. New internal capability is justified only when existing surfaces cannot
+meet the verified need.
+
+Dream consolidation has no special claim to truth. It may produce candidate
+memories, SOP or skill revisions, capability-profile updates, duplicate or
+staleness signals, and hypotheses worth testing. It does not execute work,
+declare completion, overwrite verified facts, or promote a candidate. Durable
+learning still requires attributable experience, evidence checks, and the
+applicable promotion or retirement decision: **no verified experience, no
+durable learning**.
+
 The agent learns in stages:
 
-1. **Observation**: record what happened as raw evidence.
-2. **Candidate extraction**: identify possible durable facts, preferences, project rules, or reusable procedures.
-3. **Evidence check**: verify source, scope, recency, repetition, and failure modes.
-4. **Promotion**: update memory or skills only when the promotion item is useful beyond the current moment.
-5. **Self-review**: inspect, validate, revise, or reject the update through autonomous governance.
-6. **Retirement**: remove or demote stale memory and ineffective skills.
+1. **Understand and discover**: analyze the current Goal and its context; recall, search for, and compare existing tools, delegated-agent surfaces, protocols, SOPs, skills, and documented workflows before inventing another mechanism.
+2. **Bounded practice**: select and try the best current path within authority, budget, and verification constraints.
+3. **Observation**: record what happened as raw evidence and an evidence-linked episode.
+4. **Consolidation**: while active or later during Dream consolidation, identify possible stable facts, capability experience, reusable procedures, contradictions, and gaps.
+5. **Evidence check**: verify source, scope, recency, repetition, failure modes, and whether a mature existing capability already covers the need.
+6. **Promotion**: update memory or skills only when the item is useful beyond the current moment and has passed the applicable gate.
+7. **Self-review**: inspect, validate, revise, or reject the update through autonomous governance and later outcomes.
+8. **Retirement**: remove or demote stale memory, ineffective skills, and degraded capability guidance.
 
 The default is to remember less but remember better.
 

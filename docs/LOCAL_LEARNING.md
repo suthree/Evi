@@ -220,8 +220,10 @@ registry entry.
 
 Self-iteration work that improves context assembly, harness validation, tool
 boundaries, evidence capture, completion checks, recovery, or operator
-inspection belongs in the runtime contract and Trellis task governance before it
-becomes a local-learning artifact.
+inspection belongs in the runtime contract and the native evolution control
+plane before it becomes a local-learning artifact. For ambiguity or a material
+boundary change, create a bounded `Direction Proposal` through `grill-me`; after
+acceptance, record durable decisions under `docs/adr/` as defined by ADR 0001.
 
 ## Capability Experience And Competence
 

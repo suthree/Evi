@@ -12,10 +12,10 @@ runtime for resident channel intake and a localhost operator web console.
 The approved v0.2 target is specified separately in
 `docs/V0.2_MULTI_NODE_EVOLUTION.md`. That target adds private Git-backed asset
 distribution and per-node activation while preserving node-local execution,
-raw memory, state, and failure isolation. Until a v0.2 Trellis task is
-implemented and verified, this document remains the authority for current
-runtime behavior and the v0.2 document must not be used to claim that a
-multi-node capability already exists.
+raw memory, state, and failure isolation. Until a corresponding accepted
+native-control-plane Goal is implemented and verified, this document remains
+the authority for current runtime behavior and the v0.2 document must not be
+used to claim that a multi-node capability already exists.
 
 ## Scope
 
@@ -63,7 +63,7 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 - Operator-facing discussion and final responses default to Simplified Chinese.
 - Keep model-facing default entrypoints and instruction files in English when
   that keeps the runtime contract clearer: `README.md`, `AGENTS.md`,
-  `.trellis/agents/AGENTS.md`, `core/soul.md`, and related prompt/context files.
+  `core/soul.md`, and related prompt/context files.
 - Use paired docs for important human-facing entrypoints. The first pair is
   `README.md` for models/tools and `docs/README.cn.md` for local Simplified
   Chinese reading. Root README files stay thin and link into Chinese companions
@@ -89,11 +89,10 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 - `docs/LOCAL_LEARNING.md` is SOP, skill, and active-vault guidance.
 - `docs/ACTIVE_EXPLORATION.md` is opt-in design and acceptance material for
   content/publishing/image-generation work only.
-- `.trellis/spec/` and `.trellis/tasks/` are repo-local governance records, not
-  runtime state or durable memory.
-- Trellis-generated agent context is tool-owned project governance context. It
-  should be refreshed through Trellis commands instead of hand-owned as the
-  runtime contract.
+- `docs/adr/` holds accepted durable architectural and governance decisions.
+- `.trellis/` is a frozen historical archive and evidence source, not runtime
+  state, durable memory, active governance, or default context. Its generated
+  agent context must not be refreshed or loaded as active instruction.
 
 ## Reference Stance
 
@@ -198,10 +197,13 @@ validation before creating a parallel path.
 model sees, validate what the model asks to do, preserve evidence, and decide
 whether completion claims are acceptable.
 
-Trellis is the project self-iteration maintenance tool for bounded tasks,
-specs, decisions, and command-maintained agent context. It is not runtime
-state, durable memory, the active vault, the skill promotion gate, or the
-authority for current runtime behavior.
+The active self-evolution control plane is `GoalRuntime`, `Harness`, canonical
+evidence, and `OutcomeReceipt`, with stable direction in project docs and
+accepted ADRs. Dynamic controls scale with scope, risk, evidence, verification,
+recovery, reversibility, and current operator intent. `.trellis/` remains
+frozen historical evidence only; it is not runtime state, durable memory, the
+active vault, the skill promotion gate, active governance, or authority for
+current runtime behavior.
 
 ### Dynamic Authority And Decision Ownership
 
@@ -307,14 +309,17 @@ without the field remain readable, pausable, and abandonable, but cannot
 Continue or dispatch. Use the same control `--repo-root` throughout.
 
 A Goal may later derive one isolated execution workspace from one successful
-canonical `workspace.prepare` observation. Preparation requires a fresh
-`codex/issue-N-slug` branch, the exact control start HEAD as base, a clean and
-unchanged main control checkout, the same Git common directory, and a derived
-ignored `.worktrees/<branch-basename>` path. The observation is the only source
-of the execution-workspace projection; there is no registry, second state
-owner, or ingress-time creation. Repo-scoped tools then use this workspace,
-while state-scoped tools keep the original state root. Continue, Resume, and
-immediate pre-dispatch checks live-validate the derived authority.
+canonical `workspace.prepare` observation. Current implementation compatibility
+requires a fresh `codex/issue-N-slug` branch, the exact control start HEAD as
+base, a clean and unchanged main control checkout, the same Git common
+directory, and a derived ignored `.worktrees/<branch-basename>` path. The
+legacy branch pattern does not require a live GitHub Issue; ADR 0001 records
+its replacement by a Goal-derived format as a separate, unimplemented runtime
+slice. The observation is the only source of the execution-workspace projection;
+there is no registry, second state owner, or ingress-time creation. Repo-scoped
+tools then use this workspace, while state-scoped tools keep the original state
+root. Continue, Resume, and immediate pre-dispatch checks live-validate the
+derived authority.
 
 For `codex.run`, GoalRuntime resolves the proposed new target or persisted
 resume handle against the execution workspace when one is bound, otherwise the
@@ -892,8 +897,9 @@ mutate state, write the repo, or write the active vault.
 iterations` remain readable for historical state inspection and migration
 diagnostics. They are not resident context sections, capability-selection
 authority, active-work owners, or completion truth. New engineering delivery
-is activated through one GitHub Issue and one Trellis task; new runtime
-learning derives from canonical Goal events and one OutcomeReceipt.
+is activated through a bounded Goal, Decision Owner acceptance, and the native
+harness; new runtime learning derives from canonical Goal events and one
+OutcomeReceipt.
 
 These legacy commands may read their existing bounded state and may preserve
 historical write commands for compatibility during staged retirement. They
@@ -2131,9 +2137,11 @@ Required policy:
 - require GoalRuntime execution context; standalone calls fail closed
 - accept only the strict `branch` and `base_commit` fields; unknown fields are
   denied before dispatch
-- accept only a fresh `codex/issue-N-slug` branch and the exact immutable
-  control-authority start HEAD as `base_commit`; current control HEAD must still
-  equal that start HEAD at preparation time
+- current implementation accepts only a fresh legacy `codex/issue-N-slug`
+  branch and the exact immutable control-authority start HEAD as `base_commit`;
+  current control HEAD must still equal that start HEAD at preparation time.
+  This compatibility pattern does not require a live GitHub Issue and is slated
+  for Goal-derived replacement in a separately verified runtime slice
 - require the control authority to be a clean, unchanged main checkout and the
   target `.worktrees/<branch-basename>` path to be Git-ignored and absent
 - atomically acquire the fresh branch, reserve the derived path, create the
@@ -3998,8 +4006,9 @@ packages/runtime/src/channels/feishu/ # first IM provider
 Target first-version commands:
 The list includes available inspection, application, local-learning, and
 legacy diagnostic surfaces. It does not select active work. Engineering
-activation belongs to GitHub Issues and Trellis tasks; runtime continuity and
-outcomes belong to GoalRuntime and OutcomeReceipt.
+activation belongs to bounded Goals, their Decision Owner, and the native
+harness; runtime continuity and outcomes belong to GoalRuntime and
+OutcomeReceipt.
 
 ```bash
 pnpm run runtime -- doctor
