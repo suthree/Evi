@@ -260,7 +260,7 @@ test("RuntimeGoalToolExecutor recovers Codex evidence only from the matching ter
       tool: "codex.run",
       ok: true,
       summary: "Verified child terminal result.",
-      output: { status: "done" },
+      output: { status: "done", result: { status: "done" } },
       side_effect_level: "local_write" as const,
       created_at: "2026-07-20T00:00:01.000Z"
     };
@@ -271,6 +271,50 @@ test("RuntimeGoalToolExecutor recovers Codex evidence only from the matching ter
       completed_at: "2026-07-20T00:00:02.000Z"
     });
     assert.deepEqual(await executor.recover({ tool: "codex.run", arguments: {} }, decision, context), terminal);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("RuntimeGoalToolExecutor keeps a pre-dispatch Codex request failure observable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-goal-codex-pre-dispatch-"));
+  const repoRoot = join(root, "repo");
+  const stateRoot = join(root, "state");
+  const store = new AgentStore(repoRoot, stateRoot);
+  try {
+    await mkdir(repoRoot, { recursive: true });
+    const executor = new RuntimeGoalToolExecutor(store);
+    const result = await executor.execute({
+      tool: "codex.run",
+      arguments: { mode: "invalid" }
+    }, {
+      outcome: "allow" as const,
+      reason: "Fixture request validation.",
+      intent: {
+        operation: "write_local" as const,
+        target: "codex:fixture",
+        reversibility: "reversible",
+        data_exposure: "local_content_to_model",
+        authority: "standing_local_evolution" as const
+      }
+    }, {
+      goal_id: "goal_pre_dispatch_fixture",
+      effect_id: "goal_effect_pre_dispatch_fixture",
+      action_digest: "a".repeat(64),
+      control_repository_authority: {
+        schema_version: 1 as const,
+        repo_root: repoRoot,
+        git_common_dir: join(repoRoot, ".git"),
+        worktree: repoRoot,
+        branch: "develop",
+        start_head_commit: "b".repeat(40),
+        boundary: "fixture control authority"
+      },
+      execution_workspace: null
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.output.failure_kind, "codex_invalid_request");
+    assert.equal(result.output.durable_dispatch_state, undefined);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

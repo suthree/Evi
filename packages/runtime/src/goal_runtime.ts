@@ -304,6 +304,7 @@ const actionPlannedEventSchema = z.object({
   action_digest: z.string().regex(/^[a-f0-9]{64}$/),
   effect_id: safeIdSchema,
   effect_decision: effectDecisionSchema,
+  checkpoint: goalCheckpointSchema.optional(),
   usage_delta: goalUsageSchema
 }).strict();
 
@@ -312,7 +313,8 @@ const effectConfirmedEventSchema = z.object({
   event_type: z.literal("goal_effect_confirmed"),
   intent_event_id: safeIdSchema,
   effect_id: safeIdSchema,
-  action_digest: z.string().regex(/^[a-f0-9]{64}$/)
+  action_digest: z.string().regex(/^[a-f0-9]{64}$/),
+  checkpoint: goalCheckpointSchema.optional()
 }).strict();
 
 const actionObservedEventSchema = z.object({
@@ -1067,6 +1069,14 @@ export class GoalRuntime {
         action_digest: actionDigest,
         effect_id: effectId,
         effect_decision: effectDecision,
+        checkpoint: normalizeCheckpoint({
+          cursor: `effect:${effectId}:${effectDecision.outcome === "allow" ? "outcome_unknown" : "confirmation_required"}`,
+          summary: cognition.summary,
+          next_action: effectDecision.outcome === "allow"
+            ? `Reconcile the dispatched effect ${effectId}; do not replay it without a matching terminal child record.`
+            : `Confirm exact effect ${effectId} or abandon the goal.`,
+          selected_refs: state.view.checkpoint.selected_refs
+        }),
         usage_delta: decisionUsage
       });
       events = planned.events;
@@ -1119,7 +1129,13 @@ export class GoalRuntime {
       event_type: "goal_effect_confirmed",
       intent_event_id: state.pending.event_id,
       effect_id: state.pending.effect_id,
-      action_digest: state.pending.action_digest
+      action_digest: state.pending.action_digest,
+      checkpoint: normalizeCheckpoint({
+        cursor: `effect:${state.pending.effect_id}:outcome_unknown`,
+        summary: state.pending.working_summary,
+        next_action: `Reconcile the dispatched effect ${state.pending.effect_id}; do not replay it without a matching terminal child record.`,
+        selected_refs: state.view.checkpoint.selected_refs
+      })
     });
     return (await this.executePendingEffect(
       confirmed.events,
@@ -1162,6 +1178,9 @@ export class GoalRuntime {
       };
     }
     result = await validateWorkspacePrepareObservation(pending.action, state.view, result);
+    if (isUnresolvedDurableCodexDispatch(pending.action, result)) {
+      return { events, state, view: state.view };
+    }
     const boundedResult = boundedToolResult(result);
     const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
     const toolUsage = normalizeUsage({
@@ -1169,11 +1188,13 @@ export class GoalRuntime {
       elapsed_ms: elapsedSince(toolStarted, this.nowMs())
     });
     const checkpoint = normalizeCheckpoint({
-      cursor: `effect:${pending.effect_id}:observed`,
+      cursor: effectObservationCursor(pending.action, boundedResult, pending.effect_id),
       summary: pending.working_summary,
       next_action: boundedResult.ok
         ? "Evaluate the canonical observation and continue toward an outcome."
-        : "Recover from the failed tool observation before proposing completion.",
+        : terminalCodexNonSuccess(pending.action, boundedResult)
+          ? "Inspect the recorded terminal Codex result before choosing a new action; do not replay the effect."
+          : "Recover from the failed tool observation before proposing completion.",
       selected_refs: mergeCheckpointRefs(
         state.view.checkpoint.selected_refs,
         toolResultRefs(boundedResult)
@@ -1219,11 +1240,13 @@ export class GoalRuntime {
     const boundedResult = boundedToolResult(recovered);
     const evidenceRole = observationEvidenceRole(pending.action, boundedResult);
     const checkpoint = normalizeCheckpoint({
-      cursor: `effect:${pending.effect_id}:reconciled`,
+      cursor: effectObservationCursor(pending.action, boundedResult, pending.effect_id, true),
       summary: pending.working_summary,
       next_action: boundedResult.ok
         ? "Evaluate the recovered child observation and continue toward an outcome."
-        : "Recover from the reconciled child failure before proposing completion.",
+        : terminalCodexNonSuccess(pending.action, boundedResult)
+          ? "Inspect the recorded terminal Codex result before choosing a new action; do not replay the effect."
+          : "Recover from the reconciled child failure before proposing completion.",
       selected_refs: mergeCheckpointRefs(
         state.view.checkpoint.selected_refs,
         toolResultRefs(boundedResult)
@@ -1759,6 +1782,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
           throw new Error(`GoalRuntime action digest mismatch: ${event.id}`);
         }
         usage = addUsage(usage, event.usage_delta);
+        if (event.checkpoint) checkpoint = event.checkpoint;
         softBudgetReached = false;
         verificationFailed = false;
         blocked = false;
@@ -1798,6 +1822,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
           state: "outcome_unknown",
           authorization_event_id: event.id
         };
+        if (event.checkpoint) checkpoint = event.checkpoint;
         nextAction = `Inspect the unknown outcome of confirmed effect ${event.effect_id}; it will not be repeated automatically.`;
         break;
       case "goal_action_observed":
@@ -1991,6 +2016,30 @@ function deriveGoalExecutionWorkspace(
     selected = workspace;
   }
   return selected;
+}
+
+function isUnresolvedDurableCodexDispatch(action: EffectAction, result: ToolResult): boolean {
+  return action.tool === "codex.run" && result.output.durable_dispatch_state === "outcome_unknown";
+}
+
+function terminalCodexNonSuccess(action: EffectAction, result: ToolResult): boolean {
+  return action.tool === "codex.run"
+    && result.ok === false
+    && (result.output.status === "blocked" || result.output.status === "failed")
+    && typeof result.output.result === "object"
+    && result.output.result !== null
+    && !Array.isArray(result.output.result)
+    && (result.output.result as Record<string, unknown>).status === result.output.status;
+}
+
+function effectObservationCursor(
+  action: EffectAction,
+  result: ToolResult,
+  effectId: string,
+  recovered = false
+): string {
+  if (terminalCodexNonSuccess(action, result)) return `effect:${effectId}:terminal_${result.output.status}`;
+  return `effect:${effectId}:${recovered ? "reconciled" : "observed"}`;
 }
 
 function goalExecutionAuthority(view: GoalView): GoalRepositoryAuthority {

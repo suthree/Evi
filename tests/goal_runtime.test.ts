@@ -3419,6 +3419,79 @@ test("GoalRuntime reconciles an outcome-unknown effect only from a terminal chil
   }
 });
 
+test("GoalRuntime checkpoints distinguish an unresolved Codex dispatch from a recorded terminal failure", async () => {
+  const fixture = await createFixture();
+  try {
+    const boundRoot = join(fixture.root, "terminal-failure-worktree");
+    await runGoalGit(fixture.repoRoot, ["worktree", "add", "-b", "codex/terminal-failure", boundRoot]);
+    let recoverCalls = 0;
+    const tools: GoalToolExecutor = {
+      async execute(effectAction) {
+        assert.equal(effectAction.tool, "codex.run");
+        return {
+          id: "tool_result_unresolved_dispatch",
+          tool: "codex.run",
+          ok: false,
+          summary: "The child dispatch has no terminal record yet.",
+          output: { durable_dispatch_state: "outcome_unknown" },
+          side_effect_level: "local_write",
+          created_at: "2026-07-21T00:00:00.000Z"
+        };
+      },
+      async recover() {
+        recoverCalls += 1;
+        return {
+          id: "tool_result_recorded_terminal_failure",
+          tool: "codex.run",
+          ok: false,
+          summary: "The child recorded a terminal Codex failure.",
+          output: {
+            status: "failed",
+            result: { status: "failed" }
+          },
+          side_effect_level: "local_write",
+          created_at: "2026-07-21T00:00:01.000Z"
+        };
+      }
+    };
+    const runtime = createRuntime(new AgentStore(boundRoot, fixture.stateRoot), {
+      cognition: sequenceCognition([action("codex.run", {
+        task: "Perform one bounded coding task.",
+        task_shape: "One bounded coding task with later verification."
+      }, "Dispatch one bounded Codex task.")]),
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle(start("terminal_failure_start", "Recover one terminal Codex failure safely."));
+    const awaitingConfirmation = await runtime.handle({
+      type: "continue",
+      command_id: "terminal_failure_plan",
+      goal_id: started.goal_id
+    });
+    const unknown = await runtime.handle({
+      type: "resume",
+      command_id: "terminal_failure_confirm",
+      goal_id: started.goal_id,
+      confirm_effect_id: awaitingConfirmation.pending_effect!.effect_id
+    });
+    assert.equal(unknown.status, "paused");
+    assert.deepEqual(unknown.continuation_reasons, ["effect_outcome_unknown"]);
+    assert.match(unknown.checkpoint.cursor, /:outcome_unknown$/);
+
+    const recovered = await runtime.handle({
+      type: "resume",
+      command_id: "terminal_failure_recover",
+      goal_id: started.goal_id
+    });
+    assert.equal(recoverCalls, 1);
+    assert.equal(recovered.status, "active");
+    assert.match(recovered.checkpoint.cursor, /:terminal_failed$/);
+    assert.match(recovered.checkpoint.next_action ?? "", /recorded terminal Codex result/i);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("GoalRuntime writes no legacy orchestration or synchronous-learning state", async () => {
   const fixture = await createFixture();
   try {
