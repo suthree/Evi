@@ -15,6 +15,7 @@
 - 当前常驻指针：`memory/index.md`
 - 共享词汇：`CONTEXT.md`
 - 原生自进化控制、反思与交付治理：`docs/adr/0001-native-evolution-control-plane.cn.md`
+- 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：

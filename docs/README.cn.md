@@ -61,7 +61,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | `GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md) |
+| 活跃工程方向和已接受决策 | `GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)、[`adr/0003-shared-control-state-and-pr-only-delivery.cn.md`](adr/0003-shared-control-state-and-pr-only-delivery.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。
@@ -72,14 +72,14 @@ Goal owner 或完成判定 owner。
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm run release:verify
-pnpm run runtime -- doctor --state-root .runtime/state
+pnpm run runtime -- doctor --state-root ~/.local-runtime/state/evi
 ```
 
 配置好 ignored local credentials 后管理 resident runtime：
 
 ```bash
-pnpm run runtime -- service restart --target runtime --state-root .runtime/state
-pnpm run runtime -- service health --target runtime --state-root .runtime/state
+pnpm run runtime -- service restart --target runtime --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- service health --target runtime --state-root ~/.local-runtime/state/evi
 ```
 
 健康不能只看进程存在。至少核对：

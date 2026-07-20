@@ -114,7 +114,7 @@ own the Self or completion.
 | Goal execution workspace | `packages/runtime/src/goal_execution_workspace.ts` | Prepare and live-validate one Goal-bound isolated linked worktree from the immutable control authority | Task classification, workspace registry, lifecycle scheduling, state-root movement, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
 | Tool competence | `packages/runtime/src/goal_tool_competence.ts`, GoalRuntime cognition input | Pure bounded projection from terminal Goal observations/receipts into later selection guidance | Persistence, causal attribution, Goal acceptance, or automatic promotion |
-| Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts; derived projections remain rebuildable | Product direction or automatic truth promotion |
+| Evidence and state | `packages/core/src/store.ts`, `memory_store.ts`, typed event/artifact writers | Append-only or durable facts in the shared checkout-independent Evi state root; derived projections remain rebuildable | Product direction, source authority, or automatic truth promotion |
 | Learning | `packages/runtime/src/background_review.ts`, core SOP/skill/memory modules | Evidence to candidate, audit, promotion, reuse, revision/retirement | Foreground completion or identity changes by implication |
 | Entrypoints | CLI, Web, Feishu, Telegram, Discord adapters | Parse, bind channel context, submit, deliver, record provider evidence | A second GoalRuntime, memory store, or execution owner |
 | Deployment | service/deployment/supervisor modules | Commit-bound artifact activation, health, rollback and controller handoff | Source integration or product release authority |
@@ -155,15 +155,15 @@ not remain mandatory when it conflicts with an already-satisfied invariant; for
 example, an already-linked control worktree may be the bounded Codex target
 when `codex.run` is ready, without nesting `workspace.prepare`.
 
-Repository placement follows the same dynamic boundary. A Goal starts with an
-immutable control-repository authority. When isolated mutation or specialist
-delegation needs a linked worktree, cognition may select `workspace.prepare`
-from the current Portfolio. One successful canonical observation derives the
-Goal's only execution workspace; it is not a second Goal or state owner. Later
-repo-scoped tools and `codex.run` use that live-validated workspace, while
-state-scoped tools retain the original state root and Continue/Resume still
-validate the control checkout. Preparation is lazy and evidence-gated, not an
-ingress side effect, keyword route, or automatic per-task scheduler.
+Repository placement follows the same dynamic boundary. Every source-mutating
+Goal has one immutable, linked execution worktree for its full delivery
+lineage; later sessions and tools reuse it. A Goal may derive that worktree by
+`workspace.prepare` or bind an already-linked worktree, but never creates one
+per session. The clean root checkout on protected `develop` is control and PR
+integration only. Repo-scoped tools and `codex.run` use the live-validated
+worktree, while state-scoped tools use the shared absolute Evi state root.
+Preparation remains evidence-gated rather than an ingress side effect,
+keyword route, or automatic per-task scheduler.
 
 `codex.run` has a deliberately narrower Goal-facing surface than its standalone
 typed tool protocol. Goal cognition may supply only `task` and `task_shape`,

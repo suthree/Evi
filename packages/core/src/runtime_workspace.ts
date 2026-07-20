@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import type { AgentStore } from "./store.js";
 
-const BOUNDARY = "read-only repo-local runtime workspace diagnostic; scans top-level directory names only; reports unsupported top-level runtime dirs; does not read file bodies, move, delete, mutate state, stage, commit, invoke the model, or write the active vault";
+const BOUNDARY = "read-only repository workspace diagnostic; scans top-level directory names only; reports forbidden project-local runtime dirs; does not read file bodies, move, delete, mutate state, stage, commit, invoke the model, or write the active vault";
 const RUNTIME_ROOT = ".runtime";
 
 export type RuntimeWorkspaceStatus = "ok" | "invalid_layout" | "error";
@@ -68,43 +68,43 @@ export async function getRuntimeWorkspaceStatus(
 }
 
 function isUnsupportedRuntimeDir(name: string): boolean {
-  return name !== RUNTIME_ROOT && /^\.runtime[-_]/.test(name);
+  return name === RUNTIME_ROOT || /^\.runtime[-_]/.test(name);
 }
 
 function runtimeInvalidDir(name: string): RuntimeWorkspaceInvalidDir {
   const slug = name.replace(/^\.runtime[-_]/, "").replace(/[^a-zA-Z0-9._-]+/g, "-") || "runtime";
-  if (name === ".runtime-state") {
+  if (name === RUNTIME_ROOT) {
     return {
       path: name,
-      recommended_action: "delete it after copying any needed evidence into .runtime/state",
-      reason: "default repo-local interactive state must use .runtime/state"
+      recommended_action: "migrate needed evidence to ~/.local-runtime/state/evi, then remove this project-local runtime directory",
+      reason: "the shared control state must not follow a repository checkout or worktree"
     };
   }
   if (/smoke/i.test(name)) {
     return {
       path: name,
-      recommended_action: `move needed evidence to .runtime/smoke/${slug}, otherwise delete it`,
-      reason: "one-off smoke state must use the .runtime/smoke namespace"
+      recommended_action: `move needed evidence to ~/.local-runtime/state-baselines/${slug}, otherwise delete it`,
+      reason: "one-off smoke state must not remain under a repository checkout"
     };
   }
   if (/stage|pipeline/i.test(name)) {
     return {
       path: name,
-      recommended_action: `move needed evidence to .runtime/stage/${slug}, otherwise delete it`,
-      reason: "pipeline or staged experiment state must use the .runtime/stage namespace"
+      recommended_action: "move needed evidence to ~/.local-runtime/state-baselines, otherwise delete it",
+      reason: "pipeline or staged experiment state must not remain under a repository checkout"
     };
   }
   return {
     path: name,
-    recommended_action: "delete it; there is no supported repo-local runtime archive namespace",
-    reason: "repo-local runtime state supports only .runtime/state, .runtime/stage, and .runtime/smoke/<name>"
+    recommended_action: "migrate needed evidence to ~/.local-runtime, otherwise delete it",
+    reason: "there is no supported project-local runtime namespace"
   };
 }
 
 function recommendedRuntimeLayout(): string[] {
   return [
-    ".runtime/state",
-    ".runtime/stage",
-    ".runtime/smoke/<name>"
+    "~/.local-runtime/state/evi",
+    "~/.local-runtime/state-baselines/<name>",
+    "~/.local-runtime/archives/<archive-id>"
   ];
 }

@@ -58,17 +58,18 @@ shared runtime-state system, or autonomous rewrite system.
 
 ## Development flow
 
-`main` is the release branch. Each `f/*` branch starts from `main`, is
-validated and merged into `develop`, then validated `develop` changes merge
-back into `main`.
+`main` is the release branch. `develop` is the protected integration branch.
+Every source change begins and remains in one isolated worktree branch until a
+pull request has passed its required verification and is merged into `develop`.
+No source change is committed or pushed directly to `develop`.
 
 ```text
-main -> f/* -> develop -> main
+main -> feature worktree -> PR -> develop -> main
 ```
 
-The integration branch is `develop`. A release candidate is verified from an
-isolated local environment before `develop` merges into `main` and receives a
-version tag.
+The root checkout stays clean on `develop` as the control plane. A release
+candidate is verified from an isolated local environment before `develop`
+merges into `main` and receives a version tag.
 
 Runtime identifiers, config fields, capability IDs, scripts, and persisted
 state use capability-oriented names such as `local-runtime`, `project_design`,
@@ -80,6 +81,8 @@ projects must not become implementation contracts.
 Active self-evolution is owned by `GoalRuntime`, `Harness`, canonical evidence,
 and `OutcomeReceipt`. Stable direction lives in project docs and accepted ADRs;
 the control boundary is [ADR 0001](docs/adr/0001-native-evolution-control-plane.md).
+Shared state and source-delivery isolation are defined by
+[ADR 0003](docs/adr/0003-shared-control-state-and-pr-only-delivery.md).
 
 | Need | Source |
 | --- | --- |
@@ -98,14 +101,14 @@ as historical evidence and is not the default workflow for new work.
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm run release:verify
-pnpm run runtime -- doctor --state-root .runtime/state
+pnpm run runtime -- doctor --state-root ~/.local-runtime/state/evi
 ```
 
 Start the local runtime after configuring ignored local credentials:
 
 ```bash
-pnpm run runtime -- service restart --target runtime --state-root .runtime/state
-pnpm run runtime -- service health --target runtime --state-root .runtime/state
+pnpm run runtime -- service restart --target runtime --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- service health --target runtime --state-root ~/.local-runtime/state/evi
 ```
 
 Tracked files under `config/` are safe defaults. API keys and app secrets

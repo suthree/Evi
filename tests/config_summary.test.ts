@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
   loadAppSecretAuth,
   loadConfig,
+  loadConfigSelectors,
   loadGoalCognitionConfig,
   loadImageModelConfig,
   loadRuntimeAuthDiagnostics,
@@ -16,6 +17,23 @@ import {
 const DIRECT_AUTH_API_KEY_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_API_KEY";
 const DIRECT_AUTH_APP_ID_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_FEISHU_APP_ID";
 const DIRECT_AUTH_APP_SECRET_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_FEISHU_APP_SECRET";
+
+test("config selectors expand the shared Evi state-root declaration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-config-shared-state-"));
+  const configDir = join(root, "config");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: join(root, "home") }),
+      JSON.stringify({ type: "state", root: "~/.local-runtime/state/evi" })
+    ].join("\n") + "\n", "utf8");
+
+    const selectors = await loadConfigSelectors({ configDir });
+    assert.equal(selectors.stateRoot, join(homedir(), ".local-runtime/state/evi"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("runtime config summary reports effective non-secret config with source refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-config-summary-"));

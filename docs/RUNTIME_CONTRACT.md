@@ -876,13 +876,14 @@ path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 
-The CLI also exposes `workspace runtime` as a read-only repo-local runtime
-workspace diagnostic. It may scan only top-level directory names under the
-configured repo root and report unsupported `.runtime-*` and `.runtime_*`
-directories. The only supported repo-local runtime layout is `.runtime/state`,
-`.runtime/stage`, and `.runtime/smoke/<name>`. It must not read file bodies,
-move, delete, migrate, mutate state, accept shell text, invoke the model, write
-the repo, or write the active vault.
+The CLI also exposes `workspace runtime` as a read-only repository workspace
+diagnostic. It may scan only top-level directory names under the configured
+repo root and report every `.runtime/`, `.runtime-*`, and `.runtime_*`
+directory as forbidden. The supported state locations are
+`~/.local-runtime/state/evi`, `~/.local-runtime/state-baselines/<name>`, and
+`~/.local-runtime/archives/<archive-id>` outside the checkout. It must not
+read file bodies, move, delete, migrate, mutate state, accept shell text,
+invoke the model, write the repo, or write the active vault.
 
 ### Capability Catalog Read Model
 
@@ -1008,7 +1009,7 @@ Local service runtime is a resident mode for one user on this machine. It may:
 Service lifecycle and service health commands resolve state root with one
 ordered contract: explicit `--state-root`, then the valid absolute `state_root`
 in the installed `<LOCAL_RUNTIME_HOME>/service/runtime.json` manifest, then
-`<LOCAL_RUNTIME_HOME>/state/runtime` as the safe fallback. A missing, malformed,
+`~/.local-runtime/state/evi` as the safe fallback. A missing, malformed,
 wrong-target, wrong-home, or relative-root manifest must not redirect the
 command. This rule is limited to the resident service harness and does not
 change ordinary interactive runtime state selection for live, pipeline,
@@ -2512,7 +2513,7 @@ command, and explicit restart guidance for the operator. They must not inspect
 launchd, read service logs, restart services, invoke the model, mutate state,
 read source file bodies, or run shell commands.
 Because service lifecycle and service health share the
-`<LOCAL_RUNTIME_HOME>/state/runtime` default, generated `service_health` inspect and
+`~/.local-runtime/state/evi` default, generated `service_health` inspect and
 restart guidance should omit `--state-root <state-root>` by default. Explicit
 state-root guidance is reserved for an operator-selected alternate service
 state root.
@@ -4028,72 +4029,71 @@ OutcomeReceipt.
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime/state
-pnpm run runtime -- live --task "..." --state-root .runtime/state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
-pnpm run runtime -- pipeline runs --state-root .runtime/state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
-pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
+pnpm run runtime -- config --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- live --task "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root ~/.local-runtime/state-baselines/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
-pnpm run runtime -- workspace status --state-root .runtime/state
-pnpm run runtime -- workspace runtime --state-root .runtime/state
+pnpm run runtime -- workspace status --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- workspace runtime --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
-pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root .runtime/state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
-pnpm run runtime -- memory layers --state-root .runtime/state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
-pnpm run runtime -- memory dream --state-root .runtime/state
-pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root .runtime/state
-pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root .runtime/state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
-pnpm run runtime -- review background --state-root .runtime/state
-pnpm run runtime -- review reports --state-root .runtime/state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
-pnpm run runtime -- review completions --state-root .runtime/state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review traces --state-root .runtime/state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review tick --state-root .runtime/state
-pnpm run runtime -- review ticks --state-root .runtime/state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
-pnpm run runtime -- show-events --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory layers --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dream --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --review background_review_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --completion completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --trace completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review tick --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --tick review_tick_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review audit-sop --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review chain --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review coverage --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- show-events --state-root ~/.local-runtime/state/evi
 ```
 
 Implementation note: the core-tool surface and IM command surface match this
 first-version command contract.
 
-Repo-local runtime artifacts should stay under `.runtime/`: `.runtime/state`
-for default interactive state, `.runtime/stage` for pipeline experiments, and
-`.runtime/smoke/<name>` for one-off smoke runs. Top-level `.runtime-*` and
-`.runtime_*` directories are unsupported and should be deleted or moved into
-the supported `.runtime/` layout. Resident service state keeps its existing
-checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime` unless
-an operator explicitly passes `--state-root`.
+The shared Evi control state is `~/.local-runtime/state/evi`. Isolated
+rehearsals and migration evidence use `~/.local-runtime/state-baselines/<name>`.
+No project-local `.runtime/`, `.runtime-*`, or `.runtime_*` layout is supported;
+after attributable evidence is migrated or archived, the checkout-local
+directory must be removed. The resident service uses the same absolute Evi
+state root after its verified migration cutover.
 
 ## Explicit Non-Goals
 

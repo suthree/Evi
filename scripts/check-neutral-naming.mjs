@@ -14,6 +14,7 @@ const reservedPattern = new RegExp(
   `(?:^|[^a-z0-9])(?:${reservedNames.join("|")})(?=$|[^a-z0-9])`,
   "i"
 );
+const sharedStateRoot = "~/.local-runtime/state/evi";
 
 const files = [
   ...rootFiles.map((path) => resolve(repoRoot, path)),
@@ -30,7 +31,7 @@ for (const file of files.sort()) {
   if (!textExtensions.has(extname(file))) continue;
   const lines = (await readFile(file, "utf8")).split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
-    if (reservedPattern.test(line)) {
+    if (reservedPattern.test(line.replaceAll(sharedStateRoot, ""))) {
       violations.push(`${repoPath}:${index + 1}: ${line.trim()}`);
     }
   }

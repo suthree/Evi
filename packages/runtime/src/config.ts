@@ -5,6 +5,8 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { deriveContextBudget, type ContextBudgetSummary } from "../../core/src/context_budget.js";
 
+export const DEFAULT_SHARED_STATE_ROOT = "~/.local-runtime/state/evi";
+
 const homeRecordSchema = z.object({
   type: z.literal("home"),
   root: z.string().default("~/.local-runtime")
@@ -12,7 +14,7 @@ const homeRecordSchema = z.object({
 
 const stateRecordSchema = z.object({
   type: z.literal("state"),
-  root: z.string().default(".runtime/state")
+  root: z.string().default(DEFAULT_SHARED_STATE_ROOT)
 });
 
 const runtimeRecordSchema = z.object({
@@ -485,7 +487,11 @@ export async function loadConfigSelectors(options: ConfigSourceOptions = {}): Pr
     "active_scenario"
   );
 
-  const stateRoot = resolve(options.stateRoot ?? stateRecords.at(-1)?.root ?? ".runtime/state");
+  const stateRoot = expandConfigPath(
+    options.stateRoot ?? stateRecords.at(-1)?.root ?? DEFAULT_SHARED_STATE_ROOT,
+    homeRoot,
+    false
+  );
   return {
     configDir,
     homeConfigDir,

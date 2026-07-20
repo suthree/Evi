@@ -64,9 +64,12 @@
   使用 `grill-me`，只生成有边界的 `Direction Proposal`。在 Decision Owner 接受方向前，
   不得 mutation、promotion、deploy 或外部沟通。接受后使用 `grill-with-docs` 更新 glossary，
   遇到持久或反直觉的取舍时写入 ADR。
-- source 改动需要时使用隔离 branch/worktree。当前 `GoalExecutionWorkspace` 仍接受遗留
-  `codex/issue-N-slug` 名称；这是兼容，不要求真实 GitHub Issue。替换该命名规则必须作为
-  单独、经验证的 runtime slice。
+- 每个修改 source 的 Goal 在其完整交付链中使用一个隔离 branch/worktree；后续 session 和
+  工具复用这个已绑定 worktree，而不是每个 session 新建一个。根 checkout 保持干净的受保护
+  `develop`，source 只能经验证后的 PR merge 进入，禁止直接 commit 或 push。共享 Evi 控制
+  state 固定在 `~/.local-runtime/state/evi`，不再使用项目内 `.runtime/`。当前
+  `GoalExecutionWorkspace` 仍接受遗留 `codex/issue-N-slug` 名称；这不要求真实 GitHub Issue。
+  替换该命名规则必须作为单独、经验证的 runtime slice。
 - 改动保持小、局部，并符合现有 local runtime 边界。
 - 已接受的本地自成长使命构成持续授权。本地 agent 可以主动修改仓库源码、测试、文档、
   本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且

@@ -17,8 +17,8 @@
     "skills:sync": "tsx apps/cli/src/main.ts skills --action sync",
     "naming:validate": "node scripts/check-neutral-naming.mjs",
     "release:verify": "node scripts/verify-release.mjs",
-    "smoke:vault": "tsx apps/cli/src/main.ts live --task \"Verify the GoalRuntime-controlled live ingress without synchronous SOP or skill promotion.\" --state-root .runtime/smoke/vault",
-    "show:events": "tsx apps/cli/src/main.ts show-events --state-root .runtime/smoke/vault",
+    "smoke:vault": "tsx apps/cli/src/main.ts live --task \"Verify the GoalRuntime-controlled live ingress without synchronous SOP or skill promotion.\" --state-root ~/.local-runtime/state-baselines/vault",
+    "show:events": "tsx apps/cli/src/main.ts show-events --state-root ~/.local-runtime/state-baselines/vault",
     "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {

@@ -1113,7 +1113,7 @@ test("service health CLI defaults to the home-scoped service state root", async 
   const configDir = join(repoRoot, "config");
   const homeRoot = join(root, "home");
   const repoStateRoot = join(root, "repo-state");
-  const serviceStateRoot = join(homeRoot, "state/runtime");
+  const serviceStateRoot = repoStateRoot;
   const serviceStore = new AgentStore(repoRoot, serviceStateRoot);
   const originalArgv = process.argv;
   const originalLog = console.log;

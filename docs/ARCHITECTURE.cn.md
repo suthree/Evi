@@ -94,7 +94,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Goal 执行工作区 | `packages/runtime/src/goal_execution_workspace.ts` | 从不可变控制权限准备并实时校验一个 Goal 绑定的隔离 linked worktree | 任务分类、workspace registry、生命周期调度、迁移 state root 或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
 | Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
-| 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | append-only 或持久事实；projection 可重建 | 产品方向或自动把内容晋升成真相 |
+| 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | checkout 独立的共享 Evi state root 中的 append-only 或持久事实；projection 可重建 | 产品方向、source authority 或自动把内容晋升成真相 |
 | 学习 | `packages/runtime/src/background_review.ts`、core SOP/Skill/Memory 模块 | evidence→candidate→audit→promotion→reuse→revision/retirement | 前台完成判定或隐式修改身份 |
 | 入口 | CLI、Web、Feishu、Telegram、Discord Adapter | 解析、绑定渠道 Context、提交、交付、记录 provider evidence | 第二套 GoalRuntime、Memory Store 或执行 owner |
 | 部署 | service/deployment/supervisor 模块 | commit-bound 产物激活、health、rollback、controller handoff | 源码合并或产品发布权限 |
@@ -125,12 +125,12 @@ id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRu
 workflow 规则与已经满足的不变量冲突，就不能继续强制；例如控制工作树已是 linked worktree
 且 `codex.run` 就绪时，它可直接成为有界 Codex target，无需嵌套 `workspace.prepare`。
 
-仓库落点也遵循同一动态边界。Goal 启动时绑定不可变的控制仓库权限；当隔离修改或专业委托
-确实需要 linked worktree 时，cognition 可以从当前 Portfolio 选择 `workspace.prepare`。
-一次成功的 canonical observation 派生该 Goal 唯一的执行工作区；它不是第二个 Goal 或
-状态 owner。之后 repo-scoped 工具和 `codex.run` 使用这个经过实时校验的工作区，
-state-scoped 工具仍使用原 state root，Continue/Resume 也继续校验控制 checkout。
-准备过程是惰性、证据门控的，不是入口副作用、关键词路由或每任务自动调度器。
+仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
+linked execution worktree；后续 session 与工具复用它。Goal 可以通过 `workspace.prepare`
+派生该 worktree，或绑定一个已存在的 linked worktree，但绝不为每个 session 新建一个。
+受保护 `develop` 上干净的根 checkout 只承担 control 与 PR integration。repo-scoped 工具和
+`codex.run` 使用经过实时校验的 worktree，state-scoped 工具使用共享的绝对 Evi state root。
+准备过程仍是证据门控的，而不是入口副作用、关键词路由或每任务自动调度器。
 
 `codex.run` 在 Goal 内的模型可见表面刻意比独立 typed tool protocol 更窄。Goal cognition
 只能提供 `task` 与 `task_shape`，Capability Selection 承载适配评估、验证与回退。专业执行器
