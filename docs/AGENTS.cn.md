@@ -70,6 +70,10 @@
   state 固定在 `~/.local-runtime/state/evi`，不再使用项目内 `.runtime/`。当前
   `GoalExecutionWorkspace` 仍接受遗留 `codex/issue-N-slug` 名称；这不要求真实 GitHub Issue。
   替换该命名规则必须作为单独、经验证的 runtime slice。
+- 节点本地 active vault 固定在 `~/.local-runtime/vault/evi`，属于 runtime state，不是仓库
+  source。仓库 `vault/` 与 `skills/` 只是显式开发 fixture，默认不得进入生产发现。LuBan
+  proposal 是由 Evi 控制、带 evidence、脱敏、verification 和 retirement 数据的外部 Git effect；
+  merge/acceptance 与每个节点的 activation 仍是独立的 Decision Owner 决策。
 - Goal 拥有的 `codex.run` 必须在 child 启动前预留精确的 Goal/effect/action-digest dispatch
   record。只有匹配的 terminal child record 可以协调 `effect_outcome_unknown`；record 缺失、仍
   active、无效或不匹配时 effect 保持 paused，绝不授权 replay。raw prompt 不得进入持久

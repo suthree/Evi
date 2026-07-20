@@ -19,7 +19,7 @@ const stateRecordSchema = z.object({
 
 const runtimeRecordSchema = z.object({
   type: z.literal("runtime"),
-  promotion_enabled: z.boolean().default(true),
+  promotion_enabled: z.boolean().default(false),
   structured_output: z.boolean().default(true),
   review_tick_enabled: z.boolean().default(false),
   review_tick_interval_ms: z.number().int().positive().default(30 * 60 * 1000),
@@ -972,9 +972,9 @@ export async function loadApiKeyAuth(
 function resolveVaultConfig(record: VaultRecord | undefined, homeRoot: string): Required<VaultRecord> & { root: string; active_root: string } {
   const mode = record?.mode ?? (record?.active_root ? "user" : "repo-local");
   const activeRoot = mode === "user"
-    ? expandConfigPath(record?.active_root ?? `${homeRoot}/vault`, homeRoot, false)
+    ? expandConfigPath(record?.active_root ?? `${homeRoot}/vault/evi`, homeRoot, false)
     : expandConfigPath(record?.root ?? record?.active_root ?? "vault", homeRoot, true);
-  const seedRoots = record?.seed_roots ?? (mode === "user" ? ["vault", "skills"] : ["skills"]);
+  const seedRoots = record?.seed_roots ?? (mode === "user" ? [] : ["skills"]);
   return {
     type: "vault",
     mode,

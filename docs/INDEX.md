@@ -16,6 +16,7 @@ Load this compact index by default. Do not preload every stable document.
 - Shared vocabulary: `CONTEXT.md`
 - Native evolution control, reflection, and delivery governance: `docs/adr/0001-native-evolution-control-plane.md`
 - Shared control state, per-Goal worktrees, and PR-only delivery: `docs/adr/0003-shared-control-state-and-pr-only-delivery.md`
+- Node-local active vaults and Evi-controlled LuBan promotion: `docs/adr/0004-node-local-vault-and-luban-promotion.md`
 - Historical Trellis evidence only, never default context: `.trellis/`
 
 Read on demand:

@@ -49,8 +49,8 @@ test("runtime config summary reports effective non-secret config with source ref
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
-      JSON.stringify({ type: "vault", mode: "user", active_root: "${LOCAL_RUNTIME_HOME}/vault", seed_roots: ["vault", "skills"] }),
-      JSON.stringify({ type: "runtime", promotion_enabled: true, structured_output: true }),
+      JSON.stringify({ type: "vault", mode: "user", active_root: "${LOCAL_RUNTIME_HOME}/vault/evi", seed_roots: [] }),
+      JSON.stringify({ type: "runtime", promotion_enabled: false, structured_output: true }),
       JSON.stringify({ type: "active_model", model_id: "local-model" }),
       JSON.stringify({ type: "active_image_model", model_id: "local-image-model" }),
       JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
@@ -169,6 +169,7 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
     assert.deepEqual(summary.runtime.defaulted_fields, ["promotion_enabled", "structured_output"]);
+    assert.equal(summary.runtime.promotion_enabled, false);
     assert.deepEqual(summary.goal_cognition, {
       provider: "active_model",
       source_ref: "default:goal_cognition",
@@ -194,7 +195,8 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.active_channel.auth_id, "feishu-secret");
     assert.equal(summary.active_channel.followup_queue_size, 6);
     assert.equal(summary.active_scenario.discipline, "query_todo");
-    assert.equal(summary.vault.active_root, join(homeRoot, "vault"));
+    assert.equal(summary.vault.active_root, join(homeRoot, "vault/evi"));
+    assert.deepEqual(summary.vault.seed_roots, []);
     assert.equal(summary.refs.includes("repo:models.jsonl#1"), true);
     const serialized = JSON.stringify(summary);
     assert.doesNotMatch(serialized, /MODEL_SECRET_SHOULD_NOT_APPEAR/);

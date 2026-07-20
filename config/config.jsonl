@@ -1,7 +1,7 @@
 {"type":"home","root":"~/.local-runtime"}
 {"type":"state","root":"~/.local-runtime/state/evi"}
-{"type":"vault","mode":"user","active_root":"${LOCAL_RUNTIME_HOME}/vault","seed_roots":["vault","skills"],"project_roots":[]}
-{"type":"runtime","promotion_enabled":true,"structured_output":true}
+{"type":"vault","mode":"user","active_root":"${LOCAL_RUNTIME_HOME}/vault/evi","seed_roots":[],"project_roots":[]}
+{"type":"runtime","promotion_enabled":false,"structured_output":true}
 {"type":"active_model","model_id":"default-text-model"}
 {"type":"active_image_model","model_id":"default-image-model"}
 {"type":"active_channel","channel_id":"feishu-main"}

@@ -30,7 +30,10 @@ export function resolveSkillResolver(input: SkillResolverLike = "vault"): SkillR
   }
 
   const activeRoot = typeof input === "string" ? input : input.root;
-  const seedRoots = typeof input === "string" ? ["skills"] : input.seed_roots ?? ["skills"];
+  // A string is only an active-vault reference. Repository fixtures must be
+  // explicitly configured as seed roots and never enter production discovery
+  // by an implicit fallback.
+  const seedRoots = typeof input === "string" ? [] : input.seed_roots ?? [];
   const projectRoots = typeof input === "string" ? [] : input.project_roots ?? [];
   const searchRoots: SkillSearchRoot[] = [
     {

@@ -54,13 +54,14 @@ contract.
 
 ### Implemented v0.2 slice: deterministic skill source conflicts
 
-Skill discovery now checks the node-local active vault, repository seed roots,
-and configured project skill roots together. Same-name packages with identical
-raw-content SHA-256 hashes resolve to one deterministic registry entry and keep
-every source, path, and hash in `provenance`. Same-name packages with different
-hashes fail closed with a diagnostic that identifies each source and path.
-Neither modification timestamps nor filesystem discovery order select a
-winner.
+Production skill discovery checks the node-local active vault and only
+explicitly configured read-only projections. Repository `vault/` and `skills/`
+directories are development fixtures, never implicit production seed roots.
+Same-name packages with identical raw-content SHA-256 hashes resolve to one
+deterministic registry entry and keep every source, path, and hash in
+`provenance`. Same-name packages with different hashes fail closed with a
+diagnostic that identifies each source and path. Neither modification timestamps
+nor filesystem discovery order select a winner.
 
 This slice does not parse the LuBan typed catalog or distinguish accepted,
 inbox, and retired LuBan lifecycle paths. A project skill root must therefore
@@ -111,7 +112,7 @@ use the bounded action/evidence lineage for diagnosis and recovery.
 The active local vault lives under `LOCAL_RUNTIME_HOME`:
 
 ```text
-<LOCAL_RUNTIME_HOME>/vault/
+<LOCAL_RUNTIME_HOME>/vault/evi/
 ├── sop/
 │   ├── drafts/
 │   └── promoted/
@@ -123,8 +124,9 @@ The active local vault lives under `LOCAL_RUNTIME_HOME`:
 ```
 
 Repository `vault/` and `skills/` are seed/dev fixtures. They can provide sample
-skills and test fixtures, but the local active vault is the runtime write target
-for promoted procedures.
+skills and test fixtures only through an explicit development configuration;
+they are not eligible for production discovery. The local active vault is the
+runtime write target for promoted procedures.
 
 ## Skill Package Shape
 
@@ -177,9 +179,11 @@ model proposes SOP
 The model must not claim that a skill has been promoted. Promotion is a harness
 result backed by local evidence.
 
-When `runtime.promotion_enabled` is true, this harness decision may run
-autonomously after verified completion. Operator confirmation is not required
-for each local draft, audit, promotion, revision, or retirement event.
+`runtime.promotion_enabled` defaults to false for a clean node baseline. It may
+be enabled after a verified local promotion/reuse loop. When it is true, this
+harness decision may run autonomously after verified completion. Operator
+confirmation is not required for each local draft, audit, promotion, revision,
+or retirement event.
 
 ## Reuse Before Promotion
 

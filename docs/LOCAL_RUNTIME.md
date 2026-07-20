@@ -239,7 +239,7 @@ It should check:
 - state root or writable parent
 - episode MemoryStore index
 - local active vault or writable parent
-- repository seed skill packages
+- explicitly configured read-only skill projections (if any)
 - core tool contracts
 - IM settings
 - Feishu app auth unless `--no-im` is passed

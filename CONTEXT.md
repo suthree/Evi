@@ -189,8 +189,12 @@ The active procedural memory store for a specific user, machine, project, or tea
 _Avoid_: Bundled seed directory, marketplace catalog
 
 **Active Skill Vault**:
-The Skill Vault selected for the current run. In installed mode it normally lives under `LOCAL_RUNTIME_HOME/vault`; in repo-local development mode it may point at repository `vault/`.
+The Skill Vault selected for the current run. In installed mode it normally lives under `LOCAL_RUNTIME_HOME/vault/evi`; repository fixtures may be selected only by an explicit development configuration.
 _Avoid_: Every configured seed root, all available skills
+
+**Shared Asset Promotion**:
+The evidence-gated external Git effect by which Evi decides that a sanitized, reusable node-local asset should be proposed to LuBan. Evi may create the proposal branch, commit, and pull request when policy permits; LuBan acceptance and each node's activation remain separate decisions with separate receipts.
+_Avoid_: Runtime-state sync, automatic merge, global activation, local promotion alone
 
 **Skill Resolver**:
 The selection layer that chooses which skills from seeds, installed public sources, personal vaults, and project overlays enter a run. It preserves provenance and avoids treating every available skill as prompt context.
