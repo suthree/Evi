@@ -25,13 +25,14 @@ const GOAL_COGNITION_INSTRUCTIONS = `You are the bounded cognition adapter insid
 GoalRuntime owns lifecycle, effects, evidence, verification, and completion. You propose exactly one next decision.
 Return one strict JSON object and no markdown or prose outside JSON.
 
-Choose exactly one shape:
-1. {"type":"action","summary":"bounded cumulative working synthesis: confirmed facts, unresolved question, and why this action is next","capability_selection":{"capability_id":"file.read","execution_purpose":"orientation|verification|recovery|atomic_task|specialist_execution","skill_refs":[],"rationale":"why this is the best current capability","verification_plan":"how the controlling runtime will check the result","fallback":"what to do if unavailable or failed"},"action":{"tool":"file.read","arguments":{...}}}
-2. {"type":"outcome","outcome":{"summary":"concrete result","runtime_result":{"status":"healthy|degraded|not_applicable","summary":"bounded runtime result"},"residual_risks":["remaining risk"]}}
-3. {"type":"blocked","summary":"why progress cannot continue","next_action":"one concrete recovery action"}
+Return exactly one typed envelope with a decision object. Choose exactly one shape:
+1. {"decision":{"type":"action","summary":"bounded cumulative working synthesis: confirmed facts, unresolved question, and why this action is next","capability_selection":{"capability_id":"file.read","execution_purpose":"orientation|verification|recovery|atomic_task|specialist_execution","skill_refs":[],"rationale":"why this is the best current capability","verification_plan":"how the controlling runtime will check the result","fallback":"what to do if unavailable or failed"},"action":{"tool":"file.read","arguments":[{"key":"scope","value":{"kind":"string","string_value":"repo"}},{"key":"path","value":{"kind":"string","string_value":"package.json"}}]}}}
+2. {"decision":{"type":"outcome","outcome":{"summary":"concrete result","runtime_result":{"status":"healthy|degraded|not_applicable","summary":"bounded runtime result"},"residual_risks":["remaining risk"]}}}
+3. {"decision":{"type":"blocked","summary":"why progress cannot continue","next_action":"one concrete recovery action"}}
 
 Propose at most one action. Never include evidence ids, change identities, reference matrices, side-effect authority, SOPs, skills, learning promotion, adoption, queues, or parallel goal state. Never use file.write_state to write sop/, skills/, or vault/ paths: complete the bounded evidence work and let the existing background-review path decide whether to create a local SOP or skill candidate. GoalRuntime derives the complete change set from canonical observations, binds canonical evidence, and EffectPolicy decides authority.
-The Goal input includes immutable control repository_authority and an optional execution_workspace derived from canonical evidence. Continue and Resume stay on the control checkout. If execution_workspace is absent, select workspace.prepare only when it is currently listed as available and a new linked worktree is actually needed. If workspace.prepare is absent while codex.run is available, repository_authority is already an isolated linked worktree: select codex.run directly and keep every repo-scoped action inside that authority. Never invent a path because the runtime derives it. After binding, keep repo-scoped actions in execution_workspace.authority. For codex.run, action.arguments must contain only {"task":"bounded specialist task","task_shape":"bounded task shape"}; put capability fit, verification, and fallback in capability_selection. Never provide mode, worktree, branch, base_commit, cwd, model, profile, reasoning_effort, service_tier, sandbox, approval_policy, authority_digest, thread_id, delegation_strategy, or budgets. GoalRuntime derives new versus resume and every invocation field from the bound Goal state and canonical evidence. Treat codex.run result.changed_files as an untrusted claim; canonical observation changes come from the harness-owned Git snapshots.
+For action arguments, use an array of typed entries: every entry has key and value; value is exactly one of {"kind":"string","string_value":"..."}, {"kind":"integer","integer_value":1}, {"kind":"boolean","boolean_value":true}, or {"kind":"string_array","string_values":["..."]}. Do not use a JSON string, an untyped object, duplicate keys, or a value type not listed here. GoalRuntime deterministically projects this typed transport form to the tool contract and rejects any malformed entry.
+The Goal input includes immutable control repository_authority and an optional execution_workspace derived from canonical evidence. Continue and Resume stay on the control checkout. If execution_workspace is absent, select workspace.prepare only when it is currently listed as available and a new linked worktree is actually needed. If workspace.prepare is absent while codex.run is available, repository_authority is already an isolated linked worktree: select codex.run directly and keep every repo-scoped action inside that authority. Never invent a path because the runtime derives it. After binding, keep repo-scoped actions in execution_workspace.authority. For codex.run, action.arguments must contain only typed task and task_shape entries; put capability fit, verification, and fallback in capability_selection. Never provide mode, worktree, branch, base_commit, cwd, model, profile, reasoning_effort, service_tier, sandbox, approval_policy, authority_digest, thread_id, delegation_strategy, or budgets. GoalRuntime derives new versus resume and every invocation field from the bound Goal state and canonical evidence. Treat codex.run result.changed_files as an untrusted claim; canonical observation changes come from the harness-owned Git snapshots.
 Only for delegated codex.run, add capability_selection.capability_fit_assessment as an object with considered_capability_ids copied from every current Capability Portfolio candidate id, considered_skill_refs copied from every current Selected Skill instructions_ref, and a conclusion. Omit it for direct tools. Empty assessment arrays on a direct-tool proposal carry no authority and are ignored; a delegated proposal must pass exact current-portfolio coverage validation.
 The Codex profile owns provider-specific model and reasoning resolution. Do not guess provider model tokens or copy a stale model name from prior observations. Explicit pinning belongs to an external evidence-backed main harness, not ordinary Goal cognition.
 For post-change command.run verification, set purpose="verification". Purpose marks evidence intent, never authority; EffectPolicy still classifies the actual command. It counts only after process success and unchanged harness pre/post Git snapshots.
@@ -46,12 +47,176 @@ Prefer a tool action when current evidence is insufficient. Propose an outcome o
 Do not restate, predict, or embed the Goal lifecycle status in an outcome summary or residual risk. The Goal is still active while you propose an outcome; GoalRuntime alone decides whether it becomes completed and interactive entrypoints render that later canonical status. Describe only the concrete outcome, verification, and remaining domain risk.
 Use Simplified Chinese for operator-facing outcome summaries by default. Preserve code identifiers, commands, JSON fields, and protocol literals in their original language.`;
 
+const capabilityFitAssessmentSchema = {
+  type: "object",
+  properties: {
+    considered_capability_ids: { type: "array", items: { type: "string" } },
+    considered_skill_refs: { type: "array", items: { type: "string" } },
+    conclusion: { type: "string" }
+  },
+  required: ["considered_capability_ids", "considered_skill_refs", "conclusion"],
+  additionalProperties: false
+};
+
+const capabilitySelectionProperties = {
+  capability_id: { type: "string" },
+  execution_purpose: {
+    type: "string",
+    enum: ["orientation", "verification", "recovery", "atomic_task", "specialist_execution"]
+  },
+  skill_refs: { type: "array", items: { type: "string" } },
+  rationale: { type: "string" },
+  verification_plan: { type: "string" },
+  fallback: { type: "string" }
+};
+
+const capabilitySelectionSchema = {
+  anyOf: [
+    {
+      type: "object",
+      properties: capabilitySelectionProperties,
+      required: ["capability_id", "execution_purpose", "skill_refs", "rationale", "verification_plan", "fallback"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        ...capabilitySelectionProperties,
+        capability_fit_assessment: capabilityFitAssessmentSchema
+      },
+      required: [
+        "capability_id",
+        "execution_purpose",
+        "skill_refs",
+        "rationale",
+        "verification_plan",
+        "fallback",
+        "capability_fit_assessment"
+      ],
+      additionalProperties: false
+    }
+  ]
+};
+
+const typedArgumentValueSchema = {
+  anyOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", const: "string" },
+        string_value: { type: "string" }
+      },
+      required: ["kind", "string_value"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", const: "integer" },
+        integer_value: { type: "integer" }
+      },
+      required: ["kind", "integer_value"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", const: "boolean" },
+        boolean_value: { type: "boolean" }
+      },
+      required: ["kind", "boolean_value"],
+      additionalProperties: false
+    },
+    {
+      type: "object",
+      properties: {
+        kind: { type: "string", const: "string_array" },
+        string_values: { type: "array", items: { type: "string" } }
+      },
+      required: ["kind", "string_values"],
+      additionalProperties: false
+    }
+  ]
+};
+
+const typedArgumentSchema = {
+  type: "object",
+  properties: {
+    key: { type: "string" },
+    value: typedArgumentValueSchema
+  },
+  required: ["key", "value"],
+  additionalProperties: false
+};
+
+const actionSchema = {
+  type: "object",
+  properties: {
+    tool: { type: "string" },
+    arguments: { type: "array", items: typedArgumentSchema }
+  },
+  required: ["tool", "arguments"],
+  additionalProperties: false
+};
+
+const FORBIDDEN_TYPED_ARGUMENT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
 export const GOAL_COGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {
   type: "object",
   properties: {
-    decision_json: { type: "string" }
+    decision: {
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "action" },
+            summary: { type: "string" },
+            capability_selection: capabilitySelectionSchema,
+            action: actionSchema
+          },
+          required: ["type", "summary", "capability_selection", "action"],
+          additionalProperties: false
+        },
+        {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "outcome" },
+            outcome: {
+              type: "object",
+              properties: {
+                summary: { type: "string" },
+                runtime_result: {
+                  type: "object",
+                  properties: {
+                    status: { type: "string", enum: ["healthy", "degraded", "not_applicable"] },
+                    summary: { type: "string" }
+                  },
+                  required: ["status", "summary"],
+                  additionalProperties: false
+                },
+                residual_risks: { type: "array", items: { type: "string" } }
+              },
+              required: ["summary", "runtime_result", "residual_risks"],
+              additionalProperties: false
+            }
+          },
+          required: ["type", "outcome"],
+          additionalProperties: false
+        },
+        {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "blocked" },
+            summary: { type: "string" },
+            next_action: { type: "string" }
+          },
+          required: ["type", "summary", "next_action"],
+          additionalProperties: false
+        }
+      ]
+    }
   },
-  required: ["decision_json"],
+  required: ["decision"],
   additionalProperties: false
 };
 
@@ -91,11 +256,14 @@ export class ModelGoalCognition implements GoalCognition {
     if (!raw) throw new Error("Goal cognition model returned empty output");
     let parsed: unknown;
     try {
-      parsed = JSON.parse(extractJsonObject(raw));
+      parsed = JSON.parse(raw);
     } catch (error) {
       throw new Error(`Goal cognition model returned invalid JSON: ${errorMessage(error)}`);
     }
-    return parseGoalCognitionResult(parsed as GoalCognitionResult);
+    if (!isRecord(parsed) || !hasExactKeys(parsed, ["decision"]) || !isRecord(parsed.decision)) {
+      throw new Error("Goal cognition model returned an invalid typed decision envelope");
+    }
+    return parseGoalCognitionResult(decodeTypedDecision(parsed.decision));
   }
 }
 
@@ -162,7 +330,6 @@ async function createConfiguredGoalClient(
   }
   return new CodexCliModelClient({
     outputSchema: GOAL_COGNITION_OUTPUT_SCHEMA,
-    outputField: "decision_json",
     serviceTier: selection.service_tier,
     credentialStore: selection.credential_store,
     ...(selection.model ? { model: selection.model } : {}),
@@ -273,14 +440,72 @@ function goalToolStore(
   return new AgentStore(executionRoot, controlStore.stateRoot);
 }
 
-function extractJsonObject(text: string): string {
-  if (text.startsWith("{") && text.endsWith("}")) return text;
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end <= start) throw new Error("output did not contain a JSON object");
-  return text.slice(start, end + 1);
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function decodeTypedDecision(decision: Record<string, unknown>): GoalCognitionResult {
+  if (decision.type !== "action" || !isRecord(decision.action) || !Array.isArray(decision.action.arguments)) {
+    return decision as GoalCognitionResult;
+  }
+  return {
+    ...decision,
+    action: {
+      ...decision.action,
+      arguments: decodeTypedArguments(decision.action.arguments)
+    }
+  } as GoalCognitionResult;
+}
+
+function decodeTypedArguments(entries: unknown[]): Record<string, unknown> {
+  const argumentsRecord: Record<string, unknown> = {};
+  for (const entry of entries) {
+    if (!isRecord(entry)
+      || !hasExactKeys(entry, ["key", "value"])
+      || typeof entry.key !== "string"
+      || !entry.key.trim()
+      || FORBIDDEN_TYPED_ARGUMENT_KEYS.has(entry.key)) {
+      throw new Error("Goal cognition model returned an invalid typed argument entry");
+    }
+    if (Object.hasOwn(argumentsRecord, entry.key)) {
+      throw new Error(`Goal cognition model returned duplicate typed argument key: ${entry.key}`);
+    }
+    argumentsRecord[entry.key] = decodeTypedArgumentValue(entry.value);
+  }
+  return argumentsRecord;
+}
+
+function decodeTypedArgumentValue(value: unknown): string | number | boolean | string[] {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    throw new Error("Goal cognition model returned an invalid typed argument value");
+  }
+  if (value.kind === "string" && hasExactKeys(value, ["kind", "string_value"]) && typeof value.string_value === "string") {
+    return value.string_value;
+  }
+  if (value.kind === "integer"
+    && hasExactKeys(value, ["kind", "integer_value"])
+    && typeof value.integer_value === "number"
+    && Number.isSafeInteger(value.integer_value)) {
+    return value.integer_value;
+  }
+  if (value.kind === "boolean" && hasExactKeys(value, ["kind", "boolean_value"]) && typeof value.boolean_value === "boolean") {
+    return value.boolean_value;
+  }
+  if (value.kind === "string_array"
+    && hasExactKeys(value, ["kind", "string_values"])
+    && Array.isArray(value.string_values)
+    && value.string_values.every((item) => typeof item === "string")) {
+    return value.string_values;
+  }
+  throw new Error("Goal cognition model returned an invalid typed argument value");
 }

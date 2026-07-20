@@ -7,6 +7,7 @@ import test from "node:test";
 import { AgentStore } from "../packages/core/src/store.js";
 import {
   ConfiguredGoalCognition,
+  GOAL_COGNITION_OUTPUT_SCHEMA,
   ModelGoalCognition,
   RuntimeGoalToolExecutor
 } from "../packages/runtime/src/goal_execution_adapters.js";
@@ -286,19 +287,24 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
         model: "fixture-model",
         responseId: "response_1",
         outputText: JSON.stringify({
-          type: "action",
-          summary: "Read the bounded manifest.",
-          capability_selection: {
-            capability_id: "file.read",
-            execution_purpose: "orientation",
-            skill_refs: ["skills/source-review/SKILL.md"],
-            rationale: "Read one bounded manifest before deciding whether specialist execution is needed.",
-            verification_plan: "Check the returned manifest path and bounded read metadata.",
-            fallback: "Block with the missing evidence if the bounded read fails."
-          },
-          action: {
-            tool: "file.read",
-            arguments: { scope: "repo", path: "package.json" }
+          decision: {
+            type: "action",
+            summary: "Read the bounded manifest.",
+            capability_selection: {
+              capability_id: "file.read",
+              execution_purpose: "orientation",
+              skill_refs: ["skills/source-review/SKILL.md"],
+              rationale: "Read one bounded manifest before deciding whether specialist execution is needed.",
+              verification_plan: "Check the returned manifest path and bounded read metadata.",
+              fallback: "Block with the missing evidence if the bounded read fails."
+            },
+            action: {
+              tool: "file.read",
+              arguments: [
+                { key: "scope", value: { kind: "string", string_value: "repo" } },
+                { key: "path", value: { kind: "string", string_value: "package.json" } }
+              ]
+            }
           }
         }),
         raw: {}
@@ -345,6 +351,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
     capability_portfolio: fixtureCapabilityPortfolio()
   });
   assert.equal(result.type, "action");
+  assert.deepEqual(result.action.arguments, { scope: "repo", path: "package.json" });
   assert.equal(requests.length, 1);
   assert.match(requests[0]!.instructions, /Never include evidence ids/);
   assert.match(requests[0]!.instructions, /bounded cumulative working synthesis/);
@@ -357,7 +364,7 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /select workspace\.prepare only when it is currently listed as available/);
   assert.match(requests[0]!.instructions, /repository_authority is already an isolated linked worktree/);
   assert.match(requests[0]!.instructions, /Never use file\.write_state to write sop\/, skills\/, or vault\//);
-  assert.match(requests[0]!.instructions, /action\.arguments must contain only/);
+  assert.match(requests[0]!.instructions, /For action arguments, use an array of typed entries/);
   assert.match(requests[0]!.instructions, /Never provide mode, worktree, branch, base_commit/);
   assert.match(requests[0]!.instructions, /GoalRuntime derives new versus resume/);
   assert.match(requests[0]!.instructions, /result\.changed_files as an untrusted claim/);
@@ -402,13 +409,66 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.doesNotMatch(requests[0]!.input, /safe-token|minimal\|low\|medium\|high\|xhigh/);
 });
 
+test("Goal cognition requires one typed schema-bound decision envelope", async () => {
+  const properties = GOAL_COGNITION_OUTPUT_SCHEMA.properties as Record<string, unknown>;
+  const required = GOAL_COGNITION_OUTPUT_SCHEMA.required as string[];
+  assert.equal("decision_json" in properties, false);
+  assert.deepEqual(required, ["decision"]);
+  const decision = properties.decision as { anyOf?: unknown[] };
+  assert.equal(Array.isArray(decision.anyOf), true);
+  assert.equal(decision.anyOf?.length, 3);
+
+  const model: ModelClient = {
+    async create() {
+      return {
+        provider: "fixture",
+        api: "responses",
+        model: "fixture-model",
+        responseId: "response_prose",
+        outputText: `prose before JSON\n${JSON.stringify({
+          type: "blocked",
+          summary: "The model returned prose around the decision.",
+          next_action: "Return only the schema-bound JSON object."
+        })}`,
+        raw: {}
+      };
+    }
+  };
+
+  await assert.rejects(
+    () => new ModelGoalCognition(model).next({
+      goal: fixtureGoalView(),
+      execution_budget: {
+        scope: "per_continue_command",
+        limit: { max_model_rounds: 3, max_tool_calls: 4, max_elapsed_ms: 120_000 },
+        used: { model_rounds: 0, tool_calls: 0, elapsed_ms: 0 },
+        remaining: { model_rounds: 3, tool_calls: 4, elapsed_ms: 120_000 }
+      },
+      observation_obligation: { status: "none" },
+      decision_feedback: [],
+      workspace_freshness: {
+        status: "unbound",
+        observed_head_commit: null,
+        live_head_commit: null,
+        reason: null,
+        boundary: "derived live-vs-canonical Goal workspace freshness; routing context only, never canonical change evidence or completion authority"
+      },
+      evidence: [],
+      capability_portfolio: fixtureCapabilityPortfolio()
+    }),
+    /Goal cognition model returned invalid JSON/
+  );
+});
+
 test("ConfiguredGoalCognition re-resolves explicit provider repair and continues the same Goal", async () => {
   const root = await mkdtemp(join(tmpdir(), "evi-goal-cognition-repair-"));
   const repoRoot = join(root, "repo");
   const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
   const configDir = join(root, "config");
   await mkdir(repoRoot, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
+  await mkdir(homeRoot, { recursive: true });
   await mkdir(configDir, { recursive: true });
   try {
     await writeFile(join(repoRoot, "package.json"), `${JSON.stringify({ name: "repair-fixture" })}\n`, "utf8");
@@ -418,9 +478,14 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
     await runGit(repoRoot, ["config", "commit.gpgsign", "false"]);
     await runGit(repoRoot, ["add", "package.json"]);
     await runGit(repoRoot, ["commit", "-m", "fixture base"]);
-    await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
-      type: "state",
-      root: stateRoot
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "goal_cognition", provider: "active_model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "config.local.jsonl"), `${JSON.stringify({
+      type: "goal_cognition",
+      provider: "active_model"
     })}\n`, "utf8");
     let repairedModelCalls = 0;
     const cognition = new ConfiguredGoalCognition({ configDir, stateRoot }, async (selection) => {
@@ -435,24 +500,34 @@ test("ConfiguredGoalCognition re-resolves explicit provider repair and continues
             responseId: `response_${repairedModelCalls}`,
             outputText: repairedModelCalls === 1
               ? JSON.stringify({
-                  type: "action",
-                  summary: "Read package metadata after provider repair.",
-                  capability_selection: {
-                    capability_id: "file.read",
-                    execution_purpose: "atomic_task",
-                    skill_refs: [],
-                    rationale: "Read the one requested manifest through the bounded direct capability.",
-                    verification_plan: "Verify the canonical read observation before proposing completion.",
-                    fallback: "Block with the read failure if package metadata is unavailable."
+                  decision: {
+                    type: "action",
+                    summary: "Read package metadata after provider repair.",
+                    capability_selection: {
+                      capability_id: "file.read",
+                      execution_purpose: "atomic_task",
+                      skill_refs: [],
+                      rationale: "Read the one requested manifest through the bounded direct capability.",
+                      verification_plan: "Verify the canonical read observation before proposing completion.",
+                      fallback: "Block with the read failure if package metadata is unavailable."
+                    },
+                    action: {
+                      tool: "file.read",
+                      arguments: [
+                        { key: "scope", value: { kind: "string", string_value: "repo" } },
+                        { key: "path", value: { kind: "string", string_value: "package.json" } }
+                      ]
+                    }
                   },
-                  action: { tool: "file.read", arguments: { scope: "repo", path: "package.json" } }
                 })
               : JSON.stringify({
-                  type: "outcome",
-                  outcome: {
-                    summary: "Provider repair preserved and completed the original Goal.",
-                    runtime_result: { status: "healthy", summary: "Cognition is available." },
-                    residual_risks: []
+                  decision: {
+                    type: "outcome",
+                    outcome: {
+                      summary: "Provider repair preserved and completed the original Goal.",
+                      runtime_result: { status: "healthy", summary: "Cognition is available." },
+                      residual_risks: []
+                    }
                   }
                 }),
             raw: {}

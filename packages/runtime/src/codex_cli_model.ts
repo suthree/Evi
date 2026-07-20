@@ -113,7 +113,7 @@ export class CodexCliModelClient implements ModelClient {
         throw new Error(`Codex cognition emitted forbidden item event: ${result.forbiddenItemType}`);
       }
       if (result.exitCode !== 0) {
-        throw new Error(`Codex cognition exited with code ${result.exitCode ?? "unknown"}: ${boundedDiagnostic(result.stderr)}`);
+        throw new Error(`Codex cognition exited with code ${result.exitCode ?? "unknown"}: ${codexExitDiagnostic(result)}`);
       }
       const parsed = parseCodexJsonl(result.stdout);
       const outputText = this.options.outputField
@@ -402,6 +402,27 @@ function boundedDiagnostic(value: string): string {
     .replace(/\bsk-[A-Za-z0-9_-]+\b/gu, "[REDACTED]")
     .replace(/(api[_-]?key|token|secret)(\s*[=:]\s*)[^\s,;]+/giu, "$1$2[REDACTED]")
     .slice(0, 1_000);
+}
+
+function codexExitDiagnostic(result: Pick<CodexExecResult, "stdout" | "stderr">): string {
+  const diagnostics = [result.stderr.trim(), codexJsonlFailureMessage(result.stdout)]
+    .filter((value): value is string => Boolean(value));
+  return boundedDiagnostic(diagnostics.join("\n")) || "no diagnostic emitted";
+}
+
+function codexJsonlFailureMessage(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    try {
+      const event = JSON.parse(line) as unknown;
+      if (!isRecord(event) || (event.type !== "error" && event.type !== "turn.failed")) continue;
+      if (typeof event.message === "string") return event.message;
+      if (isRecord(event.error) && typeof event.error.message === "string") return event.error.message;
+    } catch {
+      // A non-JSON line is not trusted diagnostic input.
+    }
+  }
+  return null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -36,6 +36,10 @@ _Avoid_: Keyword mapping, tool call alone, delegated completion claim
 For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
 _Avoid_: Static router, authority token, delegated completion claim
 
+**Typed Cognition Envelope**:
+The schema-bound `decision` envelope from model cognition to **GoalRuntime**. It declares exactly one complete `action`, `outcome`, or `blocked` shape before the runtime performs its separate semantic validation and effect-policy checks.
+_Avoid_: JSON-in-a-string, repairable model prose, authority grant
+
 **Evolution Constraint**:
 A rule classified by the boundary it protects. Canonical evidence, containment, sensitive data, irreversible external effects, and completion ownership are hard invariants; an exact-effect confirmation is a hard gate; workflow sequence is an adaptive default; a skill is advisory guidance. A default yields to current evidence when the protected invariant is already satisfied.
 _Avoid_: Universal workflow mandate, capability router, silent override

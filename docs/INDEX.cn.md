@@ -17,6 +17,7 @@
 - 原生自进化控制、反思与交付治理：`docs/adr/0001-native-evolution-control-plane.cn.md`
 - 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - 节点本地 active vault 与 Evi 控制的 LuBan 晋升：`docs/adr/0004-node-local-vault-and-luban-promotion.cn.md`
+- Typed cognition envelope 与 fail-closed 模型决策解析：`docs/adr/0005-typed-cognition-envelope.cn.md`
 - Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：

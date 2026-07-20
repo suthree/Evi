@@ -357,12 +357,18 @@ be repaired before a later Continue.
 The Codex cognition adapter is not a second agent or an effect executor. Each
 turn runs ephemerally in an empty temporary directory with user config and
 rules ignored, a minimal process environment, Web disabled, bounded capture
-and time, and a strict output schema. The invocation disables shell/unified
-exec, apps/plugins, browser/computer, image, multi-agent, hooks, and related
-tool features. Its custom permission profile also denies the filesystem root
-and tool network access. JSONL inspection terminates any forbidden item as a
-second line of defense. GoalRuntime alone executes the proposed normalized
-action and owns effect authority, evidence, verification, and the receipt.
+and time, and a strict **Typed Cognition Envelope** schema. Its typed
+`decision` envelope requires exactly one complete `action`, `outcome`, or
+`blocked` object; Evi never places that decision inside an unconstrained JSON
+string, repairs malformed JSON, or retries it automatically. Action arguments
+are typed key/value entries and have only a deterministic fail-closed projection
+to the tool contract. The invocation disables shell/unified exec,
+apps/plugins, browser/computer, image, multi-agent, hooks, and related tool
+features. Its custom permission profile also denies the filesystem root and
+tool network access. JSONL inspection terminates any forbidden item as a
+second line of defense. GoalRuntime alone performs semantic validation, then
+executes a proposed normalized action and owns effect authority, evidence,
+verification, and the receipt.
 
 The stored soft budget applies to one Continue command, not to the Goal's
 lifetime. A later Continue opens another bounded tranche under the same

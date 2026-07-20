@@ -17,24 +17,32 @@ const outputSchema = {
   additionalProperties: false
 };
 
-test("Codex CLI model uses an isolated tool-disabled contract and unwraps one decision", async () => {
+const directOutputSchema = {
+  type: "object",
+  properties: {
+    type: { type: "string", enum: ["action", "outcome", "blocked"] },
+    summary: { type: "string" },
+    action: { type: "object" }
+  },
+  required: ["type"],
+  additionalProperties: false
+};
+
+test("Codex CLI model uses an isolated tool-disabled contract and returns one direct decision", async () => {
   let invocation: CodexExecInvocation | null = null;
   const runner: CodexExecRunner = {
     async run(input) {
       invocation = input;
       assert.equal(JSON.parse(await readFile(input.args[input.args.indexOf("--output-schema") + 1]!, "utf8")).additionalProperties, false);
       return result(jsonl({
-        decision_json: JSON.stringify({
-          type: "action",
-          summary: "Read package metadata.",
-          action: { tool: "file.read", arguments: { scope: "repo", path: "package.json" } }
-        })
+        type: "action",
+        summary: "Read package metadata.",
+        action: { tool: "file.read", arguments: { scope: "repo", path: "package.json" } }
       }));
     }
   };
   const client = new CodexCliModelClient({
-    outputSchema,
-    outputField: "decision_json",
+    outputSchema: directOutputSchema,
     model: "test-model",
     reasoningEffort: "medium",
     timeoutMs: 5000,
@@ -80,6 +88,7 @@ test("Codex CLI model uses an isolated tool-disabled contract and unwraps one de
   );
   assert.match(observed.stdin, /Do not call shell, file, MCP, Web/);
   assert.equal(existsSync(observed.cwd), false);
+  assert.doesNotMatch(observed.stdin, /Serialize the requested domain JSON object/);
 });
 
 test("Codex CLI model rejects any Codex tool event and removes the temporary workspace", async () => {
@@ -106,7 +115,15 @@ test("Codex CLI model rejects any Codex tool event and removes the temporary wor
 test("Codex CLI model fails closed for invalid JSONL, nonzero exit, timeout, output overflow, and invalid wrapper", async () => {
   const fixtures: Array<{ name: string; value: CodexExecResult; pattern: RegExp }> = [
     { name: "invalid JSONL", value: result("not-json"), pattern: /invalid JSONL/ },
-    { name: "nonzero", value: { ...result(""), exitCode: 7, stderr: "api_key=SECRET_VALUE" }, pattern: /exited with code 7.*\[REDACTED\]/ },
+    {
+      name: "nonzero",
+      value: {
+        ...result(JSON.stringify({ type: "turn.failed", error: { message: "schema detail token=SECRET_VALUE" } })),
+        exitCode: 7,
+        stderr: "api_key=SECRET_VALUE"
+      },
+      pattern: /exited with code 7.*\[REDACTED\].*schema detail token=\[REDACTED\]/s
+    },
     { name: "timeout", value: { ...result(""), timedOut: true }, pattern: /timed out/ },
     { name: "overflow", value: { ...result(""), outputExceeded: true }, pattern: /exceeded/ },
     { name: "wrapper", value: result(jsonl({ wrong: "shape" })), pattern: /missing non-empty decision_json/ }
