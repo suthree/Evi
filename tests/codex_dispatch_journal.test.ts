@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,7 +13,38 @@ import {
   readTerminalDurableCodexDispatchResultForEffect,
   reserveDurableCodexDispatch
 } from "../packages/runtime/src/codex_dispatch_journal.js";
-import { runDurableCodexDispatchWorker } from "../packages/runtime/src/tools.js";
+import {
+  codexDispatchWorkerInvocation,
+  runDurableCodexDispatchWorker
+} from "../packages/runtime/src/tools.js";
+
+test("durable Codex worker resolves its source loader outside an isolated worktree", async () => {
+  const root = await mkdtemp(join(tmpdir(), "evi-codex-dispatch-loader-"));
+  const invocation = codexDispatchWorkerInvocation();
+  try {
+    const result = await new Promise<{ code: number | null; stderr: string }>((resolveResult, reject) => {
+      const child = spawn(invocation.command, invocation.args, {
+        cwd: root,
+        stdio: ["pipe", "ignore", "pipe"]
+      });
+      let stderr = "";
+      child.stderr.setEncoding("utf8");
+      child.stderr.on("data", (chunk: string) => {
+        stderr += chunk;
+      });
+      child.once("error", reject);
+      child.once("close", (code) => {
+        resolveResult({ code, stderr });
+      });
+      child.stdin.end("{}");
+    });
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("durable Codex dispatch journal binds one owner and exposes only a verified terminal result", async () => {
   const root = await mkdtemp(join(tmpdir(), "evi-codex-dispatch-journal-"));

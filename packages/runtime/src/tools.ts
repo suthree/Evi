@@ -5,6 +5,7 @@ import { createReadStream } from "node:fs";
 import { lstat, readlink, realpath, stat } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
+import { createRequire } from "node:module";
 import { basename, dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -1622,13 +1623,17 @@ async function completeDurableDispatchFailure(
   }
 }
 
-function codexDispatchWorkerInvocation(): { command: string; args: string[] } {
+export function codexDispatchWorkerInvocation(): { command: string; args: string[] } {
   const currentPath = fileURLToPath(import.meta.url);
   const extension = extname(currentPath);
   const workerPath = resolve(dirname(currentPath), `codex_dispatch_worker${extension}`);
-  return extension === ".ts"
-    ? { command: process.execPath, args: ["--import", "tsx", workerPath] }
-    : { command: process.execPath, args: [workerPath] };
+  if (extension !== ".ts") return { command: process.execPath, args: [workerPath] };
+
+  // The worker executes in the Goal's isolated worktree, which intentionally
+  // need not carry the control checkout's development dependencies. Resolve
+  // the source loader from this runtime module instead of the child cwd.
+  const tsxLoaderPath = createRequire(import.meta.url).resolve("tsx");
+  return { command: process.execPath, args: ["--import", tsxLoaderPath, workerPath] };
 }
 
 function codexFailure(
