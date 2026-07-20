@@ -104,7 +104,7 @@ own the Self or completion.
 | Concern | Current owner | Interface and invariant | Does not own |
 | --- | --- | --- | --- |
 | Stable Self | `core/soul.md`, `core/memory.md`, `core/runtimes.md` | Identity, memory policy, reference/runtime ontology | Task progress or execution state |
-| Goal lifecycle | `packages/runtime/src/goal_runtime.ts` | `GoalRuntimePort`, commands, canonical event stream, checkpoints, verification, one receipt | Channel transport or executor internals |
+| Goal lifecycle | `packages/runtime/src/goal_runtime.ts`, `goal_workspace_baseline.ts` | `GoalRuntimePort`, Harness-owned start baseline, commands, canonical event stream, checkpoints, verification, one receipt | Channel transport, task routing, or executor internals |
 | Goal interaction | `packages/runtime/src/goal_ingress.ts`, entry adapters | Translate one accepted submission or one explicitly named interaction into canonical GoalRuntime commands | Goal state, latest-Goal inference, or independent task/session truth |
 | Context compilation | `packages/core/src/context.ts`, `context_budget.ts`, runtime context manifest | Bounded rendered snapshot plus provenance and omissions | Raw archive ownership or ambient full recall |
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
@@ -152,6 +152,14 @@ verification from the Portfolio. Harness owns containment, observation, and
 receipt acceptance. This preserves Evi as a learning orchestrator rather than
 a generic command worker, while keeping verification independent and
 reproducible.
+
+Goal start also captures a Harness-owned, read-only workspace baseline: Git
+HEAD plus normalized tracked and untracked status paths only. A non-empty
+baseline remains explicit inherited lineage on the terminal receipt and needs a
+later successful Harness-owned local verification before acceptance. It does
+not classify the objective, choose a capability or test command, route a task,
+or create an automatic test pipeline; an empty baseline adds no synthetic
+verification obligation.
 
 Constraints are classified by what they protect. Canonical evidence, repository
 containment, secret/private-data boundaries, irreversible external effects, and

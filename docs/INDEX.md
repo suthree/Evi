@@ -19,6 +19,7 @@ Load this compact index by default. Do not preload every stable document.
 - Node-local active vaults and Evi-controlled LuBan promotion: `docs/adr/0004-node-local-vault-and-luban-promotion.md`
 - Typed cognition envelopes and fail-closed model-decision parsing: `docs/adr/0005-typed-cognition-envelope.md`
 - Independent verification after no-change delegated execution: `docs/adr/0006-independent-verification-bridge.md`
+- Goal-start workspace baseline and inherited change lineage: `docs/adr/0007-goal-start-workspace-baseline.md`
 - Historical Trellis evidence only, never default context: `.trellis/`
 
 Read on demand:

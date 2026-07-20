@@ -56,6 +56,10 @@ _Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, comple
 The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
 _Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root
 
+**Goal Workspace Baseline**:
+The Harness-owned, read-only Goal-start snapshot containing only Git HEAD and normalized tracked or untracked status paths. Non-empty paths are inherited lineage, not Goal-produced changes, and require later successful Harness-owned local verification before acceptance; an empty baseline creates no synthetic verification obligation.
+_Avoid_: Diff body, file content, task parser, test-command policy, task router, automatic test pipeline
+
 **Capability Experience**:
 One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
 _Avoid_: Causal proof, raw tool output, progress score

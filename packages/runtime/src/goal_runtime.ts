@@ -53,6 +53,12 @@ import {
   parseGoalWorkspaceObservation,
   type GoalWorkspaceFreshnessView
 } from "./goal_workspace_freshness.js";
+import {
+  captureGoalWorkspaceBaseline,
+  goalWorkspaceBaselineSchema,
+  inheritedWorkspaceBaselinePaths,
+  type GoalWorkspaceBaseline
+} from "./goal_workspace_baseline.js";
 
 const EVENTS_REF = "goals/events.jsonl";
 const CHECKPOINT_ROOT = "goals/checkpoints";
@@ -176,6 +182,7 @@ const outcomeReceiptSchema = z.object({
   decision: z.enum(["accepted", "abandoned"]),
   summary: textSchema,
   changes: changeSetSchema,
+  inherited_changes: changeSetSchema.default([]),
   verification: z.object({
     status: z.enum(["passed", "not_run"]),
     summary: shortTextSchema,
@@ -283,7 +290,8 @@ const startedEventSchema = z.object({
   objective: textSchema,
   budget: goalSoftBudgetSchema,
   checkpoint: goalCheckpointSchema,
-  repository_authority: goalRepositoryAuthoritySchema.optional()
+  repository_authority: goalRepositoryAuthoritySchema.optional(),
+  workspace_baseline: goalWorkspaceBaselineSchema.optional()
 }).strict();
 
 const actionPlannedEventSchema = z.object({
@@ -437,6 +445,7 @@ export interface GoalView {
   last_command_id: string;
   receipt: OutcomeReceipt | null;
   repository_authority: GoalRepositoryAuthority | null;
+  workspace_baseline: GoalWorkspaceBaseline | null;
   execution_workspace: GoalExecutionWorkspace | null;
   boundary: typeof GOAL_BOUNDARY;
 }
@@ -683,6 +692,7 @@ export class GoalRuntime {
       throw new Error(`GoalRuntime generated duplicate goal id: ${goalId}`);
     }
     const repositoryAuthority = await inspectGoalRepositoryAuthority(this.store.repoRoot);
+    const workspaceBaseline = await captureGoalWorkspaceBaseline(repositoryAuthority);
     return (await this.appendEvent(events, {
       schema_version: 2,
       type: "goal_runtime_event",
@@ -697,6 +707,7 @@ export class GoalRuntime {
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
       repository_authority: repositoryAuthority,
+      workspace_baseline: workspaceBaseline,
       boundary: GOAL_BOUNDARY
     })).view;
   }
@@ -1382,6 +1393,7 @@ export class GoalRuntime {
       decision: "accepted",
       summary: candidate.summary,
       changes: candidate.changes,
+      inherited_changes: inheritedGoalChanges(current.workspace_baseline),
       verification: {
         status: "passed",
         summary: verification.summary,
@@ -1410,6 +1422,7 @@ export class GoalRuntime {
       terminalEventId,
       createdAt,
       changes: lineage.changes,
+      inheritedChanges: inheritedGoalChanges(current.workspace_baseline),
       evidenceEventIds: lineage.eventIds
     });
   }
@@ -1456,6 +1469,7 @@ export class GoalRuntime {
       next_action: view.next_action,
       pending_effect: view.pending_effect,
       repository_authority: view.repository_authority,
+      workspace_baseline: view.workspace_baseline,
       execution_workspace: view.execution_workspace,
       last_event_id: view.last_event_id,
       updated_at: updatedAt,
@@ -1620,6 +1634,8 @@ export class CanonicalGoalVerifier implements GoalVerifier {
       return changeObservationIndex < 0 || !input.evidence.some((item, index) => index > changeObservationIndex
         && isSuccessfulLocalVerification(item));
     });
+    const inheritedChanges = inheritedGoalChanges(input.goal.workspace_baseline);
+    const inheritedVerification = input.evidence.find(isSuccessfulLocalVerification);
     const checks: GoalVerificationResult["checks"] = [{
       id: "canonical_evidence",
       status: input.evidence.length > 0 ? "passed" : "failed",
@@ -1666,6 +1682,18 @@ export class CanonicalGoalVerifier implements GoalVerifier {
         status: "failed",
         summary: "Every Git commit or delegated workspace path requires a later successful local verification observation.",
         evidence_event_ids: input.candidate.evidence_event_ids
+      });
+    }
+    if (inheritedChanges.length > 0) {
+      checks.push({
+        id: "inherited_workspace_baseline_verification",
+        status: inheritedVerification ? "passed" : "failed",
+        summary: inheritedVerification
+          ? "A later successful Harness-owned local verification covers the inherited Goal-start workspace baseline."
+          : "Inherited Goal-start workspace paths require a later successful Harness-owned local verification.",
+        evidence_event_ids: inheritedVerification
+          ? [inheritedVerification.event_id]
+          : input.candidate.evidence_event_ids
       });
     }
     const failed = checks.some((check) => check.status === "failed");
@@ -1894,6 +1922,14 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     reason: pending.effect_decision.reason
   } : null;
   const repositoryAuthority = started.repository_authority ?? null;
+  const workspaceBaseline = started.workspace_baseline ?? null;
+  // Older Goal starts may carry incidental baseline data without the later
+  // repository-authority binding. Keep those historical records readable;
+  // their continuation remains fail-closed through the missing authority.
+  if (workspaceBaseline && repositoryAuthority
+    && workspaceBaseline.head_commit !== repositoryAuthority.start_head_commit) {
+    throw new Error("GoalRuntime workspace baseline is not bound to the Goal start repository authority");
+  }
   const executionWorkspace = repositoryAuthority
     ? deriveGoalExecutionWorkspace(events, goalId, repositoryAuthority)
     : null;
@@ -1914,6 +1950,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     last_command_id: last.command_id,
     receipt,
     repository_authority: repositoryAuthority,
+    workspace_baseline: workspaceBaseline,
     execution_workspace: executionWorkspace,
     boundary: GOAL_BOUNDARY
   };
@@ -2369,6 +2406,7 @@ function assertAcceptedReceipt(
   }
   if (receipt.created_at !== event.occurred_at
     || canonicalJson(receipt.changes) !== canonicalJson(event.candidate.changes)
+    || canonicalJson(receipt.inherited_changes) !== canonicalJson(inheritedGoalChanges(started.workspace_baseline ?? null))
     || receipt.summary !== event.candidate.summary
     || canonicalJson(receipt.runtime_result) !== canonicalJson(event.candidate.runtime_result)
     || canonicalJson(receipt.residual_risks) !== canonicalJson(event.candidate.residual_risks)
@@ -2395,6 +2433,7 @@ function assertAbandonmentReceipt(
     terminalEventId: event.id,
     createdAt: event.occurred_at,
     changes: lineage.changes,
+    inheritedChanges: inheritedGoalChanges(started.workspace_baseline ?? null),
     evidenceEventIds: lineage.eventIds
   });
   if (canonicalJson(receipt) !== canonicalJson(expected)) {
@@ -2410,6 +2449,7 @@ function buildAbandonmentReceipt(args: {
   terminalEventId: string;
   createdAt: string;
   changes: GoalChangeIdentity[];
+  inheritedChanges: GoalChangeIdentity[];
   evidenceEventIds: string[];
 }): OutcomeReceipt {
   return outcomeReceiptSchema.parse({
@@ -2421,6 +2461,7 @@ function buildAbandonmentReceipt(args: {
     decision: "abandoned",
     summary: args.reason,
     changes: args.changes,
+    inherited_changes: args.inheritedChanges,
     verification: {
       status: "not_run",
       summary: ABANDON_VERIFICATION_SUMMARY,
@@ -2436,6 +2477,10 @@ function buildAbandonmentReceipt(args: {
     created_at: args.createdAt,
     boundary: GOAL_BOUNDARY
   });
+}
+
+function inheritedGoalChanges(baseline: GoalWorkspaceBaseline | null): GoalChangeIdentity[] {
+  return inheritedWorkspaceBaselinePaths(baseline).map((identity) => ({ kind: "workspace_path", identity }));
 }
 
 function assertReplayStatus(actual: GoalStatus, expected: GoalStatus, event: GoalRuntimeEvent): void {

@@ -308,6 +308,19 @@ dispatch. Its HEAD may advance only through descendants. Historical starts
 without the field remain readable, pausable, and abandonable, but cannot
 Continue or dispatch. Use the same control `--repo-root` throughout.
 
+At the same start boundary, the Harness captures a read-only **Goal Workspace
+Baseline** containing only the bound Git HEAD and sorted, normalized
+repository-relative tracked and untracked porcelain-status paths. It does not
+persist a diff, file body, status hash, command, or objective-derived policy.
+When its paths are non-empty, `OutcomeReceipt.inherited_changes[]` exposes them
+as `workspace_path` identities distinct from `changes[]` produced by canonical
+Goal observations. Acceptance then requires a later successful Harness-owned
+local-verification observation. This is a derived verification obligation, not
+a capability or test-command selection rule: cognition still chooses an
+available verification path dynamically. A clean baseline records empty path
+sets and adds no synthetic verification check, task routing, or automatic test
+pipeline.
+
 A Goal may later derive one isolated execution workspace from one successful
 canonical `workspace.prepare` observation. Current implementation compatibility
 requires a fresh `codex/issue-N-slug` branch, the exact control start HEAD as
