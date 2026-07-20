@@ -77,7 +77,7 @@ export interface GoalCapabilityPortfolioProvider {
 }
 
 const capabilityFitAssessmentSchema = z.object({
-  considered_capability_ids: z.array(z.string().trim().min(1).max(128)).min(1).max(MAX_GOAL_CAPABILITIES),
+  considered_capability_ids: z.array(z.string().trim().min(1).max(128)).max(MAX_GOAL_CAPABILITIES),
   considered_skill_refs: z.array(z.string().trim().min(1).max(1_000)).max(MAX_GOAL_SELECTED_SKILLS),
   conclusion: z.string().trim().min(1).max(2_000)
 }).strict().superRefine((value, context) => {

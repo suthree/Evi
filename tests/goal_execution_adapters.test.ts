@@ -280,7 +280,8 @@ test("ModelGoalCognition parses one decision and persists no model artifact", as
   assert.match(requests[0]!.instructions, /Canonical observations win any conflict/);
   assert.match(requests[0]!.instructions, /controlling Goal runtime owns judgment and acceptance/);
   assert.match(requests[0]!.instructions, /capability_selection/);
-  assert.match(requests[0]!.instructions, /"capability_fit_assessment":\{"considered_capability_ids"/);
+  assert.match(requests[0]!.instructions, /Only for delegated codex\.run, add capability_selection\.capability_fit_assessment/);
+  assert.match(requests[0]!.instructions, /Omit it for direct tools/);
   assert.match(requests[0]!.instructions, /choose workspace\.prepare/);
   assert.match(requests[0]!.instructions, /action\.arguments must contain only/);
   assert.match(requests[0]!.instructions, /Never provide mode, worktree, branch, base_commit/);

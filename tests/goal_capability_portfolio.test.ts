@@ -159,6 +159,17 @@ test("Goal capability selection validates availability, action agreement, execut
     tool: "file.read",
     arguments: { scope: "repo", path: "apps/cli/src/main.ts", start_line: 1, max_lines: 200 }
   }, portfolio), valid);
+  assert.deepEqual(validateGoalCapabilitySelection({
+    ...valid,
+    capability_fit_assessment: {
+      considered_capability_ids: [],
+      considered_skill_refs: [],
+      conclusion: "Not used for this direct bounded read."
+    }
+  }, {
+    tool: "file.read",
+    arguments: { scope: "repo", path: "apps/cli/src/main.ts", start_line: 1, max_lines: 200 }
+  }, portfolio).capability_fit_assessment?.considered_capability_ids, []);
 
   assert.throws(() => validateGoalCapabilitySelection({
     ...valid,
