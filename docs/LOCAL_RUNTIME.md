@@ -37,6 +37,13 @@ Evi commit, LuBan commit, selected profile, and asset-selection lock. Probation
 must pass before acceptance, and rollback must not depend on a mutable source
 checkout. Host credentials and runtime state remain outside both repositories.
 
+The deployment supervisor records its local lock owner PID. A lock with a live
+owner is never stolen; a lock whose recorded owner no longer exists is reclaimed
+atomically so a supervisor restart cannot consume a pending deployment's startup
+window. Legacy ownerless locks retain the bounded five-minute recovery path.
+Lock recovery preserves deployment records and evidence, and it does not bypass
+readiness, probation, rollback, or the failed-candidate retry guard.
+
 ## Package Manager
 
 Project docs use `pnpm` for command examples:

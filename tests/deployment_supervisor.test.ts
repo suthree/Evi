@@ -191,6 +191,52 @@ test("deployment supervisor activates, rolls back, preserves evidence, and emits
   }
 });
 
+test("deployment supervisor recovers a dead recorded lock owner but preserves a live owner lock", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-stale-lock-"));
+  const manifest = await preparePendingActivation(root);
+  const lockRoot = resolve(manifest.state_root, "deployments/.supervisor-lock");
+  let loaded = true;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap" || args[0] === "kickstart") loaded = true;
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await mkdir(lockRoot, { recursive: true });
+    await writeJson(resolve(lockRoot, "owner.json"), {
+      schema_version: 1,
+      pid: 999_999_999,
+      acquired_at: "2026-07-15T00:00:00.000Z"
+    });
+
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:01.000Z"),
+      runLaunchctl
+    });
+    assert.equal(recovered.action, "activated");
+    assert.equal(recovered.deployment?.status, "starting");
+    await assert.rejects(readFile(resolve(lockRoot, "owner.json"), "utf8"), { code: "ENOENT" });
+
+    await mkdir(lockRoot, { recursive: true });
+    await writeJson(resolve(lockRoot, "owner.json"), {
+      schema_version: 1,
+      pid: process.pid,
+      acquired_at: "2026-07-15T00:00:02.000Z"
+    });
+    const protectedLock = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:03.000Z"),
+      runLaunchctl
+    });
+    assert.equal(protectedLock.action, "locked");
+    assert.equal(JSON.parse(await readFile(resolve(lockRoot, "owner.json"), "utf8")).pid, process.pid);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("candidate activation accepts a no-such-process bootout only after the job is absent on postcondition inspection", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-absent-"));
   const manifest = await preparePendingActivation(root);
