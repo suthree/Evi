@@ -12,6 +12,7 @@ const DEFAULT_LAUNCHCTL_START_ATTEMPTS = 7;
 const LAUNCHCTL_RETRY_BASE_DELAY_MS = 250;
 const LAUNCHCTL_RETRY_MAX_DELAY_MS = 8_000;
 const DEFAULT_RECOVERY_ATTEMPTS = 6;
+const SUPERVISOR_LOCK_OWNER_FILENAME = "owner.json";
 
 export const DEPLOYMENT_STATUSES = [
   "pending",
@@ -1181,21 +1182,76 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
 }
 
 async function acquireLock(path: string): Promise<boolean> {
+  if (await createSupervisorLock(path)) return true;
+  const owner = await readSupervisorLockOwner(path);
+  if (owner && !isProcessAlive(owner.pid)) {
+    return reclaimDeadSupervisorLock(path, owner.pid);
+  }
+  try {
+    const age = Date.now() - (await stat(path)).mtimeMs;
+    if (age > 5 * 60_000) {
+      await rm(path, { recursive: true, force: true });
+      return createSupervisorLock(path);
+    }
+  } catch {
+    // Another process owns or is repairing the lock.
+  }
+  return false;
+}
+
+async function createSupervisorLock(path: string): Promise<boolean> {
   try {
     await mkdir(path);
+  } catch {
+    return false;
+  }
+  try {
+    await writeFile(resolve(path, SUPERVISOR_LOCK_OWNER_FILENAME), `${JSON.stringify({
+      schema_version: 1,
+      pid: process.pid,
+      acquired_at: new Date().toISOString()
+    })}\n`, { encoding: "utf8", flag: "wx" });
     return true;
   } catch {
-    try {
-      const age = Date.now() - (await stat(path)).mtimeMs;
-      if (age > 5 * 60_000) {
-        await rm(path, { recursive: true, force: true });
-        await mkdir(path);
-        return true;
-      }
-    } catch {
-      // Another process owns or is repairing the lock.
-    }
+    await rm(path, { recursive: true, force: true });
     return false;
+  }
+}
+
+async function reclaimDeadSupervisorLock(path: string, expectedPid: number): Promise<boolean> {
+  const stalePath = `${path}.stale-${process.pid}-${Date.now()}`;
+  try {
+    await rename(path, stalePath);
+  } catch {
+    return false;
+  }
+  try {
+    const owner = await readSupervisorLockOwner(stalePath);
+    if (!owner || owner.pid !== expectedPid || isProcessAlive(owner.pid)) return false;
+    await rm(stalePath, { recursive: true, force: true });
+    return createSupervisorLock(path);
+  } finally {
+    await rm(stalePath, { recursive: true, force: true });
+  }
+}
+
+async function readSupervisorLockOwner(path: string): Promise<{ pid: number } | null> {
+  try {
+    const parsed = JSON.parse(await readFile(resolve(path, SUPERVISOR_LOCK_OWNER_FILENAME), "utf8")) as unknown;
+    const pid = isRecord(parsed) ? parsed.pid : undefined;
+    if (!isRecord(parsed) || parsed.schema_version !== 1 || typeof pid !== "number" || !Number.isSafeInteger(pid) || pid <= 0) return null;
+    return { pid };
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return !(isRecord(error) && error.code === "ESRCH");
   }
 }
 
