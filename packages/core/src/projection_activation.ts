@@ -18,7 +18,7 @@ const lockSchema = z.object({
   }).strict()).min(1),
   lock_hash: z.string().regex(HASH_PATTERN)
 }).strict();
-const pointerSchema = z.object({
+export const projectionPointerSchema = z.object({
   schema_version: z.literal(1),
   release_id: z.string().regex(HASH_PATTERN),
   profile_id: z.string().min(1),
@@ -29,7 +29,7 @@ const pointerSchema = z.object({
   activation_receipt_id: z.string().min(1)
 }).strict();
 
-export type ProjectionPointer = z.infer<typeof pointerSchema>;
+export type ProjectionPointer = z.infer<typeof projectionPointerSchema>;
 
 export interface ProjectionActivationReceipt {
   schema_version: 1;
@@ -181,7 +181,7 @@ async function collectFiles(root: string, prefix = ""): Promise<string[]> {
 }
 
 async function readPointer(path: string): Promise<ProjectionPointer | null> {
-  try { return pointerSchema.parse(JSON.parse(await readFile(path, "utf8"))); }
+  try { return projectionPointerSchema.parse(JSON.parse(await readFile(path, "utf8"))); }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw activationError("invalid_pointer", "Projection pointer is invalid", { path });

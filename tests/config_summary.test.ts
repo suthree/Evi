@@ -85,7 +85,8 @@ test("runtime config summary reports effective non-secret config with source ref
       content_creator_metrics_creator_url: "https://creator.xiaohongshu.com/new/note-manager",
       content_creator_metrics_browser_session_name: "local-runtime-test-creator",
       content_creator_metrics_browser_auto_connect: true,
-      content_creator_metrics_browser_cdp_port: "9222"
+      content_creator_metrics_browser_cdp_port: "9222",
+      asset_projection_root: "${LOCAL_RUNTIME_HOME}/projection"
     })}\n`, "utf8");
     await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
       type: "model",
@@ -167,6 +168,7 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.runtime.content_creator_metrics_browser_session_name, "local-runtime-test-creator");
     assert.equal(summary.runtime.content_creator_metrics_browser_auto_connect, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
+    assert.equal(summary.runtime.asset_projection_root, join(homeRoot, "projection"));
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
     assert.deepEqual(summary.runtime.defaulted_fields, ["promotion_enabled", "structured_output"]);
     assert.equal(summary.runtime.promotion_enabled, false);
@@ -418,7 +420,12 @@ test("runtime config update appends safe content daily settings to home config",
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
-      JSON.stringify({ type: "runtime", promotion_enabled: true, structured_output: true })
+      JSON.stringify({
+        type: "runtime",
+        promotion_enabled: true,
+        structured_output: true,
+        asset_projection_root: "${LOCAL_RUNTIME_HOME}/projection"
+      })
     ].join("\n") + "\n", "utf8");
 
     const result = await updateRuntimeConfig({
@@ -482,6 +489,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(result.after.content_daily_publish_enabled, false);
     assert.equal(result.after.content_feedback_refresh_enabled, true);
     assert.equal(result.after.content_feedback_refresh_limit, 3);
+    assert.equal(result.after.asset_projection_root, join(homeRoot, "projection"));
     assert.equal(result.boundary.includes("never reads or writes auth.jsonl"), true);
 
     const raw = await readFile(join(homeConfigDir, "config.jsonl"), "utf8");
@@ -493,6 +501,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(JSON.parse(raw).content_feedback_refresh_server_url, "http://localhost:18061/mcp");
     assert.equal(JSON.parse(raw).content_creator_metrics_enabled, true);
     assert.equal(JSON.parse(raw).content_creator_metrics_browser_session_name, "runtime-creator-metrics-test");
+    assert.equal(JSON.parse(raw).asset_projection_root, join(homeRoot, "projection"));
 
     const summary = await loadRuntimeConfigSummary({ configDir });
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
@@ -504,6 +513,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(summary.runtime.content_feedback_refresh_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
+    assert.equal(summary.runtime.asset_projection_root, join(homeRoot, "projection"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }

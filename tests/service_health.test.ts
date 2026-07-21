@@ -222,6 +222,46 @@ test("service health flags a failed message gateway channel for operator attenti
   }
 });
 
+test("service health projects only configured asset projection identity state from the heartbeat", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  try {
+    await writeRepoHead(store, "abcdef0123456789abcdef0123456789abcdef01");
+    await store.writeJson("services/runtime/heartbeat.json", {
+      service: "runtime",
+      state: "running",
+      pid: 1234,
+      updated_at: "2026-06-30T00:00:30.000Z",
+      asset_projection_root: "relative-projection-root",
+      runtime_build: {
+        source_commit: "abcdef0123456789abcdef0123456789abcdef01",
+        source_commit_short: "abcdef012345",
+        source_branch: "develop",
+        source_is_dirty: false
+      }
+    });
+
+    const health = await getServiceHealth(store, {
+      now: "2026-06-30T00:01:00.000Z"
+    });
+
+    assert.deepEqual(health.asset_projection, {
+      configured: true,
+      status: "invalid",
+      reason: "projection_root_not_absolute"
+    });
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["asset_projection_invalid"]);
+    assert.deepEqual(health.status_reasons, ["asset_projection_invalid"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "asset_projection_invalid",
+      summary: "configured asset projection identity metadata is absent, malformed, or inconsistent; inspect the bounded projection summary before any activation or recovery decision",
+      command: "pnpm run runtime -- service health --target runtime"
+    }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service health keeps non-ready inbound transports visible as runtime attention", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
   const store = new AgentStore(join(root, "repo"), join(root, "state"));

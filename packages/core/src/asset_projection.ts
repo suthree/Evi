@@ -47,6 +47,26 @@ export interface AssetSelectionLock {
   lock_hash: string;
 }
 
+export const assetSelectionLockSchema: z.ZodType<AssetSelectionLock> = z.object({
+  schema_version: z.literal(1),
+  profile_id: z.string().min(1),
+  luban_commit: z.string().regex(/^[0-9a-f]{40}$/),
+  assets: z.array(z.object({
+    kind: z.literal("skill"),
+    id: z.string().min(1),
+    content_hash: z.string().regex(HASH_PATTERN),
+    content_root: z.string().min(1),
+    entrypoint: z.string().min(1),
+    files: z.array(z.object({
+      path: z.string().min(1),
+      media_type: z.string().min(1),
+      sha256: z.string().regex(HASH_PATTERN),
+      executable: z.boolean()
+    }).strict()).min(1)
+  }).strict()).min(1),
+  lock_hash: z.string().regex(HASH_PATTERN)
+}).strict();
+
 export interface ResolvedSkillSelection {
   profile: NodeSkillProfile;
   skills: LuBanSkillDescriptor[];
@@ -143,7 +163,7 @@ export async function stageSkillProjection(args: {
   projection_root: string;
   selection: ResolvedSkillSelection;
 }): Promise<StagedSkillProjection> {
-  assertLockHash(args.selection.lock);
+  assertAssetSelectionLockHash(args.selection.lock);
   const projectionRoot = resolve(args.projection_root);
   await ensureRealDirectory(projectionRoot);
   const releasesRoot = join(projectionRoot, "releases");
@@ -273,7 +293,7 @@ async function verifyRelease(releasePath: string, selection: ResolvedSkillSelect
   }
 }
 
-function assertLockHash(lock: AssetSelectionLock): void {
+export function assertAssetSelectionLockHash(lock: AssetSelectionLock): void {
   const { lock_hash: declared, ...base } = lock;
   const actual = sha256(Buffer.from(JSON.stringify(base), "utf8"));
   if (!HASH_PATTERN.test(declared) || actual !== declared) {

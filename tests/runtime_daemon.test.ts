@@ -18,6 +18,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
   const homeRoot = join(root, "home");
   const configDir = join(root, "config");
   const heartbeatPath = join(stateRoot, "services/runtime/heartbeat.json");
+  const projectionRoot = join(root, "projection");
   try {
     await mkdir(repoRoot, { recursive: true });
     await mkdir(configDir, { recursive: true });
@@ -30,7 +31,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
     await writeFile(join(configDir, "models.jsonl"), "", "utf8");
     const handle = await startRuntimeDaemon({
       repoRoot,
-      config: runtimeConfig({ stateRoot, homeRoot }),
+      config: runtimeConfig({ stateRoot, homeRoot, assetProjectionRoot: projectionRoot }),
       configDir,
       target: "runtime",
       web: {
@@ -68,6 +69,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
 
       const heartbeat = await readJsonEventually(heartbeatPath, (entry) => entry.state === "running");
       assert.equal(heartbeat.service, "runtime");
+      assert.equal(heartbeat.asset_projection_root, projectionRoot);
       assert.equal(heartbeat.gateway?.state, "running");
       assert.deepEqual(
         heartbeat.gateway?.channels.map((channel: Record<string, unknown>) => `${channel.kind}:${channel.state}`),
@@ -77,6 +79,11 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
       const health = await getServiceHealth(new AgentStore(repoRoot, stateRoot), { target: "runtime" });
       assert.equal(health.service.state, "running");
       assert.equal(health.service.gateway?.state, "running");
+      assert.deepEqual(health.asset_projection, {
+        configured: true,
+        status: "absent",
+        reason: "projection_root_missing"
+      });
     } finally {
       await handle.stop();
     }
@@ -251,7 +258,7 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-function runtimeConfig(args: { stateRoot: string; homeRoot: string }): RuntimeConfig {
+function runtimeConfig(args: { stateRoot: string; homeRoot: string; assetProjectionRoot?: string }): RuntimeConfig {
   return {
     home: {
       root: args.homeRoot
@@ -287,7 +294,8 @@ function runtimeConfig(args: { stateRoot: string; homeRoot: string }): RuntimeCo
       content_creator_metrics_limit: 10,
       content_creator_metrics_creator_url: "https://creator.xiaohongshu.com/new/note-manager",
       content_creator_metrics_browser_session_name: "runtime-creator-metrics",
-      content_creator_metrics_browser_auto_connect: false
+      content_creator_metrics_browser_auto_connect: false,
+      asset_projection_root: args.assetProjectionRoot
     },
     vault: {
       mode: "user",

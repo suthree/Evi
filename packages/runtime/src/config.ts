@@ -48,7 +48,8 @@ const runtimeRecordSchema = z.object({
   content_creator_metrics_creator_url: z.string().url().default("https://creator.xiaohongshu.com/new/note-manager"),
   content_creator_metrics_browser_session_name: z.string().min(1).default("runtime-creator-metrics"),
   content_creator_metrics_browser_auto_connect: z.boolean().default(false),
-  content_creator_metrics_browser_cdp_port: z.string().min(1).optional()
+  content_creator_metrics_browser_cdp_port: z.string().min(1).optional(),
+  asset_projection_root: z.string().min(1).optional()
 });
 
 const vaultRecordSchema = z.object({
@@ -211,6 +212,7 @@ export interface RuntimeConfig {
     content_creator_metrics_browser_session_name: string;
     content_creator_metrics_browser_auto_connect: boolean;
     content_creator_metrics_browser_cdp_port?: string;
+    asset_projection_root?: string;
   };
   vault: {
     mode: "repo-local" | "user";
@@ -277,6 +279,7 @@ export interface RuntimeConfigSummary {
     content_creator_metrics_browser_session_name: string;
     content_creator_metrics_browser_auto_connect: boolean;
     content_creator_metrics_browser_cdp_port?: string;
+    asset_projection_root?: string;
     source_ref: string;
     defaulted_fields: string[];
   };
@@ -585,7 +588,10 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
       content_creator_metrics_creator_url: runtime.content_creator_metrics_creator_url,
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
-      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port
+      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
+      asset_projection_root: runtime.asset_projection_root
+        ? expandConfigPath(runtime.asset_projection_root, selectors.homeRoot, false)
+        : undefined
     },
     vault: {
       mode: vault.mode,
@@ -750,6 +756,9 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
+      asset_projection_root: runtime.asset_projection_root
+        ? expandConfigPath(runtime.asset_projection_root, selectors.homeRoot, false)
+        : undefined,
       source_ref: runtimeSourceRef,
       defaulted_fields: runtimeDefaultedFields(runtimeRaw)
     },
@@ -1228,7 +1237,8 @@ function buildUpdatedRuntimeRecord(
     content_creator_metrics_creator_url: current.content_creator_metrics_creator_url,
     content_creator_metrics_browser_session_name: current.content_creator_metrics_browser_session_name,
     content_creator_metrics_browser_auto_connect: current.content_creator_metrics_browser_auto_connect,
-    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {})
+    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {}),
+    ...(current.asset_projection_root ? { asset_projection_root: current.asset_projection_root } : {})
   };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
