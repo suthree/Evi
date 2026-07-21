@@ -1545,7 +1545,7 @@ export async function main(): Promise<number> {
 
   if (options.command === "goal") {
     const action = options.goalAction;
-    if (!action) throw new Error("goal requires an action: start, continue, read, pause, resume, or abandon");
+    if (!action) throw new Error("goal requires an action: start, continue, read, inspect, pause, resume, or abandon");
     const runtime = await createLocalGoalRuntime({
       repoRoot: options.repoRoot,
       configDir: options.configDir,
@@ -3551,7 +3551,7 @@ function printUsage(): void {
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root ${stateRootUsage}]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
-  pnpm run runtime -- goal continue|read --goal goal_... [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal continue|read|inspect --goal goal_... [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal pause|abandon --goal goal_... --reason "..." [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal resume --goal goal_... [--repo-root /same/absolute/worktree] [--confirm-effect goal_effect_...] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- pipeline --task "..." [--stages intake,tool_check,final] [--query-todo]

@@ -76,6 +76,7 @@ const MAX_OUTCOME_CHANGES = MAX_CODEX_CANONICAL_CHANGES * 2;
 const MAX_CHANGE_EVIDENCE_EVENTS = 256;
 const RECENT_OUTCOME_EVIDENCE_EVENTS = 64;
 const MAX_OUTCOME_EVIDENCE_EVENTS = (MAX_CHANGE_EVIDENCE_EVENTS * 2) + RECENT_OUTCOME_EVIDENCE_EVENTS;
+const MAX_GOAL_READ_SCOPE_OBSERVATIONS = 32;
 const VOLATILE_OBSERVATION_TIMESTAMP_KEYS = new Set([
   "created_at",
   "updated_at",
@@ -456,6 +457,26 @@ export interface GoalView {
 export interface GoalRuntimePort {
   handle(command: GoalCommand): Promise<GoalView>;
   read(goalId: string): Promise<GoalView>;
+  inspect(goalId: string): Promise<GoalInspection>;
+}
+
+/** Bounded, operator-only evidence projection; it never changes Goal or tool authority. */
+export interface GoalInspection {
+  action: "inspect";
+  goal: GoalView;
+  tool_competence: GoalToolCompetence[];
+  local_read_observations: GoalLocalReadObservation[];
+  local_read_observation_count: number;
+  local_read_observation_limit: typeof MAX_GOAL_READ_SCOPE_OBSERVATIONS;
+  boundary: "Read-only canonical-event projection: omits observation bodies and never grants write, effect, capability, Skill, or persistence authority.";
+}
+
+export interface GoalLocalReadObservation {
+  event_id: string;
+  tool: string;
+  target: string;
+  ok: boolean;
+  occurred_at: string;
 }
 
 export interface GoalEvidenceView {
@@ -611,6 +632,23 @@ export class GoalRuntime {
     if (!parsedGoalId.success) throw new Error(`Invalid GoalRuntime goal id: ${goalId}`);
     await waitForStateRootMutations(this.store.stateRoot);
     return deriveGoalState(await this.readCanonicalEvents(), parsedGoalId.data).view;
+  }
+
+  async inspect(goalId: string): Promise<GoalInspection> {
+    const parsedGoalId = safeIdSchema.safeParse(goalId);
+    if (!parsedGoalId.success) throw new Error(`Invalid GoalRuntime goal id: ${goalId}`);
+    await waitForStateRootMutations(this.store.stateRoot);
+    const events = await this.readCanonicalEvents();
+    const reads = buildGoalLocalReadObservations(events, parsedGoalId.data);
+    return {
+      action: "inspect",
+      goal: deriveGoalState(events, parsedGoalId.data).view,
+      tool_competence: buildGoalToolCompetence(events),
+      local_read_observations: reads.observations,
+      local_read_observation_count: reads.count,
+      local_read_observation_limit: MAX_GOAL_READ_SCOPE_OBSERVATIONS,
+      boundary: "Read-only canonical-event projection: omits observation bodies and never grants write, effect, capability, Skill, or persistence authority."
+    };
   }
 
   private async handleUnlocked(input: GoalCommand): Promise<GoalView> {
@@ -2258,6 +2296,30 @@ function buildGoalToolCompetence(events: GoalRuntimeEvent[]): GoalToolCompetence
     });
   }
   return summarizeGoalToolCompetence(signals);
+}
+
+function buildGoalLocalReadObservations(
+  events: GoalRuntimeEvent[],
+  goalId: string
+): { count: number; observations: GoalLocalReadObservation[] } {
+  const observations = events
+    .filter((event): event is Extract<GoalRuntimeEvent, { event_type: "goal_action_observed" }> => (
+      event.goal_id === goalId
+      && event.event_type === "goal_action_observed"
+      && event.effect_intent.operation === "read_local"
+    ));
+  return {
+    count: observations.length,
+    observations: observations.slice(-MAX_GOAL_READ_SCOPE_OBSERVATIONS).map((event) => ({
+      event_id: event.id,
+      tool: event.result.tool,
+      target: event.effect_intent.data_exposure === "private_or_secret"
+        ? "redacted:private_or_secret"
+        : event.effect_intent.target,
+      ok: event.result.ok,
+      occurred_at: event.occurred_at
+    }))
+  };
 }
 
 function buildEvidenceViews(

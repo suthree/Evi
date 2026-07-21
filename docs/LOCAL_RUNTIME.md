@@ -142,6 +142,7 @@ pnpm run runtime -- capabilities
 pnpm run runtime -- capabilities acceptance
 pnpm run runtime -- capabilities verify-entrypoints --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- live --task "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- goal inspect --goal goal_... --repo-root /same/absolute/worktree --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root ~/.local-runtime/state-baselines/stage
 pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- pipeline runs --state-root ~/.local-runtime/state/evi
@@ -239,6 +240,11 @@ also uses GoalRuntime: it renders bounded same-chat history into the objective,
 then the adapter records inbound and direct delivery evidence. The adapter keeps
 history selection, follow-up queues, and read-only operator commands; none of
 those create a second execution owner.
+
+The local CLI `goal inspect --goal goal_...` is an operator-only, read-only
+projection of one Goal's bounded local-read metadata and shared terminal-Goal
+tool competence. It omits observation bodies and cannot create a Capability
+Profile, select a tool, grant authority, or alter the Goal lifecycle.
 
 Feishu p2p can continue the explicitly named identity without creating another
 Goal: `/goal read goal_...`, `/goal continue goal_...`, `/goal resume goal_...`,

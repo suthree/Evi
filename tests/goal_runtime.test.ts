@@ -1028,6 +1028,34 @@ test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal 
     });
     assert.equal(completed.status, "completed");
 
+    const inspection = await runtime.inspect(first.goal_id);
+    assert.equal(inspection.action, "inspect");
+    assert.deepEqual(inspection.goal, completed);
+    assert.equal(inspection.local_read_observation_count, 1);
+    assert.equal(inspection.local_read_observations.length, 1);
+    assert.deepEqual(inspection.local_read_observations[0] && {
+      tool: inspection.local_read_observations[0].tool,
+      target: inspection.local_read_observations[0].target,
+      ok: inspection.local_read_observations[0].ok
+    }, {
+      tool: "file.read",
+      target: "repo:README.md",
+      ok: true
+    });
+    assert.equal("text" in inspection.local_read_observations[0]!, false);
+    assert.match(inspection.boundary, /never grants write, effect, capability, Skill, or persistence authority/);
+    assert.deepEqual(inspection.tool_competence.map((item) => ({
+      tool: item.tool,
+      observations: item.observation_count,
+      successes: item.success_count,
+      accepted: item.accepted_goal_count
+    })), [{
+      tool: "file.read",
+      observations: 1,
+      successes: 1,
+      accepted: 1
+    }]);
+
     const second = await runtime.handle(start("competence_second_start", "Use prior terminal experience."));
     await runtime.handle({
       type: "continue",

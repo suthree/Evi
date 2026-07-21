@@ -177,6 +177,17 @@ not remain mandatory when it conflicts with an already-satisfied invariant; for
 example, an already-linked control worktree may be the bounded Codex target
 when `codex.run` is ready, without nesting `workspace.prepare`.
 
+The same boundary applies to local reading. Within an already-authorized
+repository or state root, `file.read` and `repo.search` may select a relevant,
+bounded path dynamically. An explicit task-local evaluation allowlist remains a
+hard condition for that Goal; it is not a universal exact-path policy. Each
+allowed read remains a canonical, untrusted observation. The read-only CLI
+`goal inspect` exposes bounded observation metadata and terminal-Goal tool
+competence without observation bodies, persistent Capability Profiles, default
+context injection, or new authority. A read never grants write, effect,
+capability, Skill, or completion authority; private paths, cross-root access,
+external effects, and writes remain hard boundaries.
+
 Repository placement follows the same dynamic boundary. Every source-mutating
 Goal has one immutable, linked execution worktree for its full delivery
 lineage; later sessions and tools reuse it. A Goal may derive that worktree by
