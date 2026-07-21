@@ -589,9 +589,7 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
-      asset_projection_root: runtime.asset_projection_root
-        ? expandConfigPath(runtime.asset_projection_root, selectors.homeRoot, false)
-        : undefined
+      asset_projection_root: resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot)
     },
     vault: {
       mode: vault.mode,
@@ -756,9 +754,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
-      asset_projection_root: runtime.asset_projection_root
-        ? expandConfigPath(runtime.asset_projection_root, selectors.homeRoot, false)
-        : undefined,
+      asset_projection_root: resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot),
       source_ref: runtimeSourceRef,
       defaulted_fields: runtimeDefaultedFields(runtimeRaw)
     },
@@ -994,6 +990,13 @@ function resolveVaultConfig(record: VaultRecord | undefined, homeRoot: string): 
   };
 }
 
+function resolveAssetProjectionRoot(value: string | undefined, homeRoot: string): string | undefined {
+  if (!value) return undefined;
+  const expanded = expandConfigPath(value, homeRoot, true, true);
+  if (!isAbsolute(expanded)) throw new Error("runtime.asset_projection_root must resolve to an absolute path");
+  return resolve(expanded);
+}
+
 async function loadAuthRecords<T>(
   selectors: ConfigSelectors,
   schema: z.ZodType<T>,
@@ -1051,17 +1054,24 @@ function localConfigFile(file: string): string {
   return file.replace(/\.jsonl$/u, ".local.jsonl");
 }
 
-function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean): string {
+function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean, rejectUnsetEnvironment = false): string {
   let expanded = value;
   if (homeRoot) {
     expanded = expanded.replace(/\$\{LOCAL_RUNTIME_HOME\}/g, homeRoot).replace(/\$LOCAL_RUNTIME_HOME\b/g, homeRoot);
   }
-  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => process.env[name] ?? "");
-  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => process.env[name] ?? "");
+  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
+  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
   if (expanded === "~") expanded = homedir();
   else if (expanded.startsWith("~/")) expanded = resolve(homedir(), expanded.slice(2));
   if (preserveRelative && !isAbsolute(expanded)) return expanded;
   return resolve(expanded);
+}
+
+function requiredConfigEnvironment(name: string, rejectUnsetEnvironment: boolean): string {
+  const value = process.env[name];
+  if (value !== undefined) return value;
+  if (rejectUnsetEnvironment) throw new Error(`runtime.asset_projection_root references unset environment variable: ${name}`);
+  return "";
 }
 
 async function readRequired(dir: string, file: string): Promise<string> {

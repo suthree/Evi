@@ -725,7 +725,9 @@ text. If an adapter fails during daemon startup, the daemon must write an
 process or resident service exits.
 
 `runtime.asset_projection_root` is an optional, explicit node-local projection
-root. When it is configured, the daemon carries its resolved absolute value in
+root. Its value must resolve to an absolute path; a relative value or reference
+to an unset environment variable is rejected rather than guessed. When it is
+configured, the daemon carries its resolved absolute value in
 the local heartbeat and `service health` may read only `active.json`,
 `previous.json`, and the matching `releases/<lock-hash>/asset-lock.json` under
 that root. The health result returns bounded lock and activation identity

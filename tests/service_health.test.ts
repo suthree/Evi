@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -255,6 +256,50 @@ test("service health projects only configured asset projection identity state fr
     assert.deepEqual(health.attention_followups, [{
       reason_code: "asset_projection_invalid",
       summary: "configured asset projection identity metadata is absent, malformed, or inconsistent; inspect the bounded projection summary before any activation or recovery decision",
+      command: "pnpm run runtime -- service health --target runtime"
+    }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service health makes a valid probation projection and its rollback identity runtime attention", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-health-"));
+  const projectionRoot = join(root, "projection");
+  const store = new AgentStore(join(root, "repo"), join(root, "state"));
+  const commit = "abcdef0123456789abcdef0123456789abcdef01";
+  try {
+    await writeRepoHead(store, commit);
+    const candidate = await writeProjectionHealthRelease(projectionRoot, "candidate-skill");
+    const previous = await writeProjectionHealthRelease(projectionRoot, "previous-skill");
+    await writeFile(join(projectionRoot, "active.json"), JSON.stringify(projectionHealthPointer(candidate, "probation", "receipt-candidate")), "utf8");
+    await writeFile(join(projectionRoot, "previous.json"), JSON.stringify(projectionHealthPointer(previous, "verified", "receipt-previous")), "utf8");
+    await store.writeJson("services/runtime/heartbeat.json", {
+      service: "runtime",
+      state: "running",
+      pid: 1234,
+      updated_at: "2026-06-30T00:00:30.000Z",
+      asset_projection_root: projectionRoot,
+      runtime_build: {
+        source_commit: commit,
+        source_commit_short: commit.slice(0, 12),
+        source_branch: "develop",
+        source_is_dirty: false
+      }
+    });
+
+    const health = await getServiceHealth(store, {
+      now: "2026-06-30T00:01:00.000Z"
+    });
+
+    assert.equal(health.status, "attention");
+    assert.equal(health.asset_projection.status, "probation");
+    assert.equal(health.asset_projection.recovery?.status, "available");
+    assert.equal(health.asset_projection.recovery?.previous?.status, "verified");
+    assert.deepEqual(health.layers.runtime_substrate.reason_codes, ["asset_projection_probation"]);
+    assert.deepEqual(health.attention_followups, [{
+      reason_code: "asset_projection_probation",
+      summary: "the configured asset projection remains in probation; keep activation and rollback decisions with the applicable owner until its evidence is reviewed",
       command: "pnpm run runtime -- service health --target runtime"
     }]);
   } finally {
@@ -955,6 +1000,48 @@ test("service health flags stale heartbeat and active pause without mutating sta
 async function writeRepoHead(store: AgentStore, commit: string, branch = "develop"): Promise<void> {
   await store.writeRepoText(".git/HEAD", `ref: refs/heads/${branch}\n`);
   await store.writeRepoText(`.git/refs/heads/${branch}`, `${commit}\n`);
+}
+
+async function writeProjectionHealthRelease(root: string, skillId: string): Promise<{
+  profile_id: string;
+  luban_commit: string;
+  lock_hash: string;
+}> {
+  const base = {
+    schema_version: 1 as const,
+    profile_id: "health-fixture",
+    luban_commit: "a".repeat(40),
+    assets: [{
+      kind: "skill" as const,
+      id: skillId,
+      content_hash: "b".repeat(64),
+      content_root: "synthetic-fixture",
+      entrypoint: "SKILL.md",
+      files: [{ path: "SKILL.md", media_type: "text/markdown", sha256: "b".repeat(64), executable: false }]
+    }]
+  };
+  const lock_hash = createHash("sha256").update(JSON.stringify(base)).digest("hex");
+  const releaseRoot = join(root, "releases", lock_hash);
+  await mkdir(releaseRoot, { recursive: true });
+  await writeFile(join(releaseRoot, "asset-lock.json"), JSON.stringify({ ...base, lock_hash }), "utf8");
+  return { profile_id: base.profile_id, luban_commit: base.luban_commit, lock_hash };
+}
+
+function projectionHealthPointer(
+  lock: { profile_id: string; luban_commit: string; lock_hash: string },
+  status: "probation" | "verified",
+  activation_receipt_id: string
+): Record<string, unknown> {
+  return {
+    schema_version: 1,
+    release_id: lock.lock_hash,
+    profile_id: lock.profile_id,
+    luban_commit: lock.luban_commit,
+    asset_lock_hash: lock.lock_hash,
+    runtime_commit: "c".repeat(40),
+    status,
+    activation_receipt_id
+  };
 }
 
 test("service health reports missing heartbeat as unknown", async () => {

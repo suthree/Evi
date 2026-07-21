@@ -3,21 +3,10 @@ import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 
+import { assetSelectionLockHash, assetSelectionLockSchema, type AssetSelectionLock } from "./asset_projection.js";
+
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
-const lockFileSchema = z.object({
-  path: z.string().min(1), media_type: z.string().min(1), sha256: z.string().regex(HASH_PATTERN), executable: z.boolean()
-}).strict();
-const lockSchema = z.object({
-  schema_version: z.literal(1),
-  profile_id: z.string().min(1),
-  luban_commit: z.string().regex(SHA_PATTERN),
-  assets: z.array(z.object({
-    kind: z.literal("skill"), id: z.string().min(1), content_hash: z.string().regex(HASH_PATTERN),
-    content_root: z.string().min(1), entrypoint: z.string().min(1), files: z.array(lockFileSchema).min(1)
-  }).strict()).min(1),
-  lock_hash: z.string().regex(HASH_PATTERN)
-}).strict();
 export const projectionPointerSchema = z.object({
   schema_version: z.literal(1),
   release_id: z.string().regex(HASH_PATTERN),
@@ -142,14 +131,15 @@ export async function readActiveProjection(projectionRoot: string): Promise<Proj
   return readPointer(join(resolve(projectionRoot), "active.json"));
 }
 
-async function verifyRelease(root: string, releaseId: string): Promise<z.infer<typeof lockSchema>> {
+async function verifyRelease(root: string, releaseId: string): Promise<AssetSelectionLock> {
   if (!HASH_PATTERN.test(releaseId)) throw activationError("invalid_release_id", "Release id must be a lock hash");
   const releaseRoot = join(root, "releases", releaseId);
   await assertNoSymlink(root, releaseRoot);
-  const lock = lockSchema.parse(JSON.parse(await readFile(join(releaseRoot, "asset-lock.json"), "utf8")));
-  const { lock_hash: declared, ...base } = lock;
-  const actual = sha256(Buffer.from(JSON.stringify(base), "utf8"));
-  if (declared !== releaseId || actual !== declared) throw activationError("release_lock_mismatch", "Release lock hash does not match its identity", { actual_hash: actual, release_id: releaseId });
+  const lock = assetSelectionLockSchema.parse(JSON.parse(await readFile(join(releaseRoot, "asset-lock.json"), "utf8")));
+  const actual = assetSelectionLockHash(lock);
+  if (lock.lock_hash !== releaseId || actual !== lock.lock_hash) {
+    throw activationError("release_lock_mismatch", "Release lock hash does not match its identity", { actual_hash: actual, release_id: releaseId });
+  }
   const actualSkillIds = (await readdir(join(releaseRoot, "skills"), { withFileTypes: true }))
     .filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
   const expectedSkillIds = lock.assets.map((asset) => asset.id).sort();

@@ -93,12 +93,12 @@ export async function inspectAssetProjectionHealth(args: {
     const previousLock = await readMatchingLock(root, previousRead.value, "previous");
     if (previousLock.kind === "missing") return invalid("previous_release_lock_missing");
     if (previousLock.kind === "invalid") return invalid(previousLock.reason);
-    return healthy(activeRead.value, previousRead.value);
+    return summarizeValidatedPointers(activeRead.value, previousRead.value);
   }
-  return healthy(activeRead.value);
+  return summarizeValidatedPointers(activeRead.value);
 }
 
-function healthy(active: ProjectionPointer, previous?: ProjectionPointer): AssetProjectionHealthSummary {
+function summarizeValidatedPointers(active: ProjectionPointer, previous?: ProjectionPointer): AssetProjectionHealthSummary {
   return {
     configured: true,
     status: active.status,

@@ -154,7 +154,7 @@ export function resolveSkillSelection(
         .sort((left, right) => left.path.localeCompare(right.path))
     }))
   };
-  const lockHash = sha256(Buffer.from(JSON.stringify(lockBase), "utf8"));
+  const lockHash = assetSelectionLockHash(lockBase);
   const lock: AssetSelectionLock = { ...lockBase, lock_hash: lockHash };
   return { profile, skills, lock, lock_json: renderLock(lock) };
 }
@@ -294,11 +294,16 @@ async function verifyRelease(releasePath: string, selection: ResolvedSkillSelect
 }
 
 export function assertAssetSelectionLockHash(lock: AssetSelectionLock): void {
-  const { lock_hash: declared, ...base } = lock;
-  const actual = sha256(Buffer.from(JSON.stringify(base), "utf8"));
+  const actual = assetSelectionLockHash(lock);
+  const declared = lock.lock_hash;
   if (!HASH_PATTERN.test(declared) || actual !== declared) {
     throw projectionError("invalid_lock_hash", "Asset selection lock hash is invalid", { actual_hash: actual, expected_hash: declared });
   }
+}
+
+export function assetSelectionLockHash(lock: Omit<AssetSelectionLock, "lock_hash"> | AssetSelectionLock): string {
+  const { lock_hash: _declared, ...base } = lock as AssetSelectionLock;
+  return sha256(Buffer.from(JSON.stringify(base), "utf8"));
 }
 
 function renderLock(lock: AssetSelectionLock): string {

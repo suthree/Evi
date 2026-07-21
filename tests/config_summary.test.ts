@@ -35,6 +35,32 @@ test("config selectors expand the shared Evi state-root declaration", async () =
   }
 });
 
+test("runtime config summary rejects relative and unset asset projection roots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-config-projection-root-"));
+  const configDir = join(root, "config");
+  const unsetEnvironment = "EVI_TEST_UNSET_ASSET_PROJECTION_ROOT";
+  const previousEnvironment = process.env[unsetEnvironment];
+  try {
+    delete process.env[unsetEnvironment];
+    await mkdir(configDir, { recursive: true });
+    for (const assetProjectionRoot of ["projection", `\${${unsetEnvironment}}`]) {
+      await writeFile(join(configDir, "config.jsonl"), [
+        JSON.stringify({ type: "home", root: join(root, "home") }),
+        JSON.stringify({ type: "state", root: join(root, "state") }),
+        JSON.stringify({ type: "runtime", asset_projection_root: assetProjectionRoot })
+      ].join("\n") + "\n", "utf8");
+      await assert.rejects(
+        loadRuntimeConfigSummary({ configDir }),
+        /runtime\.asset_projection_root (must resolve to an absolute path|references unset environment variable)/
+      );
+    }
+  } finally {
+    if (previousEnvironment === undefined) delete process.env[unsetEnvironment];
+    else process.env[unsetEnvironment] = previousEnvironment;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("runtime config summary reports effective non-secret config with source refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-config-summary-"));
   const repoRoot = join(root, "repo");
