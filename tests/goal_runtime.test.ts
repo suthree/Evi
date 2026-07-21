@@ -1028,6 +1028,34 @@ test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal 
     });
     assert.equal(completed.status, "completed");
 
+    const inspection = await runtime.inspect(first.goal_id);
+    assert.equal(inspection.action, "inspect");
+    assert.deepEqual(inspection.goal, completed);
+    assert.equal(inspection.local_read_observation_count, 1);
+    assert.equal(inspection.local_read_observations.length, 1);
+    assert.deepEqual(inspection.local_read_observations[0] && {
+      tool: inspection.local_read_observations[0].tool,
+      target: inspection.local_read_observations[0].target,
+      ok: inspection.local_read_observations[0].ok
+    }, {
+      tool: "file.read",
+      target: "repo:README.md",
+      ok: true
+    });
+    assert.equal("text" in inspection.local_read_observations[0]!, false);
+    assert.match(inspection.boundary, /never grants write, effect, capability, Skill, or persistence authority/);
+    assert.deepEqual(inspection.tool_competence.map((item) => ({
+      tool: item.tool,
+      observations: item.observation_count,
+      successes: item.success_count,
+      accepted: item.accepted_goal_count
+    })), [{
+      tool: "file.read",
+      observations: 1,
+      successes: 1,
+      accepted: 1
+    }]);
+
     const second = await runtime.handle(start("competence_second_start", "Use prior terminal experience."));
     await runtime.handle({
       type: "continue",
@@ -1052,6 +1080,143 @@ test("GoalRuntime gives a later Goal bounded tool competence from terminal Goal 
       abandoned: 0
     }]);
     assert.match(competence.boundary, /not causal attribution/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime enforces an explicit structured read policy before local-read tool execution", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "docs/private.md" }, "Attempt a read outside the explicit evaluation input."),
+      {
+        type: "blocked",
+        summary: "The explicit read policy rejected the requested path.",
+        next_action: "Select one listed reference or finish the supervised evaluation."
+      }
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: { async verify(input) { return passedVerification(input); } }
+    });
+    const started = await runtime.handle({
+      ...start("read_policy_start", "Reject a read outside one explicit supervised input."),
+      read_policy: {
+        references: [{ scope: "repo", kind: "file", path: "README.md" }]
+      }
+    });
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "read_policy_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(blocked.status, "active");
+    assert.deepEqual(blocked.read_policy, {
+      references: [{ scope: "repo", kind: "file", path: "README.md" }]
+    });
+    assert.deepEqual(cognition.calls[0]!.goal.read_policy, blocked.read_policy);
+    assert.equal(tools.calls.length, 0);
+    const events = await readEvents(fixture.stateRoot);
+    const denied = events.find((event) => event.event_type === "goal_action_planned") as {
+      action?: { arguments?: Record<string, unknown> };
+      action_redacted?: boolean;
+      effect_decision?: { outcome?: string; reason?: string };
+    } | undefined;
+    assert.equal(denied?.action_redacted, true);
+    assert.deepEqual(denied?.action?.arguments, {
+      redacted: true,
+      argument_keys: ["path", "scope"]
+    });
+    assert.equal(denied?.effect_decision?.outcome, "deny");
+    assert.match(denied?.effect_decision?.reason ?? "", /Goal read_policy denied file\.read repo:docs\/private\.md/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime permits file and search reads covered by a structured tree policy", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "docs/INDEX.md" }, "Read one file below the declared documentation tree."),
+      action("repo.search", { query: "GoalRuntime", path: "docs" }, "Search inside the declared documentation tree."),
+      outcome("The supervised tree-bounded read evaluation is complete.")
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: { async verify(input) { return passedVerification(input); } }
+    });
+    const started = await runtime.handle({
+      ...start("read_tree_start", "Allow only bounded reads below one documentation tree."),
+      read_policy: {
+        references: [{ scope: "repo", kind: "tree", path: "docs" }]
+      }
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "read_tree_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(tools.calls.map((item) => item.tool), ["file.read", "repo.search"]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime keeps selected references as evidence rather than an implicit read policy", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "docs/INDEX.md" }, "Read one dynamically selected same-authority file."),
+      outcome("The dynamic read evaluation is complete.")
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: { async verify(input) { return passedVerification(input); } }
+    });
+    const started = await runtime.handle({
+      ...start("dynamic_read_start", "Keep one named reference as evidence, not a universal read restriction."),
+      checkpoint: { selected_refs: ["README.md"] }
+    });
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "dynamic_read_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.read_policy, null);
+    assert.deepEqual(tools.calls.map((item) => item.arguments.path), ["docs/INDEX.md"]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects a repository-local runtime-state read policy before writing canonical state", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([]),
+      tools: recordingTools(),
+      verifier: { async verify(input) { return passedVerification(input); } }
+    });
+    await assert.rejects(runtime.handle({
+      ...start("invalid_read_policy_start", "Reject a policy that names repository-local runtime state."),
+      read_policy: {
+        references: [{ scope: "repo", kind: "tree", path: ".runtime" }]
+      }
+    }), /read policy cannot grant repo-local runtime state paths/);
+    assert.equal(await fixture.store.readStateText("goals/events.jsonl"), "");
   } finally {
     await fixture.cleanup();
   }

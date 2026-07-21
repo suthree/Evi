@@ -50,6 +50,9 @@ test("Goal ingress errors preserve the Goal identity created before Continue", a
     async read() {
       commands.push("read");
       return latest;
+    },
+    async inspect() {
+      throw new Error("ingress must not inspect around the canonical command result");
     }
   };
 
@@ -71,6 +74,9 @@ test("Goal ingress errors leave status unknown when canonical recovery also fail
     },
     async read() {
       throw new Error("read failed");
+    },
+    async inspect() {
+      throw new Error("inspect failed");
     }
   };
 
@@ -95,6 +101,9 @@ test("Goal interaction port translates read, Continue, manual Resume, and exact 
     async read(goalId) {
       commands.push({ type: "read", goal_id: goalId });
       return goalView(goalId);
+    },
+    async inspect() {
+      throw new Error("interaction must not inspect");
     }
   };
   const interaction = createGoalIngress(runtime);

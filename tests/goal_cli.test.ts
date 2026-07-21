@@ -19,7 +19,7 @@ import {
 } from "../packages/runtime/src/goal_runtime.js";
 import { AgentStore } from "../packages/core/src/store.js";
 
-test("goal CLI parses lifecycle identity and exact effect confirmation", () => {
+test("goal CLI parses lifecycle identity, inspect, and exact effect confirmation", () => {
   const options = parseArgs([
     "goal",
     "resume",
@@ -38,12 +38,34 @@ test("goal CLI parses lifecycle identity and exact effect confirmation", () => {
   assert.equal(options.goalConfirmEffectId, "goal_effect_456");
   assert.equal(options.goalCommandId, "goal_command_789");
   assert.equal(options.stateRoot, ".runtime/state");
+
+  const inspect = parseArgs(["goal", "inspect", "--goal", "goal_123"]);
+  assert.equal(inspect.goalAction, "inspect");
+  assert.equal(inspect.goalId, "goal_123");
+
+  const constrainedStart = parseArgs([
+    "goal",
+    "start",
+    "--task",
+    "Run one supervised read evaluation.",
+    "--read-file",
+    "repo:README.md",
+    "--read-tree",
+    "repo:docs"
+  ]);
+  assert.equal(constrainedStart.goalAction, "start");
+  assert.deepEqual(constrainedStart.goalReadReferences, [
+    { scope: "repo", kind: "file", path: "README.md" },
+    { scope: "repo", kind: "tree", path: "docs" }
+  ]);
 });
 
 test("local goal CLI ingress translates intent and owns no lifecycle state", async () => {
   const handled: GoalCommand[] = [];
   const reads: string[] = [];
+  const inspections: string[] = [];
   const view = { goal_id: "goal_123" } as GoalView;
+  const inspection = { action: "inspect", goal: view } as Awaited<ReturnType<GoalRuntimePort["inspect"]>>;
   const runtime: GoalRuntimePort = {
     async handle(command) {
       handled.push(command);
@@ -52,13 +74,20 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     async read(goalId) {
       reads.push(goalId);
       return view;
+    },
+    async inspect(goalId) {
+      inspections.push(goalId);
+      return inspection;
     }
   };
 
   assert.equal(await executeLocalGoalRequest(runtime, {
     action: "start",
     commandId: "command_start",
-    objective: "One bounded local goal."
+    objective: "One bounded local goal.",
+    readPolicy: {
+      references: [{ scope: "repo", kind: "file", path: "README.md" }]
+    }
   }), view);
   assert.equal(await executeLocalGoalRequest(runtime, {
     action: "continue",
@@ -76,11 +105,19 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     commandId: "unused_for_read",
     goalId: "goal_123"
   }), view);
+  assert.equal(await executeLocalGoalRequest(runtime, {
+    action: "inspect",
+    commandId: "unused_for_inspect",
+    goalId: "goal_123"
+  }), inspection);
 
   assert.deepEqual(handled, [{
     type: "start",
     command_id: "command_start",
-    objective: "One bounded local goal."
+    objective: "One bounded local goal.",
+    read_policy: {
+      references: [{ scope: "repo", kind: "file", path: "README.md" }]
+    }
   }, {
     type: "continue",
     command_id: "command_continue",
@@ -92,6 +129,7 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     confirm_effect_id: "goal_effect_456"
   }]);
   assert.deepEqual(reads, ["goal_123"]);
+  assert.deepEqual(inspections, ["goal_123"]);
 });
 
 test("local goal CLI ingress fails before dispatch when required intent is missing", async () => {
@@ -102,6 +140,10 @@ test("local goal CLI ingress fails before dispatch when required intent is missi
       throw new Error("must not dispatch");
     },
     async read() {
+      calls += 1;
+      throw new Error("must not dispatch");
+    },
+    async inspect() {
       calls += 1;
       throw new Error("must not dispatch");
     }
@@ -133,6 +175,9 @@ test("live ingress starts once and continues the same GoalRuntime identity once"
     },
     async read() {
       throw new Error("live ingress must not read around the canonical command result");
+    },
+    async inspect() {
+      throw new Error("live ingress must not inspect around the canonical command result");
     }
   };
 
@@ -165,6 +210,10 @@ test("live ingress rejects legacy query/todo discipline before dispatch", async 
     async read() {
       calls += 1;
       throw new Error("must not read");
+    },
+    async inspect() {
+      calls += 1;
+      throw new Error("must not inspect");
     }
   };
 

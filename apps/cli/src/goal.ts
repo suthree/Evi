@@ -4,9 +4,9 @@ import {
   type ConfiguredGoalRuntimeOptions,
   type GoalRuntimePort
 } from "../../../packages/runtime/src/goal_ingress.js";
-import type { GoalView } from "../../../packages/runtime/src/goal_runtime.js";
+import type { GoalInspection, GoalReadPolicy, GoalView } from "../../../packages/runtime/src/goal_runtime.js";
 
-export type LocalGoalAction = "start" | "continue" | "read" | "pause" | "resume" | "abandon";
+export type LocalGoalAction = "start" | "continue" | "read" | "inspect" | "pause" | "resume" | "abandon";
 
 export interface LocalGoalRequest {
   action: LocalGoalAction;
@@ -15,6 +15,7 @@ export interface LocalGoalRequest {
   goalId?: string;
   reason?: string;
   confirmEffectId?: string;
+  readPolicy?: GoalReadPolicy;
 }
 
 export type { GoalRuntimePort } from "../../../packages/runtime/src/goal_ingress.js";
@@ -36,13 +37,15 @@ export async function createLocalGoalRuntime(options: LocalGoalRuntimeOptions): 
 export async function executeLocalGoalRequest(
   runtime: GoalRuntimePort,
   request: LocalGoalRequest
-): Promise<GoalView> {
+): Promise<GoalView | GoalInspection> {
   if (request.action === "read") return runtime.read(required(request.goalId, "goal read requires --goal"));
+  if (request.action === "inspect") return runtime.inspect(required(request.goalId, "goal inspect requires --goal"));
   if (request.action === "start") {
     return runtime.handle({
       type: "start",
       command_id: request.commandId,
-      objective: required(request.objective, "goal start requires --task")
+      objective: required(request.objective, "goal start requires --task"),
+      ...(request.readPolicy ? { read_policy: request.readPolicy } : {})
     });
   }
   const goalId = required(request.goalId, `goal ${request.action} requires --goal`);
@@ -103,6 +106,7 @@ export function isLocalGoalAction(value: string): value is LocalGoalAction {
   return value === "start"
     || value === "continue"
     || value === "read"
+    || value === "inspect"
     || value === "pause"
     || value === "resume"
     || value === "abandon";
