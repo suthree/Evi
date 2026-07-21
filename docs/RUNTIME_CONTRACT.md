@@ -181,6 +181,25 @@ No self-iteration stage may trade away existing core/basic capability,
 completion verification, evidence capture, or operator inspection in order to
 ship faster.
 
+### GitHub Discovery Radar v0
+
+The accepted GitHub Discovery Radar is an **Application Slice**, not a new Tool
+Protocol, Capability Profile, skill, portfolio entry, or default-context feed.
+It is manually invoked only as `discovery github scan --need "..."`, reads one
+fixed public GitHub Trending weekly URL without authentication, and stores only
+bounded repository identifiers plus source provenance under
+`capability-discovery/github/` in the selected state root. A report is marked
+`external_untrusted`; raw page text, descriptions, README bodies, repository
+files, credentials, and external instructions are never retained.
+
+The radar de-duplicates within a scan and against the latest successful scan.
+It does not run on a schedule, browse other sites, clone or download a
+repository, install or execute content, create an Opportunity Backlog item,
+enter model default context, activate a capability, write the active vault,
+draft or promote an SOP/skill, or invoke LuBan. A later, separately governed
+Capability Candidate must prove a named business linkage, bounded probe,
+verification, risk, and retirement path before any such effect is considered.
+
 Self-growth means preserving reusable procedures through SOPs and skills. When
 `runtime.promotion_enabled` is true, draft, audit, promotion, revision, and
 retirement are autonomous local harness decisions rather than per-item operator

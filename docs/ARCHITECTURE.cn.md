@@ -94,6 +94,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Goal 执行工作区 | `packages/runtime/src/goal_execution_workspace.ts` | 从不可变控制权限准备并实时校验一个 Goal 绑定的隔离 linked worktree | 任务分类、workspace registry、生命周期调度、迁移 state root 或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
 | Tool Competence | `packages/runtime/src/goal_tool_competence.ts`、GoalRuntime cognition input | 从 terminal Goal observation/receipt 纯派生有界的后续选择建议 | 持久化、因果归因、Goal 验收或自动晋升 |
+| GitHub discovery radar | `packages/runtime/src/github_discovery_radar.ts`、`apps/cli/src/github_discovery_command.ts` | 手动读取固定的 GitHub Trending weekly 公共页面，只为明确 business need 写入有界、未信任的 state-only signal | 默认 context、Opportunity Backlog、capability portfolio、仓库 fetch/clone、安装、activation、SOP/skill 晋升、active-vault 写入或 LuBan |
 | 证据与状态 | `packages/core/src/store.ts`、`memory_store.ts`、类型化 event/artifact writer | checkout 独立的共享 Evi state root 中的 append-only 或持久事实；projection 可重建 | 产品方向、source authority 或自动把内容晋升成真相 |
 | 学习 | `packages/runtime/src/background_review.ts`、core SOP/Skill/Memory 模块 | evidence→candidate→audit→promotion→reuse→revision/retirement | 前台完成判定或隐式修改身份 |
 | 入口 | CLI、Web、Feishu、Telegram、Discord Adapter | 解析、绑定渠道 Context、提交、交付、记录 provider evidence | 第二套 GoalRuntime、Memory Store 或执行 owner |

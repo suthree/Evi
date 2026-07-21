@@ -167,6 +167,10 @@ import {
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
 import { runDeploymentCommand } from "./deployment_command.js";
+import {
+  runGitHubDiscoveryCommand,
+  type GitHubDiscoveryAction
+} from "./github_discovery_command.js";
 import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
 import { createConfiguredGoalIngress } from "../../../packages/runtime/src/goal_ingress.js";
@@ -213,6 +217,10 @@ interface CliOptions {
   deploymentRepairOf?: string;
   deploymentVerificationRefs: string[];
   deploymentEvidenceRefs: string[];
+  discoverySource?: "github";
+  discoveryAction?: GitHubDiscoveryAction;
+  discoveryBusinessNeed?: string;
+  discoveryReportId?: string;
   capabilitiesAction?: "catalog" | "acceptance" | "verify-entrypoints";
   workspaceAction?: "status" | "runtime";
   notifyAction?: "queue" | "list";
@@ -1639,6 +1647,19 @@ export async function main(): Promise<number> {
     });
   }
 
+  if (options.command === "discovery") {
+    if (options.discoverySource !== "github") throw new Error("discovery requires source: github");
+    return runGitHubDiscoveryCommand({
+      action: options.discoveryAction,
+      configDir: options.configDir,
+      repoRoot: options.repoRoot,
+      stateRoot: options.stateRoot,
+      limit: options.limit,
+      businessNeed: options.discoveryBusinessNeed,
+      reportId: options.discoveryReportId
+    });
+  }
+
   if (options.command === "daemon") {
     if (options.daemonAction !== "serve") throw new Error("daemon requires an action: serve");
     if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
@@ -2988,6 +3009,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
     else if (options.command === "service" && isCliServiceAction(arg)) options.serviceAction = arg;
     else if (options.command === "deployment" && isDeploymentAction(arg)) options.deploymentAction = arg;
+    else if (options.command === "discovery" && arg === "github") options.discoverySource = "github";
+    else if (options.command === "discovery" && options.discoverySource === "github" && isGitHubDiscoveryAction(arg)) options.discoveryAction = arg;
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
@@ -3002,6 +3025,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "review" && isReviewAction(arg)) options.reviewAction = arg;
     else if (options.command === "goal" && isLocalGoalAction(arg)) options.goalAction = arg;
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
+    else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
+    else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
     else if (arg === "--port") options.webPort = Number.parseInt(required(rest[++index], "--port requires a value"), 10);
     else if (arg === "--dry-run") options.dryRun = true;
@@ -3500,6 +3525,10 @@ function isDeploymentAction(value: string): value is "request" | "reconcile" | "
   return value === "request" || value === "reconcile" || value === "controller-handoff" || value === "status" || value === "fail" || value === "history";
 }
 
+function isGitHubDiscoveryAction(value: string): value is GitHubDiscoveryAction {
+  return value === "scan" || value === "reports" || value === "report";
+}
+
 function parseServiceTarget(value: string): ServiceTarget {
   if (value === "runtime") return value;
   throw new Error(`Unsupported service target: ${value}`);
@@ -3515,6 +3544,9 @@ function printUsage(): void {
   pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled [--content-feedback-refresh-interval-ms 3600000] [--content-feedback-refresh-limit 10] [--content-feedback-refresh-min-follow-up-age-ms 21600000] [--content-feedback-refresh-server-url http://localhost:18060/mcp]
   pnpm run runtime -- config set-runtime --content-creator-metrics-enabled [--content-creator-metrics-interval-ms 3600000] [--content-creator-metrics-limit 10] [--content-creator-metrics-creator-url https://creator.xiaohongshu.com/new/note-manager] [--content-creator-metrics-browser-session-name runtime-creator-metrics]
   pnpm run runtime -- capabilities [catalog|acceptance|audit|verify-entrypoints] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github scan --need "bounded business need" [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github reports [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github report --report github_discovery_... [--state-root ${stateRootUsage}]
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root ${stateRootUsage}]
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root ${stateRootUsage}]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root ${stateRootUsage}]
