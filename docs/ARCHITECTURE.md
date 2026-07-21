@@ -179,9 +179,11 @@ when `codex.run` is ready, without nesting `workspace.prepare`.
 
 The same boundary applies to local reading. Within an already-authorized
 repository or state root, `file.read` and `repo.search` may select a relevant,
-bounded path dynamically. An explicit task-local evaluation allowlist remains a
-hard condition for that Goal; it is not a universal exact-path policy. Each
-allowed read remains a canonical, untrusted observation. The read-only CLI
+bounded path dynamically when the Goal has no `read_policy`. A Start command
+may instead carry an explicit structured `read_policy`; only then does the
+Harness fail closed for a nonmatching file or tree reference. Objective prose,
+checkpoint `selected_refs`, and model summaries never become authorization.
+Each allowed read remains a canonical, untrusted observation. The read-only CLI
 `goal inspect` exposes bounded observation metadata and terminal-Goal tool
 competence without observation bodies, persistent Capability Profiles, default
 context injection, or new authority. A read never grants write, effect,

@@ -188,6 +188,7 @@ import {
   isLocalGoalAction,
   type LocalGoalAction
 } from "./goal.js";
+import type { GoalReadPolicy } from "../../../packages/runtime/src/goal_runtime.js";
 
 interface CliOptions {
   command: string;
@@ -196,6 +197,7 @@ interface CliOptions {
   goalId?: string;
   goalCommandId?: string;
   goalConfirmEffectId?: string;
+  goalReadReferences: GoalReadPolicy["references"];
   configDir: string;
   repoRoot: string;
   stateRoot?: string;
@@ -1546,6 +1548,9 @@ export async function main(): Promise<number> {
   if (options.command === "goal") {
     const action = options.goalAction;
     if (!action) throw new Error("goal requires an action: start, continue, read, inspect, pause, resume, or abandon");
+    if (action !== "start" && options.goalReadReferences.length > 0) {
+      throw new Error("--read-file and --read-tree are valid only with goal start");
+    }
     const runtime = await createLocalGoalRuntime({
       repoRoot: options.repoRoot,
       configDir: options.configDir,
@@ -1557,7 +1562,8 @@ export async function main(): Promise<number> {
       ...(options.task ? { objective: options.task } : {}),
       ...(options.goalId ? { goalId: options.goalId } : {}),
       ...(options.reason ? { reason: options.reason } : {}),
-      ...(options.goalConfirmEffectId ? { confirmEffectId: options.goalConfirmEffectId } : {})
+      ...(options.goalConfirmEffectId ? { confirmEffectId: options.goalConfirmEffectId } : {}),
+      ...(options.goalReadReferences.length > 0 ? { readPolicy: { references: options.goalReadReferences } } : {})
     });
     console.log(JSON.stringify(result, null, 2));
     return 0;
@@ -2996,6 +3002,7 @@ export function parseArgs(argv: string[]): CliOptions {
     iterationReuseOpen: false,
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
+    goalReadReferences: [],
     notifyRefs: [],
     deploymentVerificationRefs: [],
     deploymentEvidenceRefs: [],
@@ -3024,6 +3031,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "context" && isContextAction(arg)) options.contextAction = arg;
     else if (options.command === "review" && isReviewAction(arg)) options.reviewAction = arg;
     else if (options.command === "goal" && isLocalGoalAction(arg)) options.goalAction = arg;
+    else if (arg === "--read-file" && options.command === "goal") options.goalReadReferences.push(parseGoalReadReference(required(rest[++index], "--read-file requires a scope:path value"), "file"));
+    else if (arg === "--read-tree" && options.command === "goal") options.goalReadReferences.push(parseGoalReadReference(required(rest[++index], "--read-tree requires a scope:path value"), "tree"));
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
     else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
     else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
@@ -3534,6 +3543,19 @@ function parseServiceTarget(value: string): ServiceTarget {
   throw new Error(`Unsupported service target: ${value}`);
 }
 
+function parseGoalReadReference(
+  value: string,
+  kind: GoalReadPolicy["references"][number]["kind"]
+): GoalReadPolicy["references"][number] {
+  const separator = value.indexOf(":");
+  const scope = value.slice(0, separator);
+  const path = value.slice(separator + 1);
+  if ((scope !== "repo" && scope !== "state") || !path) {
+    throw new Error("read references must use repo:path or state:path");
+  }
+  return { scope, kind, path };
+}
+
 function printUsage(): void {
   const stateRootUsage = DEFAULT_SHARED_STATE_ROOT;
   console.error(`Usage:
@@ -3550,7 +3572,7 @@ function printUsage(): void {
   pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root ${stateRootUsage}]
   pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root ${stateRootUsage}]
   pnpm run runtime -- live --task "..." [--config-dir config] [--state-root ${stateRootUsage}]
-  pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal start --task "..." [--read-file repo:README.md] [--read-tree repo:docs] [--repo-root /absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal continue|read|inspect --goal goal_... [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal pause|abandon --goal goal_... --reason "..." [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- goal resume --goal goal_... [--repo-root /same/absolute/worktree] [--confirm-effect goal_effect_...] [--command-id goal_command_...] [--state-root ${stateRootUsage}]

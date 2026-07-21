@@ -250,6 +250,12 @@ bounded local-read metadata for that Goal alongside this shared projection. It
 omits observation bodies and does not create a Capability Profile, add default
 context, or grant capability/effect authority.
 
+A Goal may opt into a structured `read_policy` at Start when an evaluation
+needs exact input confinement. That policy is canonical Goal evidence and is
+enforced before local-read tool execution; it is not inferred from task prose,
+selected references, competence, or a Skill. An absent policy preserves the
+normal dynamic root-bounded reading path.
+
 Competence stays provisional with sparse evidence, records recent failure and
 fallback guidance, and yields to current canonical evidence. Durable procedural
 promotion still requires the normal reuse, audit, regression, freshness,

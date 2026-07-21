@@ -4,7 +4,7 @@ import {
   type ConfiguredGoalRuntimeOptions,
   type GoalRuntimePort
 } from "../../../packages/runtime/src/goal_ingress.js";
-import type { GoalInspection, GoalView } from "../../../packages/runtime/src/goal_runtime.js";
+import type { GoalInspection, GoalReadPolicy, GoalView } from "../../../packages/runtime/src/goal_runtime.js";
 
 export type LocalGoalAction = "start" | "continue" | "read" | "inspect" | "pause" | "resume" | "abandon";
 
@@ -15,6 +15,7 @@ export interface LocalGoalRequest {
   goalId?: string;
   reason?: string;
   confirmEffectId?: string;
+  readPolicy?: GoalReadPolicy;
 }
 
 export type { GoalRuntimePort } from "../../../packages/runtime/src/goal_ingress.js";
@@ -43,7 +44,8 @@ export async function executeLocalGoalRequest(
     return runtime.handle({
       type: "start",
       command_id: request.commandId,
-      objective: required(request.objective, "goal start requires --task")
+      objective: required(request.objective, "goal start requires --task"),
+      ...(request.readPolicy ? { read_policy: request.readPolicy } : {})
     });
   }
   const goalId = required(request.goalId, `goal ${request.action} requires --goal`);

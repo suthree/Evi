@@ -100,6 +100,44 @@ const textSchema = z.string().trim().min(1).max(8_000);
 const shortTextSchema = z.string().trim().min(1).max(2_000);
 const refSchema = z.string().trim().min(1).max(1_000);
 
+const goalReadReferenceSchema = z.object({
+  scope: z.enum(["repo", "state"]),
+  kind: z.enum(["file", "tree"]),
+  path: refSchema
+}).strict().superRefine((value, ctx) => {
+  if (!isCanonicalGoalReadPath(value.path, value.kind === "tree")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["path"],
+      message: "read policy paths must be normalized relative paths; only tree references may use '.'"
+    });
+  }
+  if (value.scope === "repo" && repoRuntimePathRoot(value.path)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["path"],
+      message: "read policy cannot grant repo-local runtime state paths"
+    });
+  }
+});
+
+const goalReadPolicySchema = z.object({
+  references: z.array(goalReadReferenceSchema).min(1).max(32)
+}).strict().superRefine((value, ctx) => {
+  const seen = new Set<string>();
+  for (const [index, reference] of value.references.entries()) {
+    const key = `${reference.scope}:${reference.kind}:${reference.path}`;
+    if (seen.has(key)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["references", index],
+        message: "read policy references must be unique"
+      });
+    }
+    seen.add(key);
+  }
+});
+
 const goalCheckpointSchema = z.object({
   cursor: z.string().trim().max(1_000).nullable(),
   summary: z.string().trim().max(8_000),
@@ -235,7 +273,8 @@ const startCommandSchema = z.object({
   command_id: safeIdSchema,
   objective: textSchema,
   budget: goalSoftBudgetSchema.partial().optional(),
-  checkpoint: goalCheckpointSchema.partial().optional()
+  checkpoint: goalCheckpointSchema.partial().optional(),
+  read_policy: goalReadPolicySchema.optional()
 }).strict();
 
 const continueCommandSchema = z.object({
@@ -291,6 +330,7 @@ const startedEventSchema = z.object({
   objective: textSchema,
   budget: goalSoftBudgetSchema,
   checkpoint: goalCheckpointSchema,
+  read_policy: goalReadPolicySchema.optional(),
   repository_authority: goalRepositoryAuthoritySchema.optional(),
   workspace_baseline: goalWorkspaceBaselineSchema.optional()
 }).strict();
@@ -403,6 +443,8 @@ export type GoalCommand = z.infer<typeof goalCommandSchema>;
 export type GoalCheckpoint = z.infer<typeof goalCheckpointSchema>;
 export type GoalUsage = z.infer<typeof goalUsageSchema>;
 export type GoalSoftBudget = z.infer<typeof goalSoftBudgetSchema>;
+export type GoalReadPolicy = z.infer<typeof goalReadPolicySchema>;
+export type GoalReadReference = z.infer<typeof goalReadReferenceSchema>;
 export type OutcomeCandidate = z.infer<typeof outcomeCandidateSchema>;
 export type GoalOutcomeProposal = z.infer<typeof outcomeProposalSchema>;
 export type GoalCognitionResult = z.infer<typeof goalCognitionResultSchema>;
@@ -434,6 +476,7 @@ export interface GoalPendingEffect {
 export interface GoalView {
   goal_id: string;
   objective: string;
+  read_policy: GoalReadPolicy | null;
   status: GoalStatus;
   sequence: number;
   budget: GoalSoftBudget;
@@ -751,6 +794,7 @@ export class GoalRuntime {
       objective: command.objective,
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
+      ...(command.read_policy ? { read_policy: command.read_policy } : {}),
       repository_authority: repositoryAuthority,
       workspace_baseline: workspaceBaseline,
       boundary: GOAL_BOUNDARY
@@ -1050,7 +1094,11 @@ export class GoalRuntime {
       }
       const effectId = this.nextSafeId("goal_effect");
       const rawDecision = this.effectPolicy.decide(structuredClone(action));
-      const effectDecision = effectDecisionSchema.parse(rawDecision);
+      const readPolicyFailure = goalReadPolicyFailure(state.view.read_policy, action);
+      const constrainedDecision = readPolicyFailure
+        ? { ...rawDecision, outcome: "deny" as const, reason: readPolicyFailure }
+        : rawDecision;
+      const effectDecision = effectDecisionSchema.parse(constrainedDecision);
       if (effectDecision.outcome !== "deny") {
         try {
           await assertGoalBoundToolAuthority(action, goalExecutionAuthority(state.view), this.store);
@@ -2004,6 +2052,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
   const view: GoalView = {
     goal_id: goalId,
     objective: started.objective,
+    read_policy: started.read_policy ?? null,
     status,
     sequence: last.sequence,
     budget: started.budget,
@@ -2320,6 +2369,33 @@ function buildGoalLocalReadObservations(
       occurred_at: event.occurred_at
     }))
   };
+}
+
+function goalReadPolicyFailure(policy: GoalReadPolicy | null, action: EffectAction): string | null {
+  if (!policy || (action.tool !== "file.read" && action.tool !== "repo.search")) return null;
+  const scope = action.tool === "repo.search" ? "repo" : actionString(action.arguments.scope) || "repo";
+  const path = action.tool === "repo.search"
+    ? actionString(action.arguments.path) || "."
+    : actionString(action.arguments.path);
+  const permitted = policy.references.some((reference) => {
+    if (reference.scope !== scope) return false;
+    if (action.tool === "repo.search") {
+      return reference.kind === "tree" && pathIsWithinGoalReadReference(path, reference.path);
+    }
+    return reference.kind === "file"
+      ? path === reference.path
+      : pathIsWithinGoalReadReference(path, reference.path);
+  });
+  if (permitted) return null;
+  return `Goal read_policy denied ${action.tool} ${scope}:${path || "(missing)"}; select one explicit allowed reference.`;
+}
+
+function actionString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function pathIsWithinGoalReadReference(path: string, reference: string): boolean {
+  return reference === "." || path === reference || path.startsWith(`${reference}/`);
 }
 
 function buildEvidenceViews(
@@ -2673,6 +2749,26 @@ function normalizeCheckpoint(value: Partial<GoalCheckpoint> = {}): GoalCheckpoin
     next_action: value.next_action ?? null,
     selected_refs: value.selected_refs ?? []
   });
+}
+
+function isCanonicalGoalReadPath(path: string, allowRoot: boolean): boolean {
+  if (allowRoot && path === ".") return true;
+  return Boolean(path)
+    && path !== "."
+    && !path.startsWith("/")
+    && !path.startsWith("~")
+    && !path.startsWith("./")
+    && !path.endsWith("/")
+    && !path.includes("\\")
+    && !path.includes("..")
+    && !path.includes("\u0000");
+}
+
+function repoRuntimePathRoot(path: string): string | null {
+  const first = path.split("/").filter(Boolean)[0] ?? "";
+  return first === ".runtime" || first.startsWith(".runtime-") || first.startsWith(".runtime_") || first.startsWith(".local-runtime")
+    ? first
+    : null;
 }
 
 function normalizeUsage(value: Partial<GoalUsage> = {}): GoalUsage {

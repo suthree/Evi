@@ -139,13 +139,15 @@ Goal start 还会采集一份 Harness-owned、只读的 workspace baseline：仅
 workflow 规则与已经满足的不变量冲突，就不能继续强制；例如控制工作树已是 linked worktree
 且 `codex.run` 就绪时，它可直接成为有界 Codex target，无需嵌套 `workspace.prepare`。
 
-本地读取也遵循同一边界。在已经获得授权的 repository 或 state root 内，`file.read` 和
-`repo.search` 可以动态选择相关且有界的路径。某个 Goal 明确声明的 task-local evaluation
-allowlist 对该 Goal 仍是硬条件，但它不是通用的精确路径政策。每次允许的读取仍只是 canonical、
-不可信的 observation。只读 CLI `goal inspect` 只输出有界的 observation metadata 与终态 Goal
-tool competence，不输出 observation body，不创建持久化 Capability Profile，不注入默认 Context，
-也不新增 authority。读取绝不授予 write、effect、capability、Skill 或 completion authority；
-private path、跨 root 访问、external effect 与 write 仍是硬边界。
+本地读取也遵循同一边界。在已经获得授权的 repository 或 state root 内，当 Goal 没有
+`read_policy` 时，`file.read` 和 `repo.search` 可以动态选择相关且有界的路径。Start command
+可以显式携带结构化 `read_policy`；只有此时 Harness 才会对不匹配的 file/tree reference
+fail closed。objective prose、checkpoint `selected_refs` 与 model summary 绝不会变成授权。
+每次允许的读取仍只是 canonical、不可信的 observation。只读 CLI `goal inspect` 只输出有界的
+observation metadata 与终态 Goal tool competence，不输出 observation body，不创建持久化
+Capability Profile，不注入默认 Context，也不新增 authority。读取绝不授予 write、effect、
+capability、Skill 或 completion authority；private path、跨 root 访问、external effect 与 write
+仍是硬边界。
 
 仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
 linked execution worktree；后续 session 与工具复用它。Goal 可以通过 `workspace.prepare`

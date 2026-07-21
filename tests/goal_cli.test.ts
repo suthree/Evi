@@ -42,6 +42,22 @@ test("goal CLI parses lifecycle identity, inspect, and exact effect confirmation
   const inspect = parseArgs(["goal", "inspect", "--goal", "goal_123"]);
   assert.equal(inspect.goalAction, "inspect");
   assert.equal(inspect.goalId, "goal_123");
+
+  const constrainedStart = parseArgs([
+    "goal",
+    "start",
+    "--task",
+    "Run one supervised read evaluation.",
+    "--read-file",
+    "repo:README.md",
+    "--read-tree",
+    "repo:docs"
+  ]);
+  assert.equal(constrainedStart.goalAction, "start");
+  assert.deepEqual(constrainedStart.goalReadReferences, [
+    { scope: "repo", kind: "file", path: "README.md" },
+    { scope: "repo", kind: "tree", path: "docs" }
+  ]);
 });
 
 test("local goal CLI ingress translates intent and owns no lifecycle state", async () => {
@@ -68,7 +84,10 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
   assert.equal(await executeLocalGoalRequest(runtime, {
     action: "start",
     commandId: "command_start",
-    objective: "One bounded local goal."
+    objective: "One bounded local goal.",
+    readPolicy: {
+      references: [{ scope: "repo", kind: "file", path: "README.md" }]
+    }
   }), view);
   assert.equal(await executeLocalGoalRequest(runtime, {
     action: "continue",
@@ -95,7 +114,10 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
   assert.deepEqual(handled, [{
     type: "start",
     command_id: "command_start",
-    objective: "One bounded local goal."
+    objective: "One bounded local goal.",
+    read_policy: {
+      references: [{ scope: "repo", kind: "file", path: "README.md" }]
+    }
   }, {
     type: "continue",
     command_id: "command_continue",

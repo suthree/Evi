@@ -22,6 +22,7 @@
 - Goal start 工作树基线与继承变更谱系：`docs/adr/0007-goal-start-workspace-baseline.cn.md`
 - v0.2 在能力表面扩张前先建立可持续 Agent runtime core：`docs/adr/0008-v0-2-agent-continuity-core.cn.md`
 - GitHub-only、proposal-only 的 discovery signal 与 capability assimilation 前置边界：`docs/adr/0009-github-discovery-radar-v0.cn.md`
+- Goal 范围的结构化 read policy 与本地读取执行前约束：`docs/adr/0010-goal-scoped-read-policy.cn.md`
 - Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：
