@@ -194,7 +194,7 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.runtime.content_creator_metrics_browser_session_name, "local-runtime-test-creator");
     assert.equal(summary.runtime.content_creator_metrics_browser_auto_connect, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
-    assert.equal(summary.runtime.asset_projection_root, join(homeRoot, "projection"));
+    assert.equal("asset_projection_root" in summary.runtime, false);
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
     assert.deepEqual(summary.runtime.defaulted_fields, ["promotion_enabled", "structured_output"]);
     assert.equal(summary.runtime.promotion_enabled, false);
@@ -515,7 +515,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(result.after.content_daily_publish_enabled, false);
     assert.equal(result.after.content_feedback_refresh_enabled, true);
     assert.equal(result.after.content_feedback_refresh_limit, 3);
-    assert.equal(result.after.asset_projection_root, join(homeRoot, "projection"));
+    assert.equal("asset_projection_root" in result.after, false);
     assert.equal(result.boundary.includes("never reads or writes auth.jsonl"), true);
 
     const raw = await readFile(join(homeConfigDir, "config.jsonl"), "utf8");
@@ -539,7 +539,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(summary.runtime.content_feedback_refresh_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
-    assert.equal(summary.runtime.asset_projection_root, join(homeRoot, "projection"));
+    assert.equal("asset_projection_root" in summary.runtime, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -735,6 +735,7 @@ metadata (`unconfigured`, `absent`, `probation`, `verified`, or fail-closed
 `invalid`) without returning the root path, enumerating releases, reading
 projected asset bodies, or reading activation-receipt bodies. This read model
 does not activate, verify, roll back, or otherwise modify a projection.
+Runtime config summaries likewise validate but never return the projection root.
 
 Runtime channel messages use a provider-neutral source envelope before they are
 bound to sessions. The stable source shape is channel kind, configured channel

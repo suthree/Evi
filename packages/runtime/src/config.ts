@@ -279,7 +279,6 @@ export interface RuntimeConfigSummary {
     content_creator_metrics_browser_session_name: string;
     content_creator_metrics_browser_auto_connect: boolean;
     content_creator_metrics_browser_cdp_port?: string;
-    asset_projection_root?: string;
     source_ref: string;
     defaulted_fields: string[];
   };
@@ -676,6 +675,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
 
   const runtimeRecord = runtimeRecords.at(-1);
   const runtime = runtimeRecord?.value ?? runtimeRecordSchema.parse({ type: "runtime" });
+  resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot);
   const runtimeSourceRef = runtimeRecord?.ref ?? "default:runtime";
   const runtimeRaw = runtimeRecord?.raw ?? {};
   const vaultRecord = vaultRecords.at(-1);
@@ -754,7 +754,6 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
-      asset_projection_root: resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot),
       source_ref: runtimeSourceRef,
       defaulted_fields: runtimeDefaultedFields(runtimeRaw)
     },
@@ -850,7 +849,12 @@ export async function updateRuntimeConfig(options: UpdateRuntimeConfigOptions): 
     stateRoot: options.stateRoot,
     env: options.env
   });
-  const record = buildUpdatedRuntimeRecord(before.runtime, options.patch);
+  const currentRuntime = await loadEffectiveRuntimeRecord(selectors);
+  const record = buildUpdatedRuntimeRecord(
+    before.runtime,
+    resolveAssetProjectionRoot(currentRuntime.asset_projection_root, selectors.homeRoot),
+    options.patch
+  );
   assertRuntimeUpdateIsSafe(record, options);
   const parsed = runtimeRecordSchema.parse(record);
   const configFile = resolve(selectors.homeConfigDir, "config.jsonl");
@@ -1212,8 +1216,15 @@ function runtimeDefaultedFields(raw: Record<string, unknown>): string[] {
   return fields.filter((field) => !(field in raw));
 }
 
+async function loadEffectiveRuntimeRecord(selectors: ConfigSelectors): Promise<RuntimeRecord> {
+  const configLayers = await readConfigSourceLayers(selectors, "config.jsonl");
+  return parseJsonlWithRefs(configLayers, runtimeRecordSchema, "runtime").at(-1)?.value
+    ?? runtimeRecordSchema.parse({ type: "runtime" });
+}
+
 function buildUpdatedRuntimeRecord(
   current: RuntimeConfigSummary["runtime"],
+  assetProjectionRoot: string | undefined,
   patch: RuntimeConfigUpdatePatch
 ): RuntimeRecord {
   const record: Record<string, unknown> = {
@@ -1248,7 +1259,7 @@ function buildUpdatedRuntimeRecord(
     content_creator_metrics_browser_session_name: current.content_creator_metrics_browser_session_name,
     content_creator_metrics_browser_auto_connect: current.content_creator_metrics_browser_auto_connect,
     ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {}),
-    ...(current.asset_projection_root ? { asset_projection_root: current.asset_projection_root } : {})
+    ...(assetProjectionRoot ? { asset_projection_root: assetProjectionRoot } : {})
   };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;

@@ -1130,6 +1130,7 @@ never returns the configured root, enumerates releases, reads skill files or
 activation-receipt bodies, or changes projection state. An invalid identity or
 an active probation remains operator attention, not an authorization to
 activate, verify, or roll back.
+Runtime config summaries validate the configured root but do not expose it.
 It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice
