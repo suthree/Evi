@@ -89,7 +89,7 @@ cognition provider 和委托执行器都不能拥有 Self 或完成判定。
 | Context 编译 | `packages/core/src/context.ts`、`context_budget.ts`、runtime context manifest | 有预算的 snapshot、来源和 omission | 原始 archive owner 或全量常驻 recall |
 | Effect 判断 | `packages/runtime/src/effect_policy.ts` | 对语义 intent 返回 `allow | confirm | deny` | 正确性证明或进程隔离 |
 | 工具契约 | `packages/core/src/tool_contracts.ts` | 模型可见名称、schema 和有界元数据 | runtime dispatch 与宿主执行 |
-| Capability Portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | 只读、有界的候选能力、就绪度、已选 Skill、Competence 与选择校验 | 任务路由、effect 权限、执行、持久化或完成判断 |
+| Capability Portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | 只读、有界的默认候选能力、就绪度、`inspect | act | delegate` 操作角色、已选 Skill、Competence 与选择校验 | 任务路由、effect 权限、执行、持久化或完成判断 |
 | 专业执行器 Adapter | `packages/runtime/src/goal_specialist_executor.ts` | 依据 Goal 权限与保留证据，把有界专业执行意图转换为完整的有类型调用 | 模型编写 worktree/model/thread/authority 协议字段，或拥有完成权限 |
 | Goal 执行工作区 | `packages/runtime/src/goal_execution_workspace.ts` | 从不可变控制权限准备并实时校验一个 Goal 绑定的隔离 linked worktree | 任务分类、workspace registry、生命周期调度、迁移 state root 或完成判断 |
 | 工具执行 | `packages/runtime/src/tools.ts` | 校验、执行、捕获有界输出和 change evidence | Goal 生命周期、学习判断或真正 OS 沙箱 |
@@ -109,8 +109,10 @@ operator 需求证据。
 
 架构只规定决策边界，不维护任务到工具的路由表。每次 cognition 前，GoalRuntime 提供一份
 有界 Capability Portfolio，内容来自当前工具契约与约束、Goal 绑定权限下的就绪度、已选
-Skill，以及从证据派生的 Competence。Cognition 选择一个能力，并声明用途、理由、验证
-方案、回退方式及所引用的已选 Skill；若选择委托执行器，还必须给出覆盖当前全部 capability
+Skill，以及从证据派生的 Competence。它以 `inspect`、`act` 或 `delegate` 标注默认候选，
+这只是决策辅助，并非任务路由或 effect 权限。有界实现 helper（如 `code.execute_node`）
+仍按自己的工具契约和 dispatch 规则注册与校验，但不占用默认 Goal 候选位。Cognition 选择一个能力，并声明用途、
+理由、验证方案、回退方式及所引用的已选 Skill；若选择委托执行器，还必须给出覆盖当前全部 capability
 id 和已选 Skill ref 的 Capability Fit Assessment 及其有界结论；GoalRuntime 在 EffectPolicy
 和 dispatch 之前校验。
 

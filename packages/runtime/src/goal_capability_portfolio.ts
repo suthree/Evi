@@ -21,6 +21,7 @@ export const MAX_GOAL_SELECTED_SKILL_BODY_CHARS = 2_400;
 
 export type GoalCapabilityKind = "direct_tool" | "delegated_executor";
 export type GoalCapabilityReadiness = "available" | "unavailable";
+export type GoalCapabilityOperationRole = "inspect" | "act" | "delegate";
 export type GoalCapabilityExecutionPurpose =
   | "orientation"
   | "verification"
@@ -31,6 +32,7 @@ export type GoalCapabilityExecutionPurpose =
 export interface GoalCapabilityCandidate {
   id: string;
   kind: GoalCapabilityKind;
+  operation_role: GoalCapabilityOperationRole;
   summary: string;
   side_effect_level: ToolSideEffectLevel;
   workspace_placement: GoalToolStorePlacement;
@@ -156,6 +158,7 @@ export function buildGoalCapabilityPortfolio(
 ): GoalCapabilityPortfolio {
   const competenceByTool = new Map(input.tool_competence.map((item) => [item.tool, item]));
   const capabilities = (input.tool_contracts ?? coreToolContracts)
+    .filter(isDefaultGoalCapability)
     .filter((contract) => contract.tool !== "workspace.prepare"
       || isWorkspacePreparationMeaningful(
         input.repository_authority,
@@ -257,6 +260,7 @@ function capabilityCandidate(
   return {
     id: contract.tool,
     kind,
+    operation_role: capabilityOperationRole(contract.tool, kind),
     summary: contract.rationale,
     side_effect_level: contract.side_effect_level,
     workspace_placement: contract.goal_store_placement,
@@ -279,6 +283,25 @@ function capabilityCandidate(
       : "registered core capability is available within current Goal authority; EffectPolicy and tool validation still apply",
     competence: competence ? structuredClone(competence) : null
   };
+}
+
+function isDefaultGoalCapability(contract: ToolContract): boolean {
+  // code.execute_node remains a registered, bounded runtime tool. It is an
+  // implementation helper rather than a default Goal-level choice, so it
+  // stays out of the cognition portfolio without changing its contract,
+  // dispatch, or EffectPolicy validation.
+  return contract.tool !== "code.execute_node";
+}
+
+function capabilityOperationRole(
+  tool: string,
+  kind: GoalCapabilityKind
+): GoalCapabilityOperationRole {
+  if (kind === "delegated_executor") return "delegate";
+  if (tool === "file.read" || tool === "repo.search" || tool === "runtime.inspect" || tool === "http.fetch") {
+    return "inspect";
+  }
+  return "act";
 }
 
 function isWorkspacePreparationMeaningful(

@@ -109,7 +109,7 @@ own the Self or completion.
 | Context compilation | `packages/core/src/context.ts`, `context_budget.ts`, runtime context manifest | Bounded rendered snapshot plus provenance and omissions | Raw archive ownership or ambient full recall |
 | Effect decision | `packages/runtime/src/effect_policy.ts` | Typed `allow | confirm | deny` decision over semantic intent | Correctness proof or process confinement |
 | Tool contracts | `packages/core/src/tool_contracts.ts` | Model-visible names, schemas, and bounded contract metadata | Runtime dispatch and host execution |
-| Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded candidates, readiness, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
+| Capability portfolio | `packages/runtime/src/goal_capability_portfolio.ts` | Read-only bounded default candidates, readiness, `inspect | act | delegate` operation roles, selected skills, competence, and selection validation | Task routing, effect authority, execution, persistence, or completion |
 | Specialist executor adapter | `packages/runtime/src/goal_specialist_executor.ts` | Convert bounded specialist intent into a complete typed invocation from Goal authority and retained evidence | Model-authored worktree/model/thread/authority protocol fields or completion authority |
 | Goal execution workspace | `packages/runtime/src/goal_execution_workspace.ts` | Prepare and live-validate one Goal-bound isolated linked worktree from the immutable control authority | Task classification, workspace registry, lifecycle scheduling, state-root movement, or completion |
 | Tool execution | `packages/runtime/src/tools.ts` | Validate, execute, capture bounded output and change evidence | Goal lifecycle, learning judgment, or a true OS sandbox |
@@ -130,9 +130,13 @@ Removal requires a later bounded issue with caller and operator-need evidence.
 Architecture owns the decision boundary, not a task-to-tool routing table. On
 each cognition turn, GoalRuntime supplies a bounded Capability Portfolio built
 from current tool contracts and constraints, readiness under the bound
-authority, selected skills, and evidence-derived competence. Cognition chooses
-one capability and states its purpose, rationale, verification plan, fallback,
-and any selected skill refs. A delegated selection additionally records a
+authority, selected skills, and evidence-derived competence. It presents
+default candidates as `inspect`, `act`, or `delegate`; this is a decision aid,
+not task routing or effect authority. Bounded implementation helpers such as
+`code.execute_node` remain registered under their own contract and dispatch
+validation, but do not occupy a default Goal candidate. Cognition chooses one capability and
+states its purpose, rationale, verification plan, fallback, and any selected
+skill refs. A delegated selection additionally records a
 Capability Fit Assessment covering exactly the current capability ids and
 selected skill refs, with a bounded conclusion. GoalRuntime validates that
 selection before EffectPolicy or dispatch.
