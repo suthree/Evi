@@ -21,6 +21,7 @@
 - 无改动委派执行后的独立验证：`docs/adr/0006-independent-verification-bridge.cn.md`
 - Goal start 工作树基线与继承变更谱系：`docs/adr/0007-goal-start-workspace-baseline.cn.md`
 - v0.2 在能力表面扩张前先建立可持续 Agent runtime core：`docs/adr/0008-v0-2-agent-continuity-core.cn.md`
+- GitHub-only、proposal-only 的 discovery signal 与 capability assimilation 前置边界：`docs/adr/0009-github-discovery-radar-v0.cn.md`
 - Trellis 仅作为历史 evidence，绝不作为默认 context：`.trellis/`
 
 按需读取：

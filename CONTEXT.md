@@ -80,6 +80,18 @@ _Avoid_: Capability catalog entry, one successful run, self-reported mastery, sc
 A scoped, evidence-derived operating description of one direct tool or **Delegated Agent Surface**. It combines the capability's declared contract and readiness with observed scope, competence, cost, risk, failure modes, fallback guidance, and freshness to inform later selection. It neither grants authority nor proves that the capability caused a Goal outcome, and it is not a semantic fact or a procedural skill.
 _Avoid_: Permission grant, causal claim, capability catalog, SOP, skill, static provider configuration
 
+**Discovery Signal**:
+Bounded, untrusted provenance that names a possible external capability reference for explicit later review. A signal is neither default context nor an **Opportunity Backlog** item, **Capability Profile**, **Tool Contract**, or authority to fetch, install, execute, activate, or promote anything.
+_Avoid_: Imported specification, tool registration, business decision, activation receipt
+
+**Capability Candidate**:
+A separately governed proposal that links one or more **Discovery Signals** to a named business need, declared scope, risk, probe plan, verification, and retirement path. It may become a **Capability Profile** only after bounded evidence; it is not a capability itself or a promotion authorization.
+_Avoid_: Trending project, tool installation, skill draft, capability portfolio entry
+
+**Tool Operation Protocol**:
+The bounded operating procedure for a known tool or delegated surface: allowed inputs, effect ceiling, evidence to capture, verification, fallback, and retirement condition. It remains external to the core/default context until selected for an explicit Goal, and it does not replace a **Tool Contract**, **Capability Profile**, or skill-promotion gate.
+_Avoid_: Raw vendor specification, credential bundle, default prompt preload, skill
+
 **Expert Orchestration Contract**:
 The **Core Runtime Capability** boundary that defines advisory expert roles, when they may be consulted, and why the main runtime still owns verification and completion. It is not an autonomous scheduler or a new agent identity.
 _Avoid_: Multi-agent daemon, parallel model fan-out, expert persona, external tool workflow
@@ -91,6 +103,10 @@ _Avoid_: Self-Growing Agent Core, durable memory
 **Tool Protocol**:
 A way for the agent to act or communicate, such as IM, CLI, MCP, shell, browser, GitHub API, or skill invocation. Tool protocols are interfaces for action, not independent agent selves.
 _Avoid_: Agent architecture
+
+**Tool Contract**:
+The typed, model-visible declaration of a concrete tool's name, accepted inputs, bounded outputs, and effect policy. It is a local runtime artifact, not a vendor document, a credential, an execution record, or a proof that the tool should be selected for a Goal.
+_Avoid_: Raw external specification, Tool Operation Protocol, capability authorization, Capability Profile
 
 **Textual Constitution**:
 The prompt-readable text layer that gives a model background context, such as `core/soul.md`, `core/memory.md`, host instruction files, or SOP files. It describes norms and context, but it is not sufficient by itself to guarantee behavior.

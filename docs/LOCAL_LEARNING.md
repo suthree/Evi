@@ -27,6 +27,14 @@ The first version does not support:
 - cross-node conflict handling
 - compatibility promises for external runtimes
 
+Public discovery is not local learning. The GitHub Discovery Radar may retain
+only bounded, untrusted repository identifiers and provenance for an explicit
+business need. Its reports stay outside default context, Opportunity Backlog,
+SOP/skill/active-vault paths, and LuBan. A signal cannot itself be drafted,
+audited, promoted, installed, activated, or treated as a reusable procedure.
+Those effects require a separately governed Capability Candidate with evidence
+of business linkage, bounded probing, verification, risk, and retirement.
+
 ## Approved v0.2 Extension
 
 v0.2 does not turn the local active vault into a shared vault. It adds a

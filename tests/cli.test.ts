@@ -154,6 +154,30 @@ test("capabilities command parses read-only catalog options", () => {
   assert.equal(verifyEntrypoints.stateRoot, ".runtime/state");
 });
 
+test("GitHub discovery command requires an explicit manual source and business need", () => {
+  const scan = parseArgs([
+    "discovery",
+    "github",
+    "scan",
+    "--need",
+    "find bounded capability candidates",
+    "--limit",
+    "5",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(scan.command, "discovery");
+  assert.equal(scan.discoverySource, "github");
+  assert.equal(scan.discoveryAction, "scan");
+  assert.equal(scan.discoveryBusinessNeed, "find bounded capability candidates");
+  assert.equal(scan.limit, 5);
+  assert.equal(scan.stateRoot, ".runtime/state");
+
+  const report = parseArgs(["discovery", "github", "report", "--report", "github_discovery_20260721000000_1234abcd"]);
+  assert.equal(report.discoveryAction, "report");
+  assert.equal(report.discoveryReportId, "github_discovery_20260721000000_1234abcd");
+});
+
 test("web command parses local console host and port", () => {
   const options = parseArgs(["web", "--host", "127.0.0.1", "--port", "9876", "--state-root", ".runtime/state"]);
 

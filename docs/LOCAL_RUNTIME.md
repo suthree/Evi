@@ -93,6 +93,26 @@ develop -> v0.1.0-rc.1 -> structural clean-room -> real model/IM smoke
 
 Current development-state regression is useful but is not the release gate.
 
+## GitHub Discovery Radar v0
+
+The proposal-only public discovery surface is manual and GitHub-only:
+
+```bash
+pnpm run runtime -- discovery github scan --need "find bounded capability references for local runtime recovery" --limit 10 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- discovery github reports --limit 20 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- discovery github report --report github_discovery_... --state-root ~/.local-runtime/state/evi
+```
+
+`scan` fetches only the fixed public GitHub Trending weekly page, requires the
+explicit `--need` business label, and accepts `1..20` signals. It stores a
+bounded report under `capability-discovery/github/`, removes duplicates within
+the page and against the latest successful report, and marks every retained
+repository identifier `external_untrusted`. It stores no raw page body or
+repository content and does not authenticate, clone, download repository
+contents, execute, install, schedule, activate, or promote anything. Reports
+are outside default context and the Opportunity Backlog; only a separate,
+accepted Capability Candidate may request a bounded follow-on probe.
+
 ## First-Version Command Contract
 
 The first-version command surface should be:
