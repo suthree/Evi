@@ -94,6 +94,7 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     channelId: args.service?.channelId,
     scenarioId: args.service?.scenarioId,
     runtimeBuild,
+    assetProjectionRoot: args.config.runtime.asset_projection_root,
     gatewayHealth: () => gateway.health()
   });
   const reviewTickLoop = createReviewTickLoop({
@@ -250,6 +251,7 @@ function createServiceHeartbeat(
     channelId?: string;
     scenarioId?: string;
     runtimeBuild?: ServiceRuntimeBuild | null;
+    assetProjectionRoot?: string;
     gatewayHealth?: () => unknown;
   }
 ): {
@@ -277,6 +279,7 @@ function createServiceHeartbeat(
       updated_at: new Date().toISOString()
     };
     if (args.runtimeBuild) payload.runtime_build = args.runtimeBuild;
+    if (args.assetProjectionRoot) payload.asset_projection_root = args.assetProjectionRoot;
     if (error) payload.error = error;
     const promise = store.writeJson(serviceRef(args.target, "heartbeat.json"), payload).then(() => undefined);
     inflightWrites.add(promise);

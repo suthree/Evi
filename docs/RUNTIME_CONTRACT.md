@@ -724,6 +724,19 @@ text. If an adapter fails during daemon startup, the daemon must write an
 `error` heartbeat with the failed MessageGateway channel before the foreground
 process or resident service exits.
 
+`runtime.asset_projection_root` is an optional, explicit node-local projection
+root. Its value must resolve to an absolute path; a relative value or reference
+to an unset environment variable is rejected rather than guessed. When it is
+configured, the daemon carries its resolved absolute value in
+the local heartbeat and `service health` may read only `active.json`,
+`previous.json`, and the matching `releases/<lock-hash>/asset-lock.json` under
+that root. The health result returns bounded lock and activation identity
+metadata (`unconfigured`, `absent`, `probation`, `verified`, or fail-closed
+`invalid`) without returning the root path, enumerating releases, reading
+projected asset bodies, or reading activation-receipt bodies. This read model
+does not activate, verify, roll back, or otherwise modify a projection.
+Runtime config summaries likewise validate but never return the projection root.
+
 Runtime channel messages use a provider-neutral source envelope before they are
 bound to sessions. The stable source shape is channel kind, configured channel
 id, conversation type, conversation id, optional thread id, optional actor id,

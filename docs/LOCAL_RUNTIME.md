@@ -1120,6 +1120,17 @@ repo HEAD summary, resident deployment status, review tick status/focus,
 content daily status, feedback refresh status, pause status, and bounded
 operator-notification delivery counts. It never returns notification text,
 targets, sources, errors, or send payloads.
+If the resident heartbeat explicitly carries `asset_projection_root` from an
+explicit `runtime.asset_projection_root` that resolved to an absolute path,
+service health additionally reads only the
+projection's `active.json`, `previous.json`, and matching
+`releases/<lock-hash>/asset-lock.json`. It reports bounded active and recovery
+identity (`unconfigured`, `absent`, `probation`, `verified`, or `invalid`) but
+never returns the configured root, enumerates releases, reads skill files or
+activation-receipt bodies, or changes projection state. An invalid identity or
+an active probation remains operator attention, not an authorization to
+activate, verify, or roll back.
+Runtime config summaries validate the configured root but do not expose it.
 It keeps the legacy top-level `status` for compatibility and also returns
 `layers.runtime_substrate` and `layers.application_slices` with reason codes,
 so a dirty/stale resident runtime can be distinguished from application-slice

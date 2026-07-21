@@ -48,7 +48,8 @@ const runtimeRecordSchema = z.object({
   content_creator_metrics_creator_url: z.string().url().default("https://creator.xiaohongshu.com/new/note-manager"),
   content_creator_metrics_browser_session_name: z.string().min(1).default("runtime-creator-metrics"),
   content_creator_metrics_browser_auto_connect: z.boolean().default(false),
-  content_creator_metrics_browser_cdp_port: z.string().min(1).optional()
+  content_creator_metrics_browser_cdp_port: z.string().min(1).optional(),
+  asset_projection_root: z.string().min(1).optional()
 });
 
 const vaultRecordSchema = z.object({
@@ -211,6 +212,7 @@ export interface RuntimeConfig {
     content_creator_metrics_browser_session_name: string;
     content_creator_metrics_browser_auto_connect: boolean;
     content_creator_metrics_browser_cdp_port?: string;
+    asset_projection_root?: string;
   };
   vault: {
     mode: "repo-local" | "user";
@@ -585,7 +587,8 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
       content_creator_metrics_creator_url: runtime.content_creator_metrics_creator_url,
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
-      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port
+      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
+      asset_projection_root: resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot)
     },
     vault: {
       mode: vault.mode,
@@ -672,6 +675,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
 
   const runtimeRecord = runtimeRecords.at(-1);
   const runtime = runtimeRecord?.value ?? runtimeRecordSchema.parse({ type: "runtime" });
+  resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot);
   const runtimeSourceRef = runtimeRecord?.ref ?? "default:runtime";
   const runtimeRaw = runtimeRecord?.raw ?? {};
   const vaultRecord = vaultRecords.at(-1);
@@ -845,7 +849,12 @@ export async function updateRuntimeConfig(options: UpdateRuntimeConfigOptions): 
     stateRoot: options.stateRoot,
     env: options.env
   });
-  const record = buildUpdatedRuntimeRecord(before.runtime, options.patch);
+  const currentRuntime = await loadEffectiveRuntimeRecord(selectors);
+  const record = buildUpdatedRuntimeRecord(
+    before.runtime,
+    resolveAssetProjectionRoot(currentRuntime.asset_projection_root, selectors.homeRoot),
+    options.patch
+  );
   assertRuntimeUpdateIsSafe(record, options);
   const parsed = runtimeRecordSchema.parse(record);
   const configFile = resolve(selectors.homeConfigDir, "config.jsonl");
@@ -985,6 +994,13 @@ function resolveVaultConfig(record: VaultRecord | undefined, homeRoot: string): 
   };
 }
 
+function resolveAssetProjectionRoot(value: string | undefined, homeRoot: string): string | undefined {
+  if (!value) return undefined;
+  const expanded = expandConfigPath(value, homeRoot, true, true);
+  if (!isAbsolute(expanded)) throw new Error("runtime.asset_projection_root must resolve to an absolute path");
+  return resolve(expanded);
+}
+
 async function loadAuthRecords<T>(
   selectors: ConfigSelectors,
   schema: z.ZodType<T>,
@@ -1042,17 +1058,24 @@ function localConfigFile(file: string): string {
   return file.replace(/\.jsonl$/u, ".local.jsonl");
 }
 
-function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean): string {
+function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean, rejectUnsetEnvironment = false): string {
   let expanded = value;
   if (homeRoot) {
     expanded = expanded.replace(/\$\{LOCAL_RUNTIME_HOME\}/g, homeRoot).replace(/\$LOCAL_RUNTIME_HOME\b/g, homeRoot);
   }
-  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => process.env[name] ?? "");
-  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => process.env[name] ?? "");
+  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
+  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
   if (expanded === "~") expanded = homedir();
   else if (expanded.startsWith("~/")) expanded = resolve(homedir(), expanded.slice(2));
   if (preserveRelative && !isAbsolute(expanded)) return expanded;
   return resolve(expanded);
+}
+
+function requiredConfigEnvironment(name: string, rejectUnsetEnvironment: boolean): string {
+  const value = process.env[name];
+  if (value !== undefined) return value;
+  if (rejectUnsetEnvironment) throw new Error(`runtime.asset_projection_root references unset environment variable: ${name}`);
+  return "";
 }
 
 async function readRequired(dir: string, file: string): Promise<string> {
@@ -1193,8 +1216,15 @@ function runtimeDefaultedFields(raw: Record<string, unknown>): string[] {
   return fields.filter((field) => !(field in raw));
 }
 
+async function loadEffectiveRuntimeRecord(selectors: ConfigSelectors): Promise<RuntimeRecord> {
+  const configLayers = await readConfigSourceLayers(selectors, "config.jsonl");
+  return parseJsonlWithRefs(configLayers, runtimeRecordSchema, "runtime").at(-1)?.value
+    ?? runtimeRecordSchema.parse({ type: "runtime" });
+}
+
 function buildUpdatedRuntimeRecord(
   current: RuntimeConfigSummary["runtime"],
+  assetProjectionRoot: string | undefined,
   patch: RuntimeConfigUpdatePatch
 ): RuntimeRecord {
   const record: Record<string, unknown> = {
@@ -1228,7 +1258,8 @@ function buildUpdatedRuntimeRecord(
     content_creator_metrics_creator_url: current.content_creator_metrics_creator_url,
     content_creator_metrics_browser_session_name: current.content_creator_metrics_browser_session_name,
     content_creator_metrics_browser_auto_connect: current.content_creator_metrics_browser_auto_connect,
-    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {})
+    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {}),
+    ...(assetProjectionRoot ? { asset_projection_root: assetProjectionRoot } : {})
   };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;

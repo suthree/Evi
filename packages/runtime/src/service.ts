@@ -159,6 +159,7 @@ export interface ServiceHeartbeat {
   scenario_id?: string;
   gateway?: unknown;
   runtime_build?: ServiceRuntimeBuild;
+  asset_projection_root?: string;
   started_at: string;
   updated_at: string;
 }
