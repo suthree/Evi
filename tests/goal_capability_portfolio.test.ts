@@ -73,7 +73,7 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
       }]
     });
 
-    assert.equal(portfolio.capabilities.length, 10);
+    assert.equal(portfolio.capabilities.length, 9);
     const fileRead = portfolio.capabilities.find((candidate) => candidate.id === "file.read");
     assert.ok(fileRead);
     assert.equal(fileRead.kind, "direct_tool");
@@ -86,9 +86,23 @@ test("configured Goal capability portfolio resolves bounded tools, selected skil
     assert.equal(codex?.readiness, "unavailable");
     assert.match(codex?.readiness_reason ?? "", /isolated execution workspace/i);
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "workspace.prepare")?.readiness, "available");
-    assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+    assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), false);
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "runtime.inspect")?.readiness, "available");
     assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "runtime.inspect")?.workspace_placement, "control");
+    assert.deepEqual(
+      portfolio.capabilities.map((candidate) => [candidate.id, candidate.operation_role]),
+      [
+        ["file.read", "inspect"],
+        ["file.write_state", "act"],
+        ["file.write_repo", "act"],
+        ["repo.search", "inspect"],
+        ["runtime.inspect", "inspect"],
+        ["http.fetch", "inspect"],
+        ["command.run", "act"],
+        ["workspace.prepare", "act"],
+        ["codex.run", "delegate"]
+      ]
+    );
     assert.deepEqual(portfolio.selected_skills.map((skill) => skill.name), ["source-architecture-review"]);
     assert.match(portfolio.selected_skills[0]!.body, /delegate specialist production/);
     assert.doesNotMatch(JSON.stringify(portfolio), /UNSELECTED_SKILL_BODY/);
@@ -112,8 +126,11 @@ test("Goal capability portfolio marks delegated execution ready in a linked work
   });
   assert.match(codex?.constraints.join(" ") ?? "", /GoalRuntime derives new or resume mode/);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
-  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), false);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "runtime.inspect"), true);
+  assert.equal(codex?.operation_role, "delegate");
+  assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "repo.search")?.operation_role, "inspect");
+  assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "command.run")?.operation_role, "act");
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
 });
 
@@ -128,7 +145,7 @@ test("Goal capability portfolio switches delegated readiness after canonical exe
 
   assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "codex.run")?.readiness, "available");
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "workspace.prepare"), false);
-  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), true);
+  assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "code.execute_node"), false);
   assert.equal(portfolio.capabilities.some((candidate) => candidate.id === "runtime.inspect"), true);
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
 });

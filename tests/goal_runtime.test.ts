@@ -249,7 +249,7 @@ test("GoalRuntime derives one execution workspace and scopes later repo tools wi
     assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.find((item) => item.id === "workspace.prepare")?.readiness, "available");
     assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.find((item) => item.id === "codex.run")?.readiness, "unavailable");
     assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.some((item) => item.id === "workspace.prepare"), false);
-    assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.some((item) => item.id === "code.execute_node"), true);
+    assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.some((item) => item.id === "code.execute_node"), false);
     assert.equal(cognition.calls[1]!.capability_portfolio.capabilities.find((item) => item.id === "codex.run")?.readiness, "available");
 
     const replayed = await runtime.read(started.goal_id);
@@ -3665,8 +3665,7 @@ function action(
             "runtime.inspect",
             "http.fetch",
             "command.run",
-            "codex.run",
-            "code.execute_node"
+            "codex.run"
           ],
           considered_skill_refs: [],
           conclusion: "The bounded specialist executor is the selected fit after comparing the current available capability portfolio."
