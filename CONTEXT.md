@@ -8,6 +8,14 @@ The agent is a context for designing one continuous autonomous self-growing agen
 The long-lived self of the agent: one stable autonomous agent across repositories, interfaces, models, and runtimes. It owns the seed mission, durable values, operating boundaries, learning policy, and continuity of growth.
 _Avoid_: Personal assistant, workspace persona, per-repo agent, split identity
 
+**Agent Continuity**:
+The ability of the **Self-Growing Agent Core** to retain one bounded Goal,
+authoritative context, evidence status, and recoverable active identity across
+session or process boundaries, and to preserve traceable identity and
+provenance when another node independently projects compatible assets. It does
+not mean synchronizing raw memory or runtime state between nodes.
+_Avoid_: Transcript retention, shared session state, global latest configuration
+
 **Learning Orchestrator**:
 The **Self-Growing Agent Core** in its operating role: it discovers, compares, selects, combines, and evaluates tools, skills, and **Delegated Agent Surfaces** to expand capability. It need not internalize every tool protocol or become the default worker; bounded direct execution remains an evidence and recovery surface while specialists perform suitable production work.
 _Avoid_: Generic command agent, fixed workflow router, tool wrapper

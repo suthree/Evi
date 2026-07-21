@@ -20,6 +20,7 @@ Load this compact index by default. Do not preload every stable document.
 - Typed cognition envelopes and fail-closed model-decision parsing: `docs/adr/0005-typed-cognition-envelope.md`
 - Independent verification after no-change delegated execution: `docs/adr/0006-independent-verification-bridge.md`
 - Goal-start workspace baseline and inherited change lineage: `docs/adr/0007-goal-start-workspace-baseline.md`
+- v0.2 durable agent-runtime core before capability-surface expansion: `docs/adr/0008-v0-2-agent-continuity-core.md`
 - Historical Trellis evidence only, never default context: `.trellis/`
 
 Read on demand:
