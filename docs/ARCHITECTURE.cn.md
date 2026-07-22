@@ -78,6 +78,7 @@ Self Registry -------- 当前与已退役的持久资产版本
 | 关注点 | vNext owner | 边界 |
 | --- | --- | --- |
 | 普通工作 | Run 内的 Turn | 不要求 Goal |
+| 对话连续性 | SQLite 中由 Runtime Kernel 拥有的 Session identity | 一个 Session 可拥有多个 terminal Run，但最多一个 `running` 或 `paused` Run；`continue` 只恢复同一个 paused Run |
 | Agent Loop ownership 与 crash detection | SQLite 中带 lease 的 Run Execution | 每个 running Run 只有一个 active Execution；不持久化 raw lease token |
 | Model/tool loop、session tree、steering、compaction | 单一 Adapter 后的 Pi `AgentHarness` | Evi 不保留第二套执行循环 |
 | 不可变执行权限 | Runtime Kernel 选出的 Execution Lock | Pi 负责执行；Child Lock 只能保持或缩小 Parent 权限 |
@@ -98,9 +99,14 @@ external action 仍被拒绝；paused Run 可以在 terminal Action reconciliati
 暂停，并在同一 session 中恢复；旧 dispatch 会明确记录为 `outcome_unknown`。Persisted
 assistant tool call 只能通过其精确 Action reservation 或 receipt 修复；已经持久化的 terminal
 assistant answer 不再次调用 provider。这不代表 provider 或 effect exactly-once。既定 Kernel
-基建现已闭合。显式 CLI-only 的 read-only ingress canary 现已使用独立 SQLite 实现；它不是
-production ingress 或 deployment。当前不接 learning、subagent，不切 ingress，不迁移、
-不 dual write、不部署。v0.2 在后续切片通过各自 gate 前仍是当前 rollback runtime。
+基建现已闭合。显式 CLI-only 的 read-only ingress canary 继续作为诊断入口；稳定 Goal-free
+CLI Adapter 已能新建 Run、绑定 durable Session、只续跑有 evidence 的 paused Run，并按
+Run 或 Session 检查状态。Runtime Kernel 为每个 Run 持久化安全的 Execution Lock，绑定
+model/API、configuration source、cwd 与精确 Action Contract，同时不把 credential 写入
+state。稳定库与 canary 库还持有不同的不可变 state profile；无论旧 schema 还是当前诊断库
+都不能被隐式晋升。
+两条 CLI 路径都不是 production deployment、Web/IM route、migration 或 dual write；本切片
+仍不接 learning、Worker，也不部署 vNext。v0.2 继续作为当前 rollback runtime。
 
 ### 最终深模块
 
@@ -109,7 +115,7 @@ policy 和具体 Adapter 默认是内部 seam；只有出现第二种真实实�
 
 | 模块 | 小型外部 Interface | 内部隐藏的复杂度 | 删除测试 |
 | --- | --- | --- | --- |
-| Runtime Kernel | `submit`、`continue`、`inspect`、`signal/cancel` | Run/Turn、execution lease、Context compilation、model binding、可选 Goal link、recovery、Run Outcome | 删除后，生命周期和恢复会回流所有入口和 executor |
+| Runtime Kernel | `submit`、`continue`、`inspect`，后续 `signal/cancel` | Session/Run/Turn、不可变 Execution Lock、execution lease、Context compilation、model binding、可选 Goal link、recovery、Run Outcome | 删除后，连续性、权限、生命周期和恢复会回流所有入口和 executor |
 | Action Gateway | `contracts`、`invoke`、`reconcile` | Authority、effect 分类、reservation、containment、dispatch、evidence、reconciliation、Effect Receipt | 删除后，每个 Tool 和 Worker Adapter 都要重复实现 effect safety |
 | Orchestration Engine | `dispatch`、`signal`、`inspect`、`cancel` | Task graph、worker lease、分层 budget、dependency、`needs_input`、stale recovery、Result delivery | 删除后，worker lifecycle 会散入 Runtime Kernel、Pi 和入口 Adapter |
 | Adaptation Engine | `propose`、`evaluate`、`activate`、`retire/rollback` | Episode selection、Self Registry version、baseline、gate、observation、regression、retirement | 删除后，Memory、SOP、Skill、Prompt、Tool 和 Code 会各自发明 promotion path |
@@ -356,14 +362,17 @@ terminal Goal outcome 得到有界 Projection，而没有新增 state owner。�
 
 ## vNext 交付顺序
 
-`origin/develop@62cab799` 已按 ADR 0012 至 0016 完成前五个 Kernel foundation source
-slice，但尚未部署。已接受的后续顺序是：
+`origin/develop@ff130bae` 已按 ADR 0012 至 0017 完成 Kernel foundation 与 read-only canary
+前置源码切片。已部署的仍只是未改变的 v0.2 rollback runtime；vNext route 仍是 foreground
+CLI 源码。已接受的后续顺序是：
 
 1. **Read-only ingress canary（已实现，未部署）。** 显式 CLI opt-in、隔离 SQLite，只允许
    `none/local_read`；不镜像流量、不迁移、不 dual write、不开放 write/external Action、
    Worker、learning、Web/IM routing 或部署切换。
-2. **基础 ingress 与 continuity。** 一次只把一个入口切到 Goal-free Run 与 durable
-   session binding，再增加最小可选 Goal extension；v0.2 保持为已验证 rollback runtime。
+2. **基础 CLI ingress 与 continuity（源码已实现，未部署）。** 稳定 CLI Adapter 不拥有
+   lifecycle；Kernel 拥有 durable Session binding、one-open-Run exclusion、same-Run
+   recovery 与不可变 Execution Lock。Web/IM routing、`signal/cancel`、可选 Goal link 与
+   deployment cutover 仍是后续独立验证切片；v0.2 保持为 rollback runtime。
 3. **Parent-Child orchestration。** 依次增加一个异步 read-only discussion Worker、一个
    execution Worker、独立 review，再开放有界并发、分层 budget 与 Delivery Lineage。
 4. **受监督自学习。** 把 verified Episode 转成 inactive Memory/SOP/Skill Candidate，比较

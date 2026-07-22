@@ -5,7 +5,7 @@ import type {
   EffectReceipt,
   JsonObject
 } from "./action_types.js";
-import type { RunRecord } from "./contracts.js";
+import type { RunRecord, RuntimeSessionRecord } from "./contracts.js";
 import type {
   ModelDispatchRecord,
   ModelDispatchState,
@@ -29,9 +29,17 @@ export interface RunRow {
 
 export interface PiSessionRow {
   id: string;
-  run_id: string;
   created_at: string;
   leaf_id: string | null;
+}
+
+export interface RuntimeSessionRow extends RuntimeSessionRecord {}
+
+export interface ExecutionLockRow {
+  run_id: string;
+  digest: string;
+  lock_json: string;
+  created_at: string;
 }
 
 export interface PiEntryRow {

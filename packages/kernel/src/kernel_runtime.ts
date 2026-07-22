@@ -3,11 +3,14 @@ import { ActionGateway } from "./action_gateway.js";
 import type { ActionRecoveryEvidence } from "./action_types.js";
 import type {
   AgentLoopFactory,
+  ExecutionLock,
   RunExecutionResult,
   RunInspection,
   RunRecord,
+  SessionInspection,
   SubmitRequest
 } from "./contracts.js";
+import { assertExecutionLockMatchesContracts } from "./execution_lock.js";
 import type { RunExecutionLease, RunExecutionRecoveryEvidence } from "./execution_types.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -32,12 +35,20 @@ export class KernelRuntime {
   }
 
   async submit(input: SubmitRequest): Promise<RunExecutionResult> {
+    assertExecutionLockMatchesContracts(input.execution_lock, this.actions.contracts());
     const started = this.store.beginRun(input, this.executionLeaseMs);
-    return this.executeRun(started.run, started.execution, started.run.request);
+    return this.executeRun(
+      started.run,
+      started.execution,
+      started.run.request,
+      started.execution_lock
+    );
   }
 
   async continueRun(runId: string): Promise<RunExecutionResult> {
     let inspection = this.requireInspection(runId);
+    const executionLock = this.store.getExecutionLock(runId);
+    assertExecutionLockMatchesContracts(executionLock, this.actions.contracts());
     if (inspection.status === "running") {
       this.store.interruptExpiredRunExecution(runId);
       inspection = this.requireInspection(runId);
@@ -63,7 +74,12 @@ export class KernelRuntime {
         evidence_digest: digest(continuationPrompt),
         lease_ms: this.executionLeaseMs
       });
-      return this.executeRun(resumed.run, resumed.execution, continuationPrompt);
+      return this.executeRun(
+        resumed.run,
+        resumed.execution,
+        continuationPrompt,
+        executionLock
+      );
     }
 
     const executionEvidence = this.store.getRunExecutionRecoveryEvidence(runId);
@@ -79,7 +95,12 @@ export class KernelRuntime {
         evidence_digest: digest(recoveryPrompt),
         lease_ms: this.executionLeaseMs
       });
-      return this.executeRun(resumed.run, resumed.execution, recoveryPrompt);
+      return this.executeRun(
+        resumed.run,
+        resumed.execution,
+        recoveryPrompt,
+        executionLock
+      );
     }
     const recoveryPrompt = renderDispatchRecoveryPrompt(runId, executionEvidence);
     const resumed = this.store.resumeRun({
@@ -90,17 +111,27 @@ export class KernelRuntime {
       evidence_digest: digest(recoveryPrompt),
       lease_ms: this.executionLeaseMs
     });
-    return this.executeRun(resumed.run, resumed.execution, recoveryPrompt);
+    return this.executeRun(
+      resumed.run,
+      resumed.execution,
+      recoveryPrompt,
+      executionLock
+    );
   }
 
   inspect(runId: string): RunInspection | null {
     return this.store.inspectRun(runId);
   }
 
+  inspectSession(sessionId: string): SessionInspection | null {
+    return this.store.inspectSession(sessionId);
+  }
+
   private async executeRun(
     run: RunRecord,
     execution: RunExecutionLease,
-    prompt: string
+    prompt: string,
+    executionLock: ExecutionLock
   ): Promise<RunExecutionResult> {
     const controller = new AbortController();
     let heartbeatError: unknown;
@@ -120,7 +151,8 @@ export class KernelRuntime {
         turn_id: run.turn_id,
         session_id: run.session_id,
         action_gateway: this.actions,
-        execution
+        execution,
+        execution_lock: executionLock
       });
       const result = await loop.execute(prompt, controller.signal);
       if (heartbeatError) throw heartbeatError;

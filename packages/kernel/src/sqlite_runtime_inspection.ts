@@ -1,7 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
-import type { RunInspection, RunRecord } from "./contracts.js";
+import type { ExecutionLock, RunInspection, RunRecord } from "./contracts.js";
 
-export function inspectRuntimeRun(db: DatabaseSync, run: RunRecord): RunInspection {
+export function inspectRuntimeRun(
+  db: DatabaseSync,
+  run: RunRecord,
+  executionLock: ExecutionLock
+): RunInspection {
   const runId = run.id;
   const events = count(db, "SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?", runId);
   const entries = count(
@@ -35,6 +39,8 @@ export function inspectRuntimeRun(db: DatabaseSync, run: RunRecord): RunInspecti
   `, runId);
   return {
     ...run,
+    execution_lock_digest: executionLock.digest,
+    execution_lock: executionLock,
     event_count: events,
     session_entry_count: entries,
     action_count: actions,

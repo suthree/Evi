@@ -8,6 +8,7 @@ import { Type } from "typebox";
 import { ActionGateway } from "../packages/kernel/src/action_gateway.js";
 import type { ActionHandler, JsonObject } from "../packages/kernel/src/action_types.js";
 import { SqliteRuntimeStore } from "../packages/kernel/src/sqlite_runtime_store.js";
+import { testExecutionLock } from "./vnext_test_support.js";
 
 test("Action Gateway reserves before dispatch and reuses one terminal receipt", async () => {
   const fixture = await createFixture();
@@ -28,7 +29,10 @@ test("Action Gateway reserves before dispatch and reuses one terminal receipt", 
     }
   });
   try {
-    const { run } = store.beginRun({ request: "Exercise one reserved action." }, 30_000);
+    const { run } = store.beginRun({
+      request: "Exercise one reserved action.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     const invocation = {
       run_id: run.id,
@@ -71,7 +75,10 @@ test("Action Gateway safely dispatches an exact reservation that never entered d
     }
   });
   try {
-    const { run } = store.beginRun({ request: "Recover a pre-dispatch reservation." }, 30_000);
+    const { run } = store.beginRun({
+      request: "Recover a pre-dispatch reservation.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     const invocation = {
       run_id: run.id,
@@ -111,7 +118,10 @@ test("Action Gateway rejects invocation identity drift without replay", async ()
     }
   });
   try {
-    const { run } = store.beginRun({ request: "Reject a changed action digest." }, 30_000);
+    const { run } = store.beginRun({
+      request: "Reject a changed action digest.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     await gateway.invoke({
       run_id: run.id,
@@ -144,8 +154,12 @@ test("Action Gateway binds an invocation to the exact Tool Contract version", as
     return { outcome: "succeeded", summary: "Version one completed.", output: {} };
   };
   try {
-    const { run } = store.beginRun({ request: "Bind one invocation to one contract version." }, 30_000);
-    const firstGateway = new ActionGateway(store, [probeHandler({ execute }, "1")]);
+    const firstHandler = probeHandler({ execute }, "1");
+    const { run } = store.beginRun({
+      request: "Bind one invocation to one contract version.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [firstHandler.contract] })
+    }, 30_000);
+    const firstGateway = new ActionGateway(store, [firstHandler]);
     const invocation = {
       run_id: run.id,
       turn_id: run.turn_id,
@@ -156,10 +170,9 @@ test("Action Gateway binds an invocation to the exact Tool Contract version", as
     await firstGateway.invoke(invocation);
 
     const upgradedGateway = new ActionGateway(store, [probeHandler({ execute }, "2")]);
-    await assert.rejects(
-      upgradedGateway.invoke(invocation),
-      /Action invocation identity mismatch/
-    );
+    const denied = await upgradedGateway.invoke(invocation);
+    assert.equal(denied.status, "denied");
+    assert.match("reason" in denied ? denied.reason : "", /immutable Execution Lock/);
     assert.equal(executeCalls, 1);
   } finally {
     store.close();
@@ -177,10 +190,7 @@ test("Action Gateway reconciles an unknown outcome after SQLite reopen without r
 
   const firstStore = new SqliteRuntimeStore(dbPath);
   try {
-    const { run } = firstStore.beginRun({ request: "Recover an uncertain dispatch." }, 30_000);
-    runId = run.id;
-    turnId = run.turn_id;
-    const gateway = new ActionGateway(firstStore, [probeHandler({
+    const firstHandler = probeHandler({
       async execute() {
         executeCalls += 1;
         throw new Error("transport ended after dispatch");
@@ -188,7 +198,14 @@ test("Action Gateway reconciles an unknown outcome after SQLite reopen without r
       async reconcile() {
         throw new Error("first process must not reconcile");
       }
-    })]);
+    });
+    const { run } = firstStore.beginRun({
+      request: "Recover an uncertain dispatch.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [firstHandler.contract] })
+    }, 30_000);
+    runId = run.id;
+    turnId = run.turn_id;
+    const gateway = new ActionGateway(firstStore, [firstHandler]);
 
     const unknown = await gateway.invoke({
       run_id: run.id,
@@ -269,7 +286,10 @@ test("Action Gateway denies write effects before preparation, reservation, or di
     }
   };
   try {
-    const { run } = store.beginRun({ request: "Keep writes disabled." }, 30_000);
+    const { run } = store.beginRun({
+      request: "Keep writes disabled.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     const denied = await gateway.invoke({
       run_id: run.id,
@@ -313,7 +333,10 @@ test("Action Gateway rechecks effect policy before dispatching an existing reser
     }
   };
   try {
-    const started = store.beginRun({ request: "Keep an inherited write reservation paused." }, 30_000);
+    const started = store.beginRun({
+      request: "Keep an inherited write reservation paused.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     store.reserveAction({
       run_id: started.run.id,
       turn_id: started.run.turn_id,
@@ -353,7 +376,10 @@ test("Action Gateway fails closed on reserved Action identity drift before dispa
     }
   });
   try {
-    const started = store.beginRun({ request: "Reject a corrupted reserved identity." }, 30_000);
+    const started = store.beginRun({
+      request: "Reject a corrupted reserved identity.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [handler.contract] })
+    }, 30_000);
     store.reserveAction({
       run_id: started.run.id,
       turn_id: started.run.turn_id,

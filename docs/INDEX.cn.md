@@ -2,10 +2,10 @@
 
 默认只加载本索引，不要预加载所有稳定文档。
 
-- Runtime 能力、harness、context、工具和边界：`docs/RUNTIME_CONTRACT.md`
+- Runtime 能力、vNext 稳定 CLI/Session 契约、harness、context、工具和边界：`docs/RUNTIME_CONTRACT.md`
 - 当前模块归属、own/delegate seam、架构压力与渐进替换顺序：`docs/ARCHITECTURE.cn.md`
 - 源码、目录、依赖、测试和文档结构：`docs/ENGINEERING.cn.md`
-- 服务安装、健康、回滚、日志、IM 和本地运维：`docs/LOCAL_RUNTIME.md`
+- vNext CLI 命令、服务安装、健康、回滚、日志、IM 和本地运维：`docs/LOCAL_RUNTIME.md`
 - 记忆、SOP、skill、active vault、晋升、修订和退役：`docs/LOCAL_LEARNING.md`
 - 已接受的一个 Self/多个入口、Pi-backed execution、Parent-Child 编排、Execution Lock 与 Adaptation 愿景：`docs/PRODUCT_VISION.cn.md`
 - 已确认的 v0.2 多节点资产进化目标、LuBan 边界、节点激活和证据链：`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`

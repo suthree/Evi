@@ -117,6 +117,41 @@ test("vNext canary parsing requires an explicit opt-in surface and isolated SQLi
   );
 });
 
+test("stable vNext Run parsing accepts only its narrow Session and state options", () => {
+  const submit = parseArgs([
+    "vnext", "run", "submit", "--task", "Open a stable Run.",
+    "--session-id", "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "--vnext-state-root", "/tmp/evi-vnext", "--config-dir", "config", "--repo-root", "/tmp/repo"
+  ]);
+  assert.equal(submit.vnextSurface, "run");
+  assert.equal(submit.vnextRunAction, "submit");
+  assert.equal(submit.vnextRunSessionId, "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(submit.vnextStateRoot, "/tmp/evi-vnext");
+
+  const inspect = parseArgs([
+    "vnext", "run", "inspect", "--run-id", "run_123", "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(inspect.vnextRunAction, "inspect");
+  assert.equal(inspect.vnextRunId, "run_123");
+
+  assert.throws(
+    () => parseArgs(["vnext", "run", "submit", "--task", "unsafe", "--base-url", "https://raw.example"]),
+    /Unknown vnext run argument: --base-url/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "inspect", "--run-id", "run_1", "--session-id", "session_1"]),
+    /exactly one/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "continue", "--run-id", "run_1", "--session-id", "session_1"]),
+    /does not accept --session-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "inspect", "--run-id", "run_1", "--state-root", "/tmp/v02"]),
+    /Unknown vnext run argument: --state-root/
+  );
+});
+
 test("config set-runtime parses safe content daily update options", () => {
   const options = parseArgs([
     "config",

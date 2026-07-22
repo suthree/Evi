@@ -1,6 +1,15 @@
 import { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = "4";
+const SCHEMA_VERSION = "5";
+
+export class RuntimeSchemaIncompatibleError extends Error {
+  readonly code = "schema_incompatible";
+
+  constructor(readonly actualVersion: string) {
+    super(`Unsupported vNext runtime schema version: ${actualVersion}`);
+    this.name = "RuntimeSchemaIncompatibleError";
+  }
+}
 
 export function initializeRuntimeSchema(db: DatabaseSync): void {
   db.exec(`
@@ -15,12 +24,17 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
     | { value: string }
     | undefined;
   if (version && version.value !== SCHEMA_VERSION) {
-    throw new Error(`Unsupported vNext runtime schema version: ${version.value}`);
+    throw new RuntimeSchemaIncompatibleError(version.value);
   }
 
   db.exec("BEGIN IMMEDIATE");
   try {
     db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS runs (
         id TEXT PRIMARY KEY,
         status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
@@ -28,11 +42,15 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         request TEXT NOT NULL,
         answer TEXT,
         error TEXT,
-        session_id TEXT NOT NULL UNIQUE,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         turn_id TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      CREATE INDEX IF NOT EXISTS runs_session_created_idx
+        ON runs(session_id, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS runs_one_open_per_session_idx
+        ON runs(session_id) WHERE status IN ('running', 'paused');
       CREATE TABLE IF NOT EXISTS turns (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -46,11 +64,18 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         UNIQUE (run_id, ordinal)
       );
       CREATE TABLE IF NOT EXISTS pi_sessions (
-        id TEXT PRIMARY KEY,
-        run_id TEXT NOT NULL UNIQUE REFERENCES runs(id) ON DELETE CASCADE,
+        id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
         created_at TEXT NOT NULL,
         leaf_id TEXT
       );
+      CREATE TABLE IF NOT EXISTS execution_locks (
+        run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+        digest TEXT NOT NULL,
+        lock_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS execution_locks_digest_idx
+        ON execution_locks(digest);
       CREATE TABLE IF NOT EXISTS pi_session_entries (
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id TEXT NOT NULL REFERENCES pi_sessions(id) ON DELETE CASCADE,
