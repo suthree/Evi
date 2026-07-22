@@ -17,8 +17,8 @@ Adapter 委托给成熟工具。当前 owner 与替换顺序见
 
 前五个 vNext 源码切片已经证明 Kernel、reservation-first 的只读 Gateway、terminal
 reconciliation 后的显式 same-Run continuation，以及进程丢失后基于 lease 的 unsettled
-model dispatch 与 persisted Pi tool-call protocol 恢复；它们尚未连接生产 ingress，也没有
-切换当前 v0.2 部署。
+model dispatch 与 persisted Pi tool-call protocol 恢复；另有一个显式 CLI-only 的 read-only
+canary 使用隔离 SQLite，但未连接生产 Web/IM ingress，也没有切换当前 v0.2 部署。
 
 ## 当前已实现边界
 
@@ -123,7 +123,7 @@ vNext 已接受 Turn/Run、Pi 唯一 Agent Loop、SQLite、Action Gateway、可�
 Adaptation 生命周期。当前源码实现前五个基建切片，其中 Gateway 只允许只读 action，
 支持 terminal reconciliation 后显式续跑同一 Run，也能在 Execution lease 过期后有证据地
 恢复 unsettled model dispatch 与 persisted Pi tool-call protocol。Kernel 基建已达到既定退出
-gate，但尚未执行 read-only ingress canary、切 ingress 或部署。稳定方向由
+gate；已实现一个显式、隔离 SQLite 的 read-only ingress canary，但尚未切 ingress 或部署。稳定方向由
 项目文档和 ADR 记录；当前实现以源码、测试和 live health 为准。GitHub Issue、PR、branch
 和隔离 worktree 是按需要使用的协作与隔离机制；
 `.trellis/` 只保留为历史 evidence。

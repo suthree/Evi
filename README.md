@@ -14,7 +14,8 @@ v0.1/v0.2 contract or claim a deployment cutover. The first five vNext source
 slices now prove the Kernel, a read-only reservation-first Gateway, explicit
 same-Run continuation after terminal reconciliation, and lease-backed recovery
 from process loss across model dispatch and persisted Pi tool-call protocol
-steps; none is connected to production ingress.
+steps. An additional explicit CLI-only read-only canary uses isolated SQLite;
+it is not connected to production Web/IM ingress or deployment.
 
 ## Start here
 

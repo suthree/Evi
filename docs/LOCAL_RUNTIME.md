@@ -24,6 +24,35 @@ channel adapters and IM intake. Runtime state is written under the selected
 state root. Learned local procedures are written under the configured local
 agent home and active vault.
 
+## vNext read-only canary command
+
+The vNext canary is an explicit foreground CLI command, not a resident service
+or a replacement for Web/IM intake:
+
+```bash
+pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary continue --run-id run_... --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary inspect --run-id run_... --sqlite /absolute/isolated/canary.sqlite
+```
+
+`--sqlite` is mandatory, absolute, and must not overlap
+`~/.local-runtime/state/evi`; `--state-root`, `--config-dir`, and `--repo-root`
+are rejected for this surface. `submit` needs `--task`; `continue` and
+`inspect` need `--run-id`. `submit` and `continue` additionally need explicit
+Responses-compatible model settings and an environment variable name for the
+credential. Do not put a credential value on the command line.
+
+The isolation guard compares both declared and physical filesystem identities,
+including symlink and case-insensitive aliases. It resolves only root identity
+metadata needed for that fail-closed comparison; it does not open or read any
+v0.2 state file, database, config, or credential.
+
+The command only writes its own SQLite database, emits canary-marked structured
+output, and permits only `none/local_read` Actions. It performs no v0.2 state
+migration or dual write, no service action, no Web/Feishu routing, no write or
+external Action, and no deployment. A normal v0.2 rollback runtime remains
+unchanged.
+
 ## Remote Node Deployment Gap
 
 The current SSR resident process was not installed through the intended

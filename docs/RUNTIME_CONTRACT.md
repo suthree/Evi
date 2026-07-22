@@ -19,6 +19,36 @@ used to claim that a multi-node capability already exists.
 
 ## Scope
 
+### Explicit vNext read-only ingress canary
+
+The implemented vNext canary is a separate, foreground CLI-only opt-in:
+
+```bash
+pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary continue --run-id run_... --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary inspect --run-id run_... --sqlite /absolute/isolated/canary.sqlite
+```
+
+It composes the vNext Kernel, Action Gateway, Pi adapter, and one independent
+SQLite database only. The database path must be explicit and absolute and is
+rejected when its declared or physical identity overlaps the default v0.2
+shared root, including symlink and case-insensitive aliases. The guard resolves
+only the shared root's filesystem identity metadata; it never opens or reads
+v0.2 config, credentials, state files, or databases, and never imports,
+migrates, or dual-writes them.
+Model access is limited to the explicit Responses-compatible endpoint, model,
+and environment-variable credential reference; raw credentials never enter CLI
+arguments, SQLite, responses, or diagnostics.
+
+Every canary result and error is a structured envelope marked
+`vnext_readonly_ingress_canary`. Only `runtime_inspect` is registered, and the
+existing source-owned Action Gateway policy permits only `none` and
+`local_read`; write and external effects fail closed before dispatch. This is
+not a deployed service or general ingress: ordinary v0.2 Web, daemon, and
+Feishu traffic remains unchanged, with no shadow, mirror, percentage, or
+default route. It enables no worker, learning, discovery, self-evolution,
+Skill, LuBan, write, or external-action slice.
+
 The first-version local agent is one local TypeScript/Node runtime that can:
 
 - accept a CLI task or local IM message
