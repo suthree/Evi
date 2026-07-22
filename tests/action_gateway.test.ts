@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -288,6 +289,97 @@ test("Action Gateway denies write effects before preparation, reservation, or di
   }
 });
 
+test("Action Gateway rechecks effect policy before dispatching an existing reserved Action", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  let prepareCalls = 0;
+  let executeCalls = 0;
+  const handler: ActionHandler = {
+    contract: {
+      name: "synthetic_write",
+      version: "1",
+      label: "Synthetic write",
+      description: "A test-only write reservation that must remain paused.",
+      parameters: Type.Object({}),
+      effect_class: "local_write"
+    },
+    prepare() {
+      prepareCalls += 1;
+      return {};
+    },
+    async execute() {
+      executeCalls += 1;
+      return { outcome: "succeeded", summary: "must not execute", output: {} };
+    }
+  };
+  try {
+    const started = store.beginRun({ request: "Keep an inherited write reservation paused." }, 30_000);
+    store.reserveAction({
+      run_id: started.run.id,
+      turn_id: started.run.turn_id,
+      invocation_id: "reserved-write",
+      action_name: handler.contract.name,
+      contract_version: handler.contract.version,
+      action_digest: testActionDigest(handler, {}),
+      effect_class: handler.contract.effect_class,
+      decision_reason: "synthetic inherited decision",
+      arguments: {}
+    });
+    store.pauseRun(started.execution, "Wait for policy-safe reconciliation.");
+
+    const results = await new ActionGateway(store, [handler]).reconcileRun(started.run.id);
+
+    assert.equal(results.length, 1);
+    assert.equal(results[0]?.status, "denied");
+    assert.equal(prepareCalls, 0);
+    assert.equal(executeCalls, 0);
+    assert.equal(store.listUnresolvedActions(started.run.id)[0]?.state, "reserved");
+    assert.equal(store.inspectRun(started.run.id)?.unresolved_action_count, 1);
+    assert.equal(store.inspectRun(started.run.id)?.effect_receipt_count, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Action Gateway fails closed on reserved Action identity drift before dispatch", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  let executeCalls = 0;
+  const handler = probeHandler({
+    async execute() {
+      executeCalls += 1;
+      return { outcome: "succeeded", summary: "must not execute", output: {} };
+    }
+  });
+  try {
+    const started = store.beginRun({ request: "Reject a corrupted reserved identity." }, 30_000);
+    store.reserveAction({
+      run_id: started.run.id,
+      turn_id: started.run.turn_id,
+      invocation_id: "drifted-reservation",
+      action_name: handler.contract.name,
+      contract_version: handler.contract.version,
+      action_digest: "0".repeat(64),
+      effect_class: "local_write",
+      decision_reason: "synthetic corrupted decision",
+      arguments: {}
+    });
+    store.pauseRun(started.execution, "Wait for identity-safe reconciliation.");
+
+    await assert.rejects(
+      new ActionGateway(store, [handler]).reconcileRun(started.run.id),
+      /Action reservation identity mismatch/
+    );
+    assert.equal(executeCalls, 0);
+    assert.equal(store.listUnresolvedActions(started.run.id)[0]?.state, "reserved");
+    assert.equal(store.inspectRun(started.run.id)?.effect_receipt_count, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 function probeHandler(overrides: {
   execute: ActionHandler["execute"];
   reconcile?: ActionHandler["reconcile"];
@@ -318,4 +410,22 @@ function probeHandler(overrides: {
 
 async function createFixture(): Promise<string> {
   return mkdtemp(join(tmpdir(), "evi-action-gateway-"));
+}
+
+function testActionDigest(handler: ActionHandler, arguments_: JsonObject): string {
+  return createHash("sha256").update(stableJsonForTest({
+    name: handler.contract.name,
+    version: handler.contract.version,
+    effect_class: handler.contract.effect_class,
+    arguments: arguments_
+  })).digest("hex");
+}
+
+function stableJsonForTest(input: unknown): string {
+  if (input === null || typeof input !== "object") return JSON.stringify(input);
+  if (Array.isArray(input)) return `[${input.map(stableJsonForTest).join(",")}]`;
+  const record = input as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) =>
+    `${JSON.stringify(key)}:${stableJsonForTest(record[key])}`
+  ).join(",")}}`;
 }

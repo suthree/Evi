@@ -103,6 +103,11 @@ export class ActionGateway {
     handler: ActionHandler,
     signal?: AbortSignal
   ): Promise<ActionGatewayResult> {
+    assertReservationIdentity(reservation, handler);
+    const decision = decide(handler.contract);
+    if (decision.outcome === "deny") {
+      return { status: "denied", action_name: reservation.action_name, reason: decision.reason };
+    }
     const dispatching = this.store.markActionDispatching(reservation.id);
     const dispatch = { reservation: dispatching, arguments: dispatching.arguments };
     try {
@@ -120,12 +125,7 @@ export class ActionGateway {
     handler: ActionHandler,
     signal?: AbortSignal
   ): Promise<ActionGatewayResult> {
-    if (reservation.action_name !== handler.contract.name
-      || reservation.contract_version !== handler.contract.version
-      || reservation.effect_class !== handler.contract.effect_class
-      || reservation.action_digest !== digestAction(handler.contract, reservation.arguments)) {
-      throw new Error(`Action reservation identity mismatch: ${reservation.id}`);
-    }
+    assertReservationIdentity(reservation, handler);
     if (!handler.reconcile) {
       return {
         status: "outcome_unknown",
@@ -158,6 +158,15 @@ export class ActionGateway {
   ): ActionGatewayResult {
     const completed = this.store.completeAction(reservation.id, observation, reconciled);
     return { status: "completed", reservation: completed.reservation, receipt: completed.receipt };
+  }
+}
+
+function assertReservationIdentity(reservation: ActionReservation, handler: ActionHandler): void {
+  if (reservation.action_name !== handler.contract.name
+    || reservation.contract_version !== handler.contract.version
+    || reservation.effect_class !== handler.contract.effect_class
+    || reservation.action_digest !== digestAction(handler.contract, reservation.arguments)) {
+    throw new Error(`Action reservation identity mismatch: ${reservation.id}`);
   }
 }
 

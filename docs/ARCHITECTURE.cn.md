@@ -98,9 +98,9 @@ external action 仍被拒绝；paused Run 可以在 terminal Action reconciliati
 暂停，并在同一 session 中恢复；旧 dispatch 会明确记录为 `outcome_unknown`。Persisted
 assistant tool call 只能通过其精确 Action reservation 或 receipt 修复；已经持久化的 terminal
 assistant answer 不再次调用 provider。这不代表 provider 或 effect exactly-once。既定 Kernel
-基建现已闭合，下一阶段是单独接受的 read-only ingress canary，而不是继续泛化 recovery
-layer。当前不接 learning、subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过
-各自 gate 前仍是当前 rollback runtime。
+基建现已闭合。显式 CLI-only 的 read-only ingress canary 现已使用独立 SQLite 实现；它不是
+production ingress 或 deployment。当前不接 learning、subagent，不切 ingress，不迁移、
+不 dual write、不部署。v0.2 在后续切片通过各自 gate 前仍是当前 rollback runtime。
 
 ### 最终深模块
 
@@ -359,8 +359,9 @@ terminal Goal outcome 得到有界 Projection，而没有新增 state owner。�
 `origin/develop@62cab799` 已按 ADR 0012 至 0016 完成前五个 Kernel foundation source
 slice，但尚未部署。已接受的后续顺序是：
 
-1. **Read-only ingress canary。** 显式 opt-in、隔离 SQLite，只允许 `none/local_read`；
-   不镜像流量、不迁移、不开放 write/external Action、Worker、learning 或部署切换。
+1. **Read-only ingress canary（已实现，未部署）。** 显式 CLI opt-in、隔离 SQLite，只允许
+   `none/local_read`；不镜像流量、不迁移、不 dual write、不开放 write/external Action、
+   Worker、learning、Web/IM routing 或部署切换。
 2. **基础 ingress 与 continuity。** 一次只把一个入口切到 Goal-free Run 与 durable
    session binding，再增加最小可选 Goal extension；v0.2 保持为已验证 rollback runtime。
 3. **Parent-Child orchestration。** 依次增加一个异步 read-only discussion Worker、一个

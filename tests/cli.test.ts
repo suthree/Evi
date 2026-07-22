@@ -63,6 +63,60 @@ test("config command parses read-only config summary options", () => {
   assert.equal(options.stateRoot, ".runtime/state");
 });
 
+test("vNext canary parsing requires an explicit opt-in surface and isolated SQLite options", () => {
+  const submit = parseArgs([
+    "vnext",
+    "canary",
+    "submit",
+    "--task",
+    "Inspect only the isolated Run.",
+    "--sqlite",
+    "/tmp/evi-canary/runtime.sqlite",
+    "--base-url",
+    "https://responses.example.test/v1",
+    "--model",
+    "test-model",
+    "--api-key-env",
+    "EVI_CANARY_API_KEY"
+  ]);
+  assert.equal(submit.command, "vnext");
+  assert.equal(submit.vnextCanaryAction, "submit");
+  assert.equal(submit.vnextCanarySqlite, "/tmp/evi-canary/runtime.sqlite");
+  assert.equal(submit.vnextCanaryBaseUrl, "https://responses.example.test/v1");
+  assert.equal(submit.vnextCanaryModel, "test-model");
+  assert.equal(submit.vnextCanaryApiKeyEnv, "EVI_CANARY_API_KEY");
+
+  const inspect = parseArgs([
+    "vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/evi-canary/runtime.sqlite"
+  ]);
+  assert.equal(inspect.vnextCanaryAction, "inspect");
+  assert.equal(inspect.vnextCanaryRunId, "run_123");
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--state-root", "/tmp/v02"]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--config-dir", "config"]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--repo-root", "."]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "submit", "--task", "not explicitly canary"]),
+    /requires the explicit canary surface/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "submit", "inspect", "--task", "ambiguous action"]),
+    /Unknown argument: inspect/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--model", "unused"]),
+    /does not accept model or credential options/
+  );
+});
+
 test("config set-runtime parses safe content daily update options", () => {
   const options = parseArgs([
     "config",

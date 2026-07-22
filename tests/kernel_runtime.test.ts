@@ -499,6 +499,7 @@ for (const crashPoint of [
   "final_assistant_persisted"
 ] as const) {
   test(`vNext recovers the exact Pi protocol after SIGKILL at ${crashPoint}`, async () => {
+    const recoverySecret = "synthetic-protocol-recovery-secret";
     const fixture = await createFixture();
     const dbPath = join(fixture, "runtime.sqlite");
     const child = spawn(
@@ -571,11 +572,14 @@ for (const crashPoint of [
       const recoveryModels = createModels();
       const recoveryFaux = fauxProvider({ provider: `kernel-protocol-recovery-${Date.now()}` });
       recoveryModels.setProvider(recoveryFaux.provider);
+      let recoveryProviderCalls = 0;
       recoveryFaux.setResponses(crashPoint === "final_assistant_persisted"
         ? [() => {
+            recoveryProviderCalls += 1;
             throw new Error("A persisted terminal assistant answer must not call the provider again.");
           }]
         : [(context) => {
+            recoveryProviderCalls += 1;
             const toolResults = context.messages.filter(
               (message) => message.role === "toolResult"
                 && message.toolCallId === "protocol-recovery-call"
@@ -592,7 +596,12 @@ for (const crashPoint of [
               userText.at(-1) ?? "",
               /runtime_(model_dispatch|action|tool_protocol)_recovery_evidence/
             );
-            return fauxAssistantMessage(`Recovered ${crashPoint} without replaying a terminal Action.`);
+            const answer = `Recovered ${crashPoint} without replaying a terminal Action.`;
+            return fauxAssistantMessage(
+              crashPoint === "tool_result_persisted"
+                ? `${answer} Provider reflected ${recoverySecret}.`
+                : answer
+            );
           }]);
       const recoveryStore = new SqliteRuntimeStore(dbPath);
       try {
@@ -604,7 +613,8 @@ for (const crashPoint of [
             store: recoveryStore,
             models: recoveryModels,
             model: recoveryFaux.getModel(),
-            cwd: fixture
+            cwd: fixture,
+            redact_text: (value) => value.replaceAll(recoverySecret, "[redacted]")
           }),
           { execution_lease_ms: 300 }
         );
@@ -618,9 +628,13 @@ for (const crashPoint of [
           completed.answer,
           crashPoint === "final_assistant_persisted"
             ? "The persisted assistant answer survived without another provider call."
+            : crashPoint === "tool_result_persisted"
+              ? "Recovered tool_result_persisted without replaying a terminal Action. Provider reflected [redacted]."
             : `Recovered ${crashPoint} without replaying a terminal Action.`
         );
+        assert.equal(recoveryProviderCalls, crashPoint === "final_assistant_persisted" ? 0 : 1);
         const inspection = runtime.inspect(runId);
+        assert.doesNotMatch(JSON.stringify(inspection), new RegExp(recoverySecret));
         assert.equal(inspection?.execution_count, 2);
         assert.equal(inspection?.interrupted_execution_count, 1);
         assert.equal(inspection?.continuation_count, 1);
@@ -628,6 +642,10 @@ for (const crashPoint of [
         assert.equal(inspection?.effect_receipt_count, crashPoint === "final_assistant_persisted" ? 0 : 1);
         const messages = recoveryStore.getPiSessionEntries(sessionId)
           .map((entry) => entry as { type?: string; message?: { role?: string; toolCallId?: string } });
+        assert.doesNotMatch(JSON.stringify(messages), new RegExp(recoverySecret));
+        if (crashPoint === "tool_result_persisted") {
+          assert.match(JSON.stringify(messages), /\[redacted\]/);
+        }
         assert.equal(messages.filter(
           (entry) => entry.type === "message"
             && entry.message?.role === "toolResult"
@@ -660,6 +678,14 @@ for (const crashPoint of [
         }
       } finally {
         recoveryStore.close();
+      }
+      for (const name of await readdir(fixture)) {
+        const contents = await readFile(join(fixture, name));
+        assert.equal(
+          contents.includes(Buffer.from(recoverySecret)),
+          false,
+          `${name} persisted the raw protocol-recovery credential`
+        );
       }
     } finally {
       if (child.exitCode === null && child.signalCode === null) {

@@ -168,6 +168,11 @@ import {
 } from "../../../packages/runtime/src/service.js";
 import { runDeploymentCommand } from "./deployment_command.js";
 import {
+  canaryErrorEnvelope,
+  executeVNextCanary,
+  type VNextCanaryAction
+} from "./vnext_canary.js";
+import {
   runGitHubDiscoveryCommand,
   type GitHubDiscoveryAction
 } from "./github_discovery_command.js";
@@ -192,6 +197,12 @@ import type { GoalLearningEffect, GoalReadPolicy } from "../../../packages/runti
 
 interface CliOptions {
   command: string;
+  vnextCanaryAction?: VNextCanaryAction;
+  vnextCanarySqlite?: string;
+  vnextCanaryBaseUrl?: string;
+  vnextCanaryModel?: string;
+  vnextCanaryApiKeyEnv?: string;
+  vnextCanaryRunId?: string;
   task?: string;
   goalAction?: LocalGoalAction;
   goalId?: string;
@@ -1471,7 +1482,17 @@ function bindStateRoot(command: string, stateRoot?: string): string {
 }
 
 export async function main(): Promise<number> {
-  const options = parseArgs(process.argv.slice(2));
+  let options: CliOptions;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    if (isVNextInvocation(process.argv.slice(2))) {
+      console.log(JSON.stringify(canaryErrorEnvelope(error, null), null, 2));
+      return 1;
+    }
+    throw error;
+  }
+  if (options.command === "vnext") return runVNextCanaryCommand(options);
   if (options.command === "doctor") {
     const report = await runDoctor({
       repoRoot: options.repoRoot,
@@ -2971,6 +2992,32 @@ export async function main(): Promise<number> {
   return 2;
 }
 
+async function runVNextCanaryCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextCanaryAction ?? null;
+  try {
+    if (!action) throw new Error("vnext requires explicit canary submit, continue, or inspect action.");
+    const result = await executeVNextCanary({
+      action,
+      sqlite: options.vnextCanarySqlite ?? "",
+      ...(options.task ? { task: options.task } : {}),
+      ...(options.vnextCanaryRunId ? { run_id: options.vnextCanaryRunId } : {}),
+      ...(options.vnextCanaryBaseUrl ? { base_url: options.vnextCanaryBaseUrl } : {}),
+      ...(options.vnextCanaryModel ? { model: options.vnextCanaryModel } : {}),
+      ...(options.vnextCanaryApiKeyEnv ? { api_key_env: options.vnextCanaryApiKeyEnv } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.canary.status === "failed" || result.canary.status === "error" ? 1 : 0;
+  } catch (error) {
+    console.log(JSON.stringify(canaryErrorEnvelope(error, action, options.vnextCanaryApiKeyEnv), null, 2));
+    return 1;
+  }
+}
+
+function isVNextInvocation(argv: string[]): boolean {
+  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
+  return normalized[0] === "vnext";
+}
+
 export function parseArgs(argv: string[]): CliOptions {
   const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = normalizedArgv;
@@ -3012,10 +3059,23 @@ export function parseArgs(argv: string[]): CliOptions {
     sourceUrls: [],
     tickers: []
   };
+  const vnextCanarySelected = options.command === "vnext" && rest[0] === "canary";
+  if (options.command === "vnext" && !vnextCanarySelected) {
+    throw new Error("vnext requires the explicit canary surface.");
+  }
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
-    if (options.command === "im" && arg === "serve") options.imAction = arg;
+    if (options.command === "vnext" && (arg === "--state-root" || arg === "--config-dir" || arg === "--repo-root")) {
+      throw new Error("vnext canary does not accept v0.2 config, repo, or state-root options.");
+    }
+    if (options.command === "vnext" && index === 0 && arg === "canary") {
+      continue;
+    }
+    else if (options.command === "vnext" && vnextCanarySelected && index === 1 && isVNextCanaryAction(arg)) {
+      options.vnextCanaryAction = arg;
+    }
+    else if (options.command === "im" && arg === "serve") options.imAction = arg;
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
     else if (options.command === "service" && isCliServiceAction(arg)) options.serviceAction = arg;
     else if (options.command === "deployment" && isDeploymentAction(arg)) options.deploymentAction = arg;
@@ -3038,6 +3098,11 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--read-tree" && options.command === "goal") options.goalReadReferences.push(parseGoalReadReference(required(rest[++index], "--read-tree requires a scope:path value"), "tree"));
     else if (arg === "--learning-effect" && options.command === "goal") options.goalLearningEffects.push(parseGoalLearningEffect(required(rest[++index], "--learning-effect requires a value")));
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
+    else if (arg === "--sqlite" && options.command === "vnext") options.vnextCanarySqlite = required(rest[++index], "--sqlite requires a value");
+    else if (arg === "--base-url" && options.command === "vnext") options.vnextCanaryBaseUrl = required(rest[++index], "--base-url requires a value");
+    else if (arg === "--model" && options.command === "vnext") options.vnextCanaryModel = required(rest[++index], "--model requires a value");
+    else if (arg === "--api-key-env" && options.command === "vnext") options.vnextCanaryApiKeyEnv = required(rest[++index], "--api-key-env requires a value");
+    else if (arg === "--run-id" && options.command === "vnext") options.vnextCanaryRunId = required(rest[++index], "--run-id requires a value");
     else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
     else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
@@ -3237,6 +3302,24 @@ export function parseArgs(argv: string[]): CliOptions {
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
+  if (options.command === "vnext") {
+    if (!options.vnextCanaryAction) {
+      throw new Error("vnext requires explicit canary submit, continue, or inspect action.");
+    }
+    if (options.vnextCanaryAction === "submit" && options.vnextCanaryRunId !== undefined) {
+      throw new Error("vnext canary submit does not accept --run-id.");
+    }
+    if (options.vnextCanaryAction !== "submit" && options.task !== undefined) {
+      throw new Error(`vnext canary ${options.vnextCanaryAction} does not accept --task.`);
+    }
+    if (options.vnextCanaryAction === "inspect" && (
+      options.vnextCanaryBaseUrl !== undefined
+      || options.vnextCanaryModel !== undefined
+      || options.vnextCanaryApiKeyEnv !== undefined
+    )) {
+      throw new Error("vnext canary inspect does not accept model or credential options.");
+    }
+  }
   return options;
 }
 
@@ -3311,6 +3394,10 @@ function required<T>(value: T | undefined, message: string): T {
 function parseDiscipline(value: string): DisciplineMode {
   if (value === "none" || value === "query_todo") return value;
   throw new Error(`Unsupported discipline: ${value}`);
+}
+
+function isVNextCanaryAction(value: string): value is VNextCanaryAction {
+  return value === "submit" || value === "continue" || value === "inspect";
 }
 
 function parseStages(value: string): string[] {
@@ -3569,6 +3656,9 @@ function printUsage(): void {
   const stateRootUsage = DEFAULT_SHARED_STATE_ROOT;
   console.error(`Usage:
   pnpm run runtime -- doctor [--config-dir config] [--state-root ${stateRootUsage}] [--no-auth] [--no-im]
+  pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+  pnpm run runtime -- vnext canary continue --run-id run_... --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+  pnpm run runtime -- vnext canary inspect --run-id run_... --sqlite /absolute/isolated/canary.sqlite
   pnpm run runtime -- config [--config-dir config] [--state-root ${stateRootUsage}]
   pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight [--content-daily-interval-ms 3600000] [--topic "..."] [--source-url https://...] [--ticker NVDA]
   pnpm run runtime -- config set-runtime --review-tick-enabled [--review-tick-interval-ms 1800000] [--review-tick-limit 20]

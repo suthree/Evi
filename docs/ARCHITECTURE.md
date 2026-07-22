@@ -118,10 +118,11 @@ the same session with its old dispatch recorded as `outcome_unknown`. Persisted
 assistant tool calls are repaired only through their exact Action reservation or
 receipt, and an already persisted terminal assistant answer does not call the
 provider again. This is not provider or effect exactly-once. The planned Kernel
-foundation is now closed; the next phase is a separately accepted read-only
-ingress canary rather than another generalized recovery layer. There is no
-learning, subagent execution, ingress cutover, migration, or deployment. v0.2
-remains the current rollback runtime until later slices satisfy their own gates.
+foundation is now closed. The explicit CLI-only read-only ingress canary is now
+implemented against its own SQLite database; it is not a production ingress or
+deployment. There is no learning, subagent execution, ingress cutover,
+migration, dual write, or deployment. v0.2 remains the current rollback runtime
+until later slices satisfy their own gates.
 
 ### Final deep modules
 
@@ -441,9 +442,10 @@ The Kernel foundation at `origin/develop@62cab799` closes the first five source
 slices under ADRs 0012 through 0016. It is not deployed. The accepted next order
 is:
 
-1. **Read-only ingress canary.** Explicit opt-in, isolated SQLite, and only
-   `none/local_read`; no mirrored traffic, migration, write/external Action,
-   worker, learning, or deployment switch.
+1. **Read-only ingress canary (implemented, not deployed).** Explicit CLI opt-in,
+   isolated SQLite, and only `none/local_read`; no mirrored traffic, migration,
+   dual write, write/external Action, worker, learning, Web/IM routing, or
+   deployment switch.
 2. **Basic ingress and continuity.** Cut over one entry surface at a time to
    Goal-free Runs and durable session binding, then add the minimal optional
    Goal extension while v0.2 remains a verified rollback runtime.
