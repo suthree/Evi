@@ -40,9 +40,25 @@ _Avoid_: Goal, entire session, model call
 One execution lineage containing one or more Turns, their selected context, actions, evidence, and terminal outcome.
 _Avoid_: Goal, process, transcript
 
+**Supervisor Run**:
+A parent Run that retains task decomposition, worker dispatch, integration, independent verification, and final acceptance authority without remaining as one continuously active model request.
+_Avoid_: Always-running model call, worker, scheduler
+
 **Goal**:
 An optional durable intent that links multiple Runs through an objective, acceptance criteria, budget, and continuation policy.
 _Avoid_: Ordinary task, agent loop, session store, mandatory ingress
+
+**Worker Session**:
+A parent-linked durable context for one bounded delegated task. Its result remains advisory until the parent Supervisor Run verifies and accepts it.
+_Avoid_: Separate Evi self, peer agent, completion authority
+
+**Task Envelope**:
+The typed, versioned assignment from a parent Run to a Worker Session, containing bounded purpose, context and artifact references, authority, budget, and verification expectations.
+_Avoid_: Raw prompt copy, shared transcript, permission grant
+
+**Result Envelope**:
+The typed, versioned worker result containing status, structured findings, artifact and evidence references, unresolved questions, and no parent-completion authority.
+_Avoid_: Worker self-report as proof, chat message, Run Outcome
 
 **Agent Loop**:
 The ordered model-and-tool cycle that advances a Turn until it answers, blocks, fails, or stops. Exactly one owner controls this cycle for a Run.
@@ -51,6 +67,18 @@ _Avoid_: Goal lifecycle, task queue, effect policy
 **Runtime Kernel**:
 The compact runtime boundary that accepts work, binds canonical state and context, delegates the **Agent Loop**, and exposes control and inspection without implementing a second loop.
 _Avoid_: Monolithic workflow engine, channel adapter, model provider
+
+**Orchestration Engine**:
+The Evi-owned runtime module that validates and advances parent-child task graphs, worker leases, dependency state, bounded budgets, cancellation, and result delivery without planning tasks or owning an Agent Loop.
+_Avoid_: Agent team chat, second Runtime Kernel, model planner
+
+**Execution Lock**:
+The immutable authority and reproducibility snapshot for one Run Execution, including selected model, context, actions, budgets, execution placement, verification, and recovery expectations. A child lock may only preserve or narrow its parent lock.
+_Avoid_: Pi AgentHarness, permission prompt, mutable session settings
+
+**Delivery Lineage**:
+The isolated source-delivery history for one source-mutating work item, from a named baseline through one branch or worktree, verification, integration, and retirement. It has at most one active writer and is not owned by a Goal.
+_Avoid_: Goal workspace, shared writable checkout, session directory
 
 **Turn Snapshot**:
 The immutable input selected for one model step, including current request, bounded context, available actions, budgets, and output expectations.
@@ -106,6 +134,18 @@ _Avoid_: Queue item, permission token, raw prompt log
 The terminal evidence for one reserved effect, including its exact identity, observed outcome, bounded output, and reconciliation status. It may reference separate verification when that effect requires it.
 _Avoid_: Run Outcome, model claim, generic completion receipt
 
+**Worker Dispatch Receipt**:
+The terminal or reconciled evidence for one reserved worker dispatch, binding parent and child identity, task and lock digests, selected execution adapter, budget, and result reference.
+_Avoid_: Result Envelope, worker self-report, Run Outcome
+
+**Evaluation Receipt**:
+The evidence produced by testing one Adaptation Candidate against named baselines, cases, and guardrails.
+_Avoid_: Activation Receipt, test log alone, model confidence
+
+**Deployment Receipt**:
+The evidence that an exact source or asset identity was installed, became healthy for a named target, was observed during probation, and retained a rollback path.
+_Avoid_: Git merge, build result, Activation Receipt
+
 **Evidence Event**:
 An append-only observation of something that occurred, with provenance and references sufficient for later verification or learning.
 _Avoid_: Curated fact, summary without source, hidden reasoning
@@ -157,6 +197,14 @@ _Avoid_: Self-learning, self-evolution, automatic improvement
 **Adaptation**:
 The shared evidence-to-activation lifecycle for a proposed durable change, regardless of whether its target is knowledge, procedure, policy, tooling, or source.
 _Avoid_: Reflection alone, direct mutation, generic workflow
+
+**Self Registry**:
+The versioned record of Evi's current and retired identity, memory, procedure, capability, prompt, policy, tool, and source artifacts, including provenance, scope, active mapping, and recovery identity.
+_Avoid_: Runtime database as a whole, asset marketplace, default context dump
+
+**Adaptation Engine**:
+The Evi-owned module that turns evidence into candidates, evaluations, activations, observation, retirement, or rollback while leaving action dispatch to the Action Gateway.
+_Avoid_: Background reviewer, direct self-write, second workflow engine
 
 **Adaptation Candidate**:
 An inactive proposed change with a target, evidence, scope, evaluation plan, risk, and rollback or retirement path.

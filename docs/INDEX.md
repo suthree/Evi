@@ -7,7 +7,7 @@ Load this compact index by default. Do not preload every stable document.
 - Source, directory, dependency, test, and documentation structure: `docs/ENGINEERING.md`
 - Service install, health, rollback, logs, IM, and local operations: `docs/LOCAL_RUNTIME.md`
 - Memory, SOP, skill, active vault, promotion, revision, and retirement: `docs/LOCAL_LEARNING.md`
-- Accepted long-term one-self/many-entry product, context-placed execution, multi-session, harness, and capability-intelligence vision: `docs/PRODUCT_VISION.md`
+- Accepted long-term one-self/many-entry product, Pi-backed execution, parent-child orchestration, Execution Locks, and adaptation vision: `docs/PRODUCT_VISION.md`
 - Approved v0.2 multi-node asset evolution target, LuBan boundary, node activation, and evidence chain: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
 - Publishing, images, Xiaohongshu, and feedback capture: `docs/ACTIVE_EXPLORATION.md`
 - Stable identity and self-modification stance: `core/soul.md`
@@ -20,6 +20,7 @@ Load this compact index by default. Do not preload every stable document.
 - Accepted paused-Run continuation after terminal Action reconciliation: `docs/adr/0014-reconciled-run-continuation.md`
 - Accepted Run Execution lease and model-dispatch crash recovery: `docs/adr/0015-run-execution-lease-and-dispatch-recovery.md`
 - Accepted Pi tool-protocol recovery and Kernel-foundation exit gate: `docs/adr/0016-pi-tool-protocol-recovery.md`
+- Final Evi/Pi ownership, Supervisor/Worker orchestration, Delivery Lineage, and specialized completion evidence: `docs/adr/0017-evi-owned-orchestration-and-adaptation.md`
 - Shared control state, per-Goal worktrees, and PR-only delivery: `docs/adr/0003-shared-control-state-and-pr-only-delivery.md`
 - Node-local active vaults and Evi-controlled LuBan promotion: `docs/adr/0004-node-local-vault-and-luban-promotion.md`
 - Typed cognition envelopes and fail-closed model-decision parsing: `docs/adr/0005-typed-cognition-envelope.md`

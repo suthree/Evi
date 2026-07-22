@@ -5,9 +5,9 @@ an authorization to start every surface described here.
 
 This document defines what Evi should grow into after its self-evolution and
 self-iteration foundation is proven. It aligns one persistent self, many entry
-surfaces, context-placed execution, multi-session semantics, harness, memory,
-delegation, tool competence, and the Evi/LuBan boundary without turning them
-into a speculative backlog.
+surfaces, context-placed execution, parent-child orchestration, immutable
+execution locks, memory, adaptation, tool competence, and the Evi/LuBan
+boundary without turning them into a speculative backlog.
 
 The Simplified Chinese companion is
 [`docs/PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md).
@@ -24,8 +24,9 @@ When this vision differs from current implementation, use this order:
 2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and
    accepted ADRs describe the accepted current delivery target.
 3. This document describes the long-term product and runtime north star.
-4. A bounded Goal, its Decision Owner, and the native harness activate actual
-   work. GitHub may carry optional external collaboration or delivery evidence.
+4. A bounded delivery slice, its Decision Owner, and the Runtime Kernel's
+   execution and effect contracts activate actual work. GitHub may carry
+   optional external collaboration or delivery evidence.
 
 This vision alone does not prove completion, open an implementation slice, or
 override a narrower acceptance, verification, privacy, or external-effect
@@ -68,9 +69,10 @@ The product promise is:
    resident runtime, never a second state owner.
 5. **Context is compiled, not accumulated.** A model turn receives a bounded,
    immutable context snapshot selected for the current purpose.
-6. **The harness is an operating and learning record.** Even under broad trusted
-   local authority it freezes the task, context, environment, selected tools,
-   budgets, outcome contract, evidence, and recovery expectations.
+6. **Execution is frozen before it starts.** Each Run Execution receives an
+   immutable Execution Lock covering context, environment, selected actions,
+   model, budgets, verification, and recovery. Pi `AgentHarness` executes that
+   lock; it does not define Evi authority.
 7. **Communication is typed.** Sessions exchange tasks, results, events, and
    artifact references instead of copying entire prompts or memory stores.
 8. **Memory is not a message bus.** Operational coordination, historical
@@ -87,7 +89,7 @@ All surfaces use one headless Evi Daemon/Gateway and its versioned contracts.
 
 | Surface | Role | Boundary |
 | --- | --- | --- |
-| Evi Daemon/Gateway | Own sessions, runs, queue, context assembly, harness, evidence, memory selection, and capability activation | The only active runtime-state owner |
+| Evi Daemon/Gateway | Compose the Runtime Kernel, Action Gateway, Orchestration Engine, Adaptation Engine, context compilation, and canonical state | The only active runtime-state owner |
 | Web Console/PWA | Primary operator workspace for goals, sessions, evidence, capabilities, nodes, and approvals | Does not implement a parallel runtime or planning database |
 | Thin Desktop shell | Add tray presence, notifications, keychain, file pickers, OS permissions, and local computer-use integration | Reuses the daemon and Web UI; no second execution engine |
 | IM adapters and mentions | Contextual invocation, conversation continuity, progress, and result delivery in the current work surface | Rich host context but no independent runtime state or control plane |
@@ -127,18 +129,20 @@ continuity, result acceptance, outcome attribution, and capability learning.
 
 ```mermaid
 flowchart TD
-  Self["Evi Self"] --> Workspace["Workspace"]
-  Workspace --> Goal["Goal"]
-  Goal --> Ledger["Shared Goal Ledger and Artifacts"]
-  Goal --> Session["Conversation Session"]
-  Session --> Run["Task Run"]
+  Self["Evi Self"] --> Overlay["Project Overlay"]
+  Entry["CLI / Web / IM / API"] --> Session["Conversation Session"]
+  Session --> Run["Run"]
   Run --> Turn["Model Turn"]
+  Goal["Optional Goal"] -. links .-> Run
+  Run --> Lock["Execution Lock"]
   Run --> Target["Execution Target"]
   Target --> Local["Local Machine"]
   Target --> Remote["Remote Node"]
   Target --> Hosted["Hosted Agent or Specialist SaaS"]
-  Session --> Worker["Child Worker Session"]
-  Worker --> ChildRun["Child Task Run"]
+  Run -->|supervises| Worker["Worker Session"]
+  Worker --> ChildRun["Child Run"]
+  ChildRun --> Delivery["Optional Delivery Lineage"]
+  Run --> Outcome["Run Outcome"]
 ```
 
 ### Evi Self
@@ -146,17 +150,19 @@ flowchart TD
 The stable identity, values, learning stance, and global policy baseline. It is
 not copied or forked when a workspace or session is created.
 
-### Workspace
+### Project Overlay
 
 A persistent project or life-domain overlay. It binds repositories, local
 paths, project instructions, policies, default capability sets, and semantic
-memory scope. A workspace does not own Evi's identity.
+memory scope. A Project Overlay does not own Evi's identity, Goal, or runtime
+state.
 
 ### Goal
 
-A durable objective that may span conversations and machines. It owns the
-accepted objective, success criteria, current owner session, dependencies,
-decisions, checkpoints, artifact references, and terminal outcome.
+An optional durable intent that may span conversations and machines. It owns
+only the accepted objective, success criteria, budget, continuation policy,
+linked Runs, and terminal Goal outcome. Ordinary work does not require a Goal;
+a Goal does not own sessions, tools, workers, worktrees, or the Agent Loop.
 
 ### Conversation Session
 
@@ -164,24 +170,37 @@ The continuity boundary between a person and Evi. Web, Desktop, IM, or API
 bindings may point to the same session. A session owns recent conversation,
 its checkpoint, selected working context, and its run history.
 
-### Task Run
+### Run
 
 A durable execution attempt with explicit states such as `queued`, `running`,
-`waiting`, `blocked`, `done`, `failed`, and `cancelled`. A run binds one context
-snapshot, one harness lock, attempts, execution target, node,
-workspace/worktree, results, and completion evidence.
+`waiting`, `paused`, `completed`, `failed`, and `cancelled`. A Run binds Turns,
+one immutable Execution Lock per execution attempt, selected context, execution
+target, results, and completion evidence. A Run may be Goal-free.
 
 ### Model Turn
 
 One model interaction inside a run. It is not the unit of durable ownership and
-must not silently change the session's harness or goal.
+must not silently change the Run's Execution Lock or optional Goal.
 
 ### Worker Session
 
 A parent-linked, isolated execution context for delegated work. It may use a
 local worker, remote node, hosted agent, or specialist cognitive runtime. It has
-a bounded task, context, harness, workspace/worktree or host binding, and result
-contract. Its output is advisory until the parent run verifies and accepts it.
+a bounded Task Envelope, context references, narrowed Execution Lock, execution
+binding, budget, and Result Envelope. Its output is advisory until the parent
+Supervisor Run verifies and accepts it.
+
+### Supervisor Run
+
+A parent Run that owns decomposition, worker dispatch, integration, independent
+verification, and final acceptance. It persists those decisions and returns
+between events; it is not one continuously active planner-model request.
+
+### Delivery Lineage
+
+The isolated branch/worktree history for one source-mutating work item. It has
+one active writer from baseline through verification and integration. A Goal may
+link many Delivery Lineages, and a non-source Goal has none.
 
 ## Context Architecture
 
@@ -192,14 +211,14 @@ and omissions.
 ```text
 Self Core
 + node and runtime identity
-+ workspace overlay
-+ goal ledger
++ project overlay
++ optional goal summary and accepted decisions
 + session checkpoint and recent conversation
 + selected episodic or semantic recall
 + selected capabilities and asset locks
-+ explicit inter-session handoff
++ explicit Task or Result Envelope
 + referenced artifacts
-+ tool contract and output contract
++ Action contracts and result contract
 = immutable context snapshot for one model turn
 ```
 
@@ -210,8 +229,8 @@ into another session.
 | Context class | Default scope | Sharing rule |
 | --- | --- | --- |
 | Self core and global policy | Global | Read-only baseline, governed changes only |
-| Workspace instructions and stable project docs | Workspace | Share by pinned reference within that workspace |
-| Goal ledger and accepted decisions | Goal | Share with sessions attached to the goal |
+| Project instructions and stable project docs | Project Overlay | Share by pinned reference within that project scope |
+| Goal summary and accepted decisions | Optional Goal | Share only with Runs explicitly linked to the Goal |
 | Session checkpoint and recent transcript | Session | Session-local unless explicitly summarized into a handoff |
 | Working memory and raw tool output | Session or run | Never ambient cross-session context |
 | Episodic and semantic memory | Global or workspace store | Retrieve on demand with source, scope, and confidence |
@@ -223,24 +242,25 @@ session-scoped store plus a goal-level summary. That migration must preserve
 existing evidence and recovery semantics; this document does not choose its
 schema.
 
-## Harness Architecture
+## Execution Lock Architecture
 
-The harness is not only a permission boundary. Under broad trusted local
-authority, its primary product value is repeatability, outcome attribution,
-completion truth, and recovery. Permission breadth is not evidence that Evi has
-learned or that a task succeeded.
+Evi does not define a second Agent Harness beside Pi. Pi `AgentHarness` owns the
+model/tool loop and session mechanics. Evi owns the immutable Execution Lock
+that tells the selected loop what it may do and how the result will be judged.
+Under broad trusted local authority, that lock still preserves repeatability,
+outcome attribution, completion truth, and recovery.
 
-Every Task Run freezes an immutable Harness Lock. At minimum it records:
+Every Run Execution freezes an immutable Execution Lock. At minimum it records:
 
 - session, run, goal, node, model, and provider identity;
 - tool allowlist and permission profile;
 - selected capability versions and asset lock;
-- workspace, repository, worktree, and path policy;
+- project scope, repository, optional Delivery Lineage, and path policy;
 - context, time, token, cost, retry, and output budgets;
 - approval and external-effect gates;
 - completion claims, verification contract, and rollback expectations.
 
-Harness policy narrows through inheritance:
+Execution authority narrows through inheritance:
 
 ```text
 Global baseline
@@ -251,29 +271,38 @@ Global baseline
 
 A child session may only preserve or narrow parent authority. It cannot expand
 permissions, install capabilities, change credentials, rewrite the receiver's
-harness, or claim parent completion.
+Execution Lock, or claim parent completion.
 
 Live terminal handles, browser sessions, credentials, and mutable worktrees
 must not be shared as raw objects between sessions. If concurrent work needs a
 scarce resource, the runtime should issue a bounded, revocable resource lease
 with owner, scope, expiry, and recovery behavior.
 
-## Inter-Session Coordination
+## Parent-Child Orchestration
 
 Multi-session operation is necessary, but the default topology is a controlled
 parent-child tree or task dependency graph, not a free peer-to-peer chat mesh.
 
-Operational coordination uses a durable queue and typed state events, including
-progress, pause, resume, cancel, `needs_input`, dependency completion, and
-terminal state changes.
+The Evi-owned Orchestration Engine validates and advances a model-proposed task
+graph. It owns durable worker state, dependencies, leases, budget reservations,
+cancellation, `needs_input`, stale recovery, and result delivery. It does not
+plan tasks, own an Agent Loop, or accept the parent Run.
+
+A Supervisor Run may use a planner-oriented model to produce a bounded task
+graph and then return. Resident state, rather than an open model request,
+supervises workers. Worker, integration, and review turns are resumed by typed
+events. Model selection is a recorded role policy: planner, integrator,
+reviewer, and deep-discussion roles may prefer a stronger reasoning model;
+executor roles may prefer a faster model. Model names are configuration, not
+domain vocabulary, and fallback rationale is evidence.
 
 A parent sends a `TaskEnvelope` containing:
 
-- goal and task identity;
+- optional Goal, parent Run, and task identity;
 - bounded objective and expected result;
 - context and artifact references;
-- constraints and harness profile;
-- workspace/worktree binding;
+- constraints and narrowed Execution Lock;
+- project, execution-target, and optional Delivery Lineage binding;
 - verification requirements and deadline or budget.
 
 A worker returns a `ResultEnvelope` containing:
@@ -285,8 +314,10 @@ A worker returns a `ResultEnvelope` containing:
 - unresolved questions and proposed next step.
 
 Inter-session messages must be marked as such, cannot impersonate the user,
-cannot mutate the receiver's harness, and must carry state versioning. The
-runtime should bound ping-pong depth, visibility, retries, and total budget.
+cannot mutate the receiver's Execution Lock, and must carry state versioning.
+The runtime bounds ping-pong depth, visibility, retries, fan-out, and total
+budget. Discussion workers are non-blocking unless the parent explicitly makes
+their result a dependency. Worker self-report never closes the parent Run.
 
 ## Memory, Documents, Events, and Artifacts
 
@@ -297,12 +328,12 @@ Use the owner that matches the information's lifetime and effect:
 | --- | --- |
 | Progress, cancel, wait, completion, dependency change | Queue and state event |
 | Subtask input and output | `TaskEnvelope` and `ResultEnvelope` |
-| Current objective, decisions, and progress | Goal Ledger and Session Checkpoint |
+| Current objective, decisions, and progress | Optional Goal summary, Supervisor Run state, and Session Checkpoint |
 | Code, reports, images, datasets, generated files | Artifact ref plus hash or commit |
 | Stable project rules and decisions | Project docs and accepted ADRs; optional GitHub evidence |
 | Long-term personal or workspace facts | Semantic memory with provenance |
 | Raw conversations and tool history | Session archive with on-demand search |
-| Reusable way of working | Evi Capability Manager and LuBan asset |
+| Reusable way of working | Self Registry procedure version and optional LuBan asset |
 | Cross-node accepted knowledge | Redacted, scoped LuBan knowledge pack |
 
 The future memory model should preserve separate layers:
@@ -310,33 +341,38 @@ The future memory model should preserve separate layers:
 1. per-session working memory and checkpoint;
 2. per-session episodic archive;
 3. global or workspace semantic memory;
-4. procedural capability assets managed by Evi and published through LuBan;
+4. versioned procedural assets governed by the Adaptation Engine and optionally published through LuBan;
 5. raw archive plus a separate search/index layer.
 
 Recall remains selective. A memory's existence does not authorize automatic
 injection into every session or model turn.
 
-## Capability Manager and LuBan
+## Adaptation, Capability Views, and LuBan
 
-Evi owns the full capability lifecycle:
+The Adaptation Engine owns the durable-change lifecycle:
 
 ```text
-observe -> curate -> deduplicate -> audit -> test -> propose/publish
-        -> select -> activate -> evaluate -> revise or retire -> rollback
+evidence -> candidate -> evaluation -> activation
+         -> observation -> revision, retirement, or rollback
 ```
 
-The Capability Manager has two distinct responsibilities that must not be
-confused.
+Self-learning and self-evolution use this same lifecycle. They differ by target
+and risk: learning changes retained knowledge, procedures, skills, or
+evidence-backed tool-use competence; evolution changes prompts, tools, policy,
+dependencies, source, runtime, or deployment. Candidate generators may use
+verified episodes, bounded external discovery, or offline optimization, but no
+generator may write the active Self Registry directly.
 
-### Capability infrastructure
+### Self Registry and capability infrastructure
 
-Inventory, source discovery, import, sync, conflict detection, backup, safe
-projection, validation, activation receipts, and recovery make capabilities
-portable and operable. These are capabilities inside Evi, not a separate
-authority beside it. Completing this infrastructure does not by itself prove
-that Evi has learned.
+The Self Registry records current and retired versions of identity, memory,
+SOPs, Skills, prompts, capability profiles, policies, tools, and source
+artifacts. Inventory, import, conflict detection, validation, activation
+receipts, and recovery make those artifacts operable. The registry is not a
+second runtime database or a manager that decides work; completing it does not
+prove that Evi has learned.
 
-### Capability intelligence and tool competence
+### Capability views and tool competence
 
 Evi must learn not only a procedure, but also when, where, and under which
 conditions to use it. For each important tool, connector, specialist agent, or
@@ -355,6 +391,13 @@ repeatable procedure. A Tool Competence Model helps Evi decide when, where, and
 with which tool or specialist agent to perform it. Capability growth requires
 all three plus verified outcomes.
 
+Capability inventory, readiness, competence, cost, risk, and fallback are
+rebuildable decision views over Tool Contracts, active Self Registry versions,
+and verified experience. Evi does not create a broad Capability Manager deep
+module until a second owner would otherwise emerge. Each capability has one
+default active provider; alternatives are explicitly fallback, experimental,
+or retired rather than exposed through synonymous wrappers.
+
 LuBan remains a private, Git-backed registry for accepted reusable assets. It
 stores typed bodies, manifests, provenance, immutable history, and release
 identity. It does not decide whether an asset should be used, install it on a
@@ -371,19 +414,20 @@ The sources of truth are deliberately different:
 
 ## State and Portability Direction
 
-When the foundation is ready, the preferred ownership model is:
+The accepted ownership model is:
 
-- SQLite with WAL for operational objects such as goals, sessions, runs,
-  bindings, queue entries, dependencies, events, leases, approvals, and search
-  metadata;
-- filesystem JSON, JSONL, and immutable files for context snapshots, evidence,
-  artifacts, and receipts;
+- one SQLite database with WAL for canonical structured state, including Runs,
+  Turns, executions, model dispatches, Goals, worker tasks, dependencies,
+  reservations, receipts, adaptations, bindings, events, leases, and indexes;
+- content-addressed immutable files for large context snapshots, evidence
+  bodies, artifacts, and exported archives referenced from SQLite;
 - Markdown and Git for stable project knowledge and decisions;
 - LuBan for accepted reusable capability assets.
 
-This is a direction, not a mandate for a database rewrite. Each future slice
-must migrate the smallest coherent owner and retain compatibility, export,
-recovery, and rollback evidence.
+JSONL, directory scans, dashboards, and search indexes are projections,
+fixtures, or archives rather than peer state authorities. vNext does not keep a
+long-lived dual write with v0.2; each cutover replaces one complete owner and
+keeps explicit export, recovery, and rollback evidence.
 
 Evi's trusted local home is the default canonical owner of self identity,
 durable goals, raw memory, and capability judgment. This does not require every
@@ -397,76 +441,56 @@ shared, and active-active execution of one session is not a goal.
 
 The primary Web Console should eventually expose:
 
-- Home: current attention, resident health, active goals, and waiting actions;
+- Home: current attention, resident health, active Runs or optional Goals, and waiting actions;
 - Workspaces: project bindings, policies, memory scope, and defaults;
 - Goals: objective, criteria, ledger, dependencies, and outcomes;
 - Sessions: status, channel bindings, parent/child topology, and recovery;
-- Session Detail: Timeline, Goal/Checkpoint, Context Inspector, Harness
-  Inspector, Artifacts, Delegation, and Evidence;
-- Capability Manager: candidates, installed/active sets, LuBan proposals,
-  conflicts, receipts, outcomes, and retirement;
+- Session Detail: Timeline, optional Goal/Checkpoint, Context Inspector,
+  Execution Lock Inspector, Artifacts, Worker topology, and Evidence;
+- Adaptation: candidates, evaluations, active Self Registry versions, LuBan
+  proposals, receipts, observations, rollback, and retirement;
 - Memory and Knowledge: scoped recall, provenance, contradictions, and promoted
   knowledge packs;
 - Automations, Nodes, Approvals, and Settings.
 
 The UI follows runtime contracts. A new read model may be exposed as soon as
 its owner and evidence are stable, but the UI must not invent write semantics
-that the CLI/API and harness do not have.
+that the CLI/API, Runtime Kernel, and Action Gateway do not have.
 
 ## Gated Evolution Policy
 
-### Foundation gate: first priority
+ADR 0012 closed the first five Kernel-foundation source slices on
+`origin/develop`. The resident v0.2 runtime remains the deployed rollback
+runtime until a separately verified cutover. The next sequence is deliberately
+ordered:
 
-Do not start a broad Session Runtime, Capability Manager, Desktop, or new GUI
-program until Evi proves its basic self-evolution and self-iteration loop:
+1. **Read-only ingress canary.** Use an explicit opt-in command or endpoint,
+   isolated SQLite state, and only `none/local_read` Actions. Do not mirror
+   traffic, migrate v0.2 state, switch deployment, enable workers, or learn.
+2. **Basic ingress and continuity.** Cut over one entry surface at a time to
+   Goal-free Runs and durable session binding, then add the minimal optional
+   Goal extension. Keep v0.2 rollback evidence until the cutover gate closes.
+3. **Parent-child orchestration.** Add one asynchronous read-only discussion
+   worker, then one execution worker, an independent reviewer, and finally
+   bounded parallel workers with leases, hierarchical budgets, typed
+   envelopes, and single-writer Delivery Lineages.
+4. **Supervised self-learning.** Convert verified Episodes into inactive
+   Memory, SOP, or Skill candidates; evaluate baseline versus candidate;
+   activate by risk; observe real reuse; retire or roll back regressions.
+5. **Active discovery and assimilation.** Treat GitHub, X, papers, news, and
+   other trends as untrusted Discovery Signals. Match a real need, inspect
+   trusted sources, extract tasks and tests, call/rewrite/discard, evaluate, and
+   only then activate.
+6. **Self-evolution.** Open Prompt, Tool, Policy, Dependency, Code, Runtime, and
+   Deployment candidates only with isolated Delivery Lineage, regression
+   cases, canary, Activation or Deployment Receipt, production observation,
+   and executable rollback.
 
-1. select one bounded core/basic capability slice from an accepted goal;
-2. compile bounded context with provenance, budget, and omission evidence;
-3. execute only harness-authorized actions with explicit failure semantics;
-4. bind completion claims to independent verification evidence;
-5. persist outcome, checkpoint, rollback path, and the next decision point;
-6. recover or restart the resident runtime with deployment identity and health
-   aligned;
-7. repeat the loop without unintended SOP, skill, memory, permission, or
-   external-effect expansion.
-
-Existing accepted v0.2 work continues until its own acceptance gate passes.
-This vision must not leapfrog open v0.2 evidence, deployment, or knowledge-pack
-gates.
-
-### Goal selection after the gate
-
-After the foundation and current target gates pass, choose exactly one bounded
-goal at a time. The default dependency order is:
-
-1. **Session Runtime Foundation**: durable goal/session/run ledger, context
-   snapshot identity, channel/host bindings, harness lock, state transitions,
-   restart, and recovery.
-2. **Cognitive Continuity and Outcome Attribution**: session-scoped
-   working/episodic state, selective semantic recall, goal handoff, archive
-   search, context inspection, and attribution of results to context, model,
-   tool, environment, procedure, and execution strategy.
-3. **Capability Intelligence and Tool Mastery**: tool competence records,
-   candidate generation, outcome-based evaluation, confidence, reuse,
-   regression, revision, retirement, and fallback. Capability infrastructure
-   such as inventory, source identity, conflict checks, LuBan
-   publish/select/activate receipts, and rollback may arrive earlier when an
-   accepted current-version gate requires it, but infrastructure completion is
-   not a learning claim.
-4. **Multi-Environment Delegated Execution**: typed parent-child sessions,
-   local/remote/hosted execution targets, queue/dependency control, resource
-   leases, result acceptance, and budget limits. The parent Evi retains goal and
-   completion authority.
-5. **Presence and Product Expansion**: progressively complete Web control and
-   inspection views, deepen selected IM/host entry bindings, then add a thin
-   Desktop shell only for proven native integration needs. Thin real-world
-   entry surfaces may remain active in earlier phases to generate learning
-   evidence; this step governs broad surface expansion.
-
-This order is not a release promise or fixed backlog. After each goal, Evi must
-use measured evidence to keep, reorder, narrow, or retire the next candidate.
-The active Goal belongs in `GoalRuntime`, the native harness, and its bounded
-evidence, not in this document.
+Only one feature-growth slice is active at a time unless their Decision Owners,
+effect domains, state ownership, and Delivery Lineages are demonstrably
+independent. This order is not a release promise. Measured evidence may narrow,
+reorder, or retire a later candidate, but it may not silently skip the current
+gate.
 
 ## Success Measures
 
@@ -477,7 +501,7 @@ Progress is measured by:
 - restart, recovery, rollback, and session handoff success;
 - correct execution-target and tool selection, including successful fallback;
 - outcome attribution quality across context, tool, environment, and procedure;
-- harness violations prevented and external effects correctly gated;
+- Execution Lock violations prevented and external effects correctly gated;
 - capability reuse outcomes, confidence calibration, regressions, and
   retirement quality;
 - continuity when one task moves between central, IM, and host entry surfaces;
@@ -509,14 +533,19 @@ success measures by themselves.
 ## Accepted Direction Summary
 
 Evi grows as one persistent local-first self with many physical doors and
-multiple execution environments. Its resident runtime owns goals, sessions,
-context, harness, evidence, memory selection, result acceptance, and capability
-learning. Central, IM, CLI, API, connector, and host-tool surfaces bind context
-to that same self. Local, remote, hosted-agent, and specialist-SaaS workers may
-execute a run without becoming another Evi. Memory preserves facts, Skills and
-SOPs preserve procedures, Tool Competence guides when and where to use them,
-and LuBan preserves accepted reusable assets in Git.
+multiple execution environments. Four Evi-owned deep modules define the target:
+Runtime Kernel, Action Gateway, Orchestration Engine, and Adaptation Engine.
+Pi `AgentHarness`, behind one Evi-owned adapter, is the only Agent Loop and
+remains replaceable without moving Goal, effect, result, or adaptation
+ownership. A Goal is optional; a Supervisor Run coordinates typed Worker
+Sessions; one source-mutating Delivery Lineage has one writer; specialized
+receipts preserve distinct completion facts.
 
-The immediate product decision is restraint: finish and prove the current
-self-evolution foundation, close the accepted current target, then activate one
-bounded goal at a time.
+Central, IM, CLI, API, connector, and host-tool surfaces bind context to the
+same Self. Local, remote, hosted-agent, and specialist-SaaS workers may execute
+a Run without becoming another Evi or accepting the parent. Memory preserves
+facts, Skills and SOPs preserve procedures, capability views guide selection,
+the Self Registry records active versions, and LuBan preserves accepted
+reusable assets in Git. The immediate next slice is the isolated read-only
+ingress canary; it does not authorize orchestration, learning, migration, or
+deployment cutover.
