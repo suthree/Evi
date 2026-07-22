@@ -183,6 +183,11 @@ import {
   type VNextWorkerAction
 } from "./vnext_worker.js";
 import {
+  executeVNextAdaptation,
+  vnextAdaptationErrorEnvelope,
+  type VNextAdaptationAction
+} from "./vnext_adaptation.js";
+import {
   runGitHubDiscoveryCommand,
   type GitHubDiscoveryAction
 } from "./github_discovery_command.js";
@@ -207,7 +212,7 @@ import type { GoalLearningEffect, GoalReadPolicy } from "../../../packages/runti
 
 interface CliOptions {
   command: string;
-  vnextSurface?: "canary" | "run" | "worker";
+  vnextSurface?: "canary" | "run" | "worker" | "adaptation";
   vnextCanaryAction?: VNextCanaryAction;
   vnextCanarySqlite?: string;
   vnextCanaryBaseUrl?: string;
@@ -219,6 +224,19 @@ interface CliOptions {
   vnextRunSessionId?: string;
   vnextWorkerAction?: VNextWorkerAction;
   vnextWorkerId?: string;
+  vnextAdaptationAction?: VNextAdaptationAction;
+  vnextAdaptationTargetSlot?: string;
+  vnextAdaptationName?: string;
+  vnextAdaptationSummary?: string;
+  vnextAdaptationTriggerConditions: string[];
+  vnextAdaptationSteps: string[];
+  vnextAdaptationExpectedResult?: string;
+  vnextAdaptationVerificationRequirements: string[];
+  vnextAdaptationFailureModes: string[];
+  vnextAdaptationRollbackRule?: string;
+  vnextAdaptationEvidenceRunIds: string[];
+  vnextAdaptationCandidateId?: string;
+  vnextAdaptationEvaluationId?: string;
   vnextStateRoot?: string;
   task?: string;
   goalAction?: LocalGoalAction;
@@ -1510,6 +1528,8 @@ export async function main(): Promise<number> {
           ? vnextRunErrorEnvelope(error, null)
           : surface === "worker"
             ? vnextWorkerErrorEnvelope(error, null)
+            : surface === "adaptation"
+              ? vnextAdaptationErrorEnvelope(error, null)
             : canaryErrorEnvelope(error, null),
         null,
         2
@@ -1523,6 +1543,8 @@ export async function main(): Promise<number> {
       ? runVNextRunCommand(options)
       : options.vnextSurface === "worker"
         ? runVNextWorkerCommand(options)
+        : options.vnextSurface === "adaptation"
+          ? runVNextAdaptationCommand(options)
         : runVNextCanaryCommand(options);
   }
   if (options.command === "doctor") {
@@ -3093,16 +3115,47 @@ async function runVNextWorkerCommand(options: CliOptions): Promise<number> {
   }
 }
 
+async function runVNextAdaptationCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextAdaptationAction ?? null;
+  try {
+    if (!action) throw new Error("vnext adaptation requires explicit propose, evaluate, or inspect action.");
+    const result = await executeVNextAdaptation({
+      action,
+      ...(options.vnextStateRoot ? { state_root: options.vnextStateRoot } : {}),
+      ...(options.vnextAdaptationTargetSlot ? { target_slot: options.vnextAdaptationTargetSlot } : {}),
+      ...(options.vnextAdaptationName ? { name: options.vnextAdaptationName } : {}),
+      ...(options.vnextAdaptationSummary ? { summary: options.vnextAdaptationSummary } : {}),
+      trigger_conditions: options.vnextAdaptationTriggerConditions,
+      steps: options.vnextAdaptationSteps,
+      ...(options.vnextAdaptationExpectedResult ? {
+        expected_result: options.vnextAdaptationExpectedResult
+      } : {}),
+      verification_requirements: options.vnextAdaptationVerificationRequirements,
+      failure_modes: options.vnextAdaptationFailureModes,
+      ...(options.vnextAdaptationRollbackRule ? { rollback_rule: options.vnextAdaptationRollbackRule } : {}),
+      evidence_run_ids: options.vnextAdaptationEvidenceRunIds,
+      ...(options.vnextAdaptationCandidateId ? { candidate_id: options.vnextAdaptationCandidateId } : {}),
+      ...(options.vnextAdaptationEvaluationId ? { evaluation_id: options.vnextAdaptationEvaluationId } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.adaptation.status === "error" || result.adaptation.status === "not_found" ? 1 : 0;
+  } catch (error) {
+    console.log(JSON.stringify(vnextAdaptationErrorEnvelope(error, action), null, 2));
+    return 1;
+  }
+}
+
 function isVNextInvocation(argv: string[]): boolean {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0] === "vnext";
 }
 
-function vnextInvocationSurface(argv: string[]): "canary" | "run" | "worker" | null {
+function vnextInvocationSurface(argv: string[]): "canary" | "run" | "worker" | "adaptation" | null {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0] === "vnext" && (normalized[1] === "canary"
     || normalized[1] === "run"
-    || normalized[1] === "worker")
+    || normalized[1] === "worker"
+    || normalized[1] === "adaptation")
     ? normalized[1]
     : null;
 }
@@ -3145,27 +3198,35 @@ export function parseArgs(argv: string[]): CliOptions {
     notifyRefs: [],
     deploymentVerificationRefs: [],
     deploymentEvidenceRefs: [],
+    vnextAdaptationTriggerConditions: [],
+    vnextAdaptationSteps: [],
+    vnextAdaptationVerificationRequirements: [],
+    vnextAdaptationFailureModes: [],
+    vnextAdaptationEvidenceRunIds: [],
     sourceUrls: [],
     tickers: []
   };
   const vnextCanarySelected = options.command === "vnext" && rest[0] === "canary";
   const vnextRunSelected = options.command === "vnext" && rest[0] === "run";
   const vnextWorkerSelected = options.command === "vnext" && rest[0] === "worker";
+  const vnextAdaptationSelected = options.command === "vnext" && rest[0] === "adaptation";
   if (vnextCanarySelected) options.vnextSurface = "canary";
   if (vnextRunSelected) options.vnextSurface = "run";
   if (vnextWorkerSelected) options.vnextSurface = "worker";
-  if (options.command === "vnext" && !vnextCanarySelected && !vnextRunSelected && !vnextWorkerSelected) {
-    throw new Error("vnext requires the explicit canary surface, stable run surface, or worker surface.");
+  if (vnextAdaptationSelected) options.vnextSurface = "adaptation";
+  if (options.command === "vnext" && !vnextCanarySelected && !vnextRunSelected && !vnextWorkerSelected && !vnextAdaptationSelected) {
+    throw new Error("vnext requires the explicit canary surface, stable run surface, worker surface, or adaptation surface.");
   }
   if (vnextRunSelected) assertVNextRunTokens(rest);
   if (vnextWorkerSelected) assertVNextWorkerTokens(rest);
+  if (vnextAdaptationSelected) assertVNextAdaptationTokens(rest);
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (vnextCanarySelected && (arg === "--state-root" || arg === "--config-dir" || arg === "--repo-root" || arg === "--vnext-state-root")) {
       throw new Error("vnext canary does not accept v0.2 config, repo, or state-root options.");
     }
-    if (options.command === "vnext" && index === 0 && (arg === "canary" || arg === "run" || arg === "worker")) {
+    if (options.command === "vnext" && index === 0 && (arg === "canary" || arg === "run" || arg === "worker" || arg === "adaptation")) {
       continue;
     }
     else if (options.command === "vnext" && vnextCanarySelected && index === 1 && isVNextCanaryAction(arg)) {
@@ -3176,6 +3237,9 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     else if (options.command === "vnext" && vnextWorkerSelected && index === 1 && arg === "execute") {
       options.vnextWorkerAction = arg;
+    }
+    else if (options.command === "vnext" && vnextAdaptationSelected && index === 1 && isVNextAdaptationAction(arg)) {
+      options.vnextAdaptationAction = arg;
     }
     else if (options.command === "im" && arg === "serve") options.imAction = arg;
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
@@ -3208,7 +3272,19 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--run-id" && vnextRunSelected) options.vnextRunId = required(rest[++index], "--run-id requires a value");
     else if (arg === "--session-id" && vnextRunSelected) options.vnextRunSessionId = required(rest[++index], "--session-id requires a value");
     else if (arg === "--worker-id" && vnextWorkerSelected) options.vnextWorkerId = required(rest[++index], "--worker-id requires a value");
-    else if (arg === "--vnext-state-root" && (vnextRunSelected || vnextWorkerSelected)) options.vnextStateRoot = required(rest[++index], "--vnext-state-root requires a value");
+    else if (arg === "--vnext-state-root" && (vnextRunSelected || vnextWorkerSelected || vnextAdaptationSelected)) options.vnextStateRoot = required(rest[++index], "--vnext-state-root requires a value");
+    else if (arg === "--target-slot" && vnextAdaptationSelected) options.vnextAdaptationTargetSlot = required(rest[++index], "--target-slot requires a value");
+    else if (arg === "--name" && vnextAdaptationSelected) options.vnextAdaptationName = required(rest[++index], "--name requires a value");
+    else if (arg === "--summary" && vnextAdaptationSelected) options.vnextAdaptationSummary = required(rest[++index], "--summary requires a value");
+    else if (arg === "--trigger" && vnextAdaptationSelected) options.vnextAdaptationTriggerConditions.push(required(rest[++index], "--trigger requires a value"));
+    else if (arg === "--step" && vnextAdaptationSelected) options.vnextAdaptationSteps.push(required(rest[++index], "--step requires a value"));
+    else if (arg === "--expected-result" && vnextAdaptationSelected) options.vnextAdaptationExpectedResult = required(rest[++index], "--expected-result requires a value");
+    else if (arg === "--verify" && vnextAdaptationSelected) options.vnextAdaptationVerificationRequirements.push(required(rest[++index], "--verify requires a value"));
+    else if (arg === "--failure-mode" && vnextAdaptationSelected) options.vnextAdaptationFailureModes.push(required(rest[++index], "--failure-mode requires a value"));
+    else if (arg === "--rollback-rule" && vnextAdaptationSelected) options.vnextAdaptationRollbackRule = required(rest[++index], "--rollback-rule requires a value");
+    else if (arg === "--evidence-run-id" && vnextAdaptationSelected) options.vnextAdaptationEvidenceRunIds.push(required(rest[++index], "--evidence-run-id requires a value"));
+    else if (arg === "--candidate-id" && vnextAdaptationSelected) options.vnextAdaptationCandidateId = required(rest[++index], "--candidate-id requires a value");
+    else if (arg === "--evaluation-id" && vnextAdaptationSelected) options.vnextAdaptationEvaluationId = required(rest[++index], "--evaluation-id requires a value");
     else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
     else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
@@ -3427,6 +3503,7 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     if (vnextRunSelected) validateVNextRunOptions(options);
     if (vnextWorkerSelected) validateVNextWorkerOptions(options);
+    if (vnextAdaptationSelected) validateVNextAdaptationOptions(options);
   }
   return options;
 }
@@ -3458,6 +3535,73 @@ function assertVNextWorkerTokens(rest: string[]): void {
     const flag = rest[index];
     if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext worker argument: ${flag}`);
     if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function assertVNextAdaptationTokens(rest: string[]): void {
+  const valuedFlags = new Set([
+    "--target-slot",
+    "--name",
+    "--summary",
+    "--trigger",
+    "--step",
+    "--expected-result",
+    "--verify",
+    "--failure-mode",
+    "--rollback-rule",
+    "--evidence-run-id",
+    "--candidate-id",
+    "--evaluation-id",
+    "--vnext-state-root"
+  ]);
+  for (let index = 2; index < rest.length; index += 2) {
+    const flag = rest[index];
+    if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext adaptation argument: ${flag}`);
+    if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function validateVNextAdaptationOptions(options: CliOptions): void {
+  const action = options.vnextAdaptationAction;
+  if (!action) throw new Error("vnext adaptation requires explicit propose, evaluate, or inspect action.");
+  const candidateId = options.vnextAdaptationCandidateId;
+  const evaluationId = options.vnextAdaptationEvaluationId;
+  if (action === "evaluate") {
+    if (!candidateId) throw new Error("vnext adaptation evaluate requires --candidate-id.");
+    if (evaluationId) throw new Error("vnext adaptation evaluate does not accept --evaluation-id.");
+    assertNoAdaptationCandidateFields(options, action);
+    return;
+  }
+  if (action === "inspect") {
+    if (Boolean(candidateId) === Boolean(evaluationId)) {
+      throw new Error("vnext adaptation inspect requires exactly one of --candidate-id or --evaluation-id.");
+    }
+    assertNoAdaptationCandidateFields(options, action);
+    return;
+  }
+  if (candidateId || evaluationId) {
+    throw new Error("vnext adaptation propose does not accept candidate or evaluation identifiers.");
+  }
+  if (!options.vnextAdaptationTargetSlot || !options.vnextAdaptationName || !options.vnextAdaptationSummary) {
+    throw new Error("vnext adaptation propose requires --target-slot, --name, and --summary.");
+  }
+  if (options.vnextAdaptationEvidenceRunIds.length === 0) {
+    throw new Error("vnext adaptation propose requires at least one --evidence-run-id.");
+  }
+}
+
+function assertNoAdaptationCandidateFields(options: CliOptions, action: VNextAdaptationAction): void {
+  if (options.vnextAdaptationTargetSlot
+    || options.vnextAdaptationName
+    || options.vnextAdaptationSummary
+    || options.vnextAdaptationTriggerConditions.length > 0
+    || options.vnextAdaptationSteps.length > 0
+    || options.vnextAdaptationExpectedResult
+    || options.vnextAdaptationVerificationRequirements.length > 0
+    || options.vnextAdaptationFailureModes.length > 0
+    || options.vnextAdaptationRollbackRule
+    || options.vnextAdaptationEvidenceRunIds.length > 0) {
+    throw new Error(`vnext adaptation ${action} does not accept candidate content fields.`);
   }
 }
 
@@ -3566,6 +3710,10 @@ function isVNextCanaryAction(value: string): value is VNextCanaryAction {
 
 function isVNextRunAction(value: string): value is VNextRunAction {
   return value === "submit" || value === "continue" || value === "inspect";
+}
+
+function isVNextAdaptationAction(value: string): value is VNextAdaptationAction {
+  return value === "propose" || value === "evaluate" || value === "inspect";
 }
 
 function parseStages(value: string): string[] {
@@ -3831,6 +3979,9 @@ function printUsage(): void {
   pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext run inspect --run-id run_...|--session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- config [--config-dir config] [--state-root ${stateRootUsage}]
   pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight [--content-daily-interval-ms 3600000] [--topic "..."] [--source-url https://...] [--ticker NVDA]
   pnpm run runtime -- config set-runtime --review-tick-enabled [--review-tick-interval-ms 1800000] [--review-tick-limit 20]

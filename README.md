@@ -1,10 +1,10 @@
 # Local Runtime
 
-Local Runtime v0.1 is a local-first, single-machine runtime for a self-growing
+Local Runtime is a local-first, single-machine runtime for a self-growing
 agent. It turns a local task or IM message into bounded context, validated
-actions, evidence, verification, and a response. The approved v0.2 direction
-adds private, Git-backed reusable asset distribution without sharing runtime
-state or turning Evi into a hosted multi-user control plane.
+actions, evidence, verification, and a response. vNext is the active delivery
+direction. The installed v0.2 runtime is frozen as an executable rollback path
+until a separately verified vNext cutover; it is not a parallel roadmap.
 
 The accepted vNext architecture keeps one persistent local-first Evi self while
 replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
@@ -38,7 +38,7 @@ stable owner model and acceptance semantics.
 - Accepted long-term product and gated evolution vision:
   [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) and
   [docs/PRODUCT_VISION.cn.md](docs/PRODUCT_VISION.cn.md)
-- Approved v0.2 multi-node evolution target:
+- Historical v0.2 multi-node design (not the active roadmap):
   [docs/V0.2_MULTI_NODE_EVOLUTION.md](docs/V0.2_MULTI_NODE_EVOLUTION.md) and
   [docs/V0.2_MULTI_NODE_EVOLUTION.cn.md](docs/V0.2_MULTI_NODE_EVOLUTION.cn.md)
 
@@ -48,17 +48,16 @@ contracts, or historical decisions here.
 
 ## Scope
 
-The implemented v0.1 runtime is intentionally narrow:
+The currently installed rollback runtime is intentionally narrow:
 
 - one local user and one machine;
 - bounded repo/state actions through the harness;
 - CLI, localhost web console, and local IM adapters;
 - evidence-backed verification and explicit learning gates.
 
-The v0.2 target keeps execution, raw memory, and runtime state node-local while
-allowing selected reusable assets to move through a private LuBan Git
-repository. It is still not a hosted multi-user service, public marketplace,
-shared runtime-state system, or autonomous rewrite system.
+vNext keeps execution, raw memory, and runtime state node-local. It is still
+not a hosted multi-user service, public marketplace, shared runtime-state
+system, or autonomous rewrite system.
 
 ## Development flow
 

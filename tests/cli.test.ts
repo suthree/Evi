@@ -175,6 +175,51 @@ test("vNext Worker parsing requires one explicit worker identity and stable sele
   );
 });
 
+test("vNext Adaptation parsing exposes only inactive proposal, evaluation, and inspection controls", () => {
+  const propose = parseArgs([
+    "vnext", "adaptation", "propose",
+    "--target-slot", "procedure.runtime-recovery",
+    "--name", "Recover a paused runtime",
+    "--summary", "Reuse exact persisted evidence.",
+    "--trigger", "A Run is paused.",
+    "--step", "Inspect the exact Run.",
+    "--expected-result", "The same Run completes.",
+    "--verify", "Inspect the terminal receipt.",
+    "--failure-mode", "Mismatched evidence leaves the Run paused.",
+    "--rollback-rule", "Retire the candidate on identity drift.",
+    "--evidence-run-id", "run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(propose.vnextSurface, "adaptation");
+  assert.equal(propose.vnextAdaptationAction, "propose");
+  assert.deepEqual(propose.vnextAdaptationSteps, ["Inspect the exact Run."]);
+  assert.deepEqual(propose.vnextAdaptationEvidenceRunIds, ["run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
+
+  const evaluate = parseArgs([
+    "vnext", "adaptation", "evaluate",
+    "--candidate-id", "candidate_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ]);
+  assert.equal(evaluate.vnextAdaptationAction, "evaluate");
+  assert.equal(evaluate.vnextAdaptationCandidateId, "candidate_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "inspect", "--candidate-id", "candidate_1", "--evaluation-id", "evaluation_1"]),
+    /exactly one/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "evaluate", "--candidate-id", "candidate_1", "--step", "not allowed"]),
+    /does not accept candidate content fields/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "propose", "--target-slot", "procedure.one", "--name", "One", "--summary", "One"]),
+    /at least one --evidence-run-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "inspect", "--candidate-id", "candidate_1", "--state-root", "/tmp/v02"]),
+    /Unknown vnext adaptation argument: --state-root/
+  );
+});
+
 test("config set-runtime parses safe content daily update options", () => {
   const options = parseArgs([
     "config",

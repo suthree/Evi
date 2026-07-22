@@ -12,6 +12,18 @@ import type {
 } from "./action_types.js";
 import { materializeActionDigest } from "./action_identity.js";
 import { stableJson } from "./canonical_json.js";
+import {
+  parseEvaluationReceipt,
+  parseProcedureCandidate,
+  parseSelfRegistryVersion,
+  selfRegistryVersionFor,
+  type AdaptationInspection,
+  type EvaluationBaseline,
+  type EvaluationReceipt,
+  type ProcedureCandidate,
+  type SelfRegistryVersion
+} from "./adaptation_types.js";
+import { assertCanonicalProcedureEvaluation } from "./adaptation_evaluation.js";
 import type {
   ExecutionLock,
   RunInspection,
@@ -149,6 +161,44 @@ interface WorkerSessionRow {
   lease_expires_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface AdaptationCandidateRow {
+  id: string;
+  target_slot: string;
+  kind: string;
+  scope: string;
+  lifecycle: string;
+  content_digest: string;
+  candidate_digest: string;
+  candidate_json: string;
+  created_at: string;
+}
+
+interface SelfRegistryVersionRow {
+  id: string;
+  target_slot: string;
+  artifact_kind: string;
+  state: string;
+  candidate_id: string;
+  artifact_digest: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AdaptationEvaluationRow {
+  id: string;
+  candidate_id: string;
+  candidate_digest: string;
+  target_slot: string;
+  baseline_kind: string;
+  baseline_version_id: string | null;
+  baseline_digest: string | null;
+  evaluator_version: string;
+  status: string;
+  evaluation_digest: string;
+  receipt_json: string;
+  created_at: string;
 }
 
 export class SqliteRuntimeStore {
@@ -1347,6 +1397,158 @@ export class SqliteRuntimeStore {
     });
   }
 
+  proposeAdaptationCandidate(candidateInput: ProcedureCandidate): AdaptationInspection {
+    const candidate = parseProcedureCandidate(candidateInput);
+    const registry = selfRegistryVersionFor(candidate);
+    return this.transaction(() => {
+      this.assertCompletedAdaptationEvidence(candidate);
+      const existing = this.getAdaptationCandidate(candidate.id);
+      if (existing) {
+        if (existing.content_digest !== candidate.content_digest) {
+          throw new Error(`Adaptation Candidate identity drifted: ${candidate.id}`);
+        }
+        return this.requireAdaptationInspection(candidate.id);
+      }
+      const occupied = this.db.prepare(`
+        SELECT candidate_id
+        FROM self_registry_versions
+        WHERE target_slot = ? AND state = 'inactive'
+        LIMIT 1
+      `).get(candidate.target_slot) as { candidate_id: string } | undefined;
+      if (occupied) {
+        throw new Error(`Self Registry target slot is already occupied: ${candidate.target_slot}`);
+      }
+      this.db.prepare(`
+        INSERT INTO adaptation_candidates (
+          id, target_slot, kind, scope, lifecycle, content_digest,
+          candidate_digest, candidate_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        candidate.id,
+        candidate.target_slot,
+        candidate.kind,
+        candidate.scope,
+        candidate.lifecycle,
+        candidate.content_digest,
+        candidate.digest,
+        JSON.stringify(candidate),
+        candidate.created_at
+      );
+      this.db.prepare(`
+        INSERT INTO self_registry_versions (
+          id, target_slot, artifact_kind, state, candidate_id,
+          artifact_digest, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        registry.id,
+        registry.target_slot,
+        registry.artifact_kind,
+        registry.state,
+        registry.candidate_id,
+        registry.artifact_digest,
+        registry.created_at,
+        registry.updated_at
+      );
+      return this.requireAdaptationInspection(candidate.id);
+    });
+  }
+
+  getAdaptationBaseline(targetSlot: string): EvaluationBaseline {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM self_registry_versions
+      WHERE target_slot = ? AND state = 'active'
+      LIMIT 1
+    `).get(targetSlot) as SelfRegistryVersionRow | undefined;
+    if (!row) return { kind: "none", version_id: null, digest: null };
+    const version = toSelfRegistryVersion(row);
+    return {
+      kind: "self_registry_version",
+      version_id: version.id,
+      digest: version.artifact_digest
+    };
+  }
+
+  recordAdaptationEvaluation(receiptInput: EvaluationReceipt): EvaluationReceipt {
+    const receipt = parseEvaluationReceipt(receiptInput);
+    return this.transaction(() => {
+      const candidate = this.requireAdaptationCandidate(receipt.candidate_id);
+      this.assertCompletedAdaptationEvidence(candidate);
+      assertCanonicalProcedureEvaluation(candidate, receipt);
+      const baseline = this.getAdaptationBaseline(candidate.target_slot);
+      if (receipt.candidate_digest !== candidate.digest
+        || receipt.target_slot !== candidate.target_slot
+        || stableJson(receipt.baseline) !== stableJson(baseline)
+        || !sameStrings(receipt.evidence_run_ids, candidate.evidence_run_ids)) {
+        throw new Error(`Adaptation Evaluation identity drifted: ${receipt.id}`);
+      }
+      const existing = this.inspectAdaptationEvaluation(receipt.id);
+      if (existing) {
+        if (evaluationSemanticIdentity(existing) !== evaluationSemanticIdentity(receipt)) {
+          throw new Error(`Adaptation Evaluation request drifted: ${receipt.id}`);
+        }
+        return existing;
+      }
+      this.db.prepare(`
+        INSERT INTO adaptation_evaluations (
+          id, candidate_id, candidate_digest, target_slot,
+          baseline_kind, baseline_version_id, baseline_digest,
+          evaluator_version, status, evaluation_digest, receipt_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        receipt.id,
+        receipt.candidate_id,
+        receipt.candidate_digest,
+        receipt.target_slot,
+        receipt.baseline.kind,
+        receipt.baseline.version_id,
+        receipt.baseline.digest,
+        receipt.evaluator_version,
+        receipt.status,
+        receipt.digest,
+        JSON.stringify(receipt),
+        receipt.created_at
+      );
+      return this.requireAdaptationEvaluation(receipt.id);
+    });
+  }
+
+  inspectAdaptationCandidate(candidateId: string): AdaptationInspection | null {
+    const candidate = this.getAdaptationCandidate(candidateId);
+    if (!candidate) return null;
+    this.assertCompletedAdaptationEvidence(candidate);
+    const registryRow = this.db.prepare(`
+      SELECT *
+      FROM self_registry_versions
+      WHERE candidate_id = ?
+    `).get(candidate.id) as SelfRegistryVersionRow | undefined;
+    if (!registryRow) throw new Error(`Self Registry version is missing: ${candidate.id}`);
+    const registry = toSelfRegistryVersion(registryRow);
+    if (registry.target_slot !== candidate.target_slot
+      || registry.candidate_id !== candidate.id
+      || registry.artifact_digest !== candidate.digest
+      || registry.artifact_kind !== candidate.kind) {
+      throw new Error(`Self Registry version identity drifted: ${registry.id}`);
+    }
+    const evaluations = (this.db.prepare(`
+      SELECT *
+      FROM adaptation_evaluations
+      WHERE candidate_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(candidate.id) as unknown as AdaptationEvaluationRow[])
+      .map((row) => this.validateAdaptationEvaluation(toEvaluationReceipt(row)));
+    return { candidate, registry_version: registry, evaluations };
+  }
+
+  inspectAdaptationEvaluation(evaluationId: string): EvaluationReceipt | null {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM adaptation_evaluations
+      WHERE id = ?
+    `).get(evaluationId) as AdaptationEvaluationRow | undefined;
+    return row ? this.validateAdaptationEvaluation(toEvaluationReceipt(row)) : null;
+  }
+
   getPiSession(sessionId: string): PiSessionRow | null {
     return (this.db.prepare(`
       SELECT id, created_at, leaf_id
@@ -2121,6 +2323,70 @@ export class SqliteRuntimeStore {
     }
   }
 
+  private getAdaptationCandidate(candidateId: string): ProcedureCandidate | null {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM adaptation_candidates
+      WHERE id = ?
+    `).get(candidateId) as AdaptationCandidateRow | undefined;
+    return row ? toProcedureCandidate(row) : null;
+  }
+
+  private requireAdaptationCandidate(candidateId: string): ProcedureCandidate {
+    const candidate = this.getAdaptationCandidate(candidateId);
+    if (!candidate) throw new Error(`Adaptation Candidate not found: ${candidateId}`);
+    return candidate;
+  }
+
+  private requireAdaptationInspection(candidateId: string): AdaptationInspection {
+    const inspection = this.inspectAdaptationCandidate(candidateId);
+    if (!inspection) throw new Error(`Adaptation Candidate not found: ${candidateId}`);
+    return inspection;
+  }
+
+  private requireAdaptationEvaluation(evaluationId: string): EvaluationReceipt {
+    const receipt = this.inspectAdaptationEvaluation(evaluationId);
+    if (!receipt) throw new Error(`Adaptation Evaluation not found: ${evaluationId}`);
+    return receipt;
+  }
+
+  private assertCompletedAdaptationEvidence(candidate: ProcedureCandidate): void {
+    for (const runId of candidate.evidence_run_ids) {
+      const run = this.getRun(runId);
+      if (!run || run.status !== "completed") {
+        throw new Error(`Adaptation Candidate evidence Run is not completed: ${runId}`);
+      }
+    }
+  }
+
+  private validateAdaptationEvaluation(receipt: EvaluationReceipt): EvaluationReceipt {
+    const candidate = this.requireAdaptationCandidate(receipt.candidate_id);
+    this.assertCompletedAdaptationEvidence(candidate);
+    assertCanonicalProcedureEvaluation(candidate, receipt);
+    if (receipt.candidate_digest !== candidate.digest
+      || receipt.target_slot !== candidate.target_slot
+      || !sameStrings(receipt.evidence_run_ids, candidate.evidence_run_ids)) {
+      throw new Error(`Adaptation Evaluation candidate identity drifted: ${receipt.id}`);
+    }
+    if (receipt.baseline.kind === "self_registry_version") {
+      const row = this.db.prepare(`
+        SELECT *
+        FROM self_registry_versions
+        WHERE id = ?
+      `).get(receipt.baseline.version_id) as SelfRegistryVersionRow | undefined;
+      if (!row) throw new Error(`Adaptation Evaluation baseline is missing: ${receipt.id}`);
+      const baseline = toSelfRegistryVersion(row);
+      if (baseline.target_slot !== receipt.target_slot
+        || baseline.artifact_digest !== receipt.baseline.digest
+        || baseline.state === "inactive") {
+        throw new Error(`Adaptation Evaluation baseline identity drifted: ${receipt.id}`);
+      }
+    } else if (this.getAdaptationBaseline(receipt.target_slot).kind !== "none") {
+      throw new Error(`Adaptation Evaluation none baseline drifted: ${receipt.id}`);
+    }
+    return receipt;
+  }
+
   private requireRun(runId: string): RunRecord {
     const run = this.getRun(runId);
     if (!run) throw new Error(`Run not found: ${runId}`);
@@ -2165,6 +2431,66 @@ function parseBudgetViolation(input: unknown): {
     timeout_exceeded: value.timeout_exceeded,
     deadline_exceeded: value.deadline_exceeded
   };
+}
+
+function toProcedureCandidate(row: AdaptationCandidateRow): ProcedureCandidate {
+  const candidate = parseProcedureCandidate(JSON.parse(row.candidate_json));
+  if (candidate.id !== row.id
+    || candidate.target_slot !== row.target_slot
+    || candidate.kind !== row.kind
+    || candidate.scope !== row.scope
+    || candidate.lifecycle !== row.lifecycle
+    || candidate.content_digest !== row.content_digest
+    || candidate.digest !== row.candidate_digest
+    || candidate.created_at !== row.created_at) {
+    throw new Error(`Adaptation Candidate stored identity is invalid: ${row.id}`);
+  }
+  return candidate;
+}
+
+function toSelfRegistryVersion(row: SelfRegistryVersionRow): SelfRegistryVersion {
+  return parseSelfRegistryVersion({
+    id: row.id,
+    target_slot: row.target_slot,
+    artifact_kind: row.artifact_kind,
+    state: row.state,
+    candidate_id: row.candidate_id,
+    artifact_digest: row.artifact_digest,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  });
+}
+
+function toEvaluationReceipt(row: AdaptationEvaluationRow): EvaluationReceipt {
+  const receipt = parseEvaluationReceipt(JSON.parse(row.receipt_json));
+  if (receipt.id !== row.id
+    || receipt.candidate_id !== row.candidate_id
+    || receipt.candidate_digest !== row.candidate_digest
+    || receipt.target_slot !== row.target_slot
+    || receipt.baseline.kind !== row.baseline_kind
+    || receipt.baseline.version_id !== row.baseline_version_id
+    || receipt.baseline.digest !== row.baseline_digest
+    || receipt.evaluator_version !== row.evaluator_version
+    || receipt.status !== row.status
+    || receipt.digest !== row.evaluation_digest
+    || receipt.created_at !== row.created_at) {
+    throw new Error(`Adaptation Evaluation stored identity is invalid: ${row.id}`);
+  }
+  return receipt;
+}
+
+function evaluationSemanticIdentity(receipt: EvaluationReceipt): string {
+  return stableJson({
+    id: receipt.id,
+    candidate_id: receipt.candidate_id,
+    candidate_digest: receipt.candidate_digest,
+    target_slot: receipt.target_slot,
+    baseline: receipt.baseline,
+    evaluator_version: receipt.evaluator_version,
+    checks: receipt.checks,
+    evidence_run_ids: receipt.evidence_run_ids,
+    status: receipt.status
+  });
 }
 
 function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
