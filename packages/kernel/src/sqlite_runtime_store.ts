@@ -887,6 +887,26 @@ export class SqliteRuntimeStore {
         AND result_delivered_to_turn_id IS NULL
       ORDER BY created_at ASC, id ASC
     `).all(runId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
+    for (const worker of workers) {
+      if (worker.parent_turn_id !== run.turn_id) {
+        throw new Error(`Worker Result delivery parent Turn drifted: ${worker.id}`);
+      }
+      this.assertWorkerDeliveryIdentity(run, worker);
+    }
+    return workers;
+  }
+
+  getDeliveredWorkerResults(runId: string, turnId: string): WorkerInspection[] {
+    const run = this.requireRun(runId);
+    if (run.turn_id !== turnId) {
+      throw new Error(`Worker Result runtime context Turn is not current: ${runId}/${turnId}`);
+    }
+    const workers = (this.db.prepare(`
+      SELECT *
+      FROM worker_sessions
+      WHERE parent_run_id = ? AND result_delivered_to_turn_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(runId, turnId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
     for (const worker of workers) this.assertWorkerDeliveryIdentity(run, worker);
     return workers;
   }
@@ -1756,11 +1776,10 @@ export class SqliteRuntimeStore {
     const child = this.requireRun(worker.child_run_id);
     const childLock = this.getExecutionLock(child.id);
     if (worker.parent_run_id !== parent.id
-      || worker.parent_turn_id !== parent.turn_id
       || task.parent_run_id !== parent.id
-      || task.parent_turn_id !== parent.turn_id
+      || task.parent_turn_id !== worker.parent_turn_id
       || reservation.run_id !== parent.id
-      || reservation.turn_id !== parent.turn_id
+      || reservation.turn_id !== worker.parent_turn_id
       || reservation.action_name !== "worker_dispatch"
       || reservation.state !== "terminal"
       || receipt.outcome !== "succeeded"

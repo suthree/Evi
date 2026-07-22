@@ -185,6 +185,13 @@ export class OrchestrationEngine {
     return { ...resumed, request, runtime_context: runtimeContext };
   }
 
+  runtimeContextForTurn(runId: string, turnId: string): JsonObject | null {
+    const results = this.store.getDeliveredWorkerResults(runId, turnId);
+    return results.length === 0
+      ? null
+      : materializeWorkerResultRuntimeContext(runId, results);
+  }
+
   claim(workerId: string, leaseMs: number): {
     worker: WorkerInspection;
     lease: WorkerExecutionLease;

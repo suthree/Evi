@@ -64,6 +64,9 @@ export class KernelRuntime {
 
   async continueRun(runId: string, runtimeContext?: JsonObject): Promise<RunExecutionResult> {
     let inspection = this.requireInspection(runId);
+    const effectiveRuntimeContext = runtimeContext
+      ?? this.orchestration?.runtimeContextForTurn(runId, inspection.turn_id)
+      ?? undefined;
     const executionLock = this.store.getExecutionLock(runId);
     assertExecutionLockMatchesContracts(executionLock, this.actions.contracts());
     if (inspection.status === "waiting") {
@@ -110,7 +113,7 @@ export class KernelRuntime {
         resumed.execution,
         continuationPrompt,
         executionLock,
-        runtimeContext
+        effectiveRuntimeContext
       );
     }
 
@@ -132,7 +135,7 @@ export class KernelRuntime {
         resumed.execution,
         recoveryPrompt,
         executionLock,
-        runtimeContext
+        effectiveRuntimeContext
       );
     }
     const recoveryPrompt = renderDispatchRecoveryPrompt(runId, executionEvidence);
@@ -149,7 +152,7 @@ export class KernelRuntime {
       resumed.execution,
       recoveryPrompt,
       executionLock,
-      runtimeContext
+      effectiveRuntimeContext
     );
   }
 
@@ -170,6 +173,13 @@ export class KernelRuntime {
   ): Promise<RunExecutionResult> {
     const controller = new AbortController();
     let heartbeatError: unknown;
+    let budgetExpired = false;
+    const budgetTimer = this.runtimeBudget
+      ? setTimeout(() => {
+        budgetExpired = true;
+        controller.abort();
+      }, Math.max(0, Date.parse(this.runtimeBudget.deadline_at) - Date.now()))
+      : undefined;
     const heartbeat = setInterval(() => {
       if (heartbeatError) return;
       try {
@@ -193,6 +203,7 @@ export class KernelRuntime {
       });
       const result = await loop.execute(prompt, controller.signal);
       if (heartbeatError) throw heartbeatError;
+      if (budgetExpired) throw new Error("Runtime time budget is exhausted.");
       const waiting = this.orchestration?.settleSupervisorTurn(execution, result.answer) ?? null;
       if (waiting) {
         return toResult(waiting);
@@ -213,6 +224,7 @@ export class KernelRuntime {
       return toResult(failed);
     } finally {
       clearInterval(heartbeat);
+      if (budgetTimer) clearTimeout(budgetTimer);
     }
   }
 

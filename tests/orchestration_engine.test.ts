@@ -907,6 +907,73 @@ test("Worker Result cross-record identity drift rejects delivery and leaves the 
   }
 });
 
+test("Supervisor integration recovery rebuilds delivered Result runtime context from SQLite", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-integration-recovery-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    let workerId = "";
+    const planner = new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async () => {
+            const dispatched = await input.action_gateway.invoke({
+              run_id: input.run_id,
+              turn_id: input.turn_id,
+              invocation_id: "integration-recovery-worker-call",
+              action_name: workerDispatch.contract.name,
+              arguments: validTaskInput()
+            });
+            assert.equal(dispatched.status, "completed");
+            if (dispatched.status !== "completed") throw new Error("worker dispatch failed");
+            workerId = String(dispatched.receipt.output.worker_id);
+            return { answer: "Wait before integration." };
+          }
+        };
+      }
+    }, { orchestration: engine, execution_lease_ms: 100 });
+    const parent = await planner.submit({
+      request: "Recover integration from canonical typed context.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    });
+    assert.equal(parent.status, "waiting");
+    await new DiscussionWorkerRuntime(
+      store,
+      new ActionGateway(store, [runtimeInspect]),
+      { create: () => ({ execute: async () => ({ answer: "Recoverable advisory evidence." }) }) }
+    ).execute(workerId);
+
+    const resumed = engine.resumeSupervisor(parent.run_id, 100);
+    assert.ok(resumed);
+    assert.equal(resumed.runtime_context.kind, "runtime_worker_result_delivery");
+    await delay(150);
+
+    const recovered = await new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            assert.match(request, /runtime_tool_protocol_recovery_evidence/);
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            assert.match(JSON.stringify(input.runtime_context), /Recoverable advisory evidence/);
+            return { answer: "Recovered and integrated canonical Worker evidence." };
+          }
+        };
+      }
+    }, { orchestration: engine, execution_lease_ms: 100 }).continueRun(parent.run_id);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.turn_id, resumed.run.turn_id);
+    assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, recovered.turn_id);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 function validTaskInput() {
   return {
     objective: "Analyze bounded evidence.",
