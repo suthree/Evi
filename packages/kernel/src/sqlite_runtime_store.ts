@@ -2381,6 +2381,8 @@ export class SqliteRuntimeStore {
         || baseline.state === "inactive") {
         throw new Error(`Adaptation Evaluation baseline identity drifted: ${receipt.id}`);
       }
+    } else if (this.getAdaptationBaseline(receipt.target_slot).kind !== "none") {
+      throw new Error(`Adaptation Evaluation none baseline drifted: ${receipt.id}`);
     }
     return receipt;
   }

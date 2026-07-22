@@ -171,6 +171,29 @@ test("a new inactive candidate evaluates against the exact active Self Registry 
       digest: active.registry_version.artifact_digest
     });
 
+    const forgedNoneBaseline = materializeEvaluationReceipt({
+      candidate: proposed.candidate,
+      baseline: { kind: "none", version_id: null, digest: null },
+      evaluator_version: receipt.evaluator_version,
+      checks: receipt.checks,
+      created_at: receipt.created_at
+    });
+    const tamper = new DatabaseSync(sqlite);
+    try {
+      tamper.prepare(`
+        UPDATE adaptation_evaluations
+        SET id = ?, baseline_kind = 'none', baseline_version_id = NULL,
+            baseline_digest = NULL, evaluation_digest = ?, receipt_json = ?
+        WHERE id = ?
+      `).run(forgedNoneBaseline.id, forgedNoneBaseline.digest, JSON.stringify(forgedNoneBaseline), receipt.id);
+    } finally {
+      tamper.close();
+    }
+    assert.throws(
+      () => engine.inspectEvaluation(forgedNoneBaseline.id),
+      /none baseline drifted/
+    );
+
     const verify = new DatabaseSync(sqlite, { readOnly: true });
     try {
       assert.equal(countWhere(verify, "self_registry_versions", "state = 'active'"), 1);
