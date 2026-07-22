@@ -307,7 +307,7 @@ test("vnext worker execute recovers after SIGKILL with one Result and exact mode
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, NODE_NO_WARNINGS: "1" }
     });
-    await firstRequest;
+    await waitForWorkerRequest(child, firstRequest, 10_000);
     const sqlite = join(stateRoot, "runtime.sqlite");
     const active = new DatabaseSync(sqlite);
     let childRunId = "";
@@ -407,6 +407,43 @@ async function runCli(args: string[]): Promise<VNextWorkerEnvelope | VNextRunEnv
     maxBuffer: 4 * 1024 * 1024
   });
   return JSON.parse(stdout) as VNextWorkerEnvelope | VNextRunEnvelope;
+}
+
+async function waitForWorkerRequest(
+  child: ReturnType<typeof spawn>,
+  observed: Promise<void>,
+  timeoutMs: number
+): Promise<void> {
+  await new Promise<void>((resolveWait, rejectWait) => {
+    let stderr = "";
+    const onStderr = (chunk: Buffer | string) => {
+      stderr = `${stderr}${chunk.toString()}`.slice(-4_000);
+    };
+    const cleanup = () => {
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      child.stderr?.off("data", onStderr);
+    };
+    const fail = (message: string) => {
+      cleanup();
+      rejectWait(new Error(`${message}${stderr.trim() ? `; stderr=${stderr.trim()}` : ""}`));
+    };
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      fail(`vnext worker exited before its provider request: code=${code}, signal=${signal}`);
+    };
+    const timer = setTimeout(() => {
+      fail(`vnext worker did not reach its provider request within ${timeoutMs}ms`);
+    }, timeoutMs);
+    child.stderr?.on("data", onStderr);
+    child.once("exit", onExit);
+    observed.then(() => {
+      cleanup();
+      resolveWait();
+    }, (error) => {
+      cleanup();
+      rejectWait(error);
+    });
+  });
 }
 
 function runtimeContextText(request: Record<string, unknown>): string {

@@ -1226,10 +1226,6 @@ export class SqliteRuntimeStore {
     return row ? toWorkerInspection(row) : null;
   }
 
-  inspectWorkerByReservation(reservationId: string): WorkerInspection | null {
-    return this.getWorkerByReservation(reservationId);
-  }
-
   inspectWorkerByChildRun(childRunId: string): WorkerInspection | null {
     const row = this.db.prepare("SELECT * FROM worker_sessions WHERE child_run_id = ?")
       .get(childRunId) as WorkerSessionRow | undefined;
