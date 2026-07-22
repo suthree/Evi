@@ -679,7 +679,7 @@ for (const crashPoint of [
 
         const completed = await runtime.continueRun(runId);
 
-        assert.equal(completed.status, "completed");
+        assert.equal(completed.status, "completed", completed.error ?? undefined);
         assert.equal(completed.run_id, runId);
         assert.equal(completed.session_id, sessionId);
         assert.equal(

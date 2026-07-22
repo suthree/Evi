@@ -10,6 +10,7 @@ import type {
   EffectReceipt,
   JsonObject
 } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
 import type {
   ExecutionLock,
   RunInspection,
@@ -38,6 +39,7 @@ import type {
   ModelDispatchRecord,
   RunExecutionKind,
   RunExecutionLease,
+  RunExecutionModelEvidence,
   RunExecutionOutcome,
   RunExecutionRecoveryEvidence,
   SettledRunExecutionEvidence
@@ -245,6 +247,24 @@ export class SqliteRuntimeStore {
   pauseRun(execution: RunExecutionLease, error: string): RunRecord {
     const message = error.trim().slice(0, 4_000) || "Run paused for unresolved action recovery.";
     return this.settleRunExecution(execution, "paused", null, message);
+  }
+
+  pauseWorkerResultIntegration(execution: RunExecutionLease, error: string): RunRecord {
+    if (execution.kind !== "worker_result_continuation") {
+      throw new Error(`Worker Result integration execution kind is invalid: ${execution.id}`);
+    }
+    if (this.getDeliveredWorkerResults(execution.run_id, execution.turn_id).length === 0) {
+      throw new Error(`Worker Result integration has no delivered evidence: ${execution.run_id}`);
+    }
+    const message = error.trim().slice(0, 4_000)
+      || "Supervisor integration failed before it could settle the Worker Result.";
+    return this.settleRunExecution(
+      execution,
+      "paused",
+      null,
+      message,
+      "worker_result_integration_failed"
+    );
   }
 
   waitRun(execution: RunExecutionLease, checkpoint: string): RunRecord {
@@ -597,6 +617,56 @@ export class SqliteRuntimeStore {
         message_digest: messageDigest
       });
       return this.requireModelDispatch(dispatchId);
+    });
+  }
+
+  reconcileRecoveredModelDispatch(
+    execution: RunExecutionLease,
+    input: { stop_reason: string; message_digest: string }
+  ): ModelDispatchRecord {
+    return this.transaction(() => {
+      const recovery = this.requireActiveExecutionLease(execution);
+      if (!recovery.recovery_of_execution_id) {
+        throw new Error(`Recovered assistant has no prior execution lineage: ${execution.id}`);
+      }
+      const producer = this.db.prepare(`
+        SELECT *
+        FROM model_dispatches
+        WHERE execution_id = ?
+        ORDER BY ordinal DESC
+        LIMIT 1
+      `).get(recovery.recovery_of_execution_id) as ModelDispatchRow | undefined;
+      if (!producer || producer.run_id !== execution.run_id || producer.turn_id !== execution.turn_id) {
+        throw new Error(`Recovered assistant model lineage is missing: ${execution.id}`);
+      }
+      const stopReason = boundedText(input.stop_reason, 80, "Recovered model stop reason");
+      const messageDigest = actionDigest(input.message_digest);
+      if (producer.state === "settled") {
+        if (producer.stop_reason !== stopReason || producer.message_digest !== messageDigest) {
+          throw new Error(`Recovered assistant model evidence drifted: ${producer.id}`);
+        }
+        return toModelDispatch(producer);
+      }
+      if (producer.state !== "outcome_unknown") {
+        throw new Error(`Recovered assistant model outcome is not reconcilable: ${producer.id}`);
+      }
+      const reconciledAt = new Date().toISOString();
+      const update = this.db.prepare(`
+        UPDATE model_dispatches
+        SET state = 'settled', stop_reason = ?, message_digest = ?, updated_at = ?
+        WHERE id = ? AND state = 'outcome_unknown'
+      `).run(stopReason, messageDigest, reconciledAt, producer.id);
+      if (Number(update.changes) !== 1) {
+        throw new Error(`Recovered assistant model reconciliation raced: ${producer.id}`);
+      }
+      this.insertEvent(execution.run_id, execution.turn_id, "model_dispatch_reconciled", {
+        execution_id: producer.execution_id,
+        recovery_execution_id: execution.id,
+        dispatch_id: producer.id,
+        stop_reason: stopReason,
+        message_digest: messageDigest
+      });
+      return this.requireModelDispatch(producer.id);
     });
   }
 
@@ -995,6 +1065,89 @@ export class SqliteRuntimeStore {
     });
   }
 
+  resumeWorkerResultIntegration(input: {
+    run_id: string;
+    turn_id: string;
+    worker_results: Array<{ worker_id: string; result_digest: string }>;
+    evidence_digest: string;
+    lease_ms: number;
+  }): { run: RunRecord; execution: RunExecutionLease } | null {
+    return this.transaction(() => {
+      const run = this.requireRun(input.run_id);
+      if (run.status !== "paused" || run.turn_id !== input.turn_id) {
+        throw new Error(`Run is not paused on the Worker Result Turn: ${input.run_id}`);
+      }
+      if (this.hasUnresolvedActions(input.run_id)) {
+        throw new RunHasUnresolvedActionsError(input.run_id);
+      }
+      const pause = this.db.prepare(`
+        SELECT payload_json
+        FROM runtime_events
+        WHERE run_id = ? AND turn_id = ? AND kind = 'run_paused'
+        ORDER BY seq DESC
+        LIMIT 1
+      `).get(input.run_id, input.turn_id) as { payload_json: string } | undefined;
+      if (!pause) return null;
+      const payload = parseJsonObject(pause.payload_json, "Worker Result integration pause event");
+      if (payload.reason_kind !== "worker_result_integration_failed") return null;
+      if (typeof payload.execution_id !== "string") {
+        throw new Error(`Worker Result integration pause identity is invalid: ${input.run_id}`);
+      }
+      const failedExecution = this.db.prepare(`
+        SELECT id
+        FROM run_executions
+        WHERE id = ? AND run_id = ? AND turn_id = ?
+          AND kind = 'worker_result_continuation'
+          AND state = 'settled' AND outcome = 'paused'
+      `).get(payload.execution_id, input.run_id, input.turn_id) as { id: string } | undefined;
+      if (!failedExecution) {
+        throw new Error(`Worker Result integration failure evidence is invalid: ${input.run_id}`);
+      }
+      const delivered = this.getDeliveredWorkerResults(input.run_id, input.turn_id);
+      const expected = delivered.map((worker) => ({
+        worker_id: worker.id,
+        result_digest: worker.result_envelope!.digest
+      }));
+      if (expected.length === 0 || JSON.stringify(expected) !== JSON.stringify(input.worker_results)) {
+        throw new Error(`Worker Result integration evidence changed before recovery: ${input.run_id}`);
+      }
+      const evidenceDigest = actionDigest(input.evidence_digest);
+      const resumedAt = new Date().toISOString();
+      const runResult = this.db.prepare(`
+        UPDATE runs
+        SET status = 'running', answer = NULL, error = NULL, updated_at = ?
+        WHERE id = ? AND status = 'paused' AND turn_id = ?
+      `).run(resumedAt, input.run_id, input.turn_id);
+      if (Number(runResult.changes) !== 1) {
+        throw new Error(`Worker Result integration recovery raced: ${input.run_id}`);
+      }
+      const turnResult = this.db.prepare(`
+        UPDATE turns
+        SET status = 'running', answer = NULL, error = NULL, updated_at = ?
+        WHERE id = ? AND run_id = ? AND status = 'paused'
+      `).run(resumedAt, input.turn_id, input.run_id);
+      if (Number(turnResult.changes) !== 1) {
+        throw new Error(`Worker Result integration Turn recovery raced: ${input.turn_id}`);
+      }
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?")
+        .run(resumedAt, run.session_id);
+      this.insertEvent(input.run_id, input.turn_id, "run_continued", {
+        kind: "worker_result_integration_recovery",
+        evidence_refs: [failedExecution.id, ...expected.map((value) => value.result_digest)],
+        evidence_digest: evidenceDigest
+      });
+      const execution = this.insertRunExecution({
+        run_id: input.run_id,
+        turn_id: input.turn_id,
+        kind: "worker_result_continuation",
+        input_digest: evidenceDigest,
+        recovery_of_execution_id: null,
+        lease_ms: input.lease_ms
+      });
+      return { run: this.requireRun(input.run_id), execution };
+    });
+  }
+
   dispatchDiscussionWorker(input: {
     worker_id: string;
     reservation_id: string;
@@ -1288,6 +1441,56 @@ export class SqliteRuntimeStore {
     };
   }
 
+  getResultProducingRunExecution(runId: string): RunExecutionModelEvidence {
+    const latest = this.db.prepare(`
+      SELECT *
+      FROM run_executions
+      WHERE run_id = ? AND state = 'settled'
+      ORDER BY ordinal DESC
+      LIMIT 1
+    `).get(runId) as RunExecutionRow | undefined;
+    if (!latest) throw new Error(`Run has no settled execution evidence: ${runId}`);
+    const visited = new Set<string>();
+    let current: RunExecutionRow | undefined = latest;
+    while (current) {
+      if (visited.has(current.id)) {
+        throw new Error(`Run execution recovery lineage contains a cycle: ${runId}`);
+      }
+      visited.add(current.id);
+      const dispatches = (this.db.prepare(`
+        SELECT *
+        FROM model_dispatches
+        WHERE execution_id = ?
+        ORDER BY ordinal ASC
+      `).all(current.id) as unknown as ModelDispatchRow[]).map(toModelDispatch);
+      if (dispatches.length > 0) {
+        if (dispatches.some((dispatch) => dispatch.state !== "settled")) {
+          throw new Error(
+            `Result-producing execution has unresolved model evidence: ${current.id}/`
+            + dispatches.map((dispatch) => `${dispatch.id}:${dispatch.state}`).join(",")
+          );
+        }
+        return {
+          execution_id: current.id,
+          ordinal: current.ordinal,
+          dispatches
+        };
+      }
+      if (!current.recovery_of_execution_id) {
+        return { execution_id: current.id, ordinal: current.ordinal, dispatches: [] };
+      }
+      current = this.db.prepare(`
+        SELECT *
+        FROM run_executions
+        WHERE id = ? AND run_id = ?
+      `).get(current.recovery_of_execution_id, runId) as RunExecutionRow | undefined;
+      if (!current) {
+        throw new Error(`Run execution recovery lineage is missing: ${runId}`);
+      }
+    }
+    throw new Error(`Run execution recovery lineage is invalid: ${runId}`);
+  }
+
   getTerminalActionEvidence(runId: string, actionName: string): ActionRecoveryEvidence[] {
     return (this.db.prepare(`
       SELECT reservations.id AS reservation_id
@@ -1361,7 +1564,8 @@ export class SqliteRuntimeStore {
     execution: RunExecutionLease,
     outcome: Exclude<RunExecutionOutcome, "interrupted">,
     answer: string | null,
-    error: string | null
+    error: string | null,
+    pauseReasonKind = "action_outcome_unknown"
   ): RunRecord {
     return this.transaction(() => {
       this.requireActiveExecutionLease(execution);
@@ -1409,7 +1613,8 @@ export class SqliteRuntimeStore {
       } else if (outcome === "paused") {
         this.insertEvent(run.id, run.turn_id, "run_paused", {
           reason: error,
-          reason_kind: "action_outcome_unknown"
+          reason_kind: pauseReasonKind,
+          execution_id: execution.id
         });
       } else {
         this.insertEvent(run.id, run.turn_id, "run_failed", { error });
@@ -1792,16 +1997,32 @@ export class SqliteRuntimeStore {
       || result.actual_execution_lock_digest !== childLock.digest) {
       throw new Error(`Worker Result delivery identity drifted: ${worker.id}`);
     }
-    const execution = this.getLatestSettledRunExecution(child.id);
-    const dispatchIds = execution.dispatches.map((dispatch) => dispatch.id).sort();
-    const providers = [...new Set(execution.dispatches.map((dispatch) => dispatch.provider))];
-    const models = [...new Set(execution.dispatches.map((dispatch) => dispatch.model))];
+    const terminalExecution = this.getLatestSettledRunExecution(child.id);
+    const producerExecution = this.getResultProducingRunExecution(child.id);
+    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id).sort();
+    const providers = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.provider))];
+    const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
     const provider = providers.length === 0 ? null : providers[0]!;
     const model = models.length === 0 ? null : models[0]!;
-    const expectedOutcome = result.status === "failed" ? "failed" : "completed";
-    if (execution.outcome !== expectedOutcome
-      || result.actual_execution.execution_id !== execution.execution_id
-      || result.actual_execution.execution_ordinal !== execution.ordinal
+    const observedOutputTokens = this.getObservedOutputTokens(child.session_id);
+    const budgetViolation = parseBudgetViolation(result.findings.budget_violation);
+    const expectedBudgetViolation = {
+      output_tokens_exceeded:
+        result.consumed.output_tokens > task.budget.max_output_tokens,
+      timeout_exceeded: result.consumed.duration_ms > task.budget.timeout_ms,
+      deadline_exceeded: Date.parse(result.created_at) > Date.parse(task.deadline_at)
+    };
+    const budgetExceeded = Object.values(expectedBudgetViolation).some(Boolean);
+    const terminalOutcomeMatches = budgetExceeded
+      ? result.status === "failed"
+        && (terminalExecution.outcome === "completed" || terminalExecution.outcome === "failed")
+      : terminalExecution.outcome === (result.status === "failed" ? "failed" : "completed");
+    if (!terminalOutcomeMatches
+      || observedOutputTokens !== result.consumed.output_tokens
+      || !budgetViolation
+      || stableJson(budgetViolation) !== stableJson(expectedBudgetViolation)
+      || result.actual_execution.execution_id !== producerExecution.execution_id
+      || result.actual_execution.execution_ordinal !== producerExecution.ordinal
       || !sameStrings(result.actual_execution.model_dispatch_ids, dispatchIds)
       || providers.length > 1
       || models.length > 1
@@ -1837,6 +2058,26 @@ export class SqliteRuntimeStore {
       throw error;
     }
   }
+}
+
+function parseBudgetViolation(input: unknown): {
+  output_tokens_exceeded: boolean;
+  timeout_exceeded: boolean;
+  deadline_exceeded: boolean;
+} | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).length !== 3
+    || typeof value.output_tokens_exceeded !== "boolean"
+    || typeof value.timeout_exceeded !== "boolean"
+    || typeof value.deadline_exceeded !== "boolean") {
+    return null;
+  }
+  return {
+    output_tokens_exceeded: value.output_tokens_exceeded,
+    timeout_exceeded: value.timeout_exceeded,
+    deadline_exceeded: value.deadline_exceeded
+  };
 }
 
 function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {

@@ -82,7 +82,19 @@ integration and final-outcome authority and can inspect exact Worker/child-Run
 evidence through `worker_inspect`. Only the child-contained `none`
 `worker_needs_input` Action may produce an explicit semantic `needs_input`
 Result; technical Action/model uncertainty remains paused for exact recovery
-and is never relabeled.
+and is never relabeled. Task timeouts above the supported Node timer bound fail
+before reservation. A token, timeout, or deadline overrun produces exactly one
+`failed` Result from the terminal child evidence and cannot cause repeated
+child execution or a permanently result-less Worker. Persisted-final-assistant
+recovery reconciles the original producing model dispatch, so the Result names
+the producer rather than an empty recovery execution.
+
+If the Supervisor's first integration attempt fails technically after Result
+delivery, the parent and current integration Turn become `paused`, not
+terminal. A later `continue` validates the same delivered Result digests,
+rebuilds their runtime-owned context from SQLite, and starts another bounded
+integration execution in that same Turn. Result delivery is not repeated and
+the Worker still cannot claim parent completion.
 
 `vnext worker execute` is the separate foreground process Adapter for that one
 read-only Worker Session. It uses the same state/profile/config selectors, the

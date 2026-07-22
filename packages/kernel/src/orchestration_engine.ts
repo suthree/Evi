@@ -21,6 +21,7 @@ import {
   type WorkerInspection
 } from "./orchestration_types.js";
 import type { RunExecutionLease } from "./execution_types.js";
+import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const parameters = Type.Object({
@@ -35,7 +36,7 @@ const parameters = Type.Object({
   deadline_at: Type.String({ minLength: 24, maxLength: 32 }),
   budget: Type.Object({
     max_output_tokens: Type.Integer({ minimum: 1 }),
-    timeout_ms: Type.Integer({ minimum: 1 })
+    timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
   }, { additionalProperties: false })
 }, { additionalProperties: false });
 
@@ -130,10 +131,6 @@ export class OrchestrationEngine {
     return this.store.inspectWorker(workerId);
   }
 
-  inspectReservation(reservationId: string): WorkerInspection | null {
-    return this.store.inspectWorkerByReservation(reservationId);
-  }
-
   inspectChildEvidence(parentRunId: string, workerId: string): JsonObject {
     const worker = this.inspect(workerId);
     if (!worker || worker.parent_run_id !== parentRunId) {
@@ -183,6 +180,41 @@ export class OrchestrationEngine {
       lease_ms: leaseMs
     });
     return { ...resumed, request, runtime_context: runtimeContext };
+  }
+
+  pauseSupervisorIntegration(
+    execution: RunExecutionLease,
+    runtimeContext: JsonObject | undefined,
+    error: string
+  ): RunRecord | null {
+    if (runtimeContext?.kind !== "runtime_worker_result_delivery") return null;
+    const canonical = this.runtimeContextForTurn(execution.run_id, execution.turn_id);
+    if (!canonical || stableJson(canonical) !== stableJson(runtimeContext)) {
+      throw new Error(`Supervisor Worker Result runtime context drifted: ${execution.run_id}`);
+    }
+    return this.store.pauseWorkerResultIntegration(execution, error);
+  }
+
+  resumeSupervisorIntegration(
+    runId: string,
+    turnId: string,
+    leaseMs: number
+  ): SupervisorWorkerContinuation | null {
+    const results = this.store.getDeliveredWorkerResults(runId, turnId);
+    if (results.length === 0) return null;
+    const runtimeContext = materializeWorkerResultRuntimeContext(runId, results);
+    const request = "Retry this same Supervisor Turn using the unchanged typed Worker Result evidence.";
+    const resumed = this.store.resumeWorkerResultIntegration({
+      run_id: runId,
+      turn_id: turnId,
+      worker_results: results.map((worker) => ({
+        worker_id: worker.id,
+        result_digest: worker.result_envelope!.digest
+      })),
+      evidence_digest: sha256(stableJson(runtimeContext)),
+      lease_ms: leaseMs
+    });
+    return resumed ? { ...resumed, request, runtime_context: runtimeContext } : null;
   }
 
   runtimeContextForTurn(runId: string, turnId: string): JsonObject | null {

@@ -56,3 +56,9 @@ export interface SettledRunExecutionEvidence {
   outcome: "waiting" | "completed" | "paused" | "failed";
   dispatches: ModelDispatchRecord[];
 }
+
+export interface RunExecutionModelEvidence {
+  execution_id: string;
+  ordinal: number;
+  dispatches: ModelDispatchRecord[];
+}

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,14 +7,17 @@ import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Type } from "typebox";
+import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import {
   ActionGateway,
   createDiscussionWorkerDispatchAction,
+  createLockedOpenAICompatiblePiLoopFactory,
   createRuntimeInspectAction,
   createWorkerInspectAction,
   createWorkerNeedsInputAction,
   DiscussionWorkerRuntime,
   KernelRuntime,
+  MAX_RUNTIME_TIMEOUT_MS,
   materializeResultEnvelope,
   OrchestrationEngine,
   parseResultEnvelope,
@@ -87,7 +91,7 @@ test("Orchestration Engine queues one immutable discussion worker through an exa
     if (repeated.status !== "completed") return;
     assert.equal(repeated.reservation.id, first.reservation.id);
     assert.equal(repeated.receipt.id, first.receipt.id);
-    assert.equal(engine.inspectReservation(first.reservation.id)?.id, workerId);
+    assert.equal(engine.inspect(workerId)?.reservation_id, first.reservation.id);
     assert.equal(store.inspectRun(started.run.id)?.action_count, 1);
     assert.equal(store.inspectRun(started.run.id)?.effect_receipt_count, 1);
   } finally {
@@ -118,7 +122,40 @@ test("discussion-worker authority fails closed before reservation unless the com
     assert.equal(denied.status, "denied");
     assert.match(denied.status === "denied" ? denied.reason : "", /composition denies external_read/);
     assert.equal(store.inspectRun(started.run.id)?.action_count, 0);
-    assert.equal(engine.inspectReservation("missing"), null);
+    assert.equal(engine.inspect("missing"), null);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("discussion-worker timeout budget rejects Node timer overflow before reservation", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-orchestration-timeout-bound-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const gateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const started = store.beginRun({
+      request: "Reject a timeout that Node would collapse to one millisecond.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, 30_000);
+    const denied = await gateway.invoke({
+      run_id: started.run.id,
+      turn_id: started.run.turn_id,
+      invocation_id: "overflow-timeout-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: {
+        ...validTaskInput(),
+        budget: { max_output_tokens: 1_000, timeout_ms: MAX_RUNTIME_TIMEOUT_MS + 1 }
+      }
+    });
+    assert.equal(denied.status, "denied");
+    assert.match(denied.status === "denied" ? denied.reason : "", /arguments do not match|timeout/iu);
+    assert.equal(store.inspectRun(started.run.id)?.action_count, 0);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
@@ -208,7 +245,7 @@ test("discussion-worker reconciliation creates or reuses the exact deterministic
       if (first.status !== "outcome_unknown") continue;
       const expectedWorkerId = String(first.reservation.arguments.worker_id);
       assert.equal(
-        engine.inspectReservation(first.reservation.id)?.id ?? null,
+        engine.inspect(expectedWorkerId)?.id ?? null,
         crashPoint === "after_worker" ? expectedWorkerId : null
       );
 
@@ -217,7 +254,7 @@ test("discussion-worker reconciliation creates or reuses the exact deterministic
       });
       const recovered = await recoveryGateway.reconcileRun(parent.run.id);
       assert.equal(recovered[0]?.status, "completed");
-      assert.equal(engine.inspectReservation(first.reservation.id)?.id, expectedWorkerId);
+      assert.equal(engine.inspect(expectedWorkerId)?.reservation_id, first.reservation.id);
       assert.equal(store.inspectRun(parent.run.id)?.worker_count, 1);
       const repeated = await recoveryGateway.reconcileRun(parent.run.id);
       assert.deepEqual(repeated, []);
@@ -670,7 +707,7 @@ test("explicit worker_needs_input Action produces one typed advisory Result", as
   }
 });
 
-test("worker total token and time budgets fail closed before Result delivery", async () => {
+test("worker total token and time overruns produce one failed Result without rerunning the child", async () => {
   for (const budgetKind of ["tokens", "time"] as const) {
     const fixture = await mkdtemp(join(tmpdir(), `evi-discussion-worker-budget-${budgetKind}-`));
     const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
@@ -700,8 +737,11 @@ test("worker total token and time budgets fail closed before Result delivery", a
       assert.equal(dispatched.status, "completed");
       if (dispatched.status !== "completed") return;
       const workerId = String(dispatched.receipt.output.worker_id);
-      await assert.rejects(
-        () => new DiscussionWorkerRuntime(store, new ActionGateway(store, [runtimeInspect]), {
+      assert.equal(store.waitRun(parent.execution, "Wait for bounded Worker evidence.").status, "waiting");
+      const completed = await new DiscussionWorkerRuntime(
+        store,
+        new ActionGateway(store, [runtimeInspect]),
+        {
           create(input) {
             return {
               execute: async () => {
@@ -721,14 +761,132 @@ test("worker total token and time budgets fail closed before Result delivery", a
               }
             };
           }
-        }).execute(workerId),
-        /exceeded its bounded budget/
+        }
+      ).execute(workerId);
+      assert.equal(completed.status, "failed");
+      assert.equal(completed.result_envelope?.status, "failed");
+      assert.match(completed.result_envelope?.summary ?? "", /exceeded its bounded Task budget/);
+      assert.equal(
+        completed.result_envelope?.findings.budget_violation[budgetKind === "tokens"
+          ? "output_tokens_exceeded"
+          : "timeout_exceeded"],
+        true
       );
-      assert.equal(engine.inspect(workerId)?.result_envelope, null);
+      const childRunId = completed.child_run_id!;
+      const childExecutionCount = store.inspectRun(childRunId)?.execution_count;
+      await assert.rejects(
+        () => new DiscussionWorkerRuntime(
+          store,
+          new ActionGateway(store, [runtimeInspect]),
+          { create: () => ({ execute: async () => ({ answer: "must not run" }) }) }
+        ).execute(workerId),
+        /cannot be claimed/
+      );
+      assert.equal(store.inspectRun(childRunId)?.execution_count, childExecutionCount);
+      const resumed = engine.resumeSupervisor(parent.run.id, 100);
+      assert.ok(resumed);
+      assert.equal(resumed.runtime_context.kind, "runtime_worker_result_delivery");
+      assert.match(JSON.stringify(resumed.runtime_context), /exceeded its bounded Task budget/);
+      store.failRun(resumed.execution, "Test-only integration stop after validating failed Result delivery.");
     } finally {
       store.close();
       await rm(fixture, { recursive: true, force: true });
     }
+  }
+});
+
+test("worker protocol recovery reports the original answer-producing model execution", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-producer-lineage-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Preserve the actual Worker model producer across protocol recovery.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        contracts: parentGateway.contracts()
+      })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "producer-lineage-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const claimed = engine.claim(workerId, 100);
+    const child = store.beginRun({
+      request: "Execute typed Worker context.",
+      execution_lock: claimed.worker.child_execution_lock
+    }, 100, {
+      worker_id: workerId,
+      owner_token: claimed.lease.owner_token
+    });
+    const producerDispatch = store.startModelDispatch(child.execution, {
+      provider: claimed.worker.child_execution_lock.model.provider,
+      model: claimed.worker.child_execution_lock.model.model
+    });
+    store.observeModelResponse(child.execution, producerDispatch.id, 200);
+    const assistant = fauxAssistantMessage("Recovered Worker evidence from the original producer.");
+    store.appendPiSessionEntry(child.run.session_id, {
+      id: "persisted-worker-final-answer",
+      parentId: null,
+      type: "message",
+      timestamp: new Date().toISOString(),
+      message: assistant
+    });
+    await delay(150);
+
+    const completed = await new DiscussionWorkerRuntime(
+      store,
+      new ActionGateway(store, [runtimeInspect]),
+      createLockedOpenAICompatiblePiLoopFactory({
+        store,
+        execution_lock: claimed.worker.child_execution_lock,
+        api_key: "synthetic-worker-lineage-key"
+      }),
+      { worker_lease_ms: 100, run_execution_lease_ms: 100 }
+    ).execute(workerId);
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.result_envelope?.actual_execution.execution_id, child.execution.id);
+    assert.equal(completed.result_envelope?.actual_execution.execution_ordinal, 1);
+    assert.deepEqual(completed.result_envelope?.actual_execution.model_dispatch_ids, [
+      producerDispatch.id
+    ]);
+    assert.equal(
+      completed.result_envelope?.actual_execution.provider,
+      claimed.worker.child_execution_lock.model.provider
+    );
+    assert.equal(
+      completed.result_envelope?.actual_execution.model,
+      claimed.worker.child_execution_lock.model.model
+    );
+    assert.equal(store.inspectRun(child.run.id)?.execution_count, 2);
+    assert.equal(store.inspectRun(child.run.id)?.unknown_model_dispatch_count, 0);
+    assert.equal(store.inspectRun(child.run.id)?.model_dispatch_count, 1);
+    const raw = new DatabaseSync(join(fixture, "runtime.sqlite"));
+    try {
+      const reconciled = raw.prepare(
+        "SELECT message_digest FROM model_dispatches WHERE id = ?"
+      ).get(producerDispatch.id) as { message_digest: string };
+      assert.equal(
+        reconciled.message_digest,
+        createHash("sha256").update(JSON.stringify(assistant)).digest("hex")
+      );
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
   }
 });
 
@@ -821,6 +979,78 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
     assert.equal(parent?.deliverable_worker_count, 0);
     assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, integrated.turn_id);
     assert.equal(store.inspectRun(childRunId)?.status, "completed");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Supervisor integration failure pauses and later recovers the same Run and Result Turn", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-supervisor-integration-failure-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    let workerId = "";
+    let loopCalls = 0;
+    const supervisor = new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            loopCalls += 1;
+            if (loopCalls === 1) {
+              const dispatched = await input.action_gateway.invoke({
+                run_id: input.run_id,
+                turn_id: input.turn_id,
+                invocation_id: "integration-failure-worker-call",
+                action_name: workerDispatch.contract.name,
+                arguments: validTaskInput()
+              });
+              assert.equal(dispatched.status, "completed");
+              if (dispatched.status !== "completed") throw new Error("worker dispatch failed");
+              workerId = String(dispatched.receipt.output.worker_id);
+              return { answer: "Wait for integration evidence." };
+            }
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            if (loopCalls === 2) {
+              assert.match(request, /Continue this same Supervisor Run/);
+              throw new Error("synthetic integration transport failure");
+            }
+            assert.match(request, /Retry this same Supervisor Turn/);
+            assert.match(JSON.stringify(input.runtime_context), /Recover this advisory Result/);
+            return { answer: "Recovered the same integration Turn." };
+          }
+        };
+      }
+    }, { orchestration: engine });
+    const parent = await supervisor.submit({
+      request: "Recover a technical integration failure without losing the Result.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    });
+    assert.equal(parent.status, "waiting");
+    await new DiscussionWorkerRuntime(
+      store,
+      new ActionGateway(store, [runtimeInspect]),
+      { create: () => ({ execute: async () => ({ answer: "Recover this advisory Result." }) }) }
+    ).execute(workerId);
+
+    const paused = await supervisor.continueRun(parent.run_id);
+    assert.equal(paused.status, "paused");
+    assert.notEqual(paused.turn_id, parent.turn_id);
+    assert.match(paused.error ?? "", /synthetic integration transport failure/);
+    const integrationTurnId = paused.turn_id;
+    assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, integrationTurnId);
+
+    const recovered = await supervisor.continueRun(parent.run_id);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.turn_id, integrationTurnId);
+    assert.match(recovered.answer ?? "", /Recovered the same integration Turn/);
+    assert.equal(supervisor.inspect(parent.run_id)?.execution_count, 3);
+    assert.equal(loopCalls, 3);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });

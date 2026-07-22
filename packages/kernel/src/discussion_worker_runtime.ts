@@ -98,9 +98,6 @@ export class DiscussionWorkerRuntime {
   ): Promise<RunExecutionResult> {
     const runtimeContext = materializeTaskRuntimeContext(worker.task_envelope);
     const runtimeDeadline = workerRuntimeDeadline(worker);
-    if (Date.parse(runtimeDeadline) <= Date.now()) {
-      throw new Error(`Discussion Worker budget elapsed before child execution: ${worker.id}`);
-    }
     const runtime = new KernelRuntime(
       this.store,
       this.actions,
@@ -161,33 +158,39 @@ export class DiscussionWorkerRuntime {
     }
     const observedOutputTokens = this.store.getObservedOutputTokens(child.session_id);
     const durationMs = Math.max(0, Date.now() - Date.parse(worker.created_at));
-    if (observedOutputTokens > worker.task_envelope.budget.max_output_tokens
-      || durationMs > worker.task_envelope.budget.timeout_ms
-      || Date.now() > Date.parse(worker.task_envelope.deadline_at)) {
-      throw new Error(`Discussion Worker exceeded its bounded budget: ${worker.id}`);
-    }
-    const actualExecution = this.store.getLatestSettledRunExecution(child.id);
+    const createdAt = new Date().toISOString();
+    const budgetViolation = {
+      output_tokens_exceeded:
+        observedOutputTokens > worker.task_envelope.budget.max_output_tokens,
+      timeout_exceeded: durationMs > worker.task_envelope.budget.timeout_ms,
+      deadline_exceeded: Date.parse(createdAt) > Date.parse(worker.task_envelope.deadline_at)
+    };
+    const budgetExceeded = Object.values(budgetViolation).some(Boolean);
+    const actualExecution = this.store.getResultProducingRunExecution(child.id);
     const providers = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.provider))];
     const models = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.model))];
     if (providers.length > 1 || models.length > 1) {
       throw new Error(`Discussion Worker model identity drifted across one execution: ${worker.id}`);
     }
-    const needsInput = result.status === "completed"
+    const needsInput = !budgetExceeded && result.status === "completed"
       ? this.orchestration.inspectNeedsInput(worker)
       : null;
-    const rawSummary = result.status === "completed"
-      ? result.answer ?? "Discussion worker completed without a text answer."
-      : result.error ?? `Discussion worker ended with status ${result.status}.`;
+    const rawSummary = budgetExceeded
+      ? "Discussion worker exceeded its bounded Task budget; its output is failed advisory evidence."
+      : result.status === "completed"
+        ? result.answer ?? "Discussion worker completed without a text answer."
+        : result.error ?? `Discussion worker ended with status ${result.status}.`;
     const summary = boundedText(rawSummary, MAX_SUMMARY_LENGTH);
     return materializeResultEnvelope({
       worker_id: worker.id,
       child_run_id: result.run_id,
-      status: needsInput ? "needs_input" : result.status,
+      status: budgetExceeded ? "failed" : needsInput ? "needs_input" : result.status,
       summary,
       findings: {
         child_run_status: result.status,
         answer_excerpt: result.answer === null ? null : summary,
-        answer_truncated: result.answer !== null && result.answer.trim().length > summary.length
+        answer_truncated: result.answer !== null && result.answer.trim().length > summary.length,
+        budget_violation: budgetViolation
       },
       artifact_refs: [],
       evidence_refs: [
@@ -212,7 +215,7 @@ export class DiscussionWorkerRuntime {
         output_tokens: observedOutputTokens,
         duration_ms: durationMs
       },
-      created_at: new Date().toISOString()
+      created_at: createdAt
     });
   }
 

@@ -89,7 +89,19 @@ for independent Supervisor verification. Task context/artifact refs, Result
 execution/model identity, cumulative output-token and wall-time budgets, exact
 lease identity, atomic child binding, stale-owner reclaim, terminal-result
 recovery without model replay, and single delivery are enforced from SQLite
-evidence.
+evidence. A Task timeout larger than Node's supported timer bound is rejected
+before reservation. If observed token, timeout, or deadline evidence exceeds
+the Task budget, the Worker writes one terminal `failed` Result instead of
+remaining permanently result-less or rerunning the child. When a persisted
+final assistant answer closes protocol recovery without another provider
+request, its original producing execution and model dispatch are reconciled and
+remain the Result's actual model lineage.
+
+A technical failure while the Supervisor integrates an already delivered
+Result pauses that same integration Turn. A later `continue` rebuilds the exact
+typed Result context from SQLite and retries the same Turn; it does not reopen a
+terminal parent, redeliver the Result into another Turn, or treat Worker output
+as user speech.
 
 There is still no worker parallelism, execution writer, reviewer role,
 `signal/cancel`, optional Goal, learning, local/external write Action, resident

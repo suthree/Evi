@@ -13,7 +13,10 @@ import type {
 import { assertExecutionLockMatchesContracts } from "./execution_lock.js";
 import type { OrchestrationEngine } from "./orchestration_engine.js";
 import type { WorkerRunBinding } from "./orchestration_types.js";
-import { validateRuntimeLeaseDuration } from "./runtime_limits.js";
+import {
+  MAX_RUNTIME_TIMEOUT_MS,
+  validateRuntimeLeaseDuration
+} from "./runtime_limits.js";
 import type { RunExecutionLease, RunExecutionRecoveryEvidence } from "./execution_types.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -44,6 +47,15 @@ export class KernelRuntime {
     validateRuntimeLeaseDuration(this.executionLeaseMs, "Run execution");
     this.orchestration = options.orchestration;
     this.runtimeBudget = options.runtime_budget;
+    if (this.runtimeBudget) {
+      const deadline = Date.parse(this.runtimeBudget.deadline_at);
+      if (!Number.isSafeInteger(this.runtimeBudget.max_output_tokens)
+        || this.runtimeBudget.max_output_tokens < 1
+        || !Number.isFinite(deadline)
+        || deadline - Date.now() > MAX_RUNTIME_TIMEOUT_MS) {
+        throw new Error("Runtime budget is invalid or exceeds the supported timer bound.");
+      }
+    }
   }
 
   async submit(
@@ -119,6 +131,20 @@ export class KernelRuntime {
 
     const executionEvidence = this.store.getRunExecutionRecoveryEvidence(runId);
     if (!executionEvidence) {
+      const supervisorRecovery = this.orchestration?.resumeSupervisorIntegration(
+        runId,
+        afterReconciliation.turn_id,
+        this.executionLeaseMs
+      ) ?? null;
+      if (supervisorRecovery) {
+        return this.executeRun(
+          supervisorRecovery.run,
+          supervisorRecovery.execution,
+          supervisorRecovery.request,
+          executionLock,
+          supervisorRecovery.runtime_context
+        );
+      }
       throw new Error(`Run has no bounded continuation evidence: ${runId}`);
     }
     if (executionEvidence.dispatches.length === 0) {
@@ -220,6 +246,12 @@ export class KernelRuntime {
         );
         return toResult(paused);
       }
+      const pausedIntegration = this.orchestration?.pauseSupervisorIntegration(
+        execution,
+        runtimeContext,
+        errorMessage(cause)
+      ) ?? null;
+      if (pausedIntegration) return toResult(pausedIntegration);
       const failed = this.store.failRun(execution, errorMessage(cause));
       return toResult(failed);
     } finally {

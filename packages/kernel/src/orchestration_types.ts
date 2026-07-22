@@ -6,6 +6,7 @@ import {
   materializeExecutionLock,
   parseExecutionLock
 } from "./execution_lock.js";
+import { validateRuntimeTimeoutDuration } from "./runtime_limits.js";
 
 const TASK_ENVELOPE_SCHEMA_VERSION = 1;
 const RESULT_ENVELOPE_SCHEMA_VERSION = 1;
@@ -144,6 +145,8 @@ export function normalizeDiscussionTaskInput(input: unknown): DiscussionTaskInpu
   const value = record(input, "Discussion Task");
   const budget = record(value.budget, "Discussion Task budget");
   assertExactKeys(budget, ["max_output_tokens", "timeout_ms"], "Discussion Task budget");
+  const timeoutMs = positiveInteger(budget.timeout_ms, "Task Envelope timeout budget");
+  validateRuntimeTimeoutDuration(timeoutMs, "Task Envelope");
   return {
     objective: text(value.objective, "Task Envelope objective"),
     expected_result: text(value.expected_result, "Task Envelope expected result"),
@@ -161,7 +164,7 @@ export function normalizeDiscussionTaskInput(input: unknown): DiscussionTaskInpu
         budget.max_output_tokens,
         "Task Envelope output-token budget"
       ),
-      timeout_ms: positiveInteger(budget.timeout_ms, "Task Envelope timeout budget")
+      timeout_ms: timeoutMs
     }
   };
 }
@@ -325,6 +328,7 @@ export function deriveDiscussionWorkerLock(
     "Discussion worker output-token budget"
   );
   const timeoutMs = positiveInteger(budget.timeout_ms, "Discussion worker timeout budget");
+  validateRuntimeTimeoutDuration(timeoutMs, "Discussion worker");
   if (maxOutputTokens > parent.model.max_output_tokens || timeoutMs > parent.model.timeout_ms) {
     throw new Error("Discussion worker budget exceeds its parent Execution Lock.");
   }
