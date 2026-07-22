@@ -64,6 +64,10 @@ _Avoid_: Full memory dump, default archive preload
 The terminal record of a Run's status, answer or failure, and evidence references. It does not imply learning, evolution, or deployment occurred.
 _Avoid_: Universal receipt, model self-report, capability proof
 
+**Run Continuation**:
+The explicit transition that resumes one paused Run in its existing Turn and session only after its unresolved Actions have terminal reconciliation evidence. It preserves the original uncertainty and records the evidence identity used to continue.
+_Avoid_: Blind retry, new Run, transcript rewrite, automatic scheduler
+
 ## Actions and evidence
 
 **Tool Protocol**:

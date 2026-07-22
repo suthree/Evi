@@ -10,9 +10,10 @@ The accepted vNext architecture keeps one persistent local-first Evi self while
 replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
 a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
 Evi Action Gateway owns effects. This target does not expand the implemented
-v0.1/v0.2 contract or claim a deployment cutover. The first two vNext source
-slices now prove the Kernel and a read-only, reservation-first Gateway path;
-neither is connected to production ingress.
+v0.1/v0.2 contract or claim a deployment cutover. The first three vNext source
+slices now prove the Kernel, a read-only reservation-first Gateway, and explicit
+same-Run continuation after terminal reconciliation; none is connected to
+production ingress.
 
 ## Start here
 
@@ -88,6 +89,8 @@ records that implemented boundary. The accepted replacement is
 a Goal, Pi owns the only Agent Loop, and SQLite is the structured state
 authority. [ADR 0013](docs/adr/0013-reservation-first-action-gateway.md) defines
 the reservation-first Action Gateway slice and its current read-only limit.
+[ADR 0014](docs/adr/0014-reconciled-run-continuation.md) defines explicit
+continuation after terminal Action reconciliation.
 v0.2 remains the rollback runtime until a separately verified cutover.
 
 | Need | Source |

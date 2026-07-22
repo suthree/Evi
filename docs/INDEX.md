@@ -17,6 +17,7 @@ Load this compact index by default. Do not preload every stable document.
 - Current v0.2 native evolution control: `docs/adr/0001-native-evolution-control-plane.md`
 - Accepted vNext Turn/Run, Pi loop, SQLite, Action Gateway, optional Goal, and Adaptation owner model: `docs/adr/0012-vnext-runtime-kernel.md`
 - Accepted reservation-first vNext Action Gateway, replay prevention, and read-only first action: `docs/adr/0013-reservation-first-action-gateway.md`
+- Accepted paused-Run continuation after terminal Action reconciliation: `docs/adr/0014-reconciled-run-continuation.md`
 - Shared control state, per-Goal worktrees, and PR-only delivery: `docs/adr/0003-shared-control-state-and-pr-only-delivery.md`
 - Node-local active vaults and Evi-controlled LuBan promotion: `docs/adr/0004-node-local-vault-and-luban-promotion.md`
 - Typed cognition envelopes and fail-closed model-decision parsing: `docs/adr/0005-typed-cognition-envelope.md`

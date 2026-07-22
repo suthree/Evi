@@ -52,8 +52,8 @@ vNext 切片证明了不带 Goal 的 Turn、窄 Pi Adapter 和单一 SQLite stat
   policy-provider Interface。
 - Reservation、状态迁移、event evidence 和 receipt creation 在 SQLite Store 内以事务
   完成。参数和 observation body 都有大小上限，但这不是 OS 或 filesystem sandbox。
-- Reconciliation 可以在重启后把 action 变成 terminal，但本切片不会续跑暂停的 Pi/model
-  loop。Run continuation 与 recovery 是下一个独立 runtime 切片。
+- Reconciliation 可以在重启后把 action 变成 terminal。ADR 0014 增加显式的 same-Run
+  continuation 路径并保留原 transcript；provider-dispatch crash recovery 仍是独立切片。
 - Write 和 external action 需要后续单独接受 policy、containment、credential-reference、
   verification 与 recovery 设计。只注册 handler 不能让这些 effect class 获得执行权。
 - 目前没有 CLI、Web、IM 或 API ingress 使用 vNext；没有重启或部署服务，v0.2 仍是当前

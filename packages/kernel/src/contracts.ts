@@ -1,3 +1,5 @@
+import type { ActionGateway } from "./action_gateway.js";
+
 export type RunStatus = "running" | "paused" | "completed" | "failed";
 
 export interface RunRecord {
@@ -19,6 +21,7 @@ export interface RunInspection extends RunRecord {
   action_count: number;
   unresolved_action_count: number;
   effect_receipt_count: number;
+  continuation_count: number;
 }
 
 export interface RunOutcome {
@@ -55,5 +58,10 @@ export interface AgentLoop {
 }
 
 export interface AgentLoopFactory {
-  create(input: { run_id: string; turn_id: string; session_id: string }): AgentLoop;
+  create(input: {
+    run_id: string;
+    turn_id: string;
+    session_id: string;
+    action_gateway: ActionGateway;
+  }): AgentLoop;
 }
