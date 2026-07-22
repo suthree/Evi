@@ -59,6 +59,46 @@ test("Action Gateway reserves before dispatch and reuses one terminal receipt", 
   }
 });
 
+test("Action Gateway safely dispatches an exact reservation that never entered dispatch", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  let executeCalls = 0;
+  const handler = probeHandler({
+    async execute() {
+      executeCalls += 1;
+      return { outcome: "succeeded", summary: "Reserved invocation dispatched once.", output: {} };
+    }
+  });
+  try {
+    const { run } = store.beginRun({ request: "Recover a pre-dispatch reservation." }, 30_000);
+    const gateway = new ActionGateway(store, [handler]);
+    const invocation = {
+      run_id: run.id,
+      turn_id: run.turn_id,
+      invocation_id: "reserved-only-call",
+      action_name: handler.contract.name,
+      arguments: {}
+    };
+    const markDispatching = store.markActionDispatching.bind(store);
+    store.markActionDispatching = () => {
+      throw new Error("simulated crash after reservation");
+    };
+    await assert.rejects(gateway.invoke(invocation), /simulated crash after reservation/);
+    assert.equal(store.listUnresolvedActions(run.id)[0]?.state, "reserved");
+    assert.equal(executeCalls, 0);
+
+    store.markActionDispatching = markDispatching;
+    const recovered = await gateway.invoke(invocation);
+    assert.equal(recovered.status, "completed");
+    assert.equal(executeCalls, 1);
+    assert.equal(store.inspectRun(run.id)?.unresolved_action_count, 0);
+    assert.equal(store.inspectRun(run.id)?.effect_receipt_count, 1);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("Action Gateway rejects invocation identity drift without replay", async () => {
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
