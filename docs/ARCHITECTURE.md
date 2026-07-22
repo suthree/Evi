@@ -1,9 +1,8 @@
 # Evi Architecture
 
-Status: current module ownership and staged migration direction, updated on
-2026-07-18 after the stabilization audit, the first outcome-learning
-consolidation, and the dynamic capability-selection seam. Source, tests, and
-live evidence decide current implementation.
+Status: current v0.2 module ownership plus the accepted vNext replacement
+target, updated on 2026-07-22 after ADR 0012. Source, tests, and live evidence
+decide current implementation; the vNext section is not a deployment claim.
 
 The Simplified Chinese companion is
 [`docs/ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md).
@@ -25,9 +24,9 @@ may replace shallow paths. It does not own:
 - SOP, skill, vault, promotion, and retirement policy:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
-- active self-evolution and durable decisions: `GoalRuntime`, `Harness`,
-  `OutcomeReceipt`, stable docs, and accepted ADRs; GitHub is optional external
-  delivery evidence;
+- durable architecture and evolution decisions: stable docs and accepted ADRs;
+  ADR 0001 records the current v0.2 owner model and ADR 0012 owns the vNext
+  replacement target;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -52,9 +51,10 @@ or owner, update this document and its Chinese companion in the same delivery.
 5. **Replace, do not layer.** A migration cuts over one complete vertical path,
    adds interface-level tests, and deletes the superseded path and shallow
    tests. No indefinite dual-write, forwarding facade, or compatibility stack.
-6. **Raw evidence is canonical.** Checkpoints, context views, scorecards, and
-   dashboards are derived and rebuildable. They do not become competing state
-   owners.
+6. **Keep one state authority.** SQLite is the canonical structured runtime
+   state. Large immutable evidence may live in content-addressed artifacts;
+   checkpoints, context views, scorecards, JSONL exports, and dashboards are
+   derived and rebuildable rather than competing owners.
 7. **Context is selected, not accumulated.** Indexes and manifests route to
    evidence. Raw logs, tool bodies, task history, and long documents remain
    cold until selected.
@@ -62,7 +62,47 @@ or owner, update this document and its Chinese companion in the same delivery.
    tool competence. Promotion requires reusable scope, verified outcomes,
    failure/fallback knowledge, and revision or retirement evidence.
 
-## Current Runtime Shape
+## Accepted vNext Runtime Shape
+
+ADR 0012 replaces the v0.2 owner model after a verified cutover. The target is:
+
+```text
+CLI / Web / IM / API
+          |
+          v
+   Evi Runtime Kernel ---- inspect / control
+          |
+          +---- SQLite canonical state
+          |
+          v
+ Pi AgentHarness (only Agent Loop owner)
+          |
+          v
+    Action Gateway
+          |
+          +---- typed tools / delegated surfaces
+          +---- reservation / evidence / reconciliation
+
+optional Goal -------- links objectives and budgets to Runs
+Adaptation Engine ---- evaluates and activates learning or evolution candidates
+```
+
+| Concern | vNext owner | Boundary |
+| --- | --- | --- |
+| Ordinary work | Turn inside a Run | No Goal is required |
+| Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
+| Structured state | SQLite runtime store | JSONL and directory scans are projections, fixtures, or archives |
+| Tool and durable effects | Action Gateway | Typed policy, containment, reservation, evidence, reconciliation |
+| Long-lived intent | Optional Goal extension | Objective, acceptance, budget, continuation, Run links only |
+| Durable growth | Adaptation Engine | Candidate, evaluation, activation, rollback or retirement |
+| Completion evidence | Specialized outcomes and receipts | Run, effect, evaluation, activation, and deployment remain distinct |
+
+The first implementation slice is intentionally smaller than this table: it
+proves a Goal-free Turn, the Pi loop adapter, and SQLite state without tools,
+learning, subagents, ingress cutover, migration, or deployment. v0.2 remains
+the current rollback runtime until later slices satisfy their own gates.
+
+## Current v0.2 Runtime Shape
 
 ```text
 CLI / Web / IM

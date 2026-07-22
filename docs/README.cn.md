@@ -9,9 +9,10 @@ Evi 是一个本地优先、单机运行、持续成长的 Agent Runtime。长�
 持久 Evi Self，通过 CLI、Web、IM、浏览器、IDE、Connector 等不同入口进入现场，
 根据 Context 选择合适的工具、专业 Agent 或执行环境，并由 Evi 自己验收结果和学习经验。
 
-Evi 不追求重新实现每个专业工具。它拥有 Goal、Context 选择、Harness 决策、Evidence、
-Memory、学习和完成判定；编码、浏览、搜索、沙箱进程和专业 SaaS 优先通过有界 Adapter
-委托给成熟工具。当前 owner 与渐进替换顺序见
+Evi 不追求重新实现每个专业工具。已接受的 vNext 中，普通工作是 Run 内的 Turn，Pi
+拥有唯一 Agent Loop，SQLite 拥有结构化 Runtime State，Evi Action Gateway 拥有 effect，
+Goal 只在确有长期意图时使用。编码、浏览、搜索、沙箱进程和专业 SaaS 优先通过有界
+Adapter 委托给成熟工具。当前 owner 与替换顺序见
 [`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)。
 
 ## 当前已实现边界
@@ -31,7 +32,7 @@ v0.1 是 local-first、single-machine runtime：
 长期产品愿景不等于已实现功能。当前行为以源码、测试、
 [`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和 live health 为准。
 
-## 一次任务的基本闭环
+## 当前 v0.2 的任务闭环
 
 ```text
 任务 / IM 消息
@@ -47,6 +48,14 @@ v0.1 是 local-first、single-machine runtime：
 渠道只是入口，Codex 等专业 Agent 只是执行 Adapter。它们都不会成为第二个 Evi Self、
 Goal owner 或完成判定 owner。
 
+已接受但尚未切换的 vNext 闭环为：
+
+```text
+请求 -> Turn / Run -> Pi Agent Loop -> Action Gateway -> 专门化 Outcome / Receipt
+                    \-> SQLite canonical state
+可选 Goal 只关联长期 objective、acceptance、budget 与多个 Run
+```
+
 ## 从这里开始
 
 | 需要了解 | 权威入口 |
@@ -61,7 +70,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | `GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)、[`adr/0003-shared-control-state-and-pr-only-delivery.cn.md`](adr/0003-shared-control-state-and-pr-only-delivery.cn.md) |
+| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。
@@ -97,18 +106,18 @@ pnpm run runtime -- service health --target runtime --state-root ~/.local-runtim
 apps/cli/          CLI 组合入口
 packages/core/     Context、Evidence、Memory、Governance 纯核心面
 packages/runtime/  Goal、Effect、Tool、Service、Web 与 IM 运行面
+packages/kernel/   vNext Turn/Run Kernel、SQLite State 与 Pi Loop Adapter
 config/            可提交的安全默认配置
 core/              Self、Memory 与 Runtime Reference 策略
 docs/              架构、工程、行为、运维、学习与愿景文档
 .trellis/          冻结的历史 Spec、Task、Decision 与生成 context
 ```
 
-活跃自进化控制面是 `GoalRuntime`、`Harness`、canonical evidence 和 `OutcomeReceipt`。
-稳定方向由项目文档和 ADR 记录；动态控制根据 scope、evidence、risk、verification 和
-recovery 升级。GitHub Issue、PR、branch 和隔离 worktree 是按需要使用的协作与隔离机制，
-不再默认拥有 Evi 的演化闭环。当前 `codex/issue-<number>-<slug>` 仅是
-`GoalExecutionWorkspace` 的遗留兼容格式，不要求真实 Issue。`.trellis/` 逻辑退役，
-只保留为历史 evidence。
+当前 v0.2 控制面仍是 `GoalRuntime`、Harness、canonical evidence 和 `OutcomeReceipt`；
+vNext 已接受 Turn/Run、Pi 唯一 Agent Loop、SQLite、Action Gateway、可选 Goal 与统一
+Adaptation 生命周期。稳定方向由项目文档和 ADR 记录；当前实现以源码、测试和 live health
+为准。GitHub Issue、PR、branch 和隔离 worktree 是按需要使用的协作与隔离机制；
+`.trellis/` 只保留为历史 evidence。
 
 ## 安全与非目标
 

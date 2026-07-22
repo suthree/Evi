@@ -1,305 +1,221 @@
 # Agent Context
 
-The agent is a context for designing one continuous autonomous self-growing agent. The language here defines the domain concepts, not implementation details.
+This glossary defines the language for one continuous, local-first,
+self-growing agent. It intentionally describes domain concepts rather than
+current files, commands, or implementation classes.
 
-## Language
+## Identity and placement
 
 **Self-Growing Agent Core**:
-The long-lived self of the agent: one stable autonomous agent across repositories, interfaces, models, and runtimes. It owns the seed mission, durable values, operating boundaries, learning policy, and continuity of growth.
+The long-lived self of the agent across projects, entry surfaces, models, and execution environments. It owns the seed mission, durable values, operating boundaries, and continuity of growth.
 _Avoid_: Personal assistant, workspace persona, per-repo agent, split identity
 
 **Agent Continuity**:
-The ability of the **Self-Growing Agent Core** to retain one bounded Goal,
-authoritative context, evidence status, and recoverable active identity across
-session or process boundaries, and to preserve traceable identity and
-provenance when another node independently projects compatible assets. It does
-not mean synchronizing raw memory or runtime state between nodes.
-_Avoid_: Transcript retention, shared session state, global latest configuration
-
-**Learning Orchestrator**:
-The **Self-Growing Agent Core** in its operating role: it discovers, compares, selects, combines, and evaluates tools, skills, and **Delegated Agent Surfaces** to expand capability. It need not internalize every tool protocol or become the default worker; bounded direct execution remains an evidence and recovery surface while specialists perform suitable production work.
-_Avoid_: Generic command agent, fixed workflow router, tool wrapper
+The ability of the **Self-Growing Agent Core** to preserve bounded identity, active intent, selected context, evidence status, and recoverable work across session or process boundaries.
+_Avoid_: Transcript retention, shared global session, one mandatory Goal
 
 **Project Overlay**:
-A temporary context layer applied to the **Self-Growing Agent Core** for a specific repository, task domain, organization, or collaboration setting. It may constrain behavior and recall project knowledge, but it does not create a separate self.
+A temporary context layer for a repository, organization, or task domain. It constrains and informs the same agent but does not create another self.
 _Avoid_: Project personality, workspace self
 
-**Agent Architecture Reference**:
-A full agent design used as a source of patterns, such as Codex, Hermes, OpenClaw, GenericAgent, or pi. These are reference organisms for architecture learning, not ordinary tools.
-_Avoid_: Tool, protocol, plugin
-
 **Host Runtime**:
-A concrete agent surface that can run or host agent behavior, such as Codex, Claude Code, Hermes, OpenClaw, GenericAgent, or pi. A host runtime may have its own preload files and extension points.
-_Avoid_: Tool protocol, project overlay
+A concrete environment that can host or execute agent behavior and expose its own tools, context, and lifecycle.
+_Avoid_: Tool protocol, project overlay, agent identity
 
 **Delegated Agent Surface**:
-A specialized **Host Runtime** that the agent can ask to perform bounded work, then inspect and verify, such as delegating a coding task to Codex. It is more capable than a **Tool Protocol**, but it still does not become the **Self-Growing Agent Core**.
-_Avoid_: Tool protocol, separate self
-
-**Capability Portfolio**:
-The bounded, current decision context for one Goal cognition turn: available direct tools and delegated executors, their contracts and readiness, selected skills, and evidence-derived **Capability Competence**. It informs a dynamic choice but does not route tasks, execute effects, persist a second state, or accept outcomes.
-_Avoid_: Static task router, capability catalog, permission grant, planner
-
-**Capability Selection**:
-The model-proposed choice of one candidate from the current **Capability Portfolio**, including its execution purpose, selected skill refs, rationale, verification plan, and fallback. The **Harness Kernel** validates it before effect policy or execution; Evi still owns evidence and acceptance.
-_Avoid_: Keyword mapping, tool call alone, delegated completion claim
-
-**Capability Fit Assessment**:
-For a delegated executor, the bounded comparison record within a **Capability Selection**: exactly the current capability ids and selected-skill refs considered, plus the conclusion for choosing that executor. It is selection evidence, not a permission grant, execution request, or proof of outcome.
-_Avoid_: Static router, authority token, delegated completion claim
-
-**Typed Cognition Envelope**:
-The schema-bound `decision` envelope from model cognition to **GoalRuntime**. It declares exactly one complete `action`, `outcome`, or `blocked` shape before the runtime performs its separate semantic validation and effect-policy checks.
-_Avoid_: JSON-in-a-string, repairable model prose, authority grant
-
-**Evolution Constraint**:
-A rule classified by the boundary it protects. Canonical evidence, containment, sensitive data, irreversible external effects, and completion ownership are hard invariants; an exact-effect confirmation is a hard gate; workflow sequence is an adaptive default; a skill is advisory guidance. A default yields to current evidence when the protected invariant is already satisfied.
-_Avoid_: Universal workflow mandate, capability router, silent override
-
-**Specialist Executor Intent**:
-The narrow, model-authored request to a **Delegated Agent Surface**: a bounded `task` and `task_shape`. The **GoalRuntime** adapter derives protocol details such as new/resume mode, worktree, profile, model, authority handle, and budgets from bound state and canonical evidence before the typed tool validates them again.
-_Avoid_: Raw Codex invocation envelope, provider pin, worktree authority, completion claim
-
-**Goal Execution Workspace**:
-The one optional isolated linked worktree derived for a Goal from a successful canonical placement observation. The Goal's original repository authority remains its control anchor; repo-scoped execution may move to this live-validated workspace, while runtime state and completion ownership do not move.
-_Avoid_: Second Goal, workspace registry, ingress side effect, task router, state root
-
-**Goal Workspace Baseline**:
-The Harness-owned, read-only Goal-start snapshot containing only Git HEAD and normalized tracked or untracked status paths. Non-empty paths are inherited lineage, not Goal-produced changes, and require later successful Harness-owned local verification before acceptance; an empty baseline creates no synthetic verification obligation.
-_Avoid_: Diff body, file content, task parser, test-command policy, task router, automatic test pipeline
-
-**Capability Experience**:
-One evidence-linked observation of using a tool or **Delegated Agent Surface** inside a terminal Goal. It records the direct execution outcome and may record association with the Goal's accepted or abandoned result, but it does not claim that the capability caused that result.
-_Avoid_: Causal proof, raw tool output, progress score
-
-**Capability Competence**:
-Bounded decision knowledge derived from repeated **Capability Experience**: observed scope, reliability, failures, fallback guidance, and freshness that changes later capability selection. Sparse evidence remains provisional, current evidence wins conflicts, and competence is revised or retired as outcomes change.
-_Avoid_: Capability catalog entry, one successful run, self-reported mastery, scorecard
-
-**Capability Profile**:
-A scoped, evidence-derived operating description of one direct tool or **Delegated Agent Surface**. It combines the capability's declared contract and readiness with observed scope, competence, cost, risk, failure modes, fallback guidance, and freshness to inform later selection. It neither grants authority nor proves that the capability caused a Goal outcome, and it is not a semantic fact or a procedural skill.
-_Avoid_: Permission grant, causal claim, capability catalog, SOP, skill, static provider configuration
-
-**Harness-State Capability**:
-A named, Goal-start-opted-in Harness action that writes one tightly bounded local state artifact under canonical evidence checks. It is neither a **Tool Contract** nor a general file-write surface: its state effect, verification, and retirement boundary remain owned by the **Harness Kernel**. The first instance, `harness.propose_sop`, creates only an unaudited, inactive SOP draft from same-Goal nondelegated observations; a later ordinary Goal outcome may describe verified draft delivery but never promotion.
-_Avoid_: Tool Contract, file.write_state alias, SOP promotion, active-vault write, Skill, completion authority
-
-**Discovery Signal**:
-Bounded, untrusted provenance that names a possible external capability reference for explicit later review. A signal is neither default context nor an **Opportunity Backlog** item, **Capability Profile**, **Tool Contract**, or authority to fetch, install, execute, activate, or promote anything.
-_Avoid_: Imported specification, tool registration, business decision, activation receipt
-
-**Capability Candidate**:
-A separately governed proposal that links one or more **Discovery Signals** to a named business need, declared scope, risk, probe plan, verification, and retirement path. It may become a **Capability Profile** only after bounded evidence; it is not a capability itself or a promotion authorization.
-_Avoid_: Trending project, tool installation, skill draft, capability portfolio entry
-
-**Tool Operation Protocol**:
-The bounded operating procedure for a known tool or delegated surface: allowed inputs, effect ceiling, evidence to capture, verification, fallback, and retirement condition. It remains external to the core/default context until selected for an explicit Goal, and it does not replace a **Tool Contract**, **Capability Profile**, or skill-promotion gate.
-_Avoid_: Raw vendor specification, credential bundle, default prompt preload, skill
-
-**Expert Orchestration Contract**:
-The **Core Runtime Capability** boundary that defines advisory expert roles, when they may be consulted, and why the main runtime still owns verification and completion. It is not an autonomous scheduler or a new agent identity.
-_Avoid_: Multi-agent daemon, parallel model fan-out, expert persona, external tool workflow
+A **Host Runtime** asked to perform bounded specialist work whose result remains subject to Evi-owned evidence and acceptance.
+_Avoid_: Tool protocol, separate self, completion authority
 
 **Host Instruction File**:
-A file read by a specific host runtime to preload behavior or project guidance, such as Codex `AGENTS.md`, Claude Code `CLAUDE.md`, Hermes `.hermes.md`, or OpenClaw bootstrap files. It adapts the agent to a host and is not the agent core by itself.
-_Avoid_: Self-Growing Agent Core, durable memory
+A file that adapts behavior for one **Host Runtime** or project without becoming durable agent identity or runtime enforcement.
+_Avoid_: Self-Growing Agent Core, hard policy, durable memory
 
-**Tool Protocol**:
-A way for the agent to act or communicate, such as IM, CLI, MCP, shell, browser, GitHub API, or skill invocation. Tool protocols are interfaces for action, not independent agent selves.
-_Avoid_: Agent architecture
+## Work and execution
 
-**Tool Contract**:
-The typed, model-visible declaration of a concrete tool's name, accepted inputs, bounded outputs, and effect policy. It is a local runtime artifact, not a vendor document, a credential, an execution record, or a proof that the tool should be selected for a Goal.
-_Avoid_: Raw external specification, Tool Operation Protocol, capability authorization, Capability Profile
+**Turn**:
+One bounded response-and-action cycle started by a submitted request or continuation. A Turn does not require a Goal.
+_Avoid_: Goal, entire session, model call
 
-**Textual Constitution**:
-The prompt-readable text layer that gives a model background context, such as `core/soul.md`, `core/memory.md`, host instruction files, or SOP files. It describes norms and context, but it is not sufficient by itself to guarantee behavior.
-_Avoid_: Hard runtime, kernel
+**Run**:
+One execution lineage containing one or more Turns, their selected context, actions, evidence, and terminal outcome.
+_Avoid_: Goal, process, transcript
 
-**Harness Kernel**:
-The runtime layer that enforces behavior the model should not merely be asked to remember: tool permissions, approval gates, session locks, turn snapshots, save points, verification, and write policy.
-_Avoid_: Prompt file, SOP text
+**Goal**:
+An optional durable intent that links multiple Runs through an objective, acceptance criteria, budget, and continuation policy.
+_Avoid_: Ordinary task, agent loop, session store, mandatory ingress
 
-**Runtime Contract**:
-The agreement that defines which state enters a model call, what action shape the model may return, how the harness validates and executes it, and how evidence is persisted afterward.
-_Avoid_: README, conceptual overview
+**Agent Loop**:
+The ordered model-and-tool cycle that advances a Turn until it answers, blocks, fails, or stops. Exactly one owner controls this cycle for a Run.
+_Avoid_: Goal lifecycle, task queue, effect policy
 
-**Core Runtime Capability**:
-A domain-independent ability the local runtime must have to perform and verify work: bounded execution, context control, action validation, evidence capture, completion verification, recall, and explicit self-evolution gates. Core capabilities are stable only when they survive different projects, tools, and application examples.
-_Avoid_: Adapter feature, content workflow, provider-specific tool, demo scenario
-
-**Basic Entrypoint Capability**:
-A local surface through which work enters or observes the runtime, such as CLI, IM, or a single-user resident service. It supports the **Core Runtime Capability** layer but does not define the agent's growth loop by itself.
-_Avoid_: Hosted service product, optional plugin, external platform integration
-
-**Application Slice**:
-A bounded scenario that uses core and entrypoint capabilities to prove a workflow, gather evidence, and expose gaps. Active exploration, content publishing plans, image generation, market-source probes, browser automation, and platform MCP adapters belong here unless the pattern generalizes back into the runtime contract.
-_Avoid_: Core Runtime Capability, agent identity, architecture reference
+**Runtime Kernel**:
+The compact runtime boundary that accepts work, binds canonical state and context, delegates the **Agent Loop**, and exposes control and inspection without implementing a second loop.
+_Avoid_: Monolithic workflow engine, channel adapter, model provider
 
 **Turn Snapshot**:
-The immutable state used for one model call: trigger, goal, selected context, available actions, budget, and output expectations. Runtime changes apply to later snapshots, not the in-flight call.
-_Avoid_: Live mutable state, transcript
+The immutable input selected for one model step, including current request, bounded context, available actions, budgets, and output expectations.
+_Avoid_: Live mutable state, full archive, raw transcript
 
 **Context Bundle**:
-The bounded prompt-facing view rendered from a **Turn Snapshot**. It contains selected stable context, task context, overlays, recall, working checkpoint, and output schema.
-_Avoid_: Full memory dump, raw archive
+The bounded prompt-facing view rendered from a **Turn Snapshot**.
+_Avoid_: Full memory dump, default archive preload
 
-**Model Action Envelope**:
-The structured action proposal returned by the model. For Goal execution it includes a **Capability Selection** beside the proposed effect; the harness decides what actually executes.
-_Avoid_: Final authority, unstructured answer
+**Run Outcome**:
+The terminal record of a Run's status, answer or failure, and evidence references. It does not imply learning, evolution, or deployment occurred.
+_Avoid_: Universal receipt, model self-report, capability proof
+
+## Actions and evidence
+
+**Tool Protocol**:
+A transport or interface through which the agent can act or communicate, such as shell, MCP, browser, IM, or an API.
+_Avoid_: Tool Contract, agent architecture, skill
+
+**Tool Contract**:
+The typed declaration of one callable tool's inputs, outputs, effect class, and invariants.
+_Avoid_: Vendor specification, Tool Operation Protocol, permission grant
+
+**Tool Operation Protocol**:
+The bounded procedure for using a known tool: allowed scope, preconditions, evidence, verification, fallback, and retirement condition.
+_Avoid_: Tool Contract, raw documentation, credential bundle, skill
+
+**Action Gateway**:
+The mandatory boundary that validates a typed action, resolves authority and policy, contains execution, reserves durable effects, and records evidence for reconciliation.
+_Avoid_: Tool catalog, agent loop, prompt-only safety
+
+**Action Reservation**:
+A durable pre-dispatch record binding one effect identity, action digest, authority, and owner so an uncertain outcome cannot authorize blind replay.
+_Avoid_: Queue item, permission token, raw prompt log
+
+**Effect Receipt**:
+The terminal evidence for one reserved effect, including its identity, observed outcome, verification, and reconciliation status.
+_Avoid_: Run Outcome, model claim, generic completion receipt
 
 **Evidence Event**:
-An append-only record of something that happened, such as a prompt, tool result, delegated result, diff, test, report, correction, or audit. Evidence events are the source material for memory, SOP, and skill promotion.
-_Avoid_: Curated memory, summary-only note
+An append-only observation of something that occurred, with provenance and references sufficient for later verification or learning.
+_Avoid_: Curated fact, summary without source, hidden reasoning
 
-**Promotion Gate**:
-The self-governed boundary that decides whether raw experience can become durable memory, a reusable skill, or a core identity change. Promotion requires evidence, scope, autonomous validation, and rollback awareness; it does not require human review by default.
-_Avoid_: Human approval step, casual remembering
+**Canonical Runtime State**:
+The single authoritative structured state from which active Runs, Turns, reservations, receipts, Goals, and adaptations are read and recovered.
+_Avoid_: Cache, projection, directory scan, dual-write peer
 
-**SOP Layer**:
-The intermediate reusable-procedure layer between raw experience and durable skill. SOPs may evolve quickly from new evidence, but they are not treated as stable skills until audited.
-_Avoid_: Final skill, raw transcript
+## Capability
 
-**Autonomous Audit**:
-The machine-run review process that checks whether an SOP, memory update, tool workflow, or governance change is valid enough to promote. Audit standards are themselves evolvable, but changes to audit standards require a higher promotion threshold than ordinary skills.
-_Avoid_: Human review, unchecked self-approval
+**Capability**:
+A bounded outcome the agent can currently attempt through one or more tools, procedures, or delegated surfaces.
+_Avoid_: Tool, permission, feature count
 
-**Capability Flywheel**:
-The core growth loop of the agent: use tools or delegated agent surfaces, record evidence, extract reusable experience into SOPs, audit them, promote valid SOPs into skills, recall them later, and revise them from outcomes.
-_Avoid_: Feature list, broad assistant coverage
+**Capability Portfolio**:
+The bounded decision view of available capabilities, their contracts, readiness, competence, cost, risk, and fallback for a Turn.
+_Avoid_: Static router, permission grant, execution owner
 
-**Independent Verification Bridge**:
-The bounded transition from a successful **Delegated Agent Surface** result to harness-owned evidence sufficient for outcome verification. Delegated self-reports remain execution evidence only; when an unresolved verification obligation exists, the **Learning Orchestrator** selects a bounded non-delegated verification action and the **Harness Kernel** validates its result.
-_Avoid_: Delegated self-certification, automatic test pipeline, generic command work
+**Capability Selection**:
+The evidence-linked choice of a capability for one purpose, together with verification and fallback expectations.
+_Avoid_: Keyword routing, tool call alone, completion claim
 
-**Dream Consolidation**:
-An idle-time, proposal-only learning mode that reviews bounded conversation and episodic evidence together with semantic memory, procedural memory, and capability experience. It may compress, classify, connect, or challenge prior experience and propose memory, SOP, skill, capability-profile, or exploration candidates. It never converts reflection into fact, executes work, or promotes a candidate by itself.
-_Avoid_: Autonomous executor, hidden chain of thought, completion authority, automatic memory write
+**Capability Experience**:
+One evidence-linked observation of attempting a capability inside a Run and its relation to the observed outcome.
+_Avoid_: Causal proof, raw tool output, mastery
 
-**Direction Proposal**:
-A bounded, evidence-linked recommendation that names an unresolved need, assumptions, candidate directions, risk, verification, and a recommendation before a material self-evolution decision. It is a Goal checkpoint or event, not a hidden reasoning trace, task queue, persistent state owner, or authority to act.
-_Avoid_: Autonomous execution plan, persistent reflection ledger, completion proof, implicit approval
+**Capability Competence**:
+Revisable decision knowledge derived from repeated **Capability Experience**, including observed scope, reliability, failure modes, freshness, and fallback.
+_Avoid_: One successful run, self-reported mastery, authorization
 
-**Environment Baseline**:
-The observable, recoverable condition required before a new self-evolution Goal may mutate source: active work has an owner and disposition, historical state is classified and archived, current changes are assigned and isolated or committed, and runtime identity and health are checked. It preserves evidence rather than erasing history.
-_Avoid_: Git status clean alone, state wipe, blanket deletion, abstract IDE workspace
+**Capability Profile**:
+A scoped operating view combining declared contracts with evidence-derived competence, cost, risk, readiness, and retirement data.
+_Avoid_: Permission grant, Tool Operation Protocol, skill, provider config
 
-**Historical Archive**:
-Recoverable, dated evidence retained outside an active Goal's default context. It is available only through explicit retrieval with origin and status preserved; current accepted ADRs, active-Goal evidence, and verified runtime facts take precedence. A conflict makes the archive superseded or excluded from active context, not silently deleted.
-_Avoid_: Resident prompt, active instruction source, undocumented memory deletion
+**Discovery Signal**:
+Untrusted provenance naming a possible external capability reference for later bounded review.
+_Avoid_: Imported specification, installation authority, capability
 
-**Active Learning Signal**:
-A recurring demand, repeated failure, repeated correction, repeated successful workflow, or environmental opportunity that should trigger autonomous skill drafting. Three independent occurrences is the default threshold for repeated demand.
-_Avoid_: One-off request, idle curiosity
+**Capability Candidate**:
+A proposal linking one or more **Discovery Signals** to a real need, probe plan, risk, verification, and retirement path.
+_Avoid_: Trending project, installed tool, active capability
 
-**Autonomous Operation**:
-A mode where the agent selects and performs valuable work without a fresh external request, usually from idle time, discovered TODOs, repeated demand, or reflection output. It is bounded by seed policy, tool permissions, evidence capture, and rollback rules.
-_Avoid_: User-requested task only, unchecked free run
+## Adaptation and growth
 
-**Opportunity Backlog**:
-The ordered set of possible work the agent can choose from, including explicit tasks, unfinished tasks, repeated demands, failed workflows, stale skills, tool gaps, and autonomous discoveries.
-_Avoid_: Random idea list, one-off brainstorm
+**Self-Iteration**:
+One observe, try, verify, and adjust cycle. It may end without any durable change.
+_Avoid_: Self-learning, self-evolution, automatic improvement
 
-**Growth Value Function**:
-The scoring rule the agent uses to rank autonomous work by durable capability gain, evidence availability, urgency, repeat demand, risk, and cost. It exists to prevent autonomous operation from becoming unbounded wandering.
-_Avoid_: Curiosity, novelty, generic productivity
+**Adaptation**:
+The shared evidence-to-activation lifecycle for a proposed durable change, regardless of whether its target is knowledge, procedure, policy, tooling, or source.
+_Avoid_: Reflection alone, direct mutation, generic workflow
 
-**Exploration Budget**:
-The bounded allowance for autonomous work in a cycle, such as turns, wall time, tool calls, side-effect level, or number of tasks. It keeps exploration useful and finite.
-_Avoid_: Unlimited autonomous run
+**Adaptation Candidate**:
+An inactive proposed change with a target, evidence, scope, evaluation plan, risk, and rollback or retirement path.
+_Avoid_: Active memory, merged source, accepted skill
 
-**Stop Exploration Signal**:
-An explicit operator or policy signal that pauses or disables autonomous exploration. It may stop new autonomous task selection while preserving evidence, reports, and already-safe shutdown work.
-_Avoid_: Permanent identity change, memory deletion
+**Evaluation**:
+A bounded test of an **Adaptation Candidate** against explicit cases, baselines, and guardrails.
+_Avoid_: Model confidence, implementation activity, activation
 
-**Episodic Archive**:
-The raw or near-raw record of sessions, tool calls, tests, outputs, corrections, and decisions. It is evidence for learning, not itself curated long-term memory.
-_Avoid_: Durable memory, resident prompt
+**Activation**:
+The explicit transition that makes an evaluated adaptation current for a named scope and records how to reverse or retire it.
+_Avoid_: Candidate creation, merge alone, global latest
+
+**Self-Learning**:
+An **Adaptation** whose durable target is retained knowledge, a procedure, a skill, or evidence-backed tool-use competence.
+_Avoid_: Self-iteration, source change, transcript accumulation
+
+**Self-Evolution**:
+An **Adaptation** whose durable target changes tools, policy, dependencies, source, runtime, or deployment.
+_Avoid_: Self-learning, any code edit, unverified mutation
+
+**Evolution Attempt**:
+A source- or runtime-changing candidate carried through isolation, evaluation, and possible activation. It is not an improvement until evidence supports acceptance.
+_Avoid_: Self-evolution success, patch, automatic upgrade
 
 **Procedural Memory**:
-Reusable operating knowledge such as SOPs, skills, scripts, templates, and evaluation cases. It captures how to do work, while semantic memory captures stable facts.
-_Avoid_: Preference memory, raw transcript
+Reusable operating knowledge expressed as SOPs, skills, scripts, templates, and evaluation cases.
+_Avoid_: Semantic fact, raw transcript, runtime policy
 
-**Agent Home**:
-The user or profile directory for local agent increments, defaulting to `~/.local-runtime` and overrideable with `LOCAL_RUNTIME_HOME`. It stores active vault material, local config, state, logs, and future plugins without mutating repository seeds.
-_Avoid_: Repository checkout, bundled seed directory
+**SOP**:
+A revisable reusable procedure that may be drafted and tested before it is stable enough to become a Skill.
+_Avoid_: Raw episode, Tool Operation Protocol, promoted skill
 
-**Skill Seed**:
-Procedural capability material that ships with the agent or a fork as a starting point for installation, examples, or broadly useful defaults. A seed may be copied, installed, upgraded, or ignored; it is not the user's active learning store by itself.
-_Avoid_: User-owned skill vault, live procedural memory
+**Skill**:
+A deliberately activated package of reusable procedural guidance and supporting assets for a recognizable class of work.
+_Avoid_: Tool, capability, SOP draft, default context dump
 
-**Skill Vault**:
-The active procedural memory store for a specific user, machine, project, or team. It contains installed public skills, user-created skills, project skills, registry metadata, usage telemetry, and lifecycle events.
-_Avoid_: Bundled seed directory, marketplace catalog
+**Promotion Gate**:
+The decision boundary that permits an evaluated candidate to become active memory, procedure, skill, capability profile, policy, or runtime behavior.
+_Avoid_: Human approval by default, casual remembering, test pass alone
 
-**Active Skill Vault**:
-The Skill Vault selected for the current run. In installed mode it normally lives under `LOCAL_RUNTIME_HOME/vault/evi`; repository fixtures may be selected only by an explicit development configuration.
-_Avoid_: Every configured seed root, all available skills
+**Retirement**:
+The explicit removal of an active adaptation from current use while preserving enough evidence and recovery information to explain and reverse the decision.
+_Avoid_: Silent deletion, forgetting, rollback without record
 
-**Shared Asset Promotion**:
-The evidence-gated external Git effect by which Evi decides that a sanitized, reusable node-local asset should be proposed to LuBan. Evi may create the proposal branch, commit, and pull request when policy permits; LuBan acceptance and each node's activation remain separate decisions with separate receipts.
-_Avoid_: Runtime-state sync, automatic merge, global activation, local promotion alone
+## Governance and history
 
-**Skill Resolver**:
-The selection layer that chooses which skills from seeds, installed public sources, personal vaults, and project overlays enter a run. It preserves provenance and avoids treating every available skill as prompt context.
-_Avoid_: Loading all skills, single flat skill folder
+**Decision Owner**:
+The actor or accepted contract authorized to decide one material boundary change for a named scope.
+_Avoid_: Model confidence, task success, blanket permission
+
+**Direction Proposal**:
+A bounded, evidence-linked recommendation that records an unresolved need, assumptions, alternatives, risks, verification, and a preferred direction before a material change.
+_Avoid_: Hidden reasoning, execution authority, persistent task owner
+
+**Environment Baseline**:
+The observable and recoverable condition before source mutation: inherited work has an owner and disposition, current changes are isolated, Git state is known, and runtime health and identity are checked.
+_Avoid_: Clean status alone, state wipe, blanket deletion
+
+**Historical Archive**:
+Dated recoverable evidence excluded from default context and retrieved only with origin and historical status preserved.
+_Avoid_: Resident prompt, active instruction source, undocumented deletion
+
+**Exploration Budget**:
+The finite allowance for autonomous discovery or experimentation, expressed in time, turns, calls, cost, effects, or candidate count.
+_Avoid_: Unlimited autonomy, curiosity score
+
+**Stop Exploration Signal**:
+An explicit operator or policy signal that prevents new autonomous exploration while preserving evidence and safe shutdown work.
+_Avoid_: Identity change, memory deletion, permanent retirement
 
 **Agent Asset Registry**:
-A private, Git-backed canonical source for accepted reusable agent assets and
-their typed metadata, provenance, version, and retirement history. LuBan fills
-this role in v0.2. It does not select assets for a task, install them, or own
-runtime state.
-_Avoid_: Shared runtime home, installer daemon, marketplace, orchestration service
-
-**Asset Selection Lock**:
-The node-local record that binds a selected asset set to an Agent Asset
-Registry commit, typed asset identities, content hashes, profile, and
-compatibility result. It makes activation reproducible without turning the
-registry into mutable runtime state.
-_Avoid_: Mutable branch name, global latest version, catalog recommendation
+A versioned source for accepted reusable agent assets and their identity, provenance, compatibility, and retirement metadata.
+_Avoid_: Runtime state, task router, marketplace, global activation
 
 **Activation Receipt**:
-A node-local evidence record for staging, validation, atomic activation,
-probation, and rollback of one asset selection. It proves only the named node's
-result.
-_Avoid_: Global deployment status, model confidence, registry acceptance
-
-**Shared Knowledge Pack**:
-A scoped, redacted, versioned semantic-memory summary deliberately promoted for
-cross-node reuse. It enters context read-only and never merges raw episode or
-MemoryStore state.
-_Avoid_: Raw memory sync, conversation archive, project documentation copy
-
-## Example Dialogue
-
-Dev: Is Codex a tool inside the agent?
-
-Domain expert: No. Codex is an **Agent Architecture Reference**. MCP and shell are **Tool Protocols** that the agent may use.
-
-Dev: Can the agent ask Codex to do coding work?
-
-Domain expert: Yes. In that case Codex is a **Delegated Agent Surface**: the agent delegates bounded work to it, then checks the result and records learning signals.
-
-Dev: Should Codex `AGENTS.md` live in the agent core?
-
-Domain expert: No. `AGENTS.md` is a **Host Instruction File** for Codex. It can adapt agent guidance into Codex, but it is not the **Self-Growing Agent Core**.
-
-Dev: Does each repository get its own agent personality?
-
-Domain expert: No. Each repository gets a **Project Overlay** on the same **Self-Growing Agent Core**.
-
-Dev: Does skill promotion wait for a human reviewer?
-
-Domain expert: No. The agent uses **Autonomous Audit** at the **Promotion Gate**. Humans may inspect reports later, but they are not part of the default growth loop.
-
-Dev: Does the model directly update memory when it decides something matters?
-
-Domain expert: No. The model returns a **Model Action Envelope**. The **Harness Kernel** validates it, then records **Evidence Events** before anything is promoted.
-
-Dev: Can the agent choose work outside narrow capability-maintenance tasks?
-
-Domain expert: Yes. The agent can choose from an **Opportunity Backlog**, but it must rank work with the **Growth Value Function**, obey an **Exploration Budget**, and stop when a **Stop Exploration Signal** applies.
-
-Dev: If a user forks the agent, are the skills in that fork the user's active skill memory?
-
-Domain expert: No. Forked skills are **Skill Seeds** unless the user installs or promotes them into a **Skill Vault**. The **Skill Resolver** decides what active skills are available for a run.
+Node- and scope-specific evidence that an asset or adaptation was staged, validated, activated, observed, and left with a rollback path.
+_Avoid_: Registry acceptance, global deployment status, model confidence

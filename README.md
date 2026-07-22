@@ -6,10 +6,11 @@ actions, evidence, verification, and a response. The approved v0.2 direction
 adds private, Git-backed reusable asset distribution without sharing runtime
 state or turning Evi into a hosted multi-user control plane.
 
-The accepted longer-term vision keeps one persistent local-first Evi self while
-allowing many contextual entry surfaces and local, remote, hosted-agent, or
-specialist-SaaS execution environments. That direction does not expand the
-implemented v0.1 contract or the accepted v0.2 delivery scope.
+The accepted vNext architecture keeps one persistent local-first Evi self while
+replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
+a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
+Evi Action Gateway owns effects. This target does not expand the implemented
+v0.1/v0.2 contract or claim a deployment cutover.
 
 ## Start here
 
@@ -76,19 +77,22 @@ state use capability-oriented names such as `local-runtime`, `project_design`,
 `model`, and `im-channel`. Names of this repository or external reference
 projects must not become implementation contracts.
 
-## Native evolution control plane
+## Runtime evolution direction
 
-Active self-evolution is owned by `GoalRuntime`, `Harness`, canonical evidence,
-and `OutcomeReceipt`. Stable direction lives in project docs and accepted ADRs;
-the control boundary is [ADR 0001](docs/adr/0001-native-evolution-control-plane.md).
-Shared state and source-delivery isolation are defined by
-[ADR 0003](docs/adr/0003-shared-control-state-and-pr-only-delivery.md).
+The current v0.2 deployment is still owned by `GoalRuntime`, its Harness,
+canonical evidence, and `OutcomeReceipt`; [ADR 0001](docs/adr/0001-native-evolution-control-plane.md)
+records that implemented boundary. The accepted replacement is
+[ADR 0012](docs/adr/0012-vnext-runtime-kernel.md): ordinary Turns do not require
+a Goal, Pi owns the only Agent Loop, SQLite is the structured state authority,
+and every effect will cross the Action Gateway. v0.2 remains the rollback
+runtime until a separately verified cutover.
 
 | Need | Source |
 | --- | --- |
 | Implemented behavior | source, tests, and `docs/RUNTIME_CONTRACT.md` |
 | Accepted durable direction | `docs/adr/` and stable project docs |
-| Goal execution and verified terminal result | `GoalRuntime`, `Harness`, evidence, `OutcomeReceipt` |
+| Current v0.2 execution and verified terminal result | `GoalRuntime`, Harness, evidence, `OutcomeReceipt` |
+| Accepted vNext owner model | Turn / Run, Pi Agent Loop, SQLite, Action Gateway, optional Goal, Adaptation |
 | Reflection before material evolution | `grill-me` -> bounded `Direction Proposal` |
 | Historical task/spec/decision evidence | frozen [.trellis/](.trellis/) archive |
 
@@ -121,6 +125,7 @@ never commit them.
 apps/cli/          CLI entrypoint
 packages/core/     context, harness, evidence, governance
 packages/runtime/  config, models, service, web and IM adapters
+packages/kernel/   vNext Turn/Run kernel, SQLite state, Pi loop adapter
 config/            tracked safe defaults
 core/              stable identity and memory policy
 docs/              architecture, engineering, runtime and operator documentation

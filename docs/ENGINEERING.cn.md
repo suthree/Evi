@@ -21,6 +21,7 @@
 apps/              薄的可执行与组合入口
 packages/core/     与宿主无关的契约、纯策略、state/read model
 packages/runtime/  Goal 执行、Adapter、Service、Provider、宿主 effect
+packages/kernel/   vNext Turn/Run kernel、SQLite state 与窄 loop Adapter
 core/              稳定 Self 与 Memory 策略文本
 docs/              稳定架构、行为、运维和学习文档
 .trellis/          冻结的历史 task spec、decision 和交付证据
@@ -39,13 +40,18 @@ tests/              Interface、集成与验收保护
 
 ```text
 apps -> runtime -> core
+apps -> kernel（仅在经过验证的 vNext ingress 切片后）
+kernel -> Pi（仅经 Pi Adapter）
 docs/tests 可以检查任一公共面
 core -X-> runtime/apps
 runtime -X-> apps
+kernel -X-> v0.2 GoalRuntime/runtime owner
 ```
 
 - `packages/core` 不得 import Runtime 或 App 实现。
 - `packages/runtime` 可以实现 Core 契约并拥有宿主 effect，但不得依赖 App 组合入口。
+- `packages/kernel` 拥有 vNext 基建，不得 import v0.2 runtime owner。只有 Pi Adapter 可以
+  import Pi package；其余 kernel 只依赖本地 loop contract。
 - 跨包循环、隐藏全局 singleton 和第二个 state owner 都是架构失败，即使测试通过也一样。
 - 在窄的 Evi-owned 契约后复用平台库和成熟工具；不能为了少写一个 Adapter 就把外部
   Framework 复制进核心。
@@ -78,9 +84,10 @@ runtime -X-> apps
 - `docs/ENGINEERING*` 负责项目可维护结构。
 - `docs/RUNTIME_CONTRACT.md` 负责已实现行为；`docs/LOCAL_RUNTIME.md` 负责命令和运维；
   `docs/LOCAL_LEARNING.md` 负责 SOP/Skill/Memory 晋升。
-- `GoalRuntime`、`Harness`、canonical evidence 和 `OutcomeReceipt` 负责活跃自进化交付。
-  GitHub 可承载可选的外部协作或 release evidence；`.trellis/` 只保留历史。稳定文档不复制
-  transient progress、proof matrix 或 Goal 专属完成状态。
+- 切换前，`GoalRuntime`、其 Harness、canonical evidence 和 `OutcomeReceipt` 负责 v0.2
+  交付；ADR 0012 定义已接受的 vNext owner model，源码与 live health 决定哪个已经实现或
+  部署。GitHub 可承载可选的外部协作或 release evidence；`.trellis/` 只保留历史。稳定
+  文档不复制 transient progress、proof matrix 或 Goal 专属完成状态。
 - 稳定中英文配对文档发生实质修改时，在同一交付中同步两侧。
 
 ## 变更标准
