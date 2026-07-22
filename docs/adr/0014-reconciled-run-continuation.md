@@ -60,9 +60,9 @@ was originally unknown.
   uncertainty and the later authoritative terminal evidence.
 - This slice resumes one paused Run only when explicitly called. It adds no
   scheduler, automatic retry, new Goal, new Turn, or external communication.
-- It does not make provider/model dispatch exactly-once. A process crash after
-  the Run returns to `running` but before the continuation settles still needs
-  a later lease/dispatch-recovery design and blocks production cutover.
+- It does not make provider/model dispatch exactly-once. ADR 0015 later adds a
+  leased recovery attempt when the process disappears before settlement; the
+  old provider dispatch remains explicitly uncertain.
 - `none` and `local_read` remain the only permitted Action effect classes.
   Write/external policy, containment, ingress, migration, and deployment remain
   separate slices. The current v0.2 runtime and state are unchanged.

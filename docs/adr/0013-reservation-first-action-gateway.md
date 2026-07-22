@@ -67,7 +67,7 @@ production readiness.
   are size-bounded, but this is not an OS or filesystem sandbox.
 - Reconciliation can terminalize an action after restart. ADR 0014 adds an
   explicit same-Run continuation path while preserving the original transcript;
-  provider-dispatch crash recovery remains separate.
+  ADR 0015 later adds leased recovery for unsettled model dispatches.
 - Write and external actions require a later accepted policy, containment,
   credential-reference, verification, and recovery design. Registering a
   handler alone cannot make those effect classes executable.

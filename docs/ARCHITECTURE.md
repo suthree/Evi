@@ -1,7 +1,7 @@
 # Evi Architecture
 
 Status: current v0.2 module ownership plus the accepted vNext replacement
-target, updated on 2026-07-22 after ADRs 0012 through 0014. Source, tests, and live evidence
+target, updated on 2026-07-22 after ADRs 0012 through 0015. Source, tests, and live evidence
 decide current implementation; the vNext section is not a deployment claim.
 
 The Simplified Chinese companion is
@@ -25,8 +25,8 @@ may replace shallow paths. It does not own:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
 - durable architecture and evolution decisions: stable docs and accepted ADRs;
-  ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0014 own the
-  vNext kernel, Action Gateway, and Run continuation target;
+  ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0015 own the
+  vNext kernel, Action Gateway, Run continuation, and execution-recovery target;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -70,9 +70,9 @@ ADR 0012 replaces the v0.2 owner model after a verified cutover. The target is:
 CLI / Web / IM / API
           |
           v
-   Evi Runtime Kernel ---- inspect / control
+   Evi Runtime Kernel ---- inspect / continue
           |
-          +---- SQLite canonical state
+          +---- SQLite canonical state / Run Execution lease
           |
           v
  Pi AgentHarness (only Agent Loop owner)
@@ -90,6 +90,7 @@ Adaptation Engine ---- evaluates and activates learning or evolution candidates
 | Concern | vNext owner | Boundary |
 | --- | --- | --- |
 | Ordinary work | Turn inside a Run | No Goal is required |
+| Agent Loop ownership and crash detection | Leased Run Execution in SQLite | One active Execution per running Run; raw lease token is not persisted |
 | Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
 | Structured state | SQLite runtime store | JSONL and directory scans are projections, fixtures, or archives |
 | Tool and durable effects | Action Gateway | Typed policy, containment, reservation, evidence, reconciliation |
@@ -97,14 +98,17 @@ Adaptation Engine ---- evaluates and activates learning or evolution candidates
 | Durable growth | Adaptation Engine | Candidate, evaluation, activation, rollback or retirement |
 | Completion evidence | Specialized outcomes and receipts | Run, effect, evaluation, activation, and deployment remain distinct |
 
-The first three source slices are intentionally smaller than this table. They
+The first four source slices are intentionally smaller than this table. They
 prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
 reservation-first Gateway path for one bounded `local_read` action. Write and
 external actions remain denied. A paused Run can explicitly continue in its
-existing Turn and session after terminal Action reconciliation, but a crash
-during that new provider dispatch is not yet recoverable. There is no learning,
-subagent execution, ingress cutover, migration, or deployment. v0.2 remains the
-current rollback runtime until later slices satisfy their own gates.
+existing Turn and session after terminal Action reconciliation. A running Run
+whose Execution owner is lost can be paused after lease expiry and resumed in
+the same session with its old dispatch recorded as `outcome_unknown`. This is
+not provider exactly-once, and a crash between a persisted tool-call message and
+its matching tool result is still outside the recovery contract. There is no
+learning, subagent execution, ingress cutover, migration, or deployment. v0.2
+remains the current rollback runtime until later slices satisfy their own gates.
 
 ## Current v0.2 Runtime Shape
 

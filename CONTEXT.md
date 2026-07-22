@@ -65,8 +65,16 @@ The terminal record of a Run's status, answer or failure, and evidence reference
 _Avoid_: Universal receipt, model self-report, capability proof
 
 **Run Continuation**:
-The explicit transition that resumes one paused Run in its existing Turn and session only after its unresolved Actions have terminal reconciliation evidence. It preserves the original uncertainty and records the evidence identity used to continue.
+The explicit transition that resumes one paused Run in its existing Turn and session only after unresolved Actions or an interrupted Run Execution have bounded terminal recovery evidence. It preserves the original uncertainty and records the evidence identity used to continue.
 _Avoid_: Blind retry, new Run, transcript rewrite, automatic scheduler
+
+**Run Execution**:
+The durable, leased ownership attempt for one invocation of the Agent Loop. It is created atomically with a new or resumed Run state and must settle before that owner can complete, pause, or fail the Run.
+_Avoid_: Run, provider request, worker process, task queue item
+
+**Model Dispatch**:
+The bounded lifecycle evidence for one logical provider/model request inside a Run Execution, from dispatch start through response observation and persisted assistant settlement, or to an explicit unknown outcome after owner loss.
+_Avoid_: Effect Receipt, model answer, provider exactly-once guarantee, raw payload log
 
 ## Actions and evidence
 

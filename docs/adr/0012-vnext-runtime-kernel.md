@@ -63,6 +63,9 @@ none of them is Evi's architecture by itself.
 - The third source slice implements explicit same-Run continuation after
   terminal Action reconciliation under ADR 0014. It does not claim recovery
   from a crash during the continuation provider dispatch.
+- The fourth source slice implements leased Run Execution ownership and
+  bounded recovery of unsettled model dispatches under ADR 0015. It does not
+  claim provider exactly-once or recovery of an incomplete tool-call protocol.
 - Pi is pinned to an exact version and imported only by the adapter. If keeping
   that adapter requires copying or patching roughly a thousand lines of Pi
   internals, or two upgrades require semantic rewrites, Evi will own a smaller
@@ -75,5 +78,5 @@ none of them is Evi's architecture by itself.
   must label vNext as accepted target or implemented slice rather than claiming
   deployment.
 - Deployment, state migration, ingress replacement, write/external Action
-  Gateway authority, provider-dispatch recovery, learning, and subagent
-  execution remain separate verified slices.
+  Gateway authority, incomplete tool-call protocol recovery, learning, and
+  subagent execution remain separate verified slices.
