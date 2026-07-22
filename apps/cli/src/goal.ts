@@ -4,7 +4,12 @@ import {
   type ConfiguredGoalRuntimeOptions,
   type GoalRuntimePort
 } from "../../../packages/runtime/src/goal_ingress.js";
-import type { GoalInspection, GoalReadPolicy, GoalView } from "../../../packages/runtime/src/goal_runtime.js";
+import type {
+  GoalInspection,
+  GoalLearningEffect,
+  GoalReadPolicy,
+  GoalView
+} from "../../../packages/runtime/src/goal_runtime.js";
 
 export type LocalGoalAction = "start" | "continue" | "read" | "inspect" | "pause" | "resume" | "abandon";
 
@@ -16,6 +21,7 @@ export interface LocalGoalRequest {
   reason?: string;
   confirmEffectId?: string;
   readPolicy?: GoalReadPolicy;
+  learningEffects?: GoalLearningEffect[];
 }
 
 export type { GoalRuntimePort } from "../../../packages/runtime/src/goal_ingress.js";
@@ -45,7 +51,8 @@ export async function executeLocalGoalRequest(
       type: "start",
       command_id: request.commandId,
       objective: required(request.objective, "goal start requires --task"),
-      ...(request.readPolicy ? { read_policy: request.readPolicy } : {})
+      ...(request.readPolicy ? { read_policy: request.readPolicy } : {}),
+      ...(request.learningEffects?.length ? { learning_effects: request.learningEffects } : {})
     });
   }
   const goalId = required(request.goalId, `goal ${request.action} requires --goal`);

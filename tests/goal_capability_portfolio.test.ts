@@ -7,6 +7,7 @@ import { AgentStore } from "../packages/core/src/store.js";
 import {
   ConfiguredGoalCapabilityPortfolioProvider,
   buildGoalCapabilityPortfolio,
+  validateGoalHarnessStateCapabilitySelection,
   validateGoalCapabilitySelection
 } from "../packages/runtime/src/goal_capability_portfolio.js";
 import {
@@ -132,6 +133,38 @@ test("Goal capability portfolio marks delegated execution ready in a linked work
   assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "repo.search")?.operation_role, "inspect");
   assert.equal(portfolio.capabilities.find((candidate) => candidate.id === "command.run")?.operation_role, "act");
   assert.equal(portfolio.selection_contract.task_routing, "dynamic_not_keyword_mapped");
+});
+
+test("Goal capability portfolio adds only the explicit state-only SOP surface when requested", () => {
+  const portfolio = buildGoalCapabilityPortfolio({
+    repository_authority: linkedWorktreeAuthority(),
+    tool_competence: [],
+    selected_skills: [],
+    learning_effects: ["propose_sop"]
+  });
+  const harness = portfolio.capabilities.find((candidate) => candidate.id === "harness.propose_sop");
+  assert.equal(portfolio.capabilities.length, 9);
+  assert.equal(harness?.kind, "harness_state");
+  assert.equal(harness?.side_effect_level, "local_write");
+  assert.equal(harness?.workspace_placement, "control");
+  assert.match(harness?.constraints.join(" ") ?? "", /never audits, promotes, writes the active vault, creates a Skill, or completes the Goal/i);
+  const selection = {
+    capability_id: "harness.propose_sop",
+    execution_purpose: "atomic_task" as const,
+    skill_refs: [],
+    rationale: "The Goal explicitly asks for one state-only supervised SOP draft.",
+    verification_plan: "GoalRuntime will independently verify the draft and evidence refs before any ordinary outcome.",
+    fallback: "Continue without a draft."
+  };
+  assert.deepEqual(validateGoalHarnessStateCapabilitySelection(selection, "harness.propose_sop", portfolio), selection);
+  assert.throws(() => validateGoalHarnessStateCapabilitySelection({
+    ...selection,
+    execution_purpose: "verification"
+  }, "harness.propose_sop", portfolio), /requires atomic_task/i);
+  assert.throws(() => validateGoalCapabilitySelection(selection, {
+    tool: "file.write_state",
+    arguments: { path: "sop/drafts/forbidden.md", content: "forbidden" }
+  }, portfolio), /does not match action tool/i);
 });
 
 test("Goal capability portfolio switches delegated readiness after canonical execution workspace binding", () => {

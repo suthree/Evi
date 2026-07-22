@@ -462,7 +462,10 @@ test("Goal cognition requires one typed schema-bound decision envelope", async (
   assert.deepEqual(required, ["decision"]);
   const decision = properties.decision as { anyOf?: unknown[] };
   assert.equal(Array.isArray(decision.anyOf), true);
-  assert.equal(decision.anyOf?.length, 3);
+  assert.equal(decision.anyOf?.length, 4);
+  const harnessStateAction = decision.anyOf?.[1] as { properties?: Record<string, unknown>; required?: string[] };
+  assert.equal((harnessStateAction.properties?.type as { const?: string } | undefined)?.const, "harness_state_action");
+  assert.deepEqual(harnessStateAction.required, ["type", "summary", "capability_selection", "action"]);
 
   const model: ModelClient = {
     async create() {
@@ -623,6 +626,8 @@ function fixtureGoalView(): GoalView {
   return {
     goal_id: "goal_1",
     objective: "Read package metadata.",
+    read_policy: null,
+    learning_effects: [],
     status: "active",
     sequence: 1,
     budget: {
@@ -649,6 +654,7 @@ function fixtureGoalView(): GoalView {
       start_head_commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       boundary: "immutable real Git worktree placement; start HEAD is provenance and must remain an ancestor"
     },
+    workspace_baseline: null,
     execution_workspace: null,
     boundary: "GoalRuntime canonical execution lifecycle; raw action and observation events are authoritative and checkpoint/receipt files are rebuildable projections"
   };

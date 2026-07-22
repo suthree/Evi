@@ -18,8 +18,12 @@ import type { GoalToolCompetence } from "./goal_tool_competence.js";
 export const MAX_GOAL_CAPABILITIES = 10;
 export const MAX_GOAL_SELECTED_SKILLS = 2;
 export const MAX_GOAL_SELECTED_SKILL_BODY_CHARS = 2_400;
+export const GOAL_HARNESS_SOP_CAPABILITY_ID = "harness.propose_sop";
 
-export type GoalCapabilityKind = "direct_tool" | "delegated_executor";
+/** Explicit Goal-start opt-in for one state-only Harness learning action. */
+export type GoalLearningEffect = "propose_sop";
+
+export type GoalCapabilityKind = "direct_tool" | "delegated_executor" | "harness_state";
 export type GoalCapabilityReadiness = "available" | "unavailable";
 export type GoalCapabilityOperationRole = "inspect" | "act" | "delegate";
 export type GoalCapabilityExecutionPurpose =
@@ -72,6 +76,7 @@ export interface GoalCapabilityPortfolioInput {
   repository_authority: GoalRepositoryAuthority | null;
   execution_workspace?: GoalExecutionWorkspace | null;
   tool_competence: GoalToolCompetence[];
+  learning_effects: GoalLearningEffect[];
 }
 
 export interface GoalCapabilityPortfolioProvider {
@@ -119,6 +124,7 @@ interface BuildGoalCapabilityPortfolioInput {
   tool_competence: GoalToolCompetence[];
   selected_skills: GoalSelectedSkill[];
   tool_contracts?: ToolContract[];
+  learning_effects?: GoalLearningEffect[];
 }
 
 export class ConfiguredGoalCapabilityPortfolioProvider implements GoalCapabilityPortfolioProvider {
@@ -148,7 +154,8 @@ export class ConfiguredGoalCapabilityPortfolioProvider implements GoalCapability
       repository_authority: input.repository_authority,
       execution_workspace: input.execution_workspace,
       tool_competence: input.tool_competence,
-      selected_skills: selectedSkills
+      selected_skills: selectedSkills,
+      learning_effects: input.learning_effects
     });
   }
 }
@@ -157,20 +164,24 @@ export function buildGoalCapabilityPortfolio(
   input: BuildGoalCapabilityPortfolioInput
 ): GoalCapabilityPortfolio {
   const competenceByTool = new Map(input.tool_competence.map((item) => [item.tool, item]));
-  const capabilities = (input.tool_contracts ?? coreToolContracts)
+  const harnessCapabilities = input.learning_effects?.includes("propose_sop")
+    ? [harnessSopCapability()]
+    : [];
+  const toolCapabilities = (input.tool_contracts ?? coreToolContracts)
     .filter(isDefaultGoalCapability)
     .filter((contract) => contract.tool !== "workspace.prepare"
       || isWorkspacePreparationMeaningful(
         input.repository_authority,
         input.execution_workspace ?? null
       ))
-    .slice(0, MAX_GOAL_CAPABILITIES)
+    .slice(0, MAX_GOAL_CAPABILITIES - harnessCapabilities.length)
     .map((contract) => capabilityCandidate(
       contract,
       input.repository_authority,
       input.execution_workspace ?? null,
       competenceByTool.get(contract.tool) ?? null
     ));
+  const capabilities = [...toolCapabilities, ...harnessCapabilities];
   return {
     capabilities,
     selected_skills: input.selected_skills.slice(0, MAX_GOAL_SELECTED_SKILLS).map((skill) => ({
@@ -215,6 +226,39 @@ export function validateGoalCapabilitySelection(
   if (unselected) throw new Error(`Goal capability selection cites unselected skill: ${unselected}`);
   if (capability.kind === "delegated_executor") {
     validateDelegatedCapabilityFitAssessment(selection, portfolio);
+  }
+  return selection;
+}
+
+/**
+ * Validate the one opt-in Harness-state surface without treating it as a Tool
+ * Contract or sending it through EffectPolicy. Its state writer remains owned
+ * by GoalRuntime and is intentionally not a general local-write capability.
+ */
+export function validateGoalHarnessStateCapabilitySelection(
+  value: GoalCapabilitySelection,
+  capabilityId: typeof GOAL_HARNESS_SOP_CAPABILITY_ID,
+  portfolio: GoalCapabilityPortfolio
+): GoalCapabilitySelection {
+  const selection = goalCapabilitySelectionSchema.parse(value);
+  const capability = portfolio.capabilities.find((candidate) => candidate.id === selection.capability_id);
+  if (!capability) {
+    throw new Error(`Goal capability selection names unknown capability: ${selection.capability_id}`);
+  }
+  if (capability.readiness !== "available") {
+    throw new Error(`Goal capability ${capability.id} is currently unavailable: ${capability.readiness_reason}`);
+  }
+  if (capability.kind !== "harness_state" || capability.id !== capabilityId || selection.capability_id !== capabilityId) {
+    throw new Error(`Goal capability selection ${selection.capability_id} is not the declared Harness-state capability ${capabilityId}`);
+  }
+  if (selection.execution_purpose !== "atomic_task") {
+    throw new Error(`Harness-state capability ${capabilityId} requires atomic_task purpose`);
+  }
+  if (selection.skill_refs.length > 0) {
+    throw new Error(`Harness-state capability ${capabilityId} cannot apply selected skills`);
+  }
+  if (selection.capability_fit_assessment) {
+    throw new Error(`Harness-state capability ${capabilityId} cannot carry a delegated capability fit assessment`);
   }
   return selection;
 }
@@ -282,6 +326,32 @@ function capabilityCandidate(
       ? "codex.run requires the Goal to bind an isolated execution workspace before specialist execution"
       : "registered core capability is available within current Goal authority; EffectPolicy and tool validation still apply",
     competence: competence ? structuredClone(competence) : null
+  };
+}
+
+function harnessSopCapability(): GoalCapabilityCandidate {
+  return {
+    id: GOAL_HARNESS_SOP_CAPABILITY_ID,
+    kind: "harness_state",
+    operation_role: "act",
+    summary: "Create one state-only SOP draft from same-Goal nondelegated canonical observations; it cannot audit, promote, write the active vault, or complete the Goal.",
+    side_effect_level: "local_write",
+    workspace_placement: "control",
+    arguments: {
+      action: "propose_sop",
+      completion_claim_status: "not_done",
+      evidence_event_ids: "same-Goal successful nondelegated canonical observation ids"
+    },
+    constraints: [
+      "available only when Goal Start explicitly declares learning_effects: [propose_sop]",
+      "writes only the state-root sop/drafts JSON and Markdown pair",
+      "every supplied evidence_event_id must name a prior successful same-Goal nondelegated canonical observation",
+      "never audits, promotes, writes the active vault, creates a Skill, or completes the Goal",
+      "a later normal Goal outcome requires independent Harness verification of the draft delivery"
+    ],
+    readiness: "available",
+    readiness_reason: "explicit Goal-start learning effect exposes one bounded Harness-state draft action",
+    competence: null
   };
 }
 

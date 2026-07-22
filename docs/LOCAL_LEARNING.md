@@ -256,6 +256,23 @@ enforced before local-read tool execution; it is not inferred from task prose,
 selected references, competence, or a Skill. An absent policy preserves the
 normal dynamic root-bounded reading path.
 
+A separately explicit Start field, `learning_effects: ["propose_sop"]`, exposes
+one **Harness-State Capability** for a supervised Goal. It is not a Tool
+Contract, `file.write_state` route, default capability, Skill, or promotion
+permission. The Goal cognition envelope may then emit exactly one
+`harness_state_action` for `harness.propose_sop` with
+`completion_claim.status=not_done`, a new SOP id, and refs to prior successful
+same-Goal nondelegated canonical observations. GoalRuntime writes only the
+state-root `sop/drafts/*.json` and `sop/drafts/*.md` pair, records a distinct
+canonical Harness-state observation, and remains nonterminal.
+
+Before a normal Goal outcome can describe that delivery, Harness independently
+re-reads the draft, validates the refs and draft status, and rejects a related
+audit, promotion, or active-vault artifact. The accepted receipt may say
+“draft delivered”; it cannot claim a capability, SOP, or Skill is promoted.
+No opt-in is inferred from objective prose, a Tool Operation Protocol, prior
+experience, a model preference, or the existence of a draft.
+
 Competence stays provisional with sparse evidence, records recent failure and
 fallback guidance, and yields to current canonical evidence. Durable procedural
 promotion still requires the normal reuse, audit, regression, freshness,
@@ -973,6 +990,12 @@ A live model round may also preserve a reusable procedure candidate by emitting
 writes the same state-only SOP draft artifacts and returns their refs as Harness
 State Observations for the next model round. It does not audit, promote, request
 confirmations, write the active vault, or create a skill package.
+
+This live-runner path is separate from the Goal-scoped `harness.propose_sop`
+capability above. The Goal path is available only through explicit Start
+`learning_effects`, accepts only same-Goal nondelegated canonical observation
+ids, records GoalRuntime events rather than episode evidence, and requires a
+later independent delivery check before a normal OutcomeReceipt can close.
 
 `governance evolution`, `governance opportunities`, and Feishu
 `/opportunities` may render a structured next command for draft or promote-ready

@@ -80,6 +80,10 @@ _Avoid_: Capability catalog entry, one successful run, self-reported mastery, sc
 A scoped, evidence-derived operating description of one direct tool or **Delegated Agent Surface**. It combines the capability's declared contract and readiness with observed scope, competence, cost, risk, failure modes, fallback guidance, and freshness to inform later selection. It neither grants authority nor proves that the capability caused a Goal outcome, and it is not a semantic fact or a procedural skill.
 _Avoid_: Permission grant, causal claim, capability catalog, SOP, skill, static provider configuration
 
+**Harness-State Capability**:
+A named, Goal-start-opted-in Harness action that writes one tightly bounded local state artifact under canonical evidence checks. It is neither a **Tool Contract** nor a general file-write surface: its state effect, verification, and retirement boundary remain owned by the **Harness Kernel**. The first instance, `harness.propose_sop`, creates only an unaudited, inactive SOP draft from same-Goal nondelegated observations; a later ordinary Goal outcome may describe verified draft delivery but never promotion.
+_Avoid_: Tool Contract, file.write_state alias, SOP promotion, active-vault write, Skill, completion authority
+
 **Discovery Signal**:
 Bounded, untrusted provenance that names a possible external capability reference for explicit later review. A signal is neither default context nor an **Opportunity Backlog** item, **Capability Profile**, **Tool Contract**, or authority to fetch, install, execute, activate, or promote anything.
 _Avoid_: Imported specification, tool registration, business decision, activation receipt

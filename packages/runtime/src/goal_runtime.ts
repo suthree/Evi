@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { z } from "zod";
+import { formatSopMarkdown } from "../../core/src/formatters.js";
 import { newId, utcNow } from "../../core/src/ids.js";
+import { auditReportSchema, sopDraftSchema, type SOPDraft } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
 import { resolveGoalToolStorePlacement } from "../../core/src/tool_contracts.js";
 import {
@@ -37,11 +41,14 @@ import {
 } from "./goal_tool_competence.js";
 import {
   buildGoalCapabilityPortfolio,
+  GOAL_HARNESS_SOP_CAPABILITY_ID,
   goalCapabilitySelectionSchema,
+  validateGoalHarnessStateCapabilitySelection,
   validateGoalCapabilitySelection,
   type GoalCapabilityPortfolio,
   type GoalCapabilityPortfolioProvider,
-  type GoalCapabilitySelection
+  type GoalCapabilitySelection,
+  type GoalLearningEffect
 } from "./goal_capability_portfolio.js";
 import {
   deriveCodexSpecialistInvocation,
@@ -99,6 +106,11 @@ const safeIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-
 const textSchema = z.string().trim().min(1).max(8_000);
 const shortTextSchema = z.string().trim().min(1).max(2_000);
 const refSchema = z.string().trim().min(1).max(1_000);
+const goalLearningEffectsSchema = z.array(z.literal("propose_sop")).max(1).default([]).superRefine((value, ctx) => {
+  if (new Set(value).size !== value.length) {
+    ctx.addIssue({ code: "custom", message: "learning_effects must be unique" });
+  }
+});
 
 const goalReadReferenceSchema = z.object({
   scope: z.enum(["repo", "state"]),
@@ -251,6 +263,38 @@ const cognitionActionSchema = z.object({
   action: effectActionSchema
 }).strict();
 
+const harnessSopDraftSchema = z.object({
+  id: safeIdSchema,
+  title: shortTextSchema,
+  trigger: textSchema,
+  procedure: z.array(textSchema).min(1).max(24),
+  required_tools: z.array(shortTextSchema).max(16).default([]),
+  verification: textSchema,
+  failure_modes: z.array(shortTextSchema).max(16).default([]),
+  revision: z.number().int().positive().max(99).default(1)
+}).strict();
+
+const harnessSopProposalActionSchema = z.object({
+  type: z.literal("propose_sop"),
+  completion_claim: z.object({
+    status: z.literal("not_done"),
+    summary: shortTextSchema
+  }).strict(),
+  sop: harnessSopDraftSchema,
+  evidence_event_ids: z.array(safeIdSchema).min(1).max(32)
+}).strict().superRefine((value, ctx) => {
+  if (new Set(value.evidence_event_ids).size !== value.evidence_event_ids.length) {
+    ctx.addIssue({ code: "custom", path: ["evidence_event_ids"], message: "evidence_event_ids must be unique" });
+  }
+});
+
+const cognitionHarnessStateActionSchema = z.object({
+  type: z.literal("harness_state_action"),
+  summary: shortTextSchema,
+  capability_selection: goalCapabilitySelectionSchema,
+  action: harnessSopProposalActionSchema
+}).strict();
+
 const cognitionOutcomeSchema = z.object({
   type: z.literal("outcome"),
   outcome: outcomeProposalSchema
@@ -264,6 +308,7 @@ const cognitionBlockedSchema = z.object({
 
 const goalCognitionResultSchema = z.discriminatedUnion("type", [
   cognitionActionSchema,
+  cognitionHarnessStateActionSchema,
   cognitionOutcomeSchema,
   cognitionBlockedSchema
 ]);
@@ -274,7 +319,8 @@ const startCommandSchema = z.object({
   objective: textSchema,
   budget: goalSoftBudgetSchema.partial().optional(),
   checkpoint: goalCheckpointSchema.partial().optional(),
-  read_policy: goalReadPolicySchema.optional()
+  read_policy: goalReadPolicySchema.optional(),
+  learning_effects: goalLearningEffectsSchema.optional()
 }).strict();
 
 const continueCommandSchema = z.object({
@@ -331,6 +377,7 @@ const startedEventSchema = z.object({
   budget: goalSoftBudgetSchema,
   checkpoint: goalCheckpointSchema,
   read_policy: goalReadPolicySchema.optional(),
+  learning_effects: goalLearningEffectsSchema,
   repository_authority: goalRepositoryAuthoritySchema.optional(),
   workspace_baseline: goalWorkspaceBaselineSchema.optional()
 }).strict();
@@ -371,6 +418,30 @@ const actionObservedEventSchema = z.object({
   result: toolResultSchema,
   checkpoint: goalCheckpointSchema,
   usage_delta: goalUsageSchema
+}).strict();
+
+const harnessStateObservedEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_harness_state_observed"),
+  model_summary: shortTextSchema,
+  capability_selection: goalCapabilitySelectionSchema,
+  action: harnessSopProposalActionSchema,
+  sop_ref: refSchema,
+  markdown_ref: refSchema,
+  changes: z.array(changeIdentitySchema).length(2),
+  checkpoint: goalCheckpointSchema,
+  usage_delta: goalUsageSchema
+}).strict();
+
+const harnessStateVerifiedEventSchema = z.object({
+  ...baseEventFields,
+  event_type: z.literal("goal_harness_state_verified"),
+  proposal_event_id: safeIdSchema,
+  sop_ref: refSchema,
+  markdown_ref: refSchema,
+  evidence_event_ids: z.array(safeIdSchema).min(1).max(32),
+  summary: shortTextSchema,
+  checkpoint: goalCheckpointSchema
 }).strict();
 
 const budgetCheckpointEventSchema = z.object({
@@ -430,6 +501,8 @@ const goalRuntimeEventSchema = z.discriminatedUnion("event_type", [
   actionPlannedEventSchema,
   effectConfirmedEventSchema,
   actionObservedEventSchema,
+  harnessStateObservedEventSchema,
+  harnessStateVerifiedEventSchema,
   budgetCheckpointEventSchema,
   blockedEventSchema,
   verificationFailedEventSchema,
@@ -445,6 +518,7 @@ export type GoalUsage = z.infer<typeof goalUsageSchema>;
 export type GoalSoftBudget = z.infer<typeof goalSoftBudgetSchema>;
 export type GoalReadPolicy = z.infer<typeof goalReadPolicySchema>;
 export type GoalReadReference = z.infer<typeof goalReadReferenceSchema>;
+export type { GoalLearningEffect } from "./goal_capability_portfolio.js";
 export type OutcomeCandidate = z.infer<typeof outcomeCandidateSchema>;
 export type GoalOutcomeProposal = z.infer<typeof outcomeProposalSchema>;
 export type GoalCognitionResult = z.infer<typeof goalCognitionResultSchema>;
@@ -477,6 +551,7 @@ export interface GoalView {
   goal_id: string;
   objective: string;
   read_policy: GoalReadPolicy | null;
+  learning_effects: GoalLearningEffect[];
   status: GoalStatus;
   sequence: number;
   budget: GoalSoftBudget;
@@ -620,6 +695,8 @@ export interface GoalRuntimeOptions {
   toolExecutor?: GoalToolExecutor;
   effectPolicy?: EffectPolicy;
   capabilityPortfolioProvider?: GoalCapabilityPortfolioProvider;
+  /** Configured node-local vault that this Goal action must never write. */
+  activeVaultRoot?: string;
   now?: () => string;
   nowMs?: () => number;
   idFactory?: (prefix: string) => string;
@@ -643,6 +720,12 @@ interface DerivedGoalState {
   manualPause: boolean;
 }
 
+interface HarnessStateDraftVerification {
+  events: GoalRuntimeEvent[];
+  state: DerivedGoalState;
+  failure: GoalVerificationResult | null;
+}
+
 export class GoalRuntime {
   private readonly store: AgentStore;
   private readonly verifier: GoalVerifier;
@@ -650,6 +733,7 @@ export class GoalRuntime {
   private readonly toolExecutor?: GoalToolExecutor;
   private readonly effectPolicy: EffectPolicy;
   private readonly capabilityPortfolioProvider: GoalCapabilityPortfolioProvider;
+  private readonly activeVaultRoot: string;
   private readonly now: () => string;
   private readonly nowMs: () => number;
   private readonly idFactory: (prefix: string) => string;
@@ -661,6 +745,7 @@ export class GoalRuntime {
     this.toolExecutor = options.toolExecutor;
     this.effectPolicy = options.effectPolicy ?? new EffectPolicy();
     this.capabilityPortfolioProvider = options.capabilityPortfolioProvider ?? defaultCapabilityPortfolioProvider();
+    this.activeVaultRoot = resolve(options.activeVaultRoot ?? join(this.store.repoRoot, "vault"));
     this.now = options.now ?? utcNow;
     this.nowMs = options.nowMs ?? Date.now;
     this.idFactory = options.idFactory ?? newId;
@@ -795,6 +880,7 @@ export class GoalRuntime {
       budget: normalizeBudget(command.budget),
       checkpoint: normalizeCheckpoint(command.checkpoint),
       ...(command.read_policy ? { read_policy: command.read_policy } : {}),
+      learning_effects: command.learning_effects ?? [],
       repository_authority: repositoryAuthority,
       workspace_baseline: workspaceBaseline,
       boundary: GOAL_BOUNDARY
@@ -859,7 +945,8 @@ export class GoalRuntime {
           objective: state.view.objective,
           repository_authority: state.view.repository_authority,
           execution_workspace: state.view.execution_workspace,
-          tool_competence: structuredClone(toolCompetence)
+          tool_competence: structuredClone(toolCompetence),
+          learning_effects: structuredClone(state.view.learning_effects)
         });
       } catch (error) {
         const summary = `Goal capability portfolio failed: ${errorMessage(error)}`.slice(0, 2_000);
@@ -1010,6 +1097,14 @@ export class GoalRuntime {
           decisionFeedback = [verificationBridgeFeedback];
           continue;
         }
+        const harnessStateVerification = await this.verifyPendingHarnessStateDrafts(
+          events,
+          state,
+          command,
+          commandDigest
+        );
+        events = harnessStateVerification.events;
+        state = harnessStateVerification.state;
         return this.verifyOutcome(
           events,
           state,
@@ -1017,8 +1112,71 @@ export class GoalRuntime {
           commandDigest,
           cognition.outcome,
           decisionUsage,
-          await goalWorkspaceFreshness(events, state.view)
+          await goalWorkspaceFreshness(events, state.view),
+          harnessStateVerification.failure
         );
+      }
+
+      if (cognition.type === "harness_state_action") {
+        let capabilitySelection: GoalCapabilitySelection;
+        try {
+          capabilitySelection = validateGoalHarnessStateCapabilitySelection(
+            cognition.capability_selection,
+            GOAL_HARNESS_SOP_CAPABILITY_ID,
+            capabilityPortfolio
+          );
+          this.assertHarnessSopProposalEvidence(events, state.view, cognition.action);
+        } catch (error) {
+          const summary = `Goal Harness-state SOP proposal validation failed: ${errorMessage(error)}`.slice(0, 2_000);
+          const nextAction = "Use only successful same-Goal nondelegated canonical observations, or choose another available bounded action.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "harness_state_action_invalid",
+            summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: decisionUsage
+          })).view;
+        }
+        try {
+          const observed = await this.recordHarnessSopProposal(
+            events,
+            state,
+            command,
+            commandDigest,
+            cognition.summary,
+            capabilitySelection,
+            cognition.action,
+            decisionUsage
+          );
+          events = observed.events;
+          state = observed.state;
+          operationUsage = usageForCommand(events, command.command_id);
+          continue;
+        } catch (error) {
+          const summary = `Goal Harness-state SOP draft was not recorded: ${errorMessage(error)}`.slice(0, 2_000);
+          const nextAction = "Choose a new unique SOP draft id or repair the state-only draft boundary before continuing.";
+          const checkpoint = normalizeCheckpoint({
+            cursor: "harness_state_action_failed",
+            summary,
+            next_action: nextAction,
+            selected_refs: state.view.checkpoint.selected_refs
+          });
+          return (await this.appendEvent(events, {
+            ...this.eventBase(state.view, command, commandDigest),
+            event_type: "goal_blocked",
+            summary,
+            next_action: nextAction,
+            checkpoint,
+            usage_delta: decisionUsage
+          })).view;
+        }
       }
 
       const modelAction = normalizeGoalEffectAction(parseEffectAction(cognition.action));
@@ -1355,6 +1513,201 @@ export class GoalRuntime {
     return { events: appended.events, state: appended.state };
   }
 
+  private assertHarnessSopProposalEvidence(
+    events: GoalRuntimeEvent[],
+    view: GoalView,
+    action: z.infer<typeof harnessSopProposalActionSchema>
+  ): void {
+    if (!view.learning_effects.includes("propose_sop")) {
+      throw new Error("harness.propose_sop requires explicit Goal Start learning_effects: [propose_sop]");
+    }
+    if (action.completion_claim.status !== "not_done") {
+      throw new Error("harness.propose_sop accepts only completion_claim.status=not_done");
+    }
+    const eligible = new Set(events
+      .filter((event): event is z.infer<typeof actionObservedEventSchema> => (
+        event.goal_id === view.goal_id
+        && event.event_type === "goal_action_observed"
+        && event.result.ok
+        && event.result.tool !== "codex.run"
+      ))
+      .map((event) => event.id));
+    for (const eventId of action.evidence_event_ids) {
+      if (!eligible.has(eventId)) {
+        throw new Error(`harness.propose_sop evidence_event_id must name a prior successful same-Goal nondelegated canonical observation: ${eventId}`);
+      }
+    }
+  }
+
+  private async recordHarnessSopProposal(
+    events: GoalRuntimeEvent[],
+    state: DerivedGoalState,
+    command: z.infer<typeof continueCommandSchema>,
+    commandDigest: string,
+    modelSummary: string,
+    capabilitySelection: GoalCapabilitySelection,
+    action: z.infer<typeof harnessSopProposalActionSchema>,
+    usageDelta: GoalUsage
+  ): Promise<{ events: GoalRuntimeEvent[]; state: DerivedGoalState }> {
+    const sop = sopDraftSchema.parse({
+      ...action.sop,
+      evidence_refs: action.evidence_event_ids,
+      status: "draft"
+    });
+    const sopRef = `sop/drafts/${sop.id}.json`;
+    const markdownRef = `sop/drafts/${sop.id}.md`;
+    if (await this.store.readStateText(sopRef) || await this.store.readStateText(markdownRef)) {
+      throw new Error(`state-only SOP draft already exists: ${sop.id}`);
+    }
+    this.assertNoActiveVaultSopArtifact(sop.id);
+    const eventId = this.nextSafeId("goal_event");
+    const occurredAt = this.now();
+    await this.store.writeJson(sopRef, sop);
+    await this.store.writeText(markdownRef, renderGoalHarnessSopDraft({
+      sop,
+      goalId: state.view.goal_id,
+      proposalEventId: eventId,
+      completionClaimSummary: action.completion_claim.summary,
+      evidenceEventIds: action.evidence_event_ids,
+      createdAt: occurredAt
+    }));
+    const changes = [
+      { kind: "state_change" as const, identity: sopRef },
+      { kind: "state_change" as const, identity: markdownRef }
+    ];
+    const checkpoint = normalizeCheckpoint({
+      cursor: `harness_state:${sop.id}:draft_recorded`,
+      summary: `Recorded state-only SOP draft candidate: ${sop.title}`,
+      next_action: "Evaluate the state-only draft; a normal Goal outcome can close only after independent Harness delivery verification.",
+      selected_refs: mergeCheckpointRefs(state.view.checkpoint.selected_refs, [sopRef, markdownRef])
+    });
+    const appended = await this.appendEvent(events, {
+      ...this.eventBase(state.view, command, commandDigest, eventId, occurredAt),
+      event_type: "goal_harness_state_observed",
+      model_summary: modelSummary,
+      capability_selection: capabilitySelection,
+      action,
+      sop_ref: sopRef,
+      markdown_ref: markdownRef,
+      changes,
+      checkpoint,
+      usage_delta: usageDelta
+    });
+    return { events: appended.events, state: appended.state };
+  }
+
+  private async verifyPendingHarnessStateDrafts(
+    initialEvents: GoalRuntimeEvent[],
+    initialState: DerivedGoalState,
+    command: z.infer<typeof continueCommandSchema>,
+    commandDigest: string
+  ): Promise<HarnessStateDraftVerification> {
+    let events = initialEvents;
+    let state = initialState;
+    const verifiedProposalIds = new Set(events
+      .filter((event): event is z.infer<typeof harnessStateVerifiedEventSchema> => event.event_type === "goal_harness_state_verified")
+      .map((event) => event.proposal_event_id));
+    const proposals = events.filter((event): event is z.infer<typeof harnessStateObservedEventSchema> => (
+      event.goal_id === state.view.goal_id
+      && event.event_type === "goal_harness_state_observed"
+    ));
+    for (const proposal of proposals) {
+      const checked = await this.verifyHarnessSopDraft(events, state.view, proposal);
+      if (!checked.ok) {
+        return {
+          events,
+          state,
+          failure: parseVerificationResult({
+            status: "failed",
+            summary: checked.summary,
+            checks: [{
+              id: "harness_state_sop_delivery",
+              status: "failed",
+              summary: checked.summary,
+              evidence_event_ids: [proposal.id]
+            }],
+            next_action: "Repair or retire the state-only SOP draft boundary, then continue the same Goal."
+          })
+        };
+      }
+      if (verifiedProposalIds.has(proposal.id)) continue;
+      const checkpoint = normalizeCheckpoint({
+        cursor: `harness_state:${proposal.action.sop.id}:draft_verified`,
+        summary: checked.summary,
+        next_action: "A normal Goal outcome may now be considered; the draft remains unaudited and inactive.",
+        selected_refs: mergeCheckpointRefs(state.view.checkpoint.selected_refs, [proposal.sop_ref, proposal.markdown_ref])
+      });
+      const appended = await this.appendEvent(events, {
+        ...this.eventBase(state.view, command, commandDigest),
+        event_type: "goal_harness_state_verified",
+        proposal_event_id: proposal.id,
+        sop_ref: proposal.sop_ref,
+        markdown_ref: proposal.markdown_ref,
+        evidence_event_ids: proposal.action.evidence_event_ids,
+        summary: checked.summary,
+        checkpoint
+      });
+      events = appended.events;
+      state = appended.state;
+    }
+    return { events, state, failure: null };
+  }
+
+  private async verifyHarnessSopDraft(
+    events: GoalRuntimeEvent[],
+    view: GoalView,
+    proposal: z.infer<typeof harnessStateObservedEventSchema>
+  ): Promise<{ ok: boolean; summary: string }> {
+    const sop = sopDraftSchema.safeParse(await this.store.readStateJson<unknown>(proposal.sop_ref));
+    if (!sop.success || sop.data.status !== "draft") {
+      return { ok: false, summary: "Harness-state SOP delivery is not a readable draft in the state root." };
+    }
+    const markdown = await this.store.readStateText(proposal.markdown_ref);
+    if (!markdown.includes("## Goal Harness State Proposal") || !markdown.includes(`- goal_id: ${view.goal_id}`)) {
+      return { ok: false, summary: "Harness-state SOP delivery is missing its bounded Goal provenance Markdown." };
+    }
+    if (sop.data.id !== proposal.action.sop.id
+      || canonicalJson(sop.data.evidence_refs) !== canonicalJson(proposal.action.evidence_event_ids)) {
+      return { ok: false, summary: "Harness-state SOP delivery does not match its canonical draft identity or evidence refs." };
+    }
+    try {
+      this.assertHarnessSopProposalEvidence(events.filter((event) => event.sequence < proposal.sequence), view, proposal.action);
+    } catch (error) {
+      return { ok: false, summary: `Harness-state SOP evidence no longer validates: ${errorMessage(error)}`.slice(0, 2_000) };
+    }
+    if (await this.hasRelatedSopAudit(proposal.sop_ref, sop.data.id)) {
+      return { ok: false, summary: "Harness-state SOP delivery already has a related audit; it is no longer a draft-only Goal result." };
+    }
+    if (await this.store.readStateText(`sop/promoted/${sop.data.id}.md`) || this.hasActiveVaultSopArtifact(sop.data.id)) {
+      return { ok: false, summary: "Harness-state SOP delivery has a promotion or active-vault artifact; a Goal draft action cannot close that boundary." };
+    }
+    return { ok: true, summary: "Harness independently verified the state-only SOP draft, same-Goal nondelegated evidence refs, and absence of audit, promotion, or active-vault artifacts." };
+  }
+
+  private async hasRelatedSopAudit(sopRef: string, sopId: string): Promise<boolean> {
+    for (const ref of await this.store.listStateFiles("governance/audits")) {
+      if (!ref.endsWith(".json")) continue;
+      const audit = auditReportSchema.safeParse(await this.store.readStateJson<unknown>(ref));
+      if (audit.success && audit.data.target_type === "sop" && (audit.data.target_ref === sopId || audit.data.target_ref === sopRef)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private assertNoActiveVaultSopArtifact(sopId: string): void {
+    if (this.hasActiveVaultSopArtifact(sopId)) {
+      throw new Error(`active-vault SOP artifact already exists for ${sopId}`);
+    }
+  }
+
+  private hasActiveVaultSopArtifact(sopId: string): boolean {
+    return [
+      join(this.activeVaultRoot, "sop", "drafts", `${sopId}.md`),
+      join(this.activeVaultRoot, "sop", "promoted", `${sopId}.md`)
+    ].some((path) => existsSync(path));
+  }
+
   private async verifyOutcome(
     events: GoalRuntimeEvent[],
     state: DerivedGoalState,
@@ -1362,7 +1715,8 @@ export class GoalRuntime {
     commandDigest: string,
     proposal: GoalOutcomeProposal,
     usageDelta: GoalUsage,
-    workspaceFreshness: GoalWorkspaceFreshnessView
+    workspaceFreshness: GoalWorkspaceFreshnessView,
+    harnessStateFailure: GoalVerificationResult | null = null
   ): Promise<GoalView> {
     const lineage = goalChangeLineage(events, command.goal_id);
     if (lineage.changes.length > MAX_OUTCOME_CHANGES || lineage.eventIds.length > MAX_CHANGE_EVIDENCE_EVENTS) {
@@ -1396,7 +1750,9 @@ export class GoalRuntime {
     });
     let verification: GoalVerificationResult;
     const initialWorkspaceFailure = workspaceTerminalFailure(workspaceFreshness);
-    if (initialWorkspaceFailure) {
+    if (harnessStateFailure) {
+      verification = harnessStateFailure;
+    } else if (initialWorkspaceFailure) {
       verification = workspaceVerificationFailure(initialWorkspaceFailure, evidenceEventIds.at(-1)!);
     } else if (goalObservationObligation(events, command.goal_id).status === "required") {
       verification = parseVerificationResult({
@@ -1437,6 +1793,17 @@ export class GoalRuntime {
       );
       if (finalWorkspaceFailure) {
         verification = workspaceVerificationFailure(finalWorkspaceFailure, evidenceEventIds.at(-1)!);
+      }
+    }
+    if (verification.status === "passed") {
+      const finalHarnessStateVerification = await this.verifyPendingHarnessStateDrafts(
+        events,
+        state,
+        command,
+        commandDigest
+      );
+      if (finalHarnessStateVerification.failure) {
+        verification = finalHarnessStateVerification.failure;
       }
     }
     assertVerificationEvidence(verification, candidate);
@@ -1944,6 +2311,66 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
         softBudgetReached = false;
         manualPause = false;
         break;
+      case "goal_harness_state_observed": {
+        assertReplayStatus(status, "active", event);
+        if (!started.learning_effects.includes("propose_sop")) {
+          throw new Error(`GoalRuntime Harness-state SOP action lacks explicit Goal-start opt-in: ${event.id}`);
+        }
+        if (event.capability_selection.capability_id !== GOAL_HARNESS_SOP_CAPABILITY_ID
+          || event.capability_selection.execution_purpose !== "atomic_task"
+          || event.capability_selection.skill_refs.length > 0
+          || event.capability_selection.capability_fit_assessment
+          || event.action.type !== "propose_sop"
+          || event.action.completion_claim.status !== "not_done") {
+          throw new Error(`GoalRuntime invalid Harness-state SOP action shape: ${event.id}`);
+        }
+        const expectedChanges: GoalChangeIdentity[] = [
+          { kind: "state_change", identity: event.sop_ref },
+          { kind: "state_change", identity: event.markdown_ref }
+        ];
+        if (canonicalJson(event.changes) !== canonicalJson(expectedChanges)) {
+          throw new Error(`GoalRuntime Harness-state SOP action change lineage mismatch: ${event.id}`);
+        }
+        const eligibleEvidenceIds = new Set(events.slice(0, index)
+          .filter((candidate): candidate is z.infer<typeof actionObservedEventSchema> => (
+            candidate.event_type === "goal_action_observed"
+            && candidate.result.ok
+            && candidate.result.tool !== "codex.run"
+          ))
+          .map((candidate) => candidate.id));
+        if (event.action.evidence_event_ids.some((eventId) => !eligibleEvidenceIds.has(eventId))) {
+          throw new Error(`GoalRuntime Harness-state SOP action has invalid same-Goal evidence refs: ${event.id}`);
+        }
+        checkpoint = event.checkpoint;
+        usage = addUsage(usage, event.usage_delta);
+        nextAction = checkpoint.next_action;
+        softBudgetReached = false;
+        verificationFailed = false;
+        blocked = false;
+        break;
+      }
+      case "goal_harness_state_verified": {
+        assertReplayStatus(status, "active", event);
+        const proposal = events.slice(0, index).find((candidate): candidate is z.infer<typeof harnessStateObservedEventSchema> => (
+          candidate.id === event.proposal_event_id && candidate.event_type === "goal_harness_state_observed"
+        ));
+        if (!proposal
+          || proposal.sop_ref !== event.sop_ref
+          || proposal.markdown_ref !== event.markdown_ref
+          || canonicalJson(proposal.action.evidence_event_ids) !== canonicalJson(event.evidence_event_ids)) {
+          throw new Error(`GoalRuntime Harness-state SOP verification does not match its proposal: ${event.id}`);
+        }
+        if (events.slice(0, index).some((candidate) => candidate.event_type === "goal_harness_state_verified"
+          && candidate.proposal_event_id === event.proposal_event_id)) {
+          throw new Error(`GoalRuntime duplicate Harness-state SOP verification: ${event.id}`);
+        }
+        checkpoint = event.checkpoint;
+        nextAction = checkpoint.next_action;
+        softBudgetReached = false;
+        verificationFailed = false;
+        blocked = false;
+        break;
+      }
       case "goal_soft_budget_checkpoint":
         assertReplayStatus(status, "active", event);
         checkpoint = event.checkpoint;
@@ -2053,6 +2480,7 @@ function deriveGoalState(allEvents: GoalRuntimeEvent[], goalId: string): Derived
     goal_id: goalId,
     objective: started.objective,
     read_policy: started.read_policy ?? null,
+    learning_effects: [...started.learning_effects],
     status,
     sequence: last.sequence,
     budget: started.budget,
@@ -2206,7 +2634,9 @@ function goalObservationObligation(
   }
   if (latestBoundaryIndex < 0) return { status: "none" };
   const satisfied = goalEvents.slice(latestBoundaryIndex + 1)
-    .some((event) => event.event_type === "goal_action_observed");
+    .some((event) => event.event_type === "goal_action_observed"
+      || event.event_type === "goal_harness_state_observed"
+      || event.event_type === "goal_harness_state_verified");
   return { status: satisfied ? "satisfied" : "required" };
 }
 
@@ -2477,6 +2907,37 @@ function evidenceView(event: GoalRuntimeEvent): GoalEvidenceView {
         details: boundedDetails(event.result)
       };
     }
+    case "goal_harness_state_observed":
+      return {
+        event_id: event.id,
+        kind: "observation",
+        summary: `Harness state action recorded: ${event.action.sop.title}`,
+        refs: [event.sop_ref, event.markdown_ref],
+        occurred_at: event.occurred_at,
+        tool: GOAL_HARNESS_SOP_CAPABILITY_ID,
+        ok: true,
+        changes: event.changes,
+        details: boundedDetails({
+          completion_claim: event.action.completion_claim,
+          evidence_event_ids: event.action.evidence_event_ids,
+          boundary: "state-only SOP draft; no audit, promotion, active-vault write, Skill creation, or completion authority"
+        })
+      };
+    case "goal_harness_state_verified":
+      return {
+        event_id: event.id,
+        kind: "observation",
+        summary: event.summary,
+        refs: [event.sop_ref, event.markdown_ref],
+        occurred_at: event.occurred_at,
+        tool: GOAL_HARNESS_SOP_CAPABILITY_ID,
+        ok: true,
+        details: boundedDetails({
+          proposal_event_id: event.proposal_event_id,
+          evidence_event_ids: event.evidence_event_ids,
+          boundary: "independent Harness verification of state-only draft delivery; no audit, promotion, active-vault write, Skill creation, or completion authority"
+        })
+      };
     case "goal_soft_budget_checkpoint":
       return {
         event_id: event.id,
@@ -2517,15 +2978,15 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, c
     "goal_action_planned",
     "goal_effect_confirmed",
     "goal_action_observed",
+    "goal_harness_state_observed",
+    "goal_harness_state_verified",
     "goal_verification_failed"
   ].includes(event.event_type));
   const postChangeVerificationEventIds = changeEventIds.flatMap((changeEventId) => {
     const changeIndex = eligible.findIndex((event) => event.id === changeEventId);
     const changeEvent = eligible[changeIndex];
     if (changeIndex < 0
-      || changeEvent?.event_type !== "goal_action_observed"
-      || !observedChanges(changeEvent.result).some((change) => change.kind === "git_commit"
-        || change.kind === "workspace_path")) return [];
+      || !hasRepositoryChangeObservation(changeEvent)) return [];
     const verification = eligible.slice(changeIndex + 1).find((event) => event.event_type === "goal_action_observed"
       && isSuccessfulLocalVerificationEvent(event));
     return verification ? [verification.id] : [];
@@ -2537,6 +2998,16 @@ function candidateEvidenceEventIds(events: GoalRuntimeEvent[], goalId: string, c
     ...eligible.slice(-RECENT_OUTCOME_EVIDENCE_EVENTS).map((event) => event.id)
   ]);
   return eligible.filter((event) => selected.has(event.id)).map((event) => event.id);
+}
+
+function hasRepositoryChangeObservation(event: GoalRuntimeEvent): boolean {
+  if (event.event_type === "goal_action_observed") {
+    return observedChanges(event.result).some((change) => change.kind === "git_commit" || change.kind === "workspace_path");
+  }
+  if (event.event_type === "goal_harness_state_observed") {
+    return event.changes.some((change) => change.kind === "git_commit" || change.kind === "workspace_path");
+  }
+  return false;
 }
 
 function parseVerificationResult(value: GoalVerificationResult): GoalVerificationResult {
@@ -2913,7 +3384,9 @@ function goalChangeLineage(events: GoalRuntimeEvent[], goalId: string): {
   eventIds: string[];
 } {
   const evidence = events
-    .filter((event) => event.goal_id === goalId && event.event_type === "goal_action_observed")
+    .filter((event) => event.goal_id === goalId && (
+      event.event_type === "goal_action_observed" || event.event_type === "goal_harness_state_observed"
+    ))
     .map(evidenceView)
     .filter((item) => evidenceChanges(item).length > 0);
   return {
@@ -3124,6 +3597,33 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function renderGoalHarnessSopDraft(args: {
+  sop: SOPDraft;
+  goalId: string;
+  proposalEventId: string;
+  completionClaimSummary: string;
+  evidenceEventIds: string[];
+  createdAt: string;
+}): string {
+  return [
+    formatSopMarkdown(args.sop).trimEnd(),
+    "",
+    "## Goal Harness State Proposal",
+    "",
+    `- goal_id: ${args.goalId}`,
+    `- proposal_event_id: ${args.proposalEventId}`,
+    "- completion_claim.status: not_done",
+    `- completion_claim.summary: ${args.completionClaimSummary}`,
+    `- created_at: ${args.createdAt}`,
+    "- boundary: state-only SOP draft; no audit, promotion, active-vault write, Skill creation, or Goal completion authority",
+    "",
+    "### Canonical Evidence Event IDs",
+    "",
+    ...args.evidenceEventIds.map((eventId) => `- ${eventId}`),
+    ""
+  ].join("\n");
+}
+
 function defaultCapabilityPortfolioProvider(): GoalCapabilityPortfolioProvider {
   return {
     async resolve(input) {
@@ -3131,7 +3631,8 @@ function defaultCapabilityPortfolioProvider(): GoalCapabilityPortfolioProvider {
         repository_authority: input.repository_authority,
         execution_workspace: input.execution_workspace,
         tool_competence: input.tool_competence,
-        selected_skills: []
+        selected_skills: [],
+        learning_effects: input.learning_effects
       });
     }
   };

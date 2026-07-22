@@ -51,13 +51,16 @@ test("goal CLI parses lifecycle identity, inspect, and exact effect confirmation
     "--read-file",
     "repo:README.md",
     "--read-tree",
-    "repo:docs"
+    "repo:docs",
+    "--learning-effect",
+    "propose_sop"
   ]);
   assert.equal(constrainedStart.goalAction, "start");
   assert.deepEqual(constrainedStart.goalReadReferences, [
     { scope: "repo", kind: "file", path: "README.md" },
     { scope: "repo", kind: "tree", path: "docs" }
   ]);
+  assert.deepEqual(constrainedStart.goalLearningEffects, ["propose_sop"]);
 });
 
 test("local goal CLI ingress translates intent and owns no lifecycle state", async () => {
@@ -87,7 +90,8 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     objective: "One bounded local goal.",
     readPolicy: {
       references: [{ scope: "repo", kind: "file", path: "README.md" }]
-    }
+    },
+    learningEffects: ["propose_sop"]
   }), view);
   assert.equal(await executeLocalGoalRequest(runtime, {
     action: "continue",
@@ -117,7 +121,8 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     objective: "One bounded local goal.",
     read_policy: {
       references: [{ scope: "repo", kind: "file", path: "README.md" }]
-    }
+    },
+    learning_effects: ["propose_sop"]
   }, {
     type: "continue",
     command_id: "command_continue",

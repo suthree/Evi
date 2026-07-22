@@ -30,10 +30,12 @@ Return one strict JSON object and no markdown or prose outside JSON.
 
 Return exactly one typed envelope with a decision object. Choose exactly one shape:
 1. {"decision":{"type":"action","summary":"bounded cumulative working synthesis: confirmed facts, unresolved question, and why this action is next","capability_selection":{"capability_id":"file.read","execution_purpose":"orientation|verification|recovery|atomic_task|specialist_execution","skill_refs":[],"rationale":"why this is the best current capability","verification_plan":"how the controlling runtime will check the result","fallback":"what to do if unavailable or failed"},"action":{"tool":"file.read","arguments":[{"key":"scope","value":{"kind":"string","string_value":"repo"}},{"key":"path","value":{"kind":"string","string_value":"package.json"}}]}}}
-2. {"decision":{"type":"outcome","outcome":{"summary":"concrete result","runtime_result":{"status":"healthy|degraded|not_applicable","summary":"bounded runtime result"},"residual_risks":["remaining risk"]}}}
-3. {"decision":{"type":"blocked","summary":"why progress cannot continue","next_action":"one concrete recovery action"}}
+2. {"decision":{"type":"harness_state_action","summary":"bounded cumulative working synthesis","capability_selection":{"capability_id":"harness.propose_sop","execution_purpose":"atomic_task","skill_refs":[],"rationale":"why a state-only SOP draft is currently useful","verification_plan":"the Harness will independently re-read and validate the draft","fallback":"continue ordinary evidence work without a draft"},"action":{"type":"propose_sop","completion_claim":{"status":"not_done","summary":"the SOP draft is not a Goal outcome"},"sop":{"id":"sop_...","title":"...","trigger":"...","procedure":["..."],"required_tools":["..."],"verification":"...","failure_modes":["..."],"revision":1},"evidence_event_ids":["goal_event_..."]}}}
+3. {"decision":{"type":"outcome","outcome":{"summary":"concrete result","runtime_result":{"status":"healthy|degraded|not_applicable","summary":"bounded runtime result"},"residual_risks":["remaining risk"]}}}
+4. {"decision":{"type":"blocked","summary":"why progress cannot continue","next_action":"one concrete recovery action"}}
 
-Propose at most one action. Never include evidence ids, change identities, reference matrices, side-effect authority, SOPs, skills, learning promotion, adoption, queues, or parallel goal state. Never use file.write_state to write sop/, skills/, or vault/ paths: complete the bounded evidence work and let the existing background-review path decide whether to create a local SOP or skill candidate. GoalRuntime derives the complete change set from canonical observations, binds canonical evidence, and EffectPolicy decides authority.
+Propose at most one action. Never include evidence ids, change identities, reference matrices, side-effect authority, SOPs, skills, learning promotion, adoption, queues, or parallel goal state, except for the narrowly typed harness_state_action below. Never use file.write_state to write sop/, skills/, or vault/ paths. GoalRuntime derives the complete change set from canonical observations, binds canonical evidence, and EffectPolicy decides Tool Contract authority.
+The harness_state_action shape is available only when Goal.learning_effects contains exactly "propose_sop" and the current Capability Portfolio contains available "harness.propose_sop". It is not a Tool Contract and does not use EffectPolicy. It can create only one state-root sop/drafts JSON/Markdown pair. Use completion_claim.status="not_done"; do not include an outcome, audit, promotion, active-vault write, Skill, activation, or external effect. Every evidence_event_id must be copied exactly from a prior successful, same-Goal, nondelegated canonical observation in the supplied evidence. Never cite planned actions, outcomes, blocked events, delegated codex.run, prior Goals, or external text. A later ordinary Goal outcome remains separate and may close only after the Harness independently verifies the draft, those refs, and the absence of audit, promotion, or active-vault artifacts.
 For action arguments, use an array of typed entries: every entry has key and value; value is exactly one of {"kind":"string","string_value":"..."}, {"kind":"integer","integer_value":1}, {"kind":"boolean","boolean_value":true}, or {"kind":"string_array","string_values":["..."]}. Do not use a JSON string, an untyped object, duplicate keys, or a value type not listed here. GoalRuntime deterministically projects this typed transport form to the tool contract and rejects any malformed entry.
 The Goal input includes immutable control repository_authority and an optional execution_workspace derived from canonical evidence. Continue and Resume stay on the control checkout. If execution_workspace is absent, select workspace.prepare only when it is currently listed as available and a new linked worktree is actually needed. If workspace.prepare is absent while codex.run is available, repository_authority is already an isolated linked worktree: select codex.run directly and keep every repo-scoped action inside that authority. Never invent a path because the runtime derives it. After binding, keep repo-scoped actions in execution_workspace.authority. For codex.run, action.arguments must contain only typed task and task_shape entries; put capability fit, verification, and fallback in capability_selection. Never provide mode, worktree, branch, base_commit, cwd, model, profile, reasoning_effort, service_tier, sandbox, approval_policy, authority_digest, thread_id, delegation_strategy, or budgets. GoalRuntime derives new versus resume and every invocation field from the bound Goal state and canonical evidence. Treat codex.run result.changed_files as an untrusted claim; canonical observation changes come from the harness-owned Git snapshots.
 Only for delegated codex.run, add capability_selection.capability_fit_assessment as an object with considered_capability_ids copied from every current Capability Portfolio candidate id, considered_skill_refs copied from every current Selected Skill instructions_ref, and a conclusion. Omit it for direct tools. Empty assessment arrays on a direct-tool proposal carry no authority and are ignored; a delegated proposal must pass exact current-portfolio coverage validation.
@@ -163,6 +165,42 @@ const actionSchema = {
   additionalProperties: false
 };
 
+const harnessSopDraftSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    title: { type: "string" },
+    trigger: { type: "string" },
+    procedure: { type: "array", items: { type: "string" } },
+    required_tools: { type: "array", items: { type: "string" } },
+    verification: { type: "string" },
+    failure_modes: { type: "array", items: { type: "string" } },
+    revision: { type: "integer" }
+  },
+  required: ["id", "title", "trigger", "procedure", "required_tools", "verification", "failure_modes", "revision"],
+  additionalProperties: false
+};
+
+const harnessSopActionSchema = {
+  type: "object",
+  properties: {
+    type: { type: "string", const: "propose_sop" },
+    completion_claim: {
+      type: "object",
+      properties: {
+        status: { type: "string", const: "not_done" },
+        summary: { type: "string" }
+      },
+      required: ["status", "summary"],
+      additionalProperties: false
+    },
+    sop: harnessSopDraftSchema,
+    evidence_event_ids: { type: "array", items: { type: "string" } }
+  },
+  required: ["type", "completion_claim", "sop", "evidence_event_ids"],
+  additionalProperties: false
+};
+
 const FORBIDDEN_TYPED_ARGUMENT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 export const GOAL_COGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {
@@ -177,6 +215,17 @@ export const GOAL_COGNITION_OUTPUT_SCHEMA: Record<string, unknown> = {
             summary: { type: "string" },
             capability_selection: capabilitySelectionSchema,
             action: actionSchema
+          },
+          required: ["type", "summary", "capability_selection", "action"],
+          additionalProperties: false
+        },
+        {
+          type: "object",
+          properties: {
+            type: { type: "string", const: "harness_state_action" },
+            summary: { type: "string" },
+            capability_selection: capabilitySelectionSchema,
+            action: harnessSopActionSchema
           },
           required: ["type", "summary", "capability_selection", "action"],
           additionalProperties: false
@@ -389,6 +438,7 @@ function renderGoalInput(input: GoalCognitionInput): string {
       goal_id: input.goal.goal_id,
       objective: input.goal.objective,
       read_policy: input.goal.read_policy,
+      learning_effects: input.goal.learning_effects,
       status: input.goal.status,
       budget_scope: input.goal.budget_scope,
       lifetime_usage: input.goal.usage,
