@@ -17,6 +17,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   if (version !== null && !MIGRATABLE_SCHEMA_VERSIONS.has(version)) {
     throw new RuntimeSchemaIncompatibleError(version);
   }
+  if (version === "8" || version === "9" || version === RUNTIME_SCHEMA_VERSION) {
+    assertWorkerLifecycleShape(db, version);
+  }
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -190,58 +193,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         WHERE state IN ('dispatching', 'response_observed');
       CREATE INDEX IF NOT EXISTS model_dispatches_run_state_idx
         ON model_dispatches(run_id, state);
-      CREATE TABLE IF NOT EXISTS worker_sessions (
-        id TEXT PRIMARY KEY,
-        reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
-        parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-        parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution')),
-        status TEXT NOT NULL CHECK (
-          status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
-        ),
-        task_envelope_digest TEXT NOT NULL UNIQUE,
-        task_envelope_json TEXT NOT NULL,
-        child_execution_lock_digest TEXT NOT NULL,
-        child_execution_lock_json TEXT NOT NULL,
-        child_session_id TEXT UNIQUE REFERENCES sessions(id),
-        child_run_id TEXT UNIQUE REFERENCES runs(id),
-        result_envelope_digest TEXT UNIQUE,
-        result_envelope_json TEXT,
-        result_delivered_to_turn_id TEXT REFERENCES turns(id),
-        lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
-        lease_owner_digest TEXT,
-        lease_expires_at TEXT,
-        attempt_id TEXT UNIQUE,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        CHECK (
-          (child_session_id IS NULL AND child_run_id IS NULL)
-          OR (child_session_id IS NOT NULL AND child_run_id IS NOT NULL)
-        ),
-        CHECK (
-          (status = 'running' AND lease_owner_digest IS NOT NULL AND lease_expires_at IS NOT NULL)
-          OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
-        ),
-        CHECK (
-          (worker_kind = 'discussion' AND attempt_id IS NULL AND status != 'paused')
-          OR (worker_kind = 'execution' AND child_session_id IS NULL AND child_run_id IS NULL
-            AND ((status = 'queued' AND attempt_id IS NULL)
-              OR (status != 'queued' AND attempt_id IS NOT NULL)))
-        ),
-        CHECK (
-          (worker_kind = 'discussion' AND status IN ('queued', 'running')
-            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
-            AND result_delivered_to_turn_id IS NULL)
-          OR (worker_kind = 'discussion' AND status IN ('needs_input', 'completed', 'failed')
-            AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
-            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
-          OR (worker_kind = 'execution' AND status IN ('queued', 'running', 'paused')
-            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
-            AND result_delivered_to_turn_id IS NULL)
-          OR (worker_kind = 'execution' AND status IN ('needs_input', 'completed', 'failed')
-            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
-        )
-      );
+      ${workerLifecycleTableSql(true)}
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_status_idx
         ON worker_sessions(parent_run_id, status, created_at);
       CREATE UNIQUE INDEX IF NOT EXISTS worker_sessions_one_kind_per_parent_idx
@@ -343,9 +295,31 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   }
 }
 
+function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10"): void {
+  const required = version === "8"
+    ? ["worker_sessions"]
+    : version === "9"
+      ? ["worker_sessions", "delivery_lineages", "execution_worker_sessions"]
+      : ["worker_sessions", "delivery_lineages", "execution_worker_bindings"];
+  const forbidden = version === "8"
+    ? ["execution_worker_sessions", "execution_worker_bindings"]
+    : version === "9"
+      ? ["execution_worker_bindings"]
+      : ["execution_worker_sessions"];
+  const missing = required.filter((name) => !tableExists(db, name));
+  const unexpected = forbidden.filter((name) => tableExists(db, name));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new RuntimeSchemaIncompatibleError([
+      version,
+      missing.length > 0 ? `missing:${missing.join(",")}` : "",
+      unexpected.length > 0 ? `unexpected:${unexpected.join(",")}` : ""
+    ].filter(Boolean).join("/"));
+  }
+}
+
 function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9"): void {
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_legacy");
-  const hasExecutionWorkers = version === "9" && tableExists(db, "execution_worker_sessions");
+  const hasExecutionWorkers = version === "9";
   if (hasExecutionWorkers) {
     db.exec("ALTER TABLE execution_worker_sessions RENAME TO execution_worker_sessions_legacy");
   }
@@ -403,8 +377,12 @@ function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9"): voi
 }
 
 function createWorkerLifecycleTable(db: DatabaseSync): void {
-  db.exec(`
-    CREATE TABLE worker_sessions (
+  db.exec(workerLifecycleTableSql(false));
+}
+
+function workerLifecycleTableSql(ifNotExists: boolean): string {
+  return `
+    CREATE TABLE ${ifNotExists ? "IF NOT EXISTS " : ""}worker_sessions (
       id TEXT PRIMARY KEY,
       reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
       parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -456,7 +434,7 @@ function createWorkerLifecycleTable(db: DatabaseSync): void {
           AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
       )
     );
-  `);
+  `;
 }
 
 function tableExists(db: DatabaseSync, name: string): boolean {

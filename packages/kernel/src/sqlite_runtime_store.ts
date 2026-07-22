@@ -1033,28 +1033,27 @@ export class SqliteRuntimeStore {
   }
 
   assertCanDispatchDiscussionWorker(runId: string, invocationId: string): void {
-    const row = this.db.prepare(`
-      SELECT reservations.invocation_id
-      FROM worker_sessions AS workers
-      JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
-      WHERE workers.parent_run_id = ? AND workers.worker_kind = 'discussion'
-      LIMIT 1
-    `).get(runId) as { invocation_id: string } | undefined;
-    if (row && row.invocation_id !== invocationId) {
-      throw new Error(`This Supervisor Run already owns its one discussion Worker Session: ${runId}`);
-    }
+    this.assertCanDispatchWorkerKind(runId, invocationId, "discussion");
   }
 
   assertCanDispatchExecutionWorker(runId: string, invocationId: string): void {
+    this.assertCanDispatchWorkerKind(runId, invocationId, "execution");
+  }
+
+  private assertCanDispatchWorkerKind(
+    runId: string,
+    invocationId: string,
+    workerKind: WorkerSessionRow["worker_kind"]
+  ): void {
     const row = this.db.prepare(`
       SELECT reservations.invocation_id
       FROM worker_sessions AS workers
       JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
-      WHERE workers.parent_run_id = ? AND workers.worker_kind = 'execution'
+      WHERE workers.parent_run_id = ? AND workers.worker_kind = ?
       LIMIT 1
-    `).get(runId) as { invocation_id: string } | undefined;
+    `).get(runId, workerKind) as { invocation_id: string } | undefined;
     if (row && row.invocation_id !== invocationId) {
-      throw new Error(`This Supervisor Run already owns its one execution Worker Session: ${runId}`);
+      throw new Error(`This Supervisor Run already owns its one ${workerKind} Worker Session: ${runId}`);
     }
   }
 
@@ -1132,11 +1131,7 @@ export class SqliteRuntimeStore {
       if (worker.parent_turn_id !== run.turn_id) {
         throw new Error(`Worker Result delivery parent Turn drifted: ${worker.id}`);
       }
-      if ("lineage" in worker) {
-        this.assertExecutionWorkerDeliveryIdentity(run, worker);
-      } else {
-        this.assertWorkerDeliveryIdentity(run, worker);
-      }
+      this.assertSupervisorWorkerDeliveryIdentity(run, worker);
     }
     return workers.sort(workerOrder);
   }
@@ -1155,11 +1150,7 @@ export class SqliteRuntimeStore {
     `).all(runId, turnId) as unknown as Array<WorkerSessionRow & { lineage_id: string | null }>)
       .map((row) => this.toSupervisorWorkerInspection(row));
     for (const worker of workers) {
-      if ("lineage" in worker) {
-        this.assertExecutionWorkerDeliveryIdentity(run, worker);
-      } else {
-        this.assertWorkerDeliveryIdentity(run, worker);
-      }
+      this.assertSupervisorWorkerDeliveryIdentity(run, worker);
     }
     return workers.sort(workerOrder);
   }
@@ -2777,6 +2768,17 @@ export class SqliteRuntimeStore {
     const receipt = this.getEffectReceipt(reservationId);
     if (!receipt) throw new Error(`Effect receipt not found: ${reservationId}`);
     return receipt;
+  }
+
+  private assertSupervisorWorkerDeliveryIdentity(
+    parent: RunRecord,
+    worker: WorkerInspection | ExecutionWorkerInspection
+  ): void {
+    if ("lineage" in worker) {
+      this.assertExecutionWorkerDeliveryIdentity(parent, worker);
+      return;
+    }
+    this.assertWorkerDeliveryIdentity(parent, worker);
   }
 
   private assertWorkerDeliveryIdentity(parent: RunRecord, worker: WorkerInspection): void {
