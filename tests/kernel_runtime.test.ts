@@ -40,7 +40,8 @@ test("vNext executes an ordinary Goal-free Turn through Pi and persists only SQL
   let completedRunId = "";
   const store = new SqliteRuntimeStore(dbPath);
   try {
-    const runtime = new KernelRuntime(store, new PiAgentHarnessLoopFactory({
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
       store,
       models,
       model: faux.getModel(),
@@ -83,7 +84,8 @@ test("vNext records a terminal failed Run when Pi returns a provider error", asy
   ]);
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
-    const runtime = new KernelRuntime(store, new PiAgentHarnessLoopFactory({
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
       store,
       models,
       model: faux.getModel(),
@@ -128,12 +130,11 @@ test("vNext routes a Pi tool call through Action Gateway and records one Effect 
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
     const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
-    const runtime = new KernelRuntime(store, new PiAgentHarnessLoopFactory({
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
       store,
       models,
       model: faux.getModel(),
-      cwd: fixture,
-      action_gateway: gateway
+      cwd: fixture
     }));
 
     const outcome = await runtime.submit({ request: "Inspect this Run once." });
@@ -186,12 +187,11 @@ test("vNext pauses a Run whose Action outcome remains unknown", async () => {
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
     const gateway = new ActionGateway(store, [handler]);
-    const runtime = new KernelRuntime(store, new PiAgentHarnessLoopFactory({
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
       store,
       models,
       model: faux.getModel(),
-      cwd: fixture,
-      action_gateway: gateway
+      cwd: fixture
     }));
 
     const result = await runtime.submit({ request: "Do not complete over unknown action evidence." });
@@ -205,8 +205,126 @@ test("vNext pauses a Run whose Action outcome remains unknown", async () => {
     const recovery = await gateway.reconcileRun(result.run_id);
     assert.equal(recovery[0]?.status, "outcome_unknown");
     assert.equal(executeCalls, 1);
+    const stillPaused = await runtime.continueRun(result.run_id);
+    assert.equal(stillPaused.status, "paused");
+    assert.equal(runtime.inspect(result.run_id)?.continuation_count, 0);
+    assert.equal(executeCalls, 1);
   } finally {
     store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext continues the same Run after restart and terminal Action reconciliation", async () => {
+  const fixture = await createFixture();
+  const dbPath = join(fixture, "runtime.sqlite");
+  const request = "Recover the uncertain probe and finish this same Run.";
+  let runId = "";
+  let sessionId = "";
+  let executeCalls = 0;
+  let reconcileCalls = 0;
+
+  const firstModels = createModels();
+  const firstFaux = fauxProvider({ provider: `kernel-continuation-first-${Date.now()}` });
+  firstModels.setProvider(firstFaux.provider);
+  firstFaux.setResponses([
+    fauxAssistantMessage(
+      fauxToolCall("recoverable_probe", {}, { id: "recoverable-call-1" }),
+      { stopReason: "toolUse" }
+    ),
+    fauxAssistantMessage("The probe outcome is still unknown, so this answer must not complete the Run.")
+  ]);
+  const firstHandler = recoverableProbeHandler({
+    async execute() {
+      executeCalls += 1;
+      throw new Error("connection ended after the probe was dispatched");
+    },
+    async reconcile() {
+      return null;
+    }
+  });
+  const firstStore = new SqliteRuntimeStore(dbPath);
+  try {
+    const gateway = new ActionGateway(firstStore, [firstHandler]);
+    const runtime = new KernelRuntime(firstStore, gateway, new PiAgentHarnessLoopFactory({
+      store: firstStore,
+      models: firstModels,
+      model: firstFaux.getModel(),
+      cwd: fixture
+    }));
+    const paused = await runtime.submit({ request });
+    assert.equal(paused.status, "paused");
+    runId = paused.run_id;
+    sessionId = paused.session_id;
+    assert.equal(runtime.inspect(runId)?.continuation_count, 0);
+  } finally {
+    firstStore.close();
+  }
+
+  const recoveryModels = createModels();
+  const recoveryFaux = fauxProvider({ provider: `kernel-continuation-recovery-${Date.now()}` });
+  recoveryModels.setProvider(recoveryFaux.provider);
+  recoveryFaux.setResponses([
+    (context) => {
+      assert.deepEqual(context.tools.map((tool) => tool.name), ["recoverable_probe"]);
+      const userText = context.messages
+        .filter((message) => message.role === "user")
+        .flatMap((message) => message.content)
+        .filter((part) => part.type === "text")
+        .map((part) => part.text);
+      assert.equal(userText[0], request);
+      assert.match(userText.at(-1) ?? "", /evi_action_recovery_evidence/);
+      assert.match(userText.at(-1) ?? "", /Recovered terminal evidence for the probe/);
+      assert.match(userText.at(-1) ?? "", /"recovered":true/);
+      const unknownResult = context.messages.find(
+        (message) => message.role === "toolResult" && message.toolCallId === "recoverable-call-1"
+      );
+      assert.ok(unknownResult && unknownResult.role === "toolResult");
+      assert.equal(unknownResult.isError, true);
+      return fauxAssistantMessage("The reconciled receipt closes the probe, and the original Run is complete.");
+    }
+  ]);
+  const recoveryHandler = recoverableProbeHandler({
+    async execute() {
+      executeCalls += 1;
+      throw new Error("the original Action must not be replayed");
+    },
+    async reconcile() {
+      reconcileCalls += 1;
+      return {
+        outcome: "succeeded",
+        summary: "Recovered terminal evidence for the probe.",
+        output: { recovered: true }
+      };
+    }
+  });
+  const recoveryStore = new SqliteRuntimeStore(dbPath);
+  try {
+    const gateway = new ActionGateway(recoveryStore, [recoveryHandler]);
+    const runtime = new KernelRuntime(recoveryStore, gateway, new PiAgentHarnessLoopFactory({
+      store: recoveryStore,
+      models: recoveryModels,
+      model: recoveryFaux.getModel(),
+      cwd: fixture
+    }));
+
+    const completed = await runtime.continueRun(runId);
+
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.run_id, runId);
+    assert.equal(completed.session_id, sessionId);
+    assert.equal(
+      completed.answer,
+      "The reconciled receipt closes the probe, and the original Run is complete."
+    );
+    assert.equal(executeCalls, 1);
+    assert.equal(reconcileCalls, 1);
+    assert.equal(runtime.inspect(runId)?.unresolved_action_count, 0);
+    assert.equal(runtime.inspect(runId)?.effect_receipt_count, 1);
+    assert.equal(runtime.inspect(runId)?.continuation_count, 1);
+    await assert.rejects(runtime.continueRun(runId), /Run is not paused/);
+  } finally {
+    recoveryStore.close();
     await rm(fixture, { recursive: true, force: true });
   }
 });
@@ -219,7 +337,8 @@ test("vNext records a terminal failed Run when Pi returns no text", async () => 
   faux.setResponses([fauxAssistantMessage("")]);
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
-    const runtime = new KernelRuntime(store, new PiAgentHarnessLoopFactory({
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
       store,
       models,
       model: faux.getModel(),
@@ -236,11 +355,33 @@ test("vNext records a terminal failed Run when Pi returns no text", async () => 
   }
 });
 
+function recoverableProbeHandler(overrides: {
+  execute: ActionHandler["execute"];
+  reconcile: NonNullable<ActionHandler["reconcile"]>;
+}): ActionHandler {
+  return {
+    contract: {
+      name: "recoverable_probe",
+      version: "1",
+      label: "Recoverable probe",
+      description: "A synthetic local-read probe used to verify Run continuation after reconciliation.",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      effect_class: "local_read"
+    },
+    prepare() {
+      return {};
+    },
+    execute: overrides.execute,
+    reconcile: overrides.reconcile
+  };
+}
+
 test("vNext leaves no running Run when the loop adapter cannot be constructed", async () => {
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
-    const runtime = new KernelRuntime(store, {
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, {
       create() {
         throw new Error("adapter construction failed");
       }

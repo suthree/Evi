@@ -24,17 +24,19 @@ export interface PiAgentHarnessAdapterOptions {
   model: Model<any>;
   cwd: string;
   system_prompt?: string;
-  action_gateway?: ActionGateway;
 }
 
 export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
   constructor(private readonly options: PiAgentHarnessAdapterOptions) {}
 
-  create(input: { run_id: string; turn_id: string; session_id: string }): AgentLoop {
+  create(input: {
+    run_id: string;
+    turn_id: string;
+    session_id: string;
+    action_gateway: ActionGateway;
+  }): AgentLoop {
     const storage = new SqlitePiSessionStorage(this.options.store, input.session_id);
-    const tools = this.options.action_gateway
-      ? createPiActionTools(this.options.action_gateway, input)
-      : [];
+    const tools = createPiActionTools(input.action_gateway, input);
     const harness = new AgentHarness({
       env: new NodeExecutionEnv({ cwd: this.options.cwd }),
       session: new Session(storage),

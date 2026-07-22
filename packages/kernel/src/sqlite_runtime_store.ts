@@ -5,6 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import type {
   ActionEffectClass,
   ActionObservation,
+  ActionRecoveryEvidence,
   ActionReservation,
   EffectReceipt,
   JsonObject
@@ -33,6 +34,11 @@ interface PiSessionRow {
 
 interface PiEntryRow {
   entry_json: string;
+}
+
+interface RuntimeEventRow {
+  seq: number;
+  payload_json: string;
 }
 
 interface ActionReservationRow {
@@ -291,6 +297,87 @@ export class SqliteRuntimeStore {
     return this.requireRun(runId);
   }
 
+  getRunContinuationEvidence(runId: string): ActionRecoveryEvidence[] {
+    const run = this.requireRun(runId);
+    if (run.status !== "paused") throw new Error(`Run is not paused: ${runId}`);
+    if (this.hasUnresolvedActions(runId)) throw new RunHasUnresolvedActionsError(runId);
+    const pause = this.db.prepare(`
+      SELECT seq, payload_json
+      FROM runtime_events
+      WHERE run_id = ? AND kind = 'run_paused'
+      ORDER BY seq DESC
+      LIMIT 1
+    `).get(runId) as RuntimeEventRow | undefined;
+    if (!pause) throw new Error(`Paused Run has no canonical pause event: ${runId}`);
+    const observed = this.db.prepare(`
+      SELECT seq, payload_json
+      FROM runtime_events
+      WHERE run_id = ? AND kind = 'action_observed' AND seq > ?
+      ORDER BY seq ASC
+    `).all(runId, pause.seq) as unknown as RuntimeEventRow[];
+    return observed.map((event) => {
+      const payload = parseJsonObject(event.payload_json, "Action observed event payload");
+      const reservationId = typeof payload.reservation_id === "string"
+        ? payload.reservation_id
+        : "";
+      const receiptId = typeof payload.receipt_id === "string" ? payload.receipt_id : "";
+      if (!reservationId || !receiptId) {
+        throw new Error(`Action observed event identity is invalid: ${runId}/${event.seq}`);
+      }
+      const reservation = this.requireActionReservation(reservationId);
+      const receipt = this.requireEffectReceipt(reservationId);
+      if (reservation.run_id !== runId
+        || reservation.turn_id !== run.turn_id
+        || reservation.state !== "terminal"
+        || receipt.id !== receiptId
+        || !receipt.reconciled) {
+        throw new Error(`Action continuation evidence is invalid: ${reservationId}`);
+      }
+      return { reservation, receipt };
+    });
+  }
+
+  resumeRun(input: {
+    run_id: string;
+    receipt_ids: string[];
+    evidence_digest: string;
+  }): RunRecord {
+    return this.transaction(() => {
+      const run = this.requireRun(input.run_id);
+      if (run.status !== "paused") throw new Error(`Run is not paused: ${input.run_id}`);
+      if (this.hasUnresolvedActions(input.run_id)) throw new RunHasUnresolvedActionsError(input.run_id);
+      const expectedReceiptIds = [...new Set(input.receipt_ids)].sort();
+      if (expectedReceiptIds.length === 0) {
+        throw new Error(`Run has no reconciled Action evidence for continuation: ${input.run_id}`);
+      }
+      const currentReceiptIds = this.getRunContinuationEvidence(input.run_id)
+        .map(({ receipt }) => receipt.id)
+        .sort();
+      if (JSON.stringify(currentReceiptIds) !== JSON.stringify(expectedReceiptIds)) {
+        throw new Error(`Run continuation evidence changed before resume: ${input.run_id}`);
+      }
+      const evidenceDigest = actionDigest(input.evidence_digest);
+      const updatedAt = new Date().toISOString();
+      const runResult = this.db.prepare(`
+        UPDATE runs
+        SET status = 'running', answer = NULL, error = NULL, updated_at = ?
+        WHERE id = ? AND status = 'paused'
+      `).run(updatedAt, input.run_id);
+      if (Number(runResult.changes) !== 1) throw new Error(`Run is not paused: ${input.run_id}`);
+      const turnResult = this.db.prepare(`
+        UPDATE turns
+        SET status = 'running', answer = NULL, error = NULL, updated_at = ?
+        WHERE id = ? AND status = 'paused'
+      `).run(updatedAt, run.turn_id);
+      if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not paused: ${run.turn_id}`);
+      this.insertEvent(input.run_id, run.turn_id, "run_continued", {
+        receipt_ids: expectedReceiptIds,
+        evidence_digest: evidenceDigest
+      });
+      return this.requireRun(input.run_id);
+    });
+  }
+
   failRun(runId: string, error: string): RunRecord {
     const message = error.trim().slice(0, 4_000) || "Agent loop failed.";
     const updatedAt = new Date().toISOString();
@@ -333,13 +420,19 @@ export class SqliteRuntimeStore {
     const receipts = this.db.prepare(
       "SELECT COUNT(*) AS count FROM effect_receipts WHERE run_id = ?"
     ).get(runId) as { count: number };
+    const continuations = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM runtime_events
+      WHERE run_id = ? AND kind = 'run_continued'
+    `).get(runId) as { count: number };
     return {
       ...run,
       event_count: Number(events.count),
       session_entry_count: Number(entries.count),
       action_count: Number(actions.count),
       unresolved_action_count: Number(unresolved.count),
-      effect_receipt_count: Number(receipts.count)
+      effect_receipt_count: Number(receipts.count),
+      continuation_count: Number(continuations.count)
     };
   }
 

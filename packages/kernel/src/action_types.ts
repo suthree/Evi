@@ -58,6 +58,11 @@ export interface EffectReceipt {
   created_at: string;
 }
 
+export interface ActionRecoveryEvidence {
+  reservation: ActionReservation;
+  receipt: EffectReceipt;
+}
+
 export interface ActionObservation {
   outcome: "succeeded" | "failed";
   summary: string;
