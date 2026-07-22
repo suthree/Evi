@@ -54,9 +54,9 @@ Blind retry 会隐藏不确定的 provider call、可能产生重复费用，也
   旧 dispatch 保持 `outcome_unknown`，恢复会执行一次新的显式 attempt。
 - Recovery 仍需调用者触发。本切片不增加 scheduler、resident scanner、ingress 或自动 retry
   policy。
-- 若进程在 tool-call assistant message 已持久化、matching tool result 尚未持久化时崩溃，
-  仍需要单独的 Pi protocol recovery path；在此之前不能开放 write/external Action。
-- vNext SQLite schema 从 2 升到 3。由于尚未 cutover，schema 1、2 与未知版本都 fail closed，
-  不执行 migration。
+- ADR 0016 后续增加了 tool-call assistant message 已持久化、matching tool result 尚未
+  持久化区间的 Pi protocol recovery path；它仍保持相同的只读 Action authority。
+- 本切片把 vNext SQLite schema 从 2 升到 3；ADR 0016 后续升到 4。由于尚未 cutover，
+  旧版本与未知版本都 fail closed，不执行 migration。
 - `none` 与 `local_read` 仍是唯一允许的 Action effect class。当前 v0.2 runtime、ingress、
   deployment 与 state 不受影响。

@@ -76,6 +76,10 @@ _Avoid_: Run, provider request, worker process, task queue item
 The bounded lifecycle evidence for one logical provider/model request inside a Run Execution, from dispatch start through response observation and persisted assistant settlement, or to an explicit unknown outcome after owner loss.
 _Avoid_: Effect Receipt, model answer, provider exactly-once guarantee, raw payload log
 
+**Tool-Call Protocol**:
+The ordered session invariant that binds one persisted assistant tool-call identity to exactly one matching tool-result message, with Action Gateway reservation and receipt evidence deciding whether recovery may dispatch, reconcile, or only reuse a terminal outcome.
+_Avoid_: Tool Protocol, Tool Operation Protocol, Action Gateway, tool implementation
+
 ## Actions and evidence
 
 **Tool Protocol**:

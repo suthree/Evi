@@ -15,9 +15,10 @@ Goal 只在确有长期意图时使用。编码、浏览、搜索、沙箱进程
 Adapter 委托给成熟工具。当前 owner 与替换顺序见
 [`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)。
 
-前四个 vNext 源码切片已经证明 Kernel、reservation-first 的只读 Gateway、terminal
+前五个 vNext 源码切片已经证明 Kernel、reservation-first 的只读 Gateway、terminal
 reconciliation 后的显式 same-Run continuation，以及进程丢失后基于 lease 的 unsettled
-model dispatch 恢复；它们尚未连接生产 ingress，也没有切换当前 v0.2 部署。
+model dispatch 与 persisted Pi tool-call protocol 恢复；它们尚未连接生产 ingress，也没有
+切换当前 v0.2 部署。
 
 ## 当前已实现边界
 
@@ -74,7 +75,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md)，Run continuation 见 [`adr/0014-reconciled-run-continuation.cn.md`](adr/0014-reconciled-run-continuation.cn.md)，Execution lease 与 dispatch recovery 见 [`adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`](adr/0015-run-execution-lease-and-dispatch-recovery.cn.md) |
+| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md)，Run continuation 见 [`adr/0014-reconciled-run-continuation.cn.md`](adr/0014-reconciled-run-continuation.cn.md)，Execution lease 与 dispatch recovery 见 [`adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`](adr/0015-run-execution-lease-and-dispatch-recovery.cn.md)，Pi tool protocol recovery 与 Kernel 基建退出见 [`adr/0016-pi-tool-protocol-recovery.cn.md`](adr/0016-pi-tool-protocol-recovery.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。
@@ -119,9 +120,10 @@ docs/              架构、工程、行为、运维、学习与愿景文档
 
 当前 v0.2 控制面仍是 `GoalRuntime`、Harness、canonical evidence 和 `OutcomeReceipt`；
 vNext 已接受 Turn/Run、Pi 唯一 Agent Loop、SQLite、Action Gateway、可选 Goal 与统一
-Adaptation 生命周期。当前源码实现前四个基建切片，其中 Gateway 只允许只读 action，
+Adaptation 生命周期。当前源码实现前五个基建切片，其中 Gateway 只允许只读 action，
 支持 terminal reconciliation 后显式续跑同一 Run，也能在 Execution lease 过期后有证据地
-恢复 unsettled model dispatch，但尚未切 ingress 或部署。稳定方向由
+恢复 unsettled model dispatch 与 persisted Pi tool-call protocol。Kernel 基建已达到既定退出
+gate，但尚未执行 read-only ingress canary、切 ingress 或部署。稳定方向由
 项目文档和 ADR 记录；当前实现以源码、测试和 live health 为准。GitHub Issue、PR、branch
 和隔离 worktree 是按需要使用的协作与隔离机制；
 `.trellis/` 只保留为历史 evidence。

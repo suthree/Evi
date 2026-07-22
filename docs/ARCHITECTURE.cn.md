@@ -1,6 +1,6 @@
 # Evi 架构
 
-状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0015 后更新。
+状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0016 后更新。
 当前实现以源码、测试和 live evidence 为准；vNext 章节不是部署完成声明。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
@@ -19,7 +19,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
 - 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0001 记录当前 v0.2 owner model，
-  ADR 0012 至 0015 负责 vNext Kernel、Action Gateway、Run continuation 与 execution recovery 目标；
+  ADR 0012 至 0016 负责 vNext Kernel、Action Gateway、Run continuation、execution recovery
+  与 tool protocol closure 目标；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -76,20 +77,23 @@ Adaptation Engine ---- 评估并激活 learning 或 evolution candidate
 | 普通工作 | Run 内的 Turn | 不要求 Goal |
 | Agent Loop ownership 与 crash detection | SQLite 中带 lease 的 Run Execution | 每个 running Run 只有一个 active Execution；不持久化 raw lease token |
 | Model/tool loop、session tree、steering、compaction | 单一 Adapter 后的 Pi `AgentHarness` | Evi 不保留第二套执行循环 |
+| Persisted tool-call protocol closure | Pi Adapter 与 Action Gateway evidence | 精确 invocation identity 决定 dispatch、reconciliation、receipt reuse 或 fail-closed pause |
 | 结构化状态 | SQLite runtime store | JSONL 和目录扫描只能是 projection、fixture 或 archive |
 | Tool 与持久 effect | Action Gateway | Typed policy、containment、reservation、evidence、reconciliation |
 | 长期意图 | 可选 Goal extension | 只拥有 objective、acceptance、budget、continuation 和 Run link |
 | 持久成长 | Adaptation Engine | Candidate、evaluation、activation、rollback 或 retirement |
 | 完成证据 | 专门化 outcome 与 receipt | Run、effect、evaluation、activation、deployment 相互独立 |
 
-前四个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
+前五个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
 state，以及一个只允许有界 `local_read` action 的 reservation-first Gateway 路径。Write 与
 external action 仍被拒绝；paused Run 可以在 terminal Action reconciliation 后显式复用
 既有 Turn 与 session 继续。若 running Run 的 Execution owner 丢失，可以在 lease 过期后
-暂停，并在同一 session 中恢复；旧 dispatch 会明确记录为 `outcome_unknown`。这不代表
-provider exactly-once；tool-call message 已持久化但 matching tool result 尚未持久化时的崩溃
-仍不在当前 recovery contract 内。当前不接 learning、subagent，不切 ingress，不迁移、
-不部署。v0.2 在后续切片通过各自 gate 前仍是当前 rollback runtime。
+暂停，并在同一 session 中恢复；旧 dispatch 会明确记录为 `outcome_unknown`。Persisted
+assistant tool call 只能通过其精确 Action reservation 或 receipt 修复；已经持久化的 terminal
+assistant answer 不再次调用 provider。这不代表 provider 或 effect exactly-once。既定 Kernel
+基建现已闭合，下一阶段是单独接受的 read-only ingress canary，而不是继续泛化 recovery
+layer。当前不接 learning、subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过
+各自 gate 前仍是当前 rollback runtime。
 
 ## 当前 v0.2 运行形态
 
