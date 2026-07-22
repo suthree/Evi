@@ -165,6 +165,14 @@ test("vNext Worker parsing requires one explicit worker identity and stable sele
   assert.equal(execute.vnextWorkerId, "worker_123");
   assert.equal(execute.vnextStateRoot, "/tmp/evi-vnext");
 
+  const inspect = parseArgs([
+    "vnext", "worker", "inspect",
+    "--worker-id", "worker_123",
+    "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(inspect.vnextWorkerAction, "inspect");
+  assert.equal(inspect.vnextWorkerId, "worker_123");
+
   assert.throws(
     () => parseArgs(["vnext", "worker", "execute", "--vnext-state-root", "/tmp/evi-vnext"]),
     /requires --worker-id/

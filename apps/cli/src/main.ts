@@ -3095,7 +3095,9 @@ async function runVNextRunCommand(options: CliOptions): Promise<number> {
 async function runVNextWorkerCommand(options: CliOptions): Promise<number> {
   const action = options.vnextWorkerAction ?? null;
   try {
-    if (action !== "execute") throw new Error("vnext worker requires explicit execute action.");
+    if (action !== "execute" && action !== "inspect") {
+      throw new Error("vnext worker requires explicit execute or inspect action.");
+    }
     const result = await executeVNextWorker({
       action,
       worker_id: options.vnextWorkerId ?? "",
@@ -3235,7 +3237,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "vnext" && vnextRunSelected && index === 1 && isVNextRunAction(arg)) {
       options.vnextRunAction = arg;
     }
-    else if (options.command === "vnext" && vnextWorkerSelected && index === 1 && arg === "execute") {
+    else if (options.command === "vnext" && vnextWorkerSelected && index === 1
+      && (arg === "execute" || arg === "inspect")) {
       options.vnextWorkerAction = arg;
     }
     else if (options.command === "vnext" && vnextAdaptationSelected && index === 1 && isVNextAdaptationAction(arg)) {
@@ -3606,10 +3609,12 @@ function assertNoAdaptationCandidateFields(options: CliOptions, action: VNextAda
 }
 
 function validateVNextWorkerOptions(options: CliOptions): void {
-  if (options.vnextWorkerAction !== "execute") {
-    throw new Error("vnext worker requires explicit execute action.");
+  if (options.vnextWorkerAction !== "execute" && options.vnextWorkerAction !== "inspect") {
+    throw new Error("vnext worker requires explicit execute or inspect action.");
   }
-  if (!options.vnextWorkerId) throw new Error("vnext worker execute requires --worker-id.");
+  if (!options.vnextWorkerId) {
+    throw new Error(`vnext worker ${options.vnextWorkerAction} requires --worker-id.`);
+  }
 }
 
 function validateVNextRunOptions(options: CliOptions): void {
@@ -3979,6 +3984,7 @@ function printUsage(): void {
   pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext run inspect --run-id run_...|--session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext worker inspect --worker-id worker_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]

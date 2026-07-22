@@ -9,6 +9,11 @@ import type {
   JsonObject
 } from "./action_types.js";
 import { stableJson } from "./canonical_json.js";
+import {
+  inspectDeliveryLineage,
+  parseDeliveryLineage,
+  parseDeliveryLineageSnapshot
+} from "./delivery_lineage.js";
 import type { RunRecord } from "./contracts.js";
 import { executionLockActions } from "./execution_lock.js";
 import {
@@ -17,10 +22,18 @@ import {
   normalizeDiscussionTaskInput,
   type DiscussionTaskInput,
   type ResultEnvelope,
+  type SupervisorWorkerInspection,
   type WorkerExecutionLease,
   type WorkerInspection
 } from "./orchestration_types.js";
 import type { RunExecutionLease } from "./execution_types.js";
+import {
+  deriveExecutionWorkerLock,
+  materializeExecutionTaskEnvelope,
+  normalizeExecutionTaskInput,
+  type ExecutionTaskInput,
+  type ExecutionWorkerInspection
+} from "./execution_worker_types.js";
 import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -38,6 +51,36 @@ const parameters = Type.Object({
     max_output_tokens: Type.Integer({ minimum: 1 }),
     timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
   }, { additionalProperties: false })
+}, { additionalProperties: false });
+
+const executionParameters = Type.Object({
+  objective: Type.String({ minLength: 1, maxLength: 4_000 }),
+  expected_result: Type.String({ minLength: 1, maxLength: 4_000 }),
+  context_refs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
+  artifact_refs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
+  constraints: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
+  verification_commands: Type.Array(Type.Object({
+    command: Type.String({ minLength: 1, maxLength: 80 }),
+    args: Type.Array(Type.String({ minLength: 1, maxLength: 1_000 }), { maxItems: 64 }),
+    cwd: Type.String({ minLength: 1, maxLength: 500 }),
+    timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
+  }, { additionalProperties: false }), { minItems: 1, maxItems: 16 }),
+  deadline_at: Type.String({ minLength: 24, maxLength: 32 }),
+  budget: Type.Object({
+    max_output_tokens: Type.Integer({ minimum: 1 }),
+    timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS }),
+    max_tool_calls: Type.Integer({ minimum: 0, maximum: 64 })
+  }, { additionalProperties: false }),
+  lineage: Type.Object({
+    worktree: Type.String({ minLength: 1, maxLength: 2_000 }),
+    branch: Type.String({ minLength: 1, maxLength: 200 }),
+    base_commit: Type.String({ pattern: "^[a-f0-9]{40}$" }),
+    writable_paths: Type.Array(Type.String({ minLength: 1, maxLength: 500 }), {
+      minItems: 1,
+      maxItems: 32
+    })
+  }, { additionalProperties: false }),
+  rollback_instruction: Type.String({ minLength: 1, maxLength: 4_000 })
 }, { additionalProperties: false });
 
 const workerInspectParameters = Type.Object({
@@ -127,11 +170,98 @@ export class OrchestrationEngine {
     });
   }
 
+  async prepareExecution(
+    parentRunId: string,
+    invocationId: string,
+    input: ExecutionTaskInput
+  ): Promise<JsonObject> {
+    this.store.assertCanDispatchExecutionWorker(parentRunId, invocationId);
+    const prepared = this.store.getPreparedExecutionWorkerDispatch(parentRunId, invocationId, input);
+    if (prepared) return prepared;
+    if (Date.parse(input.deadline_at) <= Date.now()) {
+      throw new Error("Execution Worker deadline must be in the future at first dispatch.");
+    }
+    const parentLock = this.store.getExecutionLock(parentRunId);
+    const childLock = deriveExecutionWorkerLock(parentLock, [], input.budget);
+    const inspected = await inspectDeliveryLineage(parentLock.authority.cwd, input.lineage);
+    this.store.assertCanBindDeliveryLineage(inspected.lineage, parentRunId, invocationId);
+    return {
+      ...input,
+      worker_id: deriveExecutionWorkerId(parentRunId, invocationId),
+      parent_execution_lock_digest: parentLock.digest,
+      child_execution_lock_digest: childLock.digest,
+      materialized_lineage: inspected.lineage,
+      baseline: inspected.baseline
+    } as unknown as JsonObject;
+  }
+
+  dispatchExecution(
+    reservation: ActionDispatch["reservation"],
+    input: JsonObject
+  ): ExecutionWorkerInspection {
+    const task = normalizeExecutionTaskInput(input);
+    if (typeof input.worker_id !== "string") {
+      throw new Error("Execution Worker dispatch durable identity is missing.");
+    }
+    const parentLock = this.store.getExecutionLock(reservation.run_id);
+    if (input.parent_execution_lock_digest !== parentLock.digest) {
+      throw new Error("Execution Worker parent Execution Lock identity drifted after reservation.");
+    }
+    const childLock = deriveExecutionWorkerLock(parentLock, [], task.budget);
+    if (input.child_execution_lock_digest !== childLock.digest) {
+      throw new Error("Execution Worker child Execution Lock identity drifted after reservation.");
+    }
+    const lineage = parseDeliveryLineage(input.materialized_lineage);
+    const baseline = parseDeliveryLineageSnapshot(input.baseline);
+    const taskEnvelope = materializeExecutionTaskEnvelope({
+      ...task,
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: childLock.digest,
+      materialized_lineage: lineage,
+      baseline
+    });
+    return this.store.dispatchExecutionWorker({
+      worker_id: input.worker_id,
+      reservation_id: reservation.id,
+      task_envelope: taskEnvelope,
+      child_execution_lock: childLock,
+      lineage,
+      baseline
+    });
+  }
+
   inspect(workerId: string): WorkerInspection | null {
     return this.store.inspectWorker(workerId);
   }
 
+  inspectExecution(workerId: string): ExecutionWorkerInspection | null {
+    return this.store.inspectExecutionWorker(workerId);
+  }
+
   inspectChildEvidence(parentRunId: string, workerId: string): JsonObject {
+    const executionWorker = this.inspectExecution(workerId);
+    if (executionWorker) {
+      if (executionWorker.parent_run_id !== parentRunId) {
+        return { worker_id: workerId, found: false };
+      }
+      return {
+        worker_id: executionWorker.id,
+        found: true,
+        worker_kind: "execution",
+        worker_status: executionWorker.status,
+        task_envelope_digest: executionWorker.task_envelope.digest,
+        result_envelope_digest: executionWorker.result_envelope?.digest ?? null,
+        result_status: executionWorker.result_envelope?.status ?? null,
+        child_run_id: null,
+        child_run_status: null,
+        child_execution_lock_digest: executionWorker.child_execution_lock.digest,
+        lineage_id: executionWorker.lineage.id,
+        lineage_digest: executionWorker.lineage.digest,
+        result_delivered_to_turn_id: executionWorker.result_delivered_to_turn_id
+      };
+    }
     const worker = this.inspect(workerId);
     if (!worker || worker.parent_run_id !== parentRunId) {
       return { worker_id: workerId, found: false };
@@ -145,6 +275,7 @@ export class OrchestrationEngine {
     return {
       worker_id: worker.id,
       found: true,
+      worker_kind: "discussion",
       worker_status: worker.status,
       task_envelope_digest: worker.task_envelope.digest,
       result_envelope_digest: worker.result_envelope?.digest ?? null,
@@ -299,7 +430,7 @@ export class OrchestrationEngine {
 
 function materializeWorkerResultRuntimeContext(
   runId: string,
-  workers: WorkerInspection[]
+  workers: SupervisorWorkerInspection[]
 ): JsonObject {
   return {
     kind: "runtime_worker_result_delivery",
@@ -308,6 +439,7 @@ function materializeWorkerResultRuntimeContext(
     parent_completion_authority: "supervisor_only",
     worker_results: workers.map((worker) => ({
       worker_id: worker.id,
+      worker_kind: worker.task_envelope.worker_kind,
       parent_turn_id: worker.parent_turn_id,
       task_envelope_digest: worker.task_envelope.digest,
       result_envelope: worker.result_envelope!
@@ -320,6 +452,67 @@ function deriveWorkerId(parentRunId: string, invocationId: string): string {
     .update(`discussion-worker-v1\u0000${parentRunId}\u0000${invocationId}`)
     .digest("hex");
   return `worker_${digest.slice(0, 32)}`;
+}
+
+function deriveExecutionWorkerId(parentRunId: string, invocationId: string): string {
+  const digest = createHash("sha256")
+    .update(`execution-worker-v1\u0000${parentRunId}\u0000${invocationId}`)
+    .digest("hex");
+  return `worker_${digest.slice(0, 32)}`;
+}
+
+export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
+  const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
+    const worker = engine.dispatchExecution(dispatch.reservation, dispatch.arguments);
+    return {
+      outcome: "succeeded",
+      summary: "One source-mutating execution Worker was durably queued without starting it.",
+      output: {
+        worker_id: worker.id,
+        status: worker.status,
+        task_envelope_digest: worker.task_envelope.digest,
+        child_execution_lock_digest: worker.child_execution_lock.digest,
+        lineage_id: worker.lineage.id,
+        lineage_digest: worker.lineage.digest,
+        baseline_snapshot_digest: worker.task_envelope.baseline.digest
+      }
+    };
+  };
+  return {
+    contract: {
+      name: "worker_execution_dispatch",
+      version: "1",
+      label: "Dispatch execution worker",
+      description: "Reserve one source-mutating execution Worker against an existing clean single-writer Delivery Lineage.",
+      parameters: executionParameters,
+      effect_class: "local_write"
+    },
+    async prepare(argumentsInput: unknown, invocation?: ActionInvocation): Promise<JsonObject> {
+      if (!argumentsInput || typeof argumentsInput !== "object" || Array.isArray(argumentsInput)) {
+        throw new Error("worker_execution_dispatch arguments must be an object.");
+      }
+      const value = normalizeExecutionTaskInput(argumentsInput);
+      const allowed = new Set([
+        "objective",
+        "expected_result",
+        "context_refs",
+        "artifact_refs",
+        "constraints",
+        "verification_commands",
+        "deadline_at",
+        "budget",
+        "lineage",
+        "rollback_instruction"
+      ]);
+      if (Object.keys(argumentsInput).some((key) => !allowed.has(key))) {
+        throw new Error("worker_execution_dispatch arguments contain unsupported fields.");
+      }
+      if (!invocation) throw new Error("worker_execution_dispatch requires Action invocation identity.");
+      return engine.prepareExecution(invocation.run_id, invocation.invocation_id, value);
+    },
+    execute: observe,
+    reconcile: observe
+  };
 }
 
 export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
