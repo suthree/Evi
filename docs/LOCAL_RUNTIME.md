@@ -24,7 +24,7 @@ channel adapters and IM intake. Runtime state is written under the selected
 state root. Learned local procedures are written under the configured local
 agent home and active vault.
 
-## Stable vNext Goal-free CLI command
+## Stable vNext Supervisor CLI commands
 
 The stable vNext command is a foreground CLI Adapter. It is not owned by the
 resident service and does not receive Web, daemon, or Feishu traffic:
@@ -35,13 +35,14 @@ pnpm run runtime -- vnext run submit --task "..." --session-id session_...
 pnpm run runtime -- vnext run continue --run-id run_...
 pnpm run runtime -- vnext run inspect --run-id run_...
 pnpm run runtime -- vnext run inspect --session-id session_...
+pnpm run runtime -- vnext worker execute --worker-id worker_...
 ```
 
 The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports, migrates, or
-dual-writes v0.2 state. Schema version 6 plus the immutable `stable_cli` state
+dual-writes v0.2 state. Schema version 7 plus the immutable `stable_cli` state
 profile refuse both earlier vNext schemas and current `diagnostic_canary`
 databases instead of promoting them silently.
 
@@ -55,20 +56,57 @@ to the Execution Lock, SQLite, or output.
 
 A submit without `--session-id` creates a Session. Reusing a terminal Session
 creates a new Run in the same conversation tree. A Session may have multiple
-terminal Runs but only one `running` or `paused` Run; concurrent attach returns
-`session_busy`. `continue` names one Run and only performs same-Run recovery.
-It does not reopen a terminal Run or create a replacement. `inspect` requires
-exactly one Run or Session identity and does not load model credentials.
+terminal Runs but only one `running`, `waiting`, or `paused` Run; concurrent
+attach returns `session_busy`. `continue` names one Run. It either performs
+same-Run recovery or, after a typed Worker Result is ready, atomically creates
+a new Turn in that same parent Run for integration. It does not reopen a
+terminal Run or create a replacement. `inspect` requires exactly one Run or
+Session identity and does not load model credentials.
 The exact configured credential value is redacted from submitted text before
 canonical state or provider dispatch. Run metadata stores no duplicate request
 body; the bounded Turn request and Pi conversation history keep their separate
 recovery roles.
 
-Every response is a `vnext_goal_free_cli` envelope with Run, Session, and
-Execution Lock identities or a structured diagnostic. Only `runtime_inspect`
-is registered, so effects remain `none/local_read`. There is no `signal/cancel`,
-optional Goal, Worker, learning, write/external Action, resident route, or vNext
-deployment in this slice. The installed v0.2 runtime remains the rollback path.
+Every Run response is a `vnext_goal_free_cli` envelope with Run, Session, and
+Execution Lock identities or a structured diagnostic. A new parent Run has
+`runtime_inspect`, `worker_dispatch`, `worker_inspect`, and the child-contained
+`worker_needs_input`. `worker_dispatch` is the sole explicit `external_read`
+exception: it reserves and queues at most one
+read-only discussion Worker with a narrowed immutable child Execution Lock.
+The Worker does not run inside the parent model request. Execute it in a
+separate process with `vnext worker execute`; it claims a durable lease, creates
+an isolated child Session/Run through the same Runtime Kernel and sole Pi Agent
+Loop, and stores a typed Result Envelope. The child may use only
+`none/local_read` Actions. `worker_needs_input` is a `none` Action that fails
+outside an active child Run and is the only semantic path to a typed
+`needs_input` Result; a technical recovery pause remains paused.
+
+The parent settles as `waiting` while the Worker is queued or running. A Worker
+Result never completes the parent. A later `vnext run continue` delivers the
+immutable result into a new parent Turn as runtime-owned context, never as a
+user message; `worker_inspect` exposes canonical Worker and child-Run identity
+for independent Supervisor verification. Task context/artifact refs, Result
+execution/model identity, cumulative output-token and wall-time budgets, exact
+lease identity, atomic child binding, stale-owner reclaim, terminal-result
+recovery without model replay, and single delivery are enforced from SQLite
+evidence. A Task timeout larger than Node's supported timer bound is rejected
+before reservation. If observed token, timeout, or deadline evidence exceeds
+the Task budget, the Worker writes one terminal `failed` Result instead of
+remaining permanently result-less or rerunning the child. When a persisted
+final assistant answer closes protocol recovery without another provider
+request, its original producing execution and model dispatch are reconciled and
+remain the Result's actual model lineage.
+
+A technical failure while the Supervisor integrates an already delivered
+Result pauses that same integration Turn. A later `continue` rebuilds the exact
+typed Result context from SQLite and retries the same Turn; it does not reopen a
+terminal parent, redeliver the Result into another Turn, or treat Worker output
+as user speech.
+
+There is still no worker parallelism, execution writer, reviewer role,
+`signal/cancel`, optional Goal, learning, local/external write Action, resident
+route, or vNext deployment in this slice. The installed v0.2 runtime is frozen
+as the rollback path.
 
 ## vNext read-only canary command
 

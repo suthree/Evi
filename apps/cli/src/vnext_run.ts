@@ -3,11 +3,15 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   ActionGateway,
+  createDiscussionWorkerDispatchAction,
   createLockedOpenAICompatiblePiLoopFactory,
   createRuntimeInspectAction,
+  createWorkerInspectAction,
+  createWorkerNeedsInputAction,
   ExecutionLockMismatchError,
   executionLockActions,
   KernelRuntime,
+  OrchestrationEngine,
   RuntimeSchemaIncompatibleError,
   RuntimeStateProfileIncompatibleError,
   RuntimeSessionBusyError,
@@ -18,7 +22,8 @@ import {
   type ExecutionLockInput,
   type RunExecutionResult,
   type RunInspection,
-  type SessionInspection
+  type SessionInspection,
+  WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
 import { loadConfig, type RuntimeConfig } from "../../../packages/runtime/src/config.js";
 import {
@@ -60,7 +65,7 @@ export interface VNextRunEnvelope {
     marker: typeof VNEXT_RUN_MARKER;
     surface: "cli";
     action: VNextRunAction | null;
-    status: "running" | "completed" | "paused" | "failed" | "not_found" | "error";
+    status: "running" | "waiting" | "completed" | "paused" | "failed" | "not_found" | "error";
     run_id?: string;
     turn_id?: string;
     session_id?: string;
@@ -122,9 +127,9 @@ export async function executeVNextRun(
     try {
       const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
       try {
-        const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+        const { gateway, orchestration } = createSupervisorComposition(store, true);
         const loops = createLoopFactory(dependencies, store, model.api_key);
-        const runtime = new KernelRuntime(store, gateway, loops);
+        const runtime = new KernelRuntime(store, gateway, loops, { orchestration });
         const result = await runtime.submit({
           request: redact(required(input.task, "vnext run submit requires --task"), model.api_key),
           ...(input.session_id ? { session_id: input.session_id } : {}),
@@ -146,15 +151,16 @@ export async function executeVNextRun(
 
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
-    const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+    const inspectGateway = createReadOnlyGateway(store);
     if (input.action === "inspect") {
-      return inspectEnvelope(input, new KernelRuntime(store, gateway, unavailableLoopFactory()));
+      return inspectEnvelope(input, new KernelRuntime(store, inspectGateway, unavailableLoopFactory()));
     }
 
     const runId = required(input.run_id, "vnext run continue requires --run-id");
     const inspection = store.inspectRun(runId);
     if (!inspection) return notFoundEnvelope(input.action, { run_id: runId });
     const lock = store.getExecutionLock(runId);
+    const { gateway, orchestration } = compositionForExecutionLock(store, lock);
     assertContinuationSelectors(lock, repoRoot, configDir);
     const model = await loadModel({
       config_dir: configDir,
@@ -164,7 +170,12 @@ export async function executeVNextRun(
     assertCredentialBinding(lock, model);
     try {
       const loops = createLoopFactory(dependencies, store, model.api_key);
-      const result = await new KernelRuntime(store, gateway, loops).continueRun(runId);
+      const result = await new KernelRuntime(
+        store,
+        gateway,
+        loops,
+        orchestration ? { orchestration } : {}
+      ).continueRun(runId);
       return outcomeEnvelope(input.action, result, lock.digest, model.api_key);
     } catch (error) {
       throw redactError(error, model.api_key);
@@ -318,7 +329,7 @@ function executionLockInput(
   };
 }
 
-function assertContinuationSelectors(
+export function assertContinuationSelectors(
   lock: ExecutionLock,
   repoRoot: string,
   configDir: string
@@ -331,7 +342,7 @@ function assertContinuationSelectors(
   }
 }
 
-async function loadConfiguredVNextModel(input: {
+export async function loadConfiguredVNextModel(input: {
   config_dir: string;
   state_root: string;
   model_id?: string;
@@ -375,7 +386,7 @@ function resolvedModel(model: RuntimeConfig["model"]): ResolvedVNextModel {
   };
 }
 
-function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel): void {
+export function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel): void {
   if (model.config_id !== lock.model.config_id || model.credential_ref !== lock.model.credential_ref) {
     throw new ExecutionLockMismatchError(
       `Configured credential binding changed for immutable Execution Lock: ${lock.digest}`
@@ -383,7 +394,7 @@ function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel)
   }
 }
 
-function createLoopFactory(
+export function createLoopFactory(
   dependencies: VNextRunDependencies,
   store: SqliteRuntimeStore,
   apiKey: string
@@ -445,7 +456,43 @@ function redactError(error: unknown, secret: string): unknown {
 }
 
 function stableBoundary(): string {
-  return "Stable Goal-free vNext CLI; isolated SQLite, immutable Execution Lock, and only none/local_read Actions are available.";
+  return "Stable vNext Supervisor CLI; isolated SQLite, immutable Execution Locks, local-read inspection, and one reservation-first external-read discussion Worker are available.";
+}
+
+function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
+  return new ActionGateway(store, [createRuntimeInspectAction(store)]);
+}
+
+function createSupervisorComposition(
+  store: SqliteRuntimeStore,
+  includeNeedsInput: boolean
+): { gateway: ActionGateway; orchestration: OrchestrationEngine } {
+  const runtimeInspect = createRuntimeInspectAction(store);
+  const workerNeedsInputContract = includeNeedsInput ? [WORKER_NEEDS_INPUT_CONTRACT] : [];
+  const orchestration = new OrchestrationEngine(store, [
+    runtimeInspect.contract,
+    ...workerNeedsInputContract
+  ]);
+  const handlers = [
+    runtimeInspect,
+    createDiscussionWorkerDispatchAction(orchestration),
+    createWorkerInspectAction(orchestration),
+    ...(includeNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
+  ];
+  return { gateway: new ActionGateway(store, handlers, {
+    allowed_effect_classes: ["none", "local_read", "external_read"]
+  }), orchestration };
+}
+
+function compositionForExecutionLock(
+  store: SqliteRuntimeStore,
+  lock: ExecutionLock
+): { gateway: ActionGateway; orchestration?: OrchestrationEngine } {
+  const actionNames = lock.actions.map((action) => action.name).sort();
+  if (JSON.stringify(actionNames) === JSON.stringify(["runtime_inspect"])) {
+    return { gateway: createReadOnlyGateway(store) };
+  }
+  return createSupervisorComposition(store, actionNames.includes("worker_needs_input"));
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {

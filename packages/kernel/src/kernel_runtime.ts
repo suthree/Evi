@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { ActionGateway } from "./action_gateway.js";
-import type { ActionRecoveryEvidence } from "./action_types.js";
+import type { ActionRecoveryEvidence, JsonObject } from "./action_types.js";
 import type {
   AgentLoopFactory,
   ExecutionLock,
@@ -11,6 +11,12 @@ import type {
   SubmitRequest
 } from "./contracts.js";
 import { assertExecutionLockMatchesContracts } from "./execution_lock.js";
+import type { OrchestrationEngine } from "./orchestration_engine.js";
+import type { WorkerRunBinding } from "./orchestration_types.js";
+import {
+  MAX_RUNTIME_TIMEOUT_MS,
+  validateRuntimeLeaseDuration
+} from "./runtime_limits.js";
 import type { RunExecutionLease, RunExecutionRecoveryEvidence } from "./execution_types.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -19,10 +25,17 @@ const DEFAULT_EXECUTION_LEASE_MS = 30_000;
 
 export interface KernelRuntimeOptions {
   execution_lease_ms?: number;
+  orchestration?: OrchestrationEngine;
+  runtime_budget?: {
+    max_output_tokens: number;
+    deadline_at: string;
+  };
 }
 
 export class KernelRuntime {
   private readonly executionLeaseMs: number;
+  private readonly orchestration: OrchestrationEngine | undefined;
+  private readonly runtimeBudget: KernelRuntimeOptions["runtime_budget"];
 
   constructor(
     private readonly store: SqliteRuntimeStore,
@@ -31,24 +44,57 @@ export class KernelRuntime {
     options: KernelRuntimeOptions = {}
   ) {
     this.executionLeaseMs = options.execution_lease_ms ?? DEFAULT_EXECUTION_LEASE_MS;
-    validateLeaseDuration(this.executionLeaseMs);
+    validateRuntimeLeaseDuration(this.executionLeaseMs, "Run execution");
+    this.orchestration = options.orchestration;
+    this.runtimeBudget = options.runtime_budget;
+    if (this.runtimeBudget) {
+      const deadline = Date.parse(this.runtimeBudget.deadline_at);
+      if (!Number.isSafeInteger(this.runtimeBudget.max_output_tokens)
+        || this.runtimeBudget.max_output_tokens < 1
+        || !Number.isFinite(deadline)
+        || deadline - Date.now() > MAX_RUNTIME_TIMEOUT_MS) {
+        throw new Error("Runtime budget is invalid or exceeds the supported timer bound.");
+      }
+    }
   }
 
-  async submit(input: SubmitRequest): Promise<RunExecutionResult> {
+  async submit(
+    input: SubmitRequest,
+    workerBinding?: WorkerRunBinding,
+    runtimeContext?: JsonObject
+  ): Promise<RunExecutionResult> {
     assertExecutionLockMatchesContracts(input.execution_lock, this.actions.contracts());
-    const started = this.store.beginRun(input, this.executionLeaseMs);
+    const started = this.store.beginRun(input, this.executionLeaseMs, workerBinding);
     return this.executeRun(
       started.run,
       started.execution,
       started.request,
-      started.execution_lock
+      started.execution_lock,
+      runtimeContext
     );
   }
 
-  async continueRun(runId: string): Promise<RunExecutionResult> {
+  async continueRun(runId: string, runtimeContext?: JsonObject): Promise<RunExecutionResult> {
     let inspection = this.requireInspection(runId);
+    const effectiveRuntimeContext = runtimeContext
+      ?? this.orchestration?.runtimeContextForTurn(runId, inspection.turn_id)
+      ?? undefined;
     const executionLock = this.store.getExecutionLock(runId);
     assertExecutionLockMatchesContracts(executionLock, this.actions.contracts());
+    if (inspection.status === "waiting") {
+      if (!this.orchestration) {
+        throw new Error(`Waiting Run has no Orchestration Engine owner: ${runId}`);
+      }
+      const resumed = this.orchestration.resumeSupervisor(runId, this.executionLeaseMs);
+      if (!resumed) return toResult(inspection);
+      return this.executeRun(
+        resumed.run,
+        resumed.execution,
+        resumed.request,
+        executionLock,
+        resumed.runtime_context
+      );
+    }
     if (inspection.status === "running") {
       this.store.interruptExpiredRunExecution(runId);
       inspection = this.requireInspection(runId);
@@ -78,12 +124,27 @@ export class KernelRuntime {
         resumed.run,
         resumed.execution,
         continuationPrompt,
-        executionLock
+        executionLock,
+        effectiveRuntimeContext
       );
     }
 
     const executionEvidence = this.store.getRunExecutionRecoveryEvidence(runId);
     if (!executionEvidence) {
+      const supervisorRecovery = this.orchestration?.resumeSupervisorIntegration(
+        runId,
+        afterReconciliation.turn_id,
+        this.executionLeaseMs
+      ) ?? null;
+      if (supervisorRecovery) {
+        return this.executeRun(
+          supervisorRecovery.run,
+          supervisorRecovery.execution,
+          supervisorRecovery.request,
+          executionLock,
+          supervisorRecovery.runtime_context
+        );
+      }
       throw new Error(`Run has no bounded continuation evidence: ${runId}`);
     }
     if (executionEvidence.dispatches.length === 0) {
@@ -99,7 +160,8 @@ export class KernelRuntime {
         resumed.run,
         resumed.execution,
         recoveryPrompt,
-        executionLock
+        executionLock,
+        effectiveRuntimeContext
       );
     }
     const recoveryPrompt = renderDispatchRecoveryPrompt(runId, executionEvidence);
@@ -115,7 +177,8 @@ export class KernelRuntime {
       resumed.run,
       resumed.execution,
       recoveryPrompt,
-      executionLock
+      executionLock,
+      effectiveRuntimeContext
     );
   }
 
@@ -131,10 +194,18 @@ export class KernelRuntime {
     run: RunRecord,
     execution: RunExecutionLease,
     prompt: string,
-    executionLock: ExecutionLock
+    executionLock: ExecutionLock,
+    runtimeContext?: JsonObject
   ): Promise<RunExecutionResult> {
     const controller = new AbortController();
     let heartbeatError: unknown;
+    let budgetExpired = false;
+    const budgetTimer = this.runtimeBudget
+      ? setTimeout(() => {
+        budgetExpired = true;
+        controller.abort();
+      }, Math.max(0, Date.parse(this.runtimeBudget.deadline_at) - Date.now()))
+      : undefined;
     const heartbeat = setInterval(() => {
       if (heartbeatError) return;
       try {
@@ -152,10 +223,17 @@ export class KernelRuntime {
         session_id: run.session_id,
         action_gateway: this.actions,
         execution,
-        execution_lock: executionLock
+        execution_lock: executionLock,
+        ...(runtimeContext ? { runtime_context: runtimeContext } : {}),
+        ...(this.runtimeBudget ? { runtime_budget: this.runtimeBudget } : {})
       });
       const result = await loop.execute(prompt, controller.signal);
       if (heartbeatError) throw heartbeatError;
+      if (budgetExpired) throw new Error("Runtime time budget is exhausted.");
+      const waiting = this.orchestration?.settleSupervisorTurn(execution, result.answer) ?? null;
+      if (waiting) {
+        return toResult(waiting);
+      }
       const completed = this.store.completeRun(execution, result.answer);
       return toResult(completed);
     } catch (error) {
@@ -168,10 +246,17 @@ export class KernelRuntime {
         );
         return toResult(paused);
       }
+      const pausedIntegration = this.orchestration?.pauseSupervisorIntegration(
+        execution,
+        runtimeContext,
+        errorMessage(cause)
+      ) ?? null;
+      if (pausedIntegration) return toResult(pausedIntegration);
       const failed = this.store.failRun(execution, errorMessage(cause));
       return toResult(failed);
     } finally {
       clearInterval(heartbeat);
+      if (budgetTimer) clearTimeout(budgetTimer);
     }
   }
 
@@ -269,6 +354,16 @@ function boundedRecoveryJson(runId: string, value: unknown): string {
 
 function toResult(run: RunRecord): RunExecutionResult {
   if (run.status === "running") throw new Error(`Run has no submission result: ${run.id}`);
+  if (run.status === "waiting") {
+    return {
+      run_id: run.id,
+      turn_id: run.turn_id,
+      session_id: run.session_id,
+      status: "waiting",
+      answer: null,
+      error: null
+    };
+  }
   if (run.status === "paused") {
     return {
       run_id: run.id,
@@ -291,12 +386,6 @@ function toResult(run: RunRecord): RunExecutionResult {
 
 function digest(input: string): string {
   return createHash("sha256").update(input).digest("hex");
-}
-
-function validateLeaseDuration(value: number): void {
-  if (!Number.isInteger(value) || value < 100 || value > 300_000) {
-    throw new Error("Run execution lease duration is invalid.");
-  }
 }
 
 function isLeaseError(error: unknown): boolean {

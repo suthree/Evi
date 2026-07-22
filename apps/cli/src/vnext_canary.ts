@@ -42,7 +42,7 @@ export interface VNextCanaryEnvelope {
     marker: typeof VNEXT_CANARY_MARKER;
     surface: "cli";
     action: VNextCanaryAction | null;
-    status: "running" | "completed" | "paused" | "failed" | "not_found" | "error";
+    status: "running" | "waiting" | "completed" | "paused" | "failed" | "not_found" | "error";
     run_id?: string;
     turn_id?: string;
     session_id?: string;
@@ -233,7 +233,7 @@ function envelopeFromResult(
 
 function envelope(
   action: VNextCanaryAction,
-  status: "running" | "completed" | "paused" | "failed" | "not_found",
+  status: "running" | "waiting" | "completed" | "paused" | "failed" | "not_found",
   runId?: string,
   turnId?: string,
   sessionId?: string,

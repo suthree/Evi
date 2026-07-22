@@ -50,6 +50,10 @@ export async function reconcileInterruptedPiProtocol(input: {
     || messageDigest(currentLast) !== messageDigest(recoveredLast)) {
     return null;
   }
+  input.store.reconcileRecoveredModelDispatch(input.execution, {
+    stop_reason: currentLast.stopReason,
+    message_digest: messageDigest(currentLast)
+  });
   return assistantText(currentLast);
 }
 

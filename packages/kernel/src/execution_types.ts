@@ -1,10 +1,11 @@
 export type RunExecutionKind =
   | "initial"
   | "action_continuation"
+  | "worker_result_continuation"
   | "dispatch_recovery"
   | "protocol_recovery";
 export type RunExecutionState = "active" | "settled" | "interrupted";
-export type RunExecutionOutcome = "completed" | "paused" | "failed" | "interrupted";
+export type RunExecutionOutcome = "waiting" | "completed" | "paused" | "failed" | "interrupted";
 
 export interface RunExecutionLease {
   id: string;
@@ -46,5 +47,18 @@ export interface RunExecutionRecoveryEvidence {
   kind: RunExecutionKind;
   input_digest: string;
   session_start_seq: number;
+  dispatches: ModelDispatchRecord[];
+}
+
+export interface SettledRunExecutionEvidence {
+  execution_id: string;
+  ordinal: number;
+  outcome: "waiting" | "completed" | "paused" | "failed";
+  dispatches: ModelDispatchRecord[];
+}
+
+export interface RunExecutionModelEvidence {
+  execution_id: string;
+  ordinal: number;
   dispatches: ModelDispatchRecord[];
 }

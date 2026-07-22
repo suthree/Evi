@@ -51,13 +51,18 @@ v0.1 是 local-first、single-machine runtime：
 渠道只是入口，Codex 等专业 Agent 只是执行 Adapter。它们都不会成为第二个 Evi Self、
 Goal owner 或完成判定 owner。
 
-已接受但尚未切换的 vNext 闭环为：
+已接受但尚未完成部署切换的 vNext 闭环为：
 
 ```text
 请求 -> Turn / Run -> Pi Agent Loop -> Action Gateway -> 专门化 Outcome / Receipt
                     \-> SQLite canonical state
 可选 Goal 只关联长期 objective、acceptance、budget 与多个 Run
 ```
+
+具体已经实现的命令、Worker 边界和恢复语义只在
+[`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 与 [`LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md)
+维护；本入口不复制易失的切片进度。现有 v0.2 resident runtime 在完成独立切换验收前
+只保留为 rollback。
 
 ## 从这里开始
 
@@ -73,7 +78,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md)，Run continuation 见 [`adr/0014-reconciled-run-continuation.cn.md`](adr/0014-reconciled-run-continuation.cn.md)，Execution lease 与 dispatch recovery 见 [`adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`](adr/0015-run-execution-lease-and-dispatch-recovery.cn.md)，Pi tool protocol recovery 与 Kernel 基建退出见 [`adr/0016-pi-tool-protocol-recovery.cn.md`](adr/0016-pi-tool-protocol-recovery.cn.md) |
+| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md)，Run continuation 见 [`adr/0014-reconciled-run-continuation.cn.md`](adr/0014-reconciled-run-continuation.cn.md)，Execution lease 与 dispatch recovery 见 [`adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`](adr/0015-run-execution-lease-and-dispatch-recovery.cn.md)，Pi tool protocol recovery 与 Kernel 基建退出见 [`adr/0016-pi-tool-protocol-recovery.cn.md`](adr/0016-pi-tool-protocol-recovery.cn.md)，最终 Evi/Pi 分工、Parent-Child 编排与专门化完成语义见 [`adr/0017-evi-owned-orchestration-and-adaptation.cn.md`](adr/0017-evi-owned-orchestration-and-adaptation.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。

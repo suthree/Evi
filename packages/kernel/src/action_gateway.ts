@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
 import type {
   ActionDispatch,
+  ActionEffectClass,
   ActionGatewayResult,
   ActionHandler,
   ActionInvocation,
@@ -10,18 +10,26 @@ import type {
   JsonObject,
   JsonValue
 } from "./action_types.js";
+import { materializeActionDigest } from "./action_identity.js";
+import { stableJson } from "./canonical_json.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const MAX_ARGUMENT_BYTES = 16 * 1024;
 const MAX_OUTPUT_BYTES = 32 * 1024;
 const MAX_SUMMARY_LENGTH = 2_000;
 
+export interface ActionGatewayOptions {
+  allowed_effect_classes?: ActionEffectClass[];
+}
+
 export class ActionGateway {
   private readonly handlers: ReadonlyMap<string, ActionHandler>;
+  private readonly allowedEffectClasses: ReadonlySet<ActionEffectClass>;
 
   constructor(
     private readonly store: SqliteRuntimeStore,
-    handlers: ActionHandler[]
+    handlers: ActionHandler[],
+    options: ActionGatewayOptions = {}
   ) {
     const entries = handlers.map((handler) => {
       validateContract(handler.contract);
@@ -31,6 +39,7 @@ export class ActionGateway {
       throw new Error("Action Gateway handler names must be unique.");
     }
     this.handlers = new Map(entries);
+    this.allowedEffectClasses = new Set(options.allowed_effect_classes ?? ["none", "local_read"]);
   }
 
   contracts(): ActionToolContract[] {
@@ -47,18 +56,22 @@ export class ActionGateway {
     } catch (error) {
       return { status: "denied", action_name: input.action_name, reason: errorMessage(error) };
     }
-    const decision = decide(handler.contract);
+    const decision = this.decide(handler.contract);
     if (decision.outcome === "deny") {
       return { status: "denied", action_name: input.action_name, reason: decision.reason };
     }
 
     let durableArguments: JsonObject;
     try {
-      durableArguments = boundedJsonObject(handler.prepare(input.arguments), MAX_ARGUMENT_BYTES, "Action arguments");
+      durableArguments = boundedJsonObject(
+        handler.prepare(input.arguments, input),
+        MAX_ARGUMENT_BYTES,
+        "Action arguments"
+      );
     } catch (error) {
       return { status: "denied", action_name: input.action_name, reason: errorMessage(error) };
     }
-    const actionDigest = digestAction(handler.contract, durableArguments);
+    const actionDigest = materializeActionDigest(handler.contract, durableArguments);
     const reservation = this.store.reserveAction({
       run_id: input.run_id,
       turn_id: input.turn_id,
@@ -110,7 +123,7 @@ export class ActionGateway {
   ): Promise<ActionGatewayResult> {
     this.store.assertActionAllowedByExecutionLock(reservation.run_id, handler.contract);
     assertReservationIdentity(reservation, handler);
-    const decision = decide(handler.contract);
+    const decision = this.decide(handler.contract);
     if (decision.outcome === "deny") {
       return { status: "denied", action_name: reservation.action_name, reason: decision.reason };
     }
@@ -166,25 +179,28 @@ export class ActionGateway {
     const completed = this.store.completeAction(reservation.id, observation, reconciled);
     return { status: "completed", reservation: completed.reservation, receipt: completed.receipt };
   }
+
+  private decide(contract: ActionToolContract): { outcome: "allow" | "deny"; reason: string } {
+    if (this.allowedEffectClasses.has(contract.effect_class)) {
+      return {
+        outcome: "allow",
+        reason: `Action Gateway permits registered ${contract.effect_class} contracts in this composition.`
+      };
+    }
+    return {
+      outcome: "deny",
+      reason: `Action Gateway composition denies ${contract.effect_class}; no dispatch was reserved.`
+    };
+  }
 }
 
 function assertReservationIdentity(reservation: ActionReservation, handler: ActionHandler): void {
   if (reservation.action_name !== handler.contract.name
     || reservation.contract_version !== handler.contract.version
     || reservation.effect_class !== handler.contract.effect_class
-    || reservation.action_digest !== digestAction(handler.contract, reservation.arguments)) {
+    || reservation.action_digest !== materializeActionDigest(handler.contract, reservation.arguments)) {
     throw new Error(`Action reservation identity mismatch: ${reservation.id}`);
   }
-}
-
-function decide(contract: ActionToolContract): { outcome: "allow" | "deny"; reason: string } {
-  if (contract.effect_class === "none" || contract.effect_class === "local_read") {
-    return { outcome: "allow", reason: `Action Gateway permits ${contract.effect_class} in this slice.` };
-  }
-  return {
-    outcome: "deny",
-    reason: `Action Gateway does not yet permit ${contract.effect_class}; no dispatch was reserved.`
-  };
 }
 
 function validateContract(contract: ActionToolContract): void {
@@ -200,15 +216,6 @@ function validateContract(contract: ActionToolContract): void {
   if (!contract.description.trim() || contract.description.length > 1_000) {
     throw new Error(`Action contract description is invalid: ${contract.name}`);
   }
-}
-
-function digestAction(contract: ActionToolContract, arguments_: JsonObject): string {
-  return createHash("sha256").update(stableJson({
-    name: contract.name,
-    version: contract.version,
-    effect_class: contract.effect_class,
-    arguments: arguments_
-  })).digest("hex");
 }
 
 function boundedObservation(input: ActionObservation): ActionObservation {
@@ -251,12 +258,6 @@ function assertJsonValue(input: unknown, path: string): asserts input is JsonVal
     return;
   }
   throw new Error(`${path} is not JSON-safe.`);
-}
-
-function stableJson(input: JsonValue): string {
-  if (input === null || typeof input !== "object") return JSON.stringify(input);
-  if (Array.isArray(input)) return `[${input.map((value) => stableJson(value)).join(",")}]`;
-  return `{${Object.keys(input).sort().map((key) => `${JSON.stringify(key)}:${stableJson(input[key]!)}`).join(",")}}`;
 }
 
 function boundedError(error: unknown, fallback: string): string {

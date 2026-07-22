@@ -19,7 +19,7 @@ used to claim that a multi-node capability already exists.
 
 ## Scope
 
-### Stable vNext Goal-free CLI ingress
+### Stable vNext Supervisor CLI ingress
 
 The implemented stable vNext ingress is a foreground CLI Adapter:
 
@@ -28,6 +28,7 @@ pnpm run runtime -- vnext run submit --task "..." [--session-id session_...] [--
 pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext run inspect --run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext run inspect --session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 ```
 
 The CLI Adapter parses input and renders a structured envelope marked
@@ -35,9 +36,11 @@ The CLI Adapter parses input and renders a structured envelope marked
 Lock, execution lease, recovery, and inspection semantics. A submit without a
 Session creates one. A submit with an existing terminal Session creates a new
 Run in the same Pi session tree. A Session may own many terminal Runs but at
-most one `running` or `paused` Run. Concurrent attach fails closed with
-`session_busy`. A terminal Run is never reopened, and `continue` only attempts
-evidenced recovery of the identified paused or owner-lost Run.
+most one `running`, `waiting`, or `paused` Run. Concurrent attach fails closed
+with `session_busy`. A terminal Run is never reopened. `continue` either
+attempts evidenced recovery of the identified paused or owner-lost Run, or
+delivers ready typed Worker evidence into a newly persisted Turn of the same
+waiting parent Run.
 
 The configured credential value is redacted from submitted text before the
 Kernel creates canonical state or invokes Pi. The Run row stores no second
@@ -56,21 +59,54 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 6 and its immutable `stable_cli` state profile
+The stable schema is version 7 and its immutable `stable_cli` state profile
 refuses both older schemas and a current `diagnostic_canary` database; this
 slice performs no migration, import, or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
 this Interface.
 
-Only `runtime_inspect` is registered, so the implemented effect ceiling remains
-`none/local_read`. Structured diagnostics distinguish `run_not_found`,
+New parent Runs register `runtime_inspect`, `worker_dispatch`, `worker_inspect`,
+and child-contained `worker_needs_input`. The composition explicitly permits one reservation-first
+`external_read` discussion Worker; all child Actions remain `none/local_read`.
+Task and Result Envelopes are immutable and digest-addressed. Tasks carry
+explicit context and artifact refs; Results bind the exact producing Run
+Execution, model dispatches, provider/model identity, and cumulative bounded
+usage. Child authority
+must preserve or narrow the parent Execution Lock. Worker lease ownership,
+atomic isolated child-Run binding, stale recovery, typed result readiness, and
+single delivery into a new parent Turn are canonical SQLite facts. The Worker
+Result enters Pi as typed runtime-owned context rather than user speech. It is
+advisory and cannot complete the parent; the Supervisor retains
+integration and final-outcome authority and can inspect exact Worker/child-Run
+evidence through `worker_inspect`. Only the child-contained `none`
+`worker_needs_input` Action may produce an explicit semantic `needs_input`
+Result; technical Action/model uncertainty remains paused for exact recovery
+and is never relabeled. Task timeouts above the supported Node timer bound fail
+before reservation. A token, timeout, or deadline overrun produces exactly one
+`failed` Result from the terminal child evidence and cannot cause repeated
+child execution or a permanently result-less Worker. Persisted-final-assistant
+recovery reconciles the original producing model dispatch, so the Result names
+the producer rather than an empty recovery execution.
+
+If the Supervisor's first integration attempt fails technically after Result
+delivery, the parent and current integration Turn become `paused`, not
+terminal. A later `continue` validates the same delivered Result digests,
+rebuilds their runtime-owned context from SQLite, and starts another bounded
+integration execution in that same Turn. Result delivery is not repeated and
+the Worker still cannot claim parent completion.
+
+`vnext worker execute` is the separate foreground process Adapter for that one
+read-only Worker Session. It uses the same state/profile/config selectors, the
+same Runtime Kernel, and the sole Pi Agent Loop. A terminal child Run is
+recovered without replay. Structured diagnostics distinguish `run_not_found`,
 `session_not_found`, `session_busy`, `execution_lock_mismatch`,
 `credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
-and invalid input. `signal/cancel`, optional Goal links, workers, learning,
-write/external Actions, Web/IM routing, resident-service ownership, and vNext
-deployment remain outside this slice. Production v0.2 Web, daemon, and Feishu
-traffic is unchanged.
+and invalid input. Worker parallelism, execution writers, reviewers,
+`signal/cancel`, optional Goal links, learning, write Actions, Web/IM routing,
+resident-service ownership, and vNext deployment remain outside this slice.
+Production v0.2 Web, daemon, and Feishu traffic is unchanged and serves only as
+the rollback runtime.
 
 ### Explicit vNext read-only ingress canary
 

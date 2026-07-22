@@ -37,6 +37,18 @@ export function inspectRuntimeRun(
     FROM model_dispatches
     WHERE run_id = ? AND state = 'outcome_unknown'
   `, runId);
+  const workers = count(db, "SELECT COUNT(*) AS count FROM worker_sessions WHERE parent_run_id = ?", runId);
+  const outstandingWorkers = count(db, `
+    SELECT COUNT(*) AS count
+    FROM worker_sessions
+    WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL
+  `, runId);
+  const deliverableWorkers = count(db, `
+    SELECT COUNT(*) AS count
+    FROM worker_sessions
+    WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
+      AND result_delivered_to_turn_id IS NULL
+  `, runId);
   return {
     ...run,
     execution_lock_digest: executionLock.digest,
@@ -50,7 +62,10 @@ export function inspectRuntimeRun(
     execution_count: executions,
     interrupted_execution_count: interruptedExecutions,
     model_dispatch_count: dispatches,
-    unknown_model_dispatch_count: unknownDispatches
+    unknown_model_dispatch_count: unknownDispatches,
+    worker_count: workers,
+    outstanding_worker_count: outstandingWorkers,
+    deliverable_worker_count: deliverableWorkers
   };
 }
 

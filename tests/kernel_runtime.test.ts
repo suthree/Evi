@@ -679,7 +679,7 @@ for (const crashPoint of [
 
         const completed = await runtime.continueRun(runId);
 
-        assert.equal(completed.status, "completed");
+        assert.equal(completed.status, "completed", completed.error ?? undefined);
         assert.equal(completed.run_id, runId);
         assert.equal(completed.session_id, sessionId);
         assert.equal(
@@ -851,7 +851,7 @@ test("only the Pi adapter implementation imports Pi packages inside the vNext ke
 test("vNext rejects pre-gateway and unknown SQLite schemas before creating runtime tables", async () => {
   const fixture = await createFixture();
   try {
-    for (const version of ["1", "2", "3", "5", "999"]) {
+    for (const version of ["1", "2", "3", "5", "6", "999"]) {
       const dbPath = join(fixture, `runtime-${version}.sqlite`);
       const seed = new DatabaseSync(dbPath);
       seed.exec(`
