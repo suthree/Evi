@@ -41,7 +41,7 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports, migrates, or
-dual-writes v0.2 state. Schema version 6 plus the immutable `stable_cli` state
+dual-writes v0.2 state. Schema version 7 plus the immutable `stable_cli` state
 profile refuse both earlier vNext schemas and current `diagnostic_canary`
 databases instead of promoting them silently.
 

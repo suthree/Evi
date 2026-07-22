@@ -56,7 +56,7 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 6 and its immutable `stable_cli` state profile
+The stable schema is version 7 and its immutable `stable_cli` state profile
 refuses both older schemas and a current `diagnostic_canary` database; this
 slice performs no migration, import, or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,

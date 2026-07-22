@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-export const RUNTIME_SCHEMA_VERSION = "6";
+export const RUNTIME_SCHEMA_VERSION = "7";
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -186,6 +186,44 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         WHERE state IN ('dispatching', 'response_observed');
       CREATE INDEX IF NOT EXISTS model_dispatches_run_state_idx
         ON model_dispatches(run_id, state);
+      CREATE TABLE IF NOT EXISTS worker_sessions (
+        id TEXT PRIMARY KEY,
+        reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+        parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (
+          status IN ('queued', 'running', 'needs_input', 'completed', 'failed')
+        ),
+        task_envelope_digest TEXT NOT NULL UNIQUE,
+        task_envelope_json TEXT NOT NULL,
+        child_execution_lock_digest TEXT NOT NULL,
+        child_execution_lock_json TEXT NOT NULL,
+        child_session_id TEXT UNIQUE REFERENCES sessions(id),
+        child_run_id TEXT UNIQUE REFERENCES runs(id),
+        result_envelope_digest TEXT UNIQUE,
+        result_envelope_json TEXT,
+        lease_owner_digest TEXT,
+        lease_expires_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (
+          (child_session_id IS NULL AND child_run_id IS NULL)
+          OR (child_session_id IS NOT NULL AND child_run_id IS NOT NULL)
+        ),
+        CHECK (
+          (status = 'running' AND lease_owner_digest IS NOT NULL AND lease_expires_at IS NOT NULL)
+          OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+        ),
+        CHECK (
+          (status IN ('queued', 'running')
+            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL)
+          OR (status IN ('needs_input', 'completed', 'failed')
+            AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS worker_sessions_parent_status_idx
+        ON worker_sessions(parent_run_id, status, created_at);
     `);
     if (version === null) {
       db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")

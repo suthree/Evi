@@ -23,6 +23,13 @@ import {
   materializeExecutionLock,
   parseExecutionLock
 } from "./execution_lock.js";
+import {
+  assertExecutionLockNarrowing,
+  parseResultEnvelope,
+  parseTaskEnvelope,
+  type TaskEnvelope,
+  type WorkerInspection
+} from "./orchestration_types.js";
 import type {
   ModelDispatchRecord,
   RunExecutionKind,
@@ -109,6 +116,24 @@ export class RuntimeStateProfileIncompatibleError extends Error {
 
 export interface SqliteRuntimeStoreOptions {
   state_profile?: RuntimeStateProfile;
+}
+
+interface WorkerSessionRow {
+  id: string;
+  reservation_id: string;
+  parent_run_id: string;
+  parent_turn_id: string;
+  status: WorkerInspection["status"];
+  task_envelope_digest: string;
+  task_envelope_json: string;
+  child_execution_lock_digest: string;
+  child_execution_lock_json: string;
+  child_session_id: string | null;
+  child_run_id: string | null;
+  result_envelope_digest: string | null;
+  result_envelope_json: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export class SqliteRuntimeStore {
@@ -796,6 +821,86 @@ export class SqliteRuntimeStore {
     return row?.present === 1;
   }
 
+  dispatchDiscussionWorker(input: {
+    reservation_id: string;
+    task_envelope: TaskEnvelope;
+    child_execution_lock: ExecutionLock;
+  }): WorkerInspection {
+    const taskEnvelope = parseTaskEnvelope(input.task_envelope);
+    const childLock = parseExecutionLock(input.child_execution_lock);
+    return this.transaction(() => {
+      const reservation = this.requireActionReservation(input.reservation_id);
+      if (reservation.run_id !== taskEnvelope.parent_run_id
+        || reservation.turn_id !== taskEnvelope.parent_turn_id) {
+        throw new Error(`Worker dispatch parent identity mismatch: ${input.reservation_id}`);
+      }
+      if (reservation.state !== "dispatching" && reservation.state !== "outcome_unknown") {
+        throw new Error(`Worker dispatch reservation is not reconcilable: ${input.reservation_id}`);
+      }
+      const parent = this.requireRun(reservation.run_id);
+      if ((parent.status !== "running" && parent.status !== "paused")
+        || parent.turn_id !== reservation.turn_id) {
+        throw new Error(`Worker dispatch requires the current parent Turn: ${parent.id}`);
+      }
+      const parentLock = this.getExecutionLock(parent.id);
+      assertExecutionLockNarrowing(parentLock, childLock);
+      if (taskEnvelope.child_execution_lock_digest !== childLock.digest) {
+        throw new Error("Task Envelope child Execution Lock identity mismatch.");
+      }
+
+      const existing = this.getWorkerByReservation(input.reservation_id);
+      if (existing) {
+        if (existing.task_envelope.digest !== taskEnvelope.digest
+          || existing.child_execution_lock.digest !== childLock.digest) {
+          throw new Error(`Worker dispatch identity mismatch: ${input.reservation_id}`);
+        }
+        return existing;
+      }
+
+      const workerId = id("worker");
+      const createdAt = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO worker_sessions (
+          id, reservation_id, parent_run_id, parent_turn_id, status,
+          task_envelope_digest, task_envelope_json,
+          child_execution_lock_digest, child_execution_lock_json,
+          child_session_id, child_run_id,
+          result_envelope_digest, result_envelope_json,
+          lease_owner_digest, lease_expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+      `).run(
+        workerId,
+        reservation.id,
+        parent.id,
+        parent.turn_id,
+        taskEnvelope.digest,
+        JSON.stringify(taskEnvelope),
+        childLock.digest,
+        JSON.stringify(childLock),
+        createdAt,
+        createdAt
+      );
+      this.insertEvent(parent.id, parent.turn_id, "worker_dispatched", {
+        worker_id: workerId,
+        reservation_id: reservation.id,
+        task_envelope_digest: taskEnvelope.digest,
+        child_execution_lock_digest: childLock.digest,
+        worker_kind: taskEnvelope.worker_kind
+      });
+      return this.requireWorker(workerId);
+    });
+  }
+
+  inspectWorker(workerId: string): WorkerInspection | null {
+    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE id = ?")
+      .get(workerId) as WorkerSessionRow | undefined;
+    return row ? toWorkerInspection(row) : null;
+  }
+
+  inspectWorkerByReservation(reservationId: string): WorkerInspection | null {
+    return this.getWorkerByReservation(reservationId);
+  }
+
   getPiSession(sessionId: string): PiSessionRow | null {
     return (this.db.prepare(`
       SELECT id, created_at, leaf_id
@@ -1223,6 +1328,18 @@ export class SqliteRuntimeStore {
     return toActionReservation(row);
   }
 
+  private getWorkerByReservation(reservationId: string): WorkerInspection | null {
+    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE reservation_id = ?")
+      .get(reservationId) as WorkerSessionRow | undefined;
+    return row ? toWorkerInspection(row) : null;
+  }
+
+  private requireWorker(workerId: string): WorkerInspection {
+    const worker = this.inspectWorker(workerId);
+    if (!worker) throw new Error(`Worker Session not found: ${workerId}`);
+    return worker;
+  }
+
   private getEffectReceipt(reservationId: string): EffectReceipt | null {
     const row = this.db.prepare(`
       SELECT *
@@ -1262,4 +1379,33 @@ export class SqliteRuntimeStore {
       throw error;
     }
   }
+}
+
+function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
+  const taskEnvelope = parseTaskEnvelope(JSON.parse(row.task_envelope_json));
+  const childExecutionLock = parseExecutionLock(JSON.parse(row.child_execution_lock_json));
+  if (taskEnvelope.digest !== row.task_envelope_digest
+    || childExecutionLock.digest !== row.child_execution_lock_digest) {
+    throw new Error(`Worker Session stored identity is invalid: ${row.id}`);
+  }
+  const resultEnvelope = row.result_envelope_json === null
+    ? null
+    : parseResultEnvelope(JSON.parse(row.result_envelope_json));
+  if ((resultEnvelope?.digest ?? null) !== row.result_envelope_digest) {
+    throw new Error(`Worker Session Result Envelope identity is invalid: ${row.id}`);
+  }
+  return {
+    id: row.id,
+    reservation_id: row.reservation_id,
+    parent_run_id: row.parent_run_id,
+    parent_turn_id: row.parent_turn_id,
+    status: row.status,
+    task_envelope: taskEnvelope,
+    child_execution_lock: childExecutionLock,
+    child_session_id: row.child_session_id,
+    child_run_id: row.child_run_id,
+    result_envelope: resultEnvelope,
+    created_at: row.created_at,
+    updated_at: row.updated_at
+  };
 }
