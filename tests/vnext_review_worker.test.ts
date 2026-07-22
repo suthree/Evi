@@ -369,6 +369,15 @@ test("a terminal Reviewer child Run survives owner loss without replaying the mo
               stop_reason: "stop",
               message_digest: "a".repeat(64)
             });
+            const followup = store.startModelDispatch(input.execution, {
+              provider: claimed.worker.child_execution_lock.model.provider,
+              model: claimed.worker.child_execution_lock.model.model
+            });
+            store.observeModelResponse(input.execution, followup.id, 200);
+            store.settleModelDispatch(input.execution, followup.id, {
+              stop_reason: "stop",
+              message_digest: "b".repeat(64)
+            });
             return {
               answer: JSON.stringify({
                 verdict: "approved",
@@ -396,6 +405,19 @@ test("a terminal Reviewer child Run survives owner loss without replaying the mo
     })) as JsonObject);
     assert.equal(child.status, "completed");
     childRunId = child.run_id;
+    const raw = new DatabaseSync(sqlite);
+    try {
+      const dispatches = raw.prepare(`
+        SELECT id FROM model_dispatches WHERE run_id = ? ORDER BY ordinal ASC
+      `).all(childRunId) as Array<{ id: string }>;
+      assert.equal(dispatches.length, 2);
+      raw.prepare("UPDATE model_dispatches SET id = ? WHERE id = ?")
+        .run("model_dispatch_z", dispatches[0]!.id);
+      raw.prepare("UPDATE model_dispatches SET id = ? WHERE id = ?")
+        .run("model_dispatch_a", dispatches[1]!.id);
+    } finally {
+      raw.close();
+    }
     assert.equal(store.inspectReviewWorker(workerId)?.status, "running");
     assert.equal(store.inspectReviewWorker(workerId)?.child_run_id, childRunId);
     await delay(150);
@@ -420,7 +442,10 @@ test("a terminal Reviewer child Run survives owner loss without replaying the mo
     assert.equal(recovered.result_envelope?.verdict, "approved");
     assert.equal(recovered.result_envelope?.actual_execution.provider, "test-provider");
     assert.equal(recovered.result_envelope?.actual_execution.model, "test-model");
-    assert.equal(recovered.result_envelope?.actual_execution.model_dispatch_ids.length, 1);
+    assert.deepEqual(recovered.result_envelope?.actual_execution.model_dispatch_ids, [
+      "model_dispatch_z",
+      "model_dispatch_a"
+    ]);
     assert.equal(calls, 1);
     const raw = new DatabaseSync(sqlite, { readOnly: true });
     try {

@@ -3225,7 +3225,7 @@ export class SqliteRuntimeStore {
     }
     const terminalExecution = this.getLatestSettledRunExecution(child.id);
     const producerExecution = this.getResultProducingRunExecution(child.id);
-    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id).sort();
+    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id);
     const providers = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.provider))];
     const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
     const provider = providers.length === 0 ? null : providers[0]!;
@@ -3352,7 +3352,7 @@ export class SqliteRuntimeStore {
     const subject = this.requireExecutionWorker(worker.execution_worker_id);
     const terminalExecution = this.getLatestSettledRunExecution(child.id);
     const producerExecution = this.getResultProducingRunExecution(child.id);
-    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id).sort();
+    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id);
     const providers = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.provider))];
     const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
     const provider = providers.length === 0 ? null : providers[0]!;
