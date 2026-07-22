@@ -8,6 +8,7 @@ import {
 } from "./execution_lock.js";
 import { validateRuntimeTimeoutDuration } from "./runtime_limits.js";
 import type { ExecutionWorkerInspection } from "./execution_worker_types.js";
+import type { ReviewWorkerInspection } from "./review_worker_types.js";
 
 const TASK_ENVELOPE_SCHEMA_VERSION = 1;
 const RESULT_ENVELOPE_SCHEMA_VERSION = 1;
@@ -86,7 +87,9 @@ export interface WorkerInspection {
   updated_at: string;
 }
 
-export type SupervisorWorkerInspection = WorkerInspection | ExecutionWorkerInspection;
+export type SupervisorWorkerInspection = WorkerInspection
+  | ExecutionWorkerInspection
+  | ReviewWorkerInspection;
 
 export interface WorkerExecutionLease {
   worker_id: string;

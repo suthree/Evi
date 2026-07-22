@@ -46,13 +46,15 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports or dual-writes
-v0.2 state. Schema version 10 plus the immutable `stable_cli` state profile
+v0.2 state. Schema version 11 plus the immutable `stable_cli` state profile
 refuses current `diagnostic_canary` databases. Version 8 and 9 stable state
 upgrade transactionally. The version 9 migration preserves both existing
 Worker kinds while consolidating their common lifecycle into one
 `worker_sessions` ledger; execution-only Delivery-Lineage authority remains in
-the narrow `execution_worker_bindings` table. Other earlier or unknown versions
-fail closed.
+the narrow `execution_worker_bindings` table. Version 10 migrates that exact
+ledger in place, expands the kind constraint, and adds only the narrow
+`review_worker_bindings` relation; review does not create another lifecycle
+table. Other earlier or unknown versions fail closed.
 
 `submit` uses the active model from normal safe config resolution. Relative
 `--config-dir` is resolved below `--repo-root`; both selectors become part of
@@ -78,9 +80,9 @@ recovery roles.
 Every Run response is a `vnext_goal_free_cli` envelope with Run, Session, and
 Execution Lock identities or a structured diagnostic. A new parent Run has
 `runtime_inspect`, `worker_dispatch`, `worker_execution_dispatch`,
-`worker_inspect`, and the child-contained `worker_needs_input`.
-`worker_dispatch` is the sole explicit `external_read`
-exception: it reserves and queues at most one
+`worker_review_dispatch`, `worker_inspect`, and the child-contained
+`worker_needs_input`. `worker_dispatch` and `worker_review_dispatch` are the
+explicit `external_read` exceptions. The former reserves and queues at most one
 read-only discussion Worker with a narrowed immutable child Execution Lock.
 The Worker does not run inside the parent model request. Execute it in a
 separate process with `vnext worker execute`; it claims a durable lease, creates
@@ -126,6 +128,19 @@ worker prose is advisory. A lost/expired execution owner becomes
 lease state, Delivery Lineage, baseline/final snapshots, and verification
 receipts without loading a model or claiming the lease.
 
+After one completed execution Result is delivered to the current Supervisor
+Turn, `worker_review_dispatch` may bind one independent read-only Reviewer to
+that exact execution Worker. Evi revalidates the current final lineage snapshot
+before reservation and captures a bounded digest-addressed before/after text
+packet. Binary, non-UTF-8, oversized, unsupported-mode, or drifted evidence is
+rejected. Run the queued Reviewer with the same `vnext worker execute` command.
+It uses a separate Pi child Run with only `none/local_read` Actions and must
+return strict JSON: `approved` with no findings or `changes_required` with
+structured findings on packet paths. Malformed or contradictory output becomes
+one failed Review Result. A terminal child Run is recovered after owner loss
+without repeating the model call. The Result is delivered once and remains
+advisory; only the Supervisor can integrate or complete the parent.
+
 A technical failure while the Supervisor integrates an already delivered
 Result pauses that same integration Turn. A later `continue` rebuilds the exact
 typed Result context from SQLite and retries the same Turn; it does not reopen a
@@ -147,7 +162,7 @@ commands do not call a model, execute the procedure, write the active vault or
 source, or route through Web/IM. There is currently no CLI operation for
 activation, observation, rollback, or retirement.
 
-There is still no worker parallelism, independent reviewer role,
+There is still no worker parallelism, exclusive Integration Run,
 `signal/cancel`, optional Goal, active or observed learning, local/external
 write Action beyond the one bounded execution-Worker dispatch, resident
 route, or vNext deployment in this slice. The installed v0.2 runtime is frozen

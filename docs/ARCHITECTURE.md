@@ -162,6 +162,16 @@ parent and child identity, Task Envelope digest, Execution Lock digest, model or
 executor selection, budget, and optional Delivery Lineage before the worker
 starts. Owner loss reconciles that dispatch before any replay.
 
+The current sequential vNext checkpoint stores discussion, execution, and
+review Workers in one lifecycle ledger. A review Worker is a separate read-only
+child Run bound narrowly to one completed execution Worker after that execution
+Result has been delivered into the current Supervisor Turn. It receives a
+bounded, digest-addressed before/after packet from the execution's exact final
+Delivery-Lineage snapshot and returns only `approved` or `changes_required`
+with structured findings. Its verdict is independent evidence, not integration
+or parent-completion authority. Bounded parallel dispatch and an exclusive
+Integration Run remain later orchestration steps.
+
 ### Delivery Lineage and concurrency
 
 The v0.2 rule that binds one worktree to one source-mutating Goal remains a

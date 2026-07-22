@@ -62,25 +62,29 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 10 and its immutable `stable_cli` state profile
+The stable schema is version 11 and its immutable `stable_cli` state profile
 refuses a `diagnostic_canary` database. Version 8 and 9 `stable_cli` state
 upgrade transactionally before the version marker advances. Version 9
 discussion and execution records retain their exact Task, Result, lease,
 delivery, child-Run, attempt, and Delivery-Lineage identities while moving into
 one common `worker_sessions` lifecycle ledger. Execution-only lineage authority
 is the narrow `execution_worker_bindings` relation, not a second lifecycle
-table. All other older or unknown schemas still fail closed.
+table. Version 10 preserves that exact common ledger while expanding its kind
+constraint and adding the narrow `review_worker_bindings` relation. Review has
+no third lifecycle table. All other older or unknown schemas still fail closed.
 There is no v0.2 import or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
 this Interface.
 
 New parent Runs register `runtime_inspect`, `worker_dispatch`,
-`worker_execution_dispatch`, `worker_inspect`, and child-contained
-`worker_needs_input`. The composition explicitly permits one reservation-first
-`external_read` discussion Worker and one opt-in reservation-first
+`worker_execution_dispatch`, `worker_review_dispatch`, `worker_inspect`, and
+child-contained `worker_needs_input`. The composition explicitly permits one
+reservation-first `external_read` discussion Worker, one reservation-first
+`external_read` review Worker, and one opt-in reservation-first
 `local_write` execution Worker. Discussion-child Actions remain
-`none/local_read`; the execution Worker receives no child Action surface.
+`none/local_read`; review-child Actions are also `none/local_read`; the
+execution Worker receives no child Action surface.
 Task and Result Envelopes are immutable and digest-addressed. Tasks carry
 explicit context and artifact refs; Results bind the exact producing Run
 Execution, model dispatches, provider/model identity, and cumulative bounded
@@ -108,8 +112,8 @@ rebuilds their runtime-owned context from SQLite, and starts another bounded
 integration execution in that same Turn. Result delivery is not repeated and
 the Worker still cannot claim parent completion.
 
-`vnext worker execute` is the separate foreground process Adapter for either
-Worker kind. `vnext worker inspect` reads the bounded canonical Worker, lease,
+`vnext worker execute` is the separate foreground process Adapter for all three
+Worker kinds. `vnext worker inspect` reads the bounded canonical Worker, lease,
 Delivery-Lineage, snapshot, and verification evidence without claiming a lease
 or loading a model. A discussion Worker uses the same state/profile/config selectors,
 the same Runtime Kernel, and the sole Pi Agent Loop. A terminal discussion
@@ -151,10 +155,26 @@ disappears without a terminal Result, expiry changes the Worker and Lineage to
 `paused/outcome_unknown`; no second writer is admitted and no execution is
 replayed automatically.
 
+`worker_review_dispatch` may target only one completed execution Worker owned
+by the same parent after its Result has been delivered into the current
+Supervisor Turn. Before reservation, Evi verifies the exact execution Task,
+Result, verification receipts, Delivery Lineage, and current final snapshot,
+then captures one bounded digest-addressed packet containing the changed text
+files' baseline and final content. Drift, unsupported Git modes, binary or
+non-UTF-8 content, or packet size overflow fails before reservation. The review
+Worker runs in a separate Pi child Run with only `none/local_read` Actions and
+must return one strict JSON decision. `approved` is valid only with zero
+findings; any finding requires `changes_required`, and every finding path must
+belong to the packet. Malformed or contradictory output becomes one terminal
+failed Review Result. Persisted terminal child evidence is reconciled after
+owner loss without model replay. The Review Result is delivered once as typed
+advisory context; it cannot mutate source, integrate the lineage, or complete
+the parent.
+
 Structured diagnostics distinguish `run_not_found`,
 `session_not_found`, `session_busy`, `execution_lock_mismatch`,
 `credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
-and invalid input. Independent reviewer Workers, multiple execution writers,
+and invalid input. Multiple execution writers,
 automatic Delivery-Lineage creation, commit/push/PR/merge/integration,
 `signal/cancel`, optional Goal links, adaptation activation or observation,
 Web/IM routing,

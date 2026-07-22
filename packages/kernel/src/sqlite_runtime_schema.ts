@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
-export const RUNTIME_SCHEMA_VERSION = "10";
-const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", RUNTIME_SCHEMA_VERSION]);
+export const RUNTIME_SCHEMA_VERSION = "11";
+const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -17,7 +17,8 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   if (version !== null && !MIGRATABLE_SCHEMA_VERSIONS.has(version)) {
     throw new RuntimeSchemaIncompatibleError(version);
   }
-  if (version === "8" || version === "9" || version === RUNTIME_SCHEMA_VERSION) {
+  if (version === "8" || version === "9" || version === "10"
+    || version === RUNTIME_SCHEMA_VERSION) {
     assertWorkerLifecycleShape(db, version);
   }
   db.exec(`
@@ -30,7 +31,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   `);
   db.exec("BEGIN IMMEDIATE");
   try {
-    if (version === "8" || version === "9") {
+    if (version === "8" || version === "9" || version === "10") {
       migrateWorkerLifecycleLedger(db, version);
     }
     db.exec(`
@@ -233,6 +234,10 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
         lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT
       );
+      CREATE TABLE IF NOT EXISTS review_worker_bindings (
+        worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+        execution_worker_id TEXT NOT NULL UNIQUE REFERENCES worker_sessions(id) ON DELETE RESTRICT
+      );
       CREATE TABLE IF NOT EXISTS adaptation_candidates (
         id TEXT PRIMARY KEY,
         target_slot TEXT NOT NULL,
@@ -295,17 +300,31 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   }
 }
 
-function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10"): void {
+function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10" | "11"): void {
   const required = version === "8"
     ? ["worker_sessions"]
     : version === "9"
       ? ["worker_sessions", "delivery_lineages", "execution_worker_sessions"]
-      : ["worker_sessions", "delivery_lineages", "execution_worker_bindings"];
+      : version === "10"
+        ? ["worker_sessions", "delivery_lineages", "execution_worker_bindings"]
+        : [
+          "worker_sessions",
+          "delivery_lineages",
+          "execution_worker_bindings",
+          "review_worker_bindings"
+        ];
   const forbidden = version === "8"
-    ? ["delivery_lineages", "execution_worker_sessions", "execution_worker_bindings"]
+    ? [
+      "delivery_lineages",
+      "execution_worker_sessions",
+      "execution_worker_bindings",
+      "review_worker_bindings"
+    ]
     : version === "9"
-      ? ["execution_worker_bindings"]
-      : ["execution_worker_sessions"];
+      ? ["execution_worker_bindings", "review_worker_bindings"]
+      : version === "10"
+        ? ["execution_worker_sessions", "review_worker_bindings"]
+        : ["execution_worker_sessions"];
   const missing = required.filter((name) => !tableExists(db, name));
   const unexpected = forbidden.filter((name) => tableExists(db, name));
   if (missing.length > 0 || unexpected.length > 0) {
@@ -317,7 +336,43 @@ function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10")
   }
 }
 
-function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9"): void {
+function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9" | "10"): void {
+  if (version === "10") {
+    db.exec(`
+      ALTER TABLE execution_worker_bindings RENAME TO execution_worker_bindings_legacy;
+      ALTER TABLE worker_sessions RENAME TO worker_sessions_legacy;
+    `);
+    createWorkerLifecycleTable(db);
+    db.exec(`
+      INSERT INTO worker_sessions (
+        id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+        task_envelope_digest, task_envelope_json,
+        child_execution_lock_digest, child_execution_lock_json,
+        child_session_id, child_run_id,
+        result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+        lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+        created_at, updated_at
+      )
+      SELECT
+        id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+        task_envelope_digest, task_envelope_json,
+        child_execution_lock_digest, child_execution_lock_json,
+        child_session_id, child_run_id,
+        result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+        lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+        created_at, updated_at
+      FROM worker_sessions_legacy;
+      CREATE TABLE execution_worker_bindings (
+        worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+        lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT
+      );
+      INSERT INTO execution_worker_bindings (worker_id, lineage_id)
+      SELECT worker_id, lineage_id FROM execution_worker_bindings_legacy;
+      DROP TABLE execution_worker_bindings_legacy;
+      DROP TABLE worker_sessions_legacy;
+    `);
+    return;
+  }
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_legacy");
   const hasExecutionWorkers = version === "9";
   if (hasExecutionWorkers) {
@@ -387,7 +442,7 @@ function workerLifecycleTableSql(ifNotExists: boolean): string {
       reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
       parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
       parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-      worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution')),
+      worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution', 'review')),
       status TEXT NOT NULL CHECK (
         status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
       ),
@@ -415,7 +470,7 @@ function workerLifecycleTableSql(ifNotExists: boolean): string {
         OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
       ),
       CHECK (
-        (worker_kind = 'discussion' AND attempt_id IS NULL AND status != 'paused')
+        (worker_kind IN ('discussion', 'review') AND attempt_id IS NULL AND status != 'paused')
         OR (worker_kind = 'execution' AND child_session_id IS NULL AND child_run_id IS NULL
           AND ((status = 'queued' AND attempt_id IS NULL)
             OR (status != 'queued' AND attempt_id IS NOT NULL)))
@@ -425,6 +480,12 @@ function workerLifecycleTableSql(ifNotExists: boolean): string {
           AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
           AND result_delivered_to_turn_id IS NULL)
         OR (worker_kind = 'discussion' AND status IN ('needs_input', 'completed', 'failed')
+          AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+        OR (worker_kind = 'review' AND status IN ('queued', 'running')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (worker_kind = 'review' AND status IN ('completed', 'failed')
           AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
           AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
         OR (worker_kind = 'execution' AND status IN ('queued', 'running', 'paused')
