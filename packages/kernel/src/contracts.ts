@@ -1,4 +1,4 @@
-export type RunStatus = "running" | "completed" | "failed";
+export type RunStatus = "running" | "paused" | "completed" | "failed";
 
 export interface RunRecord {
   id: string;
@@ -16,6 +16,9 @@ export interface RunRecord {
 export interface RunInspection extends RunRecord {
   event_count: number;
   session_entry_count: number;
+  action_count: number;
+  unresolved_action_count: number;
+  effect_receipt_count: number;
 }
 
 export interface RunOutcome {
@@ -26,6 +29,17 @@ export interface RunOutcome {
   answer: string | null;
   error: string | null;
 }
+
+export interface RunPause {
+  run_id: string;
+  turn_id: string;
+  session_id: string;
+  status: "paused";
+  answer: null;
+  error: string;
+}
+
+export type RunExecutionResult = RunOutcome | RunPause;
 
 export interface SubmitRequest {
   request: string;
@@ -41,5 +55,5 @@ export interface AgentLoop {
 }
 
 export interface AgentLoopFactory {
-  create(input: { session_id: string }): AgentLoop;
+  create(input: { run_id: string; turn_id: string; session_id: string }): AgentLoop;
 }

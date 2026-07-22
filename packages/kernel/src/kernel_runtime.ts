@@ -1,7 +1,7 @@
 import type {
   AgentLoopFactory,
   RunInspection,
-  RunOutcome,
+  RunExecutionResult,
   RunRecord,
   SubmitRequest
 } from "./contracts.js";
@@ -13,16 +13,27 @@ export class KernelRuntime {
     private readonly loops: AgentLoopFactory
   ) {}
 
-  async submit(input: SubmitRequest): Promise<RunOutcome> {
+  async submit(input: SubmitRequest): Promise<RunExecutionResult> {
     const run = this.store.beginRun(input);
     try {
-      const loop = this.loops.create({ session_id: run.session_id });
+      const loop = this.loops.create({
+        run_id: run.id,
+        turn_id: run.turn_id,
+        session_id: run.session_id
+      });
       const result = await loop.execute(run.request);
       const completed = this.store.completeRun(run.id, result.answer);
-      return toOutcome(completed);
+      return toResult(completed);
     } catch (error) {
+      if (this.store.hasUnresolvedActions(run.id)) {
+        const paused = this.store.pauseRun(
+          run.id,
+          "Run paused because an Action outcome is unknown; reconcile evidence before continuation."
+        );
+        return toResult(paused);
+      }
       const failed = this.store.failRun(run.id, errorMessage(error));
-      return toOutcome(failed);
+      return toResult(failed);
     }
   }
 
@@ -31,8 +42,18 @@ export class KernelRuntime {
   }
 }
 
-function toOutcome(run: RunRecord): RunOutcome {
-  if (run.status === "running") throw new Error(`Run has no terminal outcome: ${run.id}`);
+function toResult(run: RunRecord): RunExecutionResult {
+  if (run.status === "running") throw new Error(`Run has no submission result: ${run.id}`);
+  if (run.status === "paused") {
+    return {
+      run_id: run.id,
+      turn_id: run.turn_id,
+      session_id: run.session_id,
+      status: "paused",
+      answer: null,
+      error: run.error ?? "Run paused."
+    };
+  }
   return {
     run_id: run.id,
     turn_id: run.turn_id,
