@@ -4,6 +4,7 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   ActionGateway,
   createDiscussionWorkerDispatchAction,
+  createExecutionWorkerDispatchAction,
   createLockedOpenAICompatiblePiLoopFactory,
   createRuntimeInspectAction,
   createWorkerInspectAction,
@@ -127,7 +128,7 @@ export async function executeVNextRun(
     try {
       const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
       try {
-        const { gateway, orchestration } = createSupervisorComposition(store, true);
+        const { gateway, orchestration } = createSupervisorComposition(store, true, true);
         const loops = createLoopFactory(dependencies, store, model.api_key);
         const runtime = new KernelRuntime(store, gateway, loops, { orchestration });
         const result = await runtime.submit({
@@ -456,7 +457,7 @@ function redactError(error: unknown, secret: string): unknown {
 }
 
 function stableBoundary(): string {
-  return "Stable vNext Supervisor CLI; isolated SQLite, immutable Execution Locks, local-read inspection, and one reservation-first external-read discussion Worker are available.";
+  return "Stable vNext Supervisor CLI; isolated SQLite, immutable Execution Locks, one read-only discussion Worker, and one opt-in reservation-first single-writer execution Worker are available.";
 }
 
 function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
@@ -465,7 +466,8 @@ function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
 
 function createSupervisorComposition(
   store: SqliteRuntimeStore,
-  includeNeedsInput: boolean
+  includeNeedsInput: boolean,
+  includeExecution: boolean
 ): { gateway: ActionGateway; orchestration: OrchestrationEngine } {
   const runtimeInspect = createRuntimeInspectAction(store);
   const workerNeedsInputContract = includeNeedsInput ? [WORKER_NEEDS_INPUT_CONTRACT] : [];
@@ -476,11 +478,17 @@ function createSupervisorComposition(
   const handlers = [
     runtimeInspect,
     createDiscussionWorkerDispatchAction(orchestration),
+    ...(includeExecution ? [createExecutionWorkerDispatchAction(orchestration)] : []),
     createWorkerInspectAction(orchestration),
     ...(includeNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
   ];
   return { gateway: new ActionGateway(store, handlers, {
-    allowed_effect_classes: ["none", "local_read", "external_read"]
+    allowed_effect_classes: [
+      "none",
+      "local_read",
+      "external_read",
+      ...(includeExecution ? ["local_write" as const] : [])
+    ]
   }), orchestration };
 }
 
@@ -492,7 +500,11 @@ function compositionForExecutionLock(
   if (JSON.stringify(actionNames) === JSON.stringify(["runtime_inspect"])) {
     return { gateway: createReadOnlyGateway(store) };
   }
-  return createSupervisorComposition(store, actionNames.includes("worker_needs_input"));
+  return createSupervisorComposition(
+    store,
+    actionNames.includes("worker_needs_input"),
+    actionNames.includes("worker_execution_dispatch")
+  );
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {

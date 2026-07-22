@@ -37,15 +37,28 @@ export function inspectRuntimeRun(
     FROM model_dispatches
     WHERE run_id = ? AND state = 'outcome_unknown'
   `, runId);
-  const workers = count(db, "SELECT COUNT(*) AS count FROM worker_sessions WHERE parent_run_id = ?", runId);
+  const workers = count(db, `
+    SELECT COUNT(*) AS count FROM (
+      SELECT parent_run_id FROM worker_sessions
+      UNION ALL
+      SELECT parent_run_id FROM execution_worker_sessions
+    ) WHERE parent_run_id = ?
+  `, runId);
   const outstandingWorkers = count(db, `
-    SELECT COUNT(*) AS count
-    FROM worker_sessions
+    SELECT COUNT(*) AS count FROM (
+      SELECT parent_run_id, result_delivered_to_turn_id FROM worker_sessions
+      UNION ALL
+      SELECT parent_run_id, result_delivered_to_turn_id FROM execution_worker_sessions
+    )
     WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL
   `, runId);
   const deliverableWorkers = count(db, `
-    SELECT COUNT(*) AS count
-    FROM worker_sessions
+    SELECT COUNT(*) AS count FROM (
+      SELECT parent_run_id, result_envelope_json, result_delivered_to_turn_id FROM worker_sessions
+      UNION ALL
+      SELECT parent_run_id, result_envelope_json, result_delivered_to_turn_id
+      FROM execution_worker_sessions
+    )
     WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
       AND result_delivered_to_turn_id IS NULL
   `, runId);

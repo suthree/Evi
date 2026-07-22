@@ -87,7 +87,8 @@ records that implemented boundary. The accepted replacement is
 [ADR 0012](docs/adr/0012-vnext-runtime-kernel.md): ordinary Turns do not require
 a Goal, Pi owns the only Agent Loop, and SQLite is the structured state
 authority. [ADR 0013](docs/adr/0013-reservation-first-action-gateway.md) defines
-the reservation-first Action Gateway slice and its current read-only limit.
+the reservation-first Action Gateway; the currently composed effect set is
+reported only by the implemented Runtime Contract.
 [ADR 0014](docs/adr/0014-reconciled-run-continuation.md) defines explicit
 continuation after terminal Action reconciliation. [ADR 0015](docs/adr/0015-run-execution-lease-and-dispatch-recovery.md)
 defines Run Execution ownership and model-dispatch crash recovery.

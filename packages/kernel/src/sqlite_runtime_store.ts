@@ -50,6 +50,26 @@ import {
   type WorkerInspection,
   type WorkerRunBinding
 } from "./orchestration_types.js";
+import {
+  executionAdapterResultDigest,
+  materializeExecutionTaskEnvelope,
+  materializeExecutionAdapterResult,
+  normalizeExecutionTaskInput,
+  parseExecutionResultEnvelope,
+  parseExecutionTaskEnvelope,
+  parseExecutionWorkerInspection,
+  type ExecutionResultEnvelope,
+  type ExecutionTaskEnvelope,
+  type ExecutionWorkerInspection,
+  type ExecutionWorkerLease
+} from "./execution_worker_types.js";
+import {
+  assertDeliveryLineageBaseline,
+  parseDeliveryLineage,
+  parseDeliveryLineageSnapshot,
+  type DeliveryLineage,
+  type DeliveryLineageSnapshot
+} from "./delivery_lineage.js";
 import type {
   ModelDispatchRecord,
   RunExecutionKind,
@@ -159,6 +179,49 @@ interface WorkerSessionRow {
   lease_ordinal: number;
   lease_owner_digest: string | null;
   lease_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface DeliveryLineageRow {
+  id: string;
+  digest: string;
+  repository_root: string;
+  git_common_dir: string;
+  worktree: string;
+  branch: string;
+  base_commit: string;
+  lineage_json: string;
+  baseline_snapshot_digest: string;
+  baseline_snapshot_json: string;
+  bound_worker_id: string;
+  state: "available" | "leased" | "paused" | "needs_input" | "completed" | "failed";
+  lease_ordinal: number;
+  lease_owner_digest: string | null;
+  lease_expires_at: string | null;
+  attempt_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface ExecutionWorkerSessionRow {
+  id: string;
+  reservation_id: string;
+  parent_run_id: string;
+  parent_turn_id: string;
+  status: ExecutionWorkerInspection["status"];
+  task_envelope_digest: string;
+  task_envelope_json: string;
+  child_execution_lock_digest: string;
+  child_execution_lock_json: string;
+  lineage_id: string;
+  result_envelope_digest: string | null;
+  result_envelope_json: string | null;
+  result_delivered_to_turn_id: string | null;
+  lease_ordinal: number;
+  lease_owner_digest: string | null;
+  lease_expires_at: string | null;
+  attempt_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -996,17 +1059,81 @@ export class SqliteRuntimeStore {
     }
   }
 
+  assertCanDispatchExecutionWorker(runId: string, invocationId: string): void {
+    const row = this.db.prepare(`
+      SELECT reservations.invocation_id
+      FROM execution_worker_sessions AS workers
+      JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
+      WHERE workers.parent_run_id = ?
+      LIMIT 1
+    `).get(runId) as { invocation_id: string } | undefined;
+    if (row && row.invocation_id !== invocationId) {
+      throw new Error(`This Supervisor Run already owns its one execution Worker Session: ${runId}`);
+    }
+  }
+
+  getPreparedExecutionWorkerDispatch(
+    runId: string,
+    invocationId: string,
+    input: unknown
+  ): JsonObject | null {
+    const reservation = this.getActionReservationByInvocation(runId, invocationId);
+    if (!reservation) return null;
+    if (reservation.action_name !== "worker_execution_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "local_write") {
+      throw new Error(`Execution Worker invocation identity is already owned: ${runId}/${invocationId}`);
+    }
+    const requested = normalizeExecutionTaskInput(input);
+    const durable = normalizeExecutionTaskInput(reservation.arguments);
+    if (stableJson(requested) !== stableJson(durable)) {
+      throw new Error(`Execution Worker invocation arguments drifted: ${runId}/${invocationId}`);
+    }
+    return reservation.arguments;
+  }
+
+  assertCanBindDeliveryLineage(
+    lineage: DeliveryLineage,
+    runId: string,
+    invocationId: string
+  ): void {
+    const canonical = parseDeliveryLineage(lineage);
+    const row = this.db.prepare(`
+      SELECT lineages.id, lineages.digest, workers.parent_run_id, reservations.invocation_id
+      FROM delivery_lineages AS lineages
+      JOIN execution_worker_sessions AS workers ON workers.id = lineages.bound_worker_id
+      JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
+      WHERE lineages.id = ? OR lineages.worktree = ?
+      LIMIT 1
+    `).get(canonical.id, canonical.worktree) as {
+      id: string;
+      digest: string;
+      parent_run_id: string;
+      invocation_id: string;
+    } | undefined;
+    if (row && (row.id !== canonical.id
+      || row.digest !== canonical.digest
+      || row.parent_run_id !== runId
+      || row.invocation_id !== invocationId)) {
+      throw new Error(`Delivery Lineage already has a different execution owner: ${canonical.worktree}`);
+    }
+  }
+
   hasOutstandingWorkers(runId: string): boolean {
     const row = this.db.prepare(`
       SELECT 1 AS present
-      FROM worker_sessions
+      FROM (
+        SELECT parent_run_id, result_delivered_to_turn_id FROM worker_sessions
+        UNION ALL
+        SELECT parent_run_id, result_delivered_to_turn_id FROM execution_worker_sessions
+      )
       WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL
       LIMIT 1
     `).get(runId) as { present: number } | undefined;
     return row?.present === 1;
   }
 
-  getDeliverableWorkerResults(runId: string): WorkerInspection[] {
+  getDeliverableWorkerResults(runId: string): Array<WorkerInspection | ExecutionWorkerInspection> {
     const run = this.requireRun(runId);
     if (run.status !== "waiting") throw new Error(`Run is not waiting: ${runId}`);
     const workers = (this.db.prepare(`
@@ -1022,10 +1149,24 @@ export class SqliteRuntimeStore {
       }
       this.assertWorkerDeliveryIdentity(run, worker);
     }
-    return workers;
+    const executionWorkers = (this.db.prepare(`
+      SELECT *
+      FROM execution_worker_sessions
+      WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
+        AND result_delivered_to_turn_id IS NULL
+      ORDER BY created_at ASC, id ASC
+    `).all(runId) as unknown as ExecutionWorkerSessionRow[])
+      .map((row) => this.toExecutionWorkerInspection(row));
+    for (const worker of executionWorkers) {
+      if (worker.parent_turn_id !== run.turn_id) {
+        throw new Error(`Execution Worker Result delivery parent Turn drifted: ${worker.id}`);
+      }
+      this.assertExecutionWorkerDeliveryIdentity(run, worker);
+    }
+    return [...workers, ...executionWorkers].sort(workerOrder);
   }
 
-  getDeliveredWorkerResults(runId: string, turnId: string): WorkerInspection[] {
+  getDeliveredWorkerResults(runId: string, turnId: string): Array<WorkerInspection | ExecutionWorkerInspection> {
     const run = this.requireRun(runId);
     if (run.turn_id !== turnId) {
       throw new Error(`Worker Result runtime context Turn is not current: ${runId}/${turnId}`);
@@ -1037,7 +1178,15 @@ export class SqliteRuntimeStore {
       ORDER BY created_at ASC, id ASC
     `).all(runId, turnId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
     for (const worker of workers) this.assertWorkerDeliveryIdentity(run, worker);
-    return workers;
+    const executionWorkers = (this.db.prepare(`
+      SELECT *
+      FROM execution_worker_sessions
+      WHERE parent_run_id = ? AND result_delivered_to_turn_id = ?
+      ORDER BY created_at ASC, id ASC
+    `).all(runId, turnId) as unknown as ExecutionWorkerSessionRow[])
+      .map((row) => this.toExecutionWorkerInspection(row));
+    for (const worker of executionWorkers) this.assertExecutionWorkerDeliveryIdentity(run, worker);
+    return [...workers, ...executionWorkers].sort(workerOrder);
   }
 
   resumeWaitingRun(input: {
@@ -1055,8 +1204,12 @@ export class SqliteRuntimeStore {
       }
       const pending = this.db.prepare(`
         SELECT 1 AS present
-        FROM worker_sessions
-        WHERE parent_run_id = ? AND status IN ('queued', 'running')
+        FROM (
+          SELECT parent_run_id, status, result_delivered_to_turn_id FROM worker_sessions
+          UNION ALL
+          SELECT parent_run_id, status, result_delivered_to_turn_id FROM execution_worker_sessions
+        )
+        WHERE parent_run_id = ? AND status IN ('queued', 'running', 'paused')
           AND result_delivered_to_turn_id IS NULL
         LIMIT 1
       `).get(input.run_id) as { present: number } | undefined;
@@ -1091,8 +1244,11 @@ export class SqliteRuntimeStore {
       `).run(turnId, createdAt, input.run_id);
       if (Number(runResult.changes) !== 1) throw new Error(`Run is not waiting: ${input.run_id}`);
       for (const worker of deliverable) {
+        const workerTable = worker.task_envelope.worker_kind === "execution"
+          ? "execution_worker_sessions"
+          : "worker_sessions";
         const delivery = this.db.prepare(`
-          UPDATE worker_sessions
+          UPDATE ${workerTable}
           SET result_delivered_to_turn_id = ?, updated_at = ?
           WHERE id = ? AND result_envelope_digest = ? AND result_delivered_to_turn_id IS NULL
         `).run(turnId, createdAt, worker.id, worker.result_envelope!.digest);
@@ -1394,6 +1550,322 @@ export class SqliteRuntimeStore {
         status: result.status
       });
       return this.requireWorker(worker.id);
+    });
+  }
+
+  dispatchExecutionWorker(input: {
+    worker_id: string;
+    reservation_id: string;
+    task_envelope: ExecutionTaskEnvelope;
+    child_execution_lock: ExecutionLock;
+    lineage: DeliveryLineage;
+    baseline: DeliveryLineageSnapshot;
+  }): ExecutionWorkerInspection {
+    const task = parseExecutionTaskEnvelope(input.task_envelope);
+    const childLock = parseExecutionLock(input.child_execution_lock);
+    const lineage = parseDeliveryLineage(input.lineage);
+    const baseline = parseDeliveryLineageSnapshot(input.baseline);
+    return this.transaction(() => {
+      const reservation = this.requireActionReservation(input.reservation_id);
+      if (reservation.run_id !== task.parent_run_id || reservation.turn_id !== task.parent_turn_id) {
+        throw new Error(`Execution Worker dispatch parent identity mismatch: ${input.reservation_id}`);
+      }
+      if (reservation.state !== "dispatching" && reservation.state !== "outcome_unknown") {
+        throw new Error(`Execution Worker dispatch reservation is not reconcilable: ${input.reservation_id}`);
+      }
+      const parent = this.requireRun(reservation.run_id);
+      if ((parent.status !== "running" && parent.status !== "paused")
+        || parent.turn_id !== reservation.turn_id) {
+        throw new Error(`Execution Worker dispatch requires the current parent Turn: ${parent.id}`);
+      }
+      assertExecutionLockNarrowing(this.getExecutionLock(parent.id), childLock);
+      if (task.child_execution_lock_digest !== childLock.digest
+        || task.lineage.digest !== lineage.digest
+        || task.baseline.digest !== baseline.digest
+        || baseline.lineage_id !== lineage.id
+        || baseline.lineage_digest !== lineage.digest
+        || baseline.changed_paths.length !== 0) {
+        throw new Error("Execution Worker Task authority identity mismatch.");
+      }
+
+      const existing = this.getExecutionWorkerByReservation(input.reservation_id);
+      if (existing) {
+        if (existing.task_envelope.digest !== task.digest
+          || existing.child_execution_lock.digest !== childLock.digest
+          || existing.lineage.digest !== lineage.digest) {
+          throw new Error(`Execution Worker dispatch identity mismatch: ${input.reservation_id}`);
+        }
+        return existing;
+      }
+
+      const workerId = workerSessionId(input.worker_id);
+      const createdAt = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO delivery_lineages (
+          id, digest, repository_root, git_common_dir, worktree, branch, base_commit,
+          lineage_json, baseline_snapshot_digest, baseline_snapshot_json,
+          bound_worker_id, state, lease_ordinal, lease_owner_digest, lease_expires_at,
+          attempt_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'available', 0, NULL, NULL, NULL, ?, ?)
+      `).run(
+        lineage.id,
+        lineage.digest,
+        lineage.repository_root,
+        lineage.git_common_dir,
+        lineage.worktree,
+        lineage.branch,
+        lineage.base_commit,
+        JSON.stringify(lineage),
+        baseline.digest,
+        JSON.stringify(baseline),
+        workerId,
+        createdAt,
+        createdAt
+      );
+      this.db.prepare(`
+        INSERT INTO execution_worker_sessions (
+          id, reservation_id, parent_run_id, parent_turn_id, status,
+          task_envelope_digest, task_envelope_json,
+          child_execution_lock_digest, child_execution_lock_json,
+          lineage_id, result_envelope_digest, result_envelope_json,
+          result_delivered_to_turn_id, lease_ordinal, lease_owner_digest,
+          lease_expires_at, attempt_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
+      `).run(
+        workerId,
+        reservation.id,
+        parent.id,
+        parent.turn_id,
+        task.digest,
+        JSON.stringify(task),
+        childLock.digest,
+        JSON.stringify(childLock),
+        lineage.id,
+        createdAt,
+        createdAt
+      );
+      this.insertEvent(parent.id, parent.turn_id, "execution_worker_dispatched", {
+        worker_id: workerId,
+        reservation_id: reservation.id,
+        task_envelope_digest: task.digest,
+        child_execution_lock_digest: childLock.digest,
+        lineage_id: lineage.id,
+        lineage_digest: lineage.digest,
+        baseline_snapshot_digest: baseline.digest,
+        worker_kind: "execution"
+      });
+      return this.requireExecutionWorker(workerId);
+    });
+  }
+
+  inspectExecutionWorker(workerId: string): ExecutionWorkerInspection | null {
+    const row = this.db.prepare("SELECT * FROM execution_worker_sessions WHERE id = ?")
+      .get(workerId) as ExecutionWorkerSessionRow | undefined;
+    return row ? this.toExecutionWorkerInspection(row) : null;
+  }
+
+  claimExecutionWorker(
+    workerId: string,
+    observedBaselineInput: DeliveryLineageSnapshot,
+    leaseMs: number
+  ): { worker: ExecutionWorkerInspection; lease: ExecutionWorkerLease } {
+    validateRuntimeLeaseDuration(leaseMs, "Execution Worker Session");
+    const observedBaseline = parseDeliveryLineageSnapshot(observedBaselineInput);
+    const ownerToken = randomBytes(32).toString("hex");
+    const outcome = this.transaction(() => {
+      const current = this.requireExecutionWorker(workerId);
+      this.assertExecutionWorkerReservationIdentity(current);
+      const lineageRow = this.requireDeliveryLineageRow(current.lineage.id);
+      const now = Date.now();
+      if (current.status === "running") {
+        if (current.lease_expires_at !== null && Date.parse(current.lease_expires_at) <= now) {
+          const updatedAt = new Date(now).toISOString();
+          this.db.prepare(`
+            UPDATE execution_worker_sessions
+            SET status = 'paused', lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
+            WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+          `).run(updatedAt, current.id, current.lease_ordinal);
+          this.db.prepare(`
+            UPDATE delivery_lineages
+            SET state = 'paused', lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
+            WHERE id = ? AND state = 'leased' AND lease_ordinal = ?
+          `).run(updatedAt, current.lineage.id, current.lease_ordinal);
+          this.insertEvent(current.parent_run_id, current.parent_turn_id, "execution_worker_outcome_unknown", {
+            worker_id: current.id,
+            lineage_id: current.lineage.id,
+            attempt_id: current.attempt_id,
+            lease_ordinal: current.lease_ordinal,
+            reason: "Execution Worker lease expired without canonical terminal Result evidence."
+          });
+          return { paused: true as const };
+        }
+        throw new Error(`Execution Worker lease is still active: ${workerId}`);
+      }
+      if (current.status !== "queued" || lineageRow.state !== "available") {
+        throw new Error(`Execution Worker Session cannot be claimed: ${workerId}/${current.status}`);
+      }
+      assertDeliveryLineageBaseline(
+        current.lineage,
+        current.task_envelope.baseline,
+        observedBaseline
+      );
+      const ordinal = current.lease_ordinal + 1;
+      const attemptId = id("attempt");
+      const expiresAt = new Date(now + leaseMs).toISOString();
+      const updatedAt = new Date(now).toISOString();
+      const ownerDigest = sha256(ownerToken);
+      const workerUpdate = this.db.prepare(`
+        UPDATE execution_worker_sessions
+        SET status = 'running', lease_ordinal = ?, lease_owner_digest = ?,
+            lease_expires_at = ?, attempt_id = ?, updated_at = ?
+        WHERE id = ? AND status = 'queued' AND lease_ordinal = ?
+      `).run(ordinal, ownerDigest, expiresAt, attemptId, updatedAt, workerId, current.lease_ordinal);
+      const lineageUpdate = this.db.prepare(`
+        UPDATE delivery_lineages
+        SET state = 'leased', lease_ordinal = ?, lease_owner_digest = ?,
+            lease_expires_at = ?, attempt_id = ?, updated_at = ?
+        WHERE id = ? AND state = 'available' AND lease_ordinal = ? AND bound_worker_id = ?
+      `).run(
+        ordinal,
+        ownerDigest,
+        expiresAt,
+        attemptId,
+        updatedAt,
+        current.lineage.id,
+        current.lease_ordinal,
+        current.id
+      );
+      if (Number(workerUpdate.changes) !== 1 || Number(lineageUpdate.changes) !== 1) {
+        throw new Error(`Execution Worker claim raced: ${workerId}`);
+      }
+      this.insertEvent(current.parent_run_id, current.parent_turn_id, "execution_worker_lease_claimed", {
+        worker_id: workerId,
+        lineage_id: current.lineage.id,
+        attempt_id: attemptId,
+        lease_ordinal: ordinal,
+        lease_expires_at: expiresAt,
+        observed_baseline_digest: observedBaseline.digest
+      });
+      return {
+        paused: false as const,
+        worker: this.requireExecutionWorker(workerId),
+        lease: {
+          worker_id: workerId,
+          lineage_id: current.lineage.id,
+          owner_token: ownerToken,
+          ordinal,
+          attempt_id: attemptId,
+          lease_expires_at: expiresAt
+        }
+      };
+    });
+    if (outcome.paused) {
+      throw new Error(`Execution Worker outcome is unknown and replay is forbidden: ${workerId}`);
+    }
+    return outcome;
+  }
+
+  renewExecutionWorkerLease(lease: ExecutionWorkerLease, leaseMs: number): ExecutionWorkerLease {
+    validateRuntimeLeaseDuration(leaseMs, "Execution Worker Session");
+    return this.transaction(() => {
+      const worker = this.requireActiveExecutionWorkerLease(lease);
+      const expiresAt = new Date(Math.max(
+        Date.now() + leaseMs,
+        Date.parse(worker.lease_expires_at!) + 1
+      )).toISOString();
+      const updatedAt = new Date().toISOString();
+      const ownerDigest = sha256(lease.owner_token);
+      const workerUpdate = this.db.prepare(`
+        UPDATE execution_worker_sessions
+        SET lease_expires_at = ?, updated_at = ?
+        WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+          AND lease_owner_digest = ? AND attempt_id = ?
+      `).run(expiresAt, updatedAt, worker.id, lease.ordinal, ownerDigest, lease.attempt_id);
+      const lineageUpdate = this.db.prepare(`
+        UPDATE delivery_lineages
+        SET lease_expires_at = ?, updated_at = ?
+        WHERE id = ? AND state = 'leased' AND lease_ordinal = ?
+          AND lease_owner_digest = ? AND attempt_id = ? AND bound_worker_id = ?
+      `).run(
+        expiresAt,
+        updatedAt,
+        lease.lineage_id,
+        lease.ordinal,
+        ownerDigest,
+        lease.attempt_id,
+        worker.id
+      );
+      if (Number(workerUpdate.changes) !== 1 || Number(lineageUpdate.changes) !== 1) {
+        throw new Error(`Execution Worker lease renewal raced: ${worker.id}`);
+      }
+      return { ...lease, lease_expires_at: expiresAt };
+    });
+  }
+
+  completeExecutionWorker(
+    lease: ExecutionWorkerLease,
+    resultInput: ExecutionResultEnvelope
+  ): ExecutionWorkerInspection {
+    const result = parseExecutionResultEnvelope(resultInput);
+    return this.transaction(() => {
+      const worker = this.requireActiveExecutionWorkerLease(lease);
+      this.assertExecutionWorkerReservationIdentity(worker);
+      if (result.worker_id !== worker.id
+        || result.task_envelope_digest !== worker.task_envelope.digest
+        || result.child_execution_lock_digest !== worker.child_execution_lock.digest
+        || result.lineage_id !== worker.lineage.id
+        || result.lineage_digest !== worker.lineage.digest
+        || result.baseline_snapshot_digest !== worker.task_envelope.baseline.digest
+        || result.final_snapshot.lineage_id !== worker.lineage.id
+        || result.final_snapshot.lineage_digest !== worker.lineage.digest
+        || result.actual_execution.attempt_id !== lease.attempt_id
+        || result.actual_execution.lease_ordinal !== lease.ordinal) {
+        throw new Error(`Execution Worker Result identity mismatch: ${worker.id}`);
+      }
+      const updatedAt = new Date().toISOString();
+      const ownerDigest = sha256(lease.owner_token);
+      const workerUpdate = this.db.prepare(`
+        UPDATE execution_worker_sessions
+        SET status = ?, result_envelope_digest = ?, result_envelope_json = ?,
+            lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
+        WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+          AND lease_owner_digest = ? AND attempt_id = ?
+      `).run(
+        result.status,
+        result.digest,
+        JSON.stringify(result),
+        updatedAt,
+        worker.id,
+        lease.ordinal,
+        ownerDigest,
+        lease.attempt_id
+      );
+      const lineageUpdate = this.db.prepare(`
+        UPDATE delivery_lineages
+        SET state = ?, lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
+        WHERE id = ? AND state = 'leased' AND lease_ordinal = ?
+          AND lease_owner_digest = ? AND attempt_id = ? AND bound_worker_id = ?
+      `).run(
+        result.status,
+        updatedAt,
+        worker.lineage.id,
+        lease.ordinal,
+        ownerDigest,
+        lease.attempt_id,
+        worker.id
+      );
+      if (Number(workerUpdate.changes) !== 1 || Number(lineageUpdate.changes) !== 1) {
+        throw new Error(`Execution Worker Result delivery raced: ${worker.id}`);
+      }
+      this.insertEvent(worker.parent_run_id, worker.parent_turn_id, "execution_worker_result_ready", {
+        worker_id: worker.id,
+        lineage_id: worker.lineage.id,
+        attempt_id: lease.attempt_id,
+        result_envelope_digest: result.digest,
+        final_snapshot_digest: result.final_snapshot.digest,
+        status: result.status
+      });
+      return this.requireExecutionWorker(worker.id);
     });
   }
 
@@ -2099,6 +2571,104 @@ export class SqliteRuntimeStore {
     return row ? toWorkerInspection(row) : null;
   }
 
+  private getExecutionWorkerByReservation(reservationId: string): ExecutionWorkerInspection | null {
+    const row = this.db.prepare("SELECT * FROM execution_worker_sessions WHERE reservation_id = ?")
+      .get(reservationId) as ExecutionWorkerSessionRow | undefined;
+    return row ? this.toExecutionWorkerInspection(row) : null;
+  }
+
+  private requireExecutionWorker(workerId: string): ExecutionWorkerInspection {
+    const worker = this.inspectExecutionWorker(workerId);
+    if (!worker) throw new Error(`Execution Worker Session not found: ${workerId}`);
+    return worker;
+  }
+
+  private requireDeliveryLineageRow(lineageId: string): DeliveryLineageRow {
+    const row = this.db.prepare("SELECT * FROM delivery_lineages WHERE id = ?")
+      .get(lineageId) as DeliveryLineageRow | undefined;
+    if (!row) throw new Error(`Delivery Lineage not found: ${lineageId}`);
+    const lineage = parseDeliveryLineage(JSON.parse(row.lineage_json));
+    const baseline = parseDeliveryLineageSnapshot(JSON.parse(row.baseline_snapshot_json));
+    if (lineage.id !== row.id
+      || lineage.digest !== row.digest
+      || lineage.repository_root !== row.repository_root
+      || lineage.git_common_dir !== row.git_common_dir
+      || lineage.worktree !== row.worktree
+      || lineage.branch !== row.branch
+      || lineage.base_commit !== row.base_commit
+      || baseline.digest !== row.baseline_snapshot_digest
+      || baseline.lineage_id !== lineage.id
+      || baseline.lineage_digest !== lineage.digest) {
+      throw new Error(`Delivery Lineage stored identity is invalid: ${lineageId}`);
+    }
+    return row;
+  }
+
+  private toExecutionWorkerInspection(row: ExecutionWorkerSessionRow): ExecutionWorkerInspection {
+    const lineageRow = this.requireDeliveryLineageRow(row.lineage_id);
+    if (lineageRow.bound_worker_id !== row.id
+      || lineageRow.lease_ordinal !== row.lease_ordinal
+      || lineageRow.lease_expires_at !== row.lease_expires_at
+      || lineageRow.attempt_id !== row.attempt_id
+      || (row.status === "running") !== (lineageRow.state === "leased")
+      || (["completed", "failed", "needs_input"].includes(row.status)
+        && lineageRow.state !== row.status)
+      || (row.status === "paused" && lineageRow.state !== "paused")
+      || (row.status === "queued" && lineageRow.state !== "available")) {
+      throw new Error(`Execution Worker and Delivery Lineage state drifted: ${row.id}`);
+    }
+    const task = JSON.parse(row.task_envelope_json) as unknown;
+    const lock = JSON.parse(row.child_execution_lock_json) as unknown;
+    const lineage = JSON.parse(lineageRow.lineage_json) as unknown;
+    const result = row.result_envelope_json === null
+      ? null
+      : JSON.parse(row.result_envelope_json) as unknown;
+    const inspection = parseExecutionWorkerInspection({
+      id: row.id,
+      reservation_id: row.reservation_id,
+      parent_run_id: row.parent_run_id,
+      parent_turn_id: row.parent_turn_id,
+      status: row.status,
+      task_envelope: task,
+      child_execution_lock: lock,
+      lineage,
+      result_envelope: result,
+      result_delivered_to_turn_id: row.result_delivered_to_turn_id,
+      lease_ordinal: Number(row.lease_ordinal),
+      lease_expires_at: row.lease_expires_at,
+      attempt_id: row.attempt_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    });
+    if (inspection.task_envelope.digest !== row.task_envelope_digest
+      || inspection.child_execution_lock.digest !== row.child_execution_lock_digest
+      || (inspection.result_envelope?.digest ?? null) !== row.result_envelope_digest) {
+      throw new Error(`Execution Worker stored digest is invalid: ${row.id}`);
+    }
+    return inspection;
+  }
+
+  private requireActiveExecutionWorkerLease(lease: ExecutionWorkerLease): ExecutionWorkerInspection {
+    const worker = this.requireExecutionWorker(lease.worker_id);
+    if (worker.status !== "running"
+      || worker.lineage.id !== lease.lineage_id
+      || worker.lease_ordinal !== lease.ordinal
+      || worker.attempt_id !== lease.attempt_id
+      || worker.lease_expires_at !== lease.lease_expires_at) {
+      throw new Error(`Execution Worker lease identity mismatch: ${lease.worker_id}`);
+    }
+    const row = this.db.prepare(`
+      SELECT lease_owner_digest
+      FROM execution_worker_sessions
+      WHERE id = ?
+    `).get(worker.id) as { lease_owner_digest: string | null } | undefined;
+    if (row?.lease_owner_digest !== sha256(lease.owner_token)
+      || Date.parse(worker.lease_expires_at) <= Date.now()) {
+      throw new Error(`Execution Worker lease is unavailable or expired: ${lease.worker_id}`);
+    }
+    return worker;
+  }
+
   private requireWorker(workerId: string): WorkerInspection {
     const worker = this.inspectWorker(workerId);
     if (!worker) throw new Error(`Worker Session not found: ${workerId}`);
@@ -2320,6 +2890,139 @@ export class SqliteRuntimeStore {
       || receipt.output.task_envelope_digest !== worker.task_envelope.digest
       || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
       throw new Error(`Worker reservation identity drifted: ${worker.id}`);
+    }
+  }
+
+  private assertExecutionWorkerDeliveryIdentity(
+    parent: RunRecord,
+    worker: ExecutionWorkerInspection
+  ): void {
+    if (!worker.result_envelope) {
+      throw new Error(`Execution Worker Result delivery identity is incomplete: ${worker.id}`);
+    }
+    this.assertExecutionWorkerReservationIdentity(worker);
+    const result = worker.result_envelope;
+    const task = worker.task_envelope;
+    const adapterValue = result.findings.adapter_result;
+    const adapter = materializeExecutionAdapterResult(adapterValue as never);
+    const receipts = result.verification_receipts;
+    const commandIdentity = task.verification_commands.map((command) => stableJson(command));
+    const receiptIdentity = receipts.map(({ digest: _digest, exit_code: _exit, signal: _signal,
+      timed_out: _timed, stdout_digest: _stdout, stderr_digest: _stderr,
+      duration_ms: _duration, ...command }) => stableJson(command));
+    const identitySafe = result.final_snapshot.lineage_id === worker.lineage.id
+      && result.final_snapshot.lineage_digest === worker.lineage.digest
+      && result.final_snapshot.repository_root === worker.lineage.repository_root
+      && result.final_snapshot.git_common_dir === worker.lineage.git_common_dir
+      && result.final_snapshot.worktree === worker.lineage.worktree
+      && result.final_snapshot.branch === worker.lineage.branch
+      && result.final_snapshot.head_commit === worker.lineage.base_commit;
+    const pathsSafe = result.final_snapshot.changed_paths.every((path) =>
+      worker.lineage.writable_paths.some((root) => path === root || path.startsWith(`${root}/`))
+    );
+    const verificationPassed = receipts.length === task.verification_commands.length
+      && sameStrings(commandIdentity, receiptIdentity)
+      && receipts.every((receipt) => receipt.exit_code === 0 && !receipt.timed_out && receipt.signal === null);
+    const budgetSafe = result.consumed.output_chars <= task.budget.max_output_tokens * 4
+      && result.consumed.duration_ms <= task.budget.timeout_ms
+      && result.actual_execution.tool_calls_observed <= task.budget.max_tool_calls
+      && Date.parse(result.created_at) <= Date.parse(task.deadline_at);
+    const completed = adapter.status === "done"
+      && identitySafe
+      && pathsSafe
+      && verificationPassed
+      && budgetSafe
+      && result.final_snapshot.changed_paths.length > 0;
+    const needsInput = adapter.status === "blocked" && identitySafe && pathsSafe && budgetSafe;
+    const expectedStatus = completed ? "completed" : needsInput ? "needs_input" : "failed";
+    if (worker.parent_run_id !== parent.id
+      || result.status !== expectedStatus
+      || result.task_envelope_digest !== task.digest
+      || result.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || result.lineage_id !== worker.lineage.id
+      || result.lineage_digest !== worker.lineage.digest
+      || result.baseline_snapshot_digest !== task.baseline.digest
+      || result.actual_execution.executor_result_digest !== executionAdapterResultDigest(adapter)
+      || result.actual_execution.adapter !== adapter.execution.adapter
+      || result.actual_execution.thread_id !== adapter.execution.thread_id
+      || result.actual_execution.requested_model !== adapter.execution.requested_model
+      || result.actual_execution.observed_model !== adapter.execution.observed_model
+      || result.actual_execution.event_count !== adapter.execution.event_count
+      || result.actual_execution.tool_calls_observed !== adapter.execution.tool_calls_observed
+      || result.consumed.output_chars !== adapter.consumed.output_chars
+      || result.consumed.duration_ms < adapter.consumed.duration_ms
+      || (result.status === "needs_input" && result.unresolved_questions.length === 0)) {
+      throw new Error(`Execution Worker Result canonical evidence drifted: ${worker.id}`);
+    }
+  }
+
+  private assertExecutionWorkerReservationIdentity(worker: ExecutionWorkerInspection): void {
+    const reservation = this.requireActionReservation(worker.reservation_id);
+    const receipt = this.requireEffectReceipt(worker.reservation_id);
+    const parentLock = this.getExecutionLock(worker.parent_run_id);
+    const argumentKeys = [
+      "artifact_refs",
+      "baseline",
+      "budget",
+      "child_execution_lock_digest",
+      "constraints",
+      "context_refs",
+      "deadline_at",
+      "expected_result",
+      "lineage",
+      "materialized_lineage",
+      "objective",
+      "parent_execution_lock_digest",
+      "rollback_instruction",
+      "verification_commands",
+      "worker_id"
+    ];
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const expectedActionDigest = materializeActionDigest({
+      name: "worker_execution_dispatch",
+      version: "1",
+      effect_class: "local_write"
+    }, reservation.arguments);
+    const lineage = parseDeliveryLineage(reservation.arguments.materialized_lineage);
+    const baseline = parseDeliveryLineageSnapshot(reservation.arguments.baseline);
+    const expectedTask = materializeExecutionTaskEnvelope({
+      ...normalizeExecutionTaskInput(reservation.arguments),
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: worker.child_execution_lock.digest,
+      materialized_lineage: lineage,
+      baseline
+    });
+    if (reservation.run_id !== worker.parent_run_id
+      || reservation.turn_id !== worker.parent_turn_id
+      || reservation.action_name !== "worker_execution_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "local_write"
+      || reservation.state !== "terminal"
+      || !argumentsAreExact
+      || reservation.action_digest !== expectedActionDigest
+      || reservation.arguments.worker_id !== worker.id
+      || reservation.arguments.parent_execution_lock_digest !== parentLock.digest
+      || reservation.arguments.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || lineage.digest !== worker.lineage.digest
+      || baseline.digest !== worker.task_envelope.baseline.digest
+      || expectedTask.digest !== worker.task_envelope.digest
+      || receipt.run_id !== worker.parent_run_id
+      || receipt.turn_id !== worker.parent_turn_id
+      || receipt.action_name !== reservation.action_name
+      || receipt.contract_version !== reservation.contract_version
+      || receipt.action_digest !== reservation.action_digest
+      || receipt.effect_class !== reservation.effect_class
+      || receipt.outcome !== "succeeded"
+      || receipt.output.worker_id !== worker.id
+      || receipt.output.status !== "queued"
+      || receipt.output.task_envelope_digest !== worker.task_envelope.digest
+      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || receipt.output.lineage_id !== worker.lineage.id
+      || receipt.output.lineage_digest !== worker.lineage.digest
+      || receipt.output.baseline_snapshot_digest !== worker.task_envelope.baseline.digest) {
+      throw new Error(`Execution Worker reservation identity drifted: ${worker.id}`);
     }
   }
 
@@ -2546,4 +3249,11 @@ function workerSessionId(input: string): string {
     throw new Error("Worker Session id is invalid.");
   }
   return value;
+}
+
+function workerOrder(
+  left: WorkerInspection | ExecutionWorkerInspection,
+  right: WorkerInspection | ExecutionWorkerInspection
+): number {
+  return left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id);
 }

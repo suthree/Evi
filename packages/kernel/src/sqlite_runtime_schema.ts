@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
-export const RUNTIME_SCHEMA_VERSION = "8";
+export const RUNTIME_SCHEMA_VERSION = "9";
+const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -13,7 +14,7 @@ export class RuntimeSchemaIncompatibleError extends Error {
 
 export function initializeRuntimeSchema(db: DatabaseSync): void {
   const version = existingSchemaVersion(db);
-  if (version !== null && version !== RUNTIME_SCHEMA_VERSION) {
+  if (version !== null && !MIGRATABLE_SCHEMA_VERSIONS.has(version)) {
     throw new RuntimeSchemaIncompatibleError(version);
   }
   db.exec(`
@@ -231,6 +232,76 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         ON worker_sessions(parent_run_id);
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_delivery_idx
         ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
+      CREATE TABLE IF NOT EXISTS delivery_lineages (
+        id TEXT PRIMARY KEY,
+        digest TEXT NOT NULL UNIQUE,
+        repository_root TEXT NOT NULL,
+        git_common_dir TEXT NOT NULL,
+        worktree TEXT NOT NULL UNIQUE,
+        branch TEXT NOT NULL,
+        base_commit TEXT NOT NULL,
+        lineage_json TEXT NOT NULL,
+        baseline_snapshot_digest TEXT NOT NULL UNIQUE,
+        baseline_snapshot_json TEXT NOT NULL,
+        bound_worker_id TEXT NOT NULL UNIQUE,
+        state TEXT NOT NULL CHECK (
+          state IN ('available', 'leased', 'paused', 'needs_input', 'completed', 'failed')
+        ),
+        lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+        lease_owner_digest TEXT,
+        lease_expires_at TEXT,
+        attempt_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (
+          (state = 'leased' AND lease_owner_digest IS NOT NULL
+            AND lease_expires_at IS NOT NULL AND attempt_id IS NOT NULL)
+          OR (state != 'leased' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS delivery_lineages_state_idx
+        ON delivery_lineages(state, updated_at);
+      CREATE TABLE IF NOT EXISTS execution_worker_sessions (
+        id TEXT PRIMARY KEY,
+        reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+        parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK (
+          status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
+        ),
+        task_envelope_digest TEXT NOT NULL UNIQUE,
+        task_envelope_json TEXT NOT NULL,
+        child_execution_lock_digest TEXT NOT NULL,
+        child_execution_lock_json TEXT NOT NULL,
+        lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT,
+        result_envelope_digest TEXT UNIQUE,
+        result_envelope_json TEXT,
+        result_delivered_to_turn_id TEXT REFERENCES turns(id),
+        lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+        lease_owner_digest TEXT,
+        lease_expires_at TEXT,
+        attempt_id TEXT UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        CHECK (
+          (status = 'running' AND lease_owner_digest IS NOT NULL
+            AND lease_expires_at IS NOT NULL AND attempt_id IS NOT NULL)
+          OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+        ),
+        CHECK (
+          (status IN ('queued', 'running', 'paused')
+            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+            AND result_delivered_to_turn_id IS NULL)
+          OR (status IN ('needs_input', 'completed', 'failed')
+            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+        )
+      );
+      CREATE INDEX IF NOT EXISTS execution_workers_parent_status_idx
+        ON execution_worker_sessions(parent_run_id, status, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS execution_workers_one_per_parent_idx
+        ON execution_worker_sessions(parent_run_id);
+      CREATE INDEX IF NOT EXISTS execution_workers_parent_delivery_idx
+        ON execution_worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
       CREATE TABLE IF NOT EXISTS adaptation_candidates (
         id TEXT PRIMARY KEY,
         target_slot TEXT NOT NULL,
@@ -282,6 +353,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
     if (version === null) {
       db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")
         .run(RUNTIME_SCHEMA_VERSION);
+    } else if (version !== RUNTIME_SCHEMA_VERSION) {
+      db.prepare("UPDATE schema_meta SET value = ? WHERE key = 'schema_version' AND value = ?")
+        .run(RUNTIME_SCHEMA_VERSION, version);
     }
     db.exec("COMMIT");
   } catch (error) {

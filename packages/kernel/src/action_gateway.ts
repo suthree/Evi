@@ -64,7 +64,7 @@ export class ActionGateway {
     let durableArguments: JsonObject;
     try {
       durableArguments = boundedJsonObject(
-        handler.prepare(input.arguments, input),
+        await handler.prepare(input.arguments, input),
         MAX_ARGUMENT_BYTES,
         "Action arguments"
       );

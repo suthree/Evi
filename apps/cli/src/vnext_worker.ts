@@ -4,8 +4,11 @@ import {
   createRuntimeInspectAction,
   createWorkerNeedsInputAction,
   DiscussionWorkerRuntime,
+  ExecutionWorkerRuntime,
   OrchestrationEngine,
   SqliteRuntimeStore,
+  type ExecutionWorkerExecutor,
+  type ExecutionWorkerInspection,
   type WorkerInspection,
   WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
@@ -18,8 +21,10 @@ import {
   type VNextRunDependencies
 } from "./vnext_run.js";
 import { resolveIsolatedVNextSqlite } from "./vnext_state.js";
+import { VNextCodexExecutionExecutor } from "./vnext_execution_executor.js";
 
 export const VNEXT_WORKER_MARKER = "vnext_discussion_worker";
+export const VNEXT_EXECUTION_WORKER_MARKER = "vnext_execution_worker";
 export type VNextWorkerAction = "execute";
 
 export interface VNextWorkerRequest {
@@ -33,15 +38,16 @@ export interface VNextWorkerRequest {
 export type VNextWorkerDependencies = Pick<
   VNextRunDependencies,
   "path_boundary" | "load_model" | "create_loop_factory"
->;
+> & { execution_executor?: ExecutionWorkerExecutor };
 
 export interface VNextWorkerEnvelope {
   worker: {
     schema_version: 1;
-    marker: typeof VNEXT_WORKER_MARKER;
+    marker: typeof VNEXT_WORKER_MARKER | typeof VNEXT_EXECUTION_WORKER_MARKER;
     surface: "cli_process";
     action: VNextWorkerAction | null;
-    status: WorkerInspection["status"] | "not_found" | "error";
+    status: WorkerInspection["status"] | ExecutionWorkerInspection["status"] | "not_found" | "error";
+    worker_kind?: "discussion" | "execution";
     worker_id?: string;
     parent_run_id?: string;
     child_run_id?: string | null;
@@ -72,7 +78,18 @@ export async function executeVNextWorker(
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const worker = store.inspectWorker(workerId);
-    if (!worker) return envelope("not_found", workerId);
+    const executionWorker = store.inspectExecutionWorker(workerId);
+    if (worker && executionWorker) throw new Error(`Worker identity is ambiguous: ${workerId}`);
+    if (!worker && !executionWorker) return envelope("not_found", workerId);
+    if (executionWorker) {
+      if (["completed", "failed", "needs_input"].includes(executionWorker.status)) {
+        return envelope(executionWorker.status, executionWorker.id, executionWorker);
+      }
+      const executor = dependencies.execution_executor ?? new VNextCodexExecutionExecutor();
+      const completed = await new ExecutionWorkerRuntime(store, executor).execute(executionWorker.id);
+      return envelope(completed.status, completed.id, completed);
+    }
+    if (!worker) throw new Error(`Worker Session not found: ${workerId}`);
     if (worker.status === "completed" || worker.status === "failed" || worker.status === "needs_input") {
       return envelope(worker.status, worker.id, worker);
     }
@@ -127,17 +144,19 @@ export function vnextWorkerErrorEnvelope(
 function envelope(
   status: VNextWorkerEnvelope["worker"]["status"],
   workerId: string,
-  worker?: WorkerInspection
+  worker?: WorkerInspection | ExecutionWorkerInspection
 ): VNextWorkerEnvelope {
+  const workerKind = worker?.task_envelope.worker_kind;
   return {
     worker: {
       schema_version: 1,
-      marker: VNEXT_WORKER_MARKER,
+      marker: workerKind === "execution" ? VNEXT_EXECUTION_WORKER_MARKER : VNEXT_WORKER_MARKER,
       surface: "cli_process",
       action: "execute",
       status,
       worker_id: workerId,
       ...(worker ? {
+        worker_kind: workerKind,
         parent_run_id: worker.parent_run_id,
         child_run_id: worker.child_run_id,
         result_envelope_digest: worker.result_envelope?.digest ?? null
@@ -151,7 +170,7 @@ function envelope(
 }
 
 function boundary(): string {
-  return "One separate CLI process may claim one read-only Worker lease, run the sole Pi Agent Loop in an isolated child Session, and return only advisory evidence to its parent.";
+  return "One separate CLI process may claim one exact Worker lease. Discussion stays read-only; execution stays inside one pre-bound single-writer Delivery Lineage and returns canonical Git plus verification evidence to the Supervisor.";
 }
 
 function errorMessage(error: unknown): string {

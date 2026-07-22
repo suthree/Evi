@@ -44,10 +44,11 @@ pnpm run runtime -- vnext adaptation inspect --evaluation-id evaluation_...
 The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
-including symlink and case-insensitive aliases. It never imports, migrates, or
-dual-writes v0.2 state. Schema version 8 plus the immutable `stable_cli` state
-profile refuse both earlier vNext schemas and current `diagnostic_canary`
-databases instead of promoting them silently.
+including symlink and case-insensitive aliases. It never imports or dual-writes
+v0.2 state. Schema version 9 plus the immutable `stable_cli` state profile
+refuses current `diagnostic_canary` databases. Version 8 stable state receives
+the additive execution-Worker/Delivery-Lineage tables and advances atomically;
+other earlier or unknown versions fail closed.
 
 `submit` uses the active model from normal safe config resolution. Relative
 `--config-dir` is resolved below `--repo-root`; both selectors become part of
@@ -72,8 +73,9 @@ recovery roles.
 
 Every Run response is a `vnext_goal_free_cli` envelope with Run, Session, and
 Execution Lock identities or a structured diagnostic. A new parent Run has
-`runtime_inspect`, `worker_dispatch`, `worker_inspect`, and the child-contained
-`worker_needs_input`. `worker_dispatch` is the sole explicit `external_read`
+`runtime_inspect`, `worker_dispatch`, `worker_execution_dispatch`,
+`worker_inspect`, and the child-contained `worker_needs_input`.
+`worker_dispatch` is the sole explicit `external_read`
 exception: it reserves and queues at most one
 read-only discussion Worker with a narrowed immutable child Execution Lock.
 The Worker does not run inside the parent model request. Execute it in a
@@ -100,6 +102,19 @@ final assistant answer closes protocol recovery without another provider
 request, its original producing execution and model dispatch are reconciled and
 remain the Result's actual model lineage.
 
+`worker_execution_dispatch` is an opt-in `local_write` Action for one execution
+Worker. The Supervisor must name an already-created clean linked Git worktree,
+its exact branch and baseline commit, one or more bounded writable paths,
+allowlisted verification commands, and a rollback instruction. The protected
+root, dirty/detached/unregistered worktrees, repository/branch/base drift,
+path traversal, symlink escape, and an already-owned worktree are rejected
+before reservation. The foreground `vnext worker execute` command then claims
+the single writer lease and runs the bounded Codex Adapter. It does not create
+the worktree or permit commit, push, PR, merge, deploy, activation, or parent
+completion. Canonical Git and verification evidence determines the Result;
+worker prose is advisory. A lost/expired execution owner becomes
+`paused/outcome_unknown` and is never replayed automatically.
+
 A technical failure while the Supervisor integrates an already delivered
 Result pauses that same integration Turn. A later `continue` rebuilds the exact
 typed Result context from SQLite and retries the same Turn; it does not reopen a
@@ -121,9 +136,9 @@ commands do not call a model, execute the procedure, write the active vault or
 source, or route through Web/IM. There is currently no CLI operation for
 activation, observation, rollback, or retirement.
 
-There is still no worker parallelism, execution writer, reviewer role,
+There is still no worker parallelism, independent reviewer role,
 `signal/cancel`, optional Goal, active or observed learning, local/external
-write Action, resident
+write Action beyond the one bounded execution-Worker dispatch, resident
 route, or vNext deployment in this slice. The installed v0.2 runtime is frozen
 as the rollback path.
 

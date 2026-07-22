@@ -14,6 +14,8 @@ Evi 不追求重新实现每个专业工具。已接受的 vNext 中，普通工
 Goal 只在确有长期意图时使用。编码、浏览、搜索、沙箱进程和专业 SaaS 优先通过有界
 Adapter 委托给成熟工具。当前 owner 与替换顺序见
 [`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)。
+ADR 0013 负责 reservation-first Action Gateway；当前实际组合的 effect 集合只以
+[`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 的实现契约为准。
 
 当前源码行为与交付状态以 source、tests、有边界的 Issue/PR 和 deployment evidence 为准；
 下列架构与运行契约文档只负责稳定的 owner model、替换顺序和验收语义，不复制易失的切片进度。

@@ -61,16 +61,21 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 8 and its immutable `stable_cli` state profile
-refuses both older schemas and a current `diagnostic_canary` database; this
-slice performs no migration, import, or dual write. Model
+The stable schema is version 9 and its immutable `stable_cli` state profile
+refuses a `diagnostic_canary` database. Version 8 `stable_cli` state upgrades
+in place by adding the execution-Worker and Delivery-Lineage tables before the
+version marker advances; all other older or unknown schemas still fail closed.
+There is no v0.2 import or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
 this Interface.
 
-New parent Runs register `runtime_inspect`, `worker_dispatch`, `worker_inspect`,
-and child-contained `worker_needs_input`. The composition explicitly permits one reservation-first
-`external_read` discussion Worker; all child Actions remain `none/local_read`.
+New parent Runs register `runtime_inspect`, `worker_dispatch`,
+`worker_execution_dispatch`, `worker_inspect`, and child-contained
+`worker_needs_input`. The composition explicitly permits one reservation-first
+`external_read` discussion Worker and one opt-in reservation-first
+`local_write` execution Worker. Discussion-child Actions remain
+`none/local_read`; the execution Worker receives no child Action surface.
 Task and Result Envelopes are immutable and digest-addressed. Tasks carry
 explicit context and artifact refs; Results bind the exact producing Run
 Execution, model dispatches, provider/model identity, and cumulative bounded
@@ -98,15 +103,45 @@ rebuilds their runtime-owned context from SQLite, and starts another bounded
 integration execution in that same Turn. Result delivery is not repeated and
 the Worker still cannot claim parent completion.
 
-`vnext worker execute` is the separate foreground process Adapter for that one
-read-only Worker Session. It uses the same state/profile/config selectors, the
-same Runtime Kernel, and the sole Pi Agent Loop. A terminal child Run is
-recovered without replay. Structured diagnostics distinguish `run_not_found`,
+`vnext worker execute` is the separate foreground process Adapter for either
+Worker kind. A discussion Worker uses the same state/profile/config selectors,
+the same Runtime Kernel, and the sole Pi Agent Loop. A terminal discussion
+child Run is recovered without replay.
+
+An execution Task instead binds an already-created clean linked Git worktree,
+exact repository/common-dir/branch/base identities, bounded writable paths,
+exact verification commands, rollback instruction, deadline, budget, and a
+narrowed child Execution Lock before the Action reservation. The protected
+root checkout, dirty or detached worktrees, wrong repository/branch/base,
+unregistered worktrees, path traversal, and symlink escape fail before a
+reservation. One SQLite Delivery Lineage may be bound to only one execution
+Worker and holds one renewable writer lease. A Codex CLI Adapter may mutate
+only during that foreground lease; it cannot create a worktree, branch,
+commit, push, PR, merge, deployment, external communication, Adaptation
+activation, or parent completion.
+
+The executor's structured result remains advisory. The Evi-owned execution
+runtime independently captures canonical before/after Git identity, status,
+changed-path and path-digest evidence, then runs each exact verification
+command without a shell. Verification is restricted to `pnpm run <script>`,
+`node --test <repo-path>`, or `git diff --check`; arbitrary executables,
+`pnpm exec`, and Node eval forms fail before reservation. A completed Result requires unchanged branch and
+HEAD, at least one changed path, every changed path inside the writable set,
+passing verification, and budget/deadline compliance. Out-of-scope changes,
+commit creation, failed verification, or budget drift produce a non-integrable
+failed Result. A semantic executor block may produce typed `needs_input`, but
+the Supervisor still owns integration and completion. If the process or owner
+disappears without a terminal Result, expiry changes the Worker and Lineage to
+`paused/outcome_unknown`; no second writer is admitted and no execution is
+replayed automatically.
+
+Structured diagnostics distinguish `run_not_found`,
 `session_not_found`, `session_busy`, `execution_lock_mismatch`,
 `credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
-and invalid input. Worker parallelism, execution writers, reviewers,
+and invalid input. Independent reviewer Workers, multiple execution writers,
+automatic Delivery-Lineage creation, commit/push/PR/merge/integration,
 `signal/cancel`, optional Goal links, adaptation activation or observation,
-write Actions, Web/IM routing,
+Web/IM routing,
 resident-service ownership, and vNext deployment remain outside this slice.
 Production v0.2 Web, daemon, and Feishu traffic is unchanged and serves only as
 the rollback runtime.

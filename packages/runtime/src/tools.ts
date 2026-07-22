@@ -1089,7 +1089,7 @@ interface CodexAuthorityVerifiability {
   boundary: string;
 }
 
-interface CodexSubagentToolEvidence {
+export interface CodexSubagentToolEvidence {
   event_index: number;
   event_type: "item.started" | "item.completed";
   item_id: string;
@@ -1098,7 +1098,7 @@ interface CodexSubagentToolEvidence {
   receiver_thread_ids: string[];
 }
 
-interface CodexProcessResult {
+export interface CodexProcessResult {
   exitCode: number | null;
   timedOut: boolean;
   toolBudgetExceeded: boolean;
@@ -1118,7 +1118,7 @@ interface CodexProcessResult {
   subagentToolEvidence: CodexSubagentToolEvidence[];
 }
 
-interface CodexOutputCapture {
+export interface CodexOutputCapture {
   effectiveLimitChars: number;
   retainedChars: number;
   truncated: boolean;
@@ -2108,7 +2108,12 @@ function codexDelegationSupervisionBlock(strategy: CodexDelegationStrategy): str
   ];
 }
 
-function runCodexProcess(argv: readonly string[], prompt: string, authority: CodexAuthoritySnapshot): Promise<CodexProcessResult> {
+export function runCodexProcess(
+  argv: readonly string[],
+  prompt: string,
+  authority: CodexAuthoritySnapshot,
+  signal?: AbortSignal
+): Promise<CodexProcessResult> {
   return new Promise((resolveProcess) => {
     const child = spawn("codex", [...argv], {
       cwd: authority.cwd,
@@ -2149,6 +2154,12 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
       timedOut = true;
       stop();
     }, authority.budgets.timeout_ms);
+    const abort = (): void => {
+      timedOut = true;
+      stop();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
 
     const consumeLine = (line: string): void => {
       if (!line.trim() || invalidJsonl) return;
@@ -2229,6 +2240,7 @@ function runCodexProcess(argv: readonly string[], prompt: string, authority: Cod
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
       if (cleanupKillTimer) clearTimeout(cleanupKillTimer);
       if (stdoutBuffer.trim()) consumeLine(stdoutBuffer);
       resolveProcess({
