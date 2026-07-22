@@ -1516,6 +1516,7 @@ export class SqliteRuntimeStore {
   inspectAdaptationCandidate(candidateId: string): AdaptationInspection | null {
     const candidate = this.getAdaptationCandidate(candidateId);
     if (!candidate) return null;
+    this.assertCompletedAdaptationEvidence(candidate);
     const registryRow = this.db.prepare(`
       SELECT *
       FROM self_registry_versions
@@ -1535,7 +1536,7 @@ export class SqliteRuntimeStore {
       WHERE candidate_id = ?
       ORDER BY created_at ASC, id ASC
     `).all(candidate.id) as unknown as AdaptationEvaluationRow[])
-      .map(toEvaluationReceipt);
+      .map((row) => this.validateAdaptationEvaluation(toEvaluationReceipt(row)));
     return { candidate, registry_version: registry, evaluations };
   }
 
@@ -1545,7 +1546,7 @@ export class SqliteRuntimeStore {
       FROM adaptation_evaluations
       WHERE id = ?
     `).get(evaluationId) as AdaptationEvaluationRow | undefined;
-    return row ? toEvaluationReceipt(row) : null;
+    return row ? this.validateAdaptationEvaluation(toEvaluationReceipt(row)) : null;
   }
 
   getPiSession(sessionId: string): PiSessionRow | null {
@@ -2356,6 +2357,32 @@ export class SqliteRuntimeStore {
         throw new Error(`Adaptation Candidate evidence Run is not completed: ${runId}`);
       }
     }
+  }
+
+  private validateAdaptationEvaluation(receipt: EvaluationReceipt): EvaluationReceipt {
+    const candidate = this.requireAdaptationCandidate(receipt.candidate_id);
+    this.assertCompletedAdaptationEvidence(candidate);
+    assertCanonicalProcedureEvaluation(candidate, receipt);
+    if (receipt.candidate_digest !== candidate.digest
+      || receipt.target_slot !== candidate.target_slot
+      || !sameStrings(receipt.evidence_run_ids, candidate.evidence_run_ids)) {
+      throw new Error(`Adaptation Evaluation candidate identity drifted: ${receipt.id}`);
+    }
+    if (receipt.baseline.kind === "self_registry_version") {
+      const row = this.db.prepare(`
+        SELECT *
+        FROM self_registry_versions
+        WHERE id = ?
+      `).get(receipt.baseline.version_id) as SelfRegistryVersionRow | undefined;
+      if (!row) throw new Error(`Adaptation Evaluation baseline is missing: ${receipt.id}`);
+      const baseline = toSelfRegistryVersion(row);
+      if (baseline.target_slot !== receipt.target_slot
+        || baseline.artifact_digest !== receipt.baseline.digest
+        || baseline.state === "inactive") {
+        throw new Error(`Adaptation Evaluation baseline identity drifted: ${receipt.id}`);
+      }
+    }
+    return receipt;
   }
 
   private requireRun(runId: string): RunRecord {

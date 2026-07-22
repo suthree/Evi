@@ -277,6 +277,54 @@ test("candidate and Evaluation identity drift fail closed after SQLite mutation"
   }
 });
 
+test("inspection revalidates completed Run evidence and canonical Evaluation policy", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-adaptation-inspection-policy-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const evidenceRunId = completedRun(store, fixture, "Inspection evidence.");
+    const proposed = engine.propose({
+      ...validCandidate(evidenceRunId),
+      rollback_rule: ""
+    });
+    const receipt = engine.evaluate(proposed.candidate.id);
+    assert.equal(receipt.status, "failed");
+    const forged = materializeEvaluationReceipt({
+      candidate: proposed.candidate,
+      baseline: receipt.baseline,
+      evaluator_version: receipt.evaluator_version,
+      checks: receipt.checks.map((check) => ({ ...check, status: "passed" })),
+      created_at: receipt.created_at
+    });
+    assert.equal(forged.id, receipt.id);
+    assert.equal(forged.status, "passed");
+    const raw = new DatabaseSync(sqlite);
+    try {
+      raw.prepare(`
+        UPDATE adaptation_evaluations
+        SET status = ?, evaluation_digest = ?, receipt_json = ?
+        WHERE id = ?
+      `).run(forged.status, forged.digest, JSON.stringify(forged), forged.id);
+    } finally {
+      raw.close();
+    }
+    assert.throws(() => engine.inspectEvaluation(receipt.id), /policy drifted/);
+    assert.throws(() => engine.inspect(proposed.candidate.id), /policy drifted/);
+
+    const driftRun = new DatabaseSync(sqlite);
+    try {
+      driftRun.prepare("UPDATE runs SET status = 'failed' WHERE id = ?").run(evidenceRunId);
+    } finally {
+      driftRun.close();
+    }
+    assert.throws(() => engine.inspect(proposed.candidate.id), /evidence Run is not completed/);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("candidate and Evaluation transactions expose no partial authoritative rows", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-adaptation-transaction-"));
   const sqlite = join(fixture, "runtime.sqlite");

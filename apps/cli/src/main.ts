@@ -3979,7 +3979,7 @@ function printUsage(): void {
   pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext run inspect --run-id run_...|--session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
-  pnpm run runtime -- vnext adaptation propose --target-slot procedure:recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- config [--config-dir config] [--state-root ${stateRootUsage}]

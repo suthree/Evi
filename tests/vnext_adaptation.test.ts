@@ -84,6 +84,10 @@ test("stable vNext Adaptation CLI returns bounded not-found and credential diagn
       candidate_id: "candidate_00000000000000000000000000000000"
     });
     assert.equal(missing.adaptation.status, "not_found");
+    await assert.rejects(
+      () => executeVNextAdaptation({ action: "inspect", state_root: stateRoot }),
+      /exactly one/
+    );
 
     const credential = "sk-1234567890abcdefghijkl";
     let error: unknown;

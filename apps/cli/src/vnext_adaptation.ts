@@ -75,6 +75,9 @@ export async function executeVNextAdaptation(
     }
     const candidateId = input.candidate_id?.trim();
     const evaluationId = input.evaluation_id?.trim();
+    if (Boolean(candidateId) === Boolean(evaluationId)) {
+      throw new Error("vnext adaptation inspect requires exactly one of --candidate-id or --evaluation-id");
+    }
     if (candidateId) {
       const inspection = engine.inspect(candidateId);
       return inspection

@@ -115,15 +115,6 @@ denials, and carry its own Issue/PR/test/deployment evidence. Passing a source
 slice never implies provider or effect exactly-once, production routing,
 deployment, migration, learning, or activation of the next slice.
 
-The current source checkpoint implements the first non-activating Adaptation
-subset: `propose`, `evaluate`, and `inspect` for one local procedure candidate.
-The candidate and Self Registry version are atomic SQLite facts; completed Run
-evidence, active-baseline identity, canonical readiness checks, and a
-specialized Evaluation Receipt are revalidated by the store. The version stays
-inactive after either `passed` or `failed`. Activation, observation,
-regression, rollback, and retirement remain unimplemented and must not be
-inferred from evaluation readiness.
-
 ### Final deep modules
 
 The vNext target has four Evi-owned deep modules. Storage codecs, context
