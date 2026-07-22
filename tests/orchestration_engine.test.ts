@@ -58,6 +58,7 @@ test("Orchestration Engine queues one immutable discussion worker through an exa
     if (first.status !== "completed") return;
     assert.equal(first.receipt.outcome, "succeeded");
     assert.equal(first.receipt.effect_class, "external_read");
+    assert.equal(first.reservation.arguments.worker_id, first.receipt.output.worker_id);
     assert.equal(first.reservation.arguments.parent_execution_lock_digest, started.execution_lock.digest);
     assert.equal(typeof first.reservation.arguments.child_execution_lock_digest, "string");
     const workerId = String(first.receipt.output.worker_id);
@@ -168,6 +169,59 @@ test("discussion-worker preparation rejects authority expansion before creating 
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("discussion-worker reconciliation creates or reuses the exact deterministic worker without replay", async () => {
+  for (const crashPoint of ["before_worker", "after_worker"] as const) {
+    const fixture = await mkdtemp(join(tmpdir(), `evi-orchestration-reconcile-${crashPoint}-`));
+    const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+    try {
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+      const durableHandler = createDiscussionWorkerDispatchAction(engine);
+      const crashHandler: ActionHandler = {
+        ...durableHandler,
+        async execute(dispatch) {
+          if (crashPoint === "after_worker") await durableHandler.execute(dispatch);
+          throw new Error(`synthetic process loss ${crashPoint}`);
+        }
+      };
+      const firstGateway = new ActionGateway(store, [runtimeInspect, crashHandler], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      const parent = store.beginRun({
+        request: "Recover an exact worker dispatch.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: firstGateway.contracts() })
+      }, 30_000);
+      const first = await firstGateway.invoke({
+        run_id: parent.run.id,
+        turn_id: parent.run.turn_id,
+        invocation_id: `reconcile-${crashPoint}`,
+        action_name: durableHandler.contract.name,
+        arguments: validTaskInput()
+      });
+      assert.equal(first.status, "outcome_unknown");
+      if (first.status !== "outcome_unknown") continue;
+      const expectedWorkerId = String(first.reservation.arguments.worker_id);
+      assert.equal(
+        engine.inspectReservation(first.reservation.id)?.id ?? null,
+        crashPoint === "after_worker" ? expectedWorkerId : null
+      );
+
+      const recoveryGateway = new ActionGateway(store, [runtimeInspect, durableHandler], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      const recovered = await recoveryGateway.reconcileRun(parent.run.id);
+      assert.equal(recovered[0]?.status, "completed");
+      assert.equal(engine.inspectReservation(first.reservation.id)?.id, expectedWorkerId);
+      assert.equal(store.inspectRun(parent.run.id)?.worker_count, 1);
+      const repeated = await recoveryGateway.reconcileRun(parent.run.id);
+      assert.deepEqual(repeated, []);
+    } finally {
+      store.close();
+      await rm(fixture, { recursive: true, force: true });
+    }
   }
 });
 
@@ -293,6 +347,14 @@ test("a worker lease atomically binds one isolated child Run and accepts one ter
       consumed: { output_tokens: 12, duration_ms: 100 },
       created_at: new Date().toISOString()
     });
+    const drifted = materializeResultEnvelope({
+      ...result,
+      actual_execution_lock_digest: "0".repeat(64)
+    });
+    assert.throws(
+      () => store.completeWorker(claimed.lease, drifted),
+      /Result Envelope identity mismatch/
+    );
     const completed = store.completeWorker(claimed.lease, result);
     assert.equal(completed.status, "completed");
     assert.deepEqual(completed.result_envelope, result);

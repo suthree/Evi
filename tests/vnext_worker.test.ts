@@ -125,6 +125,7 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
     assert.equal(workerOutput.worker.status, "completed");
     assert.ok(workerOutput.worker.child_run_id);
     assert.ok(workerOutput.worker.result_envelope_digest);
+    assert.equal(JSON.stringify(workerOutput).includes(secret), false);
 
     const store = new SqliteRuntimeStore(join(stateRoot, "runtime.sqlite"), {
       state_profile: "stable_cli"
@@ -134,6 +135,10 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
       assert.equal(store.inspectRun(submitted.vnext.run_id!)?.deliverable_worker_count, 1);
       assert.equal(store.inspectWorker(workerId)?.result_delivered_to_turn_id, null);
       assert.equal(store.inspectWorker(workerId)?.result_envelope?.consumed.output_tokens, 7);
+      assert.equal(JSON.stringify(store.getExecutionLock(submitted.vnext.run_id!)).includes(secret), false);
+      assert.equal(JSON.stringify(store.getPiSessionEntries(
+        store.inspectWorker(workerId)!.child_session_id!
+      )).includes(secret), false);
     } finally {
       store.close();
     }

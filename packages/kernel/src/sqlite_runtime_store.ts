@@ -972,6 +972,7 @@ export class SqliteRuntimeStore {
   }
 
   dispatchDiscussionWorker(input: {
+    worker_id: string;
     reservation_id: string;
     task_envelope: TaskEnvelope;
     child_execution_lock: ExecutionLock;
@@ -1007,7 +1008,7 @@ export class SqliteRuntimeStore {
         return existing;
       }
 
-      const workerId = id("worker");
+      const workerId = workerSessionId(input.worker_id);
       const createdAt = new Date().toISOString();
       this.db.prepare(`
         INSERT INTO worker_sessions (
@@ -1099,7 +1100,10 @@ export class SqliteRuntimeStore {
     validateWorkerLeaseDuration(leaseMs);
     return this.transaction(() => {
       const worker = this.requireActiveWorkerLease(lease);
-      const expiresAt = new Date(Date.now() + leaseMs).toISOString();
+      const expiresAt = new Date(Math.max(
+        Date.now() + leaseMs,
+        Date.parse(worker.lease_expires_at!) + 1
+      )).toISOString();
       const update = this.db.prepare(`
         UPDATE worker_sessions
         SET lease_expires_at = ?, updated_at = ?
@@ -1751,4 +1755,12 @@ function validateWorkerLeaseDuration(value: number): void {
   if (!Number.isInteger(value) || value < 100 || value > 300_000) {
     throw new Error("Worker Session lease duration is invalid.");
   }
+}
+
+function workerSessionId(input: string): string {
+  const value = input.trim();
+  if (!/^worker_[a-f0-9]{32}$/u.test(value)) {
+    throw new Error("Worker Session id is invalid.");
+  }
+  return value;
 }

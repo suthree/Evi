@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Type } from "typebox";
 import type {
   ActionDispatch,
@@ -60,6 +61,7 @@ export class OrchestrationEngine {
     );
     return {
       ...input,
+      worker_id: deriveWorkerId(parentRunId, invocationId),
       parent_execution_lock_digest: parentLock.digest,
       child_execution_lock_digest: childLock.digest
     } as unknown as JsonObject;
@@ -67,6 +69,9 @@ export class OrchestrationEngine {
 
   dispatch(reservation: ActionDispatch["reservation"], input: JsonObject): WorkerInspection {
     const task = normalizeDiscussionTaskInput(input);
+    if (typeof input.worker_id !== "string") {
+      throw new Error("Worker dispatch durable identity is missing.");
+    }
     const parentLock = this.store.getExecutionLock(reservation.run_id);
     if (input.parent_execution_lock_digest !== parentLock.digest) {
       throw new Error("Worker dispatch parent Execution Lock identity drifted after reservation.");
@@ -87,6 +92,7 @@ export class OrchestrationEngine {
       child_execution_lock_digest: childLock.digest
     });
     return this.store.dispatchDiscussionWorker({
+      worker_id: input.worker_id,
       reservation_id: reservation.id,
       task_envelope: taskEnvelope,
       child_execution_lock: childLock
@@ -125,6 +131,13 @@ export class OrchestrationEngine {
       result_delivered_to_turn_id: worker.result_delivered_to_turn_id
     };
   }
+}
+
+function deriveWorkerId(parentRunId: string, invocationId: string): string {
+  const digest = createHash("sha256")
+    .update(`discussion-worker-v1\u0000${parentRunId}\u0000${invocationId}`)
+    .digest("hex");
+  return `worker_${digest.slice(0, 32)}`;
 }
 
 export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
