@@ -14,7 +14,8 @@
 - 记忆策略和分层归属：`core/memory.md`
 - 当前常驻指针：`memory/index.md`
 - 共享词汇：`CONTEXT.md`
-- 原生自进化控制、反思与交付治理：`docs/adr/0001-native-evolution-control-plane.cn.md`
+- 当前 v0.2 原生自进化控制：`docs/adr/0001-native-evolution-control-plane.cn.md`
+- 已接受的 vNext Turn/Run、Pi loop、SQLite、Action Gateway、可选 Goal 与 Adaptation owner model：`docs/adr/0012-vnext-runtime-kernel.cn.md`
 - 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - 节点本地 active vault 与 Evi 控制的 LuBan 晋升：`docs/adr/0004-node-local-vault-and-luban-promotion.cn.md`
 - Typed cognition envelope 与 fail-closed 模型决策解析：`docs/adr/0005-typed-cognition-envelope.cn.md`

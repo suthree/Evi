@@ -1,6 +1,6 @@
 # ADR 0001: Native evolution control plane and Trellis retirement
 
-- Status: Accepted
+- Status: Superseded for vNext by ADR 0012; remains the implemented v0.2 record until cutover
 - Date: 2026-07-20
 - Decision owner: Operator
 - Authority basis: the accepted self-evolution boundary review

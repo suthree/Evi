@@ -1,7 +1,7 @@
 # Evi 架构
 
-状态：当前模块归属与渐进迁移方向；2026-07-18 在稳定化审计、第一轮 outcome-learning
-收敛和动态能力选择 seam 后更新。当前实现以源码、测试和 live evidence 为准。
+状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 后更新。
+当前实现以源码、测试和 live evidence 为准；vNext 章节不是部署完成声明。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
 
@@ -18,8 +18,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - 命令、服务运维和恢复：`docs/LOCAL_RUNTIME.md`；
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
-- 活跃自进化和持久决策：`GoalRuntime`、`Harness`、`OutcomeReceipt`、稳定文档与已接受
-  ADR；GitHub 是可选的外部交付 evidence；
+- 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0001 记录当前 v0.2 owner model，
+  ADR 0012 负责 vNext 替换目标；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -38,14 +38,54 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
    真实 Adapter，通常是生产与实质不同的测试/本地实现，或两个不同执行宿主。
 5. **替换，不叠层。** 每次迁移切换一条完整纵向路径，增加 Interface 级测试，然后删除
    旧路径及浅层测试。不得长期 dual-write、纯转发 facade 或堆兼容层。
-6. **原始证据是 canonical。** Checkpoint、Context view、scorecard 和 dashboard 都是
-   可重建派生读模型，不能成为竞争状态 owner。
+6. **只保留一个状态权威。** SQLite 是结构化 canonical runtime state；大体积 immutable
+   evidence 可以进入 content-addressed artifact。Checkpoint、Context view、scorecard、
+   JSONL export 和 dashboard 都是可重建派生结果，不能成为竞争 owner。
 7. **Context 通过选择得到，不靠堆积。** 索引和 manifest 负责路由；原始日志、工具正文、
    任务历史和长文档只有被选中后才进入热 Context。
 8. **学习由 outcome 驱动。** 包格式合法或成功一次，不等于 Tool Competence。晋升必须
    具备可复用范围、已验证 outcome、失败/回退认知，以及修订或退役证据。
 
-## 当前运行形态
+## 已接受的 vNext 运行形态
+
+ADR 0012 在经过验证的切换后取代 v0.2 owner model。目标如下：
+
+```text
+CLI / Web / IM / API
+          |
+          v
+   Evi Runtime Kernel ---- inspect / control
+          |
+          +---- SQLite canonical state
+          |
+          v
+ Pi AgentHarness（唯一 Agent Loop owner）
+          |
+          v
+    Action Gateway
+          |
+          +---- typed tool / delegated surface
+          +---- reservation / evidence / reconciliation
+
+可选 Goal -------- 把 objective 与 budget 关联到 Run
+Adaptation Engine ---- 评估并激活 learning 或 evolution candidate
+```
+
+| 关注点 | vNext owner | 边界 |
+| --- | --- | --- |
+| 普通工作 | Run 内的 Turn | 不要求 Goal |
+| Model/tool loop、session tree、steering、compaction | 单一 Adapter 后的 Pi `AgentHarness` | Evi 不保留第二套执行循环 |
+| 结构化状态 | SQLite runtime store | JSONL 和目录扫描只能是 projection、fixture 或 archive |
+| Tool 与持久 effect | Action Gateway | Typed policy、containment、reservation、evidence、reconciliation |
+| 长期意图 | 可选 Goal extension | 只拥有 objective、acceptance、budget、continuation 和 Run link |
+| 持久成长 | Adaptation Engine | Candidate、evaluation、activation、rollback 或 retirement |
+| 完成证据 | 专门化 outcome 与 receipt | Run、effect、evaluation、activation、deployment 相互独立 |
+
+第一个实现切片故意小于这张表：只证明不带 Goal 的 Turn、Pi loop Adapter 与 SQLite state，
+不接 tool、learning、subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过各自 gate
+之前仍是当前 rollback runtime。
+
+## 当前 v0.2 运行形态
 
 ```text
 CLI / Web / IM

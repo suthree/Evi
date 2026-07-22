@@ -102,7 +102,7 @@ export class LocalGitHubDiscoveryRadar implements GitHubDiscoveryRadar {
       response = await this.fetchImpl(GITHUB_TRENDING_WEEKLY_URL, {
         headers: {
           accept: "text/html",
-          "user-agent": "Evi-GitHub-Discovery-Radar/0"
+          "user-agent": "local-runtime-github-discovery/0"
         },
         redirect: "error",
         signal: AbortSignal.timeout(10_000)

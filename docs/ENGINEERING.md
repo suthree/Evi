@@ -27,6 +27,7 @@ The Simplified Chinese companion is
 apps/              thin executable and composition entrypoints
 packages/core/     host-independent contracts, pure policy, state/read models
 packages/runtime/  Goal execution, adapters, services, providers, host effects
+packages/kernel/   vNext Turn/Run kernel, SQLite state, narrow loop adapters
 core/              stable Self and memory policy text
 docs/              stable architecture, behavior, operations, and learning docs
 .trellis/          frozen historical task specs, decisions, and delivery evidence
@@ -48,14 +49,20 @@ tests/              interface, integration, and acceptance protection
 
 ```text
 apps -> runtime -> core
+apps -> kernel (only after a verified vNext ingress slice)
+kernel -> Pi (only through the Pi adapter)
 docs/tests may inspect any public surface
 core -X-> runtime/apps
 runtime -X-> apps
+kernel -X-> v0.2 GoalRuntime/runtime owners
 ```
 
 - `packages/core` must not import runtime or app implementation.
 - `packages/runtime` may implement core contracts and own host effects, but it
   must not depend on an app composition root.
+- `packages/kernel` owns the vNext foundation and must not import v0.2 runtime
+  owners. Only its Pi adapter may import Pi packages; the rest of the kernel
+  depends on the local loop contract.
 - Cross-package cycles, hidden global singletons, and a second state owner are
   architecture failures, even when tests pass.
 - Reuse platform libraries and mature tools behind narrow Evi-owned contracts;
@@ -95,10 +102,12 @@ runtime -X-> apps
 - `docs/RUNTIME_CONTRACT.md` owns implemented runtime behavior;
   `docs/LOCAL_RUNTIME.md` owns commands and operations;
   `docs/LOCAL_LEARNING.md` owns SOP/skill/memory promotion.
-- `GoalRuntime`, `Harness`, canonical evidence, and `OutcomeReceipt` own active
-  self-evolution delivery. GitHub can carry optional external collaboration or
-  release evidence; `.trellis/` preserves history only. Stable docs must not
-  copy transient progress, proof matrices, or Goal-specific completion state.
+- Until cutover, `GoalRuntime`, its Harness, canonical evidence, and
+  `OutcomeReceipt` own v0.2 delivery. ADR 0012 defines the accepted vNext owner
+  model; source and live health decide which one is implemented or deployed.
+  GitHub can carry optional external collaboration or release evidence;
+  `.trellis/` preserves history only. Stable docs must not copy transient
+  progress, proof matrices, or Goal-specific completion state.
 - Material edits to a stable English/Chinese pair update both sides together.
 
 ## Change Standard
