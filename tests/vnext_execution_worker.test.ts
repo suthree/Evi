@@ -689,6 +689,27 @@ test("schema 9 metadata fails closed when its required execution lifecycle table
   }
 });
 
+test("schema 8 metadata fails closed when a later Delivery Lineage table is present", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-eight-drift-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  store.close();
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  downgradeWorkerLedgerToEight(legacy);
+  legacy.exec("CREATE TABLE delivery_lineages (id TEXT PRIMARY KEY)");
+  legacy.prepare("UPDATE schema_meta SET value = '8' WHERE key = 'schema_version'").run();
+  legacy.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 8\/unexpected:delivery_lineages/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("the common Worker ledger fails closed when an execution binding disappears", async () => {
   const fixture = await createGitFixture("missing-binding");
   const sqlite = join(fixture.root, "state", "runtime.sqlite");

@@ -302,7 +302,7 @@ function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10")
       ? ["worker_sessions", "delivery_lineages", "execution_worker_sessions"]
       : ["worker_sessions", "delivery_lineages", "execution_worker_bindings"];
   const forbidden = version === "8"
-    ? ["execution_worker_sessions", "execution_worker_bindings"]
+    ? ["delivery_lineages", "execution_worker_sessions", "execution_worker_bindings"]
     : version === "9"
       ? ["execution_worker_bindings"]
       : ["execution_worker_sessions"];
