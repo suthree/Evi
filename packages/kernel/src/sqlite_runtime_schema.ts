@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 
-export const RUNTIME_SCHEMA_VERSION = "9";
-const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", RUNTIME_SCHEMA_VERSION]);
+export const RUNTIME_SCHEMA_VERSION = "10";
+const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -27,6 +27,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   `);
   db.exec("BEGIN IMMEDIATE");
   try {
+    if (version === "8" || version === "9") {
+      migrateWorkerLifecycleLedger(db, version);
+    }
     db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
@@ -192,8 +195,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
         parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
         parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+        worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution')),
         status TEXT NOT NULL CHECK (
-          status IN ('queued', 'running', 'needs_input', 'completed', 'failed')
+          status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
         ),
         task_envelope_digest TEXT NOT NULL UNIQUE,
         task_envelope_json TEXT NOT NULL,
@@ -207,6 +211,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
         lease_owner_digest TEXT,
         lease_expires_at TEXT,
+        attempt_id TEXT UNIQUE,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         CHECK (
@@ -218,18 +223,29 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
           OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
         ),
         CHECK (
-          (status IN ('queued', 'running')
+          (worker_kind = 'discussion' AND attempt_id IS NULL AND status != 'paused')
+          OR (worker_kind = 'execution' AND child_session_id IS NULL AND child_run_id IS NULL
+            AND ((status = 'queued' AND attempt_id IS NULL)
+              OR (status != 'queued' AND attempt_id IS NOT NULL)))
+        ),
+        CHECK (
+          (worker_kind = 'discussion' AND status IN ('queued', 'running')
             AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
             AND result_delivered_to_turn_id IS NULL)
-          OR (status IN ('needs_input', 'completed', 'failed')
+          OR (worker_kind = 'discussion' AND status IN ('needs_input', 'completed', 'failed')
             AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+          OR (worker_kind = 'execution' AND status IN ('queued', 'running', 'paused')
+            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+            AND result_delivered_to_turn_id IS NULL)
+          OR (worker_kind = 'execution' AND status IN ('needs_input', 'completed', 'failed')
             AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
         )
       );
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_status_idx
         ON worker_sessions(parent_run_id, status, created_at);
-      CREATE UNIQUE INDEX IF NOT EXISTS worker_sessions_one_discussion_per_parent_idx
-        ON worker_sessions(parent_run_id);
+      CREATE UNIQUE INDEX IF NOT EXISTS worker_sessions_one_kind_per_parent_idx
+        ON worker_sessions(parent_run_id, worker_kind);
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_delivery_idx
         ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
       CREATE TABLE IF NOT EXISTS delivery_lineages (
@@ -261,47 +277,10 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       );
       CREATE INDEX IF NOT EXISTS delivery_lineages_state_idx
         ON delivery_lineages(state, updated_at);
-      CREATE TABLE IF NOT EXISTS execution_worker_sessions (
-        id TEXT PRIMARY KEY,
-        reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
-        parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-        parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-        status TEXT NOT NULL CHECK (
-          status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
-        ),
-        task_envelope_digest TEXT NOT NULL UNIQUE,
-        task_envelope_json TEXT NOT NULL,
-        child_execution_lock_digest TEXT NOT NULL,
-        child_execution_lock_json TEXT NOT NULL,
-        lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT,
-        result_envelope_digest TEXT UNIQUE,
-        result_envelope_json TEXT,
-        result_delivered_to_turn_id TEXT REFERENCES turns(id),
-        lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
-        lease_owner_digest TEXT,
-        lease_expires_at TEXT,
-        attempt_id TEXT UNIQUE,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        CHECK (
-          (status = 'running' AND lease_owner_digest IS NOT NULL
-            AND lease_expires_at IS NOT NULL AND attempt_id IS NOT NULL)
-          OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
-        ),
-        CHECK (
-          (status IN ('queued', 'running', 'paused')
-            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
-            AND result_delivered_to_turn_id IS NULL)
-          OR (status IN ('needs_input', 'completed', 'failed')
-            AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
-        )
+      CREATE TABLE IF NOT EXISTS execution_worker_bindings (
+        worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+        lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT
       );
-      CREATE INDEX IF NOT EXISTS execution_workers_parent_status_idx
-        ON execution_worker_sessions(parent_run_id, status, created_at);
-      CREATE UNIQUE INDEX IF NOT EXISTS execution_workers_one_per_parent_idx
-        ON execution_worker_sessions(parent_run_id);
-      CREATE INDEX IF NOT EXISTS execution_workers_parent_delivery_idx
-        ON execution_worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
       CREATE TABLE IF NOT EXISTS adaptation_candidates (
         id TEXT PRIMARY KEY,
         target_slot TEXT NOT NULL,
@@ -362,6 +341,129 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9"): void {
+  db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_legacy");
+  const hasExecutionWorkers = version === "9" && tableExists(db, "execution_worker_sessions");
+  if (hasExecutionWorkers) {
+    db.exec("ALTER TABLE execution_worker_sessions RENAME TO execution_worker_sessions_legacy");
+  }
+  createWorkerLifecycleTable(db);
+  db.exec(`
+    INSERT INTO worker_sessions (
+      id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+      created_at, updated_at
+    )
+    SELECT
+      id, reservation_id, parent_run_id, parent_turn_id, 'discussion', status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, NULL,
+      created_at, updated_at
+    FROM worker_sessions_legacy;
+  `);
+  if (hasExecutionWorkers) {
+    db.exec(`
+      INSERT INTO worker_sessions (
+        id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+        task_envelope_digest, task_envelope_json,
+        child_execution_lock_digest, child_execution_lock_json,
+        child_session_id, child_run_id,
+        result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+        lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+        created_at, updated_at
+      )
+      SELECT
+        id, reservation_id, parent_run_id, parent_turn_id, 'execution', status,
+        task_envelope_digest, task_envelope_json,
+        child_execution_lock_digest, child_execution_lock_json,
+        NULL, NULL,
+        result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+        lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+        created_at, updated_at
+      FROM execution_worker_sessions_legacy;
+      CREATE TABLE execution_worker_bindings (
+        worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+        lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT
+      );
+      INSERT INTO execution_worker_bindings (worker_id, lineage_id)
+      SELECT id, lineage_id FROM execution_worker_sessions_legacy;
+      DROP TABLE execution_worker_sessions_legacy;
+    `);
+  }
+  db.exec("DROP TABLE worker_sessions_legacy");
+}
+
+function createWorkerLifecycleTable(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE worker_sessions (
+      id TEXT PRIMARY KEY,
+      reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+      parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution')),
+      status TEXT NOT NULL CHECK (
+        status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
+      ),
+      task_envelope_digest TEXT NOT NULL UNIQUE,
+      task_envelope_json TEXT NOT NULL,
+      child_execution_lock_digest TEXT NOT NULL,
+      child_execution_lock_json TEXT NOT NULL,
+      child_session_id TEXT UNIQUE REFERENCES sessions(id),
+      child_run_id TEXT UNIQUE REFERENCES runs(id),
+      result_envelope_digest TEXT UNIQUE,
+      result_envelope_json TEXT,
+      result_delivered_to_turn_id TEXT REFERENCES turns(id),
+      lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+      lease_owner_digest TEXT,
+      lease_expires_at TEXT,
+      attempt_id TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK (
+        (child_session_id IS NULL AND child_run_id IS NULL)
+        OR (child_session_id IS NOT NULL AND child_run_id IS NOT NULL)
+      ),
+      CHECK (
+        (status = 'running' AND lease_owner_digest IS NOT NULL AND lease_expires_at IS NOT NULL)
+        OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+      ),
+      CHECK (
+        (worker_kind = 'discussion' AND attempt_id IS NULL AND status != 'paused')
+        OR (worker_kind = 'execution' AND child_session_id IS NULL AND child_run_id IS NULL
+          AND ((status = 'queued' AND attempt_id IS NULL)
+            OR (status != 'queued' AND attempt_id IS NOT NULL)))
+      ),
+      CHECK (
+        (worker_kind = 'discussion' AND status IN ('queued', 'running')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (worker_kind = 'discussion' AND status IN ('needs_input', 'completed', 'failed')
+          AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+        OR (worker_kind = 'execution' AND status IN ('queued', 'running', 'paused')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (worker_kind = 'execution' AND status IN ('needs_input', 'completed', 'failed')
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+      )
+    );
+  `);
+}
+
+function tableExists(db: DatabaseSync, name: string): boolean {
+  const row = db.prepare(`
+    SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?
+  `).get(name) as { present: number } | undefined;
+  return row?.present === 1;
 }
 
 function existingSchemaVersion(db: DatabaseSync): string | null {

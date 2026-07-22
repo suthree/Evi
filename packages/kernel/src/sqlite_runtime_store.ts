@@ -166,7 +166,8 @@ interface WorkerSessionRow {
   reservation_id: string;
   parent_run_id: string;
   parent_turn_id: string;
-  status: WorkerInspection["status"];
+  worker_kind: "discussion" | "execution";
+  status: WorkerInspection["status"] | ExecutionWorkerInspection["status"];
   task_envelope_digest: string;
   task_envelope_json: string;
   child_execution_lock_digest: string;
@@ -179,6 +180,7 @@ interface WorkerSessionRow {
   lease_ordinal: number;
   lease_owner_digest: string | null;
   lease_expires_at: string | null;
+  attempt_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -204,26 +206,10 @@ interface DeliveryLineageRow {
   updated_at: string;
 }
 
-interface ExecutionWorkerSessionRow {
-  id: string;
-  reservation_id: string;
-  parent_run_id: string;
-  parent_turn_id: string;
+interface ExecutionWorkerSessionRow extends WorkerSessionRow {
+  worker_kind: "execution";
   status: ExecutionWorkerInspection["status"];
-  task_envelope_digest: string;
-  task_envelope_json: string;
-  child_execution_lock_digest: string;
-  child_execution_lock_json: string;
   lineage_id: string;
-  result_envelope_digest: string | null;
-  result_envelope_json: string | null;
-  result_delivered_to_turn_id: string | null;
-  lease_ordinal: number;
-  lease_owner_digest: string | null;
-  lease_expires_at: string | null;
-  attempt_id: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 interface AdaptationCandidateRow {
@@ -1051,7 +1037,7 @@ export class SqliteRuntimeStore {
       SELECT reservations.invocation_id
       FROM worker_sessions AS workers
       JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
-      WHERE workers.parent_run_id = ?
+      WHERE workers.parent_run_id = ? AND workers.worker_kind = 'discussion'
       LIMIT 1
     `).get(runId) as { invocation_id: string } | undefined;
     if (row && row.invocation_id !== invocationId) {
@@ -1062,9 +1048,9 @@ export class SqliteRuntimeStore {
   assertCanDispatchExecutionWorker(runId: string, invocationId: string): void {
     const row = this.db.prepare(`
       SELECT reservations.invocation_id
-      FROM execution_worker_sessions AS workers
+      FROM worker_sessions AS workers
       JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
-      WHERE workers.parent_run_id = ?
+      WHERE workers.parent_run_id = ? AND workers.worker_kind = 'execution'
       LIMIT 1
     `).get(runId) as { invocation_id: string } | undefined;
     if (row && row.invocation_id !== invocationId) {
@@ -1101,7 +1087,8 @@ export class SqliteRuntimeStore {
     const row = this.db.prepare(`
       SELECT lineages.id, lineages.digest, workers.parent_run_id, reservations.invocation_id
       FROM delivery_lineages AS lineages
-      JOIN execution_worker_sessions AS workers ON workers.id = lineages.bound_worker_id
+      JOIN execution_worker_bindings AS bindings ON bindings.lineage_id = lineages.id
+      JOIN worker_sessions AS workers ON workers.id = bindings.worker_id
       JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
       WHERE lineages.id = ? OR lineages.worktree = ?
       LIMIT 1
@@ -1122,11 +1109,7 @@ export class SqliteRuntimeStore {
   hasOutstandingWorkers(runId: string): boolean {
     const row = this.db.prepare(`
       SELECT 1 AS present
-      FROM (
-        SELECT parent_run_id, result_delivered_to_turn_id FROM worker_sessions
-        UNION ALL
-        SELECT parent_run_id, result_delivered_to_turn_id FROM execution_worker_sessions
-      )
+      FROM worker_sessions
       WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL
       LIMIT 1
     `).get(runId) as { present: number } | undefined;
@@ -1137,33 +1120,25 @@ export class SqliteRuntimeStore {
     const run = this.requireRun(runId);
     if (run.status !== "waiting") throw new Error(`Run is not waiting: ${runId}`);
     const workers = (this.db.prepare(`
-      SELECT *
-      FROM worker_sessions
-      WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
-        AND result_delivered_to_turn_id IS NULL
-      ORDER BY created_at ASC, id ASC
-    `).all(runId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.parent_run_id = ? AND workers.result_envelope_json IS NOT NULL
+        AND workers.result_delivered_to_turn_id IS NULL
+      ORDER BY workers.created_at ASC, workers.id ASC
+    `).all(runId) as unknown as Array<WorkerSessionRow & { lineage_id: string | null }>)
+      .map((row) => this.toSupervisorWorkerInspection(row));
     for (const worker of workers) {
       if (worker.parent_turn_id !== run.turn_id) {
         throw new Error(`Worker Result delivery parent Turn drifted: ${worker.id}`);
       }
-      this.assertWorkerDeliveryIdentity(run, worker);
-    }
-    const executionWorkers = (this.db.prepare(`
-      SELECT *
-      FROM execution_worker_sessions
-      WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
-        AND result_delivered_to_turn_id IS NULL
-      ORDER BY created_at ASC, id ASC
-    `).all(runId) as unknown as ExecutionWorkerSessionRow[])
-      .map((row) => this.toExecutionWorkerInspection(row));
-    for (const worker of executionWorkers) {
-      if (worker.parent_turn_id !== run.turn_id) {
-        throw new Error(`Execution Worker Result delivery parent Turn drifted: ${worker.id}`);
+      if ("lineage" in worker) {
+        this.assertExecutionWorkerDeliveryIdentity(run, worker);
+      } else {
+        this.assertWorkerDeliveryIdentity(run, worker);
       }
-      this.assertExecutionWorkerDeliveryIdentity(run, worker);
     }
-    return [...workers, ...executionWorkers].sort(workerOrder);
+    return workers.sort(workerOrder);
   }
 
   getDeliveredWorkerResults(runId: string, turnId: string): Array<WorkerInspection | ExecutionWorkerInspection> {
@@ -1172,21 +1147,21 @@ export class SqliteRuntimeStore {
       throw new Error(`Worker Result runtime context Turn is not current: ${runId}/${turnId}`);
     }
     const workers = (this.db.prepare(`
-      SELECT *
-      FROM worker_sessions
-      WHERE parent_run_id = ? AND result_delivered_to_turn_id = ?
-      ORDER BY created_at ASC, id ASC
-    `).all(runId, turnId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
-    for (const worker of workers) this.assertWorkerDeliveryIdentity(run, worker);
-    const executionWorkers = (this.db.prepare(`
-      SELECT *
-      FROM execution_worker_sessions
-      WHERE parent_run_id = ? AND result_delivered_to_turn_id = ?
-      ORDER BY created_at ASC, id ASC
-    `).all(runId, turnId) as unknown as ExecutionWorkerSessionRow[])
-      .map((row) => this.toExecutionWorkerInspection(row));
-    for (const worker of executionWorkers) this.assertExecutionWorkerDeliveryIdentity(run, worker);
-    return [...workers, ...executionWorkers].sort(workerOrder);
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.parent_run_id = ? AND workers.result_delivered_to_turn_id = ?
+      ORDER BY workers.created_at ASC, workers.id ASC
+    `).all(runId, turnId) as unknown as Array<WorkerSessionRow & { lineage_id: string | null }>)
+      .map((row) => this.toSupervisorWorkerInspection(row));
+    for (const worker of workers) {
+      if ("lineage" in worker) {
+        this.assertExecutionWorkerDeliveryIdentity(run, worker);
+      } else {
+        this.assertWorkerDeliveryIdentity(run, worker);
+      }
+    }
+    return workers.sort(workerOrder);
   }
 
   resumeWaitingRun(input: {
@@ -1204,11 +1179,7 @@ export class SqliteRuntimeStore {
       }
       const pending = this.db.prepare(`
         SELECT 1 AS present
-        FROM (
-          SELECT parent_run_id, status, result_delivered_to_turn_id FROM worker_sessions
-          UNION ALL
-          SELECT parent_run_id, status, result_delivered_to_turn_id FROM execution_worker_sessions
-        )
+        FROM worker_sessions
         WHERE parent_run_id = ? AND status IN ('queued', 'running', 'paused')
           AND result_delivered_to_turn_id IS NULL
         LIMIT 1
@@ -1244,11 +1215,8 @@ export class SqliteRuntimeStore {
       `).run(turnId, createdAt, input.run_id);
       if (Number(runResult.changes) !== 1) throw new Error(`Run is not waiting: ${input.run_id}`);
       for (const worker of deliverable) {
-        const workerTable = worker.task_envelope.worker_kind === "execution"
-          ? "execution_worker_sessions"
-          : "worker_sessions";
         const delivery = this.db.prepare(`
-          UPDATE ${workerTable}
+          UPDATE worker_sessions
           SET result_delivered_to_turn_id = ?, updated_at = ?
           WHERE id = ? AND result_envelope_digest = ? AND result_delivered_to_turn_id IS NULL
         `).run(turnId, createdAt, worker.id, worker.result_envelope!.digest);
@@ -1403,14 +1371,14 @@ export class SqliteRuntimeStore {
       const createdAt = new Date().toISOString();
       this.db.prepare(`
         INSERT INTO worker_sessions (
-          id, reservation_id, parent_run_id, parent_turn_id, status,
+          id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
           task_envelope_digest, task_envelope_json,
           child_execution_lock_digest, child_execution_lock_json,
           child_session_id, child_run_id,
           result_envelope_digest, result_envelope_json,
           result_delivered_to_turn_id,
-          lease_ordinal, lease_owner_digest, lease_expires_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, ?, ?)
+          lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'discussion', 'queued', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
       `).run(
         workerId,
         reservation.id,
@@ -1435,15 +1403,29 @@ export class SqliteRuntimeStore {
   }
 
   inspectWorker(workerId: string): WorkerInspection | null {
-    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE id = ?")
-      .get(workerId) as WorkerSessionRow | undefined;
-    return row ? toWorkerInspection(row) : null;
+    const row = this.db.prepare(`
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.id = ? AND workers.worker_kind = 'discussion'
+    `).get(workerId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${workerId}`);
+    return worker;
   }
 
   inspectWorkerByChildRun(childRunId: string): WorkerInspection | null {
-    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE child_run_id = ?")
-      .get(childRunId) as WorkerSessionRow | undefined;
-    return row ? toWorkerInspection(row) : null;
+    const row = this.db.prepare(`
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.child_run_id = ? AND workers.worker_kind = 'discussion'
+    `).get(childRunId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${worker.id}`);
+    return worker;
   }
 
   claimWorker(workerId: string, leaseMs: number): {
@@ -1468,7 +1450,7 @@ export class SqliteRuntimeStore {
         UPDATE worker_sessions
         SET status = 'running', lease_ordinal = ?, lease_owner_digest = ?,
             lease_expires_at = ?, updated_at = ?
-        WHERE id = ? AND lease_ordinal = ?
+        WHERE id = ? AND worker_kind = 'discussion' AND lease_ordinal = ?
       `).run(ordinal, sha256(ownerToken), expiresAt, updatedAt, workerId, current.lease_ordinal);
       if (Number(update.changes) !== 1) throw new Error(`Worker Session claim raced: ${workerId}`);
       this.insertEvent(current.parent_run_id, current.parent_turn_id, expired
@@ -1501,7 +1483,8 @@ export class SqliteRuntimeStore {
       const update = this.db.prepare(`
         UPDATE worker_sessions
         SET lease_expires_at = ?, updated_at = ?
-        WHERE id = ? AND status = 'running' AND lease_ordinal = ? AND lease_owner_digest = ?
+        WHERE id = ? AND worker_kind = 'discussion' AND status = 'running'
+          AND lease_ordinal = ? AND lease_owner_digest = ?
       `).run(
         expiresAt,
         new Date().toISOString(),
@@ -1532,7 +1515,8 @@ export class SqliteRuntimeStore {
         UPDATE worker_sessions
         SET status = ?, result_envelope_digest = ?, result_envelope_json = ?,
             lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
-        WHERE id = ? AND status = 'running' AND lease_ordinal = ? AND lease_owner_digest = ?
+        WHERE id = ? AND worker_kind = 'discussion' AND status = 'running'
+          AND lease_ordinal = ? AND lease_owner_digest = ?
       `).run(
         result.status,
         result.digest,
@@ -1623,14 +1607,14 @@ export class SqliteRuntimeStore {
         createdAt
       );
       this.db.prepare(`
-        INSERT INTO execution_worker_sessions (
-          id, reservation_id, parent_run_id, parent_turn_id, status,
+        INSERT INTO worker_sessions (
+          id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
           task_envelope_digest, task_envelope_json,
           child_execution_lock_digest, child_execution_lock_json,
-          lineage_id, result_envelope_digest, result_envelope_json,
+          child_session_id, child_run_id, result_envelope_digest, result_envelope_json,
           result_delivered_to_turn_id, lease_ordinal, lease_owner_digest,
           lease_expires_at, attempt_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, NULL, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, 'execution', 'queued', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
       `).run(
         workerId,
         reservation.id,
@@ -1640,10 +1624,12 @@ export class SqliteRuntimeStore {
         JSON.stringify(task),
         childLock.digest,
         JSON.stringify(childLock),
-        lineage.id,
         createdAt,
         createdAt
       );
+      this.db.prepare(`
+        INSERT INTO execution_worker_bindings (worker_id, lineage_id) VALUES (?, ?)
+      `).run(workerId, lineage.id);
       this.insertEvent(parent.id, parent.turn_id, "execution_worker_dispatched", {
         worker_id: workerId,
         reservation_id: reservation.id,
@@ -1659,9 +1645,17 @@ export class SqliteRuntimeStore {
   }
 
   inspectExecutionWorker(workerId: string): ExecutionWorkerInspection | null {
-    const row = this.db.prepare("SELECT * FROM execution_worker_sessions WHERE id = ?")
-      .get(workerId) as ExecutionWorkerSessionRow | undefined;
-    return row ? this.toExecutionWorkerInspection(row) : null;
+    const row = this.db.prepare(`
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.id = ? AND workers.worker_kind = 'execution'
+    `)
+      .get(workerId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if (!("lineage" in worker)) throw new Error(`Execution Worker kind drifted: ${workerId}`);
+    return worker;
   }
 
   claimExecutionWorker(
@@ -1681,9 +1675,9 @@ export class SqliteRuntimeStore {
         if (current.lease_expires_at !== null && Date.parse(current.lease_expires_at) <= now) {
           const updatedAt = new Date(now).toISOString();
           this.db.prepare(`
-            UPDATE execution_worker_sessions
+            UPDATE worker_sessions
             SET status = 'paused', lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
-            WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+            WHERE id = ? AND worker_kind = 'execution' AND status = 'running' AND lease_ordinal = ?
           `).run(updatedAt, current.id, current.lease_ordinal);
           this.db.prepare(`
             UPDATE delivery_lineages
@@ -1715,10 +1709,10 @@ export class SqliteRuntimeStore {
       const updatedAt = new Date(now).toISOString();
       const ownerDigest = sha256(ownerToken);
       const workerUpdate = this.db.prepare(`
-        UPDATE execution_worker_sessions
+        UPDATE worker_sessions
         SET status = 'running', lease_ordinal = ?, lease_owner_digest = ?,
             lease_expires_at = ?, attempt_id = ?, updated_at = ?
-        WHERE id = ? AND status = 'queued' AND lease_ordinal = ?
+        WHERE id = ? AND worker_kind = 'execution' AND status = 'queued' AND lease_ordinal = ?
       `).run(ordinal, ownerDigest, expiresAt, attemptId, updatedAt, workerId, current.lease_ordinal);
       const lineageUpdate = this.db.prepare(`
         UPDATE delivery_lineages
@@ -1776,9 +1770,9 @@ export class SqliteRuntimeStore {
       const updatedAt = new Date().toISOString();
       const ownerDigest = sha256(lease.owner_token);
       const workerUpdate = this.db.prepare(`
-        UPDATE execution_worker_sessions
+        UPDATE worker_sessions
         SET lease_expires_at = ?, updated_at = ?
-        WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+        WHERE id = ? AND worker_kind = 'execution' AND status = 'running' AND lease_ordinal = ?
           AND lease_owner_digest = ? AND attempt_id = ?
       `).run(expiresAt, updatedAt, worker.id, lease.ordinal, ownerDigest, lease.attempt_id);
       const lineageUpdate = this.db.prepare(`
@@ -1825,10 +1819,10 @@ export class SqliteRuntimeStore {
       const updatedAt = new Date().toISOString();
       const ownerDigest = sha256(lease.owner_token);
       const workerUpdate = this.db.prepare(`
-        UPDATE execution_worker_sessions
+        UPDATE worker_sessions
         SET status = ?, result_envelope_digest = ?, result_envelope_json = ?,
             lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
-        WHERE id = ? AND status = 'running' AND lease_ordinal = ?
+        WHERE id = ? AND worker_kind = 'execution' AND status = 'running' AND lease_ordinal = ?
           AND lease_owner_digest = ? AND attempt_id = ?
       `).run(
         result.status,
@@ -2566,15 +2560,30 @@ export class SqliteRuntimeStore {
   }
 
   private getWorkerByReservation(reservationId: string): WorkerInspection | null {
-    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE reservation_id = ?")
-      .get(reservationId) as WorkerSessionRow | undefined;
-    return row ? toWorkerInspection(row) : null;
+    const row = this.db.prepare(`
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.reservation_id = ? AND workers.worker_kind = 'discussion'
+    `).get(reservationId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${row.id}`);
+    return worker;
   }
 
   private getExecutionWorkerByReservation(reservationId: string): ExecutionWorkerInspection | null {
-    const row = this.db.prepare("SELECT * FROM execution_worker_sessions WHERE reservation_id = ?")
-      .get(reservationId) as ExecutionWorkerSessionRow | undefined;
-    return row ? this.toExecutionWorkerInspection(row) : null;
+    const row = this.db.prepare(`
+      SELECT workers.*, bindings.lineage_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE workers.reservation_id = ? AND workers.worker_kind = 'execution'
+    `)
+      .get(reservationId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if (!("lineage" in worker)) throw new Error(`Execution Worker kind drifted: ${row.id}`);
+    return worker;
   }
 
   private requireExecutionWorker(workerId: string): ExecutionWorkerInspection {
@@ -2604,7 +2613,27 @@ export class SqliteRuntimeStore {
     return row;
   }
 
+  private toSupervisorWorkerInspection(
+    row: WorkerSessionRow & { lineage_id: string | null }
+  ): WorkerInspection | ExecutionWorkerInspection {
+    if (row.worker_kind === "discussion") {
+      if (row.lineage_id !== null) {
+        throw new Error(`Discussion Worker has an execution binding: ${row.id}`);
+      }
+      return toWorkerInspection(row);
+    }
+    if (row.lineage_id === null) {
+      throw new Error(`Execution Worker has no Delivery Lineage binding: ${row.id}`);
+    }
+    return this.toExecutionWorkerInspection({ ...row, worker_kind: "execution", lineage_id: row.lineage_id });
+  }
+
   private toExecutionWorkerInspection(row: ExecutionWorkerSessionRow): ExecutionWorkerInspection {
+    if (row.worker_kind !== "execution"
+      || row.child_session_id !== null
+      || row.child_run_id !== null) {
+      throw new Error(`Execution Worker lifecycle identity is invalid: ${row.id}`);
+    }
     const lineageRow = this.requireDeliveryLineageRow(row.lineage_id);
     if (lineageRow.bound_worker_id !== row.id
       || lineageRow.lease_ordinal !== row.lease_ordinal
@@ -2659,8 +2688,8 @@ export class SqliteRuntimeStore {
     }
     const row = this.db.prepare(`
       SELECT lease_owner_digest
-      FROM execution_worker_sessions
-      WHERE id = ?
+      FROM worker_sessions
+      WHERE id = ? AND worker_kind = 'execution'
     `).get(worker.id) as { lease_owner_digest: string | null } | undefined;
     if (row?.lease_owner_digest !== sha256(lease.owner_token)
       || Date.parse(worker.lease_expires_at) <= Date.now()) {
@@ -3197,6 +3226,11 @@ function evaluationSemanticIdentity(receipt: EvaluationReceipt): string {
 }
 
 function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
+  if (row.worker_kind !== "discussion"
+    || row.attempt_id !== null
+    || row.status === "paused") {
+    throw new Error(`Discussion Worker lifecycle identity is invalid: ${row.id}`);
+  }
   const taskEnvelope = parseTaskEnvelope(JSON.parse(row.task_envelope_json));
   const childExecutionLock = parseExecutionLock(JSON.parse(row.child_execution_lock_json));
   if (taskEnvelope.digest !== row.task_envelope_digest
@@ -3229,7 +3263,7 @@ function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
     reservation_id: row.reservation_id,
     parent_run_id: row.parent_run_id,
     parent_turn_id: row.parent_turn_id,
-    status: row.status,
+    status: row.status as WorkerInspection["status"],
     task_envelope: taskEnvelope,
     child_execution_lock: childExecutionLock,
     child_session_id: row.child_session_id,

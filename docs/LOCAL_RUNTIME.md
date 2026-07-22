@@ -46,10 +46,13 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports or dual-writes
-v0.2 state. Schema version 9 plus the immutable `stable_cli` state profile
-refuses current `diagnostic_canary` databases. Version 8 stable state receives
-the additive execution-Worker/Delivery-Lineage tables and advances atomically;
-other earlier or unknown versions fail closed.
+v0.2 state. Schema version 10 plus the immutable `stable_cli` state profile
+refuses current `diagnostic_canary` databases. Version 8 and 9 stable state
+upgrade transactionally. The version 9 migration preserves both existing
+Worker kinds while consolidating their common lifecycle into one
+`worker_sessions` ledger; execution-only Delivery-Lineage authority remains in
+the narrow `execution_worker_bindings` table. Other earlier or unknown versions
+fail closed.
 
 `submit` uses the active model from normal safe config resolution. Relative
 `--config-dir` is resolved below `--repo-root`; both selectors become part of

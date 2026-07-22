@@ -103,7 +103,7 @@ Self Registry -------- active and retired durable artifact versions
 | Structured state | SQLite runtime store | JSONL and directory scans are projections, fixtures, or archives |
 | Tool and durable effects | Action Gateway | Typed policy, containment, reservation, evidence, reconciliation |
 | Long-lived intent | Optional Goal extension | Objective, acceptance, budget, continuation, Run links only |
-| Parent-child work | Orchestration Engine | Task graph, Worker Session, dependency, lease, budget, typed result, and cancellation; no Agent Loop or planning ownership |
+| Parent-child work | Orchestration Engine | One common SQLite Worker lifecycle ledger plus kind-specific Task/Result and authority bindings; dependency, lease, budget, delivery, and cancellation remain here, with no Agent Loop or planning ownership |
 | Source mutation isolation | Delivery Lineage | One branch/worktree lineage and at most one writer per source-mutating work item; never Goal-owned in vNext |
 | Durable growth | Adaptation Engine and Self Registry | Candidate, evaluation, activation, observation, rollback, or retirement; activation effects still cross the Action Gateway |
 | Capability choice | Rebuildable capability views | One default active provider per capability; alternatives are explicit fallback, experimental, or retired paths |
