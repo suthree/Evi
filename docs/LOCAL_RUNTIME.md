@@ -24,7 +24,7 @@ channel adapters and IM intake. Runtime state is written under the selected
 state root. Learned local procedures are written under the configured local
 agent home and active vault.
 
-## Stable vNext Goal-free CLI command
+## Stable vNext Supervisor CLI commands
 
 The stable vNext command is a foreground CLI Adapter. It is not owned by the
 resident service and does not receive Web, daemon, or Feishu traffic:
@@ -35,6 +35,7 @@ pnpm run runtime -- vnext run submit --task "..." --session-id session_...
 pnpm run runtime -- vnext run continue --run-id run_...
 pnpm run runtime -- vnext run inspect --run-id run_...
 pnpm run runtime -- vnext run inspect --session-id session_...
+pnpm run runtime -- vnext worker execute --worker-id worker_...
 ```
 
 The default state root is `~/.local-runtime/state/vnext-cli`; override it only
@@ -55,20 +56,39 @@ to the Execution Lock, SQLite, or output.
 
 A submit without `--session-id` creates a Session. Reusing a terminal Session
 creates a new Run in the same conversation tree. A Session may have multiple
-terminal Runs but only one `running` or `paused` Run; concurrent attach returns
-`session_busy`. `continue` names one Run and only performs same-Run recovery.
-It does not reopen a terminal Run or create a replacement. `inspect` requires
-exactly one Run or Session identity and does not load model credentials.
+terminal Runs but only one `running`, `waiting`, or `paused` Run; concurrent
+attach returns `session_busy`. `continue` names one Run. It either performs
+same-Run recovery or, after a typed Worker Result is ready, atomically creates
+a new Turn in that same parent Run for integration. It does not reopen a
+terminal Run or create a replacement. `inspect` requires exactly one Run or
+Session identity and does not load model credentials.
 The exact configured credential value is redacted from submitted text before
 canonical state or provider dispatch. Run metadata stores no duplicate request
 body; the bounded Turn request and Pi conversation history keep their separate
 recovery roles.
 
-Every response is a `vnext_goal_free_cli` envelope with Run, Session, and
-Execution Lock identities or a structured diagnostic. Only `runtime_inspect`
-is registered, so effects remain `none/local_read`. There is no `signal/cancel`,
-optional Goal, Worker, learning, write/external Action, resident route, or vNext
-deployment in this slice. The installed v0.2 runtime remains the rollback path.
+Every Run response is a `vnext_goal_free_cli` envelope with Run, Session, and
+Execution Lock identities or a structured diagnostic. A new parent Run has
+`runtime_inspect`, `worker_dispatch`, and `worker_inspect`. `worker_dispatch` is
+the sole explicit `external_read` exception: it reserves and queues at most one
+read-only discussion Worker with a narrowed immutable child Execution Lock.
+The Worker does not run inside the parent model request. Execute it in a
+separate process with `vnext worker execute`; it claims a durable lease, creates
+an isolated child Session/Run through the same Runtime Kernel and sole Pi Agent
+Loop, and stores a typed Result Envelope. The child may use only
+`none/local_read` Actions.
+
+The parent settles as `waiting` while the Worker is queued or running. A Worker
+Result never completes the parent. A later `vnext run continue` delivers the
+immutable result into a new parent Turn; `worker_inspect` exposes canonical
+Worker and child-Run identity for independent Supervisor verification. Exact
+lease identity, atomic child binding, stale-owner reclaim, terminal-result
+recovery without model replay, and single delivery are enforced in SQLite.
+
+There is still no worker parallelism, execution writer, reviewer role,
+`signal/cancel`, optional Goal, learning, local/external write Action, resident
+route, or vNext deployment in this slice. The installed v0.2 runtime is frozen
+as the rollback path.
 
 ## vNext read-only canary command
 

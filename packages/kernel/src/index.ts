@@ -1,6 +1,7 @@
 export * from "./action_gateway.js";
 export * from "./action_types.js";
 export * from "./contracts.js";
+export * from "./discussion_worker_runtime.js";
 export * from "./execution_types.js";
 export * from "./execution_lock.js";
 export * from "./kernel_runtime.js";

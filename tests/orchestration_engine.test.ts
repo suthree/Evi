@@ -2,18 +2,23 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Type } from "typebox";
 import {
   ActionGateway,
   createDiscussionWorkerDispatchAction,
   createRuntimeInspectAction,
+  createWorkerInspectAction,
+  DiscussionWorkerRuntime,
+  KernelRuntime,
   materializeResultEnvelope,
   OrchestrationEngine,
   parseResultEnvelope,
   parseTaskEnvelope,
   SqliteRuntimeStore,
-  type ActionHandler
+  type ActionHandler,
+  type AgentLoopFactory
 } from "../packages/kernel/src/index.js";
 import { testExecutionLock } from "./vnext_test_support.js";
 
@@ -223,6 +228,326 @@ test("Task and Result Envelopes reject digest drift and undeclared authority fie
       () => parseResultEnvelope({ ...result, summary: "drifted" }),
       /digest is invalid/
     );
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a worker lease atomically binds one isolated child Run and accepts one terminal Result Envelope", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-orchestration-worker-run-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const workerInspect = createWorkerInspectAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch, workerInspect], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Dispatch one child Run.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "worker-run-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const claimed = store.claimWorker(workerId, 30_000);
+    assert.equal(claimed.worker.status, "running");
+    assert.equal(claimed.lease.ordinal, 1);
+    assert.throws(() => store.claimWorker(workerId, 30_000), /cannot be claimed/);
+
+    const child = store.beginRun({
+      request: "Perform the immutable discussion task.",
+      execution_lock: claimed.worker.child_execution_lock
+    }, 30_000, {
+      worker_id: workerId,
+      owner_token: claimed.lease.owner_token
+    });
+    const bound = engine.inspect(workerId);
+    assert.ok(bound);
+    assert.equal(bound.child_run_id, child.run.id);
+    assert.equal(bound.child_session_id, child.run.session_id);
+    assert.notEqual(bound.child_session_id, parent.run.session_id);
+    assert.equal(child.execution_lock.digest, bound.child_execution_lock.digest);
+
+    store.completeRun(child.execution, "Read-only findings.");
+    const result = materializeResultEnvelope({
+      worker_id: workerId,
+      child_run_id: child.run.id,
+      status: "completed",
+      summary: "Read-only findings.",
+      findings: { answer: "Read-only findings." },
+      artifact_refs: [],
+      evidence_refs: bound.task_envelope.context_refs,
+      unresolved_questions: [],
+      proposed_next_step: null,
+      actual_execution_lock_digest: child.execution_lock.digest,
+      consumed: { output_tokens: 12, duration_ms: 100 },
+      created_at: new Date().toISOString()
+    });
+    const completed = store.completeWorker(claimed.lease, result);
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(completed.result_envelope, result);
+    assert.equal(completed.lease_expires_at, null);
+    assert.throws(() => store.completeWorker(claimed.lease, result), /lease identity mismatch/);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("expired worker ownership is reclaimable while stale lease tokens stay invalid", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-orchestration-worker-reclaim-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const gateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Reclaim one expired worker.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, 30_000);
+    const dispatched = await gateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "worker-reclaim-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const first = store.claimWorker(workerId, 100);
+    await delay(150);
+    const second = store.claimWorker(workerId, 30_000);
+    assert.equal(second.lease.ordinal, 2);
+    assert.notEqual(second.lease.owner_token, first.lease.owner_token);
+    assert.throws(() => store.renewWorkerLease(first.lease, 30_000), /lease identity mismatch/);
+    const renewed = store.renewWorkerLease(second.lease, 30_000);
+    assert.equal(renewed.ordinal, second.lease.ordinal);
+    assert.notEqual(renewed.lease_expires_at, second.lease.lease_expires_at);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Discussion Worker Runtime executes one isolated child through the sole Agent Loop and leaves parent acceptance open", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-discussion-worker-runtime-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const workerInspect = createWorkerInspectAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch, workerInspect], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Supervise one advisory discussion worker.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "runtime-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    let loopCalls = 0;
+    const loops: AgentLoopFactory = {
+      create(input) {
+        loopCalls += 1;
+        assert.deepEqual(input.action_gateway.contracts().map((contract) => contract.name), [
+          "runtime_inspect"
+        ]);
+        return {
+          execute: async (request) => {
+            assert.match(request, /runtime_discussion_task_envelope/);
+            assert.match(request, /Analyze bounded evidence/);
+            return { answer: "The bounded architecture evidence supports one read-only conclusion." };
+          }
+        };
+      }
+    };
+    const childGateway = new ActionGateway(store, [runtimeInspect]);
+    const completed = await new DiscussionWorkerRuntime(
+      store,
+      childGateway,
+      loops
+    ).execute(workerId);
+
+    assert.equal(loopCalls, 1);
+    assert.equal(completed.status, "completed");
+    assert.ok(completed.child_run_id);
+    assert.ok(completed.child_session_id);
+    assert.notEqual(completed.child_session_id, parent.run.session_id);
+    assert.equal(completed.result_envelope?.child_run_id, completed.child_run_id);
+    assert.equal(completed.result_envelope?.actual_execution_lock_digest, completed.child_execution_lock.digest);
+    assert.equal(completed.result_envelope?.consumed.output_tokens, 0);
+    assert.match(completed.result_envelope?.summary ?? "", /read-only conclusion/);
+    assert.equal(store.inspectRun(completed.child_run_id!)?.status, "completed");
+    assert.equal(store.inspectRun(parent.run.id)?.status, "running");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Discussion Worker Runtime reclaims an expired worker and delivers an existing terminal child without replay", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-discussion-worker-recovery-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Recover one exact child result.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "runtime-recovery-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const first = store.claimWorker(workerId, 100);
+    const child = store.beginRun({
+      request: "Already completed immutable task.",
+      execution_lock: first.worker.child_execution_lock
+    }, 30_000, {
+      worker_id: workerId,
+      owner_token: first.lease.owner_token
+    });
+    store.completeRun(child.execution, "Recovered without replaying the model.");
+    await delay(150);
+
+    const childGateway = new ActionGateway(store, [runtimeInspect]);
+    const completed = await new DiscussionWorkerRuntime(store, childGateway, {
+      create: () => ({
+        execute: async () => {
+          throw new Error("terminal recovery must not replay the Agent Loop");
+        }
+      })
+    }).execute(workerId);
+
+    assert.equal(completed.lease_ordinal, 2);
+    assert.equal(completed.status, "completed");
+    assert.equal(completed.child_run_id, child.run.id);
+    assert.match(completed.result_envelope?.summary ?? "", /Recovered without replaying/);
+    assert.equal(store.inspectRun(child.run.id)?.execution_count, 1);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifies it, and alone completes the parent", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-supervisor-worker-closure-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const workerInspect = createWorkerInspectAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch, workerInspect], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    let parentLoopCalls = 0;
+    let workerId = "";
+    let childRunId = "";
+    const parentRuntime = new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            parentLoopCalls += 1;
+            if (parentLoopCalls === 1) {
+              const dispatched = await input.action_gateway.invoke({
+                run_id: input.run_id,
+                turn_id: input.turn_id,
+                invocation_id: "supervisor-dispatch-call",
+                action_name: workerDispatch.contract.name,
+                arguments: validTaskInput()
+              });
+              assert.equal(dispatched.status, "completed");
+              if (dispatched.status !== "completed") throw new Error("worker dispatch failed");
+              workerId = String(dispatched.receipt.output.worker_id);
+              return { answer: "Worker dispatched; parent acceptance remains pending." };
+            }
+            assert.match(request, /runtime_worker_result_delivery/);
+            assert.match(request, /Worker output is advisory/);
+            const verified = await input.action_gateway.invoke({
+              run_id: input.run_id,
+              turn_id: input.turn_id,
+              invocation_id: "supervisor-verify-child-call",
+              action_name: workerInspect.contract.name,
+              arguments: { worker_id: workerId }
+            });
+            assert.equal(verified.status, "completed");
+            return { answer: "Parent independently verified and integrated the child evidence." };
+          }
+        };
+      }
+    });
+
+    const first = await parentRuntime.submit({
+      request: "Use one bounded discussion worker, then verify and integrate its evidence.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    });
+    assert.equal(first.status, "waiting");
+    assert.ok(workerId);
+    const firstTurnId = first.turn_id;
+    assert.equal(parentRuntime.inspect(first.run_id)?.outstanding_worker_count, 1);
+    const stillWaiting = await parentRuntime.continueRun(first.run_id);
+    assert.equal(stillWaiting.status, "waiting");
+    assert.equal(parentRuntime.inspect(first.run_id)?.execution_count, 1);
+
+    const childGateway = new ActionGateway(store, [runtimeInspect]);
+    const worker = await new DiscussionWorkerRuntime(store, childGateway, {
+      create: () => ({
+        execute: async () => ({ answer: "Child found bounded evidence for the supervisor." })
+      })
+    }).execute(workerId);
+    childRunId = worker.child_run_id!;
+    assert.equal(parentRuntime.inspect(first.run_id)?.status, "waiting");
+    assert.equal(parentRuntime.inspect(first.run_id)?.deliverable_worker_count, 1);
+    assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, null);
+
+    const integrated = await parentRuntime.continueRun(first.run_id);
+    assert.equal(integrated.status, "completed");
+    assert.notEqual(integrated.turn_id, firstTurnId);
+    assert.equal(parentLoopCalls, 2);
+    assert.match(integrated.answer ?? "", /independently verified/);
+    const parent = parentRuntime.inspect(first.run_id);
+    assert.equal(parent?.status, "completed");
+    assert.equal(parent?.execution_count, 2);
+    assert.equal(parent?.continuation_count, 1);
+    assert.equal(parent?.worker_count, 1);
+    assert.equal(parent?.outstanding_worker_count, 0);
+    assert.equal(parent?.deliverable_worker_count, 0);
+    assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, integrated.turn_id);
+    assert.equal(store.inspectRun(childRunId)?.status, "completed");
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });

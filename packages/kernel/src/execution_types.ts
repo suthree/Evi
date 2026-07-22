@@ -1,10 +1,11 @@
 export type RunExecutionKind =
   | "initial"
   | "action_continuation"
+  | "worker_result_continuation"
   | "dispatch_recovery"
   | "protocol_recovery";
 export type RunExecutionState = "active" | "settled" | "interrupted";
-export type RunExecutionOutcome = "completed" | "paused" | "failed" | "interrupted";
+export type RunExecutionOutcome = "waiting" | "completed" | "paused" | "failed" | "interrupted";
 
 export interface RunExecutionLease {
   id: string;

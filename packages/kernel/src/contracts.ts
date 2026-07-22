@@ -2,7 +2,7 @@ import type { ActionGateway } from "./action_gateway.js";
 import type { ActionEffectClass } from "./action_types.js";
 import type { RunExecutionLease } from "./execution_types.js";
 
-export type RunStatus = "running" | "paused" | "completed" | "failed";
+export type RunStatus = "running" | "waiting" | "paused" | "completed" | "failed";
 
 export interface RunRecord {
   id: string;
@@ -29,6 +29,9 @@ export interface RunInspection extends RunRecord {
   interrupted_execution_count: number;
   model_dispatch_count: number;
   unknown_model_dispatch_count: number;
+  worker_count: number;
+  outstanding_worker_count: number;
+  deliverable_worker_count: number;
 }
 
 export interface RuntimeSessionRecord {
@@ -48,7 +51,7 @@ export interface SessionRunSummary {
 
 export interface SessionInspection extends RuntimeSessionRecord {
   active_run_id: string | null;
-  active_run_status: "running" | "paused" | null;
+  active_run_status: "running" | "waiting" | "paused" | null;
   run_count: number;
   session_entry_count: number;
   runs: SessionRunSummary[];
@@ -109,7 +112,16 @@ export interface RunPause {
   error: string;
 }
 
-export type RunExecutionResult = RunOutcome | RunPause;
+export interface RunWait {
+  run_id: string;
+  turn_id: string;
+  session_id: string;
+  status: "waiting";
+  answer: null;
+  error: null;
+}
+
+export type RunExecutionResult = RunOutcome | RunPause | RunWait;
 
 export interface SubmitRequest {
   request: string;

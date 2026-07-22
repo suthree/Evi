@@ -178,6 +178,11 @@ import {
   type VNextRunAction
 } from "./vnext_run.js";
 import {
+  executeVNextWorker,
+  vnextWorkerErrorEnvelope,
+  type VNextWorkerAction
+} from "./vnext_worker.js";
+import {
   runGitHubDiscoveryCommand,
   type GitHubDiscoveryAction
 } from "./github_discovery_command.js";
@@ -202,7 +207,7 @@ import type { GoalLearningEffect, GoalReadPolicy } from "../../../packages/runti
 
 interface CliOptions {
   command: string;
-  vnextSurface?: "canary" | "run";
+  vnextSurface?: "canary" | "run" | "worker";
   vnextCanaryAction?: VNextCanaryAction;
   vnextCanarySqlite?: string;
   vnextCanaryBaseUrl?: string;
@@ -212,6 +217,8 @@ interface CliOptions {
   vnextRunAction?: VNextRunAction;
   vnextRunId?: string;
   vnextRunSessionId?: string;
+  vnextWorkerAction?: VNextWorkerAction;
+  vnextWorkerId?: string;
   vnextStateRoot?: string;
   task?: string;
   goalAction?: LocalGoalAction;
@@ -1501,7 +1508,9 @@ export async function main(): Promise<number> {
       console.log(JSON.stringify(
         surface === "run"
           ? vnextRunErrorEnvelope(error, null)
-          : canaryErrorEnvelope(error, null),
+          : surface === "worker"
+            ? vnextWorkerErrorEnvelope(error, null)
+            : canaryErrorEnvelope(error, null),
         null,
         2
       ));
@@ -1512,7 +1521,9 @@ export async function main(): Promise<number> {
   if (options.command === "vnext") {
     return options.vnextSurface === "run"
       ? runVNextRunCommand(options)
-      : runVNextCanaryCommand(options);
+      : options.vnextSurface === "worker"
+        ? runVNextWorkerCommand(options)
+        : runVNextCanaryCommand(options);
   }
   if (options.command === "doctor") {
     const report = await runDoctor({
@@ -3059,14 +3070,39 @@ async function runVNextRunCommand(options: CliOptions): Promise<number> {
   }
 }
 
+async function runVNextWorkerCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextWorkerAction ?? null;
+  try {
+    if (action !== "execute") throw new Error("vnext worker requires explicit execute action.");
+    const result = await executeVNextWorker({
+      action,
+      worker_id: options.vnextWorkerId ?? "",
+      ...(options.vnextStateRoot ? { state_root: options.vnextStateRoot } : {}),
+      config_dir: options.configDir,
+      repo_root: options.repoRoot
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.worker.status === "error"
+      || result.worker.status === "not_found"
+      || result.worker.status === "failed"
+      ? 1
+      : 0;
+  } catch (error) {
+    console.log(JSON.stringify(vnextWorkerErrorEnvelope(error, action), null, 2));
+    return 1;
+  }
+}
+
 function isVNextInvocation(argv: string[]): boolean {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0] === "vnext";
 }
 
-function vnextInvocationSurface(argv: string[]): "canary" | "run" | null {
+function vnextInvocationSurface(argv: string[]): "canary" | "run" | "worker" | null {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
-  return normalized[0] === "vnext" && (normalized[1] === "canary" || normalized[1] === "run")
+  return normalized[0] === "vnext" && (normalized[1] === "canary"
+    || normalized[1] === "run"
+    || normalized[1] === "worker")
     ? normalized[1]
     : null;
 }
@@ -3114,19 +3150,22 @@ export function parseArgs(argv: string[]): CliOptions {
   };
   const vnextCanarySelected = options.command === "vnext" && rest[0] === "canary";
   const vnextRunSelected = options.command === "vnext" && rest[0] === "run";
+  const vnextWorkerSelected = options.command === "vnext" && rest[0] === "worker";
   if (vnextCanarySelected) options.vnextSurface = "canary";
   if (vnextRunSelected) options.vnextSurface = "run";
-  if (options.command === "vnext" && !vnextCanarySelected && !vnextRunSelected) {
-    throw new Error("vnext requires the explicit canary surface or stable run surface.");
+  if (vnextWorkerSelected) options.vnextSurface = "worker";
+  if (options.command === "vnext" && !vnextCanarySelected && !vnextRunSelected && !vnextWorkerSelected) {
+    throw new Error("vnext requires the explicit canary surface, stable run surface, or worker surface.");
   }
   if (vnextRunSelected) assertVNextRunTokens(rest);
+  if (vnextWorkerSelected) assertVNextWorkerTokens(rest);
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (vnextCanarySelected && (arg === "--state-root" || arg === "--config-dir" || arg === "--repo-root" || arg === "--vnext-state-root")) {
       throw new Error("vnext canary does not accept v0.2 config, repo, or state-root options.");
     }
-    if (options.command === "vnext" && index === 0 && (arg === "canary" || arg === "run")) {
+    if (options.command === "vnext" && index === 0 && (arg === "canary" || arg === "run" || arg === "worker")) {
       continue;
     }
     else if (options.command === "vnext" && vnextCanarySelected && index === 1 && isVNextCanaryAction(arg)) {
@@ -3134,6 +3173,9 @@ export function parseArgs(argv: string[]): CliOptions {
     }
     else if (options.command === "vnext" && vnextRunSelected && index === 1 && isVNextRunAction(arg)) {
       options.vnextRunAction = arg;
+    }
+    else if (options.command === "vnext" && vnextWorkerSelected && index === 1 && arg === "execute") {
+      options.vnextWorkerAction = arg;
     }
     else if (options.command === "im" && arg === "serve") options.imAction = arg;
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
@@ -3165,7 +3207,8 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--run-id" && vnextCanarySelected) options.vnextCanaryRunId = required(rest[++index], "--run-id requires a value");
     else if (arg === "--run-id" && vnextRunSelected) options.vnextRunId = required(rest[++index], "--run-id requires a value");
     else if (arg === "--session-id" && vnextRunSelected) options.vnextRunSessionId = required(rest[++index], "--session-id requires a value");
-    else if (arg === "--vnext-state-root" && vnextRunSelected) options.vnextStateRoot = required(rest[++index], "--vnext-state-root requires a value");
+    else if (arg === "--worker-id" && vnextWorkerSelected) options.vnextWorkerId = required(rest[++index], "--worker-id requires a value");
+    else if (arg === "--vnext-state-root" && (vnextRunSelected || vnextWorkerSelected)) options.vnextStateRoot = required(rest[++index], "--vnext-state-root requires a value");
     else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
     else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
@@ -3383,6 +3426,7 @@ export function parseArgs(argv: string[]): CliOptions {
       throw new Error("vnext canary inspect does not accept model or credential options.");
     }
     if (vnextRunSelected) validateVNextRunOptions(options);
+    if (vnextWorkerSelected) validateVNextWorkerOptions(options);
   }
   return options;
 }
@@ -3401,6 +3445,27 @@ function assertVNextRunTokens(rest: string[]): void {
     if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext run argument: ${flag}`);
     if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
   }
+}
+
+function assertVNextWorkerTokens(rest: string[]): void {
+  const valuedFlags = new Set([
+    "--worker-id",
+    "--vnext-state-root",
+    "--config-dir",
+    "--repo-root"
+  ]);
+  for (let index = 2; index < rest.length; index += 2) {
+    const flag = rest[index];
+    if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext worker argument: ${flag}`);
+    if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function validateVNextWorkerOptions(options: CliOptions): void {
+  if (options.vnextWorkerAction !== "execute") {
+    throw new Error("vnext worker requires explicit execute action.");
+  }
+  if (!options.vnextWorkerId) throw new Error("vnext worker execute requires --worker-id.");
 }
 
 function validateVNextRunOptions(options: CliOptions): void {
@@ -3765,6 +3830,7 @@ function printUsage(): void {
   pnpm run runtime -- vnext run submit --task "..." [--session-id session_...] [--config-dir config] [--repo-root /absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- vnext run inspect --run-id run_...|--session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
   pnpm run runtime -- config [--config-dir config] [--state-root ${stateRootUsage}]
   pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight [--content-daily-interval-ms 3600000] [--topic "..."] [--source-url https://...] [--ticker NVDA]
   pnpm run runtime -- config set-runtime --review-tick-enabled [--review-tick-interval-ms 1800000] [--review-tick-limit 20]

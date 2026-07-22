@@ -51,13 +51,19 @@ v0.1 是 local-first、single-machine runtime：
 渠道只是入口，Codex 等专业 Agent 只是执行 Adapter。它们都不会成为第二个 Evi Self、
 Goal owner 或完成判定 owner。
 
-已接受但尚未切换的 vNext 闭环为：
+当前源码中已实现但尚未部署切换的 vNext CLI 闭环为：
 
 ```text
 请求 -> Turn / Run -> Pi Agent Loop -> Action Gateway -> 专门化 Outcome / Receipt
                     \-> SQLite canonical state
 可选 Goal 只关联长期 objective、acceptance、budget 与多个 Run
 ```
+
+这个 CLI 闭环已经支持一个有界的只读 Discussion Worker：Parent Supervisor Run 通过
+Action Gateway 预约并进入 `waiting`，独立 `vnext worker execute` 进程在隔离 child
+Session/Run 中执行唯一 Pi Agent Loop，typed Result 到达后由同一个 Parent 的新 Turn
+核验、整合并决定最终结果。Worker 不能完成 Parent；当前也不包含并行 Worker、Writer、
+Reviewer、Learning、Web/IM 路由或部署切换。现有 v0.2 resident runtime 只保留为 rollback。
 
 ## 从这里开始
 

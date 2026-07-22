@@ -34,7 +34,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       );
       CREATE TABLE IF NOT EXISTS runs (
         id TEXT PRIMARY KEY,
-        status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('running', 'waiting', 'paused', 'completed', 'failed')),
         goal_id TEXT,
         answer TEXT,
         error TEXT,
@@ -46,12 +46,12 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       CREATE INDEX IF NOT EXISTS runs_session_created_idx
         ON runs(session_id, created_at);
       CREATE UNIQUE INDEX IF NOT EXISTS runs_one_open_per_session_idx
-        ON runs(session_id) WHERE status IN ('running', 'paused');
+        ON runs(session_id) WHERE status IN ('running', 'waiting', 'paused');
       CREATE TABLE IF NOT EXISTS turns (
         id TEXT PRIMARY KEY,
         run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
         ordinal INTEGER NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
+        status TEXT NOT NULL CHECK (status IN ('running', 'waiting', 'paused', 'completed', 'failed')),
         request TEXT NOT NULL,
         answer TEXT,
         error TEXT,
@@ -144,13 +144,13 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
         ordinal INTEGER NOT NULL,
         kind TEXT NOT NULL CHECK (
-          kind IN ('initial', 'action_continuation', 'dispatch_recovery', 'protocol_recovery')
+          kind IN ('initial', 'action_continuation', 'worker_result_continuation', 'dispatch_recovery', 'protocol_recovery')
         ),
         input_digest TEXT NOT NULL,
         recovery_of_execution_id TEXT REFERENCES run_executions(id),
         session_start_seq INTEGER NOT NULL CHECK (session_start_seq >= 0),
         state TEXT NOT NULL CHECK (state IN ('active', 'settled', 'interrupted')),
-        outcome TEXT CHECK (outcome IN ('completed', 'paused', 'failed', 'interrupted')),
+        outcome TEXT CHECK (outcome IN ('waiting', 'completed', 'paused', 'failed', 'interrupted')),
         owner_token_digest TEXT NOT NULL,
         lease_expires_at TEXT NOT NULL,
         error TEXT,
@@ -202,6 +202,8 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         child_run_id TEXT UNIQUE REFERENCES runs(id),
         result_envelope_digest TEXT UNIQUE,
         result_envelope_json TEXT,
+        result_delivered_to_turn_id TEXT REFERENCES turns(id),
+        lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
         lease_owner_digest TEXT,
         lease_expires_at TEXT,
         created_at TEXT NOT NULL,
@@ -216,7 +218,8 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         ),
         CHECK (
           (status IN ('queued', 'running')
-            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL)
+            AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+            AND result_delivered_to_turn_id IS NULL)
           OR (status IN ('needs_input', 'completed', 'failed')
             AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
             AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
@@ -224,6 +227,10 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       );
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_status_idx
         ON worker_sessions(parent_run_id, status, created_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS worker_sessions_one_discussion_per_parent_idx
+        ON worker_sessions(parent_run_id);
+      CREATE INDEX IF NOT EXISTS worker_sessions_parent_delivery_idx
+        ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
     `);
     if (version === null) {
       db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")

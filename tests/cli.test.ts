@@ -152,6 +152,29 @@ test("stable vNext Run parsing accepts only its narrow Session and state options
   );
 });
 
+test("vNext Worker parsing requires one explicit worker identity and stable selectors", () => {
+  const execute = parseArgs([
+    "vnext", "worker", "execute",
+    "--worker-id", "worker_123",
+    "--vnext-state-root", "/tmp/evi-vnext",
+    "--config-dir", "config",
+    "--repo-root", "/tmp/repo"
+  ]);
+  assert.equal(execute.vnextSurface, "worker");
+  assert.equal(execute.vnextWorkerAction, "execute");
+  assert.equal(execute.vnextWorkerId, "worker_123");
+  assert.equal(execute.vnextStateRoot, "/tmp/evi-vnext");
+
+  assert.throws(
+    () => parseArgs(["vnext", "worker", "execute", "--vnext-state-root", "/tmp/evi-vnext"]),
+    /requires --worker-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "worker", "execute", "--worker-id", "worker_123", "--state-root", "/tmp/v02"]),
+    /Unknown vnext worker argument: --state-root/
+  );
+});
+
 test("config set-runtime parses safe content daily update options", () => {
   const options = parseArgs([
     "config",

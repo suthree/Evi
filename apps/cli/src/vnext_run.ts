@@ -3,11 +3,14 @@ import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import {
   ActionGateway,
+  createDiscussionWorkerDispatchAction,
   createLockedOpenAICompatiblePiLoopFactory,
   createRuntimeInspectAction,
+  createWorkerInspectAction,
   ExecutionLockMismatchError,
   executionLockActions,
   KernelRuntime,
+  OrchestrationEngine,
   RuntimeSchemaIncompatibleError,
   RuntimeStateProfileIncompatibleError,
   RuntimeSessionBusyError,
@@ -60,7 +63,7 @@ export interface VNextRunEnvelope {
     marker: typeof VNEXT_RUN_MARKER;
     surface: "cli";
     action: VNextRunAction | null;
-    status: "running" | "completed" | "paused" | "failed" | "not_found" | "error";
+    status: "running" | "waiting" | "completed" | "paused" | "failed" | "not_found" | "error";
     run_id?: string;
     turn_id?: string;
     session_id?: string;
@@ -122,7 +125,7 @@ export async function executeVNextRun(
     try {
       const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
       try {
-        const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+        const gateway = createSupervisorGateway(store);
         const loops = createLoopFactory(dependencies, store, model.api_key);
         const runtime = new KernelRuntime(store, gateway, loops);
         const result = await runtime.submit({
@@ -146,15 +149,16 @@ export async function executeVNextRun(
 
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
-    const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+    const inspectGateway = createReadOnlyGateway(store);
     if (input.action === "inspect") {
-      return inspectEnvelope(input, new KernelRuntime(store, gateway, unavailableLoopFactory()));
+      return inspectEnvelope(input, new KernelRuntime(store, inspectGateway, unavailableLoopFactory()));
     }
 
     const runId = required(input.run_id, "vnext run continue requires --run-id");
     const inspection = store.inspectRun(runId);
     if (!inspection) return notFoundEnvelope(input.action, { run_id: runId });
     const lock = store.getExecutionLock(runId);
+    const gateway = gatewayForExecutionLock(store, lock);
     assertContinuationSelectors(lock, repoRoot, configDir);
     const model = await loadModel({
       config_dir: configDir,
@@ -318,7 +322,7 @@ function executionLockInput(
   };
 }
 
-function assertContinuationSelectors(
+export function assertContinuationSelectors(
   lock: ExecutionLock,
   repoRoot: string,
   configDir: string
@@ -331,7 +335,7 @@ function assertContinuationSelectors(
   }
 }
 
-async function loadConfiguredVNextModel(input: {
+export async function loadConfiguredVNextModel(input: {
   config_dir: string;
   state_root: string;
   model_id?: string;
@@ -375,7 +379,7 @@ function resolvedModel(model: RuntimeConfig["model"]): ResolvedVNextModel {
   };
 }
 
-function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel): void {
+export function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel): void {
   if (model.config_id !== lock.model.config_id || model.credential_ref !== lock.model.credential_ref) {
     throw new ExecutionLockMismatchError(
       `Configured credential binding changed for immutable Execution Lock: ${lock.digest}`
@@ -383,7 +387,7 @@ function assertCredentialBinding(lock: ExecutionLock, model: ResolvedVNextModel)
   }
 }
 
-function createLoopFactory(
+export function createLoopFactory(
   dependencies: VNextRunDependencies,
   store: SqliteRuntimeStore,
   apiKey: string
@@ -445,7 +449,31 @@ function redactError(error: unknown, secret: string): unknown {
 }
 
 function stableBoundary(): string {
-  return "Stable Goal-free vNext CLI; isolated SQLite, immutable Execution Lock, and only none/local_read Actions are available.";
+  return "Stable vNext Supervisor CLI; isolated SQLite, immutable Execution Locks, local-read inspection, and one reservation-first external-read discussion Worker are available.";
+}
+
+function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
+  return new ActionGateway(store, [createRuntimeInspectAction(store)]);
+}
+
+function createSupervisorGateway(store: SqliteRuntimeStore): ActionGateway {
+  const runtimeInspect = createRuntimeInspectAction(store);
+  const orchestration = new OrchestrationEngine(store, [runtimeInspect.contract]);
+  return new ActionGateway(store, [
+    runtimeInspect,
+    createDiscussionWorkerDispatchAction(orchestration),
+    createWorkerInspectAction(orchestration)
+  ], {
+    allowed_effect_classes: ["none", "local_read", "external_read"]
+  });
+}
+
+function gatewayForExecutionLock(store: SqliteRuntimeStore, lock: ExecutionLock): ActionGateway {
+  const actionNames = lock.actions.map((action) => action.name).sort();
+  if (JSON.stringify(actionNames) === JSON.stringify(["runtime_inspect"])) {
+    return createReadOnlyGateway(store);
+  }
+  return createSupervisorGateway(store);
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {

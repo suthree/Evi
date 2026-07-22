@@ -68,8 +68,23 @@ export interface WorkerInspection {
   child_session_id: string | null;
   child_run_id: string | null;
   result_envelope: ResultEnvelope | null;
+  result_delivered_to_turn_id: string | null;
+  lease_ordinal: number;
+  lease_expires_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface WorkerExecutionLease {
+  worker_id: string;
+  owner_token: string;
+  ordinal: number;
+  lease_expires_at: string;
+}
+
+export interface WorkerRunBinding {
+  worker_id: string;
+  owner_token: string;
 }
 
 export interface DiscussionTaskInput {
