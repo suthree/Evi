@@ -851,7 +851,7 @@ test("only the Pi adapter implementation imports Pi packages inside the vNext ke
 test("vNext rejects pre-gateway and unknown SQLite schemas before creating runtime tables", async () => {
   const fixture = await createFixture();
   try {
-    for (const version of ["1", "2", "3", "999"]) {
+    for (const version of ["1", "2", "3", "5", "999"]) {
       const dbPath = join(fixture, `runtime-${version}.sqlite`);
       const seed = new DatabaseSync(dbPath);
       seed.exec(`
@@ -859,12 +859,14 @@ test("vNext rejects pre-gateway and unknown SQLite schemas before creating runti
         INSERT INTO schema_meta (key, value) VALUES ('schema_version', '${version}');
       `);
       seed.close();
+      const before = await readFile(dbPath);
       assert.throws(
         () => new SqliteRuntimeStore(dbPath),
         new RegExp(`Unsupported vNext runtime schema version: ${version}`)
       );
       const inspect = new DatabaseSync(dbPath);
       try {
+        assert.equal(inspect.prepare("PRAGMA journal_mode").get()?.journal_mode, "delete");
         const runtimeTable = inspect.prepare(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
         ).get();
@@ -872,6 +874,7 @@ test("vNext rejects pre-gateway and unknown SQLite schemas before creating runti
       } finally {
         inspect.close();
       }
+      assert.deepEqual(await readFile(dbPath), before);
     }
   } finally {
     await rm(fixture, { recursive: true, force: true });

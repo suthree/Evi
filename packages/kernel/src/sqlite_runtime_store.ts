@@ -57,6 +57,7 @@ import {
 } from "./sqlite_runtime_codec.js";
 import {
   initializeRuntimeSchema,
+  RUNTIME_SCHEMA_VERSION,
   RuntimeSchemaIncompatibleError
 } from "./sqlite_runtime_schema.js";
 import { inspectRuntimeRun } from "./sqlite_runtime_inspection.js";
@@ -131,6 +132,7 @@ export class SqliteRuntimeStore {
     run: RunRecord;
     execution: RunExecutionLease;
     execution_lock: ExecutionLock;
+    request: string;
   } {
     const request = input.request.trim();
     if (!request) throw new Error("Run request must not be empty.");
@@ -162,10 +164,10 @@ export class SqliteRuntimeStore {
       }
       this.db.prepare(`
         INSERT INTO runs (
-          id, status, goal_id, request, answer, error,
+          id, status, goal_id, answer, error,
           session_id, turn_id, created_at, updated_at
-        ) VALUES (?, 'running', ?, ?, NULL, NULL, ?, ?, ?, ?)
-      `).run(runId, goalId, request, sessionId, turnId, createdAt, createdAt);
+        ) VALUES (?, 'running', ?, NULL, NULL, ?, ?, ?, ?)
+      `).run(runId, goalId, sessionId, turnId, createdAt, createdAt);
       this.db.prepare(`
         INSERT INTO execution_locks (run_id, digest, lock_json, created_at)
         VALUES (?, ?, ?, ?)
@@ -191,7 +193,7 @@ export class SqliteRuntimeStore {
       });
     });
 
-    return { run: this.requireRun(runId), execution, execution_lock: executionLock };
+    return { run: this.requireRun(runId), execution, execution_lock: executionLock, request };
   }
 
   completeRun(execution: RunExecutionLease, answer: string): RunRecord {
@@ -804,6 +806,7 @@ export class SqliteRuntimeStore {
 
   appendPiSessionEntry(sessionId: string, entryInput: unknown): void {
     const entry = parsePiEntry(entryInput);
+    const observedAt = new Date().toISOString();
     this.transaction(() => {
       const session = this.getPiSession(sessionId);
       if (!session) throw new Error(`Pi session not found: ${sessionId}`);
@@ -827,7 +830,8 @@ export class SqliteRuntimeStore {
         ) VALUES (?, ?, ?, ?, ?, ?)
       `).run(sessionId, entry.id, entry.parentId, entry.type, JSON.stringify(entry), entry.timestamp);
       this.db.prepare("UPDATE pi_sessions SET leaf_id = ? WHERE id = ?").run(nextLeafId, sessionId);
-      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(entry.timestamp, sessionId);
+      this.db.prepare("UPDATE sessions SET updated_at = MAX(updated_at, ?) WHERE id = ?")
+        .run(observedAt, sessionId);
     });
   }
 
@@ -1144,7 +1148,7 @@ export class SqliteRuntimeStore {
 
   private getRun(runId: string): RunRecord | null {
     const row = this.db.prepare(`
-      SELECT id, status, goal_id, request, answer, error,
+      SELECT id, status, goal_id, answer, error,
              session_id, turn_id, created_at, updated_at
       FROM runs
       WHERE id = ?
@@ -1175,7 +1179,7 @@ export class SqliteRuntimeStore {
         | { present: number }
         | undefined;
       if (existing) {
-        throw new RuntimeSchemaIncompatibleError("5/unbound-state-profile");
+        throw new RuntimeSchemaIncompatibleError(`${RUNTIME_SCHEMA_VERSION}/unbound-state-profile`);
       }
       this.db.prepare(
         "INSERT INTO schema_meta (key, value) VALUES ('state_profile', ?)"
@@ -1191,7 +1195,7 @@ export class SqliteRuntimeStore {
 
   private getOpenSessionRun(sessionId: string): RunRecord | null {
     const row = this.db.prepare(`
-      SELECT id, status, goal_id, request, answer, error,
+      SELECT id, status, goal_id, answer, error,
              session_id, turn_id, created_at, updated_at
       FROM runs
       WHERE session_id = ? AND status IN ('running', 'paused')

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import { createServer, type AddressInfo } from "node:net";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { getServiceHealth } from "../packages/core/src/service_health.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import type { RuntimeConfig } from "../packages/runtime/src/config.js";
 import { startRuntimeDaemon } from "../packages/runtime/src/runtime_daemon.js";
+import { VNEXT_RUN_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_run.js";
 
 test("runtime daemon starts the Web channel and writes a running gateway heartbeat", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-daemon-web-"));
@@ -19,6 +21,10 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
   const configDir = join(root, "config");
   const heartbeatPath = join(stateRoot, "services/runtime/heartbeat.json");
   const projectionRoot = join(root, "projection");
+  const stableDispatches: unknown[] = [];
+  const stableChannel = channel(VNEXT_RUN_DIAGNOSTIC_CHANNEL);
+  const recordStableDispatch = (message: unknown) => stableDispatches.push(message);
+  stableChannel.subscribe(recordStableDispatch);
   try {
     await mkdir(repoRoot, { recursive: true });
     await mkdir(configDir, { recursive: true });
@@ -66,6 +72,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
       assert.equal(await fileExists(join(stateRoot, "runs/task_queue.jsonl")), false);
       assert.equal(await fileExists(join(stateRoot, "runs/index.jsonl")), false);
       assert.equal(await fileExists(join(stateRoot, "channels/outbox.jsonl")), false);
+      assert.deepEqual(stableDispatches, []);
 
       const heartbeat = await readJsonEventually(heartbeatPath, (entry) => entry.state === "running");
       assert.equal(heartbeat.service, "runtime");
@@ -88,6 +95,7 @@ test("runtime daemon starts the Web channel and writes a running gateway heartbe
       await handle.stop();
     }
   } finally {
+    stableChannel.unsubscribe(recordStableDispatch);
     await rm(root, { recursive: true, force: true });
   }
 });

@@ -8,7 +8,6 @@ export interface RunRecord {
   id: string;
   status: RunStatus;
   goal_id: string | null;
-  request: string;
   answer: string | null;
   error: string | null;
   session_id: string;

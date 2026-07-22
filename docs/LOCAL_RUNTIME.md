@@ -41,7 +41,7 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports, migrates, or
-dual-writes v0.2 state. Schema version 5 plus the immutable `stable_cli` state
+dual-writes v0.2 state. Schema version 6 plus the immutable `stable_cli` state
 profile refuse both earlier vNext schemas and current `diagnostic_canary`
 databases instead of promoting them silently.
 
@@ -59,6 +59,10 @@ terminal Runs but only one `running` or `paused` Run; concurrent attach returns
 `session_busy`. `continue` names one Run and only performs same-Run recovery.
 It does not reopen a terminal Run or create a replacement. `inspect` requires
 exactly one Run or Session identity and does not load model credentials.
+The exact configured credential value is redacted from submitted text before
+canonical state or provider dispatch. Run metadata stores no duplicate request
+body; the bounded Turn request and Pi conversation history keep their separate
+recovery roles.
 
 Every response is a `vnext_goal_free_cli` envelope with Run, Session, and
 Execution Lock identities or a structured diagnostic. Only `runtime_inspect`

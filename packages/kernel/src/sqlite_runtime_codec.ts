@@ -18,7 +18,6 @@ export interface RunRow {
   id: string;
   status: RunRecord["status"];
   goal_id: string | null;
-  request: string;
   answer: string | null;
   error: string | null;
   session_id: string;
@@ -145,6 +144,10 @@ export function parsePiEntry(value: unknown): StoredPiEntry {
   if (typeof entry.type !== "string" || !entry.type) throw new Error("Pi session entry type is invalid.");
   if (typeof entry.timestamp !== "string" || !entry.timestamp) {
     throw new Error("Pi session entry timestamp is invalid.");
+  }
+  const timestamp = new Date(entry.timestamp);
+  if (Number.isNaN(timestamp.valueOf()) || timestamp.toISOString() !== entry.timestamp) {
+    throw new Error("Pi session entry timestamp must be canonical ISO 8601 UTC.");
   }
   return entry as StoredPiEntry;
 }

@@ -109,26 +109,11 @@ Self Registry -------- active and retired durable artifact versions
 | Capability choice | Rebuildable capability views | One default active provider per capability; alternatives are explicit fallback, experimental, or retired paths |
 | Completion evidence | Specialized outcomes and receipts | Run, effect, worker dispatch, evaluation, activation, and deployment remain distinct |
 
-The first five source slices are intentionally smaller than this table. They
-prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
-reservation-first Gateway path for one bounded `local_read` action. Write and
-external actions remain denied. A paused Run can explicitly continue in its
-existing Turn and session after terminal Action reconciliation. A running Run
-whose Execution owner is lost can be paused after lease expiry and resumed in
-the same session with its old dispatch recorded as `outcome_unknown`. Persisted
-assistant tool calls are repaired only through their exact Action reservation or
-receipt, and an already persisted terminal assistant answer does not call the
-provider again. This is not provider or effect exactly-once. The planned Kernel
-foundation is now closed. The explicit CLI-only read-only ingress canary remains
-a diagnostic surface. The stable Goal-free CLI Adapter now submits new Runs,
-attaches them to durable Sessions, continues only an evidenced paused Run, and
-inspects either identity. The Runtime Kernel persists one safe Execution Lock
-per Run, binding the model/API, configuration source, cwd, and exact Action
-contracts while keeping credentials out of state. Stable and canary databases
-also carry distinct immutable state profiles, so neither an older schema nor a
-current diagnostic database can be silently promoted. Neither CLI surface is a production deployment, Web/IM
-route, migration, or dual write. There is still no learning, worker execution,
-or deployment in this slice; v0.2 remains the current rollback runtime.
+Delivery slices are intentionally narrower than this table. Each slice must
+name the subset of Interfaces and effects it changes, preserve the remaining
+denials, and carry its own Issue/PR/test/deployment evidence. Passing a source
+slice never implies provider or effect exactly-once, production routing,
+deployment, migration, learning, or activation of the next slice.
 
 ### Final deep modules
 
@@ -444,16 +429,15 @@ that context or harness decomposition is finished.
 
 ## vNext Delivery Order
 
-The Kernel foundation plus read-only canary baseline at
-`origin/develop@ff130bae` closes the prerequisite source slices under ADRs 0012
-through 0017. It is deployed only as the unchanged v0.2 rollback runtime; vNext
-routes remain foreground CLI source. The accepted next order is:
+ADRs 0012 through 0017 define the accepted owner model and replacement order.
+Current implementation, integration, and deployment status belongs to source,
+tests, bounded Issues/PRs, and commit-bound deployment evidence. The order is:
 
-1. **Read-only ingress canary (implemented, not deployed).** Explicit CLI opt-in,
+1. **Read-only ingress canary.** Explicit CLI opt-in,
    isolated SQLite, and only `none/local_read`; no mirrored traffic, migration,
    dual write, write/external Action, worker, learning, Web/IM routing, or
    deployment switch.
-2. **Basic CLI ingress and continuity (implemented in source, not deployed).**
+2. **Basic CLI ingress and continuity.**
    The stable CLI Adapter owns no lifecycle logic; the Kernel owns durable
    Session binding, one-open-Run exclusion, same-Run recovery, and immutable
    Execution Locks. Web/IM routing, `signal/cancel`, optional Goal links, and a

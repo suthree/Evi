@@ -119,19 +119,28 @@ export async function executeVNextRun(
 
   if (input.action === "submit") {
     const model = await loadModel({ config_dir: configDir, state_root: stateRoot });
-    const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
     try {
-      const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
-      const loops = createLoopFactory(dependencies, store, model.api_key);
-      const runtime = new KernelRuntime(store, gateway, loops);
-      const result = await runtime.submit({
-        request: required(input.task, "vnext run submit requires --task"),
-        ...(input.session_id ? { session_id: input.session_id } : {}),
-        execution_lock: executionLockInput(model, gateway, repoRoot, configDir)
-      });
-      return outcomeEnvelope(input.action, result, store.getExecutionLock(result.run_id).digest);
-    } finally {
-      store.close();
+      const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+      try {
+        const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+        const loops = createLoopFactory(dependencies, store, model.api_key);
+        const runtime = new KernelRuntime(store, gateway, loops);
+        const result = await runtime.submit({
+          request: redact(required(input.task, "vnext run submit requires --task"), model.api_key),
+          ...(input.session_id ? { session_id: input.session_id } : {}),
+          execution_lock: executionLockInput(model, gateway, repoRoot, configDir)
+        });
+        return outcomeEnvelope(
+          input.action,
+          result,
+          store.getExecutionLock(result.run_id).digest,
+          model.api_key
+        );
+      } finally {
+        store.close();
+      }
+    } catch (error) {
+      throw redactError(error, model.api_key);
     }
   }
 
@@ -153,9 +162,13 @@ export async function executeVNextRun(
       model_id: lock.model.config_id
     });
     assertCredentialBinding(lock, model);
-    const loops = createLoopFactory(dependencies, store, model.api_key);
-    const result = await new KernelRuntime(store, gateway, loops).continueRun(runId);
-    return outcomeEnvelope(input.action, result, lock.digest);
+    try {
+      const loops = createLoopFactory(dependencies, store, model.api_key);
+      const result = await new KernelRuntime(store, gateway, loops).continueRun(runId);
+      return outcomeEnvelope(input.action, result, lock.digest, model.api_key);
+    } catch (error) {
+      throw redactError(error, model.api_key);
+    }
   } finally {
     store.close();
   }
@@ -228,7 +241,8 @@ function inspectEnvelope(input: VNextRunRequest, runtime: KernelRuntime): VNextR
 function outcomeEnvelope(
   action: VNextRunAction,
   result: RunExecutionResult,
-  executionLockDigest: string
+  executionLockDigest: string,
+  secret?: string
 ): VNextRunEnvelope {
   return {
     vnext: {
@@ -241,7 +255,10 @@ function outcomeEnvelope(
       turn_id: result.turn_id,
       session_id: result.session_id,
       execution_lock_digest: executionLockDigest,
-      result: { answer: result.answer, error: result.error },
+      result: {
+        answer: result.answer === null ? null : redact(result.answer, secret),
+        error: result.error === null ? null : redact(result.error, secret)
+      },
       boundary: stableBoundary()
     }
   };
@@ -417,6 +434,14 @@ function required(value: string | undefined, message: string): string {
 
 function redact(value: string, secret?: string): string {
   return secret ? value.replaceAll(secret, "[redacted]") : value;
+}
+
+function redactError(error: unknown, secret: string): unknown {
+  if (!(error instanceof Error)) return redact(String(error), secret);
+  const message = redact(error.message, secret);
+  if (message === error.message) return error;
+  Object.defineProperty(error, "message", { configurable: true, value: message });
+  return error;
 }
 
 function stableBoundary(): string {

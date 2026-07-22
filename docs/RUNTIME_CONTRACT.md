@@ -39,6 +39,11 @@ most one `running` or `paused` Run. Concurrent attach fails closed with
 `session_busy`. A terminal Run is never reopened, and `continue` only attempts
 evidenced recovery of the identified paused or owner-lost Run.
 
+The configured credential value is redacted from submitted text before the
+Kernel creates canonical state or invokes Pi. The Run row stores no second
+request body: the Turn retains the bounded submitted request while Pi session
+history retains the conversation form required by the sole Agent Loop.
+
 Every Run receives an immutable, digest-addressed Execution Lock before model
 dispatch. It records safe model/API identity, credential reference, config
 source, cwd, token/time bounds, and the exact Action name/version/effect set.
@@ -51,7 +56,7 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 5 and its immutable `stable_cli` state profile
+The stable schema is version 6 and its immutable `stable_cli` state profile
 refuses both older schemas and a current `diagnostic_canary` database; this
 slice performs no migration, import, or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,

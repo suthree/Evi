@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { readFile, rm, mkdtemp } from "node:fs/promises";
+import { execFile, spawnSync } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:http";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   createRuntimeInspectAction,
   ExecutionLockMismatchError,
@@ -20,11 +24,14 @@ import {
   VNEXT_RUN_MARKER,
   vnextRunErrorEnvelope,
   type ResolvedVNextModel,
-  type VNextRunDependencies
+  type VNextRunDependencies,
+  type VNextRunEnvelope
 } from "../apps/cli/src/vnext_run.js";
 import { testExecutionLock } from "./vnext_test_support.js";
 
-test("stable vNext CLI binds multiple terminal Runs to one durable Session without persisting credentials", async () => {
+const execFileAsync = promisify(execFile);
+
+test("stable vNext CLI binds multiple terminal Runs without duplicating or persisting raw credentials", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-run-session-"));
   const stateRoot = join(fixture, "state");
   const secret = "synthetic-vnext-stable-secret";
@@ -33,7 +40,9 @@ test("stable vNext CLI binds multiple terminal Runs to one durable Session witho
     create(input) {
       assert.equal(input.execution_lock.actions[0]?.name, "runtime_inspect");
       return {
-        execute: async () => {
+        execute: async (request) => {
+          assert.doesNotMatch(request, new RegExp(secret));
+          if (executions === 0) assert.match(request, /\[redacted\]/);
           const session = store.getPiSession(input.session_id);
           assert.ok(session);
           const ordinal = ++executions;
@@ -52,7 +61,7 @@ test("stable vNext CLI binds multiple terminal Runs to one durable Session witho
   try {
     const first = await executeVNextRun({
       action: "submit",
-      task: "Open one durable Session.",
+      task: `Open one durable Session without storing ${secret}.`,
       state_root: stateRoot,
       repo_root: fixture
     }, dependencies);
@@ -96,9 +105,94 @@ test("stable vNext CLI binds multiple terminal Runs to one durable Session witho
     assert.equal(run.execution_lock.model.credential_ref, "test-credential");
     assert.equal(JSON.stringify(run.execution_lock).includes(secret), false);
 
-    const sqliteBytes = await readFile(join(stateRoot, "runtime.sqlite"));
-    assert.equal(sqliteBytes.includes(Buffer.from(secret)), false);
+    const database = new DatabaseSync(join(stateRoot, "runtime.sqlite"));
+    try {
+      const runColumns = database.prepare("PRAGMA table_info(runs)").all() as Array<{ name: string }>;
+      assert.equal(runColumns.some((column) => column.name === "request"), false);
+      const requests = database.prepare("SELECT request FROM turns ORDER BY created_at").all() as Array<{ request: string }>;
+      assert.equal(requests[0]?.request.includes(secret), false);
+      assert.match(requests[0]?.request ?? "", /\[redacted\]/);
+    } finally {
+      database.close();
+    }
+    for (const name of await readdir(stateRoot)) {
+      const contents = await readFile(join(stateRoot, name));
+      assert.equal(contents.includes(Buffer.from(secret)), false, `${name} persisted the raw credential`);
+    }
   } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("stable vNext CLI preserves one Session across independent CLI processes", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-run-processes-"));
+  const stateRoot = join(fixture, "state");
+  const configDir = join(fixture, "config");
+  const secret = "synthetic-cross-process-key";
+  let responseOrdinal = 0;
+  const server = createServer((_request, response) => {
+    responseOrdinal += 1;
+    const message = {
+      id: `msg_process_${responseOrdinal}`,
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: `process answer ${responseOrdinal}`, annotations: [] }]
+    };
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    for (const event of [
+      { type: "response.output_item.done", output_index: 0, item: message },
+      {
+        type: "response.completed",
+        response: {
+          id: `resp_process_${responseOrdinal}`,
+          status: "completed",
+          output: [message],
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+        }
+      }
+    ]) response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    response.end("data: [DONE]\n\n");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await writeVNextTestConfig({
+      configDir,
+      stateRoot,
+      baseUrl: `http://127.0.0.1:${address.port}/v1`,
+      secret,
+      modelId: "cross-process-model",
+      model: "cross-process-model"
+    });
+    const first = await runVNextCli([
+      "submit", "--task", "Open a durable cross-process Session.",
+      "--vnext-state-root", stateRoot, "--config-dir", configDir, "--repo-root", fixture
+    ]);
+    assert.equal(first.vnext.status, "completed");
+    assert.ok(first.vnext.session_id);
+
+    const second = await runVNextCli([
+      "submit", "--task", "Continue from a second CLI process.",
+      "--session-id", first.vnext.session_id,
+      "--vnext-state-root", stateRoot, "--config-dir", configDir, "--repo-root", fixture
+    ]);
+    assert.equal(second.vnext.status, "completed");
+    assert.equal(second.vnext.session_id, first.vnext.session_id);
+    assert.notEqual(second.vnext.run_id, first.vnext.run_id);
+
+    const inspected = await runVNextCli([
+      "inspect", "--session-id", first.vnext.session_id,
+      "--vnext-state-root", stateRoot
+    ]);
+    const session = inspected.vnext.result;
+    assert.ok(session && "run_count" in session);
+    assert.equal(session.run_count, 2);
+    assert.equal(responseOrdinal, 2);
+  } finally {
+    await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
     await rm(fixture, { recursive: true, force: true });
   }
 });
@@ -139,11 +233,81 @@ test("stable vNext CLI fails closed when a second Run attaches to a busy Session
   }
 });
 
-test("stable vNext continuation uses the persisted Execution Lock despite later model config drift", async () => {
+test("vNext SQLite rejects non-canonical Pi timestamps and keeps Session time monotonic", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-run-session-time-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const gateway = createRuntimeInspectAction(store);
+    const started = store.beginRun({
+      request: "Keep canonical Session time.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [gateway.contract] })
+    }, 30_000);
+    const before = store.inspectSession(started.run.session_id)?.updated_at;
+    assert.ok(before);
+    assert.throws(() => store.appendPiSessionEntry(started.run.session_id, {
+      id: "invalid-time-entry",
+      parentId: null,
+      type: "test_history",
+      timestamp: "yesterday"
+    }), /canonical ISO 8601 UTC/);
+    store.appendPiSessionEntry(started.run.session_id, {
+      id: "old-but-canonical-entry",
+      parentId: null,
+      type: "test_history",
+      timestamp: "2000-01-01T00:00:00.000Z"
+    });
+    const after = store.inspectSession(started.run.session_id)?.updated_at;
+    assert.ok(after);
+    assert.equal(after >= before, true);
+    assert.notEqual(after, "2000-01-01T00:00:00.000Z");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("stable vNext continuation recovers in a new CLI process under the persisted Execution Lock", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-run-lock-"));
   const stateRoot = join(fixture, "state");
+  const configDir = join(fixture, "config");
   const sqlite = join(stateRoot, "runtime.sqlite");
   let runId = "";
+  const server = createServer((_request, response) => {
+    const message = {
+      id: "msg_recovered_process",
+      type: "message",
+      status: "completed",
+      role: "assistant",
+      content: [{ type: "output_text", text: "recovered under locked identity", annotations: [] }]
+    };
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(`event: response.output_item.done\ndata: ${JSON.stringify({
+      type: "response.output_item.done", output_index: 0, item: message
+    })}\n\n`);
+    response.write(`event: response.completed\ndata: ${JSON.stringify({
+      type: "response.completed",
+      response: {
+        id: "resp_recovered_process",
+        status: "completed",
+        output: [message],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 }
+      }
+    })}\n\n`);
+    response.end("data: [DONE]\n\n");
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  await writeVNextTestConfig({
+    configDir,
+    stateRoot,
+    baseUrl,
+    secret: "synthetic-recovery-key",
+    modelId: "test-locked-model",
+    model: "changed-model"
+  });
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const inspect = createRuntimeInspectAction(store);
@@ -152,7 +316,7 @@ test("stable vNext continuation uses the persisted Execution Lock despite later 
       execution_lock: testExecutionLock({
         cwd: fixture,
         contracts: [inspect.contract],
-        model: lockedTestModel("locked-model"),
+        model: lockedTestModel("locked-model", baseUrl),
         configuration_source_refs: stableConfigurationRefs(fixture)
       })
     }, 100);
@@ -166,28 +330,23 @@ test("stable vNext continuation uses the persisted Execution Lock despite later 
   }
   await delay(150);
 
-  let observedLock: ExecutionLock | null = null;
   try {
-    const continued = await executeVNextRun({
-      action: "continue",
-      run_id: runId,
-      state_root: stateRoot,
-      repo_root: fixture
-    }, stableDependencies({
-      config_id: "test-locked-model",
-      model: "changed-model"
-    }, () => {
-      return {
-        create(input) {
-          observedLock = input.execution_lock;
-          return { execute: async () => ({ answer: "recovered under locked identity" }) };
-        }
-      };
-    }));
+    const continued = await runVNextCli([
+      "continue", "--run-id", runId,
+      "--vnext-state-root", stateRoot, "--config-dir", configDir, "--repo-root", fixture
+    ]);
     assert.equal(continued.vnext.status, "completed");
-    assert.equal(observedLock?.model.model, "locked-model");
-    assert.equal(continued.vnext.execution_lock_digest, observedLock?.digest);
+    const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    try {
+      const lock = reopened.getExecutionLock(runId);
+      assert.equal(lock.model.model, "locked-model");
+      assert.equal(continued.vnext.execution_lock_digest, lock.digest);
+      assert.equal(reopened.inspectRun(runId)?.status, "completed");
+    } finally {
+      reopened.close();
+    }
   } finally {
+    await new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()));
     await rm(fixture, { recursive: true, force: true });
   }
 });
@@ -350,12 +509,12 @@ function stableDependencies(
   };
 }
 
-function lockedTestModel(modelId: string) {
+function lockedTestModel(modelId: string, baseUrl = "https://provider.example.test/v1") {
   return {
     id: modelId,
     api: "openai-responses",
     provider: "test-provider",
-    baseUrl: "https://provider.example.test/v1",
+    baseUrl,
     contextWindow: 128_000,
     maxTokens: 2_400
   };
@@ -368,4 +527,49 @@ function stableConfigurationRefs(repoRoot: string): string[] {
     "models:test-locked-model",
     "auth:test-credential"
   ];
+}
+
+async function runVNextCli(args: string[]): Promise<VNextRunEnvelope> {
+  const { stdout } = await execFileAsync(process.execPath, [
+    "--import", "tsx", "apps/cli/src/main.ts", "vnext", "run", ...args
+  ], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    env: { ...process.env, NODE_NO_WARNINGS: "1" },
+    maxBuffer: 4 * 1024 * 1024
+  });
+  return JSON.parse(stdout) as VNextRunEnvelope;
+}
+
+async function writeVNextTestConfig(input: {
+  configDir: string;
+  stateRoot: string;
+  baseUrl: string;
+  secret: string;
+  modelId: string;
+  model: string;
+}): Promise<void> {
+  await mkdir(input.configDir, { recursive: true });
+  await writeFile(join(input.configDir, "config.jsonl"), [
+    JSON.stringify({ type: "home", root: join(input.stateRoot, "home") }),
+    JSON.stringify({ type: "state", root: input.stateRoot }),
+    JSON.stringify({ type: "active_model", model_id: input.modelId })
+  ].join("\n") + "\n", "utf8");
+  await writeFile(join(input.configDir, "models.jsonl"), `${JSON.stringify({
+    type: "model",
+    id: input.modelId,
+    provider: "openai-compatible",
+    api: "responses",
+    base_url: input.baseUrl,
+    model: input.model,
+    auth_id: "test-credential",
+    max_output_tokens: 2_400,
+    timeout_ms: 10_000,
+    store: false
+  })}\n`, "utf8");
+  await writeFile(join(input.configDir, "auth.jsonl"), `${JSON.stringify({
+    type: "api_key",
+    id: "test-credential",
+    key: input.secret
+  })}\n`, "utf8");
 }

@@ -45,6 +45,7 @@ import {
   runDailyContentJob
 } from "../packages/runtime/src/content_pipeline.js";
 import { VNEXT_CANARY_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_canary.js";
+import { VNEXT_RUN_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_run.js";
 
 const TEST_FEISHU_APP_ID_ENV = "AGENT_TEST_FEISHU_APP_ID";
 const TEST_FEISHU_APP_SECRET_ENV = "AGENT_TEST_FEISHU_APP_SECRET";
@@ -182,9 +183,13 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
 test("private text message submits one Goal and records provider-only delivery evidence", async () => {
   const fixture = await createFixture();
   const canaryDispatches: unknown[] = [];
+  const stableDispatches: unknown[] = [];
   const canaryChannel = channel(VNEXT_CANARY_DIAGNOSTIC_CHANNEL);
+  const stableChannel = channel(VNEXT_RUN_DIAGNOSTIC_CHANNEL);
   const recordCanaryDispatch = (message: unknown) => canaryDispatches.push(message);
+  const recordStableDispatch = (message: unknown) => stableDispatches.push(message);
   canaryChannel.subscribe(recordCanaryDispatch);
+  stableChannel.subscribe(recordStableDispatch);
   try {
     const goalIngress = completedGoalIngress("goal_feishu_private", "Final answer.");
     const transport = new MockFeishuTransport();
@@ -221,8 +226,10 @@ test("private text message submits one Goal and records provider-only delivery e
     assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
     assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
     assert.deepEqual(canaryDispatches, []);
+    assert.deepEqual(stableDispatches, []);
   } finally {
     canaryChannel.unsubscribe(recordCanaryDispatch);
+    stableChannel.unsubscribe(recordStableDispatch);
     await fixture.cleanup();
   }
 });

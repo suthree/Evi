@@ -10,14 +10,10 @@ The accepted vNext architecture keeps one persistent local-first Evi self while
 replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
 a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
 Evi Action Gateway owns effects. This target does not expand the implemented
-v0.1/v0.2 contract or claim a deployment cutover. The first five vNext source
-slices now prove the Kernel, a read-only reservation-first Gateway, explicit
-same-Run continuation after terminal reconciliation, and lease-backed recovery
-from process loss across model dispatch and persisted Pi tool-call protocol
-steps. The explicit CLI-only read-only canary remains a diagnostic surface. A
-separate stable Goal-free CLI ingress now adds durable Session-to-Run binding
-and immutable per-Run Execution Locks in isolated vNext SQLite state. Neither
-surface is connected to production Web/IM ingress or the deployed v0.2 runtime.
+v0.1/v0.2 contract or claim a deployment cutover. Current source behavior and
+delivery status are owned by source, tests, bounded Issues/PRs, and deployment
+evidence; the architecture and runtime-contract documents below define the
+stable owner model and acceptance semantics.
 
 ## Start here
 

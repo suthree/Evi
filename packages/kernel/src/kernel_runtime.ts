@@ -40,7 +40,7 @@ export class KernelRuntime {
     return this.executeRun(
       started.run,
       started.execution,
-      started.run.request,
+      started.request,
       started.execution_lock
     );
   }

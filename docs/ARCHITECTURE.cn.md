@@ -92,21 +92,10 @@ Self Registry -------- 当前与已退役的持久资产版本
 | Capability 选择 | 可重建 capability view | 每个 capability 只有一个默认 active provider；其他路径明确标成 fallback、experimental 或 retired |
 | 完成证据 | 专门化 outcome 与 receipt | Run、effect、worker dispatch、evaluation、activation、deployment 相互独立 |
 
-前五个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
-state，以及一个只允许有界 `local_read` action 的 reservation-first Gateway 路径。Write 与
-external action 仍被拒绝；paused Run 可以在 terminal Action reconciliation 后显式复用
-既有 Turn 与 session 继续。若 running Run 的 Execution owner 丢失，可以在 lease 过期后
-暂停，并在同一 session 中恢复；旧 dispatch 会明确记录为 `outcome_unknown`。Persisted
-assistant tool call 只能通过其精确 Action reservation 或 receipt 修复；已经持久化的 terminal
-assistant answer 不再次调用 provider。这不代表 provider 或 effect exactly-once。既定 Kernel
-基建现已闭合。显式 CLI-only 的 read-only ingress canary 继续作为诊断入口；稳定 Goal-free
-CLI Adapter 已能新建 Run、绑定 durable Session、只续跑有 evidence 的 paused Run，并按
-Run 或 Session 检查状态。Runtime Kernel 为每个 Run 持久化安全的 Execution Lock，绑定
-model/API、configuration source、cwd 与精确 Action Contract，同时不把 credential 写入
-state。稳定库与 canary 库还持有不同的不可变 state profile；无论旧 schema 还是当前诊断库
-都不能被隐式晋升。
-两条 CLI 路径都不是 production deployment、Web/IM route、migration 或 dual write；本切片
-仍不接 learning、Worker，也不部署 vNext。v0.2 继续作为当前 rollback runtime。
+交付切片故意小于这张表。每个切片必须具名它修改的 Interface 与 effect 子集，保留其余
+denial，并拥有独立的 Issue/PR/test/deployment evidence。源码切片通过不自动证明 provider
+或 effect exactly-once、production routing、deployment、migration、learning，也不自动激活
+下一切片。
 
 ### 最终深模块
 
@@ -362,14 +351,14 @@ terminal Goal outcome 得到有界 Projection，而没有新增 state owner。�
 
 ## vNext 交付顺序
 
-`origin/develop@ff130bae` 已按 ADR 0012 至 0017 完成 Kernel foundation 与 read-only canary
-前置源码切片。已部署的仍只是未改变的 v0.2 rollback runtime；vNext route 仍是 foreground
-CLI 源码。已接受的后续顺序是：
+ADR 0012 至 0017 定义已接受的 owner model 与替换顺序。当前 implementation、integration
+与 deployment 状态归 source、tests、有边界的 Issue/PR 和 commit-bound deployment evidence；
+本文不复制易失的切片进度。顺序是：
 
-1. **Read-only ingress canary（已实现，未部署）。** 显式 CLI opt-in、隔离 SQLite，只允许
+1. **Read-only ingress canary。** 显式 CLI opt-in、隔离 SQLite，只允许
    `none/local_read`；不镜像流量、不迁移、不 dual write、不开放 write/external Action、
    Worker、learning、Web/IM routing 或部署切换。
-2. **基础 CLI ingress 与 continuity（源码已实现，未部署）。** 稳定 CLI Adapter 不拥有
+2. **基础 CLI ingress 与 continuity。** 稳定 CLI Adapter 不拥有
    lifecycle；Kernel 拥有 durable Session binding、one-open-Run exclusion、same-Run
    recovery 与不可变 Execution Lock。Web/IM routing、`signal/cancel`、可选 Goal link 与
    deployment cutover 仍是后续独立验证切片；v0.2 保持为 rollback runtime。

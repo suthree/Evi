@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = "5";
+export const RUNTIME_SCHEMA_VERSION = "6";
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -12,6 +12,10 @@ export class RuntimeSchemaIncompatibleError extends Error {
 }
 
 export function initializeRuntimeSchema(db: DatabaseSync): void {
+  const version = existingSchemaVersion(db);
+  if (version !== null && version !== RUNTIME_SCHEMA_VERSION) {
+    throw new RuntimeSchemaIncompatibleError(version);
+  }
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -20,13 +24,6 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       value TEXT NOT NULL
     );
   `);
-  const version = db.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as
-    | { value: string }
-    | undefined;
-  if (version && version.value !== SCHEMA_VERSION) {
-    throw new RuntimeSchemaIncompatibleError(version.value);
-  }
-
   db.exec("BEGIN IMMEDIATE");
   try {
     db.exec(`
@@ -39,7 +36,6 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         id TEXT PRIMARY KEY,
         status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
         goal_id TEXT,
-        request TEXT NOT NULL,
         answer TEXT,
         error TEXT,
         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -191,12 +187,30 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       CREATE INDEX IF NOT EXISTS model_dispatches_run_state_idx
         ON model_dispatches(run_id, state);
     `);
-    if (!version) {
-      db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
+    if (version === null) {
+      db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")
+        .run(RUNTIME_SCHEMA_VERSION);
     }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+function existingSchemaVersion(db: DatabaseSync): string | null {
+  const tables = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+  `).all() as Array<{ name: string }>;
+  if (tables.length === 0) return null;
+  if (!tables.some(({ name }) => name === "schema_meta")) {
+    throw new RuntimeSchemaIncompatibleError("missing-schema-meta");
+  }
+  const row = db.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as
+    | { value: string }
+    | undefined;
+  if (!row?.value) throw new RuntimeSchemaIncompatibleError("missing-schema-version");
+  return row.value;
 }
