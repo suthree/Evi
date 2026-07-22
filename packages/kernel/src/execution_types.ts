@@ -1,0 +1,43 @@
+export type RunExecutionKind = "initial" | "action_continuation" | "dispatch_recovery";
+export type RunExecutionState = "active" | "settled" | "interrupted";
+export type RunExecutionOutcome = "completed" | "paused" | "failed" | "interrupted";
+
+export interface RunExecutionLease {
+  id: string;
+  run_id: string;
+  turn_id: string;
+  ordinal: number;
+  kind: RunExecutionKind;
+  token: string;
+  lease_expires_at: string;
+}
+
+export type ModelDispatchState =
+  | "dispatching"
+  | "response_observed"
+  | "settled"
+  | "outcome_unknown";
+
+export interface ModelDispatchRecord {
+  id: string;
+  execution_id: string;
+  run_id: string;
+  turn_id: string;
+  ordinal: number;
+  provider: string;
+  model: string;
+  state: ModelDispatchState;
+  response_status: number | null;
+  stop_reason: string | null;
+  message_digest: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RunExecutionRecoveryEvidence {
+  execution_id: string;
+  ordinal: number;
+  kind: RunExecutionKind;
+  input_digest: string;
+  dispatches: ModelDispatchRecord[];
+}

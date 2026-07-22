@@ -26,7 +26,11 @@ export function createRuntimeInspectAction(store: SqliteRuntimeStore): ActionHan
         action_count: inspection.action_count,
         unresolved_action_count: inspection.unresolved_action_count,
         effect_receipt_count: inspection.effect_receipt_count,
-        continuation_count: inspection.continuation_count
+        continuation_count: inspection.continuation_count,
+        execution_count: inspection.execution_count,
+        interrupted_execution_count: inspection.interrupted_execution_count,
+        model_dispatch_count: inspection.model_dispatch_count,
+        unknown_model_dispatch_count: inspection.unknown_model_dispatch_count
       }
     };
   };

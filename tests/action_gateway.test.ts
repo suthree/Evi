@@ -27,7 +27,7 @@ test("Action Gateway reserves before dispatch and reuses one terminal receipt", 
     }
   });
   try {
-    const run = store.beginRun({ request: "Exercise one reserved action." });
+    const { run } = store.beginRun({ request: "Exercise one reserved action." }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     const invocation = {
       run_id: run.id,
@@ -70,7 +70,7 @@ test("Action Gateway rejects invocation identity drift without replay", async ()
     }
   });
   try {
-    const run = store.beginRun({ request: "Reject a changed action digest." });
+    const { run } = store.beginRun({ request: "Reject a changed action digest." }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     await gateway.invoke({
       run_id: run.id,
@@ -103,7 +103,7 @@ test("Action Gateway binds an invocation to the exact Tool Contract version", as
     return { outcome: "succeeded", summary: "Version one completed.", output: {} };
   };
   try {
-    const run = store.beginRun({ request: "Bind one invocation to one contract version." });
+    const { run } = store.beginRun({ request: "Bind one invocation to one contract version." }, 30_000);
     const firstGateway = new ActionGateway(store, [probeHandler({ execute }, "1")]);
     const invocation = {
       run_id: run.id,
@@ -136,7 +136,7 @@ test("Action Gateway reconciles an unknown outcome after SQLite reopen without r
 
   const firstStore = new SqliteRuntimeStore(dbPath);
   try {
-    const run = firstStore.beginRun({ request: "Recover an uncertain dispatch." });
+    const { run } = firstStore.beginRun({ request: "Recover an uncertain dispatch." }, 30_000);
     runId = run.id;
     turnId = run.turn_id;
     const gateway = new ActionGateway(firstStore, [probeHandler({
@@ -228,7 +228,7 @@ test("Action Gateway denies write effects before preparation, reservation, or di
     }
   };
   try {
-    const run = store.beginRun({ request: "Keep writes disabled." });
+    const { run } = store.beginRun({ request: "Keep writes disabled." }, 30_000);
     const gateway = new ActionGateway(store, [handler]);
     const denied = await gateway.invoke({
       run_id: run.id,
