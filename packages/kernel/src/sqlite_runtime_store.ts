@@ -27,6 +27,8 @@ import {
 } from "./execution_lock.js";
 import {
   assertExecutionLockNarrowing,
+  materializeTaskEnvelope,
+  normalizeDiscussionTaskInput,
   parseResultEnvelope,
   parseTaskEnvelope,
   type ResultEnvelope,
@@ -1245,6 +1247,7 @@ export class SqliteRuntimeStore {
     const ownerToken = randomBytes(32).toString("hex");
     return this.transaction(() => {
       const current = this.requireWorker(workerId);
+      this.assertWorkerReservationIdentity(current);
       const now = Date.now();
       const expired = current.lease_expires_at !== null
         && Date.parse(current.lease_expires_at) <= now;
@@ -1308,6 +1311,7 @@ export class SqliteRuntimeStore {
     const result = parseResultEnvelope(resultInput);
     return this.transaction(() => {
       const worker = this.requireActiveWorkerLease(lease);
+      this.assertWorkerReservationIdentity(worker);
       if (!worker.child_run_id || !worker.child_session_id) {
         throw new Error(`Worker Session has no bound child Run: ${worker.id}`);
       }
@@ -1923,6 +1927,7 @@ export class SqliteRuntimeStore {
     execution_lock_digest: string;
   }): void {
     const worker = this.requireWorker(binding.worker_id);
+    this.assertWorkerReservationIdentity(worker);
     if (worker.status !== "running" || worker.child_run_id !== null || worker.child_session_id !== null) {
       throw new Error(`Worker Session cannot bind a new child Run: ${worker.id}`);
     }
@@ -1976,6 +1981,7 @@ export class SqliteRuntimeStore {
     if (!worker.result_envelope || !worker.child_run_id || !worker.child_session_id) {
       throw new Error(`Worker Result delivery identity is incomplete: ${worker.id}`);
     }
+    this.assertWorkerReservationIdentity(worker);
     const task = worker.task_envelope;
     const result = worker.result_envelope;
     this.assertWorkerNeedsInputEvidence(worker, result);
@@ -2054,6 +2060,42 @@ export class SqliteRuntimeStore {
       || result.unresolved_questions[0] !== output.question
       || result.proposed_next_step !== output.proposed_next_step) {
       throw new Error(`Worker Result needs_input evidence drifted: ${worker.id}`);
+    }
+  }
+
+  private assertWorkerReservationIdentity(worker: WorkerInspection): void {
+    const reservation = this.requireActionReservation(worker.reservation_id);
+    const receipt = this.requireEffectReceipt(worker.reservation_id);
+    const parentLock = this.getExecutionLock(worker.parent_run_id);
+    const expectedTask = materializeTaskEnvelope({
+      ...normalizeDiscussionTaskInput(reservation.arguments),
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: worker.child_execution_lock.digest
+    });
+    if (reservation.run_id !== worker.parent_run_id
+      || reservation.turn_id !== worker.parent_turn_id
+      || reservation.action_name !== "worker_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "external_read"
+      || reservation.state !== "terminal"
+      || reservation.arguments.worker_id !== worker.id
+      || reservation.arguments.parent_execution_lock_digest !== parentLock.digest
+      || reservation.arguments.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || expectedTask.digest !== worker.task_envelope.digest
+      || receipt.run_id !== worker.parent_run_id
+      || receipt.turn_id !== worker.parent_turn_id
+      || receipt.action_name !== reservation.action_name
+      || receipt.contract_version !== reservation.contract_version
+      || receipt.action_digest !== reservation.action_digest
+      || receipt.effect_class !== reservation.effect_class
+      || receipt.outcome !== "succeeded"
+      || receipt.output.worker_id !== worker.id
+      || receipt.output.status !== "queued"
+      || receipt.output.task_envelope_digest !== worker.task_envelope.digest
+      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
+      throw new Error(`Worker reservation identity drifted: ${worker.id}`);
     }
   }
 

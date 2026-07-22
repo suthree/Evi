@@ -19,6 +19,7 @@ import {
   KernelRuntime,
   MAX_RUNTIME_TIMEOUT_MS,
   materializeResultEnvelope,
+  materializeTaskEnvelope,
   OrchestrationEngine,
   parseResultEnvelope,
   parseTaskEnvelope,
@@ -417,6 +418,116 @@ test("a worker lease atomically binds one isolated child Run and accepts one ter
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("worker claim and Result delivery reject Task drift from the dispatch reservation receipt", async () => {
+  for (const driftPhase of ["claim", "result"] as const) {
+    const fixture = await mkdtemp(join(tmpdir(), `evi-worker-task-drift-${driftPhase}-`));
+    const sqlite = join(fixture, "runtime.sqlite");
+    const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    try {
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+      const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+      const gateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      const parent = store.beginRun({
+        request: "Reject any Task that was not authorized by the exact dispatch receipt.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+      }, 30_000);
+      const dispatched = await gateway.invoke({
+        run_id: parent.run.id,
+        turn_id: parent.run.turn_id,
+        invocation_id: `task-drift-${driftPhase}`,
+        action_name: workerDispatch.contract.name,
+        arguments: validTaskInput()
+      });
+      assert.equal(dispatched.status, "completed");
+      if (dispatched.status !== "completed") continue;
+      const workerId = String(dispatched.receipt.output.worker_id);
+      const original = engine.inspect(workerId)!;
+      const claimed = driftPhase === "result" ? store.claimWorker(workerId, 30_000) : null;
+      let result: ReturnType<typeof materializeResultEnvelope> | null = null;
+      if (claimed) {
+        const child = store.beginRun({
+          request: "Execute only the receipt-bound Task.",
+          execution_lock: claimed.worker.child_execution_lock
+        }, 30_000, {
+          worker_id: workerId,
+          owner_token: claimed.lease.owner_token
+        });
+        store.completeRun(child.execution, "Canonical Task result.");
+        result = materializeResultEnvelope({
+          worker_id: workerId,
+          child_run_id: child.run.id,
+          status: "completed",
+          summary: "Canonical Task result.",
+          findings: {
+            budget_violation: {
+              output_tokens_exceeded: false,
+              timeout_exceeded: false,
+              deadline_exceeded: false
+            }
+          },
+          artifact_refs: [],
+          evidence_refs: [],
+          unresolved_questions: [],
+          proposed_next_step: null,
+          actual_execution_lock_digest: child.execution_lock.digest,
+          actual_execution: {
+            execution_id: child.execution.id,
+            execution_ordinal: child.execution.ordinal,
+            model_dispatch_ids: [],
+            provider: null,
+            model: null
+          },
+          consumed: { output_tokens: 0, duration_ms: 0 },
+          created_at: new Date().toISOString()
+        });
+      }
+
+      const driftedTask = materializeTaskEnvelope({
+        task_id: original.task_envelope.task_id,
+        parent_run_id: original.parent_run_id,
+        parent_turn_id: original.parent_turn_id,
+        objective: "Execute a different objective that the reservation never authorized.",
+        expected_result: original.task_envelope.expected_result,
+        context_refs: original.task_envelope.context_refs,
+        artifact_refs: original.task_envelope.artifact_refs,
+        constraints: original.task_envelope.constraints,
+        verification_requirements: original.task_envelope.verification_requirements,
+        child_execution_lock_digest: original.child_execution_lock.digest,
+        deadline_at: original.task_envelope.deadline_at,
+        budget: original.task_envelope.budget
+      });
+      const raw = new DatabaseSync(sqlite);
+      try {
+        raw.prepare(`
+          UPDATE worker_sessions
+          SET task_envelope_digest = ?, task_envelope_json = ?
+          WHERE id = ?
+        `).run(driftedTask.digest, JSON.stringify(driftedTask), workerId);
+      } finally {
+        raw.close();
+      }
+
+      if (driftPhase === "claim") {
+        assert.throws(() => store.claimWorker(workerId, 30_000), /Worker reservation identity drifted/);
+        assert.equal(store.inspectWorker(workerId)?.status, "queued");
+      } else {
+        assert.ok(claimed && result);
+        assert.throws(
+          () => store.completeWorker(claimed!.lease, result!),
+          /Worker reservation identity drifted/
+        );
+        assert.equal(store.inspectWorker(workerId)?.status, "running");
+      }
+    } finally {
+      store.close();
+      await rm(fixture, { recursive: true, force: true });
+    }
   }
 });
 
