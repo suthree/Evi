@@ -65,9 +65,9 @@ production readiness.
 - Reservation, state transitions, event evidence, and receipt creation are
   transactionally local to the SQLite store. Argument and observation bodies
   are size-bounded, but this is not an OS or filesystem sandbox.
-- Reconciliation can terminalize an action after restart, but this slice does
-  not resume the paused Pi/model loop. Run continuation and recovery is the
-  next separate runtime slice.
+- Reconciliation can terminalize an action after restart. ADR 0014 adds an
+  explicit same-Run continuation path while preserving the original transcript;
+  provider-dispatch crash recovery remains separate.
 - Write and external actions require a later accepted policy, containment,
   credential-reference, verification, and recovery design. Registering a
   handler alone cannot make those effect classes executable.

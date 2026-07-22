@@ -1,6 +1,6 @@
 # Evi 架构
 
-状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012、0013 后更新。
+状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0014 后更新。
 当前实现以源码、测试和 live evidence 为准；vNext 章节不是部署完成声明。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
@@ -19,7 +19,7 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
 - 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0001 记录当前 v0.2 owner model，
-  ADR 0012、0013 负责 vNext Kernel 与 Action Gateway 目标；
+  ADR 0012 至 0014 负责 vNext Kernel、Action Gateway 与 Run continuation 目标；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -81,11 +81,12 @@ Adaptation Engine ---- 评估并激活 learning 或 evolution candidate
 | 持久成长 | Adaptation Engine | Candidate、evaluation、activation、rollback 或 retirement |
 | 完成证据 | 专门化 outcome 与 receipt | Run、effect、evaluation、activation、deployment 相互独立 |
 
-前两个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
+前三个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
 state，以及一个只允许有界 `local_read` action 的 reservation-first Gateway 路径。Write 与
-external action 仍被拒绝，reconciliation 也尚不能续跑暂停的 Run；当前不接 learning、
-subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过各自 gate 前仍是当前
-rollback runtime。
+external action 仍被拒绝；paused Run 可以在 terminal Action reconciliation 后显式复用
+既有 Turn 与 session 继续，但 continuation 期间的 provider dispatch 崩溃尚不能恢复。
+当前不接 learning、subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过各自
+gate 前仍是当前 rollback runtime。
 
 ## 当前 v0.2 运行形态
 
