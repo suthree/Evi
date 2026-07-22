@@ -66,16 +66,23 @@ selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
 this Interface.
 
-New parent Runs register `runtime_inspect`, `worker_dispatch`, and
-`worker_inspect`. The composition explicitly permits one reservation-first
+New parent Runs register `runtime_inspect`, `worker_dispatch`, `worker_inspect`,
+and child-contained `worker_needs_input`. The composition explicitly permits one reservation-first
 `external_read` discussion Worker; all child Actions remain `none/local_read`.
-Task and Result Envelopes are immutable and digest-addressed. Child authority
+Task and Result Envelopes are immutable and digest-addressed. Tasks carry
+explicit context and artifact refs; Results bind the exact producing Run
+Execution, model dispatches, provider/model identity, and cumulative bounded
+usage. Child authority
 must preserve or narrow the parent Execution Lock. Worker lease ownership,
 atomic isolated child-Run binding, stale recovery, typed result readiness, and
 single delivery into a new parent Turn are canonical SQLite facts. The Worker
-Result is advisory and cannot complete the parent; the Supervisor retains
+Result enters Pi as typed runtime-owned context rather than user speech. It is
+advisory and cannot complete the parent; the Supervisor retains
 integration and final-outcome authority and can inspect exact Worker/child-Run
-evidence through `worker_inspect`.
+evidence through `worker_inspect`. Only the child-contained `none`
+`worker_needs_input` Action may produce an explicit semantic `needs_input`
+Result; technical Action/model uncertainty remains paused for exact recovery
+and is never relabeled.
 
 `vnext worker execute` is the separate foreground process Adapter for that one
 read-only Worker Session. It uses the same state/profile/config selectors, the

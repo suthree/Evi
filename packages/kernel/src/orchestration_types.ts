@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import type { JsonObject } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
 import type { ExecutionLock, ExecutionLockInput } from "./contracts.js";
 import {
   materializeExecutionLock,
@@ -23,6 +24,7 @@ export interface TaskEnvelope {
   objective: string;
   expected_result: string;
   context_refs: string[];
+  artifact_refs: string[];
   constraints: string[];
   verification_requirements: string[];
   execution_target: "local_process";
@@ -47,6 +49,13 @@ export interface ResultEnvelope {
   unresolved_questions: string[];
   proposed_next_step: string | null;
   actual_execution_lock_digest: string;
+  actual_execution: {
+    execution_id: string;
+    execution_ordinal: number;
+    model_dispatch_ids: string[];
+    provider: string | null;
+    model: string | null;
+  };
   consumed: {
     output_tokens: number;
     duration_ms: number;
@@ -91,6 +100,7 @@ export interface DiscussionTaskInput {
   objective: string;
   expected_result: string;
   context_refs?: string[];
+  artifact_refs?: string[];
   constraints?: string[];
   verification_requirements?: string[];
   deadline_at: string;
@@ -116,6 +126,7 @@ export function materializeTaskEnvelope(input: DiscussionTaskInput & {
     objective: task.objective,
     expected_result: task.expected_result,
     context_refs: task.context_refs ?? [],
+    artifact_refs: task.artifact_refs ?? [],
     constraints: task.constraints ?? [],
     verification_requirements: task.verification_requirements ?? [],
     execution_target: "local_process" as const,
@@ -137,6 +148,7 @@ export function normalizeDiscussionTaskInput(input: unknown): DiscussionTaskInpu
     objective: text(value.objective, "Task Envelope objective"),
     expected_result: text(value.expected_result, "Task Envelope expected result"),
     context_refs: stringArray(value.context_refs ?? [], "Task Envelope context refs", MAX_REFS),
+    artifact_refs: stringArray(value.artifact_refs ?? [], "Task Envelope artifact refs", MAX_REFS),
     constraints: stringArray(value.constraints ?? [], "Task Envelope constraints", MAX_ITEMS),
     verification_requirements: stringArray(
       value.verification_requirements ?? [],
@@ -165,6 +177,7 @@ export function parseTaskEnvelope(input: unknown): TaskEnvelope {
     "objective",
     "expected_result",
     "context_refs",
+    "artifact_refs",
     "constraints",
     "verification_requirements",
     "execution_target",
@@ -185,6 +198,7 @@ export function parseTaskEnvelope(input: unknown): TaskEnvelope {
     objective: value.objective as string,
     expected_result: value.expected_result as string,
     context_refs: value.context_refs as string[],
+    artifact_refs: value.artifact_refs as string[],
     constraints: value.constraints as string[],
     verification_requirements: value.verification_requirements as string[],
     child_execution_lock_digest: value.child_execution_lock_digest as string,
@@ -209,6 +223,7 @@ export function parseResultEnvelope(input: unknown): ResultEnvelope {
     "unresolved_questions",
     "proposed_next_step",
     "actual_execution_lock_digest",
+    "actual_execution",
     "consumed",
     "created_at",
     "digest"
@@ -231,6 +246,7 @@ export function parseResultEnvelope(input: unknown): ResultEnvelope {
     unresolved_questions: value.unresolved_questions as string[],
     proposed_next_step: value.proposed_next_step as string | null,
     actual_execution_lock_digest: value.actual_execution_lock_digest as string,
+    actual_execution: value.actual_execution as ResultEnvelope["actual_execution"],
     consumed: value.consumed as ResultEnvelope["consumed"],
     created_at: value.created_at as string
   });
@@ -244,6 +260,14 @@ export function materializeResultEnvelope(input: ResultEnvelopeInput): ResultEnv
   }
   const consumed = record(input.consumed, "Result Envelope consumed budget");
   assertExactKeys(consumed, ["output_tokens", "duration_ms"], "Result Envelope consumed budget");
+  const actualExecution = record(input.actual_execution, "Result Envelope actual execution");
+  assertExactKeys(actualExecution, [
+    "execution_id",
+    "execution_ordinal",
+    "model_dispatch_ids",
+    "provider",
+    "model"
+  ], "Result Envelope actual execution");
   const findings = jsonObject(input.findings, "Result Envelope findings");
   const proposedNextStep = input.proposed_next_step === null
     ? null
@@ -267,6 +291,20 @@ export function materializeResultEnvelope(input: ResultEnvelopeInput): ResultEnv
       input.actual_execution_lock_digest,
       "Result Envelope Execution Lock digest"
     ),
+    actual_execution: {
+      execution_id: identifier(actualExecution.execution_id, "Result Envelope execution id"),
+      execution_ordinal: positiveInteger(
+        actualExecution.execution_ordinal,
+        "Result Envelope execution ordinal"
+      ),
+      model_dispatch_ids: stringArray(
+        actualExecution.model_dispatch_ids,
+        "Result Envelope model dispatch ids",
+        MAX_ITEMS
+      ),
+      provider: nullableIdentifier(actualExecution.provider, "Result Envelope provider"),
+      model: nullableIdentifier(actualExecution.model, "Result Envelope model")
+    },
     consumed: {
       output_tokens: nonNegativeInteger(consumed.output_tokens, "Result Envelope output tokens"),
       duration_ms: nonNegativeInteger(consumed.duration_ms, "Result Envelope duration")
@@ -357,6 +395,10 @@ function identifier(input: unknown, label: string): string {
   return value;
 }
 
+function nullableIdentifier(input: unknown, label: string): string | null {
+  return input === null ? null : identifier(input, label);
+}
+
 function text(input: unknown, label: string): string {
   if (typeof input !== "string") throw new Error(`${label} is invalid.`);
   const value = input.trim();
@@ -406,13 +448,4 @@ function jsonObject(input: unknown, label: string): JsonObject {
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
-}
-
-function stableJson(input: unknown): string {
-  if (Array.isArray(input)) return `[${input.map(stableJson).join(",")}]`;
-  if (input && typeof input === "object") {
-    const recordInput = input as Record<string, unknown>;
-    return `{${Object.keys(recordInput).sort().map((key) => `${JSON.stringify(key)}:${stableJson(recordInput[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(input);
 }

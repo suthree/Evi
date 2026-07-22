@@ -78,7 +78,7 @@ Self Registry -------- 当前与已退役的持久资产版本
 | 关注点 | vNext owner | 边界 |
 | --- | --- | --- |
 | 普通工作 | Run 内的 Turn | 不要求 Goal |
-| 对话连续性 | SQLite 中由 Runtime Kernel 拥有的 Session identity | 一个 Session 可拥有多个 terminal Run，但最多一个 `running` 或 `paused` Run；`continue` 只恢复同一个 paused Run |
+| 对话连续性 | SQLite 中由 Runtime Kernel 拥有的 Session identity | 一个 Session 可拥有多个 terminal Run，但最多一个 `running`、`waiting` 或 `paused` Run；`continue` 恢复同一个 active Run，或请求 Orchestration Engine 把已就绪的 typed Worker Result 交付到它的下一个 Turn |
 | Agent Loop ownership 与 crash detection | SQLite 中带 lease 的 Run Execution | 每个 running Run 只有一个 active Execution；不持久化 raw lease token |
 | Model/tool loop、session tree、steering、compaction | 单一 Adapter 后的 Pi `AgentHarness` | Evi 不保留第二套执行循环 |
 | 不可变执行权限 | Runtime Kernel 选出的 Execution Lock | Pi 负责执行；Child Lock 只能保持或缩小 Parent 权限 |

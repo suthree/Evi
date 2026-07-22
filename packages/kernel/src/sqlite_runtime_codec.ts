@@ -13,6 +13,7 @@ import type {
   RunExecutionOutcome,
   RunExecutionState
 } from "./execution_types.js";
+import { validateRuntimeLeaseDuration } from "./runtime_limits.js";
 
 export interface RunRow {
   id: string;
@@ -238,9 +239,7 @@ export function sha256(input: string): string {
 }
 
 export function leaseExpiry(fromIso: string, leaseMs: number): string {
-  if (!Number.isInteger(leaseMs) || leaseMs < 100 || leaseMs > 300_000) {
-    throw new Error("Run execution lease duration is invalid.");
-  }
+  validateRuntimeLeaseDuration(leaseMs, "Run execution");
   return new Date(Date.parse(fromIso) + leaseMs).toISOString();
 }
 

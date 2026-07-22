@@ -49,3 +49,10 @@ export interface RunExecutionRecoveryEvidence {
   session_start_seq: number;
   dispatches: ModelDispatchRecord[];
 }
+
+export interface SettledRunExecutionEvidence {
+  execution_id: string;
+  ordinal: number;
+  outcome: "waiting" | "completed" | "paused" | "failed";
+  dispatches: ModelDispatchRecord[];
+}

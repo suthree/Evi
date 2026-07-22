@@ -2,9 +2,12 @@ import { isAbsolute, join, resolve } from "node:path";
 import {
   ActionGateway,
   createRuntimeInspectAction,
+  createWorkerNeedsInputAction,
   DiscussionWorkerRuntime,
+  OrchestrationEngine,
   SqliteRuntimeStore,
-  type WorkerInspection
+  type WorkerInspection,
+  WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
 import {
   assertContinuationSelectors,
@@ -81,7 +84,18 @@ export async function executeVNextWorker(
       model_id: worker.child_execution_lock.model.config_id
     });
     assertCredentialBinding(worker.child_execution_lock, model);
-    const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const supportsNeedsInput = worker.child_execution_lock.actions.some(
+      (action) => action.name === WORKER_NEEDS_INPUT_CONTRACT.name
+    );
+    const orchestration = new OrchestrationEngine(store, [
+      runtimeInspect.contract,
+      ...(supportsNeedsInput ? [WORKER_NEEDS_INPUT_CONTRACT] : [])
+    ]);
+    const gateway = new ActionGateway(store, [
+      runtimeInspect,
+      ...(supportsNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
+    ]);
     const loops = createLoopFactory(dependencies, store, model.api_key);
     const completed = await new DiscussionWorkerRuntime(store, gateway, loops).execute(worker.id);
     return envelope(completed.status, completed.id, completed);

@@ -1,4 +1,5 @@
 import type { ActionGateway } from "./action_gateway.js";
+import type { JsonObject } from "./action_types.js";
 import type { ActionEffectClass } from "./action_types.js";
 import type { RunExecutionLease } from "./execution_types.js";
 
@@ -146,5 +147,10 @@ export interface AgentLoopFactory {
     action_gateway: ActionGateway;
     execution: RunExecutionLease;
     execution_lock: ExecutionLock;
+    runtime_context?: JsonObject;
+    runtime_budget?: {
+      max_output_tokens: number;
+      deadline_at: string;
+    };
   }): AgentLoop;
 }

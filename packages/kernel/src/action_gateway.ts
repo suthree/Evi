@@ -11,6 +11,7 @@ import type {
   JsonObject,
   JsonValue
 } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const MAX_ARGUMENT_BYTES = 16 * 1024;
@@ -266,12 +267,6 @@ function assertJsonValue(input: unknown, path: string): asserts input is JsonVal
     return;
   }
   throw new Error(`${path} is not JSON-safe.`);
-}
-
-function stableJson(input: JsonValue): string {
-  if (input === null || typeof input !== "object") return JSON.stringify(input);
-  if (Array.isArray(input)) return `[${input.map((value) => stableJson(value)).join(",")}]`;
-  return `{${Object.keys(input).sort().map((key) => `${JSON.stringify(key)}:${stableJson(input[key]!)}`).join(",")}}`;
 }
 
 function boundedError(error: unknown, fallback: string): string {

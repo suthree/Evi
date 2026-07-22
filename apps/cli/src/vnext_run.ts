@@ -7,6 +7,7 @@ import {
   createLockedOpenAICompatiblePiLoopFactory,
   createRuntimeInspectAction,
   createWorkerInspectAction,
+  createWorkerNeedsInputAction,
   ExecutionLockMismatchError,
   executionLockActions,
   KernelRuntime,
@@ -21,7 +22,8 @@ import {
   type ExecutionLockInput,
   type RunExecutionResult,
   type RunInspection,
-  type SessionInspection
+  type SessionInspection,
+  WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
 import { loadConfig, type RuntimeConfig } from "../../../packages/runtime/src/config.js";
 import {
@@ -125,9 +127,9 @@ export async function executeVNextRun(
     try {
       const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
       try {
-        const gateway = createSupervisorGateway(store);
+        const { gateway, orchestration } = createSupervisorComposition(store, true);
         const loops = createLoopFactory(dependencies, store, model.api_key);
-        const runtime = new KernelRuntime(store, gateway, loops);
+        const runtime = new KernelRuntime(store, gateway, loops, { orchestration });
         const result = await runtime.submit({
           request: redact(required(input.task, "vnext run submit requires --task"), model.api_key),
           ...(input.session_id ? { session_id: input.session_id } : {}),
@@ -158,7 +160,7 @@ export async function executeVNextRun(
     const inspection = store.inspectRun(runId);
     if (!inspection) return notFoundEnvelope(input.action, { run_id: runId });
     const lock = store.getExecutionLock(runId);
-    const gateway = gatewayForExecutionLock(store, lock);
+    const { gateway, orchestration } = compositionForExecutionLock(store, lock);
     assertContinuationSelectors(lock, repoRoot, configDir);
     const model = await loadModel({
       config_dir: configDir,
@@ -168,7 +170,12 @@ export async function executeVNextRun(
     assertCredentialBinding(lock, model);
     try {
       const loops = createLoopFactory(dependencies, store, model.api_key);
-      const result = await new KernelRuntime(store, gateway, loops).continueRun(runId);
+      const result = await new KernelRuntime(
+        store,
+        gateway,
+        loops,
+        orchestration ? { orchestration } : {}
+      ).continueRun(runId);
       return outcomeEnvelope(input.action, result, lock.digest, model.api_key);
     } catch (error) {
       throw redactError(error, model.api_key);
@@ -456,24 +463,36 @@ function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
   return new ActionGateway(store, [createRuntimeInspectAction(store)]);
 }
 
-function createSupervisorGateway(store: SqliteRuntimeStore): ActionGateway {
+function createSupervisorComposition(
+  store: SqliteRuntimeStore,
+  includeNeedsInput: boolean
+): { gateway: ActionGateway; orchestration: OrchestrationEngine } {
   const runtimeInspect = createRuntimeInspectAction(store);
-  const orchestration = new OrchestrationEngine(store, [runtimeInspect.contract]);
-  return new ActionGateway(store, [
+  const workerNeedsInputContract = includeNeedsInput ? [WORKER_NEEDS_INPUT_CONTRACT] : [];
+  const orchestration = new OrchestrationEngine(store, [
+    runtimeInspect.contract,
+    ...workerNeedsInputContract
+  ]);
+  const handlers = [
     runtimeInspect,
     createDiscussionWorkerDispatchAction(orchestration),
-    createWorkerInspectAction(orchestration)
-  ], {
+    createWorkerInspectAction(orchestration),
+    ...(includeNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
+  ];
+  return { gateway: new ActionGateway(store, handlers, {
     allowed_effect_classes: ["none", "local_read", "external_read"]
-  });
+  }), orchestration };
 }
 
-function gatewayForExecutionLock(store: SqliteRuntimeStore, lock: ExecutionLock): ActionGateway {
+function compositionForExecutionLock(
+  store: SqliteRuntimeStore,
+  lock: ExecutionLock
+): { gateway: ActionGateway; orchestration?: OrchestrationEngine } {
   const actionNames = lock.actions.map((action) => action.name).sort();
   if (JSON.stringify(actionNames) === JSON.stringify(["runtime_inspect"])) {
-    return createReadOnlyGateway(store);
+    return { gateway: createReadOnlyGateway(store) };
   }
-  return createSupervisorGateway(store);
+  return createSupervisorComposition(store, actionNames.includes("worker_needs_input"));
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {

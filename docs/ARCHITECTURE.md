@@ -95,7 +95,7 @@ Self Registry -------- active and retired durable artifact versions
 | Concern | vNext owner | Boundary |
 | --- | --- | --- |
 | Ordinary work | Turn inside a Run | No Goal is required |
-| Conversation continuity | Runtime Kernel Session identity in SQLite | One Session may own many terminal Runs, but at most one `running` or `paused` Run; `continue` recovers that same paused Run only |
+| Conversation continuity | Runtime Kernel Session identity in SQLite | One Session may own many terminal Runs, but at most one `running`, `waiting`, or `paused` Run; `continue` recovers the same active Run or asks Orchestration Engine to deliver a ready typed Worker Result into its next Turn |
 | Agent Loop ownership and crash detection | Leased Run Execution in SQLite | One active Execution per running Run; raw lease token is not persisted |
 | Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
 | Immutable execution authority | Execution Lock selected by the Runtime Kernel | Pi executes it; child locks only preserve or narrow parent authority |

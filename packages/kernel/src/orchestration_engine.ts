@@ -8,20 +8,26 @@ import type {
   ActionToolContract,
   JsonObject
 } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
+import type { RunRecord } from "./contracts.js";
 import { executionLockActions } from "./execution_lock.js";
 import {
   deriveDiscussionWorkerLock,
   materializeTaskEnvelope,
   normalizeDiscussionTaskInput,
   type DiscussionTaskInput,
+  type ResultEnvelope,
+  type WorkerExecutionLease,
   type WorkerInspection
 } from "./orchestration_types.js";
+import type { RunExecutionLease } from "./execution_types.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const parameters = Type.Object({
   objective: Type.String({ minLength: 1, maxLength: 4_000 }),
   expected_result: Type.String({ minLength: 1, maxLength: 4_000 }),
   context_refs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
+  artifact_refs: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
   constraints: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })),
   verification_requirements: Type.Optional(
     Type.Array(Type.String({ minLength: 1, maxLength: 240 }), { maxItems: 32 })
@@ -36,6 +42,27 @@ const parameters = Type.Object({
 const workerInspectParameters = Type.Object({
   worker_id: Type.String({ minLength: 1, maxLength: 240 })
 }, { additionalProperties: false });
+
+const workerNeedsInputParameters = Type.Object({
+  question: Type.String({ minLength: 1, maxLength: 240 }),
+  proposed_next_step: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 }))
+}, { additionalProperties: false });
+
+export const WORKER_NEEDS_INPUT_CONTRACT: ActionToolContract = {
+  name: "worker_needs_input",
+  version: "1",
+  label: "Request parent input",
+  description: "Record one explicit typed input request from a discussion worker for its parent Supervisor.",
+  parameters: workerNeedsInputParameters,
+  effect_class: "none"
+};
+
+export interface SupervisorWorkerContinuation {
+  run: RunRecord;
+  execution: RunExecutionLease;
+  request: string;
+  runtime_context: JsonObject;
+}
 
 export class OrchestrationEngine {
   constructor(
@@ -131,6 +158,122 @@ export class OrchestrationEngine {
       result_delivered_to_turn_id: worker.result_delivered_to_turn_id
     };
   }
+
+  settleSupervisorTurn(execution: RunExecutionLease, checkpoint: string): RunRecord | null {
+    if (!this.store.hasOutstandingWorkers(execution.run_id)
+      || this.store.hasUnresolvedActions(execution.run_id)) {
+      return null;
+    }
+    return this.store.waitRun(execution, checkpoint);
+  }
+
+  resumeSupervisor(runId: string, leaseMs: number): SupervisorWorkerContinuation | null {
+    const results = this.store.getDeliverableWorkerResults(runId);
+    if (results.length === 0) return null;
+    const runtimeContext = materializeWorkerResultRuntimeContext(runId, results);
+    const request = "Continue this same Supervisor Run by integrating the typed Worker Result runtime context.";
+    const resumed = this.store.resumeWaitingRun({
+      run_id: runId,
+      worker_results: results.map((worker) => ({
+        worker_id: worker.id,
+        result_digest: worker.result_envelope!.digest
+      })),
+      request,
+      evidence_digest: sha256(stableJson(runtimeContext)),
+      lease_ms: leaseMs
+    });
+    return { ...resumed, request, runtime_context: runtimeContext };
+  }
+
+  claim(workerId: string, leaseMs: number): {
+    worker: WorkerInspection;
+    lease: WorkerExecutionLease;
+  } {
+    return this.store.claimWorker(workerId, leaseMs);
+  }
+
+  renew(lease: WorkerExecutionLease, leaseMs: number): WorkerExecutionLease {
+    return this.store.renewWorkerLease(lease, leaseMs);
+  }
+
+  complete(lease: WorkerExecutionLease, result: ResultEnvelope): WorkerInspection {
+    return this.store.completeWorker(lease, result);
+  }
+
+  prepareNeedsInput(childRunId: string, input: unknown): JsonObject {
+    const worker = this.store.inspectWorkerByChildRun(childRunId);
+    if (!worker || worker.status !== "running") {
+      throw new Error("worker_needs_input requires one active discussion Worker child Run.");
+    }
+    if (this.store.getTerminalActionEvidence(childRunId, WORKER_NEEDS_INPUT_CONTRACT.name).length > 0) {
+      throw new Error(`Discussion Worker already requested parent input: ${worker.id}`);
+    }
+    if (!input || typeof input !== "object" || Array.isArray(input)) {
+      throw new Error("worker_needs_input arguments must be an object.");
+    }
+    const value = input as Record<string, unknown>;
+    const keys = Object.keys(value);
+    if (keys.some((key) => key !== "question" && key !== "proposed_next_step")
+      || typeof value.question !== "string"
+      || !value.question.trim()
+      || value.question.trim().length > 240
+      || (value.proposed_next_step !== undefined
+        && (typeof value.proposed_next_step !== "string"
+          || !value.proposed_next_step.trim()
+          || value.proposed_next_step.trim().length > 4_000))) {
+      throw new Error("worker_needs_input arguments are invalid.");
+    }
+    return {
+      worker_id: worker.id,
+      question: value.question.trim(),
+      proposed_next_step: typeof value.proposed_next_step === "string"
+        ? value.proposed_next_step.trim()
+        : "The parent Supervisor must decide whether and how to provide the missing input."
+    };
+  }
+
+  inspectNeedsInput(worker: WorkerInspection): {
+    question: string;
+    proposed_next_step: string;
+  } | null {
+    if (!worker.child_run_id) return null;
+    const evidence = this.store.getTerminalActionEvidence(
+      worker.child_run_id,
+      WORKER_NEEDS_INPUT_CONTRACT.name
+    );
+    if (evidence.length === 0) return null;
+    if (evidence.length !== 1) {
+      throw new Error(`Discussion Worker has ambiguous input requests: ${worker.id}`);
+    }
+    const output = evidence[0]!.receipt.output;
+    if (output.worker_id !== worker.id
+      || typeof output.question !== "string"
+      || typeof output.proposed_next_step !== "string") {
+      throw new Error(`Discussion Worker input-request evidence is invalid: ${worker.id}`);
+    }
+    return {
+      question: output.question,
+      proposed_next_step: output.proposed_next_step
+    };
+  }
+}
+
+function materializeWorkerResultRuntimeContext(
+  runId: string,
+  workers: WorkerInspection[]
+): JsonObject {
+  return {
+    kind: "runtime_worker_result_delivery",
+    parent_run_id: runId,
+    advisory: true,
+    parent_completion_authority: "supervisor_only",
+    worker_results: workers.map((worker) => ({
+      worker_id: worker.id,
+      parent_turn_id: worker.parent_turn_id,
+      task_envelope_digest: worker.task_envelope.digest,
+      result_envelope: worker.result_envelope!
+    }))
+  } as unknown as JsonObject;
 }
 
 function deriveWorkerId(parentRunId: string, invocationId: string): string {
@@ -171,6 +314,7 @@ export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine
         "objective",
         "expected_result",
         "context_refs",
+        "artifact_refs",
         "constraints",
         "verification_requirements",
         "deadline_at",
@@ -228,4 +372,28 @@ export function createWorkerInspectAction(engine: OrchestrationEngine): ActionHa
     execute: observe,
     reconcile: observe
   };
+}
+
+export function createWorkerNeedsInputAction(engine: OrchestrationEngine): ActionHandler {
+  return {
+    contract: WORKER_NEEDS_INPUT_CONTRACT,
+    prepare(argumentsInput: unknown, invocation?: ActionInvocation): JsonObject {
+      if (!invocation) throw new Error("worker_needs_input requires Action invocation identity.");
+      return engine.prepareNeedsInput(invocation.run_id, argumentsInput);
+    },
+    execute: async (dispatch) => ({
+      outcome: "succeeded",
+      summary: "The discussion Worker recorded one explicit typed request for parent input.",
+      output: dispatch.arguments
+    }),
+    reconcile: async (dispatch) => ({
+      outcome: "succeeded",
+      summary: "The exact discussion Worker input request was recovered.",
+      output: dispatch.arguments
+    })
+  };
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }

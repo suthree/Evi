@@ -39,7 +39,8 @@ import type {
   RunExecutionKind,
   RunExecutionLease,
   RunExecutionOutcome,
-  RunExecutionRecoveryEvidence
+  RunExecutionRecoveryEvidence,
+  SettledRunExecutionEvidence
 } from "./execution_types.js";
 import {
   actionDigest,
@@ -66,6 +67,7 @@ import {
   type RuntimeEventRow,
   type StoredPiEntry
 } from "./sqlite_runtime_codec.js";
+import { validateRuntimeLeaseDuration } from "./runtime_limits.js";
 import {
   initializeRuntimeSchema,
   RUNTIME_SCHEMA_VERSION,
@@ -878,13 +880,15 @@ export class SqliteRuntimeStore {
   getDeliverableWorkerResults(runId: string): WorkerInspection[] {
     const run = this.requireRun(runId);
     if (run.status !== "waiting") throw new Error(`Run is not waiting: ${runId}`);
-    return (this.db.prepare(`
+    const workers = (this.db.prepare(`
       SELECT *
       FROM worker_sessions
       WHERE parent_run_id = ? AND result_envelope_json IS NOT NULL
         AND result_delivered_to_turn_id IS NULL
       ORDER BY created_at ASC, id ASC
     `).all(runId) as unknown as WorkerSessionRow[]).map(toWorkerInspection);
+    for (const worker of workers) this.assertWorkerDeliveryIdentity(run, worker);
+    return workers;
   }
 
   resumeWaitingRun(input: {
@@ -1053,11 +1057,17 @@ export class SqliteRuntimeStore {
     return this.getWorkerByReservation(reservationId);
   }
 
+  inspectWorkerByChildRun(childRunId: string): WorkerInspection | null {
+    const row = this.db.prepare("SELECT * FROM worker_sessions WHERE child_run_id = ?")
+      .get(childRunId) as WorkerSessionRow | undefined;
+    return row ? toWorkerInspection(row) : null;
+  }
+
   claimWorker(workerId: string, leaseMs: number): {
     worker: WorkerInspection;
     lease: WorkerExecutionLease;
   } {
-    validateWorkerLeaseDuration(leaseMs);
+    validateRuntimeLeaseDuration(leaseMs, "Worker Session");
     const ownerToken = randomBytes(32).toString("hex");
     return this.transaction(() => {
       const current = this.requireWorker(workerId);
@@ -1097,7 +1107,7 @@ export class SqliteRuntimeStore {
   }
 
   renewWorkerLease(lease: WorkerExecutionLease, leaseMs: number): WorkerExecutionLease {
-    validateWorkerLeaseDuration(leaseMs);
+    validateRuntimeLeaseDuration(leaseMs, "Worker Session");
     return this.transaction(() => {
       const worker = this.requireActiveWorkerLease(lease);
       const expiresAt = new Date(Math.max(
@@ -1228,6 +1238,48 @@ export class SqliteRuntimeStore {
       }
     }
     return outputTokens;
+  }
+
+  getLatestSettledRunExecution(runId: string): SettledRunExecutionEvidence {
+    const execution = this.db.prepare(`
+      SELECT *
+      FROM run_executions
+      WHERE run_id = ? AND state = 'settled'
+      ORDER BY ordinal DESC
+      LIMIT 1
+    `).get(runId) as RunExecutionRow | undefined;
+    if (!execution || execution.outcome === null || execution.outcome === "interrupted") {
+      throw new Error(`Run has no settled execution evidence: ${runId}`);
+    }
+    const dispatches = (this.db.prepare(`
+      SELECT *
+      FROM model_dispatches
+      WHERE execution_id = ?
+      ORDER BY ordinal ASC
+    `).all(execution.id) as unknown as ModelDispatchRow[]).map(toModelDispatch);
+    if (dispatches.some((dispatch) => dispatch.state !== "settled")) {
+      throw new Error(`Settled Run execution has non-terminal model dispatch evidence: ${execution.id}`);
+    }
+    return {
+      execution_id: execution.id,
+      ordinal: execution.ordinal,
+      outcome: execution.outcome,
+      dispatches
+    };
+  }
+
+  getTerminalActionEvidence(runId: string, actionName: string): ActionRecoveryEvidence[] {
+    return (this.db.prepare(`
+      SELECT reservations.id AS reservation_id
+      FROM action_reservations AS reservations
+      JOIN effect_receipts AS receipts ON receipts.reservation_id = reservations.id
+      WHERE reservations.run_id = ? AND reservations.action_name = ?
+        AND reservations.state = 'terminal' AND receipts.outcome = 'succeeded'
+      ORDER BY reservations.created_at ASC, reservations.id ASC
+    `).all(runId, actionName) as unknown as Array<{ reservation_id: string }>).map((row) => ({
+      reservation: this.requireActionReservation(row.reservation_id),
+      receipt: this.requireEffectReceipt(row.reservation_id)
+    }));
   }
 
   getRecoveryPiSessionEntries(execution: RunExecutionLease): unknown[] {
@@ -1693,6 +1745,55 @@ export class SqliteRuntimeStore {
     return receipt;
   }
 
+  private assertWorkerDeliveryIdentity(parent: RunRecord, worker: WorkerInspection): void {
+    if (!worker.result_envelope || !worker.child_run_id || !worker.child_session_id) {
+      throw new Error(`Worker Result delivery identity is incomplete: ${worker.id}`);
+    }
+    const task = worker.task_envelope;
+    const result = worker.result_envelope;
+    const reservation = this.requireActionReservation(worker.reservation_id);
+    const receipt = this.requireEffectReceipt(worker.reservation_id);
+    const child = this.requireRun(worker.child_run_id);
+    const childLock = this.getExecutionLock(child.id);
+    if (worker.parent_run_id !== parent.id
+      || worker.parent_turn_id !== parent.turn_id
+      || task.parent_run_id !== parent.id
+      || task.parent_turn_id !== parent.turn_id
+      || reservation.run_id !== parent.id
+      || reservation.turn_id !== parent.turn_id
+      || reservation.action_name !== "worker_dispatch"
+      || reservation.state !== "terminal"
+      || receipt.outcome !== "succeeded"
+      || receipt.output.worker_id !== worker.id
+      || child.session_id !== worker.child_session_id
+      || childLock.digest !== worker.child_execution_lock.digest
+      || task.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || result.worker_id !== worker.id
+      || result.child_run_id !== child.id
+      || result.actual_execution_lock_digest !== childLock.digest) {
+      throw new Error(`Worker Result delivery identity drifted: ${worker.id}`);
+    }
+    const execution = this.getLatestSettledRunExecution(child.id);
+    const dispatchIds = execution.dispatches.map((dispatch) => dispatch.id).sort();
+    const providers = [...new Set(execution.dispatches.map((dispatch) => dispatch.provider))];
+    const models = [...new Set(execution.dispatches.map((dispatch) => dispatch.model))];
+    const provider = providers.length === 0 ? null : providers[0]!;
+    const model = models.length === 0 ? null : models[0]!;
+    const expectedOutcome = result.status === "failed" ? "failed" : "completed";
+    if (execution.outcome !== expectedOutcome
+      || result.actual_execution.execution_id !== execution.execution_id
+      || result.actual_execution.execution_ordinal !== execution.ordinal
+      || !sameStrings(result.actual_execution.model_dispatch_ids, dispatchIds)
+      || providers.length > 1
+      || models.length > 1
+      || result.actual_execution.provider !== provider
+      || result.actual_execution.model !== model
+      || (provider !== null && provider !== childLock.model.provider)
+      || (model !== null && model !== childLock.model.model)) {
+      throw new Error(`Worker Result execution identity drifted: ${worker.id}`);
+    }
+  }
+
   private requireRun(runId: string): RunRecord {
     const run = this.getRun(runId);
     if (!run) throw new Error(`Run not found: ${runId}`);
@@ -1723,7 +1824,10 @@ function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
   const taskEnvelope = parseTaskEnvelope(JSON.parse(row.task_envelope_json));
   const childExecutionLock = parseExecutionLock(JSON.parse(row.child_execution_lock_json));
   if (taskEnvelope.digest !== row.task_envelope_digest
-    || childExecutionLock.digest !== row.child_execution_lock_digest) {
+    || childExecutionLock.digest !== row.child_execution_lock_digest
+    || taskEnvelope.parent_run_id !== row.parent_run_id
+    || taskEnvelope.parent_turn_id !== row.parent_turn_id
+    || taskEnvelope.child_execution_lock_digest !== childExecutionLock.digest) {
     throw new Error(`Worker Session stored identity is invalid: ${row.id}`);
   }
   const resultEnvelope = row.result_envelope_json === null
@@ -1731,6 +1835,11 @@ function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
     : parseResultEnvelope(JSON.parse(row.result_envelope_json));
   if ((resultEnvelope?.digest ?? null) !== row.result_envelope_digest) {
     throw new Error(`Worker Session Result Envelope identity is invalid: ${row.id}`);
+  }
+  if (resultEnvelope && (resultEnvelope.worker_id !== row.id
+    || resultEnvelope.child_run_id !== row.child_run_id
+    || resultEnvelope.actual_execution_lock_digest !== childExecutionLock.digest)) {
+    throw new Error(`Worker Session Result Envelope cross-record identity is invalid: ${row.id}`);
   }
   return {
     id: row.id,
@@ -1749,12 +1858,6 @@ function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
     created_at: row.created_at,
     updated_at: row.updated_at
   };
-}
-
-function validateWorkerLeaseDuration(value: number): void {
-  if (!Number.isInteger(value) || value < 100 || value > 300_000) {
-    throw new Error("Worker Session lease duration is invalid.");
-  }
 }
 
 function workerSessionId(input: string): string {

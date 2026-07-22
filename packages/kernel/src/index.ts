@@ -1,5 +1,6 @@
 export * from "./action_gateway.js";
 export * from "./action_types.js";
+export * from "./canonical_json.js";
 export * from "./contracts.js";
 export * from "./discussion_worker_runtime.js";
 export * from "./execution_types.js";
@@ -9,5 +10,6 @@ export * from "./orchestration_engine.js";
 export * from "./orchestration_types.js";
 export * from "./pi_agent_harness_adapter.js";
 export * from "./runtime_inspect_action.js";
+export * from "./runtime_limits.js";
 export * from "./sqlite_runtime_schema.js";
 export * from "./sqlite_runtime_store.js";

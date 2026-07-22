@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Type } from "typebox";
@@ -10,6 +11,7 @@ import {
   createDiscussionWorkerDispatchAction,
   createRuntimeInspectAction,
   createWorkerInspectAction,
+  createWorkerNeedsInputAction,
   DiscussionWorkerRuntime,
   KernelRuntime,
   materializeResultEnvelope,
@@ -18,7 +20,8 @@ import {
   parseTaskEnvelope,
   SqliteRuntimeStore,
   type ActionHandler,
-  type AgentLoopFactory
+  type AgentLoopFactory,
+  WORKER_NEEDS_INPUT_CONTRACT
 } from "../packages/kernel/src/index.js";
 import { testExecutionLock } from "./vnext_test_support.js";
 
@@ -270,6 +273,13 @@ test("Task and Result Envelopes reject digest drift and undeclared authority fie
       unresolved_questions: [],
       proposed_next_step: null,
       actual_execution_lock_digest: worker.child_execution_lock.digest,
+      actual_execution: {
+        execution_id: "execution_0123456789abcdef0123456789abcdef",
+        execution_ordinal: 1,
+        model_dispatch_ids: [],
+        provider: null,
+        model: null
+      },
       consumed: { output_tokens: 120, duration_ms: 250 },
       created_at: new Date().toISOString()
     });
@@ -344,6 +354,13 @@ test("a worker lease atomically binds one isolated child Run and accepts one ter
       unresolved_questions: [],
       proposed_next_step: null,
       actual_execution_lock_digest: child.execution_lock.digest,
+      actual_execution: {
+        execution_id: child.execution.id,
+        execution_ordinal: child.execution.ordinal,
+        model_dispatch_ids: [],
+        provider: null,
+        model: null
+      },
       consumed: { output_tokens: 12, duration_ms: 100 },
       created_at: new Date().toISOString()
     });
@@ -439,8 +456,9 @@ test("Discussion Worker Runtime executes one isolated child through the sole Age
         ]);
         return {
           execute: async (request) => {
-            assert.match(request, /runtime_discussion_task_envelope/);
-            assert.match(request, /Analyze bounded evidence/);
+            assert.equal(request, "Execute the bounded discussion task supplied as typed runtime context.");
+            assert.equal(input.runtime_context?.kind, "runtime_discussion_task_envelope");
+            assert.match(JSON.stringify(input.runtime_context), /Analyze bounded evidence/);
             return { answer: "The bounded architecture evidence supports one read-only conclusion." };
           }
         };
@@ -525,6 +543,195 @@ test("Discussion Worker Runtime reclaims an expired worker and delivers an exist
   }
 });
 
+test("technical child pause preserves unknown outcome and never becomes needs_input", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-discussion-worker-pause-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const unknownAction: ActionHandler = {
+      contract: {
+        name: "uncertain_worker_read",
+        version: "1",
+        label: "Uncertain worker read",
+        description: "Test-only read whose exact outcome remains unknown.",
+        parameters: Type.Object({}, { additionalProperties: false }),
+        effect_class: "local_read"
+      },
+      prepare: () => ({}),
+      execute: async () => { throw new Error("synthetic unknown read outcome"); }
+    };
+    const engine = new OrchestrationEngine(store, [unknownAction.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [unknownAction, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Preserve exact child recovery state.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "paused-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const childGateway = new ActionGateway(store, [unknownAction]);
+    await assert.rejects(
+      () => new DiscussionWorkerRuntime(store, childGateway, {
+        create(input) {
+          return {
+            execute: async () => {
+              const observed = await input.action_gateway.invoke({
+                run_id: input.run_id,
+                turn_id: input.turn_id,
+                invocation_id: "uncertain-child-read-call",
+                action_name: unknownAction.contract.name,
+                arguments: {}
+              });
+              assert.equal(observed.status, "outcome_unknown");
+              return { answer: "Do not convert this technical pause into semantic input." };
+            }
+          };
+        }
+      }).execute(workerId),
+      /paused for exact reconciliation evidence/
+    );
+    const worker = engine.inspect(workerId);
+    assert.equal(worker?.status, "running");
+    assert.equal(worker?.result_envelope, null);
+    assert.equal(store.inspectRun(worker!.child_run_id!)?.status, "paused");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("explicit worker_needs_input Action produces one typed advisory Result", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-discussion-worker-needs-input-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract, WORKER_NEEDS_INPUT_CONTRACT]);
+    const needsInput = createWorkerNeedsInputAction(engine);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, needsInput, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const parent = store.beginRun({
+      request: "Allow one explicit typed input request.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    }, 30_000);
+    const dispatched = await parentGateway.invoke({
+      run_id: parent.run.id,
+      turn_id: parent.run.turn_id,
+      invocation_id: "needs-input-worker-call",
+      action_name: workerDispatch.contract.name,
+      arguments: validTaskInput()
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const workerId = String(dispatched.receipt.output.worker_id);
+    const childGateway = new ActionGateway(store, [runtimeInspect, needsInput]);
+    const completed = await new DiscussionWorkerRuntime(store, childGateway, {
+      create(input) {
+        return {
+          execute: async () => {
+            const requested = await input.action_gateway.invoke({
+              run_id: input.run_id,
+              turn_id: input.turn_id,
+              invocation_id: "explicit-worker-input-call",
+              action_name: WORKER_NEEDS_INPUT_CONTRACT.name,
+              arguments: {
+                question: "Which accepted ADR should bound the comparison?",
+                proposed_next_step: "The parent should select one explicit ADR ref."
+              }
+            });
+            assert.equal(requested.status, "completed");
+            return { answer: "Await the parent decision recorded by the typed Action." };
+          }
+        };
+      }
+    }).execute(workerId);
+    assert.equal(completed.status, "needs_input");
+    assert.deepEqual(completed.result_envelope?.unresolved_questions, [
+      "Which accepted ADR should bound the comparison?"
+    ]);
+    assert.equal(
+      completed.result_envelope?.proposed_next_step,
+      "The parent should select one explicit ADR ref."
+    );
+    assert.equal(completed.result_envelope?.actual_execution.execution_id.startsWith("execution_"), true);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("worker total token and time budgets fail closed before Result delivery", async () => {
+  for (const budgetKind of ["tokens", "time"] as const) {
+    const fixture = await mkdtemp(join(tmpdir(), `evi-discussion-worker-budget-${budgetKind}-`));
+    const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+    try {
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+      const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+      const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      const parent = store.beginRun({
+        request: "Enforce a total worker budget.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+      }, 30_000);
+      const dispatched = await parentGateway.invoke({
+        run_id: parent.run.id,
+        turn_id: parent.run.turn_id,
+        invocation_id: `budget-worker-call-${budgetKind}`,
+        action_name: workerDispatch.contract.name,
+        arguments: {
+          ...validTaskInput(),
+          budget: budgetKind === "tokens"
+            ? { max_output_tokens: 1, timeout_ms: 30_000 }
+            : { max_output_tokens: 1_000, timeout_ms: 100 }
+        }
+      });
+      assert.equal(dispatched.status, "completed");
+      if (dispatched.status !== "completed") return;
+      const workerId = String(dispatched.receipt.output.worker_id);
+      await assert.rejects(
+        () => new DiscussionWorkerRuntime(store, new ActionGateway(store, [runtimeInspect]), {
+          create(input) {
+            return {
+              execute: async () => {
+                if (budgetKind === "tokens") {
+                  const session = store.getPiSession(input.session_id)!;
+                  store.appendPiSessionEntry(input.session_id, {
+                    id: "budget-output-entry",
+                    parentId: session.leaf_id,
+                    type: "message",
+                    timestamp: new Date().toISOString(),
+                    message: { role: "assistant", usage: { output: 2 } }
+                  });
+                } else {
+                  await delay(120);
+                }
+                return { answer: "This result exceeded the total Task budget." };
+              }
+            };
+          }
+        }).execute(workerId),
+        /exceeded its bounded budget/
+      );
+      assert.equal(engine.inspect(workerId)?.result_envelope, null);
+    } finally {
+      store.close();
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }
+});
+
 test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifies it, and alone completes the parent", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-supervisor-worker-closure-"));
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
@@ -557,8 +764,12 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
               workerId = String(dispatched.receipt.output.worker_id);
               return { answer: "Worker dispatched; parent acceptance remains pending." };
             }
-            assert.match(request, /runtime_worker_result_delivery/);
-            assert.match(request, /Worker output is advisory/);
+            assert.equal(
+              request,
+              "Continue this same Supervisor Run by integrating the typed Worker Result runtime context."
+            );
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            assert.equal(JSON.stringify(input.runtime_context).includes(request), false);
             const verified = await input.action_gateway.invoke({
               run_id: input.run_id,
               turn_id: input.turn_id,
@@ -571,7 +782,7 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
           }
         };
       }
-    });
+    }, { orchestration: engine });
 
     const first = await parentRuntime.submit({
       request: "Use one bounded discussion worker, then verify and integrate its evidence.",
@@ -616,11 +827,92 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
   }
 });
 
+test("Worker Result cross-record identity drift rejects delivery and leaves the parent waiting", async () => {
+  for (const driftKind of ["child_session", "actual_execution"] as const) {
+    const fixture = await mkdtemp(join(tmpdir(), `evi-worker-delivery-drift-${driftKind}-`));
+    const sqlite = join(fixture, "runtime.sqlite");
+    const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    try {
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+      const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+      const parentGateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      let workerId = "";
+      const parentRuntime = new KernelRuntime(store, parentGateway, {
+        create(input) {
+          return {
+            execute: async () => {
+              const dispatched = await input.action_gateway.invoke({
+                run_id: input.run_id,
+                turn_id: input.turn_id,
+                invocation_id: `delivery-drift-call-${driftKind}`,
+                action_name: workerDispatch.contract.name,
+                arguments: validTaskInput()
+              });
+              assert.equal(dispatched.status, "completed");
+              if (dispatched.status !== "completed") throw new Error("worker dispatch failed");
+              workerId = String(dispatched.receipt.output.worker_id);
+              return { answer: "Wait for exact Worker Result identity." };
+            }
+          };
+        }
+      }, { orchestration: engine });
+      const parent = await parentRuntime.submit({
+        request: "Do not integrate drifted child evidence.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+      });
+      assert.equal(parent.status, "waiting");
+      const completed = await new DiscussionWorkerRuntime(
+        store,
+        new ActionGateway(store, [runtimeInspect]),
+        { create: () => ({ execute: async () => ({ answer: "Canonical child evidence." }) }) }
+      ).execute(workerId);
+      assert.ok(completed.result_envelope);
+
+      const raw = new DatabaseSync(sqlite);
+      try {
+        if (driftKind === "child_session") {
+          raw.prepare("UPDATE worker_sessions SET child_session_id = ? WHERE id = ?")
+            .run(parent.session_id, workerId);
+        } else {
+          const drifted = materializeResultEnvelope({
+            ...completed.result_envelope!,
+            actual_execution: {
+              ...completed.result_envelope!.actual_execution,
+              execution_id: "execution_00000000000000000000000000000000"
+            }
+          });
+          raw.prepare(`
+            UPDATE worker_sessions
+            SET result_envelope_digest = ?, result_envelope_json = ?
+            WHERE id = ?
+          `).run(drifted.digest, JSON.stringify(drifted), workerId);
+        }
+      } finally {
+        raw.close();
+      }
+
+      await assert.rejects(
+        () => parentRuntime.continueRun(parent.run_id),
+        /Worker Result (delivery|execution) identity drifted/
+      );
+      assert.equal(parentRuntime.inspect(parent.run_id)?.status, "waiting");
+      assert.equal(store.inspectWorker(workerId)?.result_delivered_to_turn_id, null);
+    } finally {
+      store.close();
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }
+});
+
 function validTaskInput() {
   return {
     objective: "Analyze bounded evidence.",
     expected_result: "Return findings.",
     context_refs: ["docs/ARCHITECTURE.md"],
+    artifact_refs: ["artifact:architecture-snapshot"],
     constraints: ["read-only"],
     verification_requirements: ["cite explicit refs"],
     deadline_at: new Date(Date.now() + 60_000).toISOString(),

@@ -26,7 +26,11 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
   const configDir = join(fixture, "config");
   const secret = "synthetic-worker-process-key";
   let responseOrdinal = 0;
-  const server = createServer((_request, response) => {
+  const providerRequests: Array<Record<string, unknown>> = [];
+  const server = createServer(async (request, response) => {
+    let requestBody = "";
+    for await (const chunk of request) requestBody += chunk.toString();
+    providerRequests.push(JSON.parse(requestBody) as Record<string, unknown>);
     responseOrdinal += 1;
     const answer = responseOrdinal === 1
       ? "The separate worker process produced bounded advisory evidence."
@@ -95,6 +99,7 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
                   objective: "Inspect bounded vNext architecture evidence.",
                   expected_result: "Return one concise advisory finding.",
                   context_refs: ["docs/ARCHITECTURE.md"],
+                  artifact_refs: ["artifact:vnext-architecture-snapshot"],
                   constraints: ["read-only"],
                   verification_requirements: ["cite the explicit context ref"],
                   deadline_at: new Date(Date.now() + 60_000).toISOString(),
@@ -135,6 +140,15 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
       assert.equal(store.inspectRun(submitted.vnext.run_id!)?.deliverable_worker_count, 1);
       assert.equal(store.inspectWorker(workerId)?.result_delivered_to_turn_id, null);
       assert.equal(store.inspectWorker(workerId)?.result_envelope?.consumed.output_tokens, 7);
+      assert.equal(store.inspectWorker(workerId)?.result_envelope?.actual_execution.provider, model.provider);
+      assert.equal(store.inspectWorker(workerId)?.result_envelope?.actual_execution.model, model.model);
+      assert.equal(
+        store.inspectWorker(workerId)?.result_envelope?.actual_execution.model_dispatch_ids.length,
+        1
+      );
+      assert.deepEqual(store.inspectWorker(workerId)?.task_envelope.artifact_refs, [
+        "artifact:vnext-architecture-snapshot"
+      ]);
       assert.equal(JSON.stringify(store.getExecutionLock(submitted.vnext.run_id!)).includes(secret), false);
       assert.equal(JSON.stringify(store.getPiSessionEntries(
         store.inspectWorker(workerId)!.child_session_id!
@@ -157,6 +171,18 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
       /parent Supervisor integrated/
     );
     assert.equal(responseOrdinal, 2);
+    assert.equal(providerRequests.length, 2);
+    assert.match(runtimeContextText(providerRequests[0]!), /runtime_discussion_task_envelope/);
+    assert.match(runtimeContextText(providerRequests[0]!), /artifact:vnext-architecture-snapshot/);
+    assert.doesNotMatch(userMessageText(providerRequests[0]!), /runtime_discussion_task_envelope/);
+    assert.doesNotMatch(userMessageText(providerRequests[0]!), /Inspect bounded vNext architecture evidence/);
+    assert.match(runtimeContextText(providerRequests[1]!), /runtime_worker_result_delivery/);
+    assert.match(runtimeContextText(providerRequests[1]!), /separate worker process produced bounded advisory evidence/);
+    assert.doesNotMatch(userMessageText(providerRequests[1]!), /runtime_worker_result_delivery/);
+    assert.doesNotMatch(
+      userMessageText(providerRequests[1]!),
+      /separate worker process produced bounded advisory evidence/
+    );
   } finally {
     await new Promise<void>((resolveClose, reject) => server.close((error) => {
       if (error) reject(error);
@@ -176,6 +202,19 @@ async function runCli(args: string[]): Promise<VNextWorkerEnvelope | VNextRunEnv
     maxBuffer: 4 * 1024 * 1024
   });
   return JSON.parse(stdout) as VNextWorkerEnvelope | VNextRunEnvelope;
+}
+
+function runtimeContextText(request: Record<string, unknown>): string {
+  const input = Array.isArray(request.input) ? request.input : [];
+  return JSON.stringify(input.filter((item) => item && typeof item === "object"
+    && ((item as Record<string, unknown>).role === "system"
+      || (item as Record<string, unknown>).role === "developer")));
+}
+
+function userMessageText(request: Record<string, unknown>): string {
+  const input = Array.isArray(request.input) ? request.input : [];
+  return JSON.stringify(input.filter((item) => item && typeof item === "object"
+    && (item as Record<string, unknown>).role === "user"));
 }
 
 async function writeConfig(input: {

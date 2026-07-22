@@ -94,6 +94,9 @@ continuation after terminal Action reconciliation. [ADR 0015](docs/adr/0015-run-
 defines Run Execution ownership and model-dispatch crash recovery.
 [ADR 0016](docs/adr/0016-pi-tool-protocol-recovery.md) closes persisted Pi
 tool-call protocol recovery and marks the Kernel-foundation exit gate.
+[ADR 0017](docs/adr/0017-evi-owned-orchestration-and-adaptation.md) owns the
+final Evi/Pi division, parent-child orchestration, Delivery Lineage, and
+specialized completion model.
 v0.2 remains the rollback runtime until a separately verified cutover.
 
 | Need | Source |

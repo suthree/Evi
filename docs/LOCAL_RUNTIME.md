@@ -69,21 +69,27 @@ recovery roles.
 
 Every Run response is a `vnext_goal_free_cli` envelope with Run, Session, and
 Execution Lock identities or a structured diagnostic. A new parent Run has
-`runtime_inspect`, `worker_dispatch`, and `worker_inspect`. `worker_dispatch` is
-the sole explicit `external_read` exception: it reserves and queues at most one
+`runtime_inspect`, `worker_dispatch`, `worker_inspect`, and the child-contained
+`worker_needs_input`. `worker_dispatch` is the sole explicit `external_read`
+exception: it reserves and queues at most one
 read-only discussion Worker with a narrowed immutable child Execution Lock.
 The Worker does not run inside the parent model request. Execute it in a
 separate process with `vnext worker execute`; it claims a durable lease, creates
 an isolated child Session/Run through the same Runtime Kernel and sole Pi Agent
 Loop, and stores a typed Result Envelope. The child may use only
-`none/local_read` Actions.
+`none/local_read` Actions. `worker_needs_input` is a `none` Action that fails
+outside an active child Run and is the only semantic path to a typed
+`needs_input` Result; a technical recovery pause remains paused.
 
 The parent settles as `waiting` while the Worker is queued or running. A Worker
 Result never completes the parent. A later `vnext run continue` delivers the
-immutable result into a new parent Turn; `worker_inspect` exposes canonical
-Worker and child-Run identity for independent Supervisor verification. Exact
+immutable result into a new parent Turn as runtime-owned context, never as a
+user message; `worker_inspect` exposes canonical Worker and child-Run identity
+for independent Supervisor verification. Task context/artifact refs, Result
+execution/model identity, cumulative output-token and wall-time budgets, exact
 lease identity, atomic child binding, stale-owner reclaim, terminal-result
-recovery without model replay, and single delivery are enforced in SQLite.
+recovery without model replay, and single delivery are enforced from SQLite
+evidence.
 
 There is still no worker parallelism, execution writer, reviewer role,
 `signal/cancel`, optional Goal, learning, local/external write Action, resident

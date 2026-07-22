@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import type { ActionEffectClass, ActionToolContract } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
 import type {
   ExecutionLock,
   ExecutionLockAction,
@@ -210,12 +211,4 @@ function array<T>(input: unknown, label: string): T[] {
 
 function isRecord(input: unknown): input is Record<string, unknown> {
   return Boolean(input) && typeof input === "object" && !Array.isArray(input);
-}
-
-function stableJson(input: unknown): string {
-  if (Array.isArray(input)) return `[${input.map(stableJson).join(",")}]`;
-  if (isRecord(input)) {
-    return `{${Object.keys(input).sort().map((key) => `${JSON.stringify(key)}:${stableJson(input[key])}`).join(",")}}`;
-  }
-  return JSON.stringify(input);
 }
