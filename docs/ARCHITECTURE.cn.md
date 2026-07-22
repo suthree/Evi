@@ -1,6 +1,6 @@
 # Evi 架构
 
-状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0016 后更新。
+状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0017 后更新。
 当前实现以源码、测试和 live evidence 为准；vNext 章节不是部署完成声明。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
@@ -20,7 +20,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
 - 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0001 记录当前 v0.2 owner model，
   ADR 0012 至 0016 负责 vNext Kernel、Action Gateway、Run continuation、execution recovery
-  与 tool protocol closure 目标；
+  与 tool protocol closure 目标；ADR 0017 负责最终 Evi/Pi 分工、Parent-Child 编排、
+  Delivery Lineage 和专门化完成语义；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -55,7 +56,7 @@ ADR 0012 在经过验证的切换后取代 v0.2 owner model。目标如下：
 CLI / Web / IM / API
           |
           v
-   Evi Runtime Kernel ---- inspect / continue
+   Evi Runtime Kernel ---- submit / continue / inspect / signal
           |
           +---- SQLite canonical state / Run Execution lease
           |
@@ -65,11 +66,13 @@ CLI / Web / IM / API
           v
     Action Gateway
           |
-          +---- typed tool / delegated surface
-          +---- reservation / evidence / reconciliation
+          +---- typed tool / reservation / evidence / reconciliation
+          +---- Orchestration Engine ---- typed Worker Session
+          +---- 已通过评估的 adaptation activation
 
 可选 Goal -------- 把 objective 与 budget 关联到 Run
-Adaptation Engine ---- 评估并激活 learning 或 evolution candidate
+Adaptation Engine ---- Candidate / Evaluation / Activation / Observation
+Self Registry -------- 当前与已退役的持久资产版本
 ```
 
 | 关注点 | vNext owner | 边界 |
@@ -77,12 +80,16 @@ Adaptation Engine ---- 评估并激活 learning 或 evolution candidate
 | 普通工作 | Run 内的 Turn | 不要求 Goal |
 | Agent Loop ownership 与 crash detection | SQLite 中带 lease 的 Run Execution | 每个 running Run 只有一个 active Execution；不持久化 raw lease token |
 | Model/tool loop、session tree、steering、compaction | 单一 Adapter 后的 Pi `AgentHarness` | Evi 不保留第二套执行循环 |
+| 不可变执行权限 | Runtime Kernel 选出的 Execution Lock | Pi 负责执行；Child Lock 只能保持或缩小 Parent 权限 |
 | Persisted tool-call protocol closure | Pi Adapter 与 Action Gateway evidence | 精确 invocation identity 决定 dispatch、reconciliation、receipt reuse 或 fail-closed pause |
 | 结构化状态 | SQLite runtime store | JSONL 和目录扫描只能是 projection、fixture 或 archive |
 | Tool 与持久 effect | Action Gateway | Typed policy、containment、reservation、evidence、reconciliation |
 | 长期意图 | 可选 Goal extension | 只拥有 objective、acceptance、budget、continuation 和 Run link |
-| 持久成长 | Adaptation Engine | Candidate、evaluation、activation、rollback 或 retirement |
-| 完成证据 | 专门化 outcome 与 receipt | Run、effect、evaluation、activation、deployment 相互独立 |
+| Parent-Child 工作 | Orchestration Engine | Task graph、Worker Session、dependency、lease、budget、typed result 和 cancel；不拥有 Agent Loop 或规划 |
+| Source mutation 隔离 | Delivery Lineage | 每个 source-mutating work item 一条 branch/worktree lineage，且最多一个 writer；vNext 不归 Goal 所有 |
+| 持久成长 | Adaptation Engine 与 Self Registry | Candidate、evaluation、activation、observation、rollback 或 retirement；activation effect 仍经过 Action Gateway |
+| Capability 选择 | 可重建 capability view | 每个 capability 只有一个默认 active provider；其他路径明确标成 fallback、experimental 或 retired |
+| 完成证据 | 专门化 outcome 与 receipt | Run、effect、worker dispatch、evaluation、activation、deployment 相互独立 |
 
 前五个源码切片故意小于这张表：它们证明不带 Goal 的 Turn、Pi loop Adapter、SQLite
 state，以及一个只允许有界 `local_read` action 的 reservation-first Gateway 路径。Write 与
@@ -94,6 +101,63 @@ assistant answer 不再次调用 provider。这不代表 provider 或 effect exa
 基建现已闭合，下一阶段是单独接受的 read-only ingress canary，而不是继续泛化 recovery
 layer。当前不接 learning、subagent，不切 ingress，不迁移、不部署。v0.2 在后续切片通过
 各自 gate 前仍是当前 rollback runtime。
+
+### 最终深模块
+
+vNext 目标只保留四个 Evi-owned 深模块。Storage codec、Context selection、model role
+policy 和具体 Adapter 默认是内部 seam；只有出现第二种真实实现时，才提升为外部 seam。
+
+| 模块 | 小型外部 Interface | 内部隐藏的复杂度 | 删除测试 |
+| --- | --- | --- | --- |
+| Runtime Kernel | `submit`、`continue`、`inspect`、`signal/cancel` | Run/Turn、execution lease、Context compilation、model binding、可选 Goal link、recovery、Run Outcome | 删除后，生命周期和恢复会回流所有入口和 executor |
+| Action Gateway | `contracts`、`invoke`、`reconcile` | Authority、effect 分类、reservation、containment、dispatch、evidence、reconciliation、Effect Receipt | 删除后，每个 Tool 和 Worker Adapter 都要重复实现 effect safety |
+| Orchestration Engine | `dispatch`、`signal`、`inspect`、`cancel` | Task graph、worker lease、分层 budget、dependency、`needs_input`、stale recovery、Result delivery | 删除后，worker lifecycle 会散入 Runtime Kernel、Pi 和入口 Adapter |
+| Adaptation Engine | `propose`、`evaluate`、`activate`、`retire/rollback` | Episode selection、Self Registry version、baseline、gate、observation、regression、retirement | 删除后，Memory、SOP、Skill、Prompt、Tool 和 Code 会各自发明 promotion path |
+
+Pi 不是第五个 Evi 领域模块。它是 Runtime Kernel 内部 Agent Loop Adapter 后面的固定实现。
+Evi 为一次 Run Execution 构造 Pi，并拥有 SQLite session Adapter、Execution Lock、Action
+Contract 和最终 Run Outcome。若 Pi Adapter 达到 ADR 0012 的 fork-shaped 退出条件，Evi
+替换 loop 实现，不迁移领域所有权。
+
+Context Compiler 也属于 Runtime Kernel 内部实现。它从 Stable Self、Project Overlay、
+可选 Goal、Session Checkpoint、选中 recall、active artifact version、Task/Result Envelope
+和 Action Contract 中选择一份有边界、不可变的 Turn Snapshot。Pi 拥有 Session 的
+Context mechanism；Evi 拥有 Context meaning 与 selection。
+
+### Supervisor 与 Worker 执行
+
+Supervisor Run 是持久 Parent State，不是持续保持打开的模型请求。Planner Turn 可以产生
+typed task graph 后立即返回；Orchestration Engine 从 canonical event 推进 Worker，并在
+Result、failure、cancel 或 `needs_input` 需要集成判断时唤醒新的 Supervisor Turn。
+
+Worker 接收有版本的 Task Envelope 与收窄后的 Execution Lock，返回 Result Envelope；
+Worker 自报测试或完成永远只是 advisory。只有 Supervisor Run 能集成结果、要求独立验证并
+接受 Parent Outcome。Planning、integration、review、deep discussion 可以优先更强推理模型，
+execution 可以优先更快模型；这些是有记录的 role-policy default，不是领域 literal，fallback
+必须记录原因与实际 model binding。
+
+Worker dispatch 本身是 Action Gateway effect。Worker 启动前，reservation 绑定 Parent/Child
+identity、Task Envelope digest、Execution Lock digest、model/executor selection、budget 与
+可选 Delivery Lineage；Owner 丢失时先 reconcile，不能盲目 replay。
+
+### Delivery Lineage 与并发
+
+v0.2 把一个 worktree 绑定给一个 source-mutating Goal，这只保留为当前实现事实。vNext 中，
+一个 source-mutating work item 拥有一条从明确 baseline 到 branch/worktree、verification、
+integration 和 retirement 的 Delivery Lineage。一个 Goal 可以链接多条独立 lineage；普通或
+非源码 Goal 不拥有 lineage。
+
+- read-only/advisory Worker 可以在 budget 内并发；
+- 独立 effect domain 可以在不同 resource lease 下并发；
+- 一条 Delivery Lineage 最多一个 active writer；
+- 并行源码工作使用互不冲突的 lineage，再由独占 Integration Run 汇合；
+- 不通过创建 child Goal 来获得 worktree。
+
+### 专门化完成证据
+
+不存在 universal receipt。Run 产生 Run Outcome；Effect、Worker Dispatch、Evaluation、
+Activation、Deployment 只有真实发生时才产生对应 Receipt。Goal terminal outcome 引用所需
+证据，不复制或重新解释它们，也不成为第二套 workflow engine。
 
 ## 当前 v0.2 运行形态
 
@@ -199,7 +263,7 @@ Capability Profile，不注入默认 Context，也不新增 authority。读取�
 capability、Skill 或 completion authority；private path、跨 root 访问、external effect 与 write
 仍是硬边界。
 
-仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
+当前 v0.2 的仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
 linked execution worktree；后续 session 与工具复用它。Goal 可以通过 `workspace.prepare`
 派生该 worktree，或绑定一个已存在的 linked worktree，但绝不为每个 session 新建一个。
 受保护 `develop` 上干净的根 checkout 只承担 control 与 PR integration。repo-scoped 工具和
@@ -228,7 +292,7 @@ runtime 与 channel liveness owner 现场派生一份有类型的快照。历史
 校验的精确 commit 记录，以及有界的本地 Git 父提交与祖先关系。它不新建 evidence
 ledger，不通过任务路由选择自己，也不能部署、重启、抓取远端声明或验收 Goal。
 
-稳定的所有权拆分是：
+当前 v0.2 的所有权拆分是：
 
 | 决策关注点 | Owner |
 | --- | --- |
@@ -290,7 +354,28 @@ helper 和对应的实现形状测试。`context.ts` 现为 3,022 行，
 terminal Goal outcome 得到有界 Projection，而没有新增 state owner。剩余体量仍是
 架构压力；这是替换 checkpoint，不代表 Context/Harness 已完成拆分。
 
-## 渐进替换顺序
+## vNext 交付顺序
+
+`origin/develop@62cab799` 已按 ADR 0012 至 0016 完成前五个 Kernel foundation source
+slice，但尚未部署。已接受的后续顺序是：
+
+1. **Read-only ingress canary。** 显式 opt-in、隔离 SQLite，只允许 `none/local_read`；
+   不镜像流量、不迁移、不开放 write/external Action、Worker、learning 或部署切换。
+2. **基础 ingress 与 continuity。** 一次只把一个入口切到 Goal-free Run 与 durable
+   session binding，再增加最小可选 Goal extension；v0.2 保持为已验证 rollback runtime。
+3. **Parent-Child orchestration。** 依次增加一个异步 read-only discussion Worker、一个
+   execution Worker、独立 review，再开放有界并发、分层 budget 与 Delivery Lineage。
+4. **受监督自学习。** 把 verified Episode 转成 inactive Memory/SOP/Skill Candidate，比较
+   baseline 与 candidate，按风险 activation，观察复用，并 retire 或 rollback regression。
+5. **Discovery 与 assimilation。** 外部 trend 只作 untrusted signal；必须关联真实需求、
+   检查 source、提取测试、进行有界 probe、evaluation 与 activation。
+6. **Self-evolution。** Prompt、Tool、Policy、Dependency、Code、Runtime 与 Deployment
+   candidate 必须有隔离交付、回归案例、canary、receipt、observation 与可执行 rollback。
+
+除非 Decision Owner、state owner、effect domain 与 Delivery Lineage 可证明相互独立，否则
+同一时间只激活一条 feature-growth slice；通过一阶段不自动启动下一阶段。
+
+## 当前 v0.2 替换记录
 
 每个阶段必须有一个有边界的活跃 Goal、具名的 Decision Owner、明确的接受 evidence，以及
 verification 或 recovery 标准。只有 effect boundary 和 owner 不冲突时，才可以并存多个 Goal。
@@ -316,10 +401,11 @@ Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal
 任何阶段都不能把功能扩张藏在重构中。净删除是有用证据但不是硬指标；验收看 Interface
 知识是否减少、重复所有权是否消失。
 
-## 功能激活 Gate
+## 当前 v0.2 功能激活记录
 
 2026-07-18 的稳定化暂停已在 operator 明确恢复 Issue #56 后，为唯一有界 child #93
-满足。后续每个 feature child 都必须重新满足同一 Gate：
+满足。v0.2 lineage 的后续每个 feature child 都必须重新满足同一 Gate；vNext source slice
+遵循上面的 owner 与交付顺序，不为普通工作强制创建 Goal：
 
 - stabilization Goal 已有经验证的 `OutcomeReceipt`，且 root/worktree、可选 GitHub
   delivery evidence 和 live runtime 状态已核对一致；

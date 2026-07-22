@@ -1,7 +1,7 @@
 # Evi Architecture
 
 Status: current v0.2 module ownership plus the accepted vNext replacement
-target, updated on 2026-07-22 after ADRs 0012 through 0016. Source, tests, and live evidence
+target, updated on 2026-07-22 after ADRs 0012 through 0017. Source, tests, and live evidence
 decide current implementation; the vNext section is not a deployment claim.
 
 The Simplified Chinese companion is
@@ -27,7 +27,9 @@ may replace shallow paths. It does not own:
 - durable architecture and evolution decisions: stable docs and accepted ADRs;
   ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0016 own the
   vNext kernel, Action Gateway, Run continuation, execution recovery, and
-  tool-protocol closure target;
+  tool-protocol closure target; ADR 0017 owns the final Evi/Pi division,
+  parent-child orchestration, Delivery Lineage, and specialized completion
+  model;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -71,7 +73,7 @@ ADR 0012 replaces the v0.2 owner model after a verified cutover. The target is:
 CLI / Web / IM / API
           |
           v
-   Evi Runtime Kernel ---- inspect / continue
+   Evi Runtime Kernel ---- submit / continue / inspect / signal
           |
           +---- SQLite canonical state / Run Execution lease
           |
@@ -81,11 +83,13 @@ CLI / Web / IM / API
           v
     Action Gateway
           |
-          +---- typed tools / delegated surfaces
-          +---- reservation / evidence / reconciliation
+          +---- typed tools / reservation / evidence / reconciliation
+          +---- Orchestration Engine ---- typed Worker Sessions
+          +---- evaluated adaptation activation
 
 optional Goal -------- links objectives and budgets to Runs
-Adaptation Engine ---- evaluates and activates learning or evolution candidates
+Adaptation Engine ---- Candidate / Evaluation / Activation / Observation
+Self Registry -------- active and retired durable artifact versions
 ```
 
 | Concern | vNext owner | Boundary |
@@ -93,12 +97,16 @@ Adaptation Engine ---- evaluates and activates learning or evolution candidates
 | Ordinary work | Turn inside a Run | No Goal is required |
 | Agent Loop ownership and crash detection | Leased Run Execution in SQLite | One active Execution per running Run; raw lease token is not persisted |
 | Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
+| Immutable execution authority | Execution Lock selected by the Runtime Kernel | Pi executes it; child locks only preserve or narrow parent authority |
 | Persisted tool-call protocol closure | Pi Adapter plus Action Gateway evidence | Exact invocation identity selects dispatch, reconciliation, receipt reuse, or fail-closed pause |
 | Structured state | SQLite runtime store | JSONL and directory scans are projections, fixtures, or archives |
 | Tool and durable effects | Action Gateway | Typed policy, containment, reservation, evidence, reconciliation |
 | Long-lived intent | Optional Goal extension | Objective, acceptance, budget, continuation, Run links only |
-| Durable growth | Adaptation Engine | Candidate, evaluation, activation, rollback or retirement |
-| Completion evidence | Specialized outcomes and receipts | Run, effect, evaluation, activation, and deployment remain distinct |
+| Parent-child work | Orchestration Engine | Task graph, Worker Session, dependency, lease, budget, typed result, and cancellation; no Agent Loop or planning ownership |
+| Source mutation isolation | Delivery Lineage | One branch/worktree lineage and at most one writer per source-mutating work item; never Goal-owned in vNext |
+| Durable growth | Adaptation Engine and Self Registry | Candidate, evaluation, activation, observation, rollback, or retirement; activation effects still cross the Action Gateway |
+| Capability choice | Rebuildable capability views | One default active provider per capability; alternatives are explicit fallback, experimental, or retired paths |
+| Completion evidence | Specialized outcomes and receipts | Run, effect, worker dispatch, evaluation, activation, and deployment remain distinct |
 
 The first five source slices are intentionally smaller than this table. They
 prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
@@ -114,6 +122,77 @@ foundation is now closed; the next phase is a separately accepted read-only
 ingress canary rather than another generalized recovery layer. There is no
 learning, subagent execution, ingress cutover, migration, or deployment. v0.2
 remains the current rollback runtime until later slices satisfy their own gates.
+
+### Final deep modules
+
+The vNext target has four Evi-owned deep modules. Storage codecs, context
+selection, model-role policy, and concrete adapters remain internal seams unless
+a second real implementation makes an external seam necessary.
+
+| Module | Small external interface | Hidden complexity | Deletion test |
+| --- | --- | --- | --- |
+| Runtime Kernel | `submit`, `continue`, `inspect`, `signal/cancel` | Run/Turn state, execution leases, context compilation, model binding, optional Goal links, recovery, Run Outcome | Without it, lifecycle and recovery return to every ingress and executor |
+| Action Gateway | `contracts`, `invoke`, `reconcile` | Authority, effect classification, reservation, containment, dispatch, evidence, reconciliation, Effect Receipt | Without it, every tool and worker adapter reimplements effect safety |
+| Orchestration Engine | `dispatch`, `signal`, `inspect`, `cancel` | Task graph, worker leases, hierarchical budgets, dependencies, `needs_input`, stale recovery, Result delivery | Without it, worker lifecycle leaks into Runtime Kernel, Pi, and entry adapters |
+| Adaptation Engine | `propose`, `evaluate`, `activate`, `retire/rollback` | Episode selection, Self Registry versions, baselines, gates, observation, regression, retirement | Without it, Memory, SOP, Skill, Prompt, Tool, and Code invent competing promotion paths |
+
+Pi is not a fifth Evi domain module. It is the pinned implementation behind the
+Runtime Kernel's internal Agent Loop adapter. Evi constructs Pi for one Run
+Execution and owns the SQLite session adapter, Execution Lock, Action contracts,
+and final Run Outcome. If the Pi adapter becomes fork-shaped under ADR 0012's
+exit condition, Evi replaces the loop implementation without moving domain
+ownership.
+
+The Context Compiler is also internal to the Runtime Kernel. It selects a
+bounded immutable Turn Snapshot from stable Self, Project Overlay, optional
+Goal, session checkpoint, selected recall, active artifact versions, task or
+result envelopes, and Action contracts. Pi owns context mechanics for its
+session; Evi owns context meaning and selection.
+
+### Supervisor and worker execution
+
+A Supervisor Run is durable parent state, not one continuously open model
+request. A planner turn may produce a typed task graph and return. The
+Orchestration Engine then advances workers from canonical events and wakes a new
+supervisor turn when a result, failure, cancellation, or `needs_input` event
+requires integration or judgment.
+
+Workers receive versioned Task Envelopes and narrowed Execution Locks. They
+return Result Envelopes; their self-reported tests or completion remain advisory.
+Only the Supervisor Run may integrate results, require independent verification,
+and accept the parent outcome. Planning, integration, review, and deep
+discussion may prefer a stronger reasoning model; execution may prefer a faster
+model. Those are recorded role-policy defaults rather than domain literals, and
+every fallback records its rationale and actual model binding.
+
+Worker dispatch itself is an Action Gateway effect. Its reservation binds the
+parent and child identity, Task Envelope digest, Execution Lock digest, model or
+executor selection, budget, and optional Delivery Lineage before the worker
+starts. Owner loss reconciles that dispatch before any replay.
+
+### Delivery Lineage and concurrency
+
+The v0.2 rule that binds one worktree to one source-mutating Goal remains a
+current implementation fact only. In vNext, one source-mutating work item owns
+one Delivery Lineage from an explicit baseline through branch/worktree,
+verification, integration, and retirement. A Goal may link several independent
+lineages, while ordinary and non-source Goals own none.
+
+- read-only or advisory workers may run concurrently within their budgets;
+- independent effect domains may run concurrently under separate resource
+  leases;
+- one Delivery Lineage has at most one active writer;
+- parallel source work uses non-overlapping lineages and an exclusive
+  Integration Run;
+- creating child Goals only to obtain worktrees is not part of the target model.
+
+### Specialized completion evidence
+
+There is no universal receipt. A Run produces a Run Outcome. Effects, worker
+dispatches, evaluations, activations, and deployments produce their matching
+receipts only when those events occur. A Goal terminal outcome references the
+required evidence; it does not duplicate or reinterpret it as a second workflow
+engine.
 
 ## Current v0.2 Runtime Shape
 
@@ -243,7 +322,7 @@ context injection, or new authority. A read never grants write, effect,
 capability, Skill, or completion authority; private paths, cross-root access,
 external effects, and writes remain hard boundaries.
 
-Repository placement follows the same dynamic boundary. Every source-mutating
+In current v0.2, repository placement follows the same dynamic boundary. Every source-mutating
 Goal has one immutable, linked execution worktree for its full delivery
 lineage; later sessions and tools reuse it. A Goal may derive that worktree by
 `workspace.prepare` or bind an already-linked worktree, but never creates one
@@ -285,7 +364,7 @@ exact-commit history record plus bounded local Git parents and ancestry. It
 creates no evidence ledger, does not choose itself through task routing, and
 cannot deploy, restart, fetch remote claims, or accept the Goal.
 
-The stable ownership split is:
+The current v0.2 ownership split is:
 
 | Decision concern | Owner |
 | --- | --- |
@@ -356,7 +435,36 @@ from terminal Goal outcomes without a new state owner. Remaining size is still
 architecture pressure; this change is a replacement checkpoint, not a claim
 that context or harness decomposition is finished.
 
-## Staged Replacement Order
+## vNext Delivery Order
+
+The Kernel foundation at `origin/develop@62cab799` closes the first five source
+slices under ADRs 0012 through 0016. It is not deployed. The accepted next order
+is:
+
+1. **Read-only ingress canary.** Explicit opt-in, isolated SQLite, and only
+   `none/local_read`; no mirrored traffic, migration, write/external Action,
+   worker, learning, or deployment switch.
+2. **Basic ingress and continuity.** Cut over one entry surface at a time to
+   Goal-free Runs and durable session binding, then add the minimal optional
+   Goal extension while v0.2 remains a verified rollback runtime.
+3. **Parent-child orchestration.** Add one asynchronous read-only discussion
+   worker, one execution worker, independent review, then bounded parallelism,
+   hierarchical budgets, and Delivery Lineages.
+4. **Supervised self-learning.** Convert verified Episodes into inactive
+   Memory/SOP/Skill candidates, compare baseline and candidate, activate by
+   risk, observe reuse, and retire or roll back regressions.
+5. **Discovery and assimilation.** Treat external trends as untrusted signals;
+   require a real need, source inspection, extracted tests, bounded probe,
+   evaluation, and activation.
+6. **Self-evolution.** Open Prompt, Tool, Policy, Dependency, Code, Runtime, and
+   Deployment candidates only with isolated delivery, regression cases,
+   canary, receipts, observation, and executable rollback.
+
+Only one feature-growth slice is active unless Decision Owners, state owners,
+effect domains, and Delivery Lineages are demonstrably independent. Passing one
+stage does not automatically start the next.
+
+## Current v0.2 Replacement Record
 
 Each stage requires one bounded active Goal, a named Decision Owner, explicit
 acceptance evidence, and verification or recovery criteria. More than one Goal
@@ -391,11 +499,13 @@ No stage may hide feature expansion inside refactoring. Net deletion is useful
 evidence but not mandatory; reduced interface knowledge and removed duplicate
 ownership are the completion criteria.
 
-## Feature Activation Gate
+## Current v0.2 Feature Activation Record
 
 The 2026-07-18 stabilization pause was satisfied for the single bounded Issue
 #93 child after the operator explicitly resumed Issue #56. Every later feature
-child must repeat the same gate:
+child on the v0.2 lineage repeats the same gate. vNext source slices follow the
+owner and delivery order above rather than creating mandatory Goals for ordinary
+work:
 
 - the stabilization Goal has a verified `OutcomeReceipt`, and root/worktree,
   optional GitHub delivery evidence, and live runtime state are reconciled;

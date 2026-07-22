@@ -7,7 +7,7 @@
 - 源码、目录、依赖、测试和文档结构：`docs/ENGINEERING.cn.md`
 - 服务安装、健康、回滚、日志、IM 和本地运维：`docs/LOCAL_RUNTIME.md`
 - 记忆、SOP、skill、active vault、晋升、修订和退役：`docs/LOCAL_LEARNING.md`
-- 已接受的一个 Self/多个入口、按 Context 选择执行位置、多 Session、harness 和能力智能愿景：`docs/PRODUCT_VISION.cn.md`
+- 已接受的一个 Self/多个入口、Pi-backed execution、Parent-Child 编排、Execution Lock 与 Adaptation 愿景：`docs/PRODUCT_VISION.cn.md`
 - 已确认的 v0.2 多节点资产进化目标、LuBan 边界、节点激活和证据链：`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`
 - 发布、图像、小红书和反馈采集：`docs/ACTIVE_EXPLORATION.md`
 - 稳定身份和自修改立场：`core/soul.md`
@@ -20,6 +20,7 @@
 - 已接受的 terminal Action reconciliation 后 paused Run continuation：`docs/adr/0014-reconciled-run-continuation.cn.md`
 - 已接受的 Run Execution lease 与 model dispatch 崩溃恢复：`docs/adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`
 - 已接受的 Pi tool protocol 恢复与 Kernel 基建退出 gate：`docs/adr/0016-pi-tool-protocol-recovery.cn.md`
+- 最终 Evi/Pi 所有权、Supervisor/Worker 编排、Delivery Lineage 与专门化完成证据：`docs/adr/0017-evi-owned-orchestration-and-adaptation.cn.md`
 - 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - 节点本地 active vault 与 Evi 控制的 LuBan 晋升：`docs/adr/0004-node-local-vault-and-luban-promotion.cn.md`
 - Typed cognition envelope 与 fail-closed 模型决策解析：`docs/adr/0005-typed-cognition-envelope.cn.md`
