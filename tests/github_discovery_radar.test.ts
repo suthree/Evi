@@ -34,7 +34,7 @@ test("GitHub discovery stores bounded untrusted signals and suppresses a latest-
     assert.equal(requests[0]?.url, GITHUB_TRENDING_WEEKLY_URL);
     assert.deepEqual(requests[0]?.headers, {
       accept: "text/html",
-      "user-agent": "Evi-GitHub-Discovery-Radar/0"
+      "user-agent": "local-runtime-github-discovery/0"
     });
     assert.equal(requests[0]?.redirect, "error");
     assert.equal(first.status, "completed");
