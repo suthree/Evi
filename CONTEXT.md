@@ -79,15 +79,15 @@ The bounded procedure for using a known tool: allowed scope, preconditions, evid
 _Avoid_: Tool Contract, raw documentation, credential bundle, skill
 
 **Action Gateway**:
-The mandatory boundary that validates a typed action, resolves authority and policy, contains execution, reserves durable effects, and records evidence for reconciliation.
+The mandatory Evi-owned boundary that exposes typed action contracts, applies the current authority and policy, commits a reservation before dispatch, and records bounded evidence for reconciliation. Containment strength depends on the selected handler and effect class; it is not implied by tool visibility.
 _Avoid_: Tool catalog, agent loop, prompt-only safety
 
 **Action Reservation**:
-A durable pre-dispatch record binding one effect identity, action digest, authority, and owner so an uncertain outcome cannot authorize blind replay.
+A durable pre-dispatch record binding one Run invocation, exact contract version, effect class, persistence-safe arguments, and action digest so an uncertain outcome cannot authorize blind replay.
 _Avoid_: Queue item, permission token, raw prompt log
 
 **Effect Receipt**:
-The terminal evidence for one reserved effect, including its identity, observed outcome, verification, and reconciliation status.
+The terminal evidence for one reserved effect, including its exact identity, observed outcome, bounded output, and reconciliation status. It may reference separate verification when that effect requires it.
 _Avoid_: Run Outcome, model claim, generic completion receipt
 
 **Evidence Event**:

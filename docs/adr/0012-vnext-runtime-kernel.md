@@ -56,6 +56,10 @@ none of them is Evi's architecture by itself.
 - The first executable slice proves one Goal-free Turn, Pi as the only loop
   owner, and SQLite as the only persisted state authority. It has no production
   ingress, tools, learning, subagents, or deployment switch.
+- The second source slice implements the reservation-first Action Gateway and
+  one bounded `local_read` action under ADR 0013. It still has no production
+  ingress, write/external action authority, learning, subagents, or deployment
+  switch.
 - Pi is pinned to an exact version and imported only by the adapter. If keeping
   that adapter requires copying or patching roughly a thousand lines of Pi
   internals, or two upgrades require semantic rewrites, Evi will own a smaller
@@ -67,5 +71,6 @@ none of them is Evi's architecture by itself.
 - The current v0.2 runtime contract remains factual until cutover. Stable docs
   must label vNext as accepted target or implemented slice rather than claiming
   deployment.
-- Deployment, state migration, ingress replacement, Action Gateway activation,
-  learning, and subagent execution remain separate verified slices.
+- Deployment, state migration, ingress replacement, write/external Action
+  Gateway authority, Run continuation, learning, and subagent execution remain
+  separate verified slices.

@@ -15,6 +15,9 @@ Goal 只在确有长期意图时使用。编码、浏览、搜索、沙箱进程
 Adapter 委托给成熟工具。当前 owner 与替换顺序见
 [`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)。
 
+前两个 vNext 源码切片已经证明 Kernel 与 reservation-first 的只读 Gateway 路径，但尚未
+连接生产 ingress，也没有切换当前 v0.2 部署。
+
 ## 当前已实现边界
 
 v0.1 是 local-first、single-machine runtime：
@@ -70,7 +73,7 @@ Goal owner 或完成判定 owner。
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md) |
+| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md) |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。
@@ -106,7 +109,7 @@ pnpm run runtime -- service health --target runtime --state-root ~/.local-runtim
 apps/cli/          CLI 组合入口
 packages/core/     Context、Evidence、Memory、Governance 纯核心面
 packages/runtime/  Goal、Effect、Tool、Service、Web 与 IM 运行面
-packages/kernel/   vNext Turn/Run Kernel、SQLite State 与 Pi Loop Adapter
+packages/kernel/   vNext Turn/Run Kernel、SQLite State、Action Gateway 与 Pi Adapter
 config/            可提交的安全默认配置
 core/              Self、Memory 与 Runtime Reference 策略
 docs/              架构、工程、行为、运维、学习与愿景文档
@@ -115,8 +118,9 @@ docs/              架构、工程、行为、运维、学习与愿景文档
 
 当前 v0.2 控制面仍是 `GoalRuntime`、Harness、canonical evidence 和 `OutcomeReceipt`；
 vNext 已接受 Turn/Run、Pi 唯一 Agent Loop、SQLite、Action Gateway、可选 Goal 与统一
-Adaptation 生命周期。稳定方向由项目文档和 ADR 记录；当前实现以源码、测试和 live health
-为准。GitHub Issue、PR、branch 和隔离 worktree 是按需要使用的协作与隔离机制；
+Adaptation 生命周期。当前源码只实现前两个基建切片，其中 Gateway 只允许只读 action，
+且尚未切 ingress 或部署。稳定方向由项目文档和 ADR 记录；当前实现以源码、测试和 live
+health 为准。GitHub Issue、PR、branch 和隔离 worktree 是按需要使用的协作与隔离机制；
 `.trellis/` 只保留为历史 evidence。
 
 ## 安全与非目标
