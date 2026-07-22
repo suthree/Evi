@@ -314,11 +314,12 @@ New goals created through the local `goal` CLI are owned by `GoalRuntime` from
 their first intent event through one terminal `OutcomeReceipt`. The public
 runtime boundary remains `handle(command)` and `read(goalId)`. A Continue
 command runs a bounded internal execution tranche: cognition proposes one
-action or outcome at a time, `EffectPolicy` decides the semantic effect, the
-runtime records the action intent before dispatch, the tool observation returns
-to the same canonical event stream, and the verifier alone may accept the
-outcome. The model does not author evidence-id matrices or parallel completion
-documents.
+tool action, one explicit Harness-state action, or one outcome at a time.
+`EffectPolicy` decides the semantic effect for tools, the runtime records the
+tool intent before dispatch, canonical observations return to the same event
+stream, and the verifier alone may accept the outcome. The model does not
+author general evidence-id matrices or parallel completion documents; ADR 0011
+defines the one typed exception for a state-only SOP draft.
 
 Each new Goal persists its real control checkout, Git common directory, branch,
 and start HEAD as immutable repository authority. Continue validates this
@@ -535,6 +536,33 @@ Historical `goal_action_planned` events without selection metadata remain
 readable; new planned events retain the validated selection as evidence of the
 decision, not as a second authority.
 
+#### Goal-scoped Harness-state SOP proposal
+
+`goal start` may explicitly carry `learning_effects: ["propose_sop"]`. Only
+then does the current Capability Portfolio add `harness.propose_sop`. It is a
+`harness_state` capability, not a Tool Contract, `file.write_state` alias, or
+general local-write surface. The typed `harness_state_action` must select that
+exact capability with `atomic_task`, no Skill refs, and a
+`completion_claim.status` of `not_done`.
+
+Its payload names one new SOP id and only prior successful, same-Goal,
+nondelegated canonical observations. GoalRuntime writes the JSON/Markdown pair
+only beneath the selected state root's `sop/drafts/`, then records a distinct
+canonical Harness-state observation with two `state_change` identities. It
+does not invoke EffectPolicy, a Tool Contract, a live-runner action, audit,
+promotion, repository write, active-vault write, Skill creation, activation,
+or completion. A missing opt-in, invalid capability selection, duplicate id,
+or a foreign, failed, planned, or `codex.run` evidence ref blocks before that
+draft write.
+
+The action is nonterminal. Before a later ordinary outcome can complete,
+GoalRuntime independently re-reads the draft, verifies its same-Goal refs and
+draft status, rejects related audits/promotions or active-vault SOP artifacts,
+and appends a separate Harness-state verification observation. An accepted
+`OutcomeReceipt` may therefore state verified draft delivery and include its
+two state changes; it never states capability promotion. Audit, promotion, and
+activation remain separate Decision Owner paths.
+
 When integration was performed outside a Goal's bound execution worktree, the
 control-placed `runtime.inspect` tool may supply one fresh bounded snapshot of
 the current control repository and local Git provenance, current and exact
@@ -604,11 +632,14 @@ Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
 effects may change authorized repo or task state, but the foreground control
 path writes no legacy queue, opportunity, episode, working-checkpoint,
 completion, iteration, SOP, skill, deployment, or learning-promotion state.
-GoalRuntime derives the accepted receipt's complete, ordered, deduplicated
-`changes[]` from typed canonical tool observations; the model neither declares
-nor copies change identities. Existing singular `change` fields count only on a
-successful observation. Harness-authored plural changes remain canonical even
-when a delegated worker fails after mutation, so partial effects cannot vanish.
+The one ADR 0011 exception is `harness.propose_sop`, which writes only a
+state-root SOP draft and records its two Harness-derived `state_change`
+identities. GoalRuntime derives the accepted receipt's complete, ordered,
+deduplicated `changes[]` from typed canonical observations; the model neither
+declares nor copies change identities. Existing singular `change` fields count
+only on a successful observation. Harness-authored plural changes remain
+canonical even when a delegated worker fails after mutation, so partial effects
+cannot vanish.
 An empty set therefore means that no typed canonical change observation exists.
 This complete change lineage is independent from the recent
 model-evidence window and is also retained by an abandonment receipt, so partial
@@ -650,7 +681,7 @@ Current cutover includes the explicit local `goal` lifecycle, the standalone
 `live` convenience ingress, and the local Web ingress:
 
 ```bash
-pnpm run runtime -- goal start --task "..." [--repo-root /absolute/worktree]
+pnpm run runtime -- goal start --task "..." [--learning-effect propose_sop] [--repo-root /absolute/worktree]
 pnpm run runtime -- goal continue --goal goal_... [--repo-root /same/absolute/worktree]
 pnpm run runtime -- goal read --goal goal_...
 pnpm run runtime -- goal pause --goal goal_... --reason "..."

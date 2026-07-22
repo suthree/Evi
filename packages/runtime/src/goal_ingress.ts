@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { newId } from "../../core/src/ids.js";
 import { AgentStore } from "../../core/src/store.js";
-import { loadConfigSelectors } from "./config.js";
+import { loadConfigSelectors, loadRuntimeConfigSummary } from "./config.js";
 import {
   ConfiguredGoalCognition,
   RuntimeGoalToolExecutor
@@ -109,6 +109,10 @@ export async function createConfiguredGoalRuntime(options: ConfiguredGoalRuntime
     configDir: options.configDir,
     stateRoot: options.stateRoot
   });
+  const config = await loadRuntimeConfigSummary({
+    configDir: selectors.configDir,
+    stateRoot: selectors.stateRoot
+  });
   const store = new AgentStore(resolve(options.repoRoot), selectors.stateRoot);
   return new GoalRuntime({
     store,
@@ -121,7 +125,8 @@ export async function createConfiguredGoalRuntime(options: ConfiguredGoalRuntime
       stateRoot: selectors.stateRoot
     }),
     verifier: new CanonicalGoalVerifier(),
-    toolExecutor: new RuntimeGoalToolExecutor(store, undefined, selectors.configDir)
+    toolExecutor: new RuntimeGoalToolExecutor(store, undefined, selectors.configDir),
+    activeVaultRoot: config.vault.active_root
   });
 }
 

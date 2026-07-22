@@ -3786,6 +3786,140 @@ test("GoalRuntime abandonment remains explicit and terminal", async () => {
   }
 });
 
+test("GoalRuntime exposes only the opt-in Harness-state SOP capability and verifies its draft delivery before completion", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read one bounded observation before drafting the supervised SOP."),
+      harnessSopAction(["goal_event_3"]),
+      outcome("受监督 SOP 草稿已交付；它仍未审计、未晋升且未进入活动 vault。")
+    ]);
+    const tools = recordingTools();
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools,
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("harness_sop_start", "Draft one supervised local SOP from canonical evidence."),
+      learning_effects: ["propose_sop"]
+    });
+
+    assert.deepEqual(started.learning_effects, ["propose_sop"]);
+    const completed = await runtime.handle({
+      type: "continue",
+      command_id: "harness_sop_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(completed.status, "completed");
+    assert.equal(tools.calls.length, 1);
+    assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.some((item) => item.id === "harness.propose_sop"), true);
+    assert.equal(cognition.calls[0]!.capability_portfolio.capabilities.length, 10);
+    const sop = JSON.parse(await readFile(join(fixture.stateRoot, "sop/drafts/sop_goal_harness_fixture.json"), "utf8")) as {
+      status: string;
+      evidence_refs: string[];
+    };
+    assert.equal(sop.status, "draft");
+    assert.deepEqual(sop.evidence_refs, ["goal_event_3"]);
+    const markdown = await readFile(join(fixture.stateRoot, "sop/drafts/sop_goal_harness_fixture.md"), "utf8");
+    assert.match(markdown, /Goal Harness State Proposal/);
+    assert.match(markdown, /completion_claim.status: not_done/);
+    await assert.rejects(readFile(join(fixture.repoRoot, "vault/sop/drafts/sop_goal_harness_fixture.md"), "utf8"), /ENOENT/);
+    const events = await readEvents(fixture.stateRoot);
+    assert.equal(events.some((event) => event.event_type === "goal_harness_state_observed"), true);
+    assert.equal(events.some((event) => event.event_type === "goal_harness_state_verified"), true);
+    assert.deepEqual(completed.receipt?.changes, [
+      { kind: "state_change", identity: "sop/drafts/sop_goal_harness_fixture.json" },
+      { kind: "state_change", identity: "sop/drafts/sop_goal_harness_fixture.md" }
+    ]);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime rejects a Harness-state SOP proposal whose refs are not same-Goal observations", async () => {
+  const fixture = await createFixture();
+  try {
+    const runtime = createRuntime(fixture.store, {
+      cognition: sequenceCognition([harnessSopAction(["goal_event_missing"])]),
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("harness_sop_invalid_start", "Reject ungrounded state-only SOP draft."),
+      learning_effects: ["propose_sop"]
+    });
+    const blocked = await runtime.handle({
+      type: "continue",
+      command_id: "harness_sop_invalid_continue",
+      goal_id: started.goal_id
+    });
+
+    assert.equal(blocked.status, "active");
+    assert.equal(blocked.checkpoint.cursor, "harness_state_action_invalid");
+    assert.match(blocked.checkpoint.summary, /same-Goal nondelegated canonical observation/i);
+    await assert.rejects(readFile(join(fixture.stateRoot, "sop/drafts/sop_goal_harness_fixture.json"), "utf8"), /ENOENT/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("GoalRuntime refuses an outcome when a state-only SOP draft has entered the audit path", async () => {
+  const fixture = await createFixture();
+  try {
+    const cognition = sequenceCognition([
+      action("file.read", { scope: "repo", path: "README.md" }, "Read one bounded observation before drafting the supervised SOP."),
+      harnessSopAction(["goal_event_3"]),
+      { type: "blocked", summary: "Pause before outcome to inspect the draft boundary.", next_action: "Continue after the independent boundary check." },
+      outcome("This draft should not complete after audit state appears.")
+    ]);
+    const runtime = createRuntime(fixture.store, {
+      cognition,
+      tools: recordingTools(),
+      verifier: new CanonicalGoalVerifier()
+    });
+    const started = await runtime.handle({
+      ...start("harness_sop_audit_start", "Keep state-only SOP delivery out of audit before outcome."),
+      learning_effects: ["propose_sop"]
+    });
+    const pausedForCheck = await runtime.handle({
+      type: "continue",
+      command_id: "harness_sop_audit_continue_one",
+      goal_id: started.goal_id
+    });
+    assert.equal(pausedForCheck.checkpoint.cursor, "blocked");
+    await fixture.store.writeJson("governance/audits/audit_goal_harness_fixture.json", {
+      id: "audit_goal_harness_fixture",
+      target_type: "sop",
+      target_ref: "sop_goal_harness_fixture",
+      checks: {
+        evidence: "pass",
+        trigger_clarity: "pass",
+        verification: "pass",
+        failure_modes: "pass",
+        rollback_or_retirement: "pass",
+        seed_policy: "pass"
+      },
+      verdict: "defer",
+      reason: "Fixture audit proves the Goal draft boundary has already changed.",
+      created_at: "2026-07-22T00:00:00.000Z"
+    });
+
+    const rejected = await runtime.handle({
+      type: "continue",
+      command_id: "harness_sop_audit_continue_two",
+      goal_id: started.goal_id
+    });
+    assert.equal(rejected.status, "active");
+    assert.equal(rejected.checkpoint.cursor, "verification_failed");
+    assert.match(rejected.checkpoint.summary, /related audit/i);
+    assert.equal(rejected.receipt, null);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 function start(commandId: string, objective: string): GoalCommand & { type: "start" } {
   return {
     type: "start",
@@ -3839,6 +3973,43 @@ function action(
       ...selection
     },
     action: { tool, arguments: args }
+  };
+}
+
+function harnessSopAction(evidenceEventIds: string[]): GoalCognitionResult {
+  return {
+    type: "harness_state_action",
+    summary: "The observed supervised run is stable enough to record one draft-only local procedure without claiming completion or promotion.",
+    capability_selection: {
+      capability_id: "harness.propose_sop",
+      execution_purpose: "atomic_task",
+      skill_refs: [],
+      rationale: "The explicit supervised Goal opt-in exposes the bounded state-only SOP draft path.",
+      verification_plan: "GoalRuntime must re-read the draft and verify its same-Goal nondelegated evidence before an ordinary outcome can close.",
+      fallback: "Continue the bounded evidence work without creating a draft."
+    },
+    action: {
+      type: "propose_sop",
+      completion_claim: {
+        status: "not_done",
+        summary: "The SOP draft is a learning artifact and not a Goal completion claim."
+      },
+      sop: {
+        id: "sop_goal_harness_fixture",
+        title: "Record a supervised bounded read synthesis",
+        trigger: "A supervised Goal has one successful bounded local observation worth retaining as a draft-only procedure.",
+        procedure: [
+          "Read only the bounded source selected by the current Goal.",
+          "Record a concise synthesis from canonical observations.",
+          "Leave the result as a draft until a separate audit and promotion path decides otherwise."
+        ],
+        required_tools: ["file.read"],
+        verification: "A later Harness check re-reads the state-only draft and confirms each cited observation belongs to the same Goal.",
+        failure_modes: ["The cited observation is missing, delegated, failed, or belongs to another Goal."],
+        revision: 1
+      },
+      evidence_event_ids: evidenceEventIds
+    }
   };
 }
 
