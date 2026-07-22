@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-export const RUNTIME_SCHEMA_VERSION = "7";
+export const RUNTIME_SCHEMA_VERSION = "8";
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -231,6 +231,53 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         ON worker_sessions(parent_run_id);
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_delivery_idx
         ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
+      CREATE TABLE IF NOT EXISTS adaptation_candidates (
+        id TEXT PRIMARY KEY,
+        target_slot TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind = 'procedure'),
+        scope TEXT NOT NULL CHECK (scope = 'local_node'),
+        lifecycle TEXT NOT NULL CHECK (lifecycle = 'inactive'),
+        content_digest TEXT NOT NULL UNIQUE,
+        candidate_digest TEXT NOT NULL UNIQUE,
+        candidate_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS self_registry_versions (
+        id TEXT PRIMARY KEY,
+        target_slot TEXT NOT NULL,
+        artifact_kind TEXT NOT NULL CHECK (artifact_kind = 'procedure'),
+        state TEXT NOT NULL CHECK (state IN ('inactive', 'active', 'retired')),
+        candidate_id TEXT NOT NULL UNIQUE REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        artifact_digest TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS self_registry_one_active_per_slot_idx
+        ON self_registry_versions(target_slot) WHERE state = 'active';
+      CREATE UNIQUE INDEX IF NOT EXISTS self_registry_one_inactive_per_slot_idx
+        ON self_registry_versions(target_slot) WHERE state = 'inactive';
+      CREATE TABLE IF NOT EXISTS adaptation_evaluations (
+        id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        candidate_digest TEXT NOT NULL,
+        target_slot TEXT NOT NULL,
+        baseline_kind TEXT NOT NULL CHECK (baseline_kind IN ('none', 'self_registry_version')),
+        baseline_version_id TEXT,
+        baseline_digest TEXT,
+        evaluator_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('passed', 'failed')),
+        evaluation_digest TEXT NOT NULL UNIQUE,
+        receipt_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK (
+          (baseline_kind = 'none' AND baseline_version_id IS NULL AND baseline_digest IS NULL)
+          OR (baseline_kind = 'self_registry_version'
+            AND baseline_version_id IS NOT NULL AND baseline_digest IS NOT NULL)
+        ),
+        UNIQUE (candidate_id, baseline_kind, baseline_version_id, baseline_digest, evaluator_version)
+      );
+      CREATE INDEX IF NOT EXISTS adaptation_evaluations_candidate_idx
+        ON adaptation_evaluations(candidate_id, created_at);
     `);
     if (version === null) {
       db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")

@@ -4,12 +4,11 @@ The implemented first version is a local single-machine runtime. It is not a
 hosted service or a multi-user bot. It may run a single-user local service
 process for channel adapters and IM intake.
 
-The approved v0.2 direction allows the same single-user runtime to be deployed
-to multiple independently operated nodes. It does not introduce shared runtime
-state or a hosted control plane. Target topology, LuBan asset identity, and
-node activation are defined in `docs/V0.2_MULTI_NODE_EVOLUTION.md`; current
-commands below remain the v0.1 command contract until corresponding accepted
-native-control-plane Goals are implemented and verified.
+vNext is the active delivery direction. The installed v0.2 resident runtime is
+frozen as an executable rollback until a separately verified cutover; its
+historical multi-node design in `docs/V0.2_MULTI_NODE_EVOLUTION.md` is not a
+parallel roadmap. Current commands below distinguish implemented vNext
+foreground surfaces from the retained rollback service contract.
 
 ## Owner Process
 
@@ -36,13 +35,17 @@ pnpm run runtime -- vnext run continue --run-id run_...
 pnpm run runtime -- vnext run inspect --run-id run_...
 pnpm run runtime -- vnext run inspect --session-id session_...
 pnpm run runtime -- vnext worker execute --worker-id worker_...
+pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_...
+pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_...
+pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...
+pnpm run runtime -- vnext adaptation inspect --evaluation-id evaluation_...
 ```
 
 The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports, migrates, or
-dual-writes v0.2 state. Schema version 7 plus the immutable `stable_cli` state
+dual-writes v0.2 state. Schema version 8 plus the immutable `stable_cli` state
 profile refuse both earlier vNext schemas and current `diagnostic_canary`
 databases instead of promoting them silently.
 
@@ -103,8 +106,24 @@ typed Result context from SQLite and retries the same Turn; it does not reopen a
 terminal parent, redeliver the Result into another Turn, or treat Worker output
 as user speech.
 
+`vnext adaptation propose` writes one bounded local procedure candidate and an
+inactive Self Registry version to that same stable database. It requires an
+existing completed Run id from the database and accepts repeated `--trigger`,
+`--step`, `--verify`, `--failure-mode`, and `--evidence-run-id` flags. Candidate
+text that resembles a credential is rejected; do not use this screening as a
+substitute for keeping secrets out of command arguments.
+
+`vnext adaptation evaluate` writes a deterministic `passed` or `failed`
+Evaluation Receipt against the exact active version in the target slot, or an
+explicit `none` baseline. `vnext adaptation inspect` requires exactly one
+candidate or Evaluation id. A pass never activates the candidate. These
+commands do not call a model, execute the procedure, write the active vault or
+source, or route through Web/IM. There is currently no CLI operation for
+activation, observation, rollback, or retirement.
+
 There is still no worker parallelism, execution writer, reviewer role,
-`signal/cancel`, optional Goal, learning, local/external write Action, resident
+`signal/cancel`, optional Goal, active or observed learning, local/external
+write Action, resident
 route, or vNext deployment in this slice. The installed v0.2 runtime is frozen
 as the rollback path.
 

@@ -1,5 +1,7 @@
 export * from "./action_gateway.js";
 export * from "./action_types.js";
+export * from "./adaptation_engine.js";
+export * from "./adaptation_types.js";
 export * from "./canonical_json.js";
 export * from "./contracts.js";
 export * from "./discussion_worker_runtime.js";

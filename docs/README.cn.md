@@ -18,7 +18,10 @@ Adapter 委托给成熟工具。当前 owner 与替换顺序见
 当前源码行为与交付状态以 source、tests、有边界的 Issue/PR 和 deployment evidence 为准；
 下列架构与运行契约文档只负责稳定的 owner model、替换顺序和验收语义，不复制易失的切片进度。
 
-## 当前已实现边界
+## 当前方向与已实现边界
+
+vNext 是唯一活跃交付方向。现有 v0.2 resident runtime 在独立完成 vNext 切换验收前，
+只作为可执行 rollback 保留，不再承担平行 roadmap 或新能力迭代。
 
 v0.1 是 local-first、single-machine runtime：
 
@@ -28,14 +31,14 @@ v0.1 是 local-first、single-machine runtime：
 - 本地 Memory、SOP、Skill 与 active vault；
 - commit-bound 的本地服务部署、健康检查和 rollback。
 
-已接受的 v0.2 方向只增加私有 LuBan Git 资产分发。执行、原始 Memory 和 Runtime State
-继续归节点本地。它不是托管多用户服务、公开 marketplace、共享 Runtime State 系统，
-也不是无约束自治重写系统。
+vNext 继续保持执行、原始 Memory 和 Runtime State 归节点本地。它不是托管多用户服务、
+公开 marketplace、共享 Runtime State 系统，也不是无约束自治重写系统。v0.2 的 LuBan
+多节点设计只保留为历史设计与 rollback 背景，不是当前演化目标。
 
 长期产品愿景不等于已实现功能。当前行为以源码、测试、
 [`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和 live health 为准。
 
-## 当前 v0.2 的任务闭环
+## 当前 rollback 与 vNext 闭环
 
 ```text
 任务 / IM 消息

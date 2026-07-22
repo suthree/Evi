@@ -97,6 +97,13 @@ denial，并拥有独立的 Issue/PR/test/deployment evidence。源码切片通�
 或 effect exactly-once、production routing、deployment、migration、learning，也不自动激活
 下一切片。
 
+当前源码 checkpoint 已实现第一段不激活的 Adaptation 子集：针对一个本地 procedure
+candidate 的 `propose`、`evaluate` 与 `inspect`。Candidate 与 Self Registry version 是原子
+SQLite 事实；Store 会重新验证 completed Run evidence、active baseline identity、canonical
+readiness check 和专门化 Evaluation Receipt。无论结果为 `passed` 还是 `failed`，version 都
+保持 inactive。Activation、observation、regression、rollback 与 retirement 尚未实现，不能
+从 evaluation readiness 推断出来。
+
 ### 最终深模块
 
 vNext 目标只保留四个 Evi-owned 深模块。Storage codec、Context selection、model role

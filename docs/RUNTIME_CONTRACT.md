@@ -9,13 +9,12 @@ multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
 runtime for resident channel intake and a localhost operator web console.
 
-The approved v0.2 target is specified separately in
-`docs/V0.2_MULTI_NODE_EVOLUTION.md`. That target adds private Git-backed asset
-distribution and per-node activation while preserving node-local execution,
-raw memory, state, and failure isolation. Until a corresponding accepted
-native-control-plane Goal is implemented and verified, this document remains
-the authority for current runtime behavior and the v0.2 document must not be
-used to claim that a multi-node capability already exists.
+The historical v0.2 multi-node design is recorded separately in
+`docs/V0.2_MULTI_NODE_EVOLUTION.md`. It is not an active roadmap. vNext is the
+active delivery direction; the installed v0.2 resident runtime remains only as
+an executable rollback until a separately verified cutover. This document
+remains the authority for implemented runtime behavior, and the historical
+v0.2 design must not be used to claim that a multi-node capability exists.
 
 ## Scope
 
@@ -29,6 +28,9 @@ pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [-
 pnpm run runtime -- vnext run inspect --run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext run inspect --session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 ```
 
 The CLI Adapter parses input and renders a structured envelope marked
@@ -59,7 +61,7 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 7 and its immutable `stable_cli` state profile
+The stable schema is version 8 and its immutable `stable_cli` state profile
 refuses both older schemas and a current `diagnostic_canary` database; this
 slice performs no migration, import, or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
@@ -103,10 +105,45 @@ recovered without replay. Structured diagnostics distinguish `run_not_found`,
 `session_not_found`, `session_busy`, `execution_lock_mismatch`,
 `credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
 and invalid input. Worker parallelism, execution writers, reviewers,
-`signal/cancel`, optional Goal links, learning, write Actions, Web/IM routing,
+`signal/cancel`, optional Goal links, adaptation activation or observation,
+write Actions, Web/IM routing,
 resident-service ownership, and vNext deployment remain outside this slice.
 Production v0.2 Web, daemon, and Feishu traffic is unchanged and serves only as
 the rollback runtime.
+
+### Inactive vNext Adaptation candidates and Evaluation Receipts
+
+The implemented Adaptation checkpoint is an Evi-owned, foreground CLI control
+surface over the same isolated `stable_cli` SQLite authority. It supports one
+artifact kind and three operations only: `propose`, `evaluate`, and `inspect`
+for local `procedure` candidates. It does not invoke Pi or a model.
+
+A proposal is bounded, digest-addressed, credential-shape screened, and backed
+by at least one completed vNext Run from the same database. The candidate is
+atomically paired with an `inactive` Self Registry version. One target slot may
+contain one inactive candidate alongside one current active baseline; this
+slice exposes no operation that creates, changes, activates, retires, or
+executes an active version. Repeating the exact proposal returns the existing
+candidate, while conflicting content for an occupied inactive slot fails
+closed.
+
+`evaluate` deterministically compares the candidate with the exact current
+active Self Registry baseline, or the explicit `none` baseline when no active
+version exists. The specialized `procedure-readiness-v1` Evaluation Receipt
+binds candidate digest, baseline identity, evaluator version, completed Run
+refs, exact checks, result, and timestamp. SQLite revalidates both the evidence
+and canonical evaluation policy before accepting the receipt. An incomplete
+candidate receives `failed`; a complete candidate may receive `passed`. Either
+result leaves the registry version inactive. Passing evaluation is readiness
+evidence only and is never activation authority.
+
+The structured envelope is marked `vnext_adaptation`. Inspection requires
+exactly one candidate or Evaluation identity and does not resolve model
+credentials. This checkpoint performs no background learning, discovery,
+source mutation, active-vault write, Action Gateway effect, Web/IM routing,
+state migration, deployment, or v0.2 write. Activation, observation,
+regression handling, rollback, and retirement remain later independently
+verified Adaptation slices.
 
 ### Explicit vNext read-only ingress canary
 
