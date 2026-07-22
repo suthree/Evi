@@ -8,6 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { Type } from "typebox";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
+import { materializeActionDigest } from "../packages/kernel/src/action_identity.js";
 import {
   ActionGateway,
   createDiscussionWorkerDispatchAction,
@@ -524,6 +525,99 @@ test("worker claim and Result delivery reject Task drift from the dispatch reser
         );
         assert.equal(store.inspectWorker(workerId)?.status, "running");
       }
+    } finally {
+      store.close();
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }
+});
+
+test("worker claim recomputes the strict worker-dispatch Action identity", async () => {
+  for (const driftKind of ["correlated_task", "extra_argument"] as const) {
+    const fixture = await mkdtemp(join(tmpdir(), `evi-worker-action-drift-${driftKind}-`));
+    const sqlite = join(fixture, "runtime.sqlite");
+    const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    try {
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+      const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+      const gateway = new ActionGateway(store, [runtimeInspect, workerDispatch], {
+        allowed_effect_classes: ["none", "local_read", "external_read"]
+      });
+      const parent = store.beginRun({
+        request: "Recompute the exact Action identity before Worker execution.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+      }, 30_000);
+      const dispatched = await gateway.invoke({
+        run_id: parent.run.id,
+        turn_id: parent.run.turn_id,
+        invocation_id: `action-drift-${driftKind}`,
+        action_name: workerDispatch.contract.name,
+        arguments: validTaskInput()
+      });
+      assert.equal(dispatched.status, "completed");
+      if (dispatched.status !== "completed") continue;
+      const workerId = String(dispatched.receipt.output.worker_id);
+      const worker = engine.inspect(workerId)!;
+      const arguments_ = driftKind === "correlated_task"
+        ? {
+          ...dispatched.reservation.arguments,
+          objective: "Execute a correlated but originally unauthorized objective."
+        }
+        : {
+          ...dispatched.reservation.arguments,
+          hidden_override: "An unsupported field must not become Worker authority."
+        };
+      const driftedTask = driftKind === "correlated_task"
+        ? materializeTaskEnvelope({
+          task_id: worker.task_envelope.task_id,
+          parent_run_id: worker.parent_run_id,
+          parent_turn_id: worker.parent_turn_id,
+          objective: String(arguments_.objective),
+          expected_result: worker.task_envelope.expected_result,
+          context_refs: worker.task_envelope.context_refs,
+          artifact_refs: worker.task_envelope.artifact_refs,
+          constraints: worker.task_envelope.constraints,
+          verification_requirements: worker.task_envelope.verification_requirements,
+          child_execution_lock_digest: worker.child_execution_lock.digest,
+          deadline_at: worker.task_envelope.deadline_at,
+          budget: worker.task_envelope.budget
+        })
+        : worker.task_envelope;
+      const receiptOutput = {
+        ...dispatched.receipt.output,
+        task_envelope_digest: driftedTask.digest
+      };
+      const driftedActionDigest = driftKind === "extra_argument"
+        ? materializeActionDigest({
+          name: workerDispatch.contract.name,
+          version: workerDispatch.contract.version,
+          effect_class: workerDispatch.contract.effect_class
+        }, arguments_)
+        : dispatched.reservation.action_digest;
+      const raw = new DatabaseSync(sqlite);
+      try {
+        raw.prepare(`
+          UPDATE action_reservations
+          SET arguments_json = ?, action_digest = ?
+          WHERE id = ?
+        `).run(JSON.stringify(arguments_), driftedActionDigest, dispatched.reservation.id);
+        raw.prepare(`
+          UPDATE worker_sessions
+          SET task_envelope_digest = ?, task_envelope_json = ?
+          WHERE id = ?
+        `).run(driftedTask.digest, JSON.stringify(driftedTask), workerId);
+        raw.prepare(`
+          UPDATE effect_receipts
+          SET action_digest = ?, output_json = ?
+          WHERE reservation_id = ?
+        `).run(driftedActionDigest, JSON.stringify(receiptOutput), dispatched.reservation.id);
+      } finally {
+        raw.close();
+      }
+
+      assert.throws(() => store.claimWorker(workerId, 30_000), /Worker reservation identity drifted/);
+      assert.equal(store.inspectWorker(workerId)?.status, "queued");
     } finally {
       store.close();
       await rm(fixture, { recursive: true, force: true });

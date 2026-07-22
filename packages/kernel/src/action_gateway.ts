@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type {
   ActionDispatch,
   ActionEffectClass,
@@ -11,6 +10,7 @@ import type {
   JsonObject,
   JsonValue
 } from "./action_types.js";
+import { materializeActionDigest } from "./action_identity.js";
 import { stableJson } from "./canonical_json.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -71,7 +71,7 @@ export class ActionGateway {
     } catch (error) {
       return { status: "denied", action_name: input.action_name, reason: errorMessage(error) };
     }
-    const actionDigest = digestAction(handler.contract, durableArguments);
+    const actionDigest = materializeActionDigest(handler.contract, durableArguments);
     const reservation = this.store.reserveAction({
       run_id: input.run_id,
       turn_id: input.turn_id,
@@ -198,7 +198,7 @@ function assertReservationIdentity(reservation: ActionReservation, handler: Acti
   if (reservation.action_name !== handler.contract.name
     || reservation.contract_version !== handler.contract.version
     || reservation.effect_class !== handler.contract.effect_class
-    || reservation.action_digest !== digestAction(handler.contract, reservation.arguments)) {
+    || reservation.action_digest !== materializeActionDigest(handler.contract, reservation.arguments)) {
     throw new Error(`Action reservation identity mismatch: ${reservation.id}`);
   }
 }
@@ -216,15 +216,6 @@ function validateContract(contract: ActionToolContract): void {
   if (!contract.description.trim() || contract.description.length > 1_000) {
     throw new Error(`Action contract description is invalid: ${contract.name}`);
   }
-}
-
-function digestAction(contract: ActionToolContract, arguments_: JsonObject): string {
-  return createHash("sha256").update(stableJson({
-    name: contract.name,
-    version: contract.version,
-    effect_class: contract.effect_class,
-    arguments: arguments_
-  })).digest("hex");
 }
 
 function boundedObservation(input: ActionObservation): ActionObservation {

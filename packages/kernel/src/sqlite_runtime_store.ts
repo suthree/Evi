@@ -10,6 +10,7 @@ import type {
   EffectReceipt,
   JsonObject
 } from "./action_types.js";
+import { materializeActionDigest } from "./action_identity.js";
 import { stableJson } from "./canonical_json.js";
 import type {
   ExecutionLock,
@@ -2067,6 +2068,25 @@ export class SqliteRuntimeStore {
     const reservation = this.requireActionReservation(worker.reservation_id);
     const receipt = this.requireEffectReceipt(worker.reservation_id);
     const parentLock = this.getExecutionLock(worker.parent_run_id);
+    const argumentKeys = [
+      "artifact_refs",
+      "budget",
+      "child_execution_lock_digest",
+      "constraints",
+      "context_refs",
+      "deadline_at",
+      "expected_result",
+      "objective",
+      "parent_execution_lock_digest",
+      "verification_requirements",
+      "worker_id"
+    ];
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const expectedActionDigest = materializeActionDigest({
+      name: "worker_dispatch",
+      version: "1",
+      effect_class: "external_read"
+    }, reservation.arguments);
     const expectedTask = materializeTaskEnvelope({
       ...normalizeDiscussionTaskInput(reservation.arguments),
       task_id: `task_${reservation.id}`,
@@ -2080,6 +2100,8 @@ export class SqliteRuntimeStore {
       || reservation.contract_version !== "1"
       || reservation.effect_class !== "external_read"
       || reservation.state !== "terminal"
+      || !argumentsAreExact
+      || reservation.action_digest !== expectedActionDigest
       || reservation.arguments.worker_id !== worker.id
       || reservation.arguments.parent_execution_lock_digest !== parentLock.digest
       || reservation.arguments.child_execution_lock_digest !== worker.child_execution_lock.digest
