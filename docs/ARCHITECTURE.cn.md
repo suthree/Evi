@@ -86,7 +86,7 @@ Self Registry -------- 当前与已退役的持久资产版本
 | 结构化状态 | SQLite runtime store | JSONL 和目录扫描只能是 projection、fixture 或 archive |
 | Tool 与持久 effect | Action Gateway | Typed policy、containment、reservation、evidence、reconciliation |
 | 长期意图 | 可选 Goal extension | 只拥有 objective、acceptance、budget、continuation 和 Run link |
-| Parent-Child 工作 | Orchestration Engine | Task graph、Worker Session、dependency、lease、budget、typed result 和 cancel；不拥有 Agent Loop 或规划 |
+| Parent-Child 工作 | Orchestration Engine | 一份共同的 SQLite Worker lifecycle ledger，加各 Worker kind 专属的 Task/Result 与 authority binding；dependency、lease、budget、delivery 和 cancel 均由此处拥有，不拥有 Agent Loop 或规划 |
 | Source mutation 隔离 | Delivery Lineage | 每个 source-mutating work item 一条 branch/worktree lineage，且最多一个 writer；vNext 不归 Goal 所有 |
 | 持久成长 | Adaptation Engine 与 Self Registry | Candidate、evaluation、activation、observation、rollback 或 retirement；activation effect 仍经过 Action Gateway |
 | Capability 选择 | 可重建 capability view | 每个 capability 只有一个默认 active provider；其他路径明确标成 fallback、experimental 或 retired |

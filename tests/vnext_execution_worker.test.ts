@@ -10,7 +10,9 @@ import { promisify } from "node:util";
 import {
   ActionGateway,
   captureDeliveryLineageSnapshot,
+  createDiscussionWorkerDispatchAction,
   createExecutionWorkerDispatchAction,
+  DiscussionWorkerRuntime,
   executionLockActions,
   ExecutionWorkerRuntime,
   OrchestrationEngine,
@@ -495,36 +497,461 @@ test("expired execution lease becomes outcome_unknown and never transfers to a s
   }
 });
 
-test("schema 8 state upgrades in place to schema 9 and reopens with execution tables", async () => {
-  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-8-to-9-"));
+test("schema 8 state upgrades in place to schema 10 and creates the common Worker ledger", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-8-to-10-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  const dispatch = await dispatchDiscussionWorker(store, fixture);
+  const completed = await new DiscussionWorkerRuntime(
+    store,
+    new ActionGateway(store, []),
+    { create: () => ({ execute: async () => ({ answer: "Preserved v8 discussion result." }) }) }
+  ).execute(dispatch.worker.id);
+  dispatch.engine.settleSupervisorTurn(
+    dispatch.started.execution,
+    "Deliver the preserved v8 discussion result."
+  );
+  const resumed = dispatch.engine.resumeSupervisor(dispatch.started.run.id, 30_000);
+  assert.ok(resumed);
+  const expected = {
+    task_digest: completed.task_envelope.digest,
+    result_digest: completed.result_envelope?.digest,
+    child_run_id: completed.child_run_id,
+    lease_ordinal: completed.lease_ordinal,
+    delivered_to_turn_id: resumed?.run.turn_id
+  };
   store.close();
   const legacy = new DatabaseSync(sqlite);
   legacy.exec("PRAGMA foreign_keys = OFF");
-  legacy.exec("DROP TABLE execution_worker_sessions");
-  legacy.exec("DROP TABLE delivery_lineages");
+  downgradeWorkerLedgerToEight(legacy);
   legacy.prepare("UPDATE schema_meta SET value = '8' WHERE key = 'schema_version'").run();
   legacy.close();
   const upgraded = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  const migrated = upgraded.inspectWorker(completed.id);
+  assert.equal(migrated?.task_envelope.digest, expected.task_digest);
+  assert.equal(migrated?.result_envelope?.digest, expected.result_digest);
+  assert.equal(migrated?.child_run_id, expected.child_run_id);
+  assert.equal(migrated?.lease_ordinal, expected.lease_ordinal);
+  assert.equal(migrated?.result_delivered_to_turn_id, expected.delivered_to_turn_id);
   upgraded.close();
   const inspected = new DatabaseSync(sqlite, { readOnly: true });
   try {
     const version = inspected.prepare(
       "SELECT value FROM schema_meta WHERE key = 'schema_version'"
     ).get() as { value: string };
-    assert.equal(version.value, "9");
+    assert.equal(version.value, "10");
     const tables = inspected.prepare(`
       SELECT name FROM sqlite_master
-      WHERE type = 'table' AND name IN ('delivery_lineages', 'execution_worker_sessions')
+      WHERE type = 'table' AND name IN (
+        'worker_sessions', 'delivery_lineages', 'execution_worker_bindings',
+        'execution_worker_sessions'
+      )
       ORDER BY name
     `).all() as Array<{ name: string }>;
-    assert.deepEqual(tables.map(({ name }) => name), ["delivery_lineages", "execution_worker_sessions"]);
+    assert.deepEqual(tables.map(({ name }) => name), [
+      "delivery_lineages",
+      "execution_worker_bindings",
+      "worker_sessions"
+    ]);
   } finally {
     inspected.close();
     await rm(fixture, { recursive: true, force: true });
   }
 });
+
+test("schema 9 preserves discussion and execution Worker identities in one schema 10 ledger", async () => {
+  const fixture = await createGitFixture("schema-nine");
+  const sqlite = join(fixture.root, "state", "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  const execution = await dispatchExecutionWorker(store, fixture);
+  const executionCompleted = await new ExecutionWorkerRuntime(
+    store,
+    fakeExecutor(async (task) => {
+      await writeFile(join(task.lineage.worktree, "src", "feature.txt"), "schema nine result\n");
+    })
+  ).execute(execution.worker.id);
+  const discussionDispatch = await dispatchDiscussionWorker(store, fixture.repository);
+  const discussion = await new DiscussionWorkerRuntime(
+    store,
+    new ActionGateway(store, []),
+    { create: () => ({ execute: async () => ({ answer: "Preserved discussion result." }) }) }
+  ).execute(discussionDispatch.worker.id);
+  execution.engine.settleSupervisorTurn(
+    execution.started.execution,
+    "Deliver the preserved execution result."
+  );
+  const resumedExecution = execution.engine.resumeSupervisor(execution.started.run.id, 30_000);
+  assert.ok(resumedExecution);
+  discussionDispatch.engine.settleSupervisorTurn(
+    discussionDispatch.started.execution,
+    "Deliver the preserved discussion result."
+  );
+  const resumedDiscussion = discussionDispatch.engine.resumeSupervisor(
+    discussionDispatch.started.run.id,
+    30_000
+  );
+  assert.ok(resumedDiscussion);
+  const expected = {
+    discussion_task: discussion.task_envelope.digest,
+    discussion_result: discussion.result_envelope?.digest,
+    discussion_child_run: discussion.child_run_id,
+    discussion_delivered_to_turn: resumedDiscussion?.run.turn_id,
+    execution_task: execution.worker.task_envelope.digest,
+    execution_result: executionCompleted.result_envelope?.digest,
+    execution_attempt: executionCompleted.attempt_id,
+    execution_lineage: execution.worker.lineage.digest,
+    execution_lease_ordinal: executionCompleted.lease_ordinal,
+    execution_delivered_to_turn: resumedExecution?.run.turn_id
+  };
+  store.close();
+
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  downgradeWorkerLedgerToNine(legacy);
+  legacy.prepare("UPDATE schema_meta SET value = '9' WHERE key = 'schema_version'").run();
+  legacy.close();
+
+  const upgraded = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const migratedDiscussion = upgraded.inspectWorker(discussion.id);
+    assert.equal(migratedDiscussion?.task_envelope.digest, expected.discussion_task);
+    assert.equal(migratedDiscussion?.result_envelope?.digest, expected.discussion_result);
+    assert.equal(migratedDiscussion?.child_run_id, expected.discussion_child_run);
+    assert.equal(
+      migratedDiscussion?.result_delivered_to_turn_id,
+      expected.discussion_delivered_to_turn
+    );
+    const migratedExecution = upgraded.inspectExecutionWorker(execution.worker.id);
+    assert.equal(
+      migratedExecution?.task_envelope.digest,
+      expected.execution_task
+    );
+    assert.equal(migratedExecution?.result_envelope?.digest, expected.execution_result);
+    assert.equal(migratedExecution?.attempt_id, expected.execution_attempt);
+    assert.equal(migratedExecution?.lease_ordinal, expected.execution_lease_ordinal);
+    assert.equal(
+      migratedExecution?.result_delivered_to_turn_id,
+      expected.execution_delivered_to_turn
+    );
+    assert.equal(
+      migratedExecution?.lineage.digest,
+      expected.execution_lineage
+    );
+    const inspected = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      const version = inspected.prepare(
+        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+      ).get() as { value: string };
+      assert.equal(version.value, "10");
+      const kinds = inspected.prepare(`
+        SELECT worker_kind, COUNT(*) AS count
+        FROM worker_sessions GROUP BY worker_kind ORDER BY worker_kind
+      `).all() as Array<{ worker_kind: string; count: number }>;
+      assert.deepEqual(kinds.map((row) => ({
+        worker_kind: row.worker_kind,
+        count: Number(row.count)
+      })), [
+        { worker_kind: "discussion", count: 1 },
+        { worker_kind: "execution", count: 1 }
+      ]);
+      const removed = inspected.prepare(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'table' AND name = 'execution_worker_sessions'
+      `).get() as { count: number };
+      assert.equal(Number(removed.count), 0);
+    } finally {
+      inspected.close();
+    }
+  } finally {
+    upgraded.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("schema 9 metadata fails closed when its required execution lifecycle table is absent", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-nine-corrupt-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  store.close();
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  downgradeWorkerLedgerToNine(legacy);
+  legacy.exec("DROP TABLE execution_worker_sessions");
+  legacy.prepare("UPDATE schema_meta SET value = '9' WHERE key = 'schema_version'").run();
+  legacy.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 9\/missing:execution_worker_sessions/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("schema 8 metadata fails closed when a later Delivery Lineage table is present", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-eight-drift-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  store.close();
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  downgradeWorkerLedgerToEight(legacy);
+  legacy.exec("CREATE TABLE delivery_lineages (id TEXT PRIMARY KEY)");
+  legacy.prepare("UPDATE schema_meta SET value = '8' WHERE key = 'schema_version'").run();
+  legacy.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 8\/unexpected:delivery_lineages/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("the common Worker ledger fails closed when an execution binding disappears", async () => {
+  const fixture = await createGitFixture("missing-binding");
+  const sqlite = join(fixture.root, "state", "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  const dispatched = await dispatchExecutionWorker(store, fixture);
+  store.close();
+  const drifted = new DatabaseSync(sqlite);
+  drifted.exec("PRAGMA foreign_keys = OFF");
+  drifted.prepare("DELETE FROM execution_worker_bindings WHERE worker_id = ?")
+    .run(dispatched.worker.id);
+  drifted.close();
+  const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    assert.throws(
+      () => reopened.inspectExecutionWorker(dispatched.worker.id),
+      /has no Delivery Lineage binding/iu
+    );
+  } finally {
+    reopened.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+async function dispatchDiscussionWorker(store: SqliteRuntimeStore, repository: string) {
+  const engine = new OrchestrationEngine(store, []);
+  const dispatch = createDiscussionWorkerDispatchAction(engine);
+  const gateway = new ActionGateway(store, [dispatch], {
+    allowed_effect_classes: ["external_read"]
+  });
+  const started = store.beginRun({
+    request: "Supervise one bounded discussion Worker migration fixture.",
+    execution_lock: {
+      model: {
+        config_id: "synthetic",
+        provider: "synthetic",
+        api: "openai-responses",
+        base_url: "http://127.0.0.1:9999/v1",
+        model: "synthetic",
+        credential_ref: "synthetic",
+        reasoning_effort: null,
+        context_window_tokens: 128_000,
+        max_output_tokens: 4_000,
+        timeout_ms: 30_000
+      },
+      authority: { cwd: repository },
+      configuration: { selector: "test", source_refs: ["test:worker-ledger-migration"] },
+      actions: executionLockActions(gateway.contracts())
+    }
+  }, 30_000);
+  const result = await gateway.invoke({
+    run_id: started.run.id,
+    turn_id: started.run.turn_id,
+    invocation_id: "discussion-migration-call",
+    action_name: dispatch.contract.name,
+    arguments: {
+      objective: "Preserve one discussion Worker across the schema migration.",
+      expected_result: "The exact Task identity remains inspectable.",
+      context_refs: ["issue:148"],
+      constraints: ["read-only"],
+      verification_requirements: ["retain exact digest"],
+      deadline_at: new Date(Date.now() + 60_000).toISOString(),
+      budget: { max_output_tokens: 400, timeout_ms: 10_000 }
+    }
+  });
+  assert.equal(result.status, "completed");
+  if (result.status !== "completed") throw new Error("discussion migration dispatch failed");
+  const worker = store.inspectWorker(String(result.receipt.output.worker_id));
+  assert.ok(worker);
+  return { worker, engine, started };
+}
+
+function downgradeWorkerLedgerToEight(db: DatabaseSync): void {
+  db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
+  createLegacyDiscussionWorkerTable(db);
+  db.exec(`
+    INSERT INTO worker_sessions (
+      id, reservation_id, parent_run_id, parent_turn_id, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, created_at, updated_at
+    )
+    SELECT
+      id, reservation_id, parent_run_id, parent_turn_id, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, created_at, updated_at
+    FROM worker_sessions_v10 WHERE worker_kind = 'discussion';
+    DROP TABLE execution_worker_bindings;
+    DROP TABLE delivery_lineages;
+    DROP TABLE worker_sessions_v10;
+  `);
+}
+
+function downgradeWorkerLedgerToNine(db: DatabaseSync): void {
+  db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
+  createLegacyDiscussionWorkerTable(db);
+  createLegacyExecutionWorkerTable(db);
+  db.exec(`
+    INSERT INTO worker_sessions (
+      id, reservation_id, parent_run_id, parent_turn_id, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, created_at, updated_at
+    )
+    SELECT
+      id, reservation_id, parent_run_id, parent_turn_id, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, created_at, updated_at
+    FROM worker_sessions_v10 WHERE worker_kind = 'discussion';
+
+    INSERT INTO execution_worker_sessions (
+      id, reservation_id, parent_run_id, parent_turn_id, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json, lineage_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+      created_at, updated_at
+    )
+    SELECT
+      workers.id, workers.reservation_id, workers.parent_run_id, workers.parent_turn_id,
+      workers.status, workers.task_envelope_digest, workers.task_envelope_json,
+      workers.child_execution_lock_digest, workers.child_execution_lock_json,
+      bindings.lineage_id, workers.result_envelope_digest, workers.result_envelope_json,
+      workers.result_delivered_to_turn_id, workers.lease_ordinal,
+      workers.lease_owner_digest, workers.lease_expires_at, workers.attempt_id,
+      workers.created_at, workers.updated_at
+    FROM worker_sessions_v10 AS workers
+    JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+    WHERE workers.worker_kind = 'execution';
+
+    DROP TABLE execution_worker_bindings;
+    DROP TABLE worker_sessions_v10;
+  `);
+}
+
+function createLegacyDiscussionWorkerTable(db: DatabaseSync): void {
+  db.exec(`
+    DROP INDEX IF EXISTS worker_sessions_parent_status_idx;
+    DROP INDEX IF EXISTS worker_sessions_one_kind_per_parent_idx;
+    DROP INDEX IF EXISTS worker_sessions_parent_delivery_idx;
+    CREATE TABLE worker_sessions (
+      id TEXT PRIMARY KEY,
+      reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+      parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK (
+        status IN ('queued', 'running', 'needs_input', 'completed', 'failed')
+      ),
+      task_envelope_digest TEXT NOT NULL UNIQUE,
+      task_envelope_json TEXT NOT NULL,
+      child_execution_lock_digest TEXT NOT NULL,
+      child_execution_lock_json TEXT NOT NULL,
+      child_session_id TEXT UNIQUE REFERENCES sessions(id),
+      child_run_id TEXT UNIQUE REFERENCES runs(id),
+      result_envelope_digest TEXT UNIQUE,
+      result_envelope_json TEXT,
+      result_delivered_to_turn_id TEXT REFERENCES turns(id),
+      lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+      lease_owner_digest TEXT,
+      lease_expires_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK (
+        (child_session_id IS NULL AND child_run_id IS NULL)
+        OR (child_session_id IS NOT NULL AND child_run_id IS NOT NULL)
+      ),
+      CHECK (
+        (status = 'running' AND lease_owner_digest IS NOT NULL AND lease_expires_at IS NOT NULL)
+        OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+      ),
+      CHECK (
+        (status IN ('queued', 'running')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (status IN ('needs_input', 'completed', 'failed')
+          AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+      )
+    );
+    CREATE INDEX worker_sessions_parent_status_idx
+      ON worker_sessions(parent_run_id, status, created_at);
+    CREATE UNIQUE INDEX worker_sessions_one_discussion_per_parent_idx
+      ON worker_sessions(parent_run_id);
+    CREATE INDEX worker_sessions_parent_delivery_idx
+      ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
+  `);
+}
+
+function createLegacyExecutionWorkerTable(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE execution_worker_sessions (
+      id TEXT PRIMARY KEY,
+      reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+      parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      status TEXT NOT NULL CHECK (
+        status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
+      ),
+      task_envelope_digest TEXT NOT NULL UNIQUE,
+      task_envelope_json TEXT NOT NULL,
+      child_execution_lock_digest TEXT NOT NULL,
+      child_execution_lock_json TEXT NOT NULL,
+      lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT,
+      result_envelope_digest TEXT UNIQUE,
+      result_envelope_json TEXT,
+      result_delivered_to_turn_id TEXT REFERENCES turns(id),
+      lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+      lease_owner_digest TEXT,
+      lease_expires_at TEXT,
+      attempt_id TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK (
+        (status = 'running' AND lease_owner_digest IS NOT NULL
+          AND lease_expires_at IS NOT NULL AND attempt_id IS NOT NULL)
+        OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+      ),
+      CHECK (
+        (status IN ('queued', 'running', 'paused')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (status IN ('needs_input', 'completed', 'failed')
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+      )
+    );
+    CREATE INDEX execution_workers_parent_status_idx
+      ON execution_worker_sessions(parent_run_id, status, created_at);
+    CREATE UNIQUE INDEX execution_workers_one_per_parent_idx
+      ON execution_worker_sessions(parent_run_id);
+    CREATE INDEX execution_workers_parent_delivery_idx
+      ON execution_worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
+  `);
+}
 
 async function dispatchExecutionWorker(store: SqliteRuntimeStore, fixture: GitFixture) {
   const parent = await beginExecutionParent(store, fixture.repository);

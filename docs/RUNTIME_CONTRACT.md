@@ -62,10 +62,14 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 9 and its immutable `stable_cli` state profile
-refuses a `diagnostic_canary` database. Version 8 `stable_cli` state upgrades
-in place by adding the execution-Worker and Delivery-Lineage tables before the
-version marker advances; all other older or unknown schemas still fail closed.
+The stable schema is version 10 and its immutable `stable_cli` state profile
+refuses a `diagnostic_canary` database. Version 8 and 9 `stable_cli` state
+upgrade transactionally before the version marker advances. Version 9
+discussion and execution records retain their exact Task, Result, lease,
+delivery, child-Run, attempt, and Delivery-Lineage identities while moving into
+one common `worker_sessions` lifecycle ledger. Execution-only lineage authority
+is the narrow `execution_worker_bindings` relation, not a second lifecycle
+table. All other older or unknown schemas still fail closed.
 There is no v0.2 import or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
