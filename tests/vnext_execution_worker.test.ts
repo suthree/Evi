@@ -745,6 +745,26 @@ test("schema 10 preserves the common Worker ledger exactly while adding review b
   }
 });
 
+test("schema 10 metadata rejects a mixed schema 11 Worker ledger before migration", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-ten-mixed-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  store.close();
+  const mixed = new DatabaseSync(sqlite);
+  mixed.exec("PRAGMA foreign_keys = OFF");
+  mixed.exec("DROP TABLE review_worker_bindings");
+  mixed.prepare("UPDATE schema_meta SET value = '10' WHERE key = 'schema_version'").run();
+  mixed.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 10\/mixed:worker_sessions/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("schema 9 metadata fails closed when its required execution lifecycle table is absent", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-nine-corrupt-"));
   const sqlite = join(fixture, "runtime.sqlite");

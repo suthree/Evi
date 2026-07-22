@@ -35,7 +35,6 @@ import {
   type ExecutionWorkerInspection
 } from "./execution_worker_types.js";
 import {
-  captureReviewEvidencePacket,
   deriveReviewWorkerLock,
   materializeReviewTaskEnvelope,
   normalizeReviewTaskInput,
@@ -43,6 +42,7 @@ import {
   type ReviewTaskInput,
   type ReviewWorkerInspection
 } from "./review_worker_types.js";
+import { captureReviewEvidencePacket } from "./review_evidence_capture.js";
 import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -133,11 +133,11 @@ export interface SupervisorWorkerContinuation {
 export class OrchestrationEngine {
   constructor(
     private readonly store: SqliteRuntimeStore,
-    private readonly discussionWorkerActions: ActionToolContract[]
+    private readonly readOnlyChildActions: ActionToolContract[]
   ) {
-    if (discussionWorkerActions.some((contract) => contract.effect_class !== "none"
+    if (readOnlyChildActions.some((contract) => contract.effect_class !== "none"
       && contract.effect_class !== "local_read")) {
-      throw new Error("Discussion worker Actions must be none or local_read.");
+      throw new Error("Read-only child Worker Actions must be none or local_read.");
     }
   }
 
@@ -149,7 +149,7 @@ export class OrchestrationEngine {
     const parentLock = this.store.getExecutionLock(parentRunId);
     const childLock = deriveDiscussionWorkerLock(
       parentLock,
-      executionLockActions(this.discussionWorkerActions),
+      executionLockActions(this.readOnlyChildActions),
       input.budget
     );
     return {
@@ -171,7 +171,7 @@ export class OrchestrationEngine {
     }
     const childLock = deriveDiscussionWorkerLock(
       parentLock,
-      executionLockActions(this.discussionWorkerActions),
+      executionLockActions(this.readOnlyChildActions),
       task.budget
     );
     if (input.child_execution_lock_digest !== childLock.digest) {
@@ -273,7 +273,7 @@ export class OrchestrationEngine {
       throw new Error(`Review Worker requires a completed execution Result in the current Turn: ${input.execution_worker_id}`);
     }
     const parentLock = this.store.getExecutionLock(parentRunId);
-    const reviewActions = this.discussionWorkerActions.filter(
+    const reviewActions = this.readOnlyChildActions.filter(
       (contract) => contract.name !== WORKER_NEEDS_INPUT_CONTRACT.name
     );
     const childLock = deriveReviewWorkerLock(
@@ -291,10 +291,10 @@ export class OrchestrationEngine {
     } as unknown as JsonObject;
   }
 
-  dispatchReview(
+  async dispatchReview(
     reservation: ActionDispatch["reservation"],
     input: JsonObject
-  ): ReviewWorkerInspection {
+  ): Promise<ReviewWorkerInspection> {
     const task = normalizeReviewTaskInput({
       execution_worker_id: input.execution_worker_id,
       checklist: input.checklist,
@@ -308,7 +308,7 @@ export class OrchestrationEngine {
     if (input.parent_execution_lock_digest !== parentLock.digest) {
       throw new Error("Review Worker parent Execution Lock identity drifted after reservation.");
     }
-    const reviewActions = this.discussionWorkerActions.filter(
+    const reviewActions = this.readOnlyChildActions.filter(
       (contract) => contract.name !== WORKER_NEEDS_INPUT_CONTRACT.name
     );
     const childLock = deriveReviewWorkerLock(
@@ -319,8 +319,22 @@ export class OrchestrationEngine {
     if (input.child_execution_lock_digest !== childLock.digest) {
       throw new Error("Review Worker child Execution Lock identity drifted after reservation.");
     }
+    const parent = this.store.inspectRun(reservation.run_id);
     const subject = this.store.inspectExecutionWorker(task.execution_worker_id);
-    if (!subject) throw new Error(`Review subject execution Worker not found: ${task.execution_worker_id}`);
+    if (!parent || !subject
+      || subject.parent_run_id !== parent.id
+      || subject.status !== "completed"
+      || subject.result_envelope?.status !== "completed"
+      || subject.result_delivered_to_turn_id !== reservation.turn_id) {
+      throw new Error(`Review Worker subject identity drifted after reservation: ${task.execution_worker_id}`);
+    }
+    const currentPacket = await captureReviewEvidencePacket(subject);
+    const preparedPacketDigest = isRecord(input.review_packet)
+      ? input.review_packet.digest
+      : null;
+    if (preparedPacketDigest !== currentPacket.digest) {
+      throw new Error(`Review evidence packet drifted after reservation: ${task.execution_worker_id}`);
+    }
     const taskEnvelope = materializeReviewTaskEnvelope({
       ...task,
       task_id: `task_${reservation.id}`,
@@ -328,7 +342,7 @@ export class OrchestrationEngine {
       parent_turn_id: reservation.turn_id,
       child_execution_lock_digest: childLock.digest,
       subject,
-      review_packet: input.review_packet as never
+      review_packet: currentPacket
     });
     return this.store.dispatchReviewWorker({
       worker_id: input.worker_id,
@@ -682,7 +696,7 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
 
 export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
-    const worker = engine.dispatchReview(dispatch.reservation, dispatch.arguments);
+    const worker = await engine.dispatchReview(dispatch.reservation, dispatch.arguments);
     return {
       outcome: "succeeded",
       summary: "One independent read-only Reviewer Worker was durably queued.",
@@ -828,4 +842,8 @@ export function createWorkerNeedsInputAction(engine: OrchestrationEngine): Actio
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return Boolean(input) && typeof input === "object" && !Array.isArray(input);
 }

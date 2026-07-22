@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { ActionGateway } from "./action_gateway.js";
 import type { JsonObject } from "./action_types.js";
+import { stableJson } from "./canonical_json.js";
 import type { AgentLoopFactory, RunExecutionResult, RunRecord } from "./contracts.js";
 import { assertExecutionLockMatchesContracts } from "./execution_lock.js";
 import { KernelRuntime } from "./kernel_runtime.js";
@@ -103,12 +105,39 @@ export class ReviewWorkerRuntime {
         }
     );
     if (worker.child_run_id) {
-      const child = runtime.inspect(worker.child_run_id);
+      let child = runtime.inspect(worker.child_run_id);
       if (!child || child.session_id !== worker.child_session_id
         || child.execution_lock_digest !== worker.child_execution_lock.digest) {
         throw new Error(`Review Worker child Run identity is invalid: ${worker.id}`);
       }
       if (child.status === "completed" || child.status === "failed") return terminalResult(child);
+      if (child.status === "running") {
+        this.store.interruptExpiredRunExecution(child.id);
+        child = runtime.inspect(child.id);
+        if (!child) throw new Error(`Review Worker child Run disappeared: ${worker.id}`);
+      }
+      if (child.status === "paused") {
+        const recovery = this.store.getRunExecutionRecoveryEvidence(child.id);
+        if (recovery?.dispatches.length === 0) {
+          const evidenceDigest = sha256(stableJson({
+            kind: "review_protocol_recovery_refused",
+            worker_id: worker.id,
+            child_run_id: child.id,
+            interrupted_execution_id: recovery.execution_id
+          }));
+          const resumed = this.store.resumeRun({
+            run_id: child.id,
+            kind: "protocol_recovery",
+            interrupted_execution_id: recovery.execution_id,
+            evidence_digest: evidenceDigest,
+            lease_ms: this.runExecutionLeaseMs ?? DEFAULT_WORKER_LEASE_MS
+          });
+          return terminalResult(this.store.failRun(
+            resumed.execution,
+            "Reviewer protocol recovery refuses model replay; no verdict is accepted."
+          ));
+        }
+      }
       return runtime.continueRun(child.id, runtimeContext);
     }
     return runtime.submit({
@@ -143,15 +172,24 @@ export class ReviewWorkerRuntime {
     if (result.status === "paused") {
       throw new Error(`Review Worker pause cannot become a terminal review: ${worker.id}`);
     }
-    const observedOutputTokens = this.store.getObservedOutputTokens(child.session_id);
-    const durationMs = Math.max(0, Date.now() - Date.parse(worker.created_at));
     const createdAt = new Date().toISOString();
+    const observedOutputTokens = this.store.getObservedOutputTokens(child.session_id);
+    const durationMs = Math.max(0, Date.parse(createdAt) - Date.parse(worker.created_at));
     const budgetExceeded = observedOutputTokens > worker.task_envelope.budget.max_output_tokens
       || durationMs > worker.task_envelope.budget.timeout_ms
       || Date.parse(createdAt) > Date.parse(worker.task_envelope.deadline_at);
+    const actualExecution = this.store.getResultProducingRunExecution(child.id);
+    const providers = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.provider))];
+    const models = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.model))];
+    if (providers.length > 1 || models.length > 1) {
+      throw new Error(`Review Worker model identity drifted across one execution: ${worker.id}`);
+    }
+    const hasModelEvidence = actualExecution.dispatches.length > 0
+      && providers.length === 1
+      && models.length === 1;
     let decision: ReturnType<typeof parseReviewDecision> | null = null;
     let protocolError: string | null = null;
-    if (!budgetExceeded && result.status === "completed") {
+    if (!budgetExceeded && result.status === "completed" && hasModelEvidence) {
       try {
         decision = parseReviewDecision(
           result.answer ?? "",
@@ -161,20 +199,16 @@ export class ReviewWorkerRuntime {
         protocolError = error instanceof Error ? error.message : String(error);
       }
     }
-    const status = !budgetExceeded && result.status === "completed" && decision
+    const status = !budgetExceeded && result.status === "completed" && hasModelEvidence && decision
       ? "completed" as const
       : "failed" as const;
-    const actualExecution = this.store.getResultProducingRunExecution(child.id);
-    const providers = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.provider))];
-    const models = [...new Set(actualExecution.dispatches.map((dispatch) => dispatch.model))];
-    if (providers.length > 1 || models.length > 1) {
-      throw new Error(`Review Worker model identity drifted across one execution: ${worker.id}`);
-    }
     const summary = boundedSummary(decision?.summary
       ?? (budgetExceeded
         ? "Reviewer exceeded its bounded Task budget; no verdict is accepted."
         : result.status === "failed"
           ? result.error ?? "Reviewer child Run failed without a verdict."
+          : !hasModelEvidence
+            ? "Reviewer child Run has no producing model dispatch; no verdict is accepted."
           : `Reviewer returned invalid structured evidence: ${protocolError ?? "missing decision"}`));
     return materializeReviewResultEnvelope({
       worker_id: worker.id,
@@ -247,4 +281,8 @@ function terminalResult(input: RunRecord): RunExecutionResult {
     answer: input.answer,
     error: input.error
   };
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }

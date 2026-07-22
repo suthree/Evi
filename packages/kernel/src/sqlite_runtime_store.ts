@@ -1662,6 +1662,21 @@ export class SqliteRuntimeStore {
     return this.transaction(() => {
       const worker = this.requireActiveReviewWorkerLease(lease);
       this.assertReviewWorkerReservationIdentity(worker);
+      const child = worker.child_run_id ? this.requireRun(worker.child_run_id) : null;
+      const actualExecution = child
+        ? this.getResultProducingRunExecution(child.id)
+        : null;
+      const dispatchIds = actualExecution?.dispatches.map((dispatch) => dispatch.id) ?? [];
+      const providers = [...new Set(
+        actualExecution?.dispatches.map((dispatch) => dispatch.provider) ?? []
+      )];
+      const models = [...new Set(
+        actualExecution?.dispatches.map((dispatch) => dispatch.model) ?? []
+      )];
+      const expectedDuration = Math.max(
+        0,
+        Date.parse(result.created_at) - Date.parse(worker.created_at)
+      );
       if (!worker.child_run_id || !worker.child_session_id
         || result.worker_id !== worker.id
         || result.child_run_id !== worker.child_run_id
@@ -1670,6 +1685,17 @@ export class SqliteRuntimeStore {
         || result.execution_worker_id !== worker.execution_worker_id
         || result.execution_result_digest !== worker.task_envelope.execution_result_digest
         || result.actual_execution_lock_digest !== worker.child_execution_lock.digest
+        || result.consumed.duration_ms !== expectedDuration
+        || Date.parse(result.created_at) < Date.parse(worker.created_at)
+        || !actualExecution
+        || result.actual_execution.execution_id !== actualExecution.execution_id
+        || result.actual_execution.execution_ordinal !== actualExecution.ordinal
+        || !sameStrings(result.actual_execution.model_dispatch_ids, dispatchIds)
+        || providers.length > 1
+        || models.length > 1
+        || result.actual_execution.provider !== (providers[0] ?? null)
+        || result.actual_execution.model !== (models[0] ?? null)
+        || (result.status === "completed" && dispatchIds.length === 0)
         || result.findings.some(
           (finding) => !worker.task_envelope.review_packet.changed_paths.includes(finding.path)
         )) {
@@ -3357,6 +3383,10 @@ export class SqliteRuntimeStore {
     const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
     const provider = providers.length === 0 ? null : providers[0]!;
     const model = models.length === 0 ? null : models[0]!;
+    const expectedDuration = Math.max(
+      0,
+      Date.parse(result.created_at) - Date.parse(worker.created_at)
+    );
     const budgetExceeded = result.consumed.output_tokens > task.budget.max_output_tokens
       || result.consumed.duration_ms > task.budget.timeout_ms
       || Date.parse(result.created_at) > Date.parse(task.deadline_at);
@@ -3387,6 +3417,8 @@ export class SqliteRuntimeStore {
       || result.execution_worker_id !== subject.id
       || result.execution_result_digest !== task.execution_result_digest
       || result.actual_execution_lock_digest !== childLock.digest
+      || result.consumed.duration_ms !== expectedDuration
+      || Date.parse(result.created_at) < Date.parse(worker.created_at)
       || this.getObservedOutputTokens(child.session_id) !== result.consumed.output_tokens
       || result.actual_execution.execution_id !== producerExecution.execution_id
       || result.actual_execution.execution_ordinal !== producerExecution.ordinal
@@ -3400,6 +3432,7 @@ export class SqliteRuntimeStore {
       )
       || (provider !== null && provider !== childLock.model.provider)
       || (model !== null && model !== childLock.model.model)
+      || (result.status === "completed" && dispatchIds.length === 0)
       || (result.status === "completed" && terminalExecution.outcome !== "completed")
       || (result.status === "completed" && budgetExceeded)
       || (result.status === "failed"

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -17,11 +17,13 @@ import {
   OrchestrationEngine,
   ReviewWorkerRuntime,
   SqliteRuntimeStore,
+  type AgentLoopFactory,
   type ExecutionAdapterResult,
   type ExecutionTaskEnvelope,
   type ExecutionWorkerExecutor
 } from "../packages/kernel/src/index.js";
 import type { JsonObject } from "../packages/kernel/src/action_types.js";
+import { materializeReviewResultEnvelope } from "../packages/kernel/src/review_worker_types.js";
 import {
   executeVNextWorker,
   VNEXT_REVIEW_WORKER_MARKER
@@ -66,11 +68,20 @@ test("a delivered execution Result receives one independent approved review and 
     const completed = await new ReviewWorkerRuntime(
       store,
       new ActionGateway(store, [runtimeInspect]),
-      reviewLoop({ verdict: "approved", summary: "No actionable findings.", findings: [] })
+      reviewLoop(store, { verdict: "approved", summary: "No actionable findings.", findings: [] })
     ).execute(reviewWorker.id);
     assert.equal(completed.status, "completed");
     assert.equal(completed.result_envelope?.verdict, "approved");
     assert.deepEqual(completed.result_envelope?.findings, []);
+    const { schema_version: _schema, result_kind: _kind, digest: _digest, ...resultBody }
+      = completed.result_envelope!;
+    assert.throws(
+      () => materializeReviewResultEnvelope({
+        ...resultBody,
+        verdict: "unsupported_verdict" as never
+      }),
+      /verdict contradicts/iu
+    );
     assert.notEqual(completed.child_run_id, null);
     assert.notEqual(completed.child_session_id, flow.resumed.run.session_id);
 
@@ -136,7 +147,11 @@ test("review findings require changes while malformed or contradictory output fa
       const completed = await new ReviewWorkerRuntime(
         store,
         new ActionGateway(store, [createRuntimeInspectAction(store)]),
-        { create: () => ({ execute: async () => { calls += 1; return { answer }; } }) }
+        { create: (input) => ({ execute: async () => {
+          calls += 1;
+          recordReviewModelDispatch(store, input);
+          return { answer };
+        } }) }
       ).execute(workerId);
       if (scenario === "findings") {
         assert.equal(completed.status, "completed");
@@ -150,7 +165,11 @@ test("review findings require changes while malformed or contradictory output fa
           () => new ReviewWorkerRuntime(
             store,
             new ActionGateway(store, [createRuntimeInspectAction(store)]),
-            { create: () => ({ execute: async () => { calls += 1; return { answer }; } }) }
+            { create: (input) => ({ execute: async () => {
+              calls += 1;
+              recordReviewModelDispatch(store, input);
+              return { answer };
+            } }) }
           ).execute(workerId),
           /cannot be claimed/iu
         );
@@ -176,7 +195,7 @@ test("Reviewer budget overrun and write-capable child composition fail closed", 
       { allowed_effect_classes: ["local_write"] }
     );
     assert.throws(
-      () => new ReviewWorkerRuntime(store, writeGateway, reviewLoop({
+      () => new ReviewWorkerRuntime(store, writeGateway, reviewLoop(store, {
         verdict: "approved",
         summary: "This composition must never run.",
         findings: []
@@ -199,8 +218,9 @@ test("Reviewer budget overrun and write-capable child composition fail closed", 
     const failed = await new ReviewWorkerRuntime(
       store,
       new ActionGateway(store, [createRuntimeInspectAction(store)]),
-      { create: () => ({ execute: async () => {
+      { create: (input) => ({ execute: async () => {
         calls += 1;
+        recordReviewModelDispatch(store, input);
         await delay(20);
         return {
           answer: JSON.stringify({
@@ -220,7 +240,7 @@ test("Reviewer budget overrun and write-capable child composition fail closed", 
       () => new ReviewWorkerRuntime(
         store,
         new ActionGateway(store, [createRuntimeInspectAction(store)]),
-        reviewLoop({ verdict: "approved", summary: "No replay.", findings: [] })
+        reviewLoop(store, { verdict: "approved", summary: "No replay.", findings: [] })
       ).execute(workerId),
       /cannot be claimed/iu
     );
@@ -287,6 +307,44 @@ test("Reviewer dispatch fails before reservation for undelivered, cross-parent, 
   }
 });
 
+test("Reviewer dispatch revalidates the exact Delivery Lineage snapshot after reservation", async () => {
+  const fixture = await createGitFixture("dispatch-race");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const base = createReviewWorkerDispatchAction(flow.engine);
+    const racing = {
+      ...base,
+      async prepare(argumentsInput: unknown, invocation?: Parameters<typeof base.prepare>[1]) {
+        const prepared = await base.prepare(argumentsInput, invocation);
+        await writeFile(join(fixture.worktree, "src", "feature.txt"), "drift during reservation\n");
+        return prepared;
+      }
+    };
+    const gateway = new ActionGateway(store, [racing], {
+      allowed_effect_classes: ["external_read"]
+    });
+    const result = await gateway.invoke(reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-dispatch-race"
+    ));
+    assert.equal(result.status, "outcome_unknown", JSON.stringify(result));
+    if (result.status !== "outcome_unknown") return;
+    assert.match(result.reason, /packet drifted|Lineage drifted/iu);
+    assert.equal(
+      store.inspectReviewWorker(String(result.reservation.arguments.worker_id)),
+      null
+    );
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("Reviewer evidence capture rejects binary and oversized changed content before reservation", async () => {
   for (const scenario of ["binary", "oversized"] as const) {
     const fixture = await createGitFixture(`packet-${scenario}`);
@@ -329,6 +387,63 @@ test("Reviewer evidence capture rejects binary and oversized changed content bef
       store.close();
       await rm(fixture.root, { recursive: true, force: true });
     }
+  }
+});
+
+test("Reviewer evidence packet represents exact text additions and deletions", async () => {
+  const fixture = await createGitFixture("packet-add-delete");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const composition = beginSupervisor(store, fixture.repository);
+    const dispatched = await composition.gateway.invoke(executionInvocation(
+      composition.started.run.id,
+      composition.started.run.turn_id,
+      fixture,
+      "packet-add-delete-execution"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    const executionWorker = store.inspectExecutionWorker(String(dispatched.receipt.output.worker_id));
+    assert.ok(executionWorker);
+    const completed = await new ExecutionWorkerRuntime(store, fakeExecutor(async (task) => {
+      await writeFile(join(task.lineage.worktree, "src", "feature.txt"), "reviewed change\n");
+      await writeFile(join(task.lineage.worktree, "src", "added.txt"), "added evidence\n");
+      await unlink(join(task.lineage.worktree, "src", "removed.txt"));
+    })).execute(executionWorker.id);
+    assert.equal(completed.status, "completed");
+    composition.engine.settleSupervisorTurn(composition.started.execution, "Deliver exact file evidence.");
+    const resumed = composition.engine.resumeSupervisor(composition.started.run.id, 30_000)!;
+    const reviewed = await composition.gateway.invoke(reviewInvocation(
+      resumed.run.id,
+      resumed.run.turn_id,
+      executionWorker.id,
+      "packet-add-delete-review"
+    ));
+    assert.equal(reviewed.status, "completed", JSON.stringify(reviewed));
+    if (reviewed.status !== "completed") return;
+    const packet = store.inspectReviewWorker(String(reviewed.receipt.output.worker_id))!
+      .task_envelope.review_packet;
+    const added = packet.files.find((file) => file.path === "src/added.txt");
+    const removed = packet.files.find((file) => file.path === "src/removed.txt");
+    assert.deepEqual(added, {
+      path: "src/added.txt",
+      before_mode: null,
+      after_mode: "100644",
+      before: null,
+      after: "added evidence\n"
+    });
+    assert.deepEqual(removed, {
+      path: "src/removed.txt",
+      before_mode: "100644",
+      after_mode: null,
+      before: "removed baseline\n",
+      after: null
+    });
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
   }
 });
 
@@ -463,6 +578,98 @@ test("a terminal Reviewer child Run survives owner loss without replaying the mo
   }
 });
 
+test("a completed Reviewer answer without a producing model dispatch cannot claim approval", async () => {
+  const fixture = await createGitFixture("missing-model-evidence");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const dispatched = await flow.gateway.invoke(reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-missing-model-evidence"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    const completed = await new ReviewWorkerRuntime(
+      store,
+      new ActionGateway(store, [createRuntimeInspectAction(store)]),
+      { create: () => ({ execute: async () => ({
+        answer: JSON.stringify({
+          verdict: "approved",
+          summary: "This answer has no provider evidence.",
+          findings: []
+        })
+      }) }) }
+    ).execute(String(dispatched.receipt.output.worker_id));
+    assert.equal(completed.status, "failed");
+    assert.equal(completed.result_envelope?.verdict, null);
+    assert.deepEqual(completed.result_envelope?.actual_execution.model_dispatch_ids, []);
+    assert.match(completed.result_envelope?.summary ?? "", /no producing model dispatch/iu);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("an interrupted zero-dispatch Reviewer child fails protocol recovery without model replay", async () => {
+  const fixture = await createGitFixture("zero-dispatch-recovery");
+  const sqlite = join(fixture.root, "state", "runtime.sqlite");
+  let workerId = "";
+  let childRunId = "";
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const dispatched = await flow.gateway.invoke(reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-zero-dispatch-recovery"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    workerId = String(dispatched.receipt.output.worker_id);
+    const claimed = store.claimReviewWorker(workerId, 100);
+    const child = store.beginRun({
+      request: "Start the immutable review without reaching model dispatch.",
+      execution_lock: claimed.worker.child_execution_lock
+    }, 100, {
+      worker_id: workerId,
+      owner_token: claimed.lease.owner_token
+    });
+    childRunId = child.run.id;
+    await delay(150);
+  } finally {
+    store.close();
+  }
+
+  const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  let calls = 0;
+  try {
+    const recovered = await new ReviewWorkerRuntime(
+      reopened,
+      new ActionGateway(reopened, [createRuntimeInspectAction(reopened)]),
+      { create: () => ({ execute: async () => {
+        calls += 1;
+        throw new Error("zero-dispatch Reviewer recovery must not replay the model");
+      } }) },
+      { worker_lease_ms: 100, run_execution_lease_ms: 100 }
+    ).execute(workerId);
+    assert.equal(recovered.status, "failed");
+    assert.equal(recovered.child_run_id, childRunId);
+    assert.equal(recovered.result_envelope?.verdict, null);
+    assert.deepEqual(recovered.result_envelope?.actual_execution.model_dispatch_ids, []);
+    assert.match(recovered.result_envelope?.summary ?? "", /protocol recovery refuses model replay/iu);
+    assert.equal(calls, 0);
+    assert.equal(reopened.inspectRun(childRunId)?.status, "failed");
+  } finally {
+    reopened.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("stable vNext worker CLI inspects and executes the queued review kind", async () => {
   const fixture = await createGitFixture("cli");
   const stateRoot = join(fixture.root, "state");
@@ -525,18 +732,11 @@ test("stable vNext worker CLI inspects and executes the queued review kind", asy
         max_output_tokens: 2_400,
         timeout_ms: 120_000
       }),
-      create_loop_factory: () => ({
-        create: () => ({ execute: async () => {
-          calls += 1;
-          return {
-            answer: JSON.stringify({
-              verdict: "approved",
-              summary: "CLI review completed.",
-              findings: []
-            })
-          };
-        } })
-      })
+      create_loop_factory: ({ store: cliStore }) => reviewLoop(cliStore, {
+        verdict: "approved",
+        summary: "CLI review completed.",
+        findings: []
+      }, () => { calls += 1; })
     });
     assert.equal(completed.worker.marker, VNEXT_REVIEW_WORKER_MARKER);
     assert.equal(completed.worker.status, "completed");
@@ -598,8 +798,35 @@ test("the common Worker ledger fails closed when a review binding disappears", a
   }
 });
 
-function reviewLoop(decision: unknown) {
-  return { create: () => ({ execute: async () => ({ answer: JSON.stringify(decision) }) }) };
+function reviewLoop(
+  store: SqliteRuntimeStore,
+  decision: unknown,
+  onCall?: () => void
+): AgentLoopFactory {
+  return {
+    create: (input) => ({
+      execute: async () => {
+        onCall?.();
+        recordReviewModelDispatch(store, input);
+        return { answer: JSON.stringify(decision) };
+      }
+    })
+  };
+}
+
+function recordReviewModelDispatch(
+  store: SqliteRuntimeStore,
+  input: Parameters<AgentLoopFactory["create"]>[0]
+): void {
+  const dispatch = store.startModelDispatch(input.execution, {
+    provider: input.execution_lock.model.provider,
+    model: input.execution_lock.model.model
+  });
+  store.observeModelResponse(input.execution, dispatch.id, 200);
+  store.settleModelDispatch(input.execution, dispatch.id, {
+    stop_reason: "stop",
+    message_digest: "c".repeat(64)
+  });
 }
 
 async function completedExecutionFlow(
@@ -755,6 +982,7 @@ async function createGitFixture(label: string): Promise<GitFixture> {
   await git(repository, ["config", "user.name", "Evi Test"]);
   await git(repository, ["config", "user.email", "evi-test@example.invalid"]);
   await writeFile(join(repository, "src", "feature.txt"), "baseline\n");
+  await writeFile(join(repository, "src", "removed.txt"), "removed baseline\n");
   await writeFile(join(repository, "verify.test.js"), [
     "import assert from 'node:assert/strict';",
     "import { readFile } from 'node:fs/promises';",

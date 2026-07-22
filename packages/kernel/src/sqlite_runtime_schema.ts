@@ -327,13 +327,26 @@ function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10" 
         : ["execution_worker_sessions"];
   const missing = required.filter((name) => !tableExists(db, name));
   const unexpected = forbidden.filter((name) => tableExists(db, name));
-  if (missing.length > 0 || unexpected.length > 0) {
+  const workerSql = (version === "10" || version === "11") && tableExists(db, "worker_sessions")
+    ? (db.prepare(`
+      SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'worker_sessions'
+    `).get() as { sql: string | null } | undefined)?.sql?.replace(/\s+/gu, " ") ?? ""
+    : "";
+  const expectedKindConstraint = version === "10"
+    ? "worker_kind IN ('discussion', 'execution')"
+    : version === "11"
+      ? "worker_kind IN ('discussion', 'execution', 'review')"
+      : "";
+  const mixedWorkerShape = expectedKindConstraint !== ""
+    && !workerSql.includes(expectedKindConstraint);
+  if (missing.length > 0 || unexpected.length > 0 || mixedWorkerShape) {
     throw new RuntimeSchemaIncompatibleError([
       version,
       missing.length > 0 ? `missing:${missing.join(",")}` : "",
-      unexpected.length > 0 ? `unexpected:${unexpected.join(",")}` : ""
+      unexpected.length > 0 ? `unexpected:${unexpected.join(",")}` : "",
+      mixedWorkerShape ? "mixed:worker_sessions" : ""
     ].filter(Boolean).join("/"));
-  }
+}
 }
 
 function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9" | "10"): void {

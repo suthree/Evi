@@ -129,7 +129,11 @@ export async function executeVNextRun(
     try {
       const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
       try {
-        const { gateway, orchestration } = createSupervisorComposition(store, true, true, true);
+        const { gateway, orchestration } = createSupervisorComposition(store, {
+          needs_input: true,
+          execution: true,
+          review: true
+        });
         const loops = createLoopFactory(dependencies, store, model.api_key);
         const runtime = new KernelRuntime(store, gateway, loops, { orchestration });
         const result = await runtime.submit({
@@ -465,14 +469,18 @@ function createReadOnlyGateway(store: SqliteRuntimeStore): ActionGateway {
   return new ActionGateway(store, [createRuntimeInspectAction(store)]);
 }
 
+interface SupervisorCompositionCapabilities {
+  needs_input: boolean;
+  execution: boolean;
+  review: boolean;
+}
+
 function createSupervisorComposition(
   store: SqliteRuntimeStore,
-  includeNeedsInput: boolean,
-  includeExecution: boolean,
-  includeReview: boolean
+  capabilities: SupervisorCompositionCapabilities
 ): { gateway: ActionGateway; orchestration: OrchestrationEngine } {
   const runtimeInspect = createRuntimeInspectAction(store);
-  const workerNeedsInputContract = includeNeedsInput ? [WORKER_NEEDS_INPUT_CONTRACT] : [];
+  const workerNeedsInputContract = capabilities.needs_input ? [WORKER_NEEDS_INPUT_CONTRACT] : [];
   const orchestration = new OrchestrationEngine(store, [
     runtimeInspect.contract,
     ...workerNeedsInputContract
@@ -480,17 +488,17 @@ function createSupervisorComposition(
   const handlers = [
     runtimeInspect,
     createDiscussionWorkerDispatchAction(orchestration),
-    ...(includeExecution ? [createExecutionWorkerDispatchAction(orchestration)] : []),
-    ...(includeReview ? [createReviewWorkerDispatchAction(orchestration)] : []),
+    ...(capabilities.execution ? [createExecutionWorkerDispatchAction(orchestration)] : []),
+    ...(capabilities.review ? [createReviewWorkerDispatchAction(orchestration)] : []),
     createWorkerInspectAction(orchestration),
-    ...(includeNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
+    ...(capabilities.needs_input ? [createWorkerNeedsInputAction(orchestration)] : [])
   ];
   return { gateway: new ActionGateway(store, handlers, {
     allowed_effect_classes: [
       "none",
       "local_read",
       "external_read",
-      ...(includeExecution ? ["local_write" as const] : [])
+      ...(capabilities.execution ? ["local_write" as const] : [])
     ]
   }), orchestration };
 }
@@ -503,12 +511,11 @@ function compositionForExecutionLock(
   if (JSON.stringify(actionNames) === JSON.stringify(["runtime_inspect"])) {
     return { gateway: createReadOnlyGateway(store) };
   }
-  return createSupervisorComposition(
-    store,
-    actionNames.includes("worker_needs_input"),
-    actionNames.includes("worker_execution_dispatch"),
-    actionNames.includes("worker_review_dispatch")
-  );
+  return createSupervisorComposition(store, {
+    needs_input: actionNames.includes("worker_needs_input"),
+    execution: actionNames.includes("worker_execution_dispatch"),
+    review: actionNames.includes("worker_review_dispatch")
+  });
 }
 
 function isRecord(input: unknown): input is Record<string, unknown> {
