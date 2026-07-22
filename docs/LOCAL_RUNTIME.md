@@ -35,6 +35,7 @@ pnpm run runtime -- vnext run continue --run-id run_...
 pnpm run runtime -- vnext run inspect --run-id run_...
 pnpm run runtime -- vnext run inspect --session-id session_...
 pnpm run runtime -- vnext worker execute --worker-id worker_...
+pnpm run runtime -- vnext worker inspect --worker-id worker_...
 pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_...
 pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_...
 pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...
@@ -107,13 +108,20 @@ Worker. The Supervisor must name an already-created clean linked Git worktree,
 its exact branch and baseline commit, one or more bounded writable paths,
 allowlisted verification commands, and a rollback instruction. The protected
 root, dirty/detached/unregistered worktrees, repository/branch/base drift,
-path traversal, symlink escape, and an already-owned worktree are rejected
+path traversal, missing or non-directory writable roots, any writable-root
+symlink, and an already-owned worktree are rejected
 before reservation. The foreground `vnext worker execute` command then claims
-the single writer lease and runs the bounded Codex Adapter. It does not create
+the single writer lease and runs the bounded Codex Adapter. The Adapter starts
+the local agent with the first exact writable directory as its primary
+workspace, adds only the remaining declared directories as writable roots,
+and uses an ephemeral agent session. It does not create
 the worktree or permit commit, push, PR, merge, deploy, activation, or parent
 completion. Canonical Git and verification evidence determines the Result;
 worker prose is advisory. A lost/expired execution owner becomes
 `paused/outcome_unknown` and is never replayed automatically.
+`vnext worker inspect` is read-only and returns the bounded Task/lock identity,
+lease state, Delivery Lineage, baseline/final snapshots, and verification
+receipts without loading a model or claiming the lease.
 
 A technical failure while the Supervisor integrates an already delivered
 Result pauses that same integration Turn. A later `continue` rebuilds the exact

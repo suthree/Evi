@@ -1,23 +1,26 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   buildCodexRunArgv,
   CODEX_STRUCTURED_RESULT_SCHEMA_TEXT,
   createCodexAuthoritySnapshot,
   parseCodexStructuredResult
-} from "../../../packages/core/src/codex_run_contract.js";
+} from "../../core/src/codex_run_contract.js";
 import type {
   ExecutionAdapterResult,
   ExecutionTaskEnvelope,
   ExecutionWorkerExecutor
-} from "../../../packages/kernel/src/index.js";
-import { runCodexProcess } from "../../../packages/runtime/src/tools.js";
+} from "../../kernel/src/index.js";
+import { runCodexProcess } from "./tools.js";
 
 export class VNextCodexExecutionExecutor implements ExecutionWorkerExecutor {
+  constructor(private readonly runProcess: typeof runCodexProcess = runCodexProcess) {}
+
   async execute(task: ExecutionTaskEnvelope, signal: AbortSignal): Promise<ExecutionAdapterResult> {
     const startedAt = Date.now();
     const prompt = executionPrompt(task);
+    const writableRoots = await canonicalWritableRoots(task);
     const maxOutputChars = Math.min(
       1_000_000,
       Math.max(1_000, task.budget.max_output_tokens * 4)
@@ -29,7 +32,7 @@ export class VNextCodexExecutionExecutor implements ExecutionWorkerExecutor {
       head_commit: task.lineage.base_commit,
       branch: task.lineage.branch,
       isolated_worktree: task.lineage.worktree,
-      cwd: task.lineage.worktree,
+      cwd: writableRoots[0]!,
       model: "auto",
       profile: "fast",
       reasoning_effort: "auto",
@@ -60,8 +63,8 @@ export class VNextCodexExecutionExecutor implements ExecutionWorkerExecutor {
     const schemaPath = join(temporary, "codex-result.schema.json");
     try {
       await writeFile(schemaPath, CODEX_STRUCTURED_RESULT_SCHEMA_TEXT, { encoding: "utf8", mode: 0o600 });
-      const processResult = await runCodexProcess(
-        buildCodexRunArgv(authority, schemaPath),
+      const processResult = await this.runProcess(
+        boundedExecutionArgv(buildCodexRunArgv(authority, schemaPath), writableRoots.slice(1)),
         prompt,
         authority,
         signal
@@ -71,7 +74,7 @@ export class VNextCodexExecutionExecutor implements ExecutionWorkerExecutor {
         duration_ms: Date.now() - startedAt
       };
       const execution = {
-        adapter: "codex_cli" as const,
+        adapter: "local_agent_cli" as const,
         thread_id: processResult.threadId,
         requested_model: "auto",
         observed_model: null,
@@ -161,11 +164,38 @@ function executionPrompt(task: ExecutionTaskEnvelope): string {
     `Rollback instruction: ${task.rollback_instruction}`,
     `Objective: ${task.objective}`,
     `Expected result: ${task.expected_result}`,
+    `Context refs: ${task.context_refs.join(", ") || "none"}`,
+    `Artifact refs: ${task.artifact_refs.join(", ") || "none"}`,
     `Constraints: ${task.constraints.join(" | ") || "none"}`,
     `Verification requirements: ${task.verification_commands.map((command) =>
       `${command.command} ${command.args.join(" ")} (cwd=${command.cwd})`
     ).join(" | ")}`
   ].join("\n");
+}
+
+async function canonicalWritableRoots(task: ExecutionTaskEnvelope): Promise<string[]> {
+  const roots: string[] = [];
+  for (const path of task.lineage.writable_paths) {
+    const expected = resolve(task.lineage.worktree, path);
+    const canonical = await realpath(expected);
+    if (canonical !== expected || !(await stat(canonical)).isDirectory()) {
+      throw new Error(`Execution writable path must remain one exact real directory: ${path}`);
+    }
+    roots.push(canonical);
+  }
+  return roots;
+}
+
+function boundedExecutionArgv(base: readonly string[], additionalRoots: string[]): readonly string[] {
+  const promptIndex = base.lastIndexOf("-");
+  if (promptIndex < 0) throw new Error("Local agent execution argv has no stdin prompt marker.");
+  const writableArgs = additionalRoots.flatMap((root) => ["--add-dir", root]);
+  return [
+    ...base.slice(0, promptIndex),
+    "--ephemeral",
+    ...writableArgs,
+    ...base.slice(promptIndex)
+  ];
 }
 
 function processFailure(result: Awaited<ReturnType<typeof runCodexProcess>>): string {

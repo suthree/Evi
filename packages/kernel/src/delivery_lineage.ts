@@ -4,7 +4,8 @@ import {
   lstat,
   readFile,
   readlink,
-  realpath
+  realpath,
+  stat
 } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -89,7 +90,7 @@ export async function inspectDeliveryLineage(
   }
   await gitText(repositoryRoot, ["cat-file", "-e", `${baseCommit}^{commit}`]);
   const writablePaths = normalizeWritablePaths(input.writable_paths);
-  for (const path of writablePaths) await assertPathStaysInside(worktree, path);
+  for (const path of writablePaths) await assertWritableRoot(worktree, path);
 
   const identity = {
     schema_version: LINEAGE_SCHEMA_VERSION as typeof LINEAGE_SCHEMA_VERSION,
@@ -318,6 +319,23 @@ async function assertPathStaysInside(worktree: string, path: string): Promise<vo
       }
       cursor = parent;
     }
+  }
+}
+
+async function assertWritableRoot(worktree: string, path: string): Promise<void> {
+  const target = resolve(worktree, path);
+  await assertPathStaysInside(worktree, path);
+  let canonical: string;
+  try {
+    canonical = await realpath(target);
+  } catch (error) {
+    if (isMissing(error)) {
+      throw new Error(`Delivery Lineage writable path must already exist as a directory: ${path}`);
+    }
+    throw error;
+  }
+  if (canonical !== target || !(await stat(canonical)).isDirectory()) {
+    throw new Error(`Delivery Lineage writable path must be one exact real directory: ${path}`);
   }
 }
 

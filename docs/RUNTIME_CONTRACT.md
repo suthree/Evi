@@ -28,6 +28,7 @@ pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [-
 pnpm run runtime -- vnext run inspect --run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext run inspect --session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext worker inspect --worker-id worker_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
 pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
@@ -104,7 +105,9 @@ integration execution in that same Turn. Result delivery is not repeated and
 the Worker still cannot claim parent completion.
 
 `vnext worker execute` is the separate foreground process Adapter for either
-Worker kind. A discussion Worker uses the same state/profile/config selectors,
+Worker kind. `vnext worker inspect` reads the bounded canonical Worker, lease,
+Delivery-Lineage, snapshot, and verification evidence without claiming a lease
+or loading a model. A discussion Worker uses the same state/profile/config selectors,
 the same Runtime Kernel, and the sole Pi Agent Loop. A terminal discussion
 child Run is recovered without replay.
 
@@ -113,12 +116,21 @@ exact repository/common-dir/branch/base identities, bounded writable paths,
 exact verification commands, rollback instruction, deadline, budget, and a
 narrowed child Execution Lock before the Action reservation. The protected
 root checkout, dirty or detached worktrees, wrong repository/branch/base,
-unregistered worktrees, path traversal, and symlink escape fail before a
-reservation. One SQLite Delivery Lineage may be bound to only one execution
+unregistered worktrees, path traversal, missing or non-directory writable
+roots, and writable-root symlinks fail before a reservation. One SQLite Delivery Lineage may be bound to only one execution
 Worker and holds one renewable writer lease. A Codex CLI Adapter may mutate
 only during that foreground lease; it cannot create a worktree, branch,
 commit, push, PR, merge, deployment, external communication, Adaptation
 activation, or parent completion.
+
+The concrete Codex Adapter is a runtime host effect behind the neutral
+`local_agent_process` kernel target. It launches `workspace-write` with the
+first exact writable directory as the primary workspace and only the remaining
+declared directories as harness-derived additional writable roots; the full
+worktree is not a writable sandbox root. The agent session is ephemeral.
+Prompt policy is defense in depth; this sandbox root projection is the
+repository write authority, and the later canonical Git snapshot remains the
+independent acceptance check.
 
 The executor's structured result remains advisory. The Evi-owned execution
 runtime independently captures canonical before/after Git identity, status,

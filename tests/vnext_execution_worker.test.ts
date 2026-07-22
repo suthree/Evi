@@ -23,6 +23,7 @@ import {
   executeVNextWorker,
   VNEXT_EXECUTION_WORKER_MARKER
 } from "../apps/cli/src/vnext_worker.js";
+import { VNextCodexExecutionExecutor } from "../packages/runtime/src/vnext_execution_worker_adapter.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -51,7 +52,7 @@ test("Supervisor queues one execution Worker, obtains canonical Git verification
     assert.equal(completed.status, "completed");
     assert.deepEqual(completed.result_envelope?.final_snapshot.changed_paths, ["src/feature.txt"]);
     assert.equal(completed.result_envelope?.verification_receipts[0]?.exit_code, 0);
-    assert.equal(completed.result_envelope?.actual_execution.adapter, "injected");
+    assert.equal(completed.result_envelope?.actual_execution.adapter, "injected_test");
     assert.equal(completed.result_envelope?.actual_execution.lease_ordinal, 1);
     assert.equal(store.inspectRun(dispatched.started.run.id)?.deliverable_worker_count, 1);
 
@@ -68,6 +69,35 @@ test("Supervisor queues one execution Worker, obtains canonical Git verification
     assert.match(encoded, /src\/feature\.txt/u);
     assert.equal(store.inspectExecutionWorker(dispatched.worker.id)?.result_delivered_to_turn_id,
       resumed?.run.turn_id);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("an exact duplicate dispatch remains idempotent after its persisted deadline", async () => {
+  const fixture = await createGitFixture("deadline-idempotence");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const parent = await beginExecutionParent(store, fixture.repository);
+    const invocation = executionInvocation(
+      parent.started.run.id,
+      parent.started.run.turn_id,
+      fixture,
+      "deadline-replay"
+    );
+    invocation.arguments.deadline_at = new Date(Date.now() + 1_000).toISOString();
+    const first = await parent.gateway.invoke(invocation);
+    assert.equal(first.status, "completed");
+    await delay(1_050);
+    const duplicate = await parent.gateway.invoke(invocation);
+    assert.equal(duplicate.status, "completed");
+    if (first.status === "completed" && duplicate.status === "completed") {
+      assert.equal(duplicate.reservation.id, first.reservation.id);
+      assert.equal(duplicate.receipt.id, first.receipt.id);
+    }
   } finally {
     store.close();
     await rm(fixture.root, { recursive: true, force: true });
@@ -165,6 +195,50 @@ test("execution Worker rejects protected, dirty, escaped, and already-owned Deli
     assert.equal(escapedSymlink.status, "denied");
     assert.match(escapedSymlink.status === "denied" ? escapedSymlink.reason : "", /resolves outside/iu);
 
+    await symlink(join(fixture.worktree, "src"), join(fixture.worktree, "src-alias"));
+    const aliasParent = await beginExecutionParent(store, fixture.repository);
+    const aliasTask = executionTask(fixture);
+    const aliasedWritableRoot = await aliasParent.gateway.invoke({
+      ...executionInvocation(
+        aliasParent.started.run.id,
+        aliasParent.started.run.turn_id,
+        fixture,
+        "symlink-alias"
+      ),
+      arguments: {
+        ...aliasTask,
+        lineage: { ...aliasTask.lineage, writable_paths: ["src-alias"] }
+      }
+    });
+    assert.equal(aliasedWritableRoot.status, "denied");
+    assert.match(
+      aliasedWritableRoot.status === "denied" ? aliasedWritableRoot.reason : "",
+      /exact real directory/iu
+    );
+    await rm(join(fixture.worktree, "src-alias"), { force: true });
+
+    for (const invalidRoot of ["missing-dir", "README.md"] as const) {
+      const invalidRootParent = await beginExecutionParent(store, fixture.repository);
+      const invalidRootTask = executionTask(fixture);
+      const invalid = await invalidRootParent.gateway.invoke({
+        ...executionInvocation(
+          invalidRootParent.started.run.id,
+          invalidRootParent.started.run.turn_id,
+          fixture,
+          `invalid-root-${invalidRoot}`
+        ),
+        arguments: {
+          ...invalidRootTask,
+          lineage: { ...invalidRootTask.lineage, writable_paths: [invalidRoot] }
+        }
+      });
+      assert.equal(invalid.status, "denied");
+      assert.match(
+        invalid.status === "denied" ? invalid.reason : "",
+        /must already exist as a directory|exact real directory/iu
+      );
+    }
+
     const unsafeVerifyParent = await beginExecutionParent(store, fixture.repository);
     const unsafeVerifyTask = executionTask(fixture);
     const unsafeVerification = await unsafeVerifyParent.gateway.invoke({
@@ -243,7 +317,104 @@ test("stable vnext worker CLI surface executes the queued execution kind without
     assert.equal(envelope.worker.status, "completed");
     assert.equal(envelope.worker.child_run_id, null);
     assert.ok(envelope.worker.result_envelope_digest);
+    const inspected = await executeVNextWorker({
+      action: "inspect",
+      worker_id: workerId,
+      state_root: stateRoot,
+      repo_root: fixture.repository
+    });
+    assert.equal(inspected.worker.status, "completed");
+    assert.equal(inspected.worker.inspection?.lineage?.worktree, fixture.worktree);
+    assert.deepEqual(
+      inspected.worker.inspection?.result_envelope?.result_kind === "execution"
+        ? inspected.worker.inspection.result_envelope.final_snapshot.changed_paths
+        : null,
+      ["src/feature.txt"]
+    );
+    assert.equal(
+      inspected.worker.inspection?.result_envelope?.result_kind === "execution"
+        ? inspected.worker.inspection.result_envelope.verification_receipts[0]?.exit_code
+        : null,
+      0
+    );
   } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("production execution adapter grants only exact writable roots to the local agent sandbox", async () => {
+  const fixture = await createGitFixture("sandbox-roots");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const parent = await beginExecutionParent(store, fixture.repository);
+    const invocation = executionInvocation(
+      parent.started.run.id,
+      parent.started.run.turn_id,
+      fixture,
+      "sandbox-roots"
+    );
+    invocation.arguments.lineage.writable_paths = ["src", "tests"];
+    const dispatched = await parent.gateway.invoke(invocation);
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    const worker = store.inspectExecutionWorker(String(dispatched.receipt.output.worker_id));
+    assert.ok(worker);
+    let observedArgv: readonly string[] = [];
+    let observedCwd = "";
+    let observedPrompt = "";
+    const adapter = new VNextCodexExecutionExecutor(async (argv, prompt, authority) => {
+      observedArgv = argv;
+      observedCwd = authority.cwd;
+      observedPrompt = prompt;
+      return {
+        exitCode: 0,
+        timedOut: false,
+        toolBudgetExceeded: false,
+        invalidJsonl: false,
+        spawnError: false,
+        threadIdMismatch: false,
+        threadId: "123e4567-e89b-42d3-a456-426614174000",
+        lastAgentMessage: JSON.stringify({
+          status: "done",
+          summary: "Synthetic adapter result.",
+          changed_files: ["src/feature.txt"],
+          tests: ["synthetic only"],
+          blockers: [],
+          next_action: "Supervisor should inspect canonical evidence.",
+          completion_authority: "main_harness"
+        }),
+        stdoutCharsObserved: 10,
+        stderrCharsObserved: 0,
+        outputCapture: {
+          effectiveLimitChars: 4_000,
+          retainedChars: 10,
+          truncated: false,
+          prefix: "",
+          suffix: ""
+        },
+        eventCount: 1,
+        eventTypes: {},
+        itemTypes: {},
+        toolCallsObserved: 1,
+        delegationBudgetExceeded: false,
+        subagentToolEvidence: []
+      };
+    });
+    const result = await adapter.execute(worker!.task_envelope, new AbortController().signal);
+    assert.equal(result.execution.adapter, "local_agent_cli");
+    assert.equal(observedCwd, join(fixture.worktree, "src"));
+    assert.deepEqual(
+      observedArgv.slice(observedArgv.indexOf("--add-dir"), observedArgv.indexOf("--add-dir") + 2),
+      ["--add-dir", join(fixture.worktree, "tests")]
+    );
+    assert.equal(observedArgv.includes("--ephemeral"), true);
+    assert.equal(observedArgv.includes(fixture.worktree), false);
+    assert.match(observedPrompt, /Context refs: issue:146/u);
+    assert.match(observedPrompt, /Artifact refs: artifact:synthetic-fixture/u);
+  } finally {
+    store.close();
     await rm(fixture.root, { recursive: true, force: true });
   }
 });
@@ -453,7 +624,7 @@ function fakeExecutor(mutate: (task: ExecutionTaskEnvelope) => Promise<void>): E
         next_action: "Supervisor should inspect canonical Git and verification evidence.",
         completion_authority: "supervisor",
         execution: {
-          adapter: "injected",
+          adapter: "injected_test",
           thread_id: null,
           requested_model: "synthetic",
           observed_model: "synthetic",
@@ -480,11 +651,13 @@ async function createGitFixture(label: string): Promise<GitFixture> {
   const worktree = join(root, "lineage");
   const branch = `codex/test-${label}`;
   await mkdir(join(repository, "src"), { recursive: true });
+  await mkdir(join(repository, "tests"), { recursive: true });
   await git(repository, ["init", "-b", "develop"]);
   await git(repository, ["config", "user.name", "Evi Test"]);
   await git(repository, ["config", "user.email", "evi-test@example.invalid"]);
   await writeFile(join(repository, "README.md"), "fixture\n");
   await writeFile(join(repository, "src", ".gitkeep"), "");
+  await writeFile(join(repository, "tests", ".gitkeep"), "");
   await writeFile(join(repository, "src", "feature.txt"), "baseline\n");
   await writeFile(join(repository, "verify.test.js"), [
     "import assert from 'node:assert/strict';",

@@ -124,7 +124,7 @@ export class ExecutionWorkerRuntime {
         next_action: "Inspect the exact Delivery Lineage; do not replay this execution automatically.",
         completion_authority: "supervisor",
         execution: {
-          adapter: "injected",
+          adapter: "injected_test",
           thread_id: null,
           requested_model: "unknown",
           observed_model: null,

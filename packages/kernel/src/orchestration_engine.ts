@@ -175,12 +175,12 @@ export class OrchestrationEngine {
     invocationId: string,
     input: ExecutionTaskInput
   ): Promise<JsonObject> {
-    if (Date.parse(input.deadline_at) <= Date.now()) {
-      throw new Error("Execution Worker deadline must be in the future at dispatch.");
-    }
     this.store.assertCanDispatchExecutionWorker(parentRunId, invocationId);
     const prepared = this.store.getPreparedExecutionWorkerDispatch(parentRunId, invocationId, input);
     if (prepared) return prepared;
+    if (Date.parse(input.deadline_at) <= Date.now()) {
+      throw new Error("Execution Worker deadline must be in the future at first dispatch.");
+    }
     const parentLock = this.store.getExecutionLock(parentRunId);
     const childLock = deriveExecutionWorkerLock(parentLock, [], input.budget);
     const inspected = await inspectDeliveryLineage(parentLock.authority.cwd, input.lineage);

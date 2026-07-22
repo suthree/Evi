@@ -69,7 +69,7 @@ export interface ExecutionTaskEnvelope {
   artifact_refs: string[];
   constraints: string[];
   verification_commands: VerificationCommand[];
-  execution_target: "codex_cli_process";
+  execution_target: "local_agent_process";
   child_execution_lock_digest: string;
   lineage: DeliveryLineage;
   baseline: DeliveryLineageSnapshot;
@@ -88,7 +88,7 @@ export interface ExecutionAdapterResult {
   next_action: string;
   completion_authority: "supervisor";
   execution: {
-    adapter: "codex_cli" | "injected";
+    adapter: "local_agent_cli" | "injected_test";
     thread_id: string | null;
     requested_model: string;
     observed_model: string | null;
@@ -122,7 +122,7 @@ export interface ExecutionResultEnvelope {
   actual_execution: {
     attempt_id: string;
     lease_ordinal: number;
-    adapter: "codex_cli" | "injected";
+    adapter: "local_agent_cli" | "injected_test";
     thread_id: string | null;
     requested_model: string;
     observed_model: string | null;
@@ -217,7 +217,7 @@ export function materializeExecutionTaskEnvelope(input: ExecutionTaskInput & {
     artifact_refs: task.artifact_refs ?? [],
     constraints: task.constraints ?? [],
     verification_commands: task.verification_commands,
-    execution_target: "codex_cli_process",
+    execution_target: "local_agent_process",
     child_execution_lock_digest: digestValue(
       input.child_execution_lock_digest,
       "Execution Task child Execution Lock digest"
@@ -241,7 +241,7 @@ export function parseExecutionTaskEnvelope(input: unknown): ExecutionTaskEnvelop
   ], "Execution Task Envelope");
   if (value.schema_version !== TASK_SCHEMA_VERSION
     || value.worker_kind !== "execution"
-    || value.execution_target !== "codex_cli_process") {
+    || value.execution_target !== "local_agent_process") {
     throw new Error("Execution Task Envelope schema is invalid.");
   }
   const lineage = parseDeliveryLineage(value.lineage);
@@ -299,7 +299,7 @@ export function materializeExecutionAdapterResult(input: ExecutionAdapterResult)
     "adapter", "thread_id", "requested_model", "observed_model", "event_count",
     "tool_calls_observed"
   ], "Execution adapter lineage");
-  if (execution.adapter !== "codex_cli" && execution.adapter !== "injected") {
+  if (execution.adapter !== "local_agent_cli" && execution.adapter !== "injected_test") {
     throw new Error("Execution adapter identity is invalid.");
   }
   const consumed = record(value.consumed, "Execution adapter consumed budget");
@@ -387,7 +387,7 @@ export function materializeExecutionResultEnvelope(
     "attempt_id", "lease_ordinal", "adapter", "thread_id", "requested_model",
     "observed_model", "event_count", "tool_calls_observed", "executor_result_digest"
   ], "Execution Result actual execution");
-  if (actual.adapter !== "codex_cli" && actual.adapter !== "injected") {
+  if (actual.adapter !== "local_agent_cli" && actual.adapter !== "injected_test") {
     throw new Error("Execution Result adapter is invalid.");
   }
   const consumed = record(input.consumed, "Execution Result consumed budget");
