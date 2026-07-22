@@ -250,11 +250,17 @@ export class SqliteRuntimeStore {
   }
 
   pauseWorkerResultIntegration(execution: RunExecutionLease, error: string): RunRecord {
-    if (execution.kind !== "worker_result_continuation") {
-      throw new Error(`Worker Result integration execution kind is invalid: ${execution.id}`);
-    }
     if (this.getDeliveredWorkerResults(execution.run_id, execution.turn_id).length === 0) {
       throw new Error(`Worker Result integration has no delivered evidence: ${execution.run_id}`);
+    }
+    const delivery = this.db.prepare(`
+      SELECT 1 AS present
+      FROM runtime_events
+      WHERE run_id = ? AND turn_id = ? AND kind = 'worker_result_delivered'
+      LIMIT 1
+    `).get(execution.run_id, execution.turn_id) as { present: number } | undefined;
+    if (!delivery) {
+      throw new Error(`Worker Result integration Turn lineage is missing: ${execution.run_id}`);
     }
     const message = error.trim().slice(0, 4_000)
       || "Supervisor integration failed before it could settle the Worker Result.";
@@ -1097,7 +1103,6 @@ export class SqliteRuntimeStore {
         SELECT id
         FROM run_executions
         WHERE id = ? AND run_id = ? AND turn_id = ?
-          AND kind = 'worker_result_continuation'
           AND state = 'settled' AND outcome = 'paused'
       `).get(payload.execution_id, input.run_id, input.turn_id) as { id: string } | undefined;
       if (!failedExecution) {
@@ -1311,6 +1316,7 @@ export class SqliteRuntimeStore {
         || result.actual_execution_lock_digest !== worker.child_execution_lock.digest) {
         throw new Error(`Worker Result Envelope identity mismatch: ${worker.id}`);
       }
+      this.assertWorkerNeedsInputEvidence(worker, result);
       const update = this.db.prepare(`
         UPDATE worker_sessions
         SET status = ?, result_envelope_digest = ?, result_envelope_json = ?,
@@ -1972,6 +1978,7 @@ export class SqliteRuntimeStore {
     }
     const task = worker.task_envelope;
     const result = worker.result_envelope;
+    this.assertWorkerNeedsInputEvidence(worker, result);
     const reservation = this.requireActionReservation(worker.reservation_id);
     const receipt = this.requireEffectReceipt(worker.reservation_id);
     const child = this.requireRun(worker.child_run_id);
@@ -2027,6 +2034,26 @@ export class SqliteRuntimeStore {
       || (provider !== null && provider !== childLock.model.provider)
       || (model !== null && model !== childLock.model.model)) {
       throw new Error(`Worker Result execution identity drifted: ${worker.id}`);
+    }
+  }
+
+  private assertWorkerNeedsInputEvidence(worker: WorkerInspection, result: ResultEnvelope): void {
+    if (!worker.child_run_id) {
+      throw new Error(`Worker Result needs_input evidence has no child Run: ${worker.id}`);
+    }
+    const evidence = this.getTerminalActionEvidence(worker.child_run_id, "worker_needs_input");
+    if (result.status !== "needs_input") return;
+    if (evidence.length !== 1) {
+      throw new Error(`Worker Result needs_input evidence is not exact: ${worker.id}`);
+    }
+    const output = evidence[0]!.receipt.output;
+    if (output.worker_id !== worker.id
+      || typeof output.question !== "string"
+      || typeof output.proposed_next_step !== "string"
+      || result.unresolved_questions.length !== 1
+      || result.unresolved_questions[0] !== output.question
+      || result.proposed_next_step !== output.proposed_next_step) {
+      throw new Error(`Worker Result needs_input evidence drifted: ${worker.id}`);
     }
   }
 
@@ -2089,8 +2116,15 @@ function toWorkerInspection(row: WorkerSessionRow): WorkerInspection {
   const resultEnvelope = row.result_envelope_json === null
     ? null
     : parseResultEnvelope(JSON.parse(row.result_envelope_json));
+  const isTerminal = row.status === "needs_input" || row.status === "completed" || row.status === "failed";
+  if ((resultEnvelope !== null) !== isTerminal) {
+    throw new Error(`Worker Session Result Envelope state is invalid: ${row.id}`);
+  }
   if ((resultEnvelope?.digest ?? null) !== row.result_envelope_digest) {
     throw new Error(`Worker Session Result Envelope identity is invalid: ${row.id}`);
+  }
+  if (resultEnvelope && resultEnvelope.status !== row.status) {
+    throw new Error(`Worker Session Result Envelope status is invalid: ${row.id}`);
   }
   if (resultEnvelope && (resultEnvelope.worker_id !== row.id
     || resultEnvelope.child_run_id !== row.child_run_id

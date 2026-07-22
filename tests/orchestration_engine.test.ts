@@ -1058,7 +1058,12 @@ test("Supervisor integration failure pauses and later recovers the same Run and 
 });
 
 test("Worker Result cross-record identity drift rejects delivery and leaves the parent waiting", async () => {
-  for (const driftKind of ["child_session", "actual_execution"] as const) {
+  for (const driftKind of [
+    "child_session",
+    "actual_execution",
+    "result_status",
+    "needs_input_receipt"
+  ] as const) {
     const fixture = await mkdtemp(join(tmpdir(), `evi-worker-delivery-drift-${driftKind}-`));
     const sqlite = join(fixture, "runtime.sqlite");
     const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -1106,7 +1111,7 @@ test("Worker Result cross-record identity drift rejects delivery and leaves the 
         if (driftKind === "child_session") {
           raw.prepare("UPDATE worker_sessions SET child_session_id = ? WHERE id = ?")
             .run(parent.session_id, workerId);
-        } else {
+        } else if (driftKind === "actual_execution") {
           const drifted = materializeResultEnvelope({
             ...completed.result_envelope!,
             actual_execution: {
@@ -1119,6 +1124,23 @@ test("Worker Result cross-record identity drift rejects delivery and leaves the 
             SET result_envelope_digest = ?, result_envelope_json = ?
             WHERE id = ?
           `).run(drifted.digest, JSON.stringify(drifted), workerId);
+        } else {
+          const drifted = materializeResultEnvelope({
+            ...completed.result_envelope!,
+            status: "needs_input",
+            unresolved_questions: ["Forged parent input request."],
+            proposed_next_step: "Accept a forged input request without its typed Action receipt."
+          });
+          raw.prepare(`
+            UPDATE worker_sessions
+            SET status = ?, result_envelope_digest = ?, result_envelope_json = ?
+            WHERE id = ?
+          `).run(
+            driftKind === "needs_input_receipt" ? "needs_input" : completed.status,
+            drifted.digest,
+            JSON.stringify(drifted),
+            workerId
+          );
         }
       } finally {
         raw.close();
@@ -1126,10 +1148,20 @@ test("Worker Result cross-record identity drift rejects delivery and leaves the 
 
       await assert.rejects(
         () => parentRuntime.continueRun(parent.run_id),
-        /Worker Result (delivery|execution) identity drifted/
+        /Worker (Result (delivery|execution) identity drifted|Session Result Envelope status is invalid|Result needs_input evidence is not exact)/
       );
       assert.equal(parentRuntime.inspect(parent.run_id)?.status, "waiting");
-      assert.equal(store.inspectWorker(workerId)?.result_delivered_to_turn_id, null);
+      const inspection = new DatabaseSync(sqlite);
+      try {
+        const row = inspection.prepare(`
+          SELECT result_delivered_to_turn_id
+          FROM worker_sessions
+          WHERE id = ?
+        `).get(workerId) as { result_delivered_to_turn_id: string | null };
+        assert.equal(row.result_delivered_to_turn_id, null);
+      } finally {
+        inspection.close();
+      }
     } finally {
       store.close();
       await rm(fixture, { recursive: true, force: true });
@@ -1183,11 +1215,27 @@ test("Supervisor integration recovery rebuilds delivered Result runtime context 
     assert.equal(resumed.runtime_context.kind, "runtime_worker_result_delivery");
     await delay(150);
 
-    const recovered = await new KernelRuntime(store, parentGateway, {
+    const paused = await new KernelRuntime(store, parentGateway, {
       create(input) {
         return {
           execute: async (request) => {
             assert.match(request, /runtime_tool_protocol_recovery_evidence/);
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            assert.match(JSON.stringify(input.runtime_context), /Recoverable advisory evidence/);
+            throw new Error("synthetic recovered integration failure");
+          }
+        };
+      }
+    }, { orchestration: engine, execution_lease_ms: 100 }).continueRun(parent.run_id);
+    assert.equal(paused.status, "paused");
+    assert.equal(paused.turn_id, resumed.run.turn_id);
+    assert.match(paused.error ?? "", /synthetic recovered integration failure/);
+
+    const recovered = await new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            assert.match(request, /Retry this same Supervisor Turn/);
             assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
             assert.match(JSON.stringify(input.runtime_context), /Recoverable advisory evidence/);
             return { answer: "Recovered and integrated canonical Worker evidence." };
@@ -1198,6 +1246,123 @@ test("Supervisor integration recovery rebuilds delivered Result runtime context 
     assert.equal(recovered.status, "completed");
     assert.equal(recovered.turn_id, resumed.run.turn_id);
     assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, recovered.turn_id);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Supervisor action continuation failure remains paused and resumes the same Result Turn", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-action-continuation-recovery-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const recoverable: ActionHandler = {
+      contract: {
+        name: "integration_recovery_probe",
+        version: "1",
+        label: "Integration recovery probe",
+        description: "Create one uncertain local-read result and reconcile it exactly.",
+        parameters: Type.Object({}, { additionalProperties: false }),
+        effect_class: "local_read"
+      },
+      prepare: () => ({}),
+      execute: async () => {
+        throw new Error("synthetic uncertain integration Action");
+      },
+      reconcile: async () => ({
+        outcome: "succeeded",
+        summary: "The synthetic integration Action was reconciled.",
+        output: { recovered: true }
+      })
+    };
+    const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const parentGateway = new ActionGateway(store, [runtimeInspect, recoverable, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    let workerId = "";
+    const planner = new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async () => {
+            const dispatched = await input.action_gateway.invoke({
+              run_id: input.run_id,
+              turn_id: input.turn_id,
+              invocation_id: "action-continuation-worker-call",
+              action_name: workerDispatch.contract.name,
+              arguments: validTaskInput()
+            });
+            assert.equal(dispatched.status, "completed");
+            if (dispatched.status !== "completed") throw new Error("worker dispatch failed");
+            workerId = String(dispatched.receipt.output.worker_id);
+            return { answer: "Wait before Action-continuation integration." };
+          }
+        };
+      }
+    }, { orchestration: engine });
+    const parent = await planner.submit({
+      request: "Recover a failed Action continuation on the exact Result Turn.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: parentGateway.contracts() })
+    });
+    assert.equal(parent.status, "waiting");
+    await new DiscussionWorkerRuntime(
+      store,
+      new ActionGateway(store, [runtimeInspect]),
+      { create: () => ({ execute: async () => ({ answer: "Action-continuation evidence." }) }) }
+    ).execute(workerId);
+
+    const uncertain = await new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async () => {
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            const observed = await input.action_gateway.invoke({
+              run_id: input.run_id,
+              turn_id: input.turn_id,
+              invocation_id: "uncertain-integration-action",
+              action_name: recoverable.contract.name,
+              arguments: {}
+            });
+            assert.equal(observed.status, "outcome_unknown");
+            return { answer: "Pause until the exact Action outcome is reconciled." };
+          }
+        };
+      }
+    }, { orchestration: engine }).continueRun(parent.run_id);
+    assert.equal(uncertain.status, "paused");
+    const integrationTurnId = uncertain.turn_id;
+    assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, integrationTurnId);
+
+    const continuationPaused = await new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            assert.match(request, /runtime_action_recovery_evidence/);
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            throw new Error("synthetic action continuation integration failure");
+          }
+        };
+      }
+    }, { orchestration: engine }).continueRun(parent.run_id);
+    assert.equal(continuationPaused.status, "paused");
+    assert.equal(continuationPaused.turn_id, integrationTurnId);
+    assert.match(continuationPaused.error ?? "", /synthetic action continuation integration failure/);
+
+    const recovered = await new KernelRuntime(store, parentGateway, {
+      create(input) {
+        return {
+          execute: async (request) => {
+            assert.match(request, /Retry this same Supervisor Turn/);
+            assert.equal(input.runtime_context?.kind, "runtime_worker_result_delivery");
+            assert.match(JSON.stringify(input.runtime_context), /Action-continuation evidence/);
+            return { answer: "Integrated the Result after Action-continuation recovery." };
+          }
+        };
+      }
+    }, { orchestration: engine }).continueRun(parent.run_id);
+    assert.equal(recovered.status, "completed");
+    assert.equal(recovered.turn_id, integrationTurnId);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
