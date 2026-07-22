@@ -1,7 +1,7 @@
 # Evi Architecture
 
 Status: current v0.2 module ownership plus the accepted vNext replacement
-target, updated on 2026-07-22 after ADR 0012. Source, tests, and live evidence
+target, updated on 2026-07-22 after ADRs 0012 and 0013. Source, tests, and live evidence
 decide current implementation; the vNext section is not a deployment claim.
 
 The Simplified Chinese companion is
@@ -25,8 +25,8 @@ may replace shallow paths. It does not own:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
 - durable architecture and evolution decisions: stable docs and accepted ADRs;
-  ADR 0001 records the current v0.2 owner model and ADR 0012 owns the vNext
-  replacement target;
+  ADR 0001 records the current v0.2 owner model; ADRs 0012 and 0013 own the
+  vNext kernel and Action Gateway target;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -97,10 +97,13 @@ Adaptation Engine ---- evaluates and activates learning or evolution candidates
 | Durable growth | Adaptation Engine | Candidate, evaluation, activation, rollback or retirement |
 | Completion evidence | Specialized outcomes and receipts | Run, effect, evaluation, activation, and deployment remain distinct |
 
-The first implementation slice is intentionally smaller than this table: it
-proves a Goal-free Turn, the Pi loop adapter, and SQLite state without tools,
-learning, subagents, ingress cutover, migration, or deployment. v0.2 remains
-the current rollback runtime until later slices satisfy their own gates.
+The first two source slices are intentionally smaller than this table. They
+prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
+reservation-first Gateway path for one bounded `local_read` action. Write and
+external actions remain denied, and reconciliation does not yet continue a
+paused Run. There is no learning, subagent execution, ingress cutover,
+migration, or deployment. v0.2 remains the current rollback runtime until
+later slices satisfy their own gates.
 
 ## Current v0.2 Runtime Shape
 

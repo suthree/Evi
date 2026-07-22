@@ -5,6 +5,7 @@ import {
   SessionError,
   uuidv7,
   type AgentMessage,
+  type AgentTool,
   type SessionEntryCursorOptions,
   type SessionMetadata,
   type SessionStats,
@@ -12,6 +13,8 @@ import {
   type SessionTreeEntry
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
+import type { ActionGatewayResult, JsonObject } from "./action_types.js";
+import { ActionGateway } from "./action_gateway.js";
 import type { AgentLoop, AgentLoopFactory } from "./contracts.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -21,20 +24,24 @@ export interface PiAgentHarnessAdapterOptions {
   model: Model<any>;
   cwd: string;
   system_prompt?: string;
+  action_gateway?: ActionGateway;
 }
 
 export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
   constructor(private readonly options: PiAgentHarnessAdapterOptions) {}
 
-  create(input: { session_id: string }): AgentLoop {
+  create(input: { run_id: string; turn_id: string; session_id: string }): AgentLoop {
     const storage = new SqlitePiSessionStorage(this.options.store, input.session_id);
+    const tools = this.options.action_gateway
+      ? createPiActionTools(this.options.action_gateway, input)
+      : [];
     const harness = new AgentHarness({
       env: new NodeExecutionEnv({ cwd: this.options.cwd }),
       session: new Session(storage),
       models: this.options.models,
       model: this.options.model,
       systemPrompt: this.options.system_prompt ?? "You are a concise and reliable local-first agent.",
-      tools: []
+      tools
     });
     return {
       execute: async (request) => {
@@ -48,6 +55,56 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
       }
     };
   }
+}
+
+function createPiActionTools(
+  gateway: ActionGateway,
+  input: { run_id: string; turn_id: string; session_id: string }
+): AgentTool[] {
+  return gateway.contracts().map((contract): AgentTool => ({
+    name: contract.name,
+    label: contract.label,
+    description: contract.description,
+    parameters: contract.parameters,
+    executionMode: "sequential",
+    execute: async (toolCallId, arguments_, signal) => {
+      const result = await gateway.invoke({
+        run_id: input.run_id,
+        turn_id: input.turn_id,
+        invocation_id: toolCallId,
+        action_name: contract.name,
+        arguments: arguments_
+      }, signal);
+      return toPiToolResult(result);
+    }
+  }));
+}
+
+function toPiToolResult(result: ActionGatewayResult): { content: Array<{ type: "text"; text: string }>; details: JsonObject } {
+  if (result.status === "denied") {
+    throw new Error(`Action denied by Action Gateway: ${result.reason}`);
+  }
+  if (result.status === "outcome_unknown") {
+    throw new Error(
+      `Action outcome unknown for reservation ${result.reservation.id}; reconcile it without replay.`
+    );
+  }
+  if (result.receipt.outcome === "failed") {
+    throw new Error(`Action failed with receipt ${result.receipt.id}: ${result.receipt.summary}`);
+  }
+  return {
+    content: [{
+      type: "text",
+      text: `${result.receipt.summary}\n${JSON.stringify(result.receipt.output)}`
+    }],
+    details: {
+      reservation_id: result.reservation.id,
+      receipt_id: result.receipt.id,
+      outcome: result.receipt.outcome,
+      reconciled: result.receipt.reconciled,
+      output: result.receipt.output
+    }
+  };
 }
 
 class SqlitePiSessionStorage implements SessionStorage<SessionMetadata> {

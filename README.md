@@ -10,7 +10,9 @@ The accepted vNext architecture keeps one persistent local-first Evi self while
 replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
 a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
 Evi Action Gateway owns effects. This target does not expand the implemented
-v0.1/v0.2 contract or claim a deployment cutover.
+v0.1/v0.2 contract or claim a deployment cutover. The first two vNext source
+slices now prove the Kernel and a read-only, reservation-first Gateway path;
+neither is connected to production ingress.
 
 ## Start here
 
@@ -83,9 +85,10 @@ The current v0.2 deployment is still owned by `GoalRuntime`, its Harness,
 canonical evidence, and `OutcomeReceipt`; [ADR 0001](docs/adr/0001-native-evolution-control-plane.md)
 records that implemented boundary. The accepted replacement is
 [ADR 0012](docs/adr/0012-vnext-runtime-kernel.md): ordinary Turns do not require
-a Goal, Pi owns the only Agent Loop, SQLite is the structured state authority,
-and every effect will cross the Action Gateway. v0.2 remains the rollback
-runtime until a separately verified cutover.
+a Goal, Pi owns the only Agent Loop, and SQLite is the structured state
+authority. [ADR 0013](docs/adr/0013-reservation-first-action-gateway.md) defines
+the reservation-first Action Gateway slice and its current read-only limit.
+v0.2 remains the rollback runtime until a separately verified cutover.
 
 | Need | Source |
 | --- | --- |
@@ -125,7 +128,7 @@ never commit them.
 apps/cli/          CLI entrypoint
 packages/core/     context, harness, evidence, governance
 packages/runtime/  config, models, service, web and IM adapters
-packages/kernel/   vNext Turn/Run kernel, SQLite state, Pi loop adapter
+packages/kernel/   vNext Turn/Run kernel, SQLite state, Action Gateway, Pi adapter
 config/            tracked safe defaults
 core/              stable identity and memory policy
 docs/              architecture, engineering, runtime and operator documentation

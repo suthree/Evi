@@ -27,7 +27,7 @@ The Simplified Chinese companion is
 apps/              thin executable and composition entrypoints
 packages/core/     host-independent contracts, pure policy, state/read models
 packages/runtime/  Goal execution, adapters, services, providers, host effects
-packages/kernel/   vNext Turn/Run kernel, SQLite state, narrow loop adapters
+packages/kernel/   vNext Turn/Run kernel, SQLite state, Action Gateway, Pi adapter
 core/              stable Self and memory policy text
 docs/              stable architecture, behavior, operations, and learning docs
 .trellis/          frozen historical task specs, decisions, and delivery evidence
@@ -62,7 +62,8 @@ kernel -X-> v0.2 GoalRuntime/runtime owners
   must not depend on an app composition root.
 - `packages/kernel` owns the vNext foundation and must not import v0.2 runtime
   owners. Only its Pi adapter may import Pi packages; the rest of the kernel
-  depends on the local loop contract.
+  depends on local contracts. Action handlers do not import Pi; the adapter
+  projects Gateway contracts into Pi tools.
 - Cross-package cycles, hidden global singletons, and a second state owner are
   architecture failures, even when tests pass.
 - Reuse platform libraries and mature tools behind narrow Evi-owned contracts;

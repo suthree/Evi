@@ -21,7 +21,7 @@
 apps/              薄的可执行与组合入口
 packages/core/     与宿主无关的契约、纯策略、state/read model
 packages/runtime/  Goal 执行、Adapter、Service、Provider、宿主 effect
-packages/kernel/   vNext Turn/Run kernel、SQLite state 与窄 loop Adapter
+packages/kernel/   vNext Turn/Run kernel、SQLite state、Action Gateway 与 Pi Adapter
 core/              稳定 Self 与 Memory 策略文本
 docs/              稳定架构、行为、运维和学习文档
 .trellis/          冻结的历史 task spec、decision 和交付证据
@@ -51,7 +51,8 @@ kernel -X-> v0.2 GoalRuntime/runtime owner
 - `packages/core` 不得 import Runtime 或 App 实现。
 - `packages/runtime` 可以实现 Core 契约并拥有宿主 effect，但不得依赖 App 组合入口。
 - `packages/kernel` 拥有 vNext 基建，不得 import v0.2 runtime owner。只有 Pi Adapter 可以
-  import Pi package；其余 kernel 只依赖本地 loop contract。
+  import Pi package；其余 kernel 只依赖本地 contract。Action handler 不 import Pi，由
+  Adapter 把 Gateway contract 投影成 Pi tool。
 - 跨包循环、隐藏全局 singleton 和第二个 state owner 都是架构失败，即使测试通过也一样。
 - 在窄的 Evi-owned 契约后复用平台库和成熟工具；不能为了少写一个 Adapter 就把外部
   Framework 复制进核心。
