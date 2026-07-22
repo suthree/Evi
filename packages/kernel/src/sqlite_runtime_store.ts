@@ -42,6 +42,7 @@ import {
 } from "./sqlite_runtime_codec.js";
 import { initializeRuntimeSchema } from "./sqlite_runtime_schema.js";
 import { inspectRuntimeRun } from "./sqlite_runtime_inspection.js";
+import { selectRecoveryPiSessionEntries } from "./sqlite_runtime_recovery.js";
 
 export class RunHasUnresolvedActionsError extends Error {
   constructor(readonly runId: string) {
@@ -101,6 +102,7 @@ export class SqliteRuntimeStore {
         turn_id: turnId,
         kind: "initial",
         input_digest: sha256(request),
+        recovery_of_execution_id: null,
         lease_ms: leaseMs
       });
     });
@@ -149,8 +151,7 @@ export class SqliteRuntimeStore {
       if (reservation.run_id !== runId
         || reservation.turn_id !== run.turn_id
         || reservation.state !== "terminal"
-        || receipt.id !== receiptId
-        || !receipt.reconciled) {
+        || receipt.id !== receiptId) {
         throw new Error(`Action continuation evidence is invalid: ${reservationId}`);
       }
       return { reservation, receipt };
@@ -230,12 +231,17 @@ export class SqliteRuntimeStore {
     kind: "dispatch_recovery";
     interrupted_execution_id: string;
     dispatch_ids: string[];
+  } | {
+    kind: "protocol_recovery";
+    interrupted_execution_id: string;
   })): { run: RunRecord; execution: RunExecutionLease } {
     return this.transaction(() => {
       const run = this.requireRun(input.run_id);
       if (run.status !== "paused") throw new Error(`Run is not paused: ${input.run_id}`);
       if (this.hasUnresolvedActions(input.run_id)) throw new RunHasUnresolvedActionsError(input.run_id);
       const continuationRefs: string[] = [];
+      const executionRecovery = this.getRunExecutionRecoveryEvidence(input.run_id);
+      const recoveryOfExecutionId = executionRecovery?.execution_id ?? null;
       let executionKind: RunExecutionKind;
       if (input.kind === "action_reconciliation") {
         const expectedReceiptIds = sortedUnique(input.receipt_ids);
@@ -248,10 +254,16 @@ export class SqliteRuntimeStore {
         if (!sameStrings(currentReceiptIds, expectedReceiptIds)) {
           throw new Error(`Run continuation evidence changed before resume: ${input.run_id}`);
         }
+        if (executionRecovery) {
+          continuationRefs.push(
+            executionRecovery.execution_id,
+            ...executionRecovery.dispatches.map((dispatch) => dispatch.id)
+          );
+        }
         continuationRefs.push(...expectedReceiptIds);
         executionKind = "action_continuation";
-      } else {
-        const evidence = this.getRunExecutionRecoveryEvidence(input.run_id);
+      } else if (input.kind === "dispatch_recovery") {
+        const evidence = executionRecovery;
         if (!evidence || evidence.execution_id !== input.interrupted_execution_id) {
           throw new Error(`Run dispatch recovery evidence is not current: ${input.run_id}`);
         }
@@ -262,6 +274,15 @@ export class SqliteRuntimeStore {
         }
         continuationRefs.push(input.interrupted_execution_id, ...expectedDispatchIds);
         executionKind = "dispatch_recovery";
+      } else {
+        const evidence = executionRecovery;
+        if (!evidence
+          || evidence.execution_id !== input.interrupted_execution_id
+          || evidence.dispatches.length > 0) {
+          throw new Error(`Run protocol recovery evidence is not current: ${input.run_id}`);
+        }
+        continuationRefs.push(input.interrupted_execution_id);
+        executionKind = "protocol_recovery";
       }
       const evidenceDigest = actionDigest(input.evidence_digest);
       const updatedAt = new Date().toISOString();
@@ -287,6 +308,7 @@ export class SqliteRuntimeStore {
         turn_id: run.turn_id,
         kind: executionKind,
         input_digest: evidenceDigest,
+        recovery_of_execution_id: recoveryOfExecutionId,
         lease_ms: input.lease_ms
       });
       return { run: this.requireRun(input.run_id), execution };
@@ -670,6 +692,25 @@ export class SqliteRuntimeStore {
     `).all(sessionId) as unknown as PiEntryRow[]).map((row) => JSON.parse(row.entry_json));
   }
 
+  getRecoveryPiSessionEntries(execution: RunExecutionLease): unknown[] {
+    const current = this.requireActiveExecutionLease(execution);
+    if (!current.recovery_of_execution_id) return [];
+    const session = this.getPiSession(this.requireRun(current.run_id).session_id);
+    if (!session) throw new Error(`Pi session not found for Run: ${current.run_id}`);
+    const pathIds = new Set(
+      this.getPiSessionPath(session.id, session.leaf_id)
+        .map((entry) => parsePiEntry(entry).id)
+    );
+    return selectRecoveryPiSessionEntries({
+      db: this.db,
+      current_execution_id: current.id,
+      recovery_of_execution_id: current.recovery_of_execution_id,
+      run_id: current.run_id,
+      session_id: session.id,
+      path_entry_ids: pathIds
+    });
+  }
+
   getPiSessionPath(sessionId: string, leafId: string | null): unknown[] {
     if (leafId === null) return [];
     const byId = new Map(
@@ -785,6 +826,7 @@ export class SqliteRuntimeStore {
     turn_id: string;
     kind: RunExecutionKind;
     input_digest: string;
+    recovery_of_execution_id: string | null;
     lease_ms: number;
   }): RunExecutionLease {
     const run = this.requireRun(input.run_id);
@@ -798,6 +840,22 @@ export class SqliteRuntimeStore {
       FROM run_executions
       WHERE run_id = ?
     `).get(input.run_id) as { ordinal: number };
+    if (input.recovery_of_execution_id) {
+      const recoveryOf = this.db.prepare(`
+        SELECT id
+        FROM run_executions
+        WHERE id = ? AND run_id = ? AND state = 'interrupted' AND outcome = 'interrupted'
+      `).get(input.recovery_of_execution_id, input.run_id) as { id: string } | undefined;
+      if (!recoveryOf) {
+        throw new Error(`Run execution recovery lineage is invalid: ${input.run_id}`);
+      }
+    }
+    const sessionStart = this.db.prepare(`
+      SELECT COALESCE(MAX(entries.seq), 0) AS seq
+      FROM pi_sessions AS sessions
+      LEFT JOIN pi_session_entries AS entries ON entries.session_id = sessions.id
+      WHERE sessions.run_id = ?
+    `).get(input.run_id) as { seq: number };
     const createdAt = new Date().toISOString();
     const token = id("lease_token");
     const executionId = id("execution");
@@ -805,9 +863,10 @@ export class SqliteRuntimeStore {
     const inputDigest = actionDigest(input.input_digest);
     this.db.prepare(`
       INSERT INTO run_executions (
-        id, run_id, turn_id, ordinal, kind, input_digest, state, outcome,
+        id, run_id, turn_id, ordinal, kind, input_digest,
+        recovery_of_execution_id, session_start_seq, state, outcome,
         owner_token_digest, lease_expires_at, error, created_at, updated_at, settled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, NULL, ?, ?, NULL)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, NULL, ?, ?, NULL)
     `).run(
       executionId,
       input.run_id,
@@ -815,6 +874,8 @@ export class SqliteRuntimeStore {
       Number(ordinalRow.ordinal),
       input.kind,
       inputDigest,
+      input.recovery_of_execution_id,
+      Number(sessionStart.seq),
       sha256(token),
       leaseExpiresAt,
       createdAt,
@@ -825,6 +886,8 @@ export class SqliteRuntimeStore {
       execution_ordinal: Number(ordinalRow.ordinal),
       kind: input.kind,
       input_digest: inputDigest,
+      recovery_of_execution_id: input.recovery_of_execution_id,
+      session_start_seq: Number(sessionStart.seq),
       lease_expires_at: leaseExpiresAt
     });
     return {
@@ -833,6 +896,8 @@ export class SqliteRuntimeStore {
       turn_id: input.turn_id,
       ordinal: Number(ordinalRow.ordinal),
       kind: input.kind,
+      recovery_of_execution_id: input.recovery_of_execution_id,
+      session_start_seq: Number(sessionStart.seq),
       token,
       lease_expires_at: leaseExpiresAt
     };
@@ -914,6 +979,7 @@ export class SqliteRuntimeStore {
       ordinal: execution.ordinal,
       kind: execution.kind,
       input_digest: execution.input_digest,
+      session_start_seq: execution.session_start_seq,
       dispatches
     };
   }

@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 
-const SCHEMA_VERSION = "3";
+const SCHEMA_VERSION = "4";
 
 export function initializeRuntimeSchema(db: DatabaseSync): void {
   db.exec(`
@@ -122,8 +122,12 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
         run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
         turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
         ordinal INTEGER NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('initial', 'action_continuation', 'dispatch_recovery')),
+        kind TEXT NOT NULL CHECK (
+          kind IN ('initial', 'action_continuation', 'dispatch_recovery', 'protocol_recovery')
+        ),
         input_digest TEXT NOT NULL,
+        recovery_of_execution_id TEXT REFERENCES run_executions(id),
+        session_start_seq INTEGER NOT NULL CHECK (session_start_seq >= 0),
         state TEXT NOT NULL CHECK (state IN ('active', 'settled', 'interrupted')),
         outcome TEXT CHECK (outcome IN ('completed', 'paused', 'failed', 'interrupted')),
         owner_token_digest TEXT NOT NULL,

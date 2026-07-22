@@ -279,7 +279,7 @@ test("vNext continues the same Run after restart and terminal Action reconciliat
         .filter((part) => part.type === "text")
         .map((part) => part.text);
       assert.equal(userText[0], request);
-      assert.match(userText.at(-1) ?? "", /evi_action_recovery_evidence/);
+      assert.match(userText.at(-1) ?? "", /runtime_action_recovery_evidence/);
       assert.match(userText.at(-1) ?? "", /Recovered terminal evidence for the probe/);
       assert.match(userText.at(-1) ?? "", /"recovered":true/);
       const unknownResult = context.messages.find(
@@ -392,7 +392,7 @@ test("vNext recovers the same Run after a provider process is killed with an uns
           .map((part) => part.text);
         assert.equal(userText[0], "Finish this Run after surviving a provider-process crash.");
         assert.equal(userText.length, 2);
-        assert.match(userText[1] ?? "", /evi_model_dispatch_recovery_evidence/);
+        assert.match(userText[1] ?? "", /runtime_model_dispatch_recovery_evidence/);
         assert.match(userText[1] ?? "", /outcome_unknown/);
         return fauxAssistantMessage("The same Run recovered through a new, evidenced model dispatch.");
       }
@@ -491,30 +491,185 @@ test("vNext refuses a second continuation owner while the Run Execution lease is
   }
 });
 
-test("vNext keeps an interrupted Run paused without an unsettled model dispatch", async () => {
-  const fixture = await createFixture();
-  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
-  try {
-    const { run } = store.beginRun({ request: "Do not guess an incomplete Pi protocol state." }, 100);
-    await delay(150);
-    const gateway = new ActionGateway(store, []);
-    const runtime = new KernelRuntime(store, gateway, {
-      create() {
-        throw new Error("An unsupported recovery must not create an Agent Loop.");
+for (const crashPoint of [
+  "assistant_persisted",
+  "reservation_persisted",
+  "receipt_persisted",
+  "tool_result_persisted",
+  "final_assistant_persisted"
+] as const) {
+  test(`vNext recovers the exact Pi protocol after SIGKILL at ${crashPoint}`, async () => {
+    const fixture = await createFixture();
+    const dbPath = join(fixture, "runtime.sqlite");
+    const child = spawn(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        join(process.cwd(), "tests/fixtures/vnext_tool_protocol_crash_child.ts"),
+        dbPath,
+        fixture,
+        crashPoint
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+    try {
+      await waitForChildMarker(child, `CRASH_POINT:${crashPoint}`, 10_000);
+      const active = new DatabaseSync(dbPath);
+      let runId = "";
+      let sessionId = "";
+      try {
+        const run = active.prepare("SELECT id, session_id, status FROM runs LIMIT 1").get() as {
+          id: string;
+          session_id: string;
+          status: string;
+        };
+        runId = run.id;
+        sessionId = run.session_id;
+        assert.equal(run.status, "running");
+        const action = active.prepare("SELECT state FROM action_reservations LIMIT 1").get() as
+          | { state: string }
+          | undefined;
+        const receiptCount = Number((active.prepare(
+          "SELECT COUNT(*) AS count FROM effect_receipts"
+        ).get() as { count: number }).count);
+        const messages = (active.prepare(
+          "SELECT entry_json FROM pi_session_entries WHERE type = 'message' ORDER BY seq ASC"
+        ).all() as unknown as Array<{ entry_json: string }>).map((row) => JSON.parse(row.entry_json));
+        const toolResultCount = messages.filter(
+          (entry) => entry.message?.role === "toolResult"
+        ).length;
+        if (crashPoint === "assistant_persisted") {
+          assert.equal(action, undefined);
+          assert.equal(receiptCount, 0);
+          assert.equal(toolResultCount, 0);
+        } else if (crashPoint === "reservation_persisted") {
+          assert.equal(action?.state, "reserved");
+          assert.equal(receiptCount, 0);
+          assert.equal(toolResultCount, 0);
+        } else if (crashPoint === "receipt_persisted") {
+          assert.equal(action?.state, "terminal");
+          assert.equal(receiptCount, 1);
+          assert.equal(toolResultCount, 0);
+        } else if (crashPoint === "tool_result_persisted") {
+          assert.equal(action?.state, "terminal");
+          assert.equal(receiptCount, 1);
+          assert.equal(toolResultCount, 1);
+        } else {
+          assert.equal(action, undefined);
+          assert.equal(receiptCount, 0);
+          assert.equal(toolResultCount, 0);
+        }
+      } finally {
+        active.close();
       }
-    });
 
-    await assert.rejects(runtime.continueRun(run.id), /no bounded continuation evidence/);
-    const inspection = runtime.inspect(run.id);
-    assert.equal(inspection?.status, "paused");
-    assert.equal(inspection?.execution_count, 1);
-    assert.equal(inspection?.interrupted_execution_count, 1);
-    assert.equal(inspection?.model_dispatch_count, 0);
-  } finally {
-    store.close();
-    await rm(fixture, { recursive: true, force: true });
-  }
-});
+      assert.equal(child.kill("SIGKILL"), true);
+      await once(child, "exit");
+      await delay(500);
+
+      const recoveryModels = createModels();
+      const recoveryFaux = fauxProvider({ provider: `kernel-protocol-recovery-${Date.now()}` });
+      recoveryModels.setProvider(recoveryFaux.provider);
+      recoveryFaux.setResponses(crashPoint === "final_assistant_persisted"
+        ? [() => {
+            throw new Error("A persisted terminal assistant answer must not call the provider again.");
+          }]
+        : [(context) => {
+            const toolResults = context.messages.filter(
+              (message) => message.role === "toolResult"
+                && message.toolCallId === "protocol-recovery-call"
+            );
+            assert.equal(toolResults.length, 1);
+            assert.equal(toolResults[0]?.isError, false);
+            const userText = context.messages
+              .filter((message) => message.role === "user")
+              .flatMap((message) => message.content)
+              .filter((part) => part.type === "text")
+              .map((part) => part.text);
+            assert.equal(userText[0], "Recover this exact tool protocol without replay.");
+            assert.match(
+              userText.at(-1) ?? "",
+              /runtime_(model_dispatch|action|tool_protocol)_recovery_evidence/
+            );
+            return fauxAssistantMessage(`Recovered ${crashPoint} without replaying a terminal Action.`);
+          }]);
+      const recoveryStore = new SqliteRuntimeStore(dbPath);
+      try {
+        const gateway = new ActionGateway(recoveryStore, [createRuntimeInspectAction(recoveryStore)]);
+        const runtime = new KernelRuntime(
+          recoveryStore,
+          gateway,
+          new PiAgentHarnessLoopFactory({
+            store: recoveryStore,
+            models: recoveryModels,
+            model: recoveryFaux.getModel(),
+            cwd: fixture
+          }),
+          { execution_lease_ms: 300 }
+        );
+
+        const completed = await runtime.continueRun(runId);
+
+        assert.equal(completed.status, "completed");
+        assert.equal(completed.run_id, runId);
+        assert.equal(completed.session_id, sessionId);
+        assert.equal(
+          completed.answer,
+          crashPoint === "final_assistant_persisted"
+            ? "The persisted assistant answer survived without another provider call."
+            : `Recovered ${crashPoint} without replaying a terminal Action.`
+        );
+        const inspection = runtime.inspect(runId);
+        assert.equal(inspection?.execution_count, 2);
+        assert.equal(inspection?.interrupted_execution_count, 1);
+        assert.equal(inspection?.continuation_count, 1);
+        assert.equal(inspection?.action_count, crashPoint === "final_assistant_persisted" ? 0 : 1);
+        assert.equal(inspection?.effect_receipt_count, crashPoint === "final_assistant_persisted" ? 0 : 1);
+        const messages = recoveryStore.getPiSessionEntries(sessionId)
+          .map((entry) => entry as { type?: string; message?: { role?: string; toolCallId?: string } });
+        assert.equal(messages.filter(
+          (entry) => entry.type === "message"
+            && entry.message?.role === "toolResult"
+            && entry.message.toolCallId === "protocol-recovery-call"
+        ).length, crashPoint === "final_assistant_persisted" ? 0 : 1);
+
+        const inspect = new DatabaseSync(dbPath);
+        try {
+          const executions = inspect.prepare(`
+            SELECT kind, recovery_of_execution_id, session_start_seq
+            FROM run_executions
+            ORDER BY ordinal ASC
+          `).all() as unknown as Array<{
+            kind: string;
+            recovery_of_execution_id: string | null;
+            session_start_seq: number;
+          }>;
+          assert.equal(executions.length, 2);
+          assert.equal(executions[0]?.recovery_of_execution_id, null);
+          assert.ok(executions[1]?.recovery_of_execution_id);
+          assert.ok((executions[1]?.session_start_seq ?? 0) >= (executions[0]?.session_start_seq ?? 0));
+          const expectedKind = crashPoint === "reservation_persisted"
+            ? "action_continuation"
+            : crashPoint === "receipt_persisted" || crashPoint === "tool_result_persisted"
+              ? "protocol_recovery"
+              : "dispatch_recovery";
+          assert.equal(executions[1]?.kind, expectedKind);
+        } finally {
+          inspect.close();
+        }
+      } finally {
+        recoveryStore.close();
+      }
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+        await once(child, "exit");
+      }
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+}
 
 test("vNext records a terminal failed Run when Pi returns no text", async () => {
   const fixture = await createFixture();
@@ -585,10 +740,12 @@ test("vNext leaves no running Run when the loop adapter cannot be constructed", 
   }
 });
 
-test("only the Pi adapter imports Pi packages inside the vNext kernel", async () => {
+test("only the Pi adapter implementation imports Pi packages inside the vNext kernel", async () => {
   const root = join(process.cwd(), "packages/kernel/src");
   for (const name of await readdir(root)) {
-    if (!name.endsWith(".ts") || name === "pi_agent_harness_adapter.ts") continue;
+    if (!name.endsWith(".ts")
+      || name === "pi_agent_harness_adapter.ts"
+      || name === "pi_protocol_recovery.ts") continue;
     const source = await readFile(join(root, name), "utf8");
     assert.equal(source.includes("@earendil-works/"), false, `${name} crosses the Pi adapter boundary`);
   }
@@ -597,7 +754,7 @@ test("only the Pi adapter imports Pi packages inside the vNext kernel", async ()
 test("vNext rejects pre-gateway and unknown SQLite schemas before creating runtime tables", async () => {
   const fixture = await createFixture();
   try {
-    for (const version of ["1", "2", "999"]) {
+    for (const version of ["1", "2", "3", "999"]) {
       const dbPath = join(fixture, `runtime-${version}.sqlite`);
       const seed = new DatabaseSync(dbPath);
       seed.exec(`

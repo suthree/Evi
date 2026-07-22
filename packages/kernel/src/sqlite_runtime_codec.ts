@@ -35,6 +35,7 @@ export interface PiSessionRow {
 }
 
 export interface PiEntryRow {
+  seq?: number;
   entry_json: string;
 }
 
@@ -50,6 +51,8 @@ export interface RunExecutionRow {
   ordinal: number;
   kind: RunExecutionKind;
   input_digest: string;
+  recovery_of_execution_id: string | null;
+  session_start_seq: number;
   state: RunExecutionState;
   outcome: RunExecutionOutcome | null;
   owner_token_digest: string;

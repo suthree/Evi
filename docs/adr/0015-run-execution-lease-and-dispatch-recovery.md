@@ -70,10 +70,11 @@ this recovery would spread Pi, SQLite, and settlement knowledge across callers.
   `outcome_unknown`, and recovery performs a new explicit attempt.
 - Recovery remains caller-triggered. This slice adds no scheduler, resident
   scanner, ingress, or automatic retry policy.
-- A crash after a tool-call assistant message is persisted but before matching
-  tool results are persisted still needs a separate Pi-protocol recovery path
-  before write or external Actions can be enabled.
-- The vNext SQLite schema advances from 2 to 3. Since vNext has not cut over,
-  schemas 1, 2, and unknown versions fail closed rather than being migrated.
+- ADR 0016 later adds a Pi-protocol recovery path for the interval after a
+  tool-call assistant message is persisted but before matching tool results are
+  persisted. It keeps the same read-only Action authority.
+- This slice advanced the vNext SQLite schema from 2 to 3. ADR 0016 later
+  advances it to 4; since vNext has not cut over, older and unknown versions
+  fail closed rather than being migrated.
 - `none` and `local_read` remain the only allowed Action effect classes. The
   current v0.2 runtime, ingress, deployment, and state are unchanged.

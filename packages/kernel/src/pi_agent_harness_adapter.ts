@@ -5,7 +5,6 @@ import {
   Session,
   SessionError,
   uuidv7,
-  type AgentMessage,
   type AgentTool,
   type SessionEntryCursorOptions,
   type SessionMetadata,
@@ -14,10 +13,14 @@ import {
   type SessionTreeEntry
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import type { ActionGatewayResult, JsonObject } from "./action_types.js";
 import { ActionGateway } from "./action_gateway.js";
 import type { AgentLoop, AgentLoopFactory } from "./contracts.js";
 import type { RunExecutionLease } from "./execution_types.js";
+import {
+  assistantText,
+  reconcileInterruptedPiProtocol,
+  toPiToolResult
+} from "./pi_protocol_recovery.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 export interface PiAgentHarnessAdapterOptions {
@@ -39,10 +42,11 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
     execution: RunExecutionLease;
   }): AgentLoop {
     const storage = new SqlitePiSessionStorage(this.options.store, input.session_id);
+    const session = new Session(storage);
     const tools = createPiActionTools(input.action_gateway, input);
     const harness = new AgentHarness({
       env: new NodeExecutionEnv({ cwd: this.options.cwd }),
-      session: new Session(storage),
+      session,
       models: this.options.models,
       model: this.options.model,
       systemPrompt: this.options.system_prompt ?? "You are a concise and reliable local-first agent.",
@@ -80,6 +84,17 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
         };
         signal.addEventListener("abort", abortHarness, { once: true });
         try {
+          const recoveredAnswer = await reconcileInterruptedPiProtocol({
+            store: this.options.store,
+            session,
+            harness,
+            gateway: input.action_gateway,
+            execution: input.execution,
+            run_id: input.run_id,
+            turn_id: input.turn_id,
+            signal
+          });
+          if (recoveredAnswer !== null) return { answer: recoveredAnswer };
           const response = await harness.prompt(request);
           if (response.stopReason === "error" || response.stopReason === "aborted") {
             throw new Error(response.errorMessage || `Pi AgentHarness stopped: ${response.stopReason}`);
@@ -116,33 +131,6 @@ function createPiActionTools(
       return toPiToolResult(result);
     }
   }));
-}
-
-function toPiToolResult(result: ActionGatewayResult): { content: Array<{ type: "text"; text: string }>; details: JsonObject } {
-  if (result.status === "denied") {
-    throw new Error(`Action denied by Action Gateway: ${result.reason}`);
-  }
-  if (result.status === "outcome_unknown") {
-    throw new Error(
-      `Action outcome unknown for reservation ${result.reservation.id}; reconcile it without replay.`
-    );
-  }
-  if (result.receipt.outcome === "failed") {
-    throw new Error(`Action failed with receipt ${result.receipt.id}: ${result.receipt.summary}`);
-  }
-  return {
-    content: [{
-      type: "text",
-      text: `${result.receipt.summary}\n${JSON.stringify(result.receipt.output)}`
-    }],
-    details: {
-      reservation_id: result.reservation.id,
-      receipt_id: result.receipt.id,
-      outcome: result.receipt.outcome,
-      reconciled: result.receipt.reconciled,
-      output: result.receipt.output
-    }
-  };
 }
 
 class SqlitePiSessionStorage implements SessionStorage<SessionMetadata> {
@@ -262,14 +250,6 @@ class SqlitePiSessionStorage implements SessionStorage<SessionMetadata> {
     if (!session) throw new SessionError("not_found", `Session not found: ${this.sessionId}`);
     return session;
   }
-}
-
-function assistantText(message: AgentMessage): string {
-  if (message.role !== "assistant") return "";
-  return message.content
-    .filter((part): part is Extract<(typeof message.content)[number], { type: "text" }> => part.type === "text")
-    .map((part) => part.text)
-    .join("");
 }
 
 function errorMessage(error: unknown): string {

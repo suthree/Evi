@@ -1,7 +1,7 @@
 # Evi Architecture
 
 Status: current v0.2 module ownership plus the accepted vNext replacement
-target, updated on 2026-07-22 after ADRs 0012 through 0015. Source, tests, and live evidence
+target, updated on 2026-07-22 after ADRs 0012 through 0016. Source, tests, and live evidence
 decide current implementation; the vNext section is not a deployment claim.
 
 The Simplified Chinese companion is
@@ -25,8 +25,9 @@ may replace shallow paths. It does not own:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
 - durable architecture and evolution decisions: stable docs and accepted ADRs;
-  ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0015 own the
-  vNext kernel, Action Gateway, Run continuation, and execution-recovery target;
+  ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0016 own the
+  vNext kernel, Action Gateway, Run continuation, execution recovery, and
+  tool-protocol closure target;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -92,21 +93,25 @@ Adaptation Engine ---- evaluates and activates learning or evolution candidates
 | Ordinary work | Turn inside a Run | No Goal is required |
 | Agent Loop ownership and crash detection | Leased Run Execution in SQLite | One active Execution per running Run; raw lease token is not persisted |
 | Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
+| Persisted tool-call protocol closure | Pi Adapter plus Action Gateway evidence | Exact invocation identity selects dispatch, reconciliation, receipt reuse, or fail-closed pause |
 | Structured state | SQLite runtime store | JSONL and directory scans are projections, fixtures, or archives |
 | Tool and durable effects | Action Gateway | Typed policy, containment, reservation, evidence, reconciliation |
 | Long-lived intent | Optional Goal extension | Objective, acceptance, budget, continuation, Run links only |
 | Durable growth | Adaptation Engine | Candidate, evaluation, activation, rollback or retirement |
 | Completion evidence | Specialized outcomes and receipts | Run, effect, evaluation, activation, and deployment remain distinct |
 
-The first four source slices are intentionally smaller than this table. They
+The first five source slices are intentionally smaller than this table. They
 prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
 reservation-first Gateway path for one bounded `local_read` action. Write and
 external actions remain denied. A paused Run can explicitly continue in its
 existing Turn and session after terminal Action reconciliation. A running Run
 whose Execution owner is lost can be paused after lease expiry and resumed in
-the same session with its old dispatch recorded as `outcome_unknown`. This is
-not provider exactly-once, and a crash between a persisted tool-call message and
-its matching tool result is still outside the recovery contract. There is no
+the same session with its old dispatch recorded as `outcome_unknown`. Persisted
+assistant tool calls are repaired only through their exact Action reservation or
+receipt, and an already persisted terminal assistant answer does not call the
+provider again. This is not provider or effect exactly-once. The planned Kernel
+foundation is now closed; the next phase is a separately accepted read-only
+ingress canary rather than another generalized recovery layer. There is no
 learning, subagent execution, ingress cutover, migration, or deployment. v0.2
 remains the current rollback runtime until later slices satisfy their own gates.
 

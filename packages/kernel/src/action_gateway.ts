@@ -70,19 +70,13 @@ export class ActionGateway {
       if (reservation.receipt) {
         return { status: "completed", reservation: reservation.reservation, receipt: reservation.receipt };
       }
+      if (reservation.reservation.state === "reserved") {
+        return this.dispatchReserved(reservation.reservation, handler, signal);
+      }
       return this.reconcileReservation(reservation.reservation, handler, signal);
     }
 
-    const dispatching = this.store.markActionDispatching(reservation.reservation.id);
-    const dispatch = { reservation: dispatching, arguments: dispatching.arguments };
-    try {
-      const observation = boundedObservation(await handler.execute(dispatch, signal));
-      return this.complete(dispatching, observation, false);
-    } catch (error) {
-      const reason = boundedError(error, "Action outcome is unknown after dispatch.");
-      const unknown = this.store.markActionOutcomeUnknown(dispatching.id, reason);
-      return { status: "outcome_unknown", reservation: unknown, reason };
-    }
+    return this.dispatchReserved(reservation.reservation, handler, signal);
   }
 
   async reconcileRun(runId: string, signal?: AbortSignal): Promise<ActionGatewayResult[]> {
@@ -97,9 +91,28 @@ export class ActionGateway {
         });
         continue;
       }
-      results.push(await this.reconcileReservation(reservation, handler, signal));
+      results.push(reservation.state === "reserved"
+        ? await this.dispatchReserved(reservation, handler, signal)
+        : await this.reconcileReservation(reservation, handler, signal));
     }
     return results;
+  }
+
+  private async dispatchReserved(
+    reservation: ActionReservation,
+    handler: ActionHandler,
+    signal?: AbortSignal
+  ): Promise<ActionGatewayResult> {
+    const dispatching = this.store.markActionDispatching(reservation.id);
+    const dispatch = { reservation: dispatching, arguments: dispatching.arguments };
+    try {
+      const observation = boundedObservation(await handler.execute(dispatch, signal));
+      return this.complete(dispatching, observation, false);
+    } catch (error) {
+      const reason = boundedError(error, "Action outcome is unknown after dispatch.");
+      const unknown = this.store.markActionOutcomeUnknown(dispatching.id, reason);
+      return { status: "outcome_unknown", reservation: unknown, reason };
+    }
   }
 
   private async reconcileReservation(

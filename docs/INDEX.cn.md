@@ -19,6 +19,7 @@
 - 已接受的 reservation-first vNext Action Gateway、防重放与首个只读 action：`docs/adr/0013-reservation-first-action-gateway.cn.md`
 - 已接受的 terminal Action reconciliation 后 paused Run continuation：`docs/adr/0014-reconciled-run-continuation.cn.md`
 - 已接受的 Run Execution lease 与 model dispatch 崩溃恢复：`docs/adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`
+- 已接受的 Pi tool protocol 恢复与 Kernel 基建退出 gate：`docs/adr/0016-pi-tool-protocol-recovery.cn.md`
 - 共享控制状态、每 Goal worktree 与仅 PR 交付：`docs/adr/0003-shared-control-state-and-pr-only-delivery.cn.md`
 - 节点本地 active vault 与 Evi 控制的 LuBan 晋升：`docs/adr/0004-node-local-vault-and-luban-promotion.cn.md`
 - Typed cognition envelope 与 fail-closed 模型决策解析：`docs/adr/0005-typed-cognition-envelope.cn.md`
