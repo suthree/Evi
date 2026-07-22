@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,77 +10,38 @@ import type {
   JsonObject
 } from "./action_types.js";
 import type { RunInspection, RunRecord } from "./contracts.js";
-
-interface RunRow {
-  id: string;
-  status: RunRecord["status"];
-  goal_id: string | null;
-  request: string;
-  answer: string | null;
-  error: string | null;
-  session_id: string;
-  turn_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface PiSessionRow {
-  id: string;
-  run_id: string;
-  created_at: string;
-  leaf_id: string | null;
-}
-
-interface PiEntryRow {
-  entry_json: string;
-}
-
-interface RuntimeEventRow {
-  seq: number;
-  payload_json: string;
-}
-
-interface ActionReservationRow {
-  id: string;
-  run_id: string;
-  turn_id: string;
-  invocation_id: string;
-  action_name: string;
-  contract_version: string;
-  action_digest: string;
-  effect_class: ActionEffectClass;
-  decision: "allow";
-  decision_reason: string;
-  arguments_json: string;
-  state: ActionReservation["state"];
-  error: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface EffectReceiptRow {
-  id: string;
-  reservation_id: string;
-  run_id: string;
-  turn_id: string;
-  action_name: string;
-  contract_version: string;
-  action_digest: string;
-  effect_class: ActionEffectClass;
-  outcome: EffectReceipt["outcome"];
-  summary: string;
-  output_json: string;
-  reconciled: number;
-  created_at: string;
-}
-
-interface StoredPiEntry {
-  id: string;
-  parentId: string | null;
-  type: string;
-  timestamp: string;
-  [key: string]: unknown;
-}
+import type {
+  ModelDispatchRecord,
+  RunExecutionKind,
+  RunExecutionLease,
+  RunExecutionOutcome,
+  RunExecutionRecoveryEvidence
+} from "./execution_types.js";
+import {
+  actionDigest,
+  boundedText,
+  leaseExpiry,
+  parseJsonObject,
+  parsePiEntry,
+  runtimeId as id,
+  sameStrings,
+  sha256,
+  sortedUnique,
+  toActionReservation,
+  toEffectReceipt,
+  toModelDispatch,
+  type ActionReservationRow,
+  type EffectReceiptRow,
+  type ModelDispatchRow,
+  type PiEntryRow,
+  type PiSessionRow,
+  type RunExecutionRow,
+  type RunRow,
+  type RuntimeEventRow,
+  type StoredPiEntry
+} from "./sqlite_runtime_codec.js";
+import { initializeRuntimeSchema } from "./sqlite_runtime_schema.js";
+import { inspectRuntimeRun } from "./sqlite_runtime_inspection.js";
 
 export class RunHasUnresolvedActionsError extends Error {
   constructor(readonly runId: string) {
@@ -99,130 +59,17 @@ export class SqliteRuntimeStore {
     mkdirSync(dirname(this.dbPath), { recursive: true });
     this.db = new DatabaseSync(this.dbPath, { timeout: 5_000 });
     try {
-      this.db.exec(`
-        PRAGMA journal_mode = WAL;
-        PRAGMA foreign_keys = ON;
-        CREATE TABLE IF NOT EXISTS schema_meta (
-          key TEXT PRIMARY KEY,
-          value TEXT NOT NULL
-        );
-      `);
-      const version = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as
-        | { value: string }
-        | undefined;
-      if (version && version.value !== "2") {
-        throw new Error(`Unsupported vNext runtime schema version: ${version.value}`);
-      }
-      this.transaction(() => {
-        this.db.exec(`
-          CREATE TABLE IF NOT EXISTS runs (
-            id TEXT PRIMARY KEY,
-            status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
-            goal_id TEXT,
-            request TEXT NOT NULL,
-            answer TEXT,
-            error TEXT,
-            session_id TEXT NOT NULL UNIQUE,
-            turn_id TEXT NOT NULL UNIQUE,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
-          );
-          CREATE TABLE IF NOT EXISTS turns (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-            ordinal INTEGER NOT NULL,
-            status TEXT NOT NULL CHECK (status IN ('running', 'paused', 'completed', 'failed')),
-            request TEXT NOT NULL,
-            answer TEXT,
-            error TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE (run_id, ordinal)
-          );
-          CREATE TABLE IF NOT EXISTS pi_sessions (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL UNIQUE REFERENCES runs(id) ON DELETE CASCADE,
-            created_at TEXT NOT NULL,
-            leaf_id TEXT
-          );
-          CREATE TABLE IF NOT EXISTS pi_session_entries (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL REFERENCES pi_sessions(id) ON DELETE CASCADE,
-            id TEXT NOT NULL,
-            parent_id TEXT,
-            type TEXT NOT NULL,
-            entry_json TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            UNIQUE (session_id, id)
-          );
-          CREATE INDEX IF NOT EXISTS pi_session_entries_session_seq_idx
-            ON pi_session_entries(session_id, seq);
-          CREATE TABLE IF NOT EXISTS runtime_events (
-            seq INTEGER PRIMARY KEY AUTOINCREMENT,
-            id TEXT NOT NULL UNIQUE,
-            run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-            turn_id TEXT REFERENCES turns(id) ON DELETE CASCADE,
-            kind TEXT NOT NULL,
-            payload_json TEXT NOT NULL,
-            created_at TEXT NOT NULL
-          );
-          CREATE INDEX IF NOT EXISTS runtime_events_run_seq_idx
-            ON runtime_events(run_id, seq);
-          CREATE TABLE IF NOT EXISTS action_reservations (
-            id TEXT PRIMARY KEY,
-            run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-            turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-            invocation_id TEXT NOT NULL,
-            action_name TEXT NOT NULL,
-            contract_version TEXT NOT NULL,
-            action_digest TEXT NOT NULL,
-            effect_class TEXT NOT NULL CHECK (
-              effect_class IN ('none', 'local_read', 'local_write', 'external_read', 'external_write')
-            ),
-            decision TEXT NOT NULL CHECK (decision = 'allow'),
-            decision_reason TEXT NOT NULL,
-            arguments_json TEXT NOT NULL,
-            state TEXT NOT NULL CHECK (
-              state IN ('reserved', 'dispatching', 'outcome_unknown', 'terminal')
-            ),
-            error TEXT,
-            created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL,
-            UNIQUE (run_id, invocation_id)
-          );
-          CREATE INDEX IF NOT EXISTS action_reservations_run_state_idx
-            ON action_reservations(run_id, state);
-          CREATE TABLE IF NOT EXISTS effect_receipts (
-            id TEXT PRIMARY KEY,
-            reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
-            run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-            turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-            action_name TEXT NOT NULL,
-            contract_version TEXT NOT NULL,
-            action_digest TEXT NOT NULL,
-            effect_class TEXT NOT NULL CHECK (
-              effect_class IN ('none', 'local_read', 'local_write', 'external_read', 'external_write')
-            ),
-            outcome TEXT NOT NULL CHECK (outcome IN ('succeeded', 'failed')),
-            summary TEXT NOT NULL,
-            output_json TEXT NOT NULL,
-            reconciled INTEGER NOT NULL CHECK (reconciled IN (0, 1)),
-            created_at TEXT NOT NULL
-          );
-          CREATE INDEX IF NOT EXISTS effect_receipts_run_idx
-            ON effect_receipts(run_id);
-        `);
-        if (!version) {
-          this.db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', '2')").run();
-        }
-      });
+      initializeRuntimeSchema(this.db);
     } catch (error) {
       this.db.close();
       throw error;
     }
   }
 
-  beginRun(input: { request: string; goal_id?: string }): RunRecord {
+  beginRun(input: { request: string; goal_id?: string }, leaseMs: number): {
+    run: RunRecord;
+    execution: RunExecutionLease;
+  } {
     const request = input.request.trim();
     if (!request) throw new Error("Run request must not be empty.");
     const createdAt = new Date().toISOString();
@@ -231,6 +78,7 @@ export class SqliteRuntimeStore {
     const sessionId = id("session");
     const goalId = input.goal_id?.trim() || null;
 
+    let execution!: RunExecutionLease;
     this.transaction(() => {
       this.db.prepare(`
         INSERT INTO runs (
@@ -248,53 +96,25 @@ export class SqliteRuntimeStore {
         VALUES (?, ?, ?, NULL)
       `).run(sessionId, runId, createdAt);
       this.insertEvent(runId, turnId, "run_started", { goal_id: goalId });
+      execution = this.insertRunExecution({
+        run_id: runId,
+        turn_id: turnId,
+        kind: "initial",
+        input_digest: sha256(request),
+        lease_ms: leaseMs
+      });
     });
 
-    return this.requireRun(runId);
+    return { run: this.requireRun(runId), execution };
   }
 
-  completeRun(runId: string, answer: string): RunRecord {
-    const updatedAt = new Date().toISOString();
-    this.transaction(() => {
-      if (this.hasUnresolvedActions(runId)) throw new RunHasUnresolvedActionsError(runId);
-      const runResult = this.db.prepare(`
-        UPDATE runs
-        SET status = 'completed', answer = ?, error = NULL, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(answer, updatedAt, runId);
-      if (Number(runResult.changes) !== 1) throw new Error(`Run is not running: ${runId}`);
-      const run = this.requireRun(runId);
-      const turnResult = this.db.prepare(`
-        UPDATE turns
-        SET status = 'completed', answer = ?, error = NULL, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(answer, updatedAt, run.turn_id);
-      if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not running: ${run.turn_id}`);
-      this.insertEvent(runId, run.turn_id, "run_completed", {});
-    });
-    return this.requireRun(runId);
+  completeRun(execution: RunExecutionLease, answer: string): RunRecord {
+    return this.settleRunExecution(execution, "completed", answer, null);
   }
 
-  pauseRun(runId: string, error: string): RunRecord {
+  pauseRun(execution: RunExecutionLease, error: string): RunRecord {
     const message = error.trim().slice(0, 4_000) || "Run paused for unresolved action recovery.";
-    const updatedAt = new Date().toISOString();
-    this.transaction(() => {
-      const runResult = this.db.prepare(`
-        UPDATE runs
-        SET status = 'paused', answer = NULL, error = ?, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(message, updatedAt, runId);
-      if (Number(runResult.changes) !== 1) throw new Error(`Run is not running: ${runId}`);
-      const run = this.requireRun(runId);
-      const turnResult = this.db.prepare(`
-        UPDATE turns
-        SET status = 'paused', answer = NULL, error = ?, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(message, updatedAt, run.turn_id);
-      if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not running: ${run.turn_id}`);
-      this.insertEvent(runId, run.turn_id, "run_paused", { reason: message });
-    });
-    return this.requireRun(runId);
+    return this.settleRunExecution(execution, "paused", null, message);
   }
 
   getRunContinuationEvidence(runId: string): ActionRecoveryEvidence[] {
@@ -337,24 +157,111 @@ export class SqliteRuntimeStore {
     });
   }
 
+  interruptExpiredRunExecution(runId: string): RunExecutionRecoveryEvidence {
+    return this.transaction(() => {
+      const run = this.requireRun(runId);
+      if (run.status !== "running") throw new Error(`Run is not running: ${runId}`);
+      const execution = this.requireActiveRunExecution(runId);
+      const interruptedAt = new Date().toISOString();
+      if (execution.lease_expires_at > interruptedAt) {
+        throw new Error(`Run execution lease is still active: ${runId}`);
+      }
+      this.db.prepare(`
+        UPDATE model_dispatches
+        SET state = 'outcome_unknown', updated_at = ?
+        WHERE execution_id = ? AND state IN ('dispatching', 'response_observed')
+      `).run(interruptedAt, execution.id);
+      const executionResult = this.db.prepare(`
+        UPDATE run_executions
+        SET state = 'interrupted', outcome = 'interrupted', error = ?,
+            updated_at = ?, settled_at = ?
+        WHERE id = ? AND state = 'active' AND lease_expires_at <= ?
+      `).run(
+        "Run execution lease expired before settlement.",
+        interruptedAt,
+        interruptedAt,
+        execution.id,
+        interruptedAt
+      );
+      if (Number(executionResult.changes) !== 1) {
+        throw new Error(`Run execution could not be interrupted: ${runId}`);
+      }
+      const message = "Run paused because its execution lease expired before provider/model settlement.";
+      this.updateRunningRunAndTurn(run, "paused", null, message, interruptedAt);
+      this.insertEvent(runId, run.turn_id, "run_execution_interrupted", {
+        execution_id: execution.id,
+        execution_ordinal: execution.ordinal
+      });
+      this.insertEvent(runId, run.turn_id, "run_paused", {
+        reason: message,
+        reason_kind: "execution_interrupted",
+        execution_id: execution.id
+      });
+      return this.requireRunExecutionRecoveryEvidence(runId, execution.id);
+    });
+  }
+
+  getRunExecutionRecoveryEvidence(runId: string): RunExecutionRecoveryEvidence | null {
+    const run = this.requireRun(runId);
+    if (run.status !== "paused") throw new Error(`Run is not paused: ${runId}`);
+    const pause = this.db.prepare(`
+      SELECT seq, payload_json
+      FROM runtime_events
+      WHERE run_id = ? AND kind = 'run_paused'
+      ORDER BY seq DESC
+      LIMIT 1
+    `).get(runId) as RuntimeEventRow | undefined;
+    if (!pause) return null;
+    const payload = parseJsonObject(pause.payload_json, "Run pause event payload");
+    if (payload.reason_kind !== "execution_interrupted" || typeof payload.execution_id !== "string") {
+      return null;
+    }
+    return this.requireRunExecutionRecoveryEvidence(runId, payload.execution_id);
+  }
+
   resumeRun(input: {
     run_id: string;
-    receipt_ids: string[];
     evidence_digest: string;
-  }): RunRecord {
+    lease_ms: number;
+  } & ({
+    kind: "action_reconciliation";
+    receipt_ids: string[];
+  } | {
+    kind: "dispatch_recovery";
+    interrupted_execution_id: string;
+    dispatch_ids: string[];
+  })): { run: RunRecord; execution: RunExecutionLease } {
     return this.transaction(() => {
       const run = this.requireRun(input.run_id);
       if (run.status !== "paused") throw new Error(`Run is not paused: ${input.run_id}`);
       if (this.hasUnresolvedActions(input.run_id)) throw new RunHasUnresolvedActionsError(input.run_id);
-      const expectedReceiptIds = [...new Set(input.receipt_ids)].sort();
-      if (expectedReceiptIds.length === 0) {
-        throw new Error(`Run has no reconciled Action evidence for continuation: ${input.run_id}`);
-      }
-      const currentReceiptIds = this.getRunContinuationEvidence(input.run_id)
-        .map(({ receipt }) => receipt.id)
-        .sort();
-      if (JSON.stringify(currentReceiptIds) !== JSON.stringify(expectedReceiptIds)) {
-        throw new Error(`Run continuation evidence changed before resume: ${input.run_id}`);
+      const continuationRefs: string[] = [];
+      let executionKind: RunExecutionKind;
+      if (input.kind === "action_reconciliation") {
+        const expectedReceiptIds = sortedUnique(input.receipt_ids);
+        if (expectedReceiptIds.length === 0) {
+          throw new Error(`Run has no reconciled Action evidence for continuation: ${input.run_id}`);
+        }
+        const currentReceiptIds = this.getRunContinuationEvidence(input.run_id)
+          .map(({ receipt }) => receipt.id)
+          .sort();
+        if (!sameStrings(currentReceiptIds, expectedReceiptIds)) {
+          throw new Error(`Run continuation evidence changed before resume: ${input.run_id}`);
+        }
+        continuationRefs.push(...expectedReceiptIds);
+        executionKind = "action_continuation";
+      } else {
+        const evidence = this.getRunExecutionRecoveryEvidence(input.run_id);
+        if (!evidence || evidence.execution_id !== input.interrupted_execution_id) {
+          throw new Error(`Run dispatch recovery evidence is not current: ${input.run_id}`);
+        }
+        const expectedDispatchIds = sortedUnique(input.dispatch_ids);
+        const currentDispatchIds = evidence.dispatches.map((dispatch) => dispatch.id).sort();
+        if (!sameStrings(currentDispatchIds, expectedDispatchIds)) {
+          throw new Error(`Run dispatch recovery evidence changed before resume: ${input.run_id}`);
+        }
+        continuationRefs.push(input.interrupted_execution_id, ...expectedDispatchIds);
+        executionKind = "dispatch_recovery";
       }
       const evidenceDigest = actionDigest(input.evidence_digest);
       const updatedAt = new Date().toISOString();
@@ -371,69 +278,160 @@ export class SqliteRuntimeStore {
       `).run(updatedAt, run.turn_id);
       if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not paused: ${run.turn_id}`);
       this.insertEvent(input.run_id, run.turn_id, "run_continued", {
-        receipt_ids: expectedReceiptIds,
+        kind: input.kind,
+        evidence_refs: continuationRefs,
         evidence_digest: evidenceDigest
       });
-      return this.requireRun(input.run_id);
+      const execution = this.insertRunExecution({
+        run_id: input.run_id,
+        turn_id: run.turn_id,
+        kind: executionKind,
+        input_digest: evidenceDigest,
+        lease_ms: input.lease_ms
+      });
+      return { run: this.requireRun(input.run_id), execution };
     });
   }
 
-  failRun(runId: string, error: string): RunRecord {
+  failRun(execution: RunExecutionLease, error: string): RunRecord {
     const message = error.trim().slice(0, 4_000) || "Agent loop failed.";
-    const updatedAt = new Date().toISOString();
-    this.transaction(() => {
-      const runResult = this.db.prepare(`
-        UPDATE runs
-        SET status = 'failed', answer = NULL, error = ?, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(message, updatedAt, runId);
-      if (Number(runResult.changes) !== 1) throw new Error(`Run is not running: ${runId}`);
-      const run = this.requireRun(runId);
-      const turnResult = this.db.prepare(`
-        UPDATE turns
-        SET status = 'failed', answer = NULL, error = ?, updated_at = ?
-        WHERE id = ? AND status = 'running'
-      `).run(message, updatedAt, run.turn_id);
-      if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not running: ${run.turn_id}`);
-      this.insertEvent(runId, run.turn_id, "run_failed", { error: message });
+    return this.settleRunExecution(execution, "failed", null, message);
+  }
+
+  renewRunExecution(execution: RunExecutionLease, leaseMs: number): RunExecutionLease {
+    const renewedAt = new Date().toISOString();
+    const leaseExpiresAt = leaseExpiry(renewedAt, leaseMs);
+    const result = this.db.prepare(`
+      UPDATE run_executions
+      SET lease_expires_at = ?, updated_at = ?
+      WHERE id = ? AND run_id = ? AND turn_id = ? AND state = 'active'
+        AND owner_token_digest = ? AND lease_expires_at > ?
+    `).run(
+      leaseExpiresAt,
+      renewedAt,
+      execution.id,
+      execution.run_id,
+      execution.turn_id,
+      sha256(execution.token),
+      renewedAt
+    );
+    if (Number(result.changes) !== 1) {
+      throw new Error(`Run execution lease could not be renewed: ${execution.id}`);
+    }
+    return { ...execution, lease_expires_at: leaseExpiresAt };
+  }
+
+  startModelDispatch(
+    execution: RunExecutionLease,
+    input: { provider: string; model: string }
+  ): ModelDispatchRecord {
+    return this.transaction(() => {
+      this.requireActiveExecutionLease(execution);
+      const existing = this.getActiveModelDispatch(execution.id);
+      if (existing) throw new Error(`Model dispatch is already active: ${existing.id}`);
+      const ordinalRow = this.db.prepare(`
+        SELECT COALESCE(MAX(ordinal), 0) + 1 AS ordinal
+        FROM model_dispatches
+        WHERE execution_id = ?
+      `).get(execution.id) as { ordinal: number };
+      const createdAt = new Date().toISOString();
+      const dispatchId = id("model_dispatch");
+      this.db.prepare(`
+        INSERT INTO model_dispatches (
+          id, execution_id, run_id, turn_id, ordinal, provider, model, state,
+          response_status, stop_reason, message_digest, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'dispatching', NULL, NULL, NULL, ?, ?)
+      `).run(
+        dispatchId,
+        execution.id,
+        execution.run_id,
+        execution.turn_id,
+        Number(ordinalRow.ordinal),
+        boundedText(input.provider, 120, "Model provider"),
+        boundedText(input.model, 200, "Model id"),
+        createdAt,
+        createdAt
+      );
+      this.insertEvent(execution.run_id, execution.turn_id, "model_dispatch_started", {
+        execution_id: execution.id,
+        dispatch_id: dispatchId,
+        dispatch_ordinal: Number(ordinalRow.ordinal),
+        provider: input.provider,
+        model: input.model
+      });
+      return this.requireModelDispatch(dispatchId);
     });
-    return this.requireRun(runId);
+  }
+
+  observeModelResponse(
+    execution: RunExecutionLease,
+    dispatchId: string,
+    responseStatus: number
+  ): ModelDispatchRecord {
+    return this.transaction(() => {
+      this.requireActiveExecutionLease(execution);
+      if (!Number.isInteger(responseStatus) || responseStatus < 100 || responseStatus > 599) {
+        throw new Error("Model response status is invalid.");
+      }
+      const dispatch = this.requireModelDispatch(dispatchId);
+      if (dispatch.execution_id !== execution.id
+        || !["dispatching", "response_observed"].includes(dispatch.state)) {
+        throw new Error(`Model dispatch cannot observe a response: ${dispatchId}`);
+      }
+      const updatedAt = new Date().toISOString();
+      const result = this.db.prepare(`
+        UPDATE model_dispatches
+        SET state = 'response_observed', response_status = ?, updated_at = ?
+        WHERE id = ? AND state IN ('dispatching', 'response_observed')
+      `).run(responseStatus, updatedAt, dispatchId);
+      if (Number(result.changes) !== 1) {
+        throw new Error(`Model dispatch response state changed: ${dispatchId}`);
+      }
+      this.insertEvent(execution.run_id, execution.turn_id, "model_response_observed", {
+        execution_id: execution.id,
+        dispatch_id: dispatchId,
+        response_status: responseStatus
+      });
+      return this.requireModelDispatch(dispatchId);
+    });
+  }
+
+  settleModelDispatch(
+    execution: RunExecutionLease,
+    dispatchId: string,
+    input: { stop_reason: string; message_digest: string }
+  ): ModelDispatchRecord {
+    return this.transaction(() => {
+      this.requireActiveExecutionLease(execution);
+      const dispatch = this.requireModelDispatch(dispatchId);
+      if (dispatch.execution_id !== execution.id
+        || !["dispatching", "response_observed"].includes(dispatch.state)) {
+        throw new Error(`Model dispatch cannot settle: ${dispatchId}`);
+      }
+      const updatedAt = new Date().toISOString();
+      const stopReason = boundedText(input.stop_reason, 80, "Model stop reason");
+      const messageDigest = actionDigest(input.message_digest);
+      const result = this.db.prepare(`
+        UPDATE model_dispatches
+        SET state = 'settled', stop_reason = ?, message_digest = ?, updated_at = ?
+        WHERE id = ? AND state IN ('dispatching', 'response_observed')
+      `).run(stopReason, messageDigest, updatedAt, dispatchId);
+      if (Number(result.changes) !== 1) {
+        throw new Error(`Model dispatch settlement state changed: ${dispatchId}`);
+      }
+      this.insertEvent(execution.run_id, execution.turn_id, "model_dispatch_settled", {
+        execution_id: execution.id,
+        dispatch_id: dispatchId,
+        stop_reason: stopReason,
+        message_digest: messageDigest
+      });
+      return this.requireModelDispatch(dispatchId);
+    });
   }
 
   inspectRun(runId: string): RunInspection | null {
     const run = this.getRun(runId);
-    if (!run) return null;
-    const events = this.db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?").get(runId) as {
-      count: number;
-    };
-    const entries = this.db.prepare(
-      "SELECT COUNT(*) AS count FROM pi_session_entries WHERE session_id = ?"
-    ).get(run.session_id) as { count: number };
-    const actions = this.db.prepare(
-      "SELECT COUNT(*) AS count FROM action_reservations WHERE run_id = ?"
-    ).get(runId) as { count: number };
-    const unresolved = this.db.prepare(`
-      SELECT COUNT(*) AS count
-      FROM action_reservations
-      WHERE run_id = ? AND state != 'terminal'
-    `).get(runId) as { count: number };
-    const receipts = this.db.prepare(
-      "SELECT COUNT(*) AS count FROM effect_receipts WHERE run_id = ?"
-    ).get(runId) as { count: number };
-    const continuations = this.db.prepare(`
-      SELECT COUNT(*) AS count
-      FROM runtime_events
-      WHERE run_id = ? AND kind = 'run_continued'
-    `).get(runId) as { count: number };
-    return {
-      ...run,
-      event_count: Number(events.count),
-      session_entry_count: Number(entries.count),
-      action_count: Number(actions.count),
-      unresolved_action_count: Number(unresolved.count),
-      effect_receipt_count: Number(receipts.count),
-      continuation_count: Number(continuations.count)
-    };
+    return run ? inspectRuntimeRun(this.db, run) : null;
   }
 
   reserveAction(input: {
@@ -708,6 +706,218 @@ export class SqliteRuntimeStore {
     this.db.close();
   }
 
+  private settleRunExecution(
+    execution: RunExecutionLease,
+    outcome: Exclude<RunExecutionOutcome, "interrupted">,
+    answer: string | null,
+    error: string | null
+  ): RunRecord {
+    return this.transaction(() => {
+      this.requireActiveExecutionLease(execution);
+      if (outcome === "completed" && this.hasUnresolvedActions(execution.run_id)) {
+        throw new RunHasUnresolvedActionsError(execution.run_id);
+      }
+      const activeDispatch = this.getActiveModelDispatch(execution.id);
+      if (activeDispatch) {
+        throw new Error(`Run execution has an unsettled model dispatch: ${activeDispatch.id}`);
+      }
+      const settledAt = new Date().toISOString();
+      const executionResult = this.db.prepare(`
+        UPDATE run_executions
+        SET state = 'settled', outcome = ?, error = ?, updated_at = ?, settled_at = ?
+        WHERE id = ? AND state = 'active' AND owner_token_digest = ? AND lease_expires_at > ?
+      `).run(
+        outcome,
+        error,
+        settledAt,
+        settledAt,
+        execution.id,
+        sha256(execution.token),
+        settledAt
+      );
+      if (Number(executionResult.changes) !== 1) {
+        throw new Error(`Run execution could not settle: ${execution.id}`);
+      }
+      const run = this.requireRun(execution.run_id);
+      this.updateRunningRunAndTurn(run, outcome, answer, error, settledAt);
+      this.insertEvent(run.id, run.turn_id, "run_execution_settled", {
+        execution_id: execution.id,
+        execution_ordinal: execution.ordinal,
+        outcome
+      });
+      if (outcome === "completed") {
+        this.insertEvent(run.id, run.turn_id, "run_completed", {});
+      } else if (outcome === "paused") {
+        this.insertEvent(run.id, run.turn_id, "run_paused", {
+          reason: error,
+          reason_kind: "action_outcome_unknown"
+        });
+      } else {
+        this.insertEvent(run.id, run.turn_id, "run_failed", { error });
+      }
+      return this.requireRun(run.id);
+    });
+  }
+
+  private updateRunningRunAndTurn(
+    run: RunRecord,
+    status: "paused" | "completed" | "failed",
+    answer: string | null,
+    error: string | null,
+    updatedAt: string
+  ): void {
+    const runResult = this.db.prepare(`
+      UPDATE runs
+      SET status = ?, answer = ?, error = ?, updated_at = ?
+      WHERE id = ? AND status = 'running'
+    `).run(status, answer, error, updatedAt, run.id);
+    if (Number(runResult.changes) !== 1) throw new Error(`Run is not running: ${run.id}`);
+    const turnResult = this.db.prepare(`
+      UPDATE turns
+      SET status = ?, answer = ?, error = ?, updated_at = ?
+      WHERE id = ? AND status = 'running'
+    `).run(status, answer, error, updatedAt, run.turn_id);
+    if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not running: ${run.turn_id}`);
+  }
+
+  private insertRunExecution(input: {
+    run_id: string;
+    turn_id: string;
+    kind: RunExecutionKind;
+    input_digest: string;
+    lease_ms: number;
+  }): RunExecutionLease {
+    const run = this.requireRun(input.run_id);
+    if (run.status !== "running" || run.turn_id !== input.turn_id) {
+      throw new Error(`Run execution requires the current running Turn: ${input.run_id}`);
+    }
+    const existing = this.getActiveRunExecution(input.run_id);
+    if (existing) throw new Error(`Run already has an active execution: ${input.run_id}`);
+    const ordinalRow = this.db.prepare(`
+      SELECT COALESCE(MAX(ordinal), 0) + 1 AS ordinal
+      FROM run_executions
+      WHERE run_id = ?
+    `).get(input.run_id) as { ordinal: number };
+    const createdAt = new Date().toISOString();
+    const token = id("lease_token");
+    const executionId = id("execution");
+    const leaseExpiresAt = leaseExpiry(createdAt, input.lease_ms);
+    const inputDigest = actionDigest(input.input_digest);
+    this.db.prepare(`
+      INSERT INTO run_executions (
+        id, run_id, turn_id, ordinal, kind, input_digest, state, outcome,
+        owner_token_digest, lease_expires_at, error, created_at, updated_at, settled_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 'active', NULL, ?, ?, NULL, ?, ?, NULL)
+    `).run(
+      executionId,
+      input.run_id,
+      input.turn_id,
+      Number(ordinalRow.ordinal),
+      input.kind,
+      inputDigest,
+      sha256(token),
+      leaseExpiresAt,
+      createdAt,
+      createdAt
+    );
+    this.insertEvent(input.run_id, input.turn_id, "run_execution_claimed", {
+      execution_id: executionId,
+      execution_ordinal: Number(ordinalRow.ordinal),
+      kind: input.kind,
+      input_digest: inputDigest,
+      lease_expires_at: leaseExpiresAt
+    });
+    return {
+      id: executionId,
+      run_id: input.run_id,
+      turn_id: input.turn_id,
+      ordinal: Number(ordinalRow.ordinal),
+      kind: input.kind,
+      token,
+      lease_expires_at: leaseExpiresAt
+    };
+  }
+
+  private requireActiveExecutionLease(execution: RunExecutionLease): RunExecutionRow {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM run_executions
+      WHERE id = ?
+    `).get(execution.id) as RunExecutionRow | undefined;
+    const now = new Date().toISOString();
+    if (!row
+      || row.run_id !== execution.run_id
+      || row.turn_id !== execution.turn_id
+      || row.state !== "active"
+      || row.owner_token_digest !== sha256(execution.token)
+      || row.lease_expires_at <= now) {
+      throw new Error(`Run execution lease is not active: ${execution.id}`);
+    }
+    return row;
+  }
+
+  private getActiveRunExecution(runId: string): RunExecutionRow | null {
+    return (this.db.prepare(`
+      SELECT *
+      FROM run_executions
+      WHERE run_id = ? AND state = 'active'
+      LIMIT 1
+    `).get(runId) as RunExecutionRow | undefined) ?? null;
+  }
+
+  private requireActiveRunExecution(runId: string): RunExecutionRow {
+    const execution = this.getActiveRunExecution(runId);
+    if (!execution) throw new Error(`Running Run has no active execution: ${runId}`);
+    return execution;
+  }
+
+  private getActiveModelDispatch(executionId: string): ModelDispatchRecord | null {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM model_dispatches
+      WHERE execution_id = ? AND state IN ('dispatching', 'response_observed')
+      LIMIT 1
+    `).get(executionId) as ModelDispatchRow | undefined;
+    return row ? toModelDispatch(row) : null;
+  }
+
+  private requireModelDispatch(dispatchId: string): ModelDispatchRecord {
+    const row = this.db.prepare(`
+      SELECT *
+      FROM model_dispatches
+      WHERE id = ?
+    `).get(dispatchId) as ModelDispatchRow | undefined;
+    if (!row) throw new Error(`Model dispatch not found: ${dispatchId}`);
+    return toModelDispatch(row);
+  }
+
+  private requireRunExecutionRecoveryEvidence(
+    runId: string,
+    executionId: string
+  ): RunExecutionRecoveryEvidence {
+    const execution = this.db.prepare(`
+      SELECT *
+      FROM run_executions
+      WHERE id = ? AND run_id = ?
+    `).get(executionId, runId) as RunExecutionRow | undefined;
+    if (!execution || execution.state !== "interrupted" || execution.outcome !== "interrupted") {
+      throw new Error(`Run execution recovery evidence is invalid: ${runId}/${executionId}`);
+    }
+    const dispatches = (this.db.prepare(`
+      SELECT *
+      FROM model_dispatches
+      WHERE execution_id = ? AND state = 'outcome_unknown'
+      ORDER BY ordinal ASC
+    `).all(executionId) as unknown as ModelDispatchRow[]).map(toModelDispatch);
+    return {
+      execution_id: execution.id,
+      ordinal: execution.ordinal,
+      kind: execution.kind,
+      input_digest: execution.input_digest,
+      dispatches
+    };
+  }
+
   private getRun(runId: string): RunRecord | null {
     const row = this.db.prepare(`
       SELECT id, status, goal_id, request, answer, error,
@@ -776,87 +986,4 @@ export class SqliteRuntimeStore {
       throw error;
     }
   }
-}
-
-function id(prefix: string): string {
-  return `${prefix}_${randomUUID().replaceAll("-", "")}`;
-}
-
-function parsePiEntry(value: unknown): StoredPiEntry {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Pi session entry must be an object.");
-  }
-  const entry = value as Record<string, unknown>;
-  if (typeof entry.id !== "string" || !entry.id) throw new Error("Pi session entry id is invalid.");
-  if (entry.parentId !== null && typeof entry.parentId !== "string") {
-    throw new Error("Pi session entry parentId is invalid.");
-  }
-  if (typeof entry.type !== "string" || !entry.type) throw new Error("Pi session entry type is invalid.");
-  if (typeof entry.timestamp !== "string" || !entry.timestamp) {
-    throw new Error("Pi session entry timestamp is invalid.");
-  }
-  return entry as StoredPiEntry;
-}
-
-function toActionReservation(row: ActionReservationRow): ActionReservation {
-  return {
-    id: row.id,
-    run_id: row.run_id,
-    turn_id: row.turn_id,
-    invocation_id: row.invocation_id,
-    action_name: row.action_name,
-    contract_version: row.contract_version,
-    action_digest: row.action_digest,
-    effect_class: row.effect_class,
-    decision: row.decision,
-    decision_reason: row.decision_reason,
-    arguments: parseJsonObject(row.arguments_json, "Action reservation arguments"),
-    state: row.state,
-    error: row.error,
-    created_at: row.created_at,
-    updated_at: row.updated_at
-  };
-}
-
-function toEffectReceipt(row: EffectReceiptRow): EffectReceipt {
-  return {
-    id: row.id,
-    reservation_id: row.reservation_id,
-    run_id: row.run_id,
-    turn_id: row.turn_id,
-    action_name: row.action_name,
-    contract_version: row.contract_version,
-    action_digest: row.action_digest,
-    effect_class: row.effect_class,
-    outcome: row.outcome,
-    summary: row.summary,
-    output: parseJsonObject(row.output_json, "Effect receipt output"),
-    reconciled: row.reconciled === 1,
-    created_at: row.created_at
-  };
-}
-
-function parseJsonObject(input: string, label: string): JsonObject {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input);
-  } catch {
-    throw new Error(`${label} is invalid JSON.`);
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error(`${label} is not a JSON object.`);
-  }
-  return parsed as JsonObject;
-}
-
-function boundedText(input: string, maxLength: number, label: string): string {
-  const value = input.trim();
-  if (!value || value.length > maxLength) throw new Error(`${label} is invalid.`);
-  return value;
-}
-
-function actionDigest(input: string): string {
-  const value = input.trim();
-  if (!/^[a-f0-9]{64}$/.test(value)) throw new Error("Action digest is invalid.");
-  return value;
 }

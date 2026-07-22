@@ -50,6 +50,8 @@ Evi v0.2 已证明持久 Goal continuity、有界 effect、evidence capture 和�
   learning、subagent，也不切换部署。
 - 第三个源码切片按 ADR 0014 实现 terminal Action reconciliation 后的显式 same-Run
   continuation；它不声称已经能恢复 continuation provider dispatch 期间的进程崩溃。
+- 第四个源码切片按 ADR 0015 实现带 lease 的 Run Execution ownership 与 unsettled model
+  dispatch 的有界恢复；它不声称 provider exactly-once，也不恢复未闭合的 tool-call protocol。
 - Pi 精确锁定版本，且只能由 Adapter import。如果维护该 Adapter 需要复制或修改大约一千
   行 Pi 内部实现，或连续两次升级都需要语义重写，Evi 将拥有一套更小的 loop，而不是维护
   类 fork 的兼容层。
@@ -58,5 +60,5 @@ Evi v0.2 已证明持久 Goal continuity、有界 effect、evidence capture 和�
   storage seam。这只是可替换的依赖选择，不把 Evi 的 state 或 effect ownership 交给外部包。
 - 在切换前，当前 v0.2 runtime contract 仍是事实。稳定文档必须把 vNext 标为“已接受目标”
   或“已实现切片”，不能把它写成已部署行为。
-- 部署、state migration、入口替换、write/external Action Gateway 权限、
-  provider-dispatch recovery、learning 和 subagent execution 都是后续独立验证切片。
+- 部署、state migration、入口替换、write/external Action Gateway 权限、未闭合 tool-call
+  protocol recovery、learning 和 subagent execution 都是后续独立验证切片。

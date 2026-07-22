@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Model, Models } from "@earendil-works/pi-ai";
 import {
   AgentHarness,
@@ -16,6 +17,7 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type { ActionGatewayResult, JsonObject } from "./action_types.js";
 import { ActionGateway } from "./action_gateway.js";
 import type { AgentLoop, AgentLoopFactory } from "./contracts.js";
+import type { RunExecutionLease } from "./execution_types.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 export interface PiAgentHarnessAdapterOptions {
@@ -34,6 +36,7 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
     turn_id: string;
     session_id: string;
     action_gateway: ActionGateway;
+    execution: RunExecutionLease;
   }): AgentLoop {
     const storage = new SqlitePiSessionStorage(this.options.store, input.session_id);
     const tools = createPiActionTools(input.action_gateway, input);
@@ -45,15 +48,48 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
       systemPrompt: this.options.system_prompt ?? "You are a concise and reliable local-first agent.",
       tools
     });
+    let activeDispatchId: string | null = null;
+    harness.on("before_provider_request", (event) => {
+      const dispatch = this.options.store.startModelDispatch(input.execution, {
+        provider: event.model.provider,
+        model: event.model.id
+      });
+      activeDispatchId = dispatch.id;
+      return undefined;
+    });
+    harness.on("after_provider_response", (event) => {
+      if (!activeDispatchId) throw new Error("Provider response has no active model dispatch.");
+      this.options.store.observeModelResponse(input.execution, activeDispatchId, event.status);
+      return undefined;
+    });
+    harness.subscribe((event) => {
+      if (event.type !== "message_end" || event.message.role !== "assistant" || !activeDispatchId) {
+        return;
+      }
+      this.options.store.settleModelDispatch(input.execution, activeDispatchId, {
+        stop_reason: event.message.stopReason,
+        message_digest: createHash("sha256").update(JSON.stringify(event.message)).digest("hex")
+      });
+      activeDispatchId = null;
+    });
     return {
-      execute: async (request) => {
-        const response = await harness.prompt(request);
-        if (response.stopReason === "error" || response.stopReason === "aborted") {
-          throw new Error(response.errorMessage || `Pi AgentHarness stopped: ${response.stopReason}`);
+      execute: async (request, signal) => {
+        if (signal.aborted) throw new Error("Run execution aborted before Pi AgentHarness start.");
+        const abortHarness = () => {
+          void harness.abort().catch(() => undefined);
+        };
+        signal.addEventListener("abort", abortHarness, { once: true });
+        try {
+          const response = await harness.prompt(request);
+          if (response.stopReason === "error" || response.stopReason === "aborted") {
+            throw new Error(response.errorMessage || `Pi AgentHarness stopped: ${response.stopReason}`);
+          }
+          const answer = assistantText(response);
+          if (!answer.trim()) throw new Error("Pi AgentHarness returned no text response.");
+          return { answer };
+        } finally {
+          signal.removeEventListener("abort", abortHarness);
         }
-        const answer = assistantText(response);
-        if (!answer.trim()) throw new Error("Pi AgentHarness returned no text response.");
-        return { answer };
       }
     };
   }

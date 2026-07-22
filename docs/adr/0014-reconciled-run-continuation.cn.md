@@ -48,9 +48,8 @@ Pi 会把失败的 tool execution 作为不可变 error `toolResult` 持久化�
   内部实现。模型会同时看见历史 uncertainty 与后续 authoritative terminal evidence。
 - 本切片只在显式调用时恢复一个 paused Run，不增加 scheduler、automatic retry、新 Goal、
   新 Turn 或 external communication。
-- 它没有让 provider/model dispatch 获得 exactly-once。Run 恢复为 `running` 后、
-  continuation settle 前若进程崩溃，仍需要后续 lease/dispatch-recovery 设计；该缺口继续
-  阻止 production cutover。
+- 它没有让 provider/model dispatch 获得 exactly-once。ADR 0015 后续增加了进程在 settle
+  前消失时的 lease-backed recovery attempt；旧 provider dispatch 仍明确保持不确定。
 - `none` 与 `local_read` 仍是唯一允许的 Action effect class。Write/external policy、
   containment、ingress、migration 和 deployment 仍是独立切片。当前 v0.2 runtime 与 state
   不受影响。

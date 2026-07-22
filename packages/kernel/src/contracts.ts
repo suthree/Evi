@@ -1,4 +1,5 @@
 import type { ActionGateway } from "./action_gateway.js";
+import type { RunExecutionLease } from "./execution_types.js";
 
 export type RunStatus = "running" | "paused" | "completed" | "failed";
 
@@ -22,6 +23,10 @@ export interface RunInspection extends RunRecord {
   unresolved_action_count: number;
   effect_receipt_count: number;
   continuation_count: number;
+  execution_count: number;
+  interrupted_execution_count: number;
+  model_dispatch_count: number;
+  unknown_model_dispatch_count: number;
 }
 
 export interface RunOutcome {
@@ -54,7 +59,7 @@ export interface AgentLoopResult {
 }
 
 export interface AgentLoop {
-  execute(request: string): Promise<AgentLoopResult>;
+  execute(request: string, signal: AbortSignal): Promise<AgentLoopResult>;
 }
 
 export interface AgentLoopFactory {
@@ -63,5 +68,6 @@ export interface AgentLoopFactory {
     turn_id: string;
     session_id: string;
     action_gateway: ActionGateway;
+    execution: RunExecutionLease;
   }): AgentLoop;
 }

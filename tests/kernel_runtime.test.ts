@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { once } from "node:events";
 import { readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,8 +60,12 @@ test("vNext executes an ordinary Goal-free Turn through Pi and persists only SQL
     const inspection = runtime.inspect(outcome.run_id);
     assert.equal(inspection?.goal_id, null);
     assert.equal(inspection?.status, "completed");
-    assert.equal(inspection?.event_count, 2);
+    assert.equal(inspection?.event_count, 6);
     assert.equal(inspection?.session_entry_count, 2);
+    assert.equal(inspection?.execution_count, 1);
+    assert.equal(inspection?.interrupted_execution_count, 0);
+    assert.equal(inspection?.model_dispatch_count, 1);
+    assert.equal(inspection?.unknown_model_dispatch_count, 0);
   } finally {
     store.close();
   }
@@ -96,7 +102,7 @@ test("vNext records a terminal failed Run when Pi returns a provider error", asy
 
     assert.equal(outcome.status, "failed");
     assert.match(outcome.error ?? "", /simulated provider failure/);
-    assert.equal(runtime.inspect(outcome.run_id)?.event_count, 2);
+    assert.equal(runtime.inspect(outcome.run_id)?.event_count, 6);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
@@ -322,9 +328,190 @@ test("vNext continues the same Run after restart and terminal Action reconciliat
     assert.equal(runtime.inspect(runId)?.unresolved_action_count, 0);
     assert.equal(runtime.inspect(runId)?.effect_receipt_count, 1);
     assert.equal(runtime.inspect(runId)?.continuation_count, 1);
-    await assert.rejects(runtime.continueRun(runId), /Run is not paused/);
+    await assert.rejects(runtime.continueRun(runId), /Run cannot continue/);
   } finally {
     recoveryStore.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext recovers the same Run after a provider process is killed with an unsettled dispatch", async () => {
+  const fixture = await createFixture();
+  const dbPath = join(fixture, "runtime.sqlite");
+  const child = spawn(
+    process.execPath,
+    [
+      "--import",
+      "tsx",
+      join(process.cwd(), "tests/fixtures/vnext_dispatch_crash_child.ts"),
+      dbPath,
+      fixture
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] }
+  );
+  try {
+    await waitForChildMarker(child, "PROVIDER_ENTERED", 10_000);
+    await delay(450);
+    const active = new DatabaseSync(dbPath);
+    let runId = "";
+    let sessionId = "";
+    try {
+      const run = active.prepare("SELECT id, session_id, status FROM runs LIMIT 1").get() as {
+        id: string;
+        session_id: string;
+        status: string;
+      };
+      const dispatch = active.prepare("SELECT state FROM model_dispatches LIMIT 1").get() as {
+        state: string;
+      };
+      const execution = active.prepare(
+        "SELECT lease_expires_at FROM run_executions WHERE state = 'active' LIMIT 1"
+      ).get() as { lease_expires_at: string };
+      runId = run.id;
+      sessionId = run.session_id;
+      assert.equal(run.status, "running");
+      assert.equal(dispatch.state, "dispatching");
+      assert.ok(execution.lease_expires_at > new Date().toISOString());
+    } finally {
+      active.close();
+    }
+
+    assert.equal(child.kill("SIGKILL"), true);
+    await once(child, "exit");
+    await delay(500);
+
+    const recoveryModels = createModels();
+    const recoveryFaux = fauxProvider({ provider: `kernel-crash-recovery-${Date.now()}` });
+    recoveryModels.setProvider(recoveryFaux.provider);
+    recoveryFaux.setResponses([
+      (context) => {
+        const userText = context.messages
+          .filter((message) => message.role === "user")
+          .flatMap((message) => message.content)
+          .filter((part) => part.type === "text")
+          .map((part) => part.text);
+        assert.equal(userText[0], "Finish this Run after surviving a provider-process crash.");
+        assert.equal(userText.length, 2);
+        assert.match(userText[1] ?? "", /evi_model_dispatch_recovery_evidence/);
+        assert.match(userText[1] ?? "", /outcome_unknown/);
+        return fauxAssistantMessage("The same Run recovered through a new, evidenced model dispatch.");
+      }
+    ]);
+    const recoveryStore = new SqliteRuntimeStore(dbPath);
+    try {
+      const gateway = new ActionGateway(recoveryStore, []);
+      const runtime = new KernelRuntime(
+        recoveryStore,
+        gateway,
+        new PiAgentHarnessLoopFactory({
+          store: recoveryStore,
+          models: recoveryModels,
+          model: recoveryFaux.getModel(),
+          cwd: fixture
+        }),
+        { execution_lease_ms: 300 }
+      );
+
+      const completed = await runtime.continueRun(runId);
+
+      assert.equal(completed.status, "completed");
+      assert.equal(completed.run_id, runId);
+      assert.equal(completed.session_id, sessionId);
+      assert.equal(
+        completed.answer,
+        "The same Run recovered through a new, evidenced model dispatch."
+      );
+      const inspection = runtime.inspect(runId);
+      assert.equal(inspection?.execution_count, 2);
+      assert.equal(inspection?.interrupted_execution_count, 1);
+      assert.equal(inspection?.model_dispatch_count, 2);
+      assert.equal(inspection?.unknown_model_dispatch_count, 1);
+      assert.equal(inspection?.continuation_count, 1);
+      assert.equal(inspection?.session_entry_count, 3);
+    } finally {
+      recoveryStore.close();
+    }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+      await once(child, "exit");
+    }
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext keeps provider-internal response retries inside one model dispatch", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const { run, execution } = store.beginRun({ request: "Observe one retried provider request." }, 30_000);
+    const dispatch = store.startModelDispatch(execution, {
+      provider: "retrying-provider",
+      model: "retrying-model"
+    });
+
+    store.observeModelResponse(execution, dispatch.id, 429);
+    const observed = store.observeModelResponse(execution, dispatch.id, 200);
+    assert.equal(observed.state, "response_observed");
+    assert.equal(observed.response_status, 200);
+    store.settleModelDispatch(execution, dispatch.id, {
+      stop_reason: "stop",
+      message_digest: "a".repeat(64)
+    });
+    store.completeRun(execution, "One logical dispatch settled after its retry observations.");
+
+    assert.equal(store.inspectRun(run.id)?.status, "completed");
+    assert.equal(store.inspectRun(run.id)?.model_dispatch_count, 1);
+    assert.equal(store.inspectRun(run.id)?.unknown_model_dispatch_count, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext refuses a second continuation owner while the Run Execution lease is active", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const { run } = store.beginRun({ request: "Keep exactly one active loop owner." }, 30_000);
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, {
+      create() {
+        throw new Error("A second Agent Loop must not be created.");
+      }
+    });
+
+    await assert.rejects(runtime.continueRun(run.id), /Run execution lease is still active/);
+    assert.equal(runtime.inspect(run.id)?.status, "running");
+    assert.equal(runtime.inspect(run.id)?.execution_count, 1);
+    assert.equal(runtime.inspect(run.id)?.interrupted_execution_count, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext keeps an interrupted Run paused without an unsettled model dispatch", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const { run } = store.beginRun({ request: "Do not guess an incomplete Pi protocol state." }, 100);
+    await delay(150);
+    const gateway = new ActionGateway(store, []);
+    const runtime = new KernelRuntime(store, gateway, {
+      create() {
+        throw new Error("An unsupported recovery must not create an Agent Loop.");
+      }
+    });
+
+    await assert.rejects(runtime.continueRun(run.id), /no bounded continuation evidence/);
+    const inspection = runtime.inspect(run.id);
+    assert.equal(inspection?.status, "paused");
+    assert.equal(inspection?.execution_count, 1);
+    assert.equal(inspection?.interrupted_execution_count, 1);
+    assert.equal(inspection?.model_dispatch_count, 0);
+  } finally {
+    store.close();
     await rm(fixture, { recursive: true, force: true });
   }
 });
@@ -410,7 +597,7 @@ test("only the Pi adapter imports Pi packages inside the vNext kernel", async ()
 test("vNext rejects pre-gateway and unknown SQLite schemas before creating runtime tables", async () => {
   const fixture = await createFixture();
   try {
-    for (const version of ["1", "999"]) {
+    for (const version of ["1", "2", "999"]) {
       const dbPath = join(fixture, `runtime-${version}.sqlite`);
       const seed = new DatabaseSync(dbPath);
       seed.exec(`
@@ -440,4 +627,35 @@ test("vNext rejects pre-gateway and unknown SQLite schemas before creating runti
 async function createFixture(): Promise<string> {
   const { mkdtemp } = await import("node:fs/promises");
   return mkdtemp(join(tmpdir(), "evi-vnext-kernel-"));
+}
+
+async function waitForChildMarker(
+  child: ChildProcessWithoutNullStreams,
+  marker: string,
+  timeoutMs: number
+): Promise<void> {
+  let stdout = "";
+  let stderr = "";
+  child.stdout.setEncoding("utf8");
+  child.stderr.setEncoding("utf8");
+  child.stdout.on("data", (chunk: string) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  const startedAt = Date.now();
+  while (!stdout.includes(marker)) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`Crash fixture exited before ${marker}: ${stderr}`);
+    }
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error(`Crash fixture did not emit ${marker}: ${stderr}`);
+    }
+    await delay(20);
+  }
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
 }
