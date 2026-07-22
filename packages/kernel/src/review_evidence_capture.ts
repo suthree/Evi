@@ -19,9 +19,21 @@ import {
 const execFileAsync = promisify(execFile);
 const REVIEW_PACKET_SCHEMA_VERSION = 1;
 
+interface ReviewEvidenceCaptureHooks {
+  before_worktree_entry_read?: (path: string) => Promise<void>;
+  after_worktree_entry_read?: (path: string) => Promise<void>;
+}
+
+interface ReviewWorktreeEntry {
+  mode: string;
+  text: string;
+  canonical_digest: string;
+}
+
 /** Captures one immutable text projection of an execution Worker's exact final snapshot. */
 export async function captureReviewEvidencePacket(
-  subject: ExecutionWorkerInspection
+  subject: ExecutionWorkerInspection,
+  hooks: ReviewEvidenceCaptureHooks = {}
 ): Promise<ReviewEvidencePacket> {
   const result = subject.result_envelope;
   if (subject.status !== "completed" || !result || result.status !== "completed") {
@@ -30,9 +42,14 @@ export async function captureReviewEvidencePacket(
   const expected = parseDeliveryLineageSnapshot(result.final_snapshot);
   assertCurrentSnapshot(expected, await captureDeliveryLineageSnapshot(subject.lineage), subject.id);
   const files: ReviewEvidenceFile[] = [];
+  const capturedAfterEntries = new Map<string, ReviewWorktreeEntry | null>();
   for (const path of expected.changed_paths) {
     const before = await readGitEntry(subject.lineage.worktree, subject.lineage.base_commit, path);
+    await hooks.before_worktree_entry_read?.(path);
     const after = await readWorktreeEntry(subject.lineage.worktree, path);
+    await hooks.after_worktree_entry_read?.(path);
+    assertCanonicalPathIdentity(path, after, expected.path_digests[path]);
+    capturedAfterEntries.set(path, after);
     files.push({
       path,
       before_mode: before?.mode ?? null,
@@ -46,6 +63,10 @@ export async function captureReviewEvidencePacket(
     await captureDeliveryLineageSnapshot(subject.lineage),
     subject.id
   );
+  for (const path of expected.changed_paths) {
+    const confirmed = await readWorktreeEntry(subject.lineage.worktree, path);
+    assertSameReviewEntry(path, capturedAfterEntries.get(path) ?? null, confirmed);
+  }
   const body = {
     schema_version: REVIEW_PACKET_SCHEMA_VERSION as typeof REVIEW_PACKET_SCHEMA_VERSION,
     execution_worker_id: subject.id,
@@ -119,12 +140,17 @@ async function readGitEntry(
 async function readWorktreeEntry(
   worktree: string,
   path: string
-): Promise<{ mode: string; text: string } | null> {
+): Promise<ReviewWorktreeEntry | null> {
   const target = resolve(worktree, path);
   try {
     const info = await lstat(target);
     if (info.isSymbolicLink()) {
-      return { mode: "120000", text: decodeReviewText(Buffer.from(await readlink(target)), path) };
+      const link = await readlink(target);
+      return {
+        mode: "120000",
+        text: decodeReviewText(Buffer.from(link), path),
+        canonical_digest: sha256(`symlink\u0000${link}`)
+      };
     }
     if (!info.isFile()) throw new Error(`Review evidence path is not a text file: ${path}`);
     if (info.size > REVIEW_EVIDENCE_PACKET_MAX_BYTES) {
@@ -132,13 +158,39 @@ async function readWorktreeEntry(
         `Review evidence file exceeds ${REVIEW_EVIDENCE_PACKET_MAX_BYTES} bytes: ${path}`
       );
     }
+    const bytes = await readFile(target);
     return {
       mode: (info.mode & 0o111) === 0 ? "100644" : "100755",
-      text: decodeReviewText(await readFile(target), path)
+      text: decodeReviewText(bytes, path),
+      canonical_digest: createHash("sha256").update(bytes).digest("hex")
     };
   } catch (error) {
     if (isMissing(error)) return null;
     throw error;
+  }
+}
+
+function assertCanonicalPathIdentity(
+  path: string,
+  entry: ReviewWorktreeEntry | null,
+  expectedDigest: string | null | undefined
+): void {
+  const actualDigest = entry?.canonical_digest ?? null;
+  if (expectedDigest === undefined || actualDigest !== expectedDigest) {
+    throw new Error(`Review evidence path does not match the final snapshot: ${path}`);
+  }
+}
+
+function assertSameReviewEntry(
+  path: string,
+  captured: ReviewWorktreeEntry | null,
+  confirmed: ReviewWorktreeEntry | null
+): void {
+  const identity = (entry: ReviewWorktreeEntry | null) => entry === null
+    ? null
+    : { mode: entry.mode, canonical_digest: entry.canonical_digest };
+  if (stableJson(identity(captured)) !== stableJson(identity(confirmed))) {
+    throw new Error(`Review evidence path changed while it was captured: ${path}`);
   }
 }
 

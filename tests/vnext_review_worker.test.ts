@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, realpath, rm, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -23,6 +23,7 @@ import {
   type ExecutionWorkerExecutor
 } from "../packages/kernel/src/index.js";
 import type { JsonObject } from "../packages/kernel/src/action_types.js";
+import { captureReviewEvidencePacket } from "../packages/kernel/src/review_evidence_capture.js";
 import { materializeReviewResultEnvelope } from "../packages/kernel/src/review_worker_types.js";
 import {
   executeVNextWorker,
@@ -390,6 +391,39 @@ test("Reviewer evidence capture rejects binary and oversized changed content bef
   }
 });
 
+test("Reviewer evidence rejects an ABA read that does not match the final snapshot bytes", async () => {
+  const fixture = await createGitFixture("packet-aba");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    await assert.rejects(
+      () => captureReviewEvidencePacket(flow.executionWorker, {
+        before_worktree_entry_read: async (path) => {
+          if (path === "src/feature.txt") {
+            await writeFile(join(fixture.worktree, path), "transient ABA bytes\n");
+          }
+        },
+        after_worktree_entry_read: async (path) => {
+          if (path === "src/feature.txt") {
+            await writeFile(join(fixture.worktree, path), "reviewed change\n");
+          }
+        }
+      }),
+      /does not match the final snapshot/iu
+    );
+    const stablePacket = await captureReviewEvidencePacket(flow.executionWorker);
+    assert.equal(
+      stablePacket.files.find((file) => file.path === "src/feature.txt")?.after,
+      "reviewed change\n"
+    );
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("Reviewer evidence packet represents exact text additions and deletions", async () => {
   const fixture = await createGitFixture("packet-add-delete");
   const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
@@ -409,7 +443,9 @@ test("Reviewer evidence packet represents exact text additions and deletions", a
     assert.ok(executionWorker);
     const completed = await new ExecutionWorkerRuntime(store, fakeExecutor(async (task) => {
       await writeFile(join(task.lineage.worktree, "src", "feature.txt"), "reviewed change\n");
+      await chmod(join(task.lineage.worktree, "src", "feature.txt"), 0o755);
       await writeFile(join(task.lineage.worktree, "src", "added.txt"), "added evidence\n");
+      await symlink("feature.txt", join(task.lineage.worktree, "src", "link.txt"));
       await unlink(join(task.lineage.worktree, "src", "removed.txt"));
     })).execute(executionWorker.id);
     assert.equal(completed.status, "completed");
@@ -426,6 +462,8 @@ test("Reviewer evidence packet represents exact text additions and deletions", a
     const packet = store.inspectReviewWorker(String(reviewed.receipt.output.worker_id))!
       .task_envelope.review_packet;
     const added = packet.files.find((file) => file.path === "src/added.txt");
+    const executable = packet.files.find((file) => file.path === "src/feature.txt");
+    const link = packet.files.find((file) => file.path === "src/link.txt");
     const removed = packet.files.find((file) => file.path === "src/removed.txt");
     assert.deepEqual(added, {
       path: "src/added.txt",
@@ -440,6 +478,14 @@ test("Reviewer evidence packet represents exact text additions and deletions", a
       after_mode: null,
       before: "removed baseline\n",
       after: null
+    });
+    assert.equal(executable?.after_mode, "100755");
+    assert.deepEqual(link, {
+      path: "src/link.txt",
+      before_mode: null,
+      after_mode: "120000",
+      before: null,
+      after: "feature.txt"
     });
   } finally {
     store.close();
