@@ -19,6 +19,59 @@ used to claim that a multi-node capability already exists.
 
 ## Scope
 
+### Stable vNext Goal-free CLI ingress
+
+The implemented stable vNext ingress is a foreground CLI Adapter:
+
+```bash
+pnpm run runtime -- vnext run submit --task "..." [--session-id session_...] [--config-dir config] [--repo-root /absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run inspect --run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run inspect --session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+```
+
+The CLI Adapter parses input and renders a structured envelope marked
+`vnext_goal_free_cli`; the Runtime Kernel owns Session, Run, Turn, Execution
+Lock, execution lease, recovery, and inspection semantics. A submit without a
+Session creates one. A submit with an existing terminal Session creates a new
+Run in the same Pi session tree. A Session may own many terminal Runs but at
+most one `running` or `paused` Run. Concurrent attach fails closed with
+`session_busy`. A terminal Run is never reopened, and `continue` only attempts
+evidenced recovery of the identified paused or owner-lost Run.
+
+The configured credential value is redacted from submitted text before the
+Kernel creates canonical state or invokes Pi. The Run row stores no second
+request body: the Turn retains the bounded submitted request while Pi session
+history retains the conversation form required by the sole Agent Loop.
+
+Every Run receives an immutable, digest-addressed Execution Lock before model
+dispatch. It records safe model/API identity, credential reference, config
+source, cwd, token/time bounds, and the exact Action name/version/effect set.
+The raw credential is resolved into memory only and is never stored in the
+lock, SQLite, output, or diagnostics. Continuation reloads only the bound
+credential reference and otherwise uses the persisted lock; cwd, config path,
+credential-reference, model-dispatch, or Action-contract drift fails closed.
+
+The default database is
+`~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
+select another absolute independent root. Declared, physical, symlink, and
+case-insensitive aliases that overlap the v0.2 shared state root are rejected.
+The stable schema is version 6 and its immutable `stable_cli` state profile
+refuses both older schemas and a current `diagnostic_canary` database; this
+slice performs no migration, import, or dual write. Model
+selection uses the normal safe config records. Raw `--base-url`, `--model`,
+`--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
+this Interface.
+
+Only `runtime_inspect` is registered, so the implemented effect ceiling remains
+`none/local_read`. Structured diagnostics distinguish `run_not_found`,
+`session_not_found`, `session_busy`, `execution_lock_mismatch`,
+`credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
+and invalid input. `signal/cancel`, optional Goal links, workers, learning,
+write/external Actions, Web/IM routing, resident-service ownership, and vNext
+deployment remain outside this slice. Production v0.2 Web, daemon, and Feishu
+traffic is unchanged.
+
 ### Explicit vNext read-only ingress canary
 
 The implemented vNext canary is a separate, foreground CLI-only opt-in:
@@ -44,7 +97,11 @@ Every canary result and error is a structured envelope marked
 `vnext_readonly_ingress_canary`. Only `runtime_inspect` is registered, and the
 existing source-owned Action Gateway policy permits only `none` and
 `local_read`; write and external effects fail closed before dispatch. This is
-not a deployed service or general ingress: ordinary v0.2 Web, daemon, and
+still a diagnostic surface, not the stable `vnext run` Interface, a deployed
+service, or general ingress. Its submit now persists the same safe per-Run
+Execution Lock shape, and continuation requires the same explicit selectors.
+Canary databases bind the immutable `diagnostic_canary` state profile. Do not
+reuse either an earlier or current canary database as stable state. Ordinary v0.2 Web, daemon, and
 Feishu traffic remains unchanged, with no shadow, mirror, percentage, or
 default route. It enables no worker, learning, discovery, self-evolution,
 Skill, LuBan, write, or external-action slice.

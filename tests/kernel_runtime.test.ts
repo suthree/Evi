@@ -19,6 +19,7 @@ import { KernelRuntime } from "../packages/kernel/src/kernel_runtime.js";
 import { PiAgentHarnessLoopFactory } from "../packages/kernel/src/pi_agent_harness_adapter.js";
 import { createRuntimeInspectAction } from "../packages/kernel/src/runtime_inspect_action.js";
 import { SqliteRuntimeStore } from "../packages/kernel/src/sqlite_runtime_store.js";
+import { testExecutionLock } from "./vnext_test_support.js";
 
 test("vNext executes an ordinary Goal-free Turn through Pi and persists only SQLite state", async () => {
   const fixture = await createFixture();
@@ -51,7 +52,14 @@ test("vNext executes an ordinary Goal-free Turn through Pi and persists only SQL
       system_prompt: "Answer the request without using tools."
     }));
 
-    const outcome = await runtime.submit({ request: "Explain the kernel boundary." });
+    const outcome = await runtime.submit({
+      request: "Explain the kernel boundary.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: faux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
 
     completedRunId = outcome.run_id;
     assert.equal(outcome.status, "completed");
@@ -98,7 +106,14 @@ test("vNext records a terminal failed Run when Pi returns a provider error", asy
       cwd: fixture
     }));
 
-    const outcome = await runtime.submit({ request: "This request should fail." });
+    const outcome = await runtime.submit({
+      request: "This request should fail.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: faux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
 
     assert.equal(outcome.status, "failed");
     assert.match(outcome.error ?? "", /simulated provider failure/);
@@ -143,7 +158,14 @@ test("vNext routes a Pi tool call through Action Gateway and records one Effect 
       cwd: fixture
     }));
 
-    const outcome = await runtime.submit({ request: "Inspect this Run once." });
+    const outcome = await runtime.submit({
+      request: "Inspect this Run once.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: faux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
 
     assert.equal(outcome.status, "completed");
     assert.equal(outcome.answer, "The current Run was inspected through the Action Gateway.");
@@ -200,7 +222,14 @@ test("vNext pauses a Run whose Action outcome remains unknown", async () => {
       cwd: fixture
     }));
 
-    const result = await runtime.submit({ request: "Do not complete over unknown action evidence." });
+    const result = await runtime.submit({
+      request: "Do not complete over unknown action evidence.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: faux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
 
     assert.equal(result.status, "paused");
     assert.equal(result.answer, null);
@@ -231,7 +260,10 @@ test("vNext continues the same Run after restart and terminal Action reconciliat
   let reconcileCalls = 0;
 
   const firstModels = createModels();
-  const firstFaux = fauxProvider({ provider: `kernel-continuation-first-${Date.now()}` });
+  const firstFaux = fauxProvider({
+    provider: "kernel-continuation-provider",
+    api: "kernel-continuation-api"
+  });
   firstModels.setProvider(firstFaux.provider);
   firstFaux.setResponses([
     fauxAssistantMessage(
@@ -258,7 +290,14 @@ test("vNext continues the same Run after restart and terminal Action reconciliat
       model: firstFaux.getModel(),
       cwd: fixture
     }));
-    const paused = await runtime.submit({ request });
+    const paused = await runtime.submit({
+      request,
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: firstFaux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
     assert.equal(paused.status, "paused");
     runId = paused.run_id;
     sessionId = paused.session_id;
@@ -268,7 +307,10 @@ test("vNext continues the same Run after restart and terminal Action reconciliat
   }
 
   const recoveryModels = createModels();
-  const recoveryFaux = fauxProvider({ provider: `kernel-continuation-recovery-${Date.now()}` });
+  const recoveryFaux = fauxProvider({
+    provider: "kernel-continuation-provider",
+    api: "kernel-continuation-api"
+  });
   recoveryModels.setProvider(recoveryFaux.provider);
   recoveryFaux.setResponses([
     (context) => {
@@ -381,7 +423,10 @@ test("vNext recovers the same Run after a provider process is killed with an uns
     await delay(500);
 
     const recoveryModels = createModels();
-    const recoveryFaux = fauxProvider({ provider: `kernel-crash-recovery-${Date.now()}` });
+    const recoveryFaux = fauxProvider({
+      provider: "kernel-crash-provider",
+      api: "kernel-crash-api"
+    });
     recoveryModels.setProvider(recoveryFaux.provider);
     recoveryFaux.setResponses([
       (context) => {
@@ -444,7 +489,14 @@ test("vNext keeps provider-internal response retries inside one model dispatch",
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
-    const { run, execution } = store.beginRun({ request: "Observe one retried provider request." }, 30_000);
+    const { run, execution } = store.beginRun({
+      request: "Observe one retried provider request.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        provider: "retrying-provider",
+        model_id: "retrying-model"
+      })
+    }, 30_000);
     const dispatch = store.startModelDispatch(execution, {
       provider: "retrying-provider",
       model: "retrying-model"
@@ -473,7 +525,10 @@ test("vNext refuses a second continuation owner while the Run Execution lease is
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
   try {
-    const { run } = store.beginRun({ request: "Keep exactly one active loop owner." }, 30_000);
+    const { run } = store.beginRun({
+      request: "Keep exactly one active loop owner.",
+      execution_lock: testExecutionLock({ cwd: fixture })
+    }, 30_000);
     const gateway = new ActionGateway(store, []);
     const runtime = new KernelRuntime(store, gateway, {
       create() {
@@ -570,7 +625,10 @@ for (const crashPoint of [
       await delay(500);
 
       const recoveryModels = createModels();
-      const recoveryFaux = fauxProvider({ provider: `kernel-protocol-recovery-${Date.now()}` });
+      const recoveryFaux = fauxProvider({
+        provider: "kernel-tool-protocol-provider",
+        api: "kernel-tool-protocol-api"
+      });
       recoveryModels.setProvider(recoveryFaux.provider);
       let recoveryProviderCalls = 0;
       recoveryFaux.setResponses(crashPoint === "final_assistant_persisted"
@@ -713,7 +771,14 @@ test("vNext records a terminal failed Run when Pi returns no text", async () => 
       cwd: fixture
     }));
 
-    const outcome = await runtime.submit({ request: "Do not leave this Run hanging." });
+    const outcome = await runtime.submit({
+      request: "Do not leave this Run hanging.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        model: faux.getModel(),
+        contracts: gateway.contracts()
+      })
+    });
 
     assert.equal(outcome.status, "failed");
     assert.equal(outcome.error, "Pi AgentHarness returned no text response.");
@@ -755,7 +820,13 @@ test("vNext leaves no running Run when the loop adapter cannot be constructed", 
       }
     });
 
-    const outcome = await runtime.submit({ request: "Record adapter failure." });
+    const outcome = await runtime.submit({
+      request: "Record adapter failure.",
+      execution_lock: testExecutionLock({
+        cwd: fixture,
+        contracts: gateway.contracts()
+      })
+    });
 
     assert.equal(outcome.status, "failed");
     assert.equal(outcome.error, "adapter construction failed");
@@ -780,7 +851,7 @@ test("only the Pi adapter implementation imports Pi packages inside the vNext ke
 test("vNext rejects pre-gateway and unknown SQLite schemas before creating runtime tables", async () => {
   const fixture = await createFixture();
   try {
-    for (const version of ["1", "2", "3", "999"]) {
+    for (const version of ["1", "2", "3", "5", "999"]) {
       const dbPath = join(fixture, `runtime-${version}.sqlite`);
       const seed = new DatabaseSync(dbPath);
       seed.exec(`
@@ -788,12 +859,14 @@ test("vNext rejects pre-gateway and unknown SQLite schemas before creating runti
         INSERT INTO schema_meta (key, value) VALUES ('schema_version', '${version}');
       `);
       seed.close();
+      const before = await readFile(dbPath);
       assert.throws(
         () => new SqliteRuntimeStore(dbPath),
         new RegExp(`Unsupported vNext runtime schema version: ${version}`)
       );
       const inspect = new DatabaseSync(dbPath);
       try {
+        assert.equal(inspect.prepare("PRAGMA journal_mode").get()?.journal_mode, "delete");
         const runtimeTable = inspect.prepare(
           "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'runs'"
         ).get();
@@ -801,6 +874,7 @@ test("vNext rejects pre-gateway and unknown SQLite schemas before creating runti
       } finally {
         inspect.close();
       }
+      assert.deepEqual(await readFile(dbPath), before);
     }
   } finally {
     await rm(fixture, { recursive: true, force: true });

@@ -24,10 +24,56 @@ channel adapters and IM intake. Runtime state is written under the selected
 state root. Learned local procedures are written under the configured local
 agent home and active vault.
 
+## Stable vNext Goal-free CLI command
+
+The stable vNext command is a foreground CLI Adapter. It is not owned by the
+resident service and does not receive Web, daemon, or Feishu traffic:
+
+```bash
+pnpm run runtime -- vnext run submit --task "..."
+pnpm run runtime -- vnext run submit --task "..." --session-id session_...
+pnpm run runtime -- vnext run continue --run-id run_...
+pnpm run runtime -- vnext run inspect --run-id run_...
+pnpm run runtime -- vnext run inspect --session-id session_...
+```
+
+The default state root is `~/.local-runtime/state/vnext-cli`; override it only
+with an absolute independent `--vnext-state-root`. The command refuses roots
+whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
+including symlink and case-insensitive aliases. It never imports, migrates, or
+dual-writes v0.2 state. Schema version 6 plus the immutable `stable_cli` state
+profile refuse both earlier vNext schemas and current `diagnostic_canary`
+databases instead of promoting them silently.
+
+`submit` uses the active model from normal safe config resolution. Relative
+`--config-dir` is resolved below `--repo-root`; both selectors become part of
+the immutable Execution Lock. Keep the same values for `continue`. The stable
+Interface does not accept raw `--base-url`, `--model`, `--api-key-env`,
+`--sqlite`, or v0.2 `--state-root` flags. Credentials remain in ignored local
+config or environment resolution and enter memory only; they are not written
+to the Execution Lock, SQLite, or output.
+
+A submit without `--session-id` creates a Session. Reusing a terminal Session
+creates a new Run in the same conversation tree. A Session may have multiple
+terminal Runs but only one `running` or `paused` Run; concurrent attach returns
+`session_busy`. `continue` names one Run and only performs same-Run recovery.
+It does not reopen a terminal Run or create a replacement. `inspect` requires
+exactly one Run or Session identity and does not load model credentials.
+The exact configured credential value is redacted from submitted text before
+canonical state or provider dispatch. Run metadata stores no duplicate request
+body; the bounded Turn request and Pi conversation history keep their separate
+recovery roles.
+
+Every response is a `vnext_goal_free_cli` envelope with Run, Session, and
+Execution Lock identities or a structured diagnostic. Only `runtime_inspect`
+is registered, so effects remain `none/local_read`. There is no `signal/cancel`,
+optional Goal, Worker, learning, write/external Action, resident route, or vNext
+deployment in this slice. The installed v0.2 runtime remains the rollback path.
+
 ## vNext read-only canary command
 
-The vNext canary is an explicit foreground CLI command, not a resident service
-or a replacement for Web/IM intake:
+The vNext canary is an explicit foreground diagnostic command, not the stable
+`vnext run` Interface, a resident service, or a replacement for Web/IM intake:
 
 ```bash
 pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
@@ -50,8 +96,12 @@ v0.2 state file, database, config, or credential.
 The command only writes its own SQLite database, emits canary-marked structured
 output, and permits only `none/local_read` Actions. It performs no v0.2 state
 migration or dual write, no service action, no Web/Feishu routing, no write or
-external Action, and no deployment. A normal v0.2 rollback runtime remains
-unchanged.
+external Action, and no deployment. Submit records a safe immutable Execution
+Lock and continue requires the same explicit selectors. Canary databases bind
+the immutable `diagnostic_canary` state profile; do not point stable `vnext run`
+at either an earlier or current canary database. Incompatible schemas or
+profiles fail closed. A
+normal v0.2 rollback runtime remains unchanged.
 
 ## Remote Node Deployment Gap
 

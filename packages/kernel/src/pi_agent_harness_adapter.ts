@@ -2,10 +2,12 @@ import { createHash } from "node:crypto";
 import {
   createModels,
   createProvider,
-  envApiKeyAuth,
+  type ApiKeyAuth,
   type Model,
-  type Models
+  type Models,
+  type ThinkingLevel
 } from "@earendil-works/pi-ai";
+import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 import {
   AgentHarness,
@@ -21,7 +23,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { ActionGateway } from "./action_gateway.js";
-import type { AgentLoop, AgentLoopFactory } from "./contracts.js";
+import type { AgentLoop, AgentLoopFactory, ExecutionLock } from "./contracts.js";
 import type { RunExecutionLease } from "./execution_types.js";
 import {
   assistantText,
@@ -37,6 +39,9 @@ export interface PiAgentHarnessAdapterOptions {
   cwd: string;
   system_prompt?: string;
   redact_text?: (value: string) => string;
+  expected_execution_lock_digest?: string;
+  thinking_level?: ThinkingLevel;
+  timeout_ms?: number;
 }
 
 /**
@@ -48,74 +53,82 @@ export interface PiAgentHarnessAdapterOptions {
  */
 export interface ResponsesCompatiblePiLoopFactoryOptions {
   store: SqliteRuntimeStore;
-  base_url: string;
-  model: string;
+  execution_lock: ExecutionLock;
   api_key_env: string;
-  cwd: string;
   system_prompt?: string;
 }
 
 export function createResponsesCompatiblePiLoopFactory(
   input: ResponsesCompatiblePiLoopFactoryOptions
 ): PiAgentHarnessLoopFactory {
-  const baseUrl = validateBaseUrl(input.base_url);
-  const modelId = validateModelId(input.model);
   const apiKeyEnv = validateApiKeyEnvironment(input.api_key_env);
-  if (!process.env[apiKeyEnv]?.trim()) {
+  const apiKey = process.env[apiKeyEnv]?.trim();
+  if (!apiKey) {
     throw new Error(`Canary credential environment variable is not set: ${apiKeyEnv}`);
   }
+  if (input.execution_lock.model.api !== "openai-responses"
+    || input.execution_lock.model.credential_ref !== apiKeyEnv) {
+    throw new Error("Canary model configuration does not match its immutable Execution Lock.");
+  }
+  return createLockedOpenAICompatiblePiLoopFactory({
+    store: input.store,
+    execution_lock: input.execution_lock,
+    api_key: apiKey,
+    system_prompt: input.system_prompt
+  });
+}
 
-  const model: Model<"openai-responses"> = {
-    id: modelId,
-    name: modelId,
-    api: "openai-responses",
-    provider: "readonly-canary-responses",
-    baseUrl,
-    reasoning: false,
+export interface LockedOpenAICompatiblePiLoopFactoryOptions {
+  store: SqliteRuntimeStore;
+  execution_lock: ExecutionLock;
+  api_key: string;
+  system_prompt?: string;
+}
+
+export function createLockedOpenAICompatiblePiLoopFactory(
+  input: LockedOpenAICompatiblePiLoopFactoryOptions
+): PiAgentHarnessLoopFactory {
+  const lock = input.execution_lock;
+  const apiKey = input.api_key.trim();
+  if (!apiKey) throw new Error("Configured model credential is unavailable.");
+  if (lock.model.api !== "openai-responses" && lock.model.api !== "openai-completions") {
+    throw new Error("Configured model API is not supported by the OpenAI-compatible Pi Adapter.");
+  }
+  const api = lock.model.api;
+  const model: Model<any> = {
+    id: lock.model.model,
+    name: lock.model.model,
+    api,
+    provider: lock.model.provider,
+    baseUrl: lock.model.base_url,
+    reasoning: lock.model.reasoning_effort !== null,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128_000,
-    maxTokens: 16_384
+    contextWindow: lock.model.context_window_tokens,
+    maxTokens: lock.model.max_output_tokens
   };
   const models = createModels();
   models.setProvider(createProvider({
     id: model.provider,
-    name: "Read-only canary Responses provider",
-    baseUrl,
-    auth: { apiKey: envApiKeyAuth("Canary API key", [apiKeyEnv]) },
+    name: `Locked ${lock.model.provider} provider`,
+    baseUrl: lock.model.base_url,
+    auth: { apiKey: fixedApiKeyAuth(apiKey) },
     models: [model],
-    api: openAIResponsesApi()
+    api: lock.model.api === "openai-responses" ? openAIResponsesApi() : openAICompletionsApi()
   }));
   return new PiAgentHarnessLoopFactory({
     store: input.store,
     models,
     model,
-    cwd: input.cwd,
+    cwd: lock.authority.cwd,
     system_prompt: input.system_prompt,
-    redact_text: (value) => redactSecret(value, process.env[apiKeyEnv])
+    redact_text: (value) => redactSecret(value, apiKey),
+    expected_execution_lock_digest: lock.digest,
+    ...(lock.model.reasoning_effort
+      ? { thinking_level: lock.model.reasoning_effort as ThinkingLevel }
+      : {}),
+    timeout_ms: lock.model.timeout_ms
   });
-}
-
-function validateBaseUrl(value: string): string {
-  const trimmed = value.trim();
-  let url: URL;
-  try {
-    url = new URL(trimmed);
-  } catch {
-    throw new Error("Canary --base-url must be an absolute HTTP(S) URL.");
-  }
-  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username || url.password) {
-    throw new Error("Canary --base-url must be an absolute HTTP(S) URL without credentials.");
-  }
-  return url.toString().replace(/\/$/, "");
-}
-
-function validateModelId(value: string): string {
-  const model = value.trim();
-  if (!model || model.length > 200 || /[\u0000-\u001f\u007f]/.test(model)) {
-    throw new Error("Canary --model must be a non-empty printable identifier.");
-  }
-  return model;
 }
 
 function validateApiKeyEnvironment(value: string): string {
@@ -124,6 +137,15 @@ function validateApiKeyEnvironment(value: string): string {
     throw new Error("Canary --api-key-env must name one environment variable.");
   }
   return name;
+}
+
+function fixedApiKeyAuth(apiKey: string): ApiKeyAuth {
+  return {
+    name: "Configured model credential",
+    async resolve() {
+      return { auth: { apiKey }, source: "configured credential" };
+    }
+  };
 }
 
 export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
@@ -135,7 +157,9 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
     session_id: string;
     action_gateway: ActionGateway;
     execution: RunExecutionLease;
+    execution_lock: ExecutionLock;
   }): AgentLoop {
+    this.assertExecutionLock(input.execution_lock);
     const storage = new SqlitePiSessionStorage(
       this.options.store,
       input.session_id,
@@ -148,6 +172,8 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
       session,
       models: this.options.models,
       model: this.options.model,
+      ...(this.options.thinking_level ? { thinkingLevel: this.options.thinking_level } : {}),
+      ...(this.options.timeout_ms ? { streamOptions: { timeoutMs: this.options.timeout_ms } } : {}),
       systemPrompt: this.options.system_prompt ?? "You are a concise and reliable local-first agent.",
       tools
     });
@@ -212,6 +238,22 @@ export class PiAgentHarnessLoopFactory implements AgentLoopFactory {
         }
       }
     };
+  }
+
+  private assertExecutionLock(lock: ExecutionLock): void {
+    if (this.options.expected_execution_lock_digest
+      && lock.digest !== this.options.expected_execution_lock_digest) {
+      throw new Error("Pi Adapter received a different immutable Execution Lock.");
+    }
+    if (this.options.model.provider !== lock.model.provider
+      || this.options.model.id !== lock.model.model
+      || this.options.model.api !== lock.model.api
+      || this.options.model.baseUrl.replace(/\/$/u, "") !== lock.model.base_url
+      || this.options.model.contextWindow !== lock.model.context_window_tokens
+      || this.options.model.maxTokens !== lock.model.max_output_tokens
+      || this.options.cwd !== lock.authority.cwd) {
+      throw new Error("Pi Adapter configuration does not match the immutable Execution Lock.");
+    }
   }
 }
 

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +19,7 @@ import {
   type GoalView
 } from "../packages/runtime/src/goal_runtime.js";
 import { AgentStore } from "../packages/core/src/store.js";
+import { VNEXT_RUN_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_run.js";
 
 test("goal CLI parses lifecycle identity, inspect, and exact effect confirmation", () => {
   const options = parseArgs([
@@ -64,6 +66,10 @@ test("goal CLI parses lifecycle identity, inspect, and exact effect confirmation
 });
 
 test("local goal CLI ingress translates intent and owns no lifecycle state", async () => {
+  const stableDispatches: unknown[] = [];
+  const stableChannel = channel(VNEXT_RUN_DIAGNOSTIC_CHANNEL);
+  const recordStableDispatch = (message: unknown) => stableDispatches.push(message);
+  stableChannel.subscribe(recordStableDispatch);
   const handled: GoalCommand[] = [];
   const reads: string[] = [];
   const inspections: string[] = [];
@@ -84,57 +90,62 @@ test("local goal CLI ingress translates intent and owns no lifecycle state", asy
     }
   };
 
-  assert.equal(await executeLocalGoalRequest(runtime, {
-    action: "start",
-    commandId: "command_start",
-    objective: "One bounded local goal.",
-    readPolicy: {
-      references: [{ scope: "repo", kind: "file", path: "README.md" }]
-    },
-    learningEffects: ["propose_sop"]
-  }), view);
-  assert.equal(await executeLocalGoalRequest(runtime, {
-    action: "continue",
-    commandId: "command_continue",
-    goalId: "goal_123"
-  }), view);
-  assert.equal(await executeLocalGoalRequest(runtime, {
-    action: "resume",
-    commandId: "command_resume",
-    goalId: "goal_123",
-    confirmEffectId: "goal_effect_456"
-  }), view);
-  assert.equal(await executeLocalGoalRequest(runtime, {
-    action: "read",
-    commandId: "unused_for_read",
-    goalId: "goal_123"
-  }), view);
-  assert.equal(await executeLocalGoalRequest(runtime, {
-    action: "inspect",
-    commandId: "unused_for_inspect",
-    goalId: "goal_123"
-  }), inspection);
+  try {
+    assert.equal(await executeLocalGoalRequest(runtime, {
+      action: "start",
+      commandId: "command_start",
+      objective: "One bounded local goal.",
+      readPolicy: {
+        references: [{ scope: "repo", kind: "file", path: "README.md" }]
+      },
+      learningEffects: ["propose_sop"]
+    }), view);
+    assert.equal(await executeLocalGoalRequest(runtime, {
+      action: "continue",
+      commandId: "command_continue",
+      goalId: "goal_123"
+    }), view);
+    assert.equal(await executeLocalGoalRequest(runtime, {
+      action: "resume",
+      commandId: "command_resume",
+      goalId: "goal_123",
+      confirmEffectId: "goal_effect_456"
+    }), view);
+    assert.equal(await executeLocalGoalRequest(runtime, {
+      action: "read",
+      commandId: "unused_for_read",
+      goalId: "goal_123"
+    }), view);
+    assert.equal(await executeLocalGoalRequest(runtime, {
+      action: "inspect",
+      commandId: "unused_for_inspect",
+      goalId: "goal_123"
+    }), inspection);
 
-  assert.deepEqual(handled, [{
-    type: "start",
-    command_id: "command_start",
-    objective: "One bounded local goal.",
-    read_policy: {
-      references: [{ scope: "repo", kind: "file", path: "README.md" }]
-    },
-    learning_effects: ["propose_sop"]
-  }, {
-    type: "continue",
-    command_id: "command_continue",
-    goal_id: "goal_123"
-  }, {
-    type: "resume",
-    command_id: "command_resume",
-    goal_id: "goal_123",
-    confirm_effect_id: "goal_effect_456"
-  }]);
-  assert.deepEqual(reads, ["goal_123"]);
-  assert.deepEqual(inspections, ["goal_123"]);
+    assert.deepEqual(handled, [{
+      type: "start",
+      command_id: "command_start",
+      objective: "One bounded local goal.",
+      read_policy: {
+        references: [{ scope: "repo", kind: "file", path: "README.md" }]
+      },
+      learning_effects: ["propose_sop"]
+    }, {
+      type: "continue",
+      command_id: "command_continue",
+      goal_id: "goal_123"
+    }, {
+      type: "resume",
+      command_id: "command_resume",
+      goal_id: "goal_123",
+      confirm_effect_id: "goal_effect_456"
+    }]);
+    assert.deepEqual(reads, ["goal_123"]);
+    assert.deepEqual(inspections, ["goal_123"]);
+    assert.deepEqual(stableDispatches, []);
+  } finally {
+    stableChannel.unsubscribe(recordStableDispatch);
+  }
 });
 
 test("local goal CLI ingress fails before dispatch when required intent is missing", async () => {

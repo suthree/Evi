@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { channel } from "node:diagnostics_channel";
 import { once } from "node:events";
 import type { Dirent } from "node:fs";
@@ -16,11 +17,11 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { Type } from "typebox";
 import {
   ActionGateway,
   type ActionHandler,
   type AgentLoopFactory,
+  createRuntimeInspectAction,
   SqliteRuntimeStore
 } from "../packages/kernel/src/index.js";
 import {
@@ -29,6 +30,7 @@ import {
   VNEXT_CANARY_DIAGNOSTIC_CHANNEL,
   VNEXT_CANARY_MARKER
 } from "../apps/cli/src/vnext_canary.js";
+import { testExecutionLock } from "./vnext_test_support.js";
 
 test("vNext canary submit and inspect use one isolated SQLite database and mark every response", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-"));
@@ -68,7 +70,10 @@ test("vNext canary submit and inspect use one isolated SQLite database and mark 
     const submitted = await executeVNextCanary({
       action: "submit",
       sqlite,
-      task: "Explain the isolated canary."
+      task: "Explain the isolated canary.",
+      base_url: "https://canary.example.test/v1",
+      model: "canary-test-model",
+      api_key_env: "CANARY_TEST_UNUSED_KEY"
     }, { loop_factory: loopFactory, cwd: fixture, path_boundary: pathBoundary });
 
     assert.equal(submitted.canary.marker, VNEXT_CANARY_MARKER);
@@ -187,39 +192,30 @@ test("vNext canary rejects case aliases on case-insensitive filesystems", async 
   }
 });
 
-test("vNext canary continue preserves unresolved Action recovery and never registers write or external Actions", async () => {
+test("vNext canary continue reconciles its exact local-read Action and never registers write or external Actions", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-continue-"));
   const sqlite = join(fixture, "canary.sqlite");
-  let executeCalls = 0;
   let runId = "";
-  const store = new SqliteRuntimeStore(sqlite);
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
   try {
-    const started = store.beginRun({ request: "Resume only after exact action reconciliation." }, 30_000);
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const started = store.beginRun({
+      request: "Resume only after exact action reconciliation.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [runtimeInspect.contract] })
+    }, 30_000);
     runId = started.run.id;
-    const failingRead: ActionHandler = {
-      contract: {
-        name: "synthetic_uncertain_read",
-        version: "1",
-        label: "Synthetic uncertain read",
-        description: "Test-only local read that leaves an unknown Action outcome.",
-        parameters: Type.Object({}),
-        effect_class: "local_read"
-      },
-      prepare: () => ({}),
-      async execute() {
-        executeCalls += 1;
-        throw new Error("effect entered dispatch without terminal evidence");
-      }
-    };
-    const gateway = new ActionGateway(store, [failingRead]);
-    const unknown = await gateway.invoke({
+    const reserved = store.reserveAction({
       run_id: started.run.id,
       turn_id: started.run.turn_id,
       invocation_id: "unsettled-read",
-      action_name: failingRead.contract.name,
+      action_name: runtimeInspect.contract.name,
+      contract_version: runtimeInspect.contract.version,
+      action_digest: actionDigestForTest(runtimeInspect, {}),
+      effect_class: runtimeInspect.contract.effect_class,
+      decision_reason: "synthetic crash before terminal evidence",
       arguments: {}
     });
-    assert.equal(unknown.status, "outcome_unknown");
+    store.markActionDispatching(reserved.reservation.id);
     store.pauseRun(started.execution, "Pause for exact Action reconciliation.");
   } finally {
     store.close();
@@ -236,14 +232,14 @@ test("vNext canary continue preserves unresolved Action recovery and never regis
       path_boundary: isolatedPathBoundary(fixture)
     });
     assert.equal(continued.canary.marker, VNEXT_CANARY_MARKER);
-    assert.equal(continued.canary.status, "paused");
-    assert.equal(executeCalls, 1);
+    assert.equal(continued.canary.status, "completed");
     const inspected = await executeVNextCanary(
       { action: "inspect", sqlite, run_id: runId },
       { path_boundary: isolatedPathBoundary(fixture) }
     );
     const inspection = inspected.canary.result;
-    assert.equal(inspection && "action_count" in inspection ? inspection.unresolved_action_count : -1, 1);
+    assert.equal(inspection && "action_count" in inspection ? inspection.unresolved_action_count : -1, 0);
+    assert.equal(inspection && "action_count" in inspection ? inspection.effect_receipt_count : -1, 1);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -253,9 +249,13 @@ test("vNext canary continue keeps a drifted reserved Action paused without dispa
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-drifted-reservation-"));
   const sqlite = join(fixture, "canary.sqlite");
   let runId = "";
-  const store = new SqliteRuntimeStore(sqlite);
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
   try {
-    const started = store.beginRun({ request: "Reject corrupted recovery authority." }, 30_000);
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const started = store.beginRun({
+      request: "Reject corrupted recovery authority.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [runtimeInspect.contract] })
+    }, 30_000);
     runId = started.run.id;
     store.reserveAction({
       run_id: started.run.id,
@@ -282,7 +282,7 @@ test("vNext canary continue keeps a drifted reserved Action paused without dispa
       loop_factory: { create: () => ({ execute: async () => ({ answer: "must not run" }) }) },
       path_boundary: isolatedPathBoundary(fixture)
     }), /Action reservation identity mismatch/);
-    const reopened = new SqliteRuntimeStore(sqlite);
+    const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
     try {
       assert.equal(reopened.inspectRun(runId)?.status, "paused");
       assert.equal(reopened.inspectRun(runId)?.unresolved_action_count, 1);
@@ -406,7 +406,7 @@ test("vNext canary redacts a credential echoed in a successful provider answer e
     assert.match(JSON.stringify(inspected), /\[redacted\]/);
     assert.doesNotMatch(JSON.stringify(inspected), new RegExp(secret));
 
-    const reopened = new SqliteRuntimeStore(sqlite);
+    const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
     try {
       const sessionId = result.canary.session_id;
       assert.ok(sessionId);
@@ -472,6 +472,24 @@ function isolatedPathBoundary(fixture: string) {
     forbidden_v02_root: forbiddenRoot,
     canonicalize_forbidden_root: async () => forbiddenRoot
   };
+}
+
+function actionDigestForTest(handler: ActionHandler, arguments_: Record<string, unknown>): string {
+  return createHash("sha256").update(stableJsonForTest({
+    name: handler.contract.name,
+    version: handler.contract.version,
+    effect_class: handler.contract.effect_class,
+    arguments: arguments_
+  })).digest("hex");
+}
+
+function stableJsonForTest(input: unknown): string {
+  if (input === null || typeof input !== "object") return JSON.stringify(input);
+  if (Array.isArray(input)) return `[${input.map(stableJsonForTest).join(",")}]`;
+  const record = input as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) =>
+    `${JSON.stringify(key)}:${stableJsonForTest(record[key])}`
+  ).join(",")}}`;
 }
 
 async function assertDirectoryExcludesText(root: string, text: string): Promise<void> {

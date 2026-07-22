@@ -9,7 +9,20 @@ import type {
   EffectReceipt,
   JsonObject
 } from "./action_types.js";
-import type { RunInspection, RunRecord } from "./contracts.js";
+import type {
+  ExecutionLock,
+  RunInspection,
+  RunRecord,
+  RuntimeSessionRecord,
+  SessionInspection,
+  SubmitRequest
+} from "./contracts.js";
+import {
+  ExecutionLockMismatchError,
+  executionLockAllowsAction,
+  materializeExecutionLock,
+  parseExecutionLock
+} from "./execution_lock.js";
 import type {
   ModelDispatchRecord,
   RunExecutionKind,
@@ -31,16 +44,22 @@ import {
   toEffectReceipt,
   toModelDispatch,
   type ActionReservationRow,
+  type ExecutionLockRow,
   type EffectReceiptRow,
   type ModelDispatchRow,
   type PiEntryRow,
   type PiSessionRow,
   type RunExecutionRow,
   type RunRow,
+  type RuntimeSessionRow,
   type RuntimeEventRow,
   type StoredPiEntry
 } from "./sqlite_runtime_codec.js";
-import { initializeRuntimeSchema } from "./sqlite_runtime_schema.js";
+import {
+  initializeRuntimeSchema,
+  RUNTIME_SCHEMA_VERSION,
+  RuntimeSchemaIncompatibleError
+} from "./sqlite_runtime_schema.js";
 import { inspectRuntimeRun } from "./sqlite_runtime_inspection.js";
 import { selectRecoveryPiSessionEntries } from "./sqlite_runtime_recovery.js";
 
@@ -51,52 +70,119 @@ export class RunHasUnresolvedActionsError extends Error {
   }
 }
 
+function runtimeSessionId(input: string): string {
+  const value = input.trim();
+  if (!/^session_[a-f0-9]{32}$/u.test(value)) {
+    throw new Error("Runtime Session id is invalid.");
+  }
+  return value;
+}
+
+export class RuntimeSessionNotFoundError extends Error {
+  readonly code = "session_not_found";
+
+  constructor(readonly sessionId: string) {
+    super(`Runtime Session not found: ${sessionId}`);
+    this.name = "RuntimeSessionNotFoundError";
+  }
+}
+
+export class RuntimeSessionBusyError extends Error {
+  readonly code = "session_busy";
+
+  constructor(readonly sessionId: string, readonly runId: string) {
+    super(`Runtime Session is busy with Run ${runId}: ${sessionId}`);
+    this.name = "RuntimeSessionBusyError";
+  }
+}
+
+export type RuntimeStateProfile = "stable_cli" | "diagnostic_canary";
+
+export class RuntimeStateProfileIncompatibleError extends Error {
+  readonly code = "schema_incompatible";
+
+  constructor(readonly expectedProfile: RuntimeStateProfile, readonly actualProfile: string) {
+    super(`vNext runtime state profile is incompatible: expected ${expectedProfile}, found ${actualProfile}`);
+    this.name = "RuntimeStateProfileIncompatibleError";
+  }
+}
+
+export interface SqliteRuntimeStoreOptions {
+  state_profile?: RuntimeStateProfile;
+}
+
 export class SqliteRuntimeStore {
   readonly dbPath: string;
   private readonly db: DatabaseSync;
 
-  constructor(dbPath: string) {
+  constructor(dbPath: string, options: SqliteRuntimeStoreOptions = {}) {
     this.dbPath = resolve(dbPath);
     mkdirSync(dirname(this.dbPath), { recursive: true });
     this.db = new DatabaseSync(this.dbPath, { timeout: 5_000 });
     try {
       initializeRuntimeSchema(this.db);
+      if (options.state_profile) this.bindStateProfile(options.state_profile);
     } catch (error) {
       this.db.close();
       throw error;
     }
   }
 
-  beginRun(input: { request: string; goal_id?: string }, leaseMs: number): {
+  beginRun(input: SubmitRequest, leaseMs: number): {
     run: RunRecord;
     execution: RunExecutionLease;
+    execution_lock: ExecutionLock;
+    request: string;
   } {
     const request = input.request.trim();
     if (!request) throw new Error("Run request must not be empty.");
     const createdAt = new Date().toISOString();
     const runId = id("run");
     const turnId = id("turn");
-    const sessionId = id("session");
+    const requestedSessionId = input.session_id === undefined
+      ? null
+      : runtimeSessionId(input.session_id);
+    const sessionId = requestedSessionId ?? id("session");
     const goalId = input.goal_id?.trim() || null;
+    const executionLock = materializeExecutionLock(input.execution_lock, createdAt);
 
     let execution!: RunExecutionLease;
     this.transaction(() => {
+      if (requestedSessionId === null) {
+        this.db.prepare(`
+          INSERT INTO sessions (id, created_at, updated_at)
+          VALUES (?, ?, ?)
+        `).run(sessionId, createdAt, createdAt);
+        this.db.prepare(`
+          INSERT INTO pi_sessions (id, created_at, leaf_id)
+          VALUES (?, ?, NULL)
+        `).run(sessionId, createdAt);
+      } else {
+        this.requireSession(sessionId);
+        const blocking = this.getOpenSessionRun(sessionId);
+        if (blocking) throw new RuntimeSessionBusyError(sessionId, blocking.id);
+      }
       this.db.prepare(`
         INSERT INTO runs (
-          id, status, goal_id, request, answer, error,
+          id, status, goal_id, answer, error,
           session_id, turn_id, created_at, updated_at
-        ) VALUES (?, 'running', ?, ?, NULL, NULL, ?, ?, ?, ?)
-      `).run(runId, goalId, request, sessionId, turnId, createdAt, createdAt);
+        ) VALUES (?, 'running', ?, NULL, NULL, ?, ?, ?, ?)
+      `).run(runId, goalId, sessionId, turnId, createdAt, createdAt);
+      this.db.prepare(`
+        INSERT INTO execution_locks (run_id, digest, lock_json, created_at)
+        VALUES (?, ?, ?, ?)
+      `).run(runId, executionLock.digest, JSON.stringify(executionLock), createdAt);
       this.db.prepare(`
         INSERT INTO turns (
           id, run_id, ordinal, status, request, answer, error, created_at, updated_at
         ) VALUES (?, ?, 1, 'running', ?, NULL, NULL, ?, ?)
       `).run(turnId, runId, request, createdAt, createdAt);
-      this.db.prepare(`
-        INSERT INTO pi_sessions (id, run_id, created_at, leaf_id)
-        VALUES (?, ?, ?, NULL)
-      `).run(sessionId, runId, createdAt);
-      this.insertEvent(runId, turnId, "run_started", { goal_id: goalId });
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(createdAt, sessionId);
+      this.insertEvent(runId, turnId, "run_started", {
+        goal_id: goalId,
+        session_created: requestedSessionId === null,
+        execution_lock_digest: executionLock.digest
+      });
       execution = this.insertRunExecution({
         run_id: runId,
         turn_id: turnId,
@@ -107,7 +193,7 @@ export class SqliteRuntimeStore {
       });
     });
 
-    return { run: this.requireRun(runId), execution };
+    return { run: this.requireRun(runId), execution, execution_lock: executionLock, request };
   }
 
   completeRun(execution: RunExecutionLease, answer: string): RunRecord {
@@ -298,6 +384,7 @@ export class SqliteRuntimeStore {
         WHERE id = ? AND status = 'paused'
       `).run(updatedAt, run.turn_id);
       if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not paused: ${run.turn_id}`);
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(updatedAt, run.session_id);
       this.insertEvent(input.run_id, run.turn_id, "run_continued", {
         kind: input.kind,
         evidence_refs: continuationRefs,
@@ -349,6 +436,14 @@ export class SqliteRuntimeStore {
   ): ModelDispatchRecord {
     return this.transaction(() => {
       this.requireActiveExecutionLease(execution);
+      const lock = this.getExecutionLock(execution.run_id);
+      const provider = boundedText(input.provider, 120, "Model provider");
+      const model = boundedText(input.model, 200, "Model id");
+      if (provider !== lock.model.provider || model !== lock.model.model) {
+        throw new ExecutionLockMismatchError(
+          `Model dispatch does not match the immutable Execution Lock: ${execution.run_id}`
+        );
+      }
       const existing = this.getActiveModelDispatch(execution.id);
       if (existing) throw new Error(`Model dispatch is already active: ${existing.id}`);
       const ordinalRow = this.db.prepare(`
@@ -369,8 +464,8 @@ export class SqliteRuntimeStore {
         execution.run_id,
         execution.turn_id,
         Number(ordinalRow.ordinal),
-        boundedText(input.provider, 120, "Model provider"),
-        boundedText(input.model, 200, "Model id"),
+        provider,
+        model,
         createdAt,
         createdAt
       );
@@ -453,7 +548,70 @@ export class SqliteRuntimeStore {
 
   inspectRun(runId: string): RunInspection | null {
     const run = this.getRun(runId);
-    return run ? inspectRuntimeRun(this.db, run) : null;
+    return run ? inspectRuntimeRun(this.db, run, this.getExecutionLock(run.id)) : null;
+  }
+
+  inspectSession(sessionId: string): SessionInspection | null {
+    const session = this.getSession(sessionId);
+    if (!session) return null;
+    const runs = (this.db.prepare(`
+      SELECT runs.id, runs.status, runs.turn_id, locks.digest AS execution_lock_digest,
+             runs.created_at, runs.updated_at
+      FROM runs
+      JOIN execution_locks AS locks ON locks.run_id = runs.id
+      WHERE runs.session_id = ?
+      ORDER BY runs.created_at ASC, runs.id ASC
+    `).all(session.id) as unknown as SessionInspection["runs"]);
+    const entryCount = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM pi_session_entries WHERE session_id = ?
+    `).get(session.id) as { count: number };
+    const active = runs.find((run) => run.status === "running" || run.status === "paused") ?? null;
+    return {
+      ...session,
+      active_run_id: active?.id ?? null,
+      active_run_status: active?.status === "running" || active?.status === "paused"
+        ? active.status
+        : null,
+      run_count: runs.length,
+      session_entry_count: Number(entryCount.count),
+      runs
+    };
+  }
+
+  getExecutionLock(runId: string): ExecutionLock {
+    const row = this.db.prepare(`
+      SELECT run_id, digest, lock_json, created_at
+      FROM execution_locks
+      WHERE run_id = ?
+    `).get(runId) as ExecutionLockRow | undefined;
+    if (!row) throw new Error(`Execution Lock not found for Run: ${runId}`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(row.lock_json);
+    } catch {
+      throw new ExecutionLockMismatchError(`Execution Lock JSON is invalid: ${runId}`);
+    }
+    let lock: ExecutionLock;
+    try {
+      lock = parseExecutionLock(parsed);
+    } catch (error) {
+      throw new ExecutionLockMismatchError(error instanceof Error ? error.message : String(error));
+    }
+    if (lock.digest !== row.digest || lock.created_at !== row.created_at) {
+      throw new ExecutionLockMismatchError(`Execution Lock row identity is invalid: ${runId}`);
+    }
+    return lock;
+  }
+
+  assertActionAllowedByExecutionLock(
+    runId: string,
+    contract: { name: string; version: string; effect_class: ActionEffectClass }
+  ): void {
+    if (!executionLockAllowsAction(this.getExecutionLock(runId), contract)) {
+      throw new ExecutionLockMismatchError(
+        `Action contract is outside the immutable Execution Lock: ${runId}/${contract.name}`
+      );
+    }
   }
 
   reserveAction(input: {
@@ -640,7 +798,7 @@ export class SqliteRuntimeStore {
 
   getPiSession(sessionId: string): PiSessionRow | null {
     return (this.db.prepare(`
-      SELECT id, run_id, created_at, leaf_id
+      SELECT id, created_at, leaf_id
       FROM pi_sessions
       WHERE id = ?
     `).get(sessionId) as PiSessionRow | undefined) ?? null;
@@ -648,6 +806,7 @@ export class SqliteRuntimeStore {
 
   appendPiSessionEntry(sessionId: string, entryInput: unknown): void {
     const entry = parsePiEntry(entryInput);
+    const observedAt = new Date().toISOString();
     this.transaction(() => {
       const session = this.getPiSession(sessionId);
       if (!session) throw new Error(`Pi session not found: ${sessionId}`);
@@ -671,6 +830,8 @@ export class SqliteRuntimeStore {
         ) VALUES (?, ?, ?, ?, ?, ?)
       `).run(sessionId, entry.id, entry.parentId, entry.type, JSON.stringify(entry), entry.timestamp);
       this.db.prepare("UPDATE pi_sessions SET leaf_id = ? WHERE id = ?").run(nextLeafId, sessionId);
+      this.db.prepare("UPDATE sessions SET updated_at = MAX(updated_at, ?) WHERE id = ?")
+        .run(observedAt, sessionId);
     });
   }
 
@@ -781,6 +942,7 @@ export class SqliteRuntimeStore {
       }
       const run = this.requireRun(execution.run_id);
       this.updateRunningRunAndTurn(run, outcome, answer, error, settledAt);
+      this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(settledAt, run.session_id);
       this.insertEvent(run.id, run.turn_id, "run_execution_settled", {
         execution_id: execution.id,
         execution_ordinal: execution.ordinal,
@@ -854,8 +1016,8 @@ export class SqliteRuntimeStore {
       SELECT COALESCE(MAX(entries.seq), 0) AS seq
       FROM pi_sessions AS sessions
       LEFT JOIN pi_session_entries AS entries ON entries.session_id = sessions.id
-      WHERE sessions.run_id = ?
-    `).get(input.run_id) as { seq: number };
+      WHERE sessions.id = ?
+    `).get(run.session_id) as { seq: number };
     const createdAt = new Date().toISOString();
     const token = id("lease_token");
     const executionId = id("execution");
@@ -986,11 +1148,59 @@ export class SqliteRuntimeStore {
 
   private getRun(runId: string): RunRecord | null {
     const row = this.db.prepare(`
-      SELECT id, status, goal_id, request, answer, error,
+      SELECT id, status, goal_id, answer, error,
              session_id, turn_id, created_at, updated_at
       FROM runs
       WHERE id = ?
     `).get(runId) as RunRow | undefined;
+    return row ?? null;
+  }
+
+  private getSession(sessionId: string): RuntimeSessionRecord | null {
+    return (this.db.prepare(`
+      SELECT id, created_at, updated_at
+      FROM sessions
+      WHERE id = ?
+    `).get(sessionId) as RuntimeSessionRow | undefined) ?? null;
+  }
+
+  private bindStateProfile(expectedProfile: RuntimeStateProfile): void {
+    this.transaction(() => {
+      const profile = this.db.prepare(
+        "SELECT value FROM schema_meta WHERE key = 'state_profile'"
+      ).get() as { value: string } | undefined;
+      if (profile) {
+        if (profile.value !== expectedProfile) {
+          throw new RuntimeStateProfileIncompatibleError(expectedProfile, profile.value);
+        }
+        return;
+      }
+      const existing = this.db.prepare("SELECT 1 AS present FROM runs LIMIT 1").get() as
+        | { present: number }
+        | undefined;
+      if (existing) {
+        throw new RuntimeSchemaIncompatibleError(`${RUNTIME_SCHEMA_VERSION}/unbound-state-profile`);
+      }
+      this.db.prepare(
+        "INSERT INTO schema_meta (key, value) VALUES ('state_profile', ?)"
+      ).run(expectedProfile);
+    });
+  }
+
+  private requireSession(sessionId: string): RuntimeSessionRecord {
+    const session = this.getSession(sessionId);
+    if (!session) throw new RuntimeSessionNotFoundError(sessionId);
+    return session;
+  }
+
+  private getOpenSessionRun(sessionId: string): RunRecord | null {
+    const row = this.db.prepare(`
+      SELECT id, status, goal_id, answer, error,
+             session_id, turn_id, created_at, updated_at
+      FROM runs
+      WHERE session_id = ? AND status IN ('running', 'paused')
+      LIMIT 1
+    `).get(sessionId) as RunRow | undefined;
     return row ?? null;
   }
 

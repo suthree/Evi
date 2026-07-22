@@ -42,6 +42,11 @@ export class ActionGateway {
     if (!handler) {
       return { status: "denied", action_name: input.action_name, reason: "Action is not registered." };
     }
+    try {
+      this.store.assertActionAllowedByExecutionLock(input.run_id, handler.contract);
+    } catch (error) {
+      return { status: "denied", action_name: input.action_name, reason: errorMessage(error) };
+    }
     const decision = decide(handler.contract);
     if (decision.outcome === "deny") {
       return { status: "denied", action_name: input.action_name, reason: decision.reason };
@@ -103,6 +108,7 @@ export class ActionGateway {
     handler: ActionHandler,
     signal?: AbortSignal
   ): Promise<ActionGatewayResult> {
+    this.store.assertActionAllowedByExecutionLock(reservation.run_id, handler.contract);
     assertReservationIdentity(reservation, handler);
     const decision = decide(handler.contract);
     if (decision.outcome === "deny") {
@@ -125,6 +131,7 @@ export class ActionGateway {
     handler: ActionHandler,
     signal?: AbortSignal
   ): Promise<ActionGatewayResult> {
+    this.store.assertActionAllowedByExecutionLock(reservation.run_id, handler.contract);
     assertReservationIdentity(reservation, handler);
     if (!handler.reconcile) {
       return {

@@ -5,7 +5,7 @@ import type {
   EffectReceipt,
   JsonObject
 } from "./action_types.js";
-import type { RunRecord } from "./contracts.js";
+import type { RunRecord, RuntimeSessionRecord } from "./contracts.js";
 import type {
   ModelDispatchRecord,
   ModelDispatchState,
@@ -18,7 +18,6 @@ export interface RunRow {
   id: string;
   status: RunRecord["status"];
   goal_id: string | null;
-  request: string;
   answer: string | null;
   error: string | null;
   session_id: string;
@@ -29,9 +28,17 @@ export interface RunRow {
 
 export interface PiSessionRow {
   id: string;
-  run_id: string;
   created_at: string;
   leaf_id: string | null;
+}
+
+export interface RuntimeSessionRow extends RuntimeSessionRecord {}
+
+export interface ExecutionLockRow {
+  run_id: string;
+  digest: string;
+  lock_json: string;
+  created_at: string;
 }
 
 export interface PiEntryRow {
@@ -137,6 +144,10 @@ export function parsePiEntry(value: unknown): StoredPiEntry {
   if (typeof entry.type !== "string" || !entry.type) throw new Error("Pi session entry type is invalid.");
   if (typeof entry.timestamp !== "string" || !entry.timestamp) {
     throw new Error("Pi session entry timestamp is invalid.");
+  }
+  const timestamp = new Date(entry.timestamp);
+  if (Number.isNaN(timestamp.valueOf()) || timestamp.toISOString() !== entry.timestamp) {
+    throw new Error("Pi session entry timestamp must be canonical ISO 8601 UTC.");
   }
   return entry as StoredPiEntry;
 }

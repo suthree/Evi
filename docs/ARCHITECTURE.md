@@ -95,6 +95,7 @@ Self Registry -------- active and retired durable artifact versions
 | Concern | vNext owner | Boundary |
 | --- | --- | --- |
 | Ordinary work | Turn inside a Run | No Goal is required |
+| Conversation continuity | Runtime Kernel Session identity in SQLite | One Session may own many terminal Runs, but at most one `running` or `paused` Run; `continue` recovers that same paused Run only |
 | Agent Loop ownership and crash detection | Leased Run Execution in SQLite | One active Execution per running Run; raw lease token is not persisted |
 | Model/tool loop, session tree, steering, compaction | Pi `AgentHarness` behind one adapter | Evi has no second execution loop |
 | Immutable execution authority | Execution Lock selected by the Runtime Kernel | Pi executes it; child locks only preserve or narrow parent authority |
@@ -108,21 +109,11 @@ Self Registry -------- active and retired durable artifact versions
 | Capability choice | Rebuildable capability views | One default active provider per capability; alternatives are explicit fallback, experimental, or retired paths |
 | Completion evidence | Specialized outcomes and receipts | Run, effect, worker dispatch, evaluation, activation, and deployment remain distinct |
 
-The first five source slices are intentionally smaller than this table. They
-prove a Goal-free Turn, the Pi loop adapter, SQLite state, and a
-reservation-first Gateway path for one bounded `local_read` action. Write and
-external actions remain denied. A paused Run can explicitly continue in its
-existing Turn and session after terminal Action reconciliation. A running Run
-whose Execution owner is lost can be paused after lease expiry and resumed in
-the same session with its old dispatch recorded as `outcome_unknown`. Persisted
-assistant tool calls are repaired only through their exact Action reservation or
-receipt, and an already persisted terminal assistant answer does not call the
-provider again. This is not provider or effect exactly-once. The planned Kernel
-foundation is now closed. The explicit CLI-only read-only ingress canary is now
-implemented against its own SQLite database; it is not a production ingress or
-deployment. There is no learning, subagent execution, ingress cutover,
-migration, dual write, or deployment. v0.2 remains the current rollback runtime
-until later slices satisfy their own gates.
+Delivery slices are intentionally narrower than this table. Each slice must
+name the subset of Interfaces and effects it changes, preserve the remaining
+denials, and carry its own Issue/PR/test/deployment evidence. Passing a source
+slice never implies provider or effect exactly-once, production routing,
+deployment, migration, learning, or activation of the next slice.
 
 ### Final deep modules
 
@@ -132,7 +123,7 @@ a second real implementation makes an external seam necessary.
 
 | Module | Small external interface | Hidden complexity | Deletion test |
 | --- | --- | --- | --- |
-| Runtime Kernel | `submit`, `continue`, `inspect`, `signal/cancel` | Run/Turn state, execution leases, context compilation, model binding, optional Goal links, recovery, Run Outcome | Without it, lifecycle and recovery return to every ingress and executor |
+| Runtime Kernel | `submit`, `continue`, `inspect`, later `signal/cancel` | Session/Run/Turn state, immutable Execution Locks, execution leases, context compilation, model binding, optional Goal links, recovery, Run Outcome | Without it, continuity, authority, lifecycle, and recovery return to every ingress and executor |
 | Action Gateway | `contracts`, `invoke`, `reconcile` | Authority, effect classification, reservation, containment, dispatch, evidence, reconciliation, Effect Receipt | Without it, every tool and worker adapter reimplements effect safety |
 | Orchestration Engine | `dispatch`, `signal`, `inspect`, `cancel` | Task graph, worker leases, hierarchical budgets, dependencies, `needs_input`, stale recovery, Result delivery | Without it, worker lifecycle leaks into Runtime Kernel, Pi, and entry adapters |
 | Adaptation Engine | `propose`, `evaluate`, `activate`, `retire/rollback` | Episode selection, Self Registry versions, baselines, gates, observation, regression, retirement | Without it, Memory, SOP, Skill, Prompt, Tool, and Code invent competing promotion paths |
@@ -438,17 +429,20 @@ that context or harness decomposition is finished.
 
 ## vNext Delivery Order
 
-The Kernel foundation at `origin/develop@62cab799` closes the first five source
-slices under ADRs 0012 through 0016. It is not deployed. The accepted next order
-is:
+ADRs 0012 through 0017 define the accepted owner model and replacement order.
+Current implementation, integration, and deployment status belongs to source,
+tests, bounded Issues/PRs, and commit-bound deployment evidence. The order is:
 
-1. **Read-only ingress canary (implemented, not deployed).** Explicit CLI opt-in,
+1. **Read-only ingress canary.** Explicit CLI opt-in,
    isolated SQLite, and only `none/local_read`; no mirrored traffic, migration,
    dual write, write/external Action, worker, learning, Web/IM routing, or
    deployment switch.
-2. **Basic ingress and continuity.** Cut over one entry surface at a time to
-   Goal-free Runs and durable session binding, then add the minimal optional
-   Goal extension while v0.2 remains a verified rollback runtime.
+2. **Basic CLI ingress and continuity.**
+   The stable CLI Adapter owns no lifecycle logic; the Kernel owns durable
+   Session binding, one-open-Run exclusion, same-Run recovery, and immutable
+   Execution Locks. Web/IM routing, `signal/cancel`, optional Goal links, and a
+   deployment cutover remain later independently verified slices while v0.2
+   stays the rollback runtime.
 3. **Parent-child orchestration.** Add one asynchronous read-only discussion
    worker, one execution worker, independent review, then bounded parallelism,
    hierarchical budgets, and Delivery Lineages.

@@ -1,18 +1,23 @@
 import { channel } from "node:diagnostics_channel";
-import { lstat, readlink, realpath } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   ActionGateway,
   createResponsesCompatiblePiLoopFactory,
   createRuntimeInspectAction,
+  executionLockActions,
   KernelRuntime,
+  materializeExecutionLock,
   SqliteRuntimeStore,
   type AgentLoopFactory,
+  type ExecutionLock,
+  type ExecutionLockInput,
   type RunExecutionResult,
   type RunInspection
 } from "../../../packages/kernel/src/index.js";
-import { DEFAULT_SHARED_STATE_ROOT } from "../../../packages/runtime/src/config.js";
+import {
+  resolveIsolatedVNextSqlite,
+  type VNextStatePathBoundary
+} from "./vnext_state.js";
 
 export const VNEXT_CANARY_MARKER = "vnext_readonly_ingress_canary";
 export const VNEXT_CANARY_DIAGNOSTIC_CHANNEL =
@@ -49,13 +54,9 @@ export interface VNextCanaryEnvelope {
 
 export interface VNextCanaryDependencies {
   loop_factory?: AgentLoopFactory;
+  execution_lock?: ExecutionLockInput;
   cwd?: string;
-  path_boundary?: {
-    forbidden_v02_root: string;
-    canonicalize_candidate?: (path: string) => Promise<string>;
-    canonicalize_forbidden_root?: (path: string) => Promise<string>;
-    case_insensitive?: boolean;
-  };
+  path_boundary?: VNextStatePathBoundary;
 }
 
 export async function executeVNextCanary(
@@ -69,7 +70,7 @@ export async function executeVNextCanary(
     action
   });
   const sqlite = await resolveCanarySqlite(input.sqlite, dependencies.path_boundary);
-  const store = new SqliteRuntimeStore(sqlite);
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
   try {
     const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
     if (action === "inspect") {
@@ -80,10 +81,19 @@ export async function executeVNextCanary(
         : envelope(action, "not_found", runId);
     }
 
-    const loops = dependencies.loop_factory ?? createCanaryLoopFactory(input, store, dependencies.cwd);
+    const lock = action === "continue"
+      ? store.getExecutionLock(requireRunId(input.run_id))
+      : null;
+    if (!dependencies.loop_factory && action === "continue") {
+      assertCanarySelectorsMatchLock(input, lock!, gateway, dependencies.cwd);
+    }
+    const loops = dependencies.loop_factory ?? createCanaryLoopFactory(input, store);
     const runtime = new KernelRuntime(store, gateway, loops);
     const result = action === "submit"
-      ? await runtime.submit({ request: redact(requireTask(input.task), credential(input.api_key_env)) })
+      ? await runtime.submit({
+        request: redact(requireTask(input.task), credential(input.api_key_env)),
+        execution_lock: canaryExecutionLockInput(input, gateway, dependencies)
+      })
       : await runtime.continueRun(requireRunId(input.run_id));
     return envelopeFromResult(action, result, credential(input.api_key_env));
   } finally {
@@ -112,139 +122,80 @@ export function canaryErrorEnvelope(
 
 function createCanaryLoopFactory(
   input: VNextCanaryRequest,
-  store: SqliteRuntimeStore,
-  cwd = process.cwd()
+  store: SqliteRuntimeStore
 ): AgentLoopFactory {
-  return createResponsesCompatiblePiLoopFactory({
-    store,
-    base_url: required(input.base_url, "vnext canary submit|continue requires --base-url"),
-    model: required(input.model, "vnext canary submit|continue requires --model"),
-    api_key_env: required(input.api_key_env, "vnext canary submit|continue requires --api-key-env"),
-    cwd,
-    system_prompt: "You are a concise read-only canary agent. Use only the registered local inspection tool when needed."
-  });
+  const apiKeyEnv = required(
+    input.api_key_env,
+    "vnext canary submit|continue requires --api-key-env"
+  );
+  return {
+    create(runtimeInput) {
+      return createResponsesCompatiblePiLoopFactory({
+        store,
+        execution_lock: runtimeInput.execution_lock,
+        api_key_env: apiKeyEnv,
+        system_prompt: "You are a concise read-only canary agent. Use only the registered local inspection tool when needed."
+      }).create(runtimeInput);
+    }
+  };
+}
+
+function canaryExecutionLockInput(
+  input: VNextCanaryRequest,
+  gateway: ActionGateway,
+  dependencies: VNextCanaryDependencies
+): ExecutionLockInput {
+  if (dependencies.execution_lock) return dependencies.execution_lock;
+  return {
+    model: {
+      config_id: "canary-cli-explicit",
+      provider: "readonly-canary-responses",
+      api: "openai-responses",
+      base_url: required(input.base_url, "vnext canary submit|continue requires --base-url"),
+      model: required(input.model, "vnext canary submit|continue requires --model"),
+      credential_ref: required(
+        input.api_key_env,
+        "vnext canary submit|continue requires --api-key-env"
+      ),
+      reasoning_effort: null,
+      context_window_tokens: 128_000,
+      max_output_tokens: 16_384,
+      timeout_ms: 120_000
+    },
+    authority: { cwd: resolve(dependencies.cwd ?? process.cwd()) },
+    configuration: {
+      selector: "canary_cli_explicit",
+      source_refs: ["cli:vnext-canary"]
+    },
+    actions: executionLockActions(gateway.contracts())
+  };
+}
+
+function assertCanarySelectorsMatchLock(
+  input: VNextCanaryRequest,
+  lock: ExecutionLock,
+  gateway: ActionGateway,
+  cwd?: string
+): void {
+  const candidate = materializeExecutionLock(
+    canaryExecutionLockInput(input, gateway, { cwd }),
+    lock.created_at
+  );
+  if (candidate.digest !== lock.digest) {
+    throw new Error("vNext canary continuation selectors do not match the immutable Execution Lock.");
+  }
 }
 
 async function resolveCanarySqlite(
   value: string,
   boundary?: VNextCanaryDependencies["path_boundary"]
 ): Promise<string> {
-  if (!value?.trim()) throw new Error("vnext canary requires --sqlite with an absolute independent SQLite path");
-  if (!isAbsolute(value)) throw new Error("Canary --sqlite must be an absolute path.");
-  const requested = resolve(value);
-  const v02Root = resolve(
-    boundary?.forbidden_v02_root
-      ?? resolve(homedir(), DEFAULT_SHARED_STATE_ROOT.replace(/^~\//, ""))
-  );
-  const caseInsensitive = boundary?.case_insensitive ?? process.platform === "darwin";
-  if (overlaps(dirname(requested), v02Root, caseInsensitive)) {
-    throw new Error("Canary --sqlite must not overlap the default v0.2 shared state root.");
-  }
-  const physicalV02Root = resolve(await (
-    boundary?.canonicalize_forbidden_root ?? canonicalizeDeclaredPath
-  )(v02Root));
-  const forbiddenRoots = uniquePathIdentities([v02Root, physicalV02Root], caseInsensitive);
-  if (forbiddenRoots.some((root) => overlaps(dirname(requested), root, caseInsensitive))) {
-    throw new Error("Canary --sqlite must not overlap the default v0.2 shared state root.");
-  }
-  const sqlite = boundary?.canonicalize_candidate
-    ? resolve(await boundary.canonicalize_candidate(requested))
-    : await canonicalizeCandidatePath(requested, forbiddenRoots, caseInsensitive);
-  const sqliteDirectory = dirname(sqlite);
-  if (forbiddenRoots.some((root) => overlaps(sqliteDirectory, root, caseInsensitive))) {
-    throw new Error("Canary --sqlite must not overlap the default v0.2 shared state root.");
-  }
-  return sqlite;
-}
-
-async function canonicalizeDeclaredPath(path: string): Promise<string> {
-  let existing = resolve(path);
-  const missing: string[] = [];
-  while (true) {
-    try {
-      return resolve(await realpath(existing), ...missing.reverse());
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-      const parent = dirname(existing);
-      if (parent === existing) throw error;
-      missing.push(basename(existing));
-      existing = parent;
-    }
-  }
-}
-
-async function canonicalizeCandidatePath(
-  path: string,
-  forbiddenRoots: string[],
-  caseInsensitive: boolean
-): Promise<string> {
-  let current = "/";
-  const pending = resolve(path).split("/").filter(Boolean);
-  let followedLinks = 0;
-  while (pending.length > 0) {
-    const component = pending.shift()!;
-    const next = resolve(current, component);
-    assertOutsideForbiddenRoots(next, forbiddenRoots, caseInsensitive);
-    try {
-      const metadata = await lstat(next);
-      if (!metadata.isSymbolicLink()) {
-        current = next;
-        continue;
-      }
-      followedLinks += 1;
-      if (followedLinks > 40) throw new Error("Canary --sqlite contains too many symbolic links.");
-      const link = await readlink(next);
-      const target = resolve(dirname(next), link);
-      assertOutsideForbiddenRoots(target, forbiddenRoots, caseInsensitive);
-      pending.unshift(...target.split("/").filter(Boolean));
-      current = "/";
-    } catch (error) {
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
-      const unresolved = resolve(next, ...pending);
-      assertOutsideForbiddenRoots(unresolved, forbiddenRoots, caseInsensitive);
-      return unresolved;
-    }
-  }
-  return current;
-}
-
-function assertOutsideForbiddenRoots(
-  path: string,
-  forbiddenRoots: string[],
-  caseInsensitive: boolean
-): void {
-  if (forbiddenRoots.some((root) => isWithin(path, root, caseInsensitive))) {
-    throw new Error("Canary --sqlite must not overlap the default v0.2 shared state root.");
-  }
-}
-
-function uniquePathIdentities(paths: string[], caseInsensitive: boolean): string[] {
-  const identities = new Set<string>();
-  const result: string[] = [];
-  for (const path of paths) {
-    const identity = normalizedPathIdentity(path, caseInsensitive);
-    if (identities.has(identity)) continue;
-    identities.add(identity);
-    result.push(resolve(path));
-  }
-  return result;
-}
-
-function overlaps(left: string, right: string, caseInsensitive: boolean): boolean {
-  return isWithin(left, right, caseInsensitive) || isWithin(right, left, caseInsensitive);
-}
-
-function isWithin(path: string, root: string, caseInsensitive: boolean): boolean {
-  const difference = relative(
-    normalizedPathIdentity(root, caseInsensitive),
-    normalizedPathIdentity(path, caseInsensitive)
-  );
-  return difference === "" || (!difference.startsWith("..") && !isAbsolute(difference));
-}
-
-function normalizedPathIdentity(path: string, caseInsensitive: boolean): string {
-  const normalized = resolve(path).normalize("NFC");
-  return caseInsensitive ? normalized.toLowerCase() : normalized;
+  return resolveIsolatedVNextSqlite(value, {
+    missing: "vnext canary requires --sqlite with an absolute independent SQLite path",
+    relative: "Canary --sqlite must be an absolute path.",
+    overlap: "Canary --sqlite must not overlap the default v0.2 shared state root.",
+    symlink_limit: "Canary --sqlite contains too many symbolic links."
+  }, boundary);
 }
 
 function requireTask(value: string | undefined): string {

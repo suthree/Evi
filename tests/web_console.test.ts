@@ -23,6 +23,7 @@ import {
 import { GoalRuntime, type GoalView } from "../packages/runtime/src/goal_runtime.js";
 import { startRuntimeWebConsole } from "../packages/runtime/src/web_console.js";
 import { VNEXT_CANARY_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_canary.js";
+import { VNEXT_RUN_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_run.js";
 
 test("Goal ingress presentation exposes terminal receipt without an invalid continuation", () => {
   const rendered = renderGoalIngressPresentation(goalView("goal_done", {
@@ -154,9 +155,13 @@ test("Feishu Goal presentation keeps canonical lifecycle separate from outcome p
 test("runtime web console preserves session reads and submits one canonical Goal ingress", async () => {
   const fixture = await createFixture();
   const canaryDispatches: unknown[] = [];
+  const stableDispatches: unknown[] = [];
   const canaryChannel = channel(VNEXT_CANARY_DIAGNOSTIC_CHANNEL);
+  const stableChannel = channel(VNEXT_RUN_DIAGNOSTIC_CHANNEL);
   const recordCanaryDispatch = (message: unknown) => canaryDispatches.push(message);
+  const recordStableDispatch = (message: unknown) => stableDispatches.push(message);
   canaryChannel.subscribe(recordCanaryDispatch);
+  stableChannel.subscribe(recordStableDispatch);
   const source: FeishuSessionSource = {
     kind: "feishu", channelId: "feishu-test", conversationType: "group",
     conversationId: "oc_web", threadId: "main", actorId: "ou_operator"
@@ -186,9 +191,11 @@ test("runtime web console preserves session reads and submits one canonical Goal
     assert.equal(response.goal.goal_id, "goal_web_123");
     assert.match(response.continue_hint, /goal continue --goal goal_web_123/);
     assert.deepEqual(canaryDispatches, []);
+    assert.deepEqual(stableDispatches, []);
     await assertNoLegacyWebOrchestration(fixture.stateRoot);
   } finally {
     canaryChannel.unsubscribe(recordCanaryDispatch);
+    stableChannel.unsubscribe(recordStableDispatch);
     await handle.close();
     await fixture.cleanup();
   }
