@@ -139,7 +139,7 @@ test("Action Gateway keeps the default argument bound and permits one validated 
     assert.equal(completed.status, "completed", JSON.stringify(completed));
 
     assert.throws(
-      () => new ActionGateway(store, [{ ...base, prepared_argument_max_bytes: 128 * 1024 + 1 }]),
+      () => new ActionGateway(store, [{ ...base, prepared_argument_max_bytes: 160 * 1024 + 1 }]),
       /prepared argument limit is invalid/iu
     );
   } finally {

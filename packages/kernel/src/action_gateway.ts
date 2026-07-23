@@ -15,7 +15,7 @@ import { stableJson } from "./canonical_json.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const MAX_ARGUMENT_BYTES = 16 * 1024;
-const MAX_PREPARED_ARGUMENT_BYTES = 128 * 1024;
+const MAX_PREPARED_ARGUMENT_BYTES = 160 * 1024;
 const MAX_OUTPUT_BYTES = 32 * 1024;
 const MAX_SUMMARY_LENGTH = 2_000;
 

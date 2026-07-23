@@ -1107,6 +1107,31 @@ export class SqliteRuntimeStore {
     return reservation.arguments;
   }
 
+  getPreparedReviewWorkerDispatch(
+    runId: string,
+    invocationId: string,
+    input: unknown
+  ): JsonObject | null {
+    const reservation = this.getActionReservationByInvocation(runId, invocationId);
+    if (!reservation) return null;
+    if (reservation.action_name !== "worker_review_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "external_read") {
+      throw new Error(`Review Worker invocation identity is already owned: ${runId}/${invocationId}`);
+    }
+    const requested = normalizeReviewTaskInput(input);
+    const durable = normalizeReviewTaskInput({
+      execution_worker_id: reservation.arguments.execution_worker_id,
+      checklist: reservation.arguments.checklist,
+      deadline_at: reservation.arguments.deadline_at,
+      budget: reservation.arguments.budget
+    });
+    if (stableJson(requested) !== stableJson(durable)) {
+      throw new Error(`Review Worker invocation arguments drifted: ${runId}/${invocationId}`);
+    }
+    return reservation.arguments;
+  }
+
   assertCanBindDeliveryLineage(
     lineage: DeliveryLineage,
     runId: string,

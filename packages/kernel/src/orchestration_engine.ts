@@ -114,7 +114,7 @@ const workerNeedsInputParameters = Type.Object({
   proposed_next_step: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 }))
 }, { additionalProperties: false });
 
-const REVIEW_ACTION_ARGUMENT_MAX_BYTES = 112 * 1024;
+const REVIEW_ACTION_ARGUMENT_MAX_BYTES = 160 * 1024;
 
 export const WORKER_NEEDS_INPUT_CONTRACT: ActionToolContract = {
   name: "worker_needs_input",
@@ -262,6 +262,8 @@ export class OrchestrationEngine {
     input: ReviewTaskInput
   ): Promise<JsonObject> {
     this.store.assertCanDispatchReviewWorker(parentRunId, invocationId);
+    const prepared = this.store.getPreparedReviewWorkerDispatch(parentRunId, invocationId, input);
+    if (prepared) return prepared;
     if (Date.parse(input.deadline_at) <= Date.now()) {
       throw new Error("Review Worker deadline must be in the future at dispatch.");
     }

@@ -359,12 +359,13 @@ test("Reviewer dispatch reconciliation reuses a persisted Worker after source dr
     store.completeAction = () => {
       throw new Error("simulated crash after Review Worker insertion");
     };
-    const first = await flow.gateway.invoke(reviewInvocation(
+    const invocation = reviewInvocation(
       flow.resumed.run.id,
       flow.resumed.run.turn_id,
       flow.executionWorker.id,
       "review-dispatch-reconcile"
-    ));
+    );
+    const first = await flow.gateway.invoke(invocation);
     assert.equal(first.status, "outcome_unknown", JSON.stringify(first));
     if (first.status !== "outcome_unknown") return;
     const workerId = String(first.reservation.arguments.worker_id);
@@ -373,12 +374,11 @@ test("Reviewer dispatch reconciliation reuses a persisted Worker after source dr
 
     store.completeAction = completeAction;
     await writeFile(join(fixture.worktree, "src", "feature.txt"), "drift after persisted review\n");
-    const reconciled = await flow.gateway.reconcileRun(flow.resumed.run.id);
-    assert.equal(reconciled.length, 1);
-    assert.equal(reconciled[0]?.status, "completed", JSON.stringify(reconciled));
-    if (reconciled[0]?.status !== "completed") return;
-    assert.equal(reconciled[0].receipt.reconciled, true);
-    assert.equal(reconciled[0].receipt.output.worker_id, workerId);
+    const reconciled = await flow.gateway.invoke(invocation);
+    assert.equal(reconciled.status, "completed", JSON.stringify(reconciled));
+    if (reconciled.status !== "completed") return;
+    assert.equal(reconciled.receipt.reconciled, true);
+    assert.equal(reconciled.receipt.output.worker_id, workerId);
     assert.equal(store.inspectReviewWorkerByReservation(first.reservation.id)?.id, workerId);
     assert.equal(store.listUnresolvedActions(flow.resumed.run.id).length, 0);
   } finally {
@@ -387,24 +387,61 @@ test("Reviewer dispatch reconciliation reuses a persisted Worker after source dr
   }
 });
 
-test("Reviewer dispatch durably reserves a packet larger than the default Action bound", async () => {
-  const fixture = await createGitFixture("packet-action-bound", "a".repeat(20 * 1024));
+test("Reviewer dispatch durably reserves a near-limit packet with a Unicode checklist", async () => {
+  const fixture = await createGitFixture("packet-action-bound", "a".repeat(92 * 1024));
   const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
     state_profile: "stable_cli"
   });
   try {
     const flow = await completedExecutionFlow(store, fixture);
-    const dispatched = await flow.gateway.invoke(reviewInvocation(
+    const invocation = reviewInvocation(
       flow.resumed.run.id,
       flow.resumed.run.turn_id,
       flow.executionWorker.id,
       "review-large-action-packet"
-    ));
+    );
+    invocation.arguments.checklist = Array.from(
+      { length: 32 },
+      (_, index) => `${String(index).padStart(2, "0")}${"界".repeat(238)}`
+    );
+    const dispatched = await flow.gateway.invoke(invocation);
     assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
     if (dispatched.status !== "completed") return;
     const worker = store.inspectReviewWorker(String(dispatched.receipt.output.worker_id));
     assert.ok(worker);
-    assert.ok(Buffer.byteLength(stableJson(worker.task_envelope.review_packet), "utf8") > 16 * 1024);
+    assert.ok(Buffer.byteLength(stableJson(worker.task_envelope.review_packet), "utf8") > 92 * 1024);
+    assert.ok(Buffer.byteLength(stableJson(dispatched.reservation.arguments), "utf8") > 112 * 1024);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("Reviewer terminal receipt is reused after deadline and source drift", async () => {
+  const fixture = await createGitFixture("terminal-reuse");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const invocation = reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-terminal-reuse"
+    );
+    invocation.arguments.deadline_at = new Date(Date.now() + 500).toISOString();
+    const first = await flow.gateway.invoke(invocation);
+    assert.equal(first.status, "completed", JSON.stringify(first));
+    if (first.status !== "completed") return;
+
+    await writeFile(join(fixture.worktree, "src", "feature.txt"), "drift after terminal review\n");
+    await delay(550);
+    const repeated = await flow.gateway.invoke(invocation);
+    assert.equal(repeated.status, "completed", JSON.stringify(repeated));
+    if (repeated.status !== "completed") return;
+    assert.equal(repeated.receipt.id, first.receipt.id);
+    assert.equal(repeated.receipt.reconciled, false);
   } finally {
     store.close();
     await rm(fixture.root, { recursive: true, force: true });

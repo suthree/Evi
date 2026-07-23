@@ -168,7 +168,7 @@ Result, verification receipts, Delivery Lineage, and current final snapshot,
 then captures one bounded digest-addressed packet containing the changed text
 files' baseline and final content. Drift, unsupported Git modes, binary or
 non-UTF-8 content, or packet size overflow fails before reservation. The review
-dispatch has a dedicated 112 KiB prepared-argument ceiling so its bounded
+dispatch has a dedicated 160 KiB prepared-argument ceiling so its bounded
 96 KiB packet can be reserved durably; every other Action retains the default
 16 KiB ceiling unless its handler declares another validated bounded override.
 Worker runs in a separate Pi child Run with only `none/local_read` Actions and
