@@ -14,6 +14,11 @@ const reservedPattern = new RegExp(
   `(?:^|[^a-z0-9])(?:${reservedNames.join("|")})(?=$|[^a-z0-9])`,
   "i"
 );
+const allowedProjectScopedRuntimeValues = [
+  "~/.local-runtime/state/evi",
+  "${LOCAL_RUNTIME_HOME}/vault/evi",
+  "${homeRoot}/vault/evi"
+];
 
 const files = [
   ...rootFiles.map((path) => resolve(repoRoot, path)),
@@ -30,7 +35,11 @@ for (const file of files.sort()) {
   if (!textExtensions.has(extname(file))) continue;
   const lines = (await readFile(file, "utf8")).split(/\r?\n/);
   for (const [index, line] of lines.entries()) {
-    if (reservedPattern.test(line)) {
+    const neutralized = allowedProjectScopedRuntimeValues.reduce(
+      (value, allowed) => value.replaceAll(allowed, ""),
+      line
+    );
+    if (reservedPattern.test(neutralized)) {
       violations.push(`${repoPath}:${index + 1}: ${line.trim()}`);
     }
   }

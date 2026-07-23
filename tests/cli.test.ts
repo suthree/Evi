@@ -63,6 +63,171 @@ test("config command parses read-only config summary options", () => {
   assert.equal(options.stateRoot, ".runtime/state");
 });
 
+test("vNext canary parsing requires an explicit opt-in surface and isolated SQLite options", () => {
+  const submit = parseArgs([
+    "vnext",
+    "canary",
+    "submit",
+    "--task",
+    "Inspect only the isolated Run.",
+    "--sqlite",
+    "/tmp/evi-canary/runtime.sqlite",
+    "--base-url",
+    "https://responses.example.test/v1",
+    "--model",
+    "test-model",
+    "--api-key-env",
+    "EVI_CANARY_API_KEY"
+  ]);
+  assert.equal(submit.command, "vnext");
+  assert.equal(submit.vnextCanaryAction, "submit");
+  assert.equal(submit.vnextCanarySqlite, "/tmp/evi-canary/runtime.sqlite");
+  assert.equal(submit.vnextCanaryBaseUrl, "https://responses.example.test/v1");
+  assert.equal(submit.vnextCanaryModel, "test-model");
+  assert.equal(submit.vnextCanaryApiKeyEnv, "EVI_CANARY_API_KEY");
+
+  const inspect = parseArgs([
+    "vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/evi-canary/runtime.sqlite"
+  ]);
+  assert.equal(inspect.vnextCanaryAction, "inspect");
+  assert.equal(inspect.vnextCanaryRunId, "run_123");
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--state-root", "/tmp/v02"]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--config-dir", "config"]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--repo-root", "."]),
+    /does not accept v0\.2 config, repo, or state-root/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "submit", "--task", "not explicitly canary"]),
+    /requires the explicit canary surface/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "submit", "inspect", "--task", "ambiguous action"]),
+    /Unknown argument: inspect/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "canary", "inspect", "--run-id", "run_123", "--sqlite", "/tmp/canary.sqlite", "--model", "unused"]),
+    /does not accept model or credential options/
+  );
+});
+
+test("stable vNext Run parsing accepts only its narrow Session and state options", () => {
+  const submit = parseArgs([
+    "vnext", "run", "submit", "--task", "Open a stable Run.",
+    "--session-id", "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "--vnext-state-root", "/tmp/evi-vnext", "--config-dir", "config", "--repo-root", "/tmp/repo"
+  ]);
+  assert.equal(submit.vnextSurface, "run");
+  assert.equal(submit.vnextRunAction, "submit");
+  assert.equal(submit.vnextRunSessionId, "session_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  assert.equal(submit.vnextStateRoot, "/tmp/evi-vnext");
+
+  const inspect = parseArgs([
+    "vnext", "run", "inspect", "--run-id", "run_123", "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(inspect.vnextRunAction, "inspect");
+  assert.equal(inspect.vnextRunId, "run_123");
+
+  assert.throws(
+    () => parseArgs(["vnext", "run", "submit", "--task", "unsafe", "--base-url", "https://raw.example"]),
+    /Unknown vnext run argument: --base-url/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "inspect", "--run-id", "run_1", "--session-id", "session_1"]),
+    /exactly one/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "continue", "--run-id", "run_1", "--session-id", "session_1"]),
+    /does not accept --session-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "run", "inspect", "--run-id", "run_1", "--state-root", "/tmp/v02"]),
+    /Unknown vnext run argument: --state-root/
+  );
+});
+
+test("vNext Worker parsing requires one explicit worker identity and stable selectors", () => {
+  const execute = parseArgs([
+    "vnext", "worker", "execute",
+    "--worker-id", "worker_123",
+    "--vnext-state-root", "/tmp/evi-vnext",
+    "--config-dir", "config",
+    "--repo-root", "/tmp/repo"
+  ]);
+  assert.equal(execute.vnextSurface, "worker");
+  assert.equal(execute.vnextWorkerAction, "execute");
+  assert.equal(execute.vnextWorkerId, "worker_123");
+  assert.equal(execute.vnextStateRoot, "/tmp/evi-vnext");
+
+  const inspect = parseArgs([
+    "vnext", "worker", "inspect",
+    "--worker-id", "worker_123",
+    "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(inspect.vnextWorkerAction, "inspect");
+  assert.equal(inspect.vnextWorkerId, "worker_123");
+
+  assert.throws(
+    () => parseArgs(["vnext", "worker", "execute", "--vnext-state-root", "/tmp/evi-vnext"]),
+    /requires --worker-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "worker", "execute", "--worker-id", "worker_123", "--state-root", "/tmp/v02"]),
+    /Unknown vnext worker argument: --state-root/
+  );
+});
+
+test("vNext Adaptation parsing exposes only inactive proposal, evaluation, and inspection controls", () => {
+  const propose = parseArgs([
+    "vnext", "adaptation", "propose",
+    "--target-slot", "procedure.runtime-recovery",
+    "--name", "Recover a paused runtime",
+    "--summary", "Reuse exact persisted evidence.",
+    "--trigger", "A Run is paused.",
+    "--step", "Inspect the exact Run.",
+    "--expected-result", "The same Run completes.",
+    "--verify", "Inspect the terminal receipt.",
+    "--failure-mode", "Mismatched evidence leaves the Run paused.",
+    "--rollback-rule", "Retire the candidate on identity drift.",
+    "--evidence-run-id", "run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "--vnext-state-root", "/tmp/evi-vnext"
+  ]);
+  assert.equal(propose.vnextSurface, "adaptation");
+  assert.equal(propose.vnextAdaptationAction, "propose");
+  assert.deepEqual(propose.vnextAdaptationSteps, ["Inspect the exact Run."]);
+  assert.deepEqual(propose.vnextAdaptationEvidenceRunIds, ["run_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]);
+
+  const evaluate = parseArgs([
+    "vnext", "adaptation", "evaluate",
+    "--candidate-id", "candidate_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ]);
+  assert.equal(evaluate.vnextAdaptationAction, "evaluate");
+  assert.equal(evaluate.vnextAdaptationCandidateId, "candidate_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "inspect", "--candidate-id", "candidate_1", "--evaluation-id", "evaluation_1"]),
+    /exactly one/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "evaluate", "--candidate-id", "candidate_1", "--step", "not allowed"]),
+    /does not accept candidate content fields/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "propose", "--target-slot", "procedure.one", "--name", "One", "--summary", "One"]),
+    /at least one --evidence-run-id/
+  );
+  assert.throws(
+    () => parseArgs(["vnext", "adaptation", "inspect", "--candidate-id", "candidate_1", "--state-root", "/tmp/v02"]),
+    /Unknown vnext adaptation argument: --state-root/
+  );
+});
+
 test("config set-runtime parses safe content daily update options", () => {
   const options = parseArgs([
     "config",
@@ -154,6 +319,30 @@ test("capabilities command parses read-only catalog options", () => {
   assert.equal(verifyEntrypoints.stateRoot, ".runtime/state");
 });
 
+test("GitHub discovery command requires an explicit manual source and business need", () => {
+  const scan = parseArgs([
+    "discovery",
+    "github",
+    "scan",
+    "--need",
+    "find bounded capability candidates",
+    "--limit",
+    "5",
+    "--state-root",
+    ".runtime/state"
+  ]);
+  assert.equal(scan.command, "discovery");
+  assert.equal(scan.discoverySource, "github");
+  assert.equal(scan.discoveryAction, "scan");
+  assert.equal(scan.discoveryBusinessNeed, "find bounded capability candidates");
+  assert.equal(scan.limit, 5);
+  assert.equal(scan.stateRoot, ".runtime/state");
+
+  const report = parseArgs(["discovery", "github", "report", "--report", "github_discovery_20260721000000_1234abcd"]);
+  assert.equal(report.discoveryAction, "report");
+  assert.equal(report.discoveryReportId, "github_discovery_20260721000000_1234abcd");
+});
+
 test("web command parses local console host and port", () => {
   const options = parseArgs(["web", "--host", "127.0.0.1", "--port", "9876", "--state-root", ".runtime/state"]);
 
@@ -211,7 +400,7 @@ test("service command parses runtime target and web host options", () => {
   assert.equal(options.requireIm, false);
 });
 
-test("deployment commands parse autonomous release, repair, and failure evidence", () => {
+test("deployment commands parse release, baseline reconciliation, repair, and failure evidence", () => {
   const request = parseArgs([
     "deployment",
     "request",
@@ -228,6 +417,18 @@ test("deployment commands parse autonomous release, repair, and failure evidence
   assert.equal(request.deploymentAction, "request");
   assert.deepEqual(request.deploymentVerificationRefs, ["pnpm run check", "tests/deployment_supervisor.test.ts"]);
   assert.equal(request.deploymentRepairOf, "deployment_failed_1");
+
+  const reconcile = parseArgs([
+    "deployment",
+    "reconcile",
+    "--reason",
+    "operator verified the running baseline",
+    "--verification-ref",
+    "service health: Web and IM ready"
+  ]);
+  assert.equal(reconcile.deploymentAction, "reconcile");
+  assert.equal(reconcile.reason, "operator verified the running baseline");
+  assert.deepEqual(reconcile.deploymentVerificationRefs, ["service health: Web and IM ready"]);
 
   const fail = parseArgs([
     "deployment",

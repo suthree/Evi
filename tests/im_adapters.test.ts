@@ -5,8 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { AgentStore } from "../packages/core/src/store.js";
 import { AgentStore as Store } from "../packages/core/src/store.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
-import type { FeishuSendResult, FeishuTransport, TaskRunner } from "../packages/runtime/src/channels/feishu/types.js";
+import type { FeishuSendResult, FeishuTransport } from "../packages/runtime/src/channels/feishu/types.js";
 import type { TelegramSendResult, TelegramTransport } from "../packages/runtime/src/channels/telegram/types.js";
 import type { DiscordSendResult, DiscordTransport } from "../packages/runtime/src/channels/discord/types.js";
 import {
@@ -14,6 +13,8 @@ import {
   createRuntimeImAdapter
 } from "../packages/runtime/src/im_adapters.js";
 import type { DiscordImScenarioConfig, FeishuImScenarioConfig, TelegramImScenarioConfig } from "../packages/runtime/src/im_config.js";
+import type { GoalInteractionPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 
 test("runtime IM adapter seam creates Feishu adapters from provider-neutral scenarios", async () => {
   const fixture = await createFixture();
@@ -21,7 +22,7 @@ test("runtime IM adapter seam creates Feishu adapters from provider-neutral scen
     const adapter = createRuntimeImAdapter({
       scenario: feishuScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       feishuTransportFactory: () => new FakeFeishuTransport()
     });
 
@@ -39,7 +40,7 @@ test("runtime IM adapter seam creates Telegram adapters from provider-neutral sc
     const adapter = createRuntimeImAdapter({
       scenario: telegramScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       telegramTransportFactory: () => new FakeTelegramTransport()
     });
 
@@ -57,7 +58,7 @@ test("runtime IM adapter seam creates Discord adapters from provider-neutral sce
     const adapter = createRuntimeImAdapter({
       scenario: discordScenario(),
       store: fixture.store,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress(),
       discordTransportFactory: () => new FakeDiscordTransport()
     });
 
@@ -69,15 +70,21 @@ test("runtime IM adapter seam creates Discord adapters from provider-neutral sce
   }
 });
 
+function stubGoalIngress(): GoalInteractionPort {
+  const view = { goal_id: "goal_adapter", status: "active", receipt: null } as GoalView;
+  return {
+    submit: async () => view,
+    read: async () => view,
+    continue: async () => view,
+    resume: async () => view
+  };
+}
+
 function feishuScenario(): FeishuImScenarioConfig {
   return {
     id: "im-default",
     provider: "feishu",
     channelId: "feishu-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
     channelDescriptor: {
       id: "feishu-main",
       kind: "feishu",
@@ -107,10 +114,6 @@ function telegramScenario(): TelegramImScenarioConfig {
     id: "im-telegram",
     provider: "telegram",
     channelId: "telegram-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
     channelDescriptor: {
       id: "telegram-main",
       kind: "telegram",
@@ -137,10 +140,6 @@ function discordScenario(): DiscordImScenarioConfig {
     id: "im-discord",
     provider: "discord",
     channelId: "discord-main",
-    modelId: "test-model",
-    discipline: "query_todo",
-    replyPolicy: "final_response",
-    concurrency: "per_sender",
     channelDescriptor: {
       id: "discord-main",
       kind: "discord",
@@ -189,30 +188,6 @@ class FakeDiscordTransport implements DiscordTransport {
   async stop(): Promise<void> {}
   async sendText(): Promise<DiscordSendResult> {
     return { ok: true, messageId: "sent_1", summary: "sent" };
-  }
-}
-
-class StubRunner implements TaskRunner {
-  async runTask(): Promise<RunResult> {
-    return {
-      trigger_id: "trigger_im_adapter",
-      opportunity_id: "opp_im_adapter",
-      session_id: "session_im_adapter",
-      turn_id: "turn_im_adapter",
-      context_ref: "memory/episodes/im-adapter-context.md",
-      context_manifest_ref: null,
-      model_response_ref: "memory/episodes/im-adapter-model.json",
-      envelope_ref: "memory/episodes/im-adapter-envelope.json",
-      evidence_refs: [],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: null,
-      completion_report_ref: null,
-      discipline_refs: null,
-      verdict: "ok"
-    };
   }
 }
 

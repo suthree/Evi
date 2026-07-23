@@ -5,6 +5,8 @@ import { isAbsolute, resolve } from "node:path";
 import { z } from "zod";
 import { deriveContextBudget, type ContextBudgetSummary } from "../../core/src/context_budget.js";
 
+export const DEFAULT_SHARED_STATE_ROOT = "~/.local-runtime/state/evi";
+
 const homeRecordSchema = z.object({
   type: z.literal("home"),
   root: z.string().default("~/.local-runtime")
@@ -12,12 +14,12 @@ const homeRecordSchema = z.object({
 
 const stateRecordSchema = z.object({
   type: z.literal("state"),
-  root: z.string().default(".runtime/state")
+  root: z.string().default(DEFAULT_SHARED_STATE_ROOT)
 });
 
 const runtimeRecordSchema = z.object({
   type: z.literal("runtime"),
-  promotion_enabled: z.boolean().default(true),
+  promotion_enabled: z.boolean().default(false),
   structured_output: z.boolean().default(true),
   review_tick_enabled: z.boolean().default(false),
   review_tick_interval_ms: z.number().int().positive().default(30 * 60 * 1000),
@@ -46,7 +48,8 @@ const runtimeRecordSchema = z.object({
   content_creator_metrics_creator_url: z.string().url().default("https://creator.xiaohongshu.com/new/note-manager"),
   content_creator_metrics_browser_session_name: z.string().min(1).default("runtime-creator-metrics"),
   content_creator_metrics_browser_auto_connect: z.boolean().default(false),
-  content_creator_metrics_browser_cdp_port: z.string().min(1).optional()
+  content_creator_metrics_browser_cdp_port: z.string().min(1).optional(),
+  asset_projection_root: z.string().min(1).optional()
 });
 
 const vaultRecordSchema = z.object({
@@ -76,6 +79,17 @@ const activeChannelRecordSchema = z.object({
 const activeScenarioRecordSchema = z.object({
   type: z.literal("active_scenario"),
   scenario_id: z.string().min(1)
+});
+
+const goalCognitionRecordSchema = z.object({
+  type: z.literal("goal_cognition"),
+  provider: z.enum(["active_model", "codex_cli"]).default("active_model"),
+  service_tier: z.literal("fast").default("fast"),
+  credential_store: z.enum(["auto", "file", "keyring"]).default("auto"),
+  model: z.string().min(1).optional(),
+  reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+  timeout_ms: z.number().int().min(1_000).max(600_000).default(120000),
+  max_output_chars: z.number().int().min(1_024).max(1_000_000).default(64000)
 });
 
 const modelRecordSchema = z.object({
@@ -135,11 +149,16 @@ type ActiveModelRecord = z.infer<typeof activeModelRecordSchema>;
 type ActiveImageModelRecord = z.infer<typeof activeImageModelRecordSchema>;
 type ActiveChannelRecord = z.infer<typeof activeChannelRecordSchema>;
 type ActiveScenarioRecord = z.infer<typeof activeScenarioRecordSchema>;
+type GoalCognitionRecord = z.infer<typeof goalCognitionRecordSchema>;
 type ModelRecord = z.infer<typeof modelRecordSchema>;
 type ImageModelRecord = z.infer<typeof imageModelRecordSchema>;
 type AuthRecord = z.infer<typeof authRecordSchema>;
 export type ApiKeyAuthRecord = z.infer<typeof authRecordSchema>;
 export type AppSecretAuthRecord = z.infer<typeof appSecretAuthRecordSchema>;
+export type GoalCognitionProvider = GoalCognitionRecord["provider"];
+export type GoalCognitionConfig = GoalCognitionRecord & {
+  source_ref: string;
+};
 export type ImageModelConfig = ImageModelRecord & {
   api_key: string;
 };
@@ -193,6 +212,7 @@ export interface RuntimeConfig {
     content_creator_metrics_browser_session_name: string;
     content_creator_metrics_browser_auto_connect: boolean;
     content_creator_metrics_browser_cdp_port?: string;
+    asset_projection_root?: string;
   };
   vault: {
     mode: "repo-local" | "user";
@@ -261,6 +281,17 @@ export interface RuntimeConfigSummary {
     content_creator_metrics_browser_cdp_port?: string;
     source_ref: string;
     defaulted_fields: string[];
+  };
+  goal_cognition: {
+    provider: GoalCognitionProvider;
+    service_tier?: "fast";
+    credential_store?: "auto" | "file" | "keyring";
+    source_ref: string;
+    readiness: "runtime_check_required" | "missing_active_model_selector" | "missing_active_model";
+    model?: string;
+    reasoning_effort?: string;
+    timeout_ms: number;
+    max_output_chars: number;
   };
   active_model: {
     id: string | null;
@@ -458,7 +489,11 @@ export async function loadConfigSelectors(options: ConfigSourceOptions = {}): Pr
     "active_scenario"
   );
 
-  const stateRoot = resolve(options.stateRoot ?? stateRecords.at(-1)?.root ?? ".runtime/state");
+  const stateRoot = expandConfigPath(
+    options.stateRoot ?? stateRecords.at(-1)?.root ?? DEFAULT_SHARED_STATE_ROOT,
+    homeRoot,
+    false
+  );
   return {
     configDir,
     homeConfigDir,
@@ -552,7 +587,8 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
       content_creator_metrics_creator_url: runtime.content_creator_metrics_creator_url,
       content_creator_metrics_browser_session_name: runtime.content_creator_metrics_browser_session_name,
       content_creator_metrics_browser_auto_connect: runtime.content_creator_metrics_browser_auto_connect,
-      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port
+      content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
+      asset_projection_root: resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot)
     },
     vault: {
       mode: vault.mode,
@@ -565,6 +601,23 @@ export async function loadConfig(options: ConfigLoadOptions = {}): Promise<Runti
       ...model,
       api_key: apiKey
     }
+  };
+}
+
+export async function loadGoalCognitionConfig(options: ConfigSourceOptions = {}): Promise<GoalCognitionConfig> {
+  const selectors = await loadConfigSelectors(options);
+  const records = parseJsonlWithRefs(
+    await readConfigSourceLayers(selectors, "config.jsonl"),
+    goalCognitionRecordSchema,
+    "goal_cognition"
+  );
+  const selected = records.at(-1);
+  return {
+    ...(selected?.value ?? goalCognitionRecordSchema.parse({
+      type: "goal_cognition",
+      provider: "active_model"
+    })),
+    source_ref: selected?.ref ?? "default:goal_cognition"
   };
 }
 
@@ -614,6 +667,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
   const activeImageModelRecords = parseJsonlWithRefs(configLayers, activeImageModelRecordSchema, "active_image_model");
   const activeChannelRecords = parseJsonlWithRefs(configLayers, activeChannelRecordSchema, "active_channel");
   const activeScenarioRecords = parseJsonlWithRefs(configLayers, activeScenarioRecordSchema, "active_scenario");
+  const goalCognitionRecords = parseJsonlWithRefs(configLayers, goalCognitionRecordSchema, "goal_cognition");
   const modelRecords = parseJsonlWithRefs(modelLayers, modelRecordSchema, "model");
   const imageModelRecords = parseJsonlWithRefs(modelLayers, imageModelRecordSchema, "image_model");
   const channelRecords = parseRawJsonlWithRefs(settingLayers, "channel");
@@ -621,6 +675,7 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
 
   const runtimeRecord = runtimeRecords.at(-1);
   const runtime = runtimeRecord?.value ?? runtimeRecordSchema.parse({ type: "runtime" });
+  resolveAssetProjectionRoot(runtime.asset_projection_root, selectors.homeRoot);
   const runtimeSourceRef = runtimeRecord?.ref ?? "default:runtime";
   const runtimeRaw = runtimeRecord?.raw ?? {};
   const vaultRecord = vaultRecords.at(-1);
@@ -629,6 +684,11 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
   const activeImageModel = activeImageModelRecords.at(-1);
   const activeChannel = activeChannelRecords.at(-1);
   const activeScenario = activeScenarioRecords.at(-1);
+  const goalCognition = goalCognitionRecords.at(-1);
+  const goalCognitionValue = goalCognition?.value ?? goalCognitionRecordSchema.parse({
+    type: "goal_cognition",
+    provider: "active_model"
+  });
   const model = activeModel
     ? [...modelRecords].reverse().find((item) => item.value.id === activeModel.value.model_id)
     : undefined;
@@ -652,7 +712,8 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
     activeChannel?.ref,
     channel?.ref,
     activeScenario?.ref,
-    scenario?.ref
+    scenario?.ref,
+    goalCognition?.ref
   ]);
 
   return {
@@ -695,6 +756,25 @@ export async function loadRuntimeConfigSummary(options: ConfigSourceOptions = {}
       content_creator_metrics_browser_cdp_port: runtime.content_creator_metrics_browser_cdp_port,
       source_ref: runtimeSourceRef,
       defaulted_fields: runtimeDefaultedFields(runtimeRaw)
+    },
+    goal_cognition: {
+      provider: goalCognitionValue.provider,
+      ...(goalCognitionValue.provider === "codex_cli" ? {
+        service_tier: goalCognitionValue.service_tier,
+        credential_store: goalCognitionValue.credential_store
+      } : {}),
+      source_ref: goalCognition?.ref ?? "default:goal_cognition",
+      readiness: goalCognitionValue.provider === "codex_cli"
+        ? "runtime_check_required"
+        : !activeModel
+          ? "missing_active_model_selector"
+          : !model
+            ? "missing_active_model"
+            : "runtime_check_required",
+      ...(goalCognitionValue.model ? { model: goalCognitionValue.model } : {}),
+      ...(goalCognitionValue.reasoning_effort ? { reasoning_effort: goalCognitionValue.reasoning_effort } : {}),
+      timeout_ms: goalCognitionValue.timeout_ms,
+      max_output_chars: goalCognitionValue.max_output_chars
     },
     active_model: {
       id: activeModel?.value.model_id ?? null,
@@ -769,7 +849,12 @@ export async function updateRuntimeConfig(options: UpdateRuntimeConfigOptions): 
     stateRoot: options.stateRoot,
     env: options.env
   });
-  const record = buildUpdatedRuntimeRecord(before.runtime, options.patch);
+  const currentRuntime = await loadEffectiveRuntimeRecord(selectors);
+  const record = buildUpdatedRuntimeRecord(
+    before.runtime,
+    resolveAssetProjectionRoot(currentRuntime.asset_projection_root, selectors.homeRoot),
+    options.patch
+  );
   assertRuntimeUpdateIsSafe(record, options);
   const parsed = runtimeRecordSchema.parse(record);
   const configFile = resolve(selectors.homeConfigDir, "config.jsonl");
@@ -896,9 +981,9 @@ export async function loadApiKeyAuth(
 function resolveVaultConfig(record: VaultRecord | undefined, homeRoot: string): Required<VaultRecord> & { root: string; active_root: string } {
   const mode = record?.mode ?? (record?.active_root ? "user" : "repo-local");
   const activeRoot = mode === "user"
-    ? expandConfigPath(record?.active_root ?? `${homeRoot}/vault`, homeRoot, false)
+    ? expandConfigPath(record?.active_root ?? `${homeRoot}/vault/evi`, homeRoot, false)
     : expandConfigPath(record?.root ?? record?.active_root ?? "vault", homeRoot, true);
-  const seedRoots = record?.seed_roots ?? (mode === "user" ? ["vault", "skills"] : ["skills"]);
+  const seedRoots = record?.seed_roots ?? (mode === "user" ? [] : ["skills"]);
   return {
     type: "vault",
     mode,
@@ -907,6 +992,13 @@ function resolveVaultConfig(record: VaultRecord | undefined, homeRoot: string): 
     seed_roots: seedRoots.map((root) => expandConfigPath(root, homeRoot, true)),
     project_roots: (record?.project_roots ?? []).map((root) => expandConfigPath(root, homeRoot, true))
   };
+}
+
+function resolveAssetProjectionRoot(value: string | undefined, homeRoot: string): string | undefined {
+  if (!value) return undefined;
+  const expanded = expandConfigPath(value, homeRoot, true, true);
+  if (!isAbsolute(expanded)) throw new Error("runtime.asset_projection_root must resolve to an absolute path");
+  return resolve(expanded);
 }
 
 async function loadAuthRecords<T>(
@@ -966,17 +1058,24 @@ function localConfigFile(file: string): string {
   return file.replace(/\.jsonl$/u, ".local.jsonl");
 }
 
-function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean): string {
+function expandConfigPath(value: string, homeRoot: string | undefined, preserveRelative: boolean, rejectUnsetEnvironment = false): string {
   let expanded = value;
   if (homeRoot) {
     expanded = expanded.replace(/\$\{LOCAL_RUNTIME_HOME\}/g, homeRoot).replace(/\$LOCAL_RUNTIME_HOME\b/g, homeRoot);
   }
-  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => process.env[name] ?? "");
-  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => process.env[name] ?? "");
+  expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
+  expanded = expanded.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, name: string) => requiredConfigEnvironment(name, rejectUnsetEnvironment));
   if (expanded === "~") expanded = homedir();
   else if (expanded.startsWith("~/")) expanded = resolve(homedir(), expanded.slice(2));
   if (preserveRelative && !isAbsolute(expanded)) return expanded;
   return resolve(expanded);
+}
+
+function requiredConfigEnvironment(name: string, rejectUnsetEnvironment: boolean): string {
+  const value = process.env[name];
+  if (value !== undefined) return value;
+  if (rejectUnsetEnvironment) throw new Error(`runtime.asset_projection_root references unset environment variable: ${name}`);
+  return "";
 }
 
 async function readRequired(dir: string, file: string): Promise<string> {
@@ -1117,8 +1216,15 @@ function runtimeDefaultedFields(raw: Record<string, unknown>): string[] {
   return fields.filter((field) => !(field in raw));
 }
 
+async function loadEffectiveRuntimeRecord(selectors: ConfigSelectors): Promise<RuntimeRecord> {
+  const configLayers = await readConfigSourceLayers(selectors, "config.jsonl");
+  return parseJsonlWithRefs(configLayers, runtimeRecordSchema, "runtime").at(-1)?.value
+    ?? runtimeRecordSchema.parse({ type: "runtime" });
+}
+
 function buildUpdatedRuntimeRecord(
   current: RuntimeConfigSummary["runtime"],
+  assetProjectionRoot: string | undefined,
   patch: RuntimeConfigUpdatePatch
 ): RuntimeRecord {
   const record: Record<string, unknown> = {
@@ -1152,7 +1258,8 @@ function buildUpdatedRuntimeRecord(
     content_creator_metrics_creator_url: current.content_creator_metrics_creator_url,
     content_creator_metrics_browser_session_name: current.content_creator_metrics_browser_session_name,
     content_creator_metrics_browser_auto_connect: current.content_creator_metrics_browser_auto_connect,
-    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {})
+    ...(current.content_creator_metrics_browser_cdp_port ? { content_creator_metrics_browser_cdp_port: current.content_creator_metrics_browser_cdp_port } : {}),
+    ...(assetProjectionRoot ? { asset_projection_root: assetProjectionRoot } : {})
   };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;

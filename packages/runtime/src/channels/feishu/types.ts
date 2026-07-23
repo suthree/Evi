@@ -1,5 +1,3 @@
-import type { RunResult } from "../../../../core/src/schemas.js";
-
 export type FeishuDomain = "feishu" | "lark";
 
 export interface FeishuChannelConfig {
@@ -76,8 +74,4 @@ export interface FeishuTransport {
   sendText(openId: string, text: string): Promise<FeishuSendResult>;
   sendTextToChat?(chatId: string, text: string): Promise<FeishuSendResult>;
   health?(): FeishuTransportHealth;
-}
-
-export interface TaskRunner {
-  runTask(task: string, options?: { recallQuery?: string }): Promise<RunResult>;
 }

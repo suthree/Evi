@@ -10,6 +10,7 @@ import { assertFeishuConfigReady } from "./channels/feishu/config.js";
 import { assertTelegramConfigReady } from "./channels/telegram/config.js";
 import {
   loadConfig,
+  loadGoalCognitionConfig,
   loadRuntimeAuthDiagnostics,
   type RuntimeAuthDiagnostics,
   type RuntimeConfig
@@ -344,20 +345,10 @@ async function checkIm(
       stateRoot: options.stateRoot,
       provider: options.provider
     });
-    await loadConfig({
+    const goalCognition = await loadGoalCognitionConfig({
       configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      modelId: scenario.modelId,
-      skipAuth: true
+      stateRoot: options.stateRoot
     });
-    if (options.requireAuth !== false && scenario.modelId !== options.activeModelId) {
-      await loadConfig({
-        configDir: options.configDir,
-        stateRoot: options.stateRoot,
-        modelId: scenario.modelId,
-        skipAuth: false
-      });
-    }
     assertRuntimeImAdapterSupported(scenario);
     if (scenario.provider === "feishu") assertFeishuConfigReady(scenario.channel);
     if (scenario.provider === "telegram") assertTelegramConfigReady(scenario.channel);
@@ -370,14 +361,14 @@ async function checkIm(
     checks.push({
       name: "im",
       level: "ok",
-      summary: `IM scenario and ${scenario.provider} auth resolved.`,
+      summary: `IM ${scenario.provider} channel and Goal cognition selection resolved.`,
       details: {
         provider: scenario.provider,
         scenario_id: scenario.id,
         channel_id: scenario.channelId,
-        model_id: scenario.modelId,
-        discipline: scenario.discipline,
-        reply_policy: scenario.replyPolicy,
+        execution_owner: "goal_cognition",
+        goal_cognition_provider: goalCognition.provider,
+        goal_cognition_source_ref: goalCognition.source_ref,
         ...(scenario.provider === "feishu" ? {
           domain: scenario.channel.domain,
           allowed_open_ids_count: scenario.channel.allowedOpenIds.length

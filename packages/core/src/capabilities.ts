@@ -5,7 +5,6 @@ import {
   type AllowedAction
 } from "./action_contracts.js";
 import { getExpertOrchestrationContract } from "./expert_orchestration.js";
-import { getProjectDesignContract } from "./project_design.js";
 import { coreToolContracts } from "./tool_contracts.js";
 
 export type CapabilityCategoryId =
@@ -50,7 +49,7 @@ export interface CapabilityCategory {
 export interface CapabilityCatalog {
   schema_version: 1;
   catalog_id: "local_runtime_capabilities";
-  catalog_version: "2026-07-07";
+  catalog_version: "2026-07-18";
   count: number;
   categories: CapabilityCategory[];
   refs: string[];
@@ -137,29 +136,29 @@ export function getCapabilityCatalog(): CapabilityCatalog {
   return {
     schema_version: 1,
     catalog_id: "local_runtime_capabilities",
-    catalog_version: "2026-07-07",
+    catalog_version: "2026-07-18",
     count: categories.reduce((total, category) => total + category.capabilities.length, 0),
     categories,
     refs: [
       "docs/RUNTIME_CONTRACT.md",
       "docs/LOCAL_RUNTIME.md",
       "docs/LOCAL_LEARNING.md",
-      ".trellis/spec/local-single-machine-mvp.md",
+      "docs/adr/0001-native-evolution-control-plane.md",
       "packages/core/src/capabilities.ts",
       "packages/core/src/action_contracts.ts",
       "packages/core/src/tool_contracts.ts",
       "packages/core/src/context.ts",
-      "packages/core/src/project_design.ts",
       "packages/core/src/expert_orchestration.ts",
       "packages/core/src/harness_replay.ts",
       "packages/core/src/pipeline_history.ts",
       "packages/core/src/content_pipeline.ts",
-      "packages/core/src/self_evolution_scorecard.ts",
       "packages/core/src/self_evolution_gaps.ts",
-      "packages/core/src/self_evolution_iterations.ts",
       "packages/core/src/runtime_channel_messages.ts",
       "packages/core/src/runtime_sessions.ts",
       "packages/core/src/workspace_status.ts",
+      "packages/runtime/src/goal_runtime.ts",
+      "packages/runtime/src/goal_tool_competence.ts",
+      "packages/runtime/src/goal_execution_adapters.ts",
       "packages/runtime/src/runner.ts",
       "packages/runtime/src/sop_loop_rehearsal.ts",
       "packages/runtime/src/content_pipeline.ts",
@@ -281,7 +280,7 @@ export function getCapabilityAcceptanceAudit(
       {
         id: "core_execution",
         title: "Core execution",
-        summary: "Core tool contracts cover bounded read, state write, repo write, command, search, fetch, Node execution, and auditable bounded result metadata.",
+        summary: "Core tool contracts cover bounded read, write, search, fetch, command, Node execution, runtime integration inspection, and auditable bounded result metadata.",
         status: "ready",
         layer: "core_runtime",
         evidence_refs: [
@@ -457,7 +456,7 @@ export function getCapabilityAcceptanceAudit(
         ],
         refs: [
           "packages/runtime/src/content_daily_service.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
+          "packages/runtime/src/runtime_daemon.ts",
           ".trellis/tasks/165-active-exploration-daily-service-loop.md"
         ]
       },
@@ -503,8 +502,7 @@ export function getCapabilityAcceptanceAudit(
       "docs/LOCAL_RUNTIME.md",
       "docs/LOCAL_LEARNING.md",
       "docs/ACTIVE_EXPLORATION.md",
-      ".trellis/spec/local-single-machine-mvp.md",
-      ".trellis/decisions.md",
+      "docs/adr/0001-native-evolution-control-plane.md",
       "packages/core/src/capabilities.ts"
     ],
     boundary: "read-only acceptance read model over repo-owned contracts plus one bounded commit-bound entrypoint evidence record; does not run tests, read secrets, inspect raw context/review/SOP/skill bodies, invoke the model, execute tools, manage services, mutate state, write the repo, or write the active vault"
@@ -519,7 +517,7 @@ function coreToolsCategory(): CapabilityCategoryDraft {
   return {
     id: "core_tools",
     title: "Core tools",
-    summary: "Harness-validated local tool contracts for bounded read, write, search, fetch, command, and JavaScript execution with auditable output budgets and failure kinds.",
+    summary: "Bounded read, write, search, fetch, command, JavaScript, and runtime-integration contracts with auditable failures.",
     status: "implemented",
     layer: "core_runtime",
     capabilities: coreToolContracts.map((contract) => ({
@@ -605,7 +603,6 @@ function harnessActionsCategory(): CapabilityCategoryDraft {
 }
 
 function contextReadModelsCategory(): CapabilityCategoryDraft {
-  const projectDesignContract = getProjectDesignContract();
   const expertContract = getExpertOrchestrationContract();
   return {
     id: "context_read_models",
@@ -673,27 +670,6 @@ function contextReadModelsCategory(): CapabilityCategoryDraft {
           "archive-health and skill-registry-health backlog items may become bounded review tick runtime-gap proposals without executing repair commands",
           "live run traces may show repo-write workspace guard summaries parsed from bounded event metadata only",
           "harness replay audit reports are metadata-only evidence and do not rerun traces or execute tools"
-        ]
-      },
-      {
-        id: "project.design_contract",
-        title: projectDesignContract.title,
-        summary: projectDesignContract.summary,
-        status: "implemented",
-        layer: projectDesignContract.layer,
-        commands: projectDesignContract.commands,
-        refs: projectDesignContract.refs,
-        boundaries: [
-          projectDesignContract.boundary,
-          "project-design may derive and inspect read-only artifacts from verified iteration outcomes; artifacts are reuse guidance, not state writes or completion proof",
-          "project-design may expose a read-only next_core_basic_plan from verified core/basic artifacts; the plan is advisory context and does not record iterations or execute work",
-          "next_core_basic_plan includes read-only goal_scope with the operator objective, owner surface, source of truth, and success evidence before selecting the next slice",
-          "next_core_basic_plan includes a read-only layer_decision that keeps recurring project design as core identity and external adapters as application slices by default",
-          "next_core_basic_plan includes read-only iteration_record_status so matching open iterations are inspected instead of blindly recording duplicates",
-          "next_core_basic_plan may include a read-only next_iteration_seed for record-iteration --from-project-design-plan; the seed itself does not write state",
-          "next_core_basic_plan may include completion_audit_seeds for goal scope, current state, verification scope, and learning persistence; seeds are advisory evidence prompts only",
-          "classifies external adapters as application slices unless their pattern generalizes back into the runtime contract",
-          "keeps project design as a core-runtime loop over goal intake, layering, contract design, execution planning, verification, and durable learning"
         ]
       },
       {
@@ -828,6 +804,24 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
         boundaries: ["read models do not render raw skill bodies or mutate registries"]
       },
       {
+        id: "goal.tool_competence",
+        title: "Goal outcome-driven tool competence",
+        summary: "Derive bounded tool-use decision support from previously terminal Goal observations and receipts, then provide it to later Goal cognition.",
+        status: "implemented",
+        layer: "core_runtime",
+        refs: [
+          "packages/runtime/src/goal_tool_competence.ts",
+          "packages/runtime/src/goal_runtime.ts",
+          "packages/runtime/src/goal_execution_adapters.ts"
+        ],
+        boundaries: [
+          "persists no new ledger and reads only canonical terminal Goal experience already loaded by GoalRuntime",
+          "tool success or failure is a direct execution observation; accepted or abandoned Goal counts are association only, never causal attribution",
+          "history, tools, failure summaries, and cognition material are bounded; current evidence, EffectPolicy, and verification remain authoritative",
+          "does not invoke another model, execute tools, promote SOPs or skills, or change goal acceptance"
+        ]
+      },
+      {
         id: "self_evolution.gaps",
         title: "Self-evolution gaps",
         summary: "Derive proposal-only implementation gaps from bounded local evidence, explicit operator corrections, verified iteration outcomes, and scorecard maturity signals; suppress superseded publish-run noise and surface current gaps through governance gaps and Opportunity Backlog.",
@@ -841,45 +835,6 @@ function memoryAndLearningCategory(): CapabilityCategoryDraft {
         ],
         boundaries: ["gap intake reads bounded state refs, active dream metadata, verified iteration outcome metadata, scorecard maturity metadata, and explicit operator-correction records only; record-correction writes one local state artifact and does not draft SOPs, update memory, mutate repo files, write the active vault, invoke models, execute tools, publish externally, or change services; verified outcomes may become SOP-candidate gaps but do not auto-draft, audit, promote, or write skills; superseded publish-gap suppression is read-model filtering, not historical state rewriting"]
       },
-      {
-        id: "self_evolution.scorecard",
-        title: "Self-evolution scorecard",
-        summary: "Assess project design artifacts, core/basic capability growth, general-agent delegation, and gated local-learning continuity as the read-only core/basic selection view.",
-        status: "implemented",
-        layer: "core_runtime",
-        commands: ["pnpm run runtime -- governance scorecard"],
-        refs: [
-          "packages/core/src/self_evolution_scorecard.ts",
-          "packages/core/src/project_design.ts",
-          "packages/core/src/capabilities.ts",
-          "packages/core/src/memory_layers.ts",
-          "packages/core/src/dreams.ts"
-        ],
-        boundaries: ["scorecard is a read-only core/basic selection surface; it may inspect local-learning maturity metadata as gated context, but does not invoke models, execute tools, mutate memory, promote SOPs, promote skills, manage services, write repo files, or prove completion"]
-      },
-      {
-        id: "self_evolution.iterations",
-        title: "Self-evolution iteration contracts",
-        summary: "Record, inspect, and close bounded iteration contracts that declare core/basic/local-learning/application layer, owner surface, evidence, verification commands, non-goals, advisory expert roles, and operator-supplied outcomes for major work.",
-        status: "implemented",
-        layer: "core_runtime",
-        commands: [
-          "pnpm run runtime -- governance iterations",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id>",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed <seed-id>",
-          "pnpm run runtime -- governance iterations --iteration <ref-or-id> --audit-seed all",
-          "pnpm run runtime -- governance record-iteration --summary <summary> --layer core_runtime --owner-surface <surface> --proposed-slice <slice>",
-          "pnpm run runtime -- governance record-iteration --from-project-design-plan",
-          "pnpm run runtime -- governance record-iteration-outcome --iteration <ref-or-id> --outcome-status verified --summary <summary>"
-        ],
-        refs: [
-          "packages/core/src/self_evolution_iterations.ts",
-          "packages/core/src/self_evolution_scorecard.ts",
-          "packages/core/src/expert_orchestration.ts",
-          "CONTEXT.md"
-        ],
-        boundaries: ["iteration contracts and outcomes write one local state record only; they declare layer, verification intent, outcome evidence, and next moves, but do not execute work, run verification commands, invoke models, mutate repo files, write the active vault, manage services, promote SOPs, promote skills, or prove completion beyond cited evidence; plan-derived iteration recording copies a read-only project-design seed into one iteration contract only and reuses a matching open iteration instead of writing duplicates; iteration audit-seed inspection and aggregate completion audit are read-only and advisory; seed evidence status summarizes evidence presence only and does not prove the seed is satisfied"]
-      }
     ]
   };
 }
@@ -913,10 +868,11 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       {
         id: "service.transactional_deployment",
         title: "Transactional local deployment",
-        summary: "Stage one clean commit as a local candidate, let a stable launchd supervisor enforce commit-bound readiness and probation, automatically roll back hard local failures, preserve bounded failure evidence, and queue one fix-forward repair task for the recovered runtime.",
+        summary: "Require the installed controller to match the canonical stable runtime before staging one clean candidate, enforce commit-bound readiness and probation, roll back hard local failures, and emit a typed observation without creating a repair goal.",
         status: "implemented",
         commands: [
           "pnpm run runtime -- deployment request --verification-ref \"pnpm run check\"",
+          "pnpm run runtime -- deployment controller-handoff",
           "pnpm run runtime -- deployment status",
           "pnpm run runtime -- deployment fail --reason <reason>",
           "pnpm run runtime -- deployment history"
@@ -931,9 +887,11 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         boundaries: [
           "single-machine current/previous/next bundles only; no containers, remote deployment, hosted control plane, or multi-node coordination",
           "the supervisor never invokes a model, edits repository source, publishes externally, or guesses failure from ordinary error log text",
+          "a stale installed controller returns controller_handoff_required before candidate build or bundle-slot mutation",
           "automatic rollback uses process/heartbeat/commit/local-entrypoint readiness or an explicit evidence-bound deployment failure signal",
           "v0.1 autonomous deployment accepts state_schema_version=1 only and rejects incompatible state migrations",
-          "the same failed commit cannot be redeployed; repair proceeds as a new clean commit and a repair chain stops after two automatic attempts"
+          "recovery restores known-good runtime state and emits an operator-visible observation but never creates, resumes, or enqueues a repair goal",
+          "the same failed commit cannot be redeployed; any later repair is an explicit new clean commit linked through repair_of"
         ]
       },
       {
@@ -943,7 +901,7 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         status: "implemented",
         layer: "application_slice",
         commands: ["pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight", "pnpm run runtime -- service status --target runtime"],
-        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/channels/feishu/service.ts", "tests/content_daily_service.test.ts"],
+        refs: ["packages/runtime/src/content_daily_service.ts", "packages/runtime/src/runtime_daemon.ts", "tests/content_daily_service.test.ts"],
         boundaries: [
           "disabled by default",
           "skips duplicate same-date jobs instead of forcing replacement",
@@ -964,7 +922,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         refs: [
           "packages/runtime/src/content_feedback_refresh_service.ts",
           "packages/runtime/src/runtime_daemon.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_feedback_refresh_service.test.ts"
         ],
         boundaries: [
@@ -987,7 +944,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
         refs: [
           "packages/runtime/src/content_creator_metrics_service.ts",
           "packages/runtime/src/runtime_daemon.ts",
-          "packages/runtime/src/channels/feishu/service.ts",
           "tests/content_creator_metrics_service.test.ts"
         ],
         boundaries: [
@@ -1008,20 +964,20 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
       },
       {
         id: "runtime.sessions",
-        title: "Runtime sessions and task runs",
-        summary: "Map provider-neutral runtime channel messages such as Feishu groups, Telegram chats, or Discord channels to runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append session inbox entries, classify explicit run triggers, mirror local runtime task queue status into append-only task-run history, and record task final/error communication in a provider-neutral outbox.",
+        title: "Runtime sessions and Goal ingress",
+        summary: "Map provider-neutral Feishu, Telegram, and Discord messages to local runtime sessions, keep pending/unassigned sessions until an operator binds a profile, append inbox entries, and submit each bound /run or accepted mention as one canonical Goal.",
         status: "implemented",
-        commands: ["pnpm run runtime -- web", "Feishu /session use <profile>", "Feishu /run <task>"],
+        commands: ["pnpm run runtime -- web", "IM /session use <profile>", "IM /run <task>", "accepted bot mention"],
         refs: [
           "packages/core/src/runtime_sessions.ts",
           "packages/core/src/runtime_channel_messages.ts",
           "packages/core/src/runtime_channel_outbox.ts",
           "packages/core/src/runtime_task_queue.ts",
+          "packages/runtime/src/goal_ingress.ts",
           "packages/runtime/src/im_config.ts",
           "packages/runtime/src/im_adapters.ts",
           "packages/runtime/src/channel_message_dispatcher.ts",
           "packages/runtime/src/runtime_channel_outbox_drainer.ts",
-          "packages/runtime/src/runtime_task_queue_worker.ts",
           "packages/runtime/src/channels/feishu/adapter.ts",
           "packages/runtime/src/channels/telegram/adapter.ts",
           "packages/runtime/src/channels/discord/adapter.ts",
@@ -1030,8 +986,6 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "tests/im_adapters.test.ts",
           "tests/runtime_channel_outbox.test.ts",
           "tests/runtime_channel_outbox_drainer.test.ts",
-          "tests/runtime_task_queue.test.ts",
-          "tests/runtime_task_queue_worker.test.ts",
           "tests/runtime_sessions.test.ts",
           "tests/telegram_adapter.test.ts",
           "tests/discord_adapter.test.ts",
@@ -1041,26 +995,30 @@ function runtimeServiceCategory(): CapabilityCategoryDraft {
           "local append-only state under the configured state root; not a hosted session database",
           "channel source route keys are provider-neutral and keep provider-specific IDs inside source mappings",
           "provider adapters normalize inbound messages before the shared dispatcher handles session binding, inbox append, and run trigger classification",
-          "explicit IM and web task runs append local queue rows and task-run rows for queued, running, and final states with one shared id",
-          "the task queue is a single-machine JSONL ledger with recoverable-task inspection and a resident daemon worker for stale queued/running entries",
-          "queue recovery records final run status for self-contained runner tasks; Feishu/Telegram/Discord-sourced recovery replies can be queued for adapter replay, but cross-process scheduling is not implemented",
-          "task final/error outcomes append to channels/outbox.jsonl as a provider-neutral local communication ledger; adapters still own real delivery and provider SDK details",
+          "each bound /run or accepted mention starts one canonical Goal, performs one bounded Continue, and returns status-aware continuation or terminal receipt guidance",
+          "new runtime-session Goals write no legacy queue, task-run, provider-neutral outbox, completion, episode, iteration, SOP, skill, or deployment state",
+          "provider adapters own direct delivery and provider-specific evidence with goal_id, Goal status, and receipt id; Goal failures stay out of the provider-neutral outbox",
+          "goal_cognition is the only execution-model owner for all new IM Goals; stale scenario model/discipline fields parse as ignored input and do not gate startup or readiness",
+          "historical queue/task-run/outbox ledgers remain readable and already-queued provider rows can still be drained, but the resident daemon no longer starts a queue worker for current session work or projects stale queue-worker files through current service status",
           "provider adapters mark queued outbox rows for the same provider but a different channel as skipped so resident polling does not retry them forever",
           "Feishu unknown groups require an authorized operator bootstrap and start as pending/unassigned",
-          "ordinary bound group messages append inbox entries only; model execution requires explicit /run, explicit mention, or a local web-console run"
+          "ordinary bound group messages append inbox entries only; allowed Feishu p2p tasks render bounded same-chat history into one Goal objective, while explicit named /goal interactions reuse the same canonical runtime and same-sender lane"
         ]
       },
       {
         id: "feishu.private_chat",
         title: "Feishu IM sessions",
-        summary: "Receive allowed private messages, map Feishu groups to runtime sessions, preserve local channel evidence, queue private-chat follow-ups in process, and run explicit tasks through the agent.",
+        summary: "Receive allowed private messages and group executions through canonical Goals, continue explicitly named p2p Goals, preserve provider evidence, and queue private-chat interactions in process.",
         status: "implemented",
-        commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /session use <profile>", "Feishu /run <task>"],
+        commands: ["pnpm run runtime -- daemon serve --provider feishu --scenario im-default", "normal Feishu private-chat task", "Feishu /goal continue <goal-id>", "Feishu /goal confirm <goal-id> <effect-id>", "Feishu /session use <profile>", "Feishu /run <task>"],
         refs: ["packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/core/src/runtime_sessions.ts"],
         boundaries: [
           "unknown groups are ignored unless the sender is an authorized operator; authorized bootstrap creates pending/unassigned local state",
-          "bound group messages are inbox context by default and do not execute unless explicitly triggered",
-          "follow-up queues are bounded in-memory same-open_id queues; queued artifacts are trace evidence, not durable replay or cross-process steering"
+          "bound group messages are inbox context by default; /run or accepted mention submits one canonical Goal",
+          "each allowed private-chat task submits one canonical Goal with bounded same-chat history and records direct provider delivery evidence only",
+          "strict /goal read, continue, resume, and exact confirm address one named canonical Goal without latest-Goal inference or replacement submission",
+          "follow-up queues are bounded in-memory same-open_id queues shared by task and Goal interactions; queued artifacts are trace evidence, not durable replay or cross-process steering",
+          "Goal control messages are provider protocol and are excluded from later ordinary-task conversation history"
         ]
       }
     ]
@@ -1087,11 +1045,12 @@ function entrypointsCategory(): CapabilityCategoryDraft {
       {
         id: "cli.live.pipeline",
         title: "Live and pipeline runs",
-        summary: "Run direct tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
+        summary: "Run direct Goal tasks or staged pipelines, including explicit pipeline resume from checkpoints.",
         status: "implemented",
         commands: ["pnpm run runtime -- live --task <task>", "pnpm run runtime -- pipeline --task <task>", "pnpm run runtime -- pipeline runs --pipeline <ref>", "pnpm run runtime -- pipeline resume --pipeline <ref>"],
-        refs: ["packages/runtime/src/runner.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
+        refs: ["packages/runtime/src/goal_ingress.ts", "packages/runtime/src/stage_runner.ts", "packages/core/src/pipeline_history.ts"],
         boundaries: [
+          "live starts one GoalRuntime identity and executes one bounded Continue without writing legacy runner state",
           "pipeline history exposes bounded blocked-tool diagnostic metadata with failure_kind and evidence counts without reading raw stage output, prompt, model, or tool artifacts",
           "pipeline resume is explicit CLI-only recovery, not triggered by Feishu read models"
         ]
@@ -1099,14 +1058,15 @@ function entrypointsCategory(): CapabilityCategoryDraft {
       {
         id: "web.console",
         title: "Local web console",
-        summary: "Serve a localhost operator console for runtime sessions, channel inbox review, profile binding, local task submission, and task-run history; when run under the runtime daemon it is a Web channel adapter managed by the MessageGateway.",
+        summary: "Serve a localhost operator console for runtime sessions, channel inbox review, profile binding, canonical Goal submission, and historical task-run reads; when run under the runtime daemon it is a Web channel adapter managed by the MessageGateway.",
         status: "implemented",
         commands: ["pnpm run runtime -- web --host 127.0.0.1 --port 8765", "pnpm run runtime -- daemon serve --no-im --host 127.0.0.1 --port 8765"],
         refs: ["packages/runtime/src/web_console.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/runtime_daemon.ts", "apps/cli/src/main.ts", "tests/web_console.test.ts", "tests/message_gateway.test.ts"],
         boundaries: [
           "localhost operator surface only; not a hosted, multi-user, authenticated, or desktop GUI",
-          "reads and writes only local runtime session/task state except when the operator submits an explicit Run action",
-          "task submission uses the existing LiveAgentRunner and records a local task-run index entry"
+          "session, inbox, and historical task-run surfaces remain local read models",
+          "new task submission starts one canonical Goal, executes one bounded Continue, and writes no legacy queue, task-run, or channel-outbox row",
+          "legacy runtime_session_id and execution_contract fields fail closed instead of being mapped into Goal authority"
         ]
       },
       {
@@ -1115,14 +1075,14 @@ function entrypointsCategory(): CapabilityCategoryDraft {
         summary: "Run a unified local daemon that manages channel adapters through a small lifecycle interface. Web, Feishu, Telegram, and Discord are the first adapters.",
         status: "implemented",
         commands: ["pnpm run runtime -- daemon serve", "pnpm run runtime -- service start --target runtime", "pnpm run runtime -- service status --target runtime", "pnpm run runtime -- service health --target runtime"],
-        refs: ["packages/runtime/src/im_config.ts", "packages/runtime/src/im_adapters.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/runtime/src/runtime_channel_outbox_drainer.ts", "packages/runtime/src/runtime_task_queue_worker.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/service.ts", "packages/runtime/src/channels/telegram/adapter.ts", "packages/runtime/src/channels/discord/adapter.ts", "apps/cli/src/main.ts", "tests/im_config.test.ts", "tests/im_adapters.test.ts", "tests/message_gateway.test.ts", "tests/runtime_daemon.test.ts", "tests/channel_message_dispatcher.test.ts", "tests/runtime_channel_outbox_drainer.test.ts", "tests/runtime_task_queue_worker.test.ts", "tests/telegram_adapter.test.ts", "tests/discord_adapter.test.ts", "tests/service.test.ts", "tests/cli.test.ts"],
+        refs: ["packages/runtime/src/goal_ingress.ts", "packages/runtime/src/im_config.ts", "packages/runtime/src/im_adapters.ts", "packages/runtime/src/message_gateway.ts", "packages/runtime/src/channel_message_dispatcher.ts", "packages/runtime/src/runtime_channel_outbox_drainer.ts", "packages/runtime/src/runtime_daemon.ts", "packages/runtime/src/service.ts", "packages/runtime/src/channels/feishu/adapter.ts", "packages/runtime/src/channels/telegram/adapter.ts", "packages/runtime/src/channels/discord/adapter.ts", "apps/cli/src/main.ts", "tests/im_config.test.ts", "tests/im_adapters.test.ts", "tests/message_gateway.test.ts", "tests/runtime_daemon.test.ts", "tests/channel_message_dispatcher.test.ts", "tests/runtime_channel_outbox_drainer.test.ts", "tests/feishu_adapter.test.ts", "tests/telegram_adapter.test.ts", "tests/discord_adapter.test.ts", "tests/service.test.ts", "tests/cli.test.ts"],
         boundaries: [
           "local single-user daemon only; not hosted service governance",
           "provider-neutral IM config selection supports Feishu, Telegram, and Discord kinds; all three are implemented",
           "channel adapters own provider-specific IDs and SDK details",
-          "the shared dispatcher standardizes inbound session routing and leaves execution durability to the local runtime task queue",
-          "the daemon queue worker consumes stale queued/running entries and writes services/<target>/task_queue.json status",
-          "task results are mirrored into the provider-neutral channel outbox; Feishu, Telegram, and Discord adapters can drain queued provider rows without making the daemon a provider send adapter",
+          "the shared dispatcher standardizes inbound IM session routing; bound /run and accepted mentions use one canonical Goal ingress for all three providers",
+          "the daemon constructs one Goal ingress for Web and every IM task; it constructs no Feishu private runner",
+          "the daemon starts no runtime task queue worker; historical provider outbox rows can still be drained without making the daemon a provider send adapter",
           "this slice standardizes lifecycle and status; it does not yet provide a retry broker, durable cross-process task scheduling, Telegram features beyond the long-polling Bot API adapter, or Discord features beyond the Gateway/REST bot adapter"
         ]
       },
@@ -1190,7 +1150,7 @@ function boundariesCategory(): CapabilityCategoryDraft {
         title: "Local-only single machine",
         summary: "The local runtime is scoped to one local user and one machine for the first version.",
         status: "guarded",
-        refs: ["docs/RUNTIME_CONTRACT.md", ".trellis/spec/local-single-machine-mvp.md"],
+        refs: ["docs/RUNTIME_CONTRACT.md", "docs/adr/0001-native-evolution-control-plane.md"],
         boundaries: ["no hosted service, multi-user runtime, cross-machine state, Docker/Kubernetes deployment, or production daemon governance"]
       },
       {

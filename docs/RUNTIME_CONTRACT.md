@@ -1,6 +1,7 @@
 # Runtime Contract
 
-This document defines the first-version local agent runtime contract.
+This document defines the implemented first-version local agent runtime
+contract.
 
 The contract is local-first and single-machine. It intentionally rejects
 compatibility design for open-source distribution, multi-user hosting,
@@ -8,7 +9,255 @@ multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
 runtime for resident channel intake and a localhost operator web console.
 
+The historical v0.2 multi-node design is recorded separately in
+`docs/V0.2_MULTI_NODE_EVOLUTION.md`. It is not an active roadmap. vNext is the
+active delivery direction; the installed v0.2 resident runtime remains only as
+an executable rollback until a separately verified cutover. This document
+remains the authority for implemented runtime behavior, and the historical
+v0.2 design must not be used to claim that a multi-node capability exists.
+
 ## Scope
+
+### Stable vNext Supervisor CLI ingress
+
+The implemented stable vNext ingress is a foreground CLI Adapter:
+
+```bash
+pnpm run runtime -- vnext run submit --task "..." [--session-id session_...] [--config-dir config] [--repo-root /absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run inspect --run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext run inspect --session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext worker inspect --worker-id worker_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+```
+
+The CLI Adapter parses input and renders a structured envelope marked
+`vnext_goal_free_cli`; the Runtime Kernel owns Session, Run, Turn, Execution
+Lock, execution lease, recovery, and inspection semantics. A submit without a
+Session creates one. A submit with an existing terminal Session creates a new
+Run in the same Pi session tree. A Session may own many terminal Runs but at
+most one `running`, `waiting`, or `paused` Run. Concurrent attach fails closed
+with `session_busy`. A terminal Run is never reopened. `continue` either
+attempts evidenced recovery of the identified paused or owner-lost Run, or
+delivers ready typed Worker evidence into a newly persisted Turn of the same
+waiting parent Run.
+
+The configured credential value is redacted from submitted text before the
+Kernel creates canonical state or invokes Pi. The Run row stores no second
+request body: the Turn retains the bounded submitted request while Pi session
+history retains the conversation form required by the sole Agent Loop.
+
+Every Run receives an immutable, digest-addressed Execution Lock before model
+dispatch. It records safe model/API identity, credential reference, config
+source, cwd, token/time bounds, and the exact Action name/version/effect set.
+The raw credential is resolved into memory only and is never stored in the
+lock, SQLite, output, or diagnostics. Continuation reloads only the bound
+credential reference and otherwise uses the persisted lock; cwd, config path,
+credential-reference, model-dispatch, or Action-contract drift fails closed.
+
+The default database is
+`~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
+select another absolute independent root. Declared, physical, symlink, and
+case-insensitive aliases that overlap the v0.2 shared state root are rejected.
+The stable schema is version 11 and its immutable `stable_cli` state profile
+refuses a `diagnostic_canary` database. Version 8 and 9 `stable_cli` state
+upgrade transactionally before the version marker advances. Version 9
+discussion and execution records retain their exact Task, Result, lease,
+delivery, child-Run, attempt, and Delivery-Lineage identities while moving into
+one common `worker_sessions` lifecycle ledger. Execution-only lineage authority
+is the narrow `execution_worker_bindings` relation, not a second lifecycle
+table. Version 10 preserves that exact common ledger while expanding its kind
+constraint and adding the narrow `review_worker_bindings` relation. Review has
+no third lifecycle table. All other older or unknown schemas still fail closed.
+There is no v0.2 import or dual write. Model
+selection uses the normal safe config records. Raw `--base-url`, `--model`,
+`--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
+this Interface.
+
+New parent Runs register `runtime_inspect`, `worker_dispatch`,
+`worker_execution_dispatch`, `worker_review_dispatch`, `worker_inspect`, and
+child-contained `worker_needs_input`. The composition explicitly permits one
+reservation-first `external_read` discussion Worker, one reservation-first
+`external_read` review Worker, and one opt-in reservation-first
+`local_write` execution Worker. Discussion-child Actions remain
+`none/local_read`; review-child Actions are also `none/local_read`; the
+execution Worker receives no child Action surface.
+Task and Result Envelopes are immutable and digest-addressed. Tasks carry
+explicit context and artifact refs; Results bind the exact producing Run
+Execution, model dispatches, provider/model identity, and cumulative bounded
+usage. Child authority
+must preserve or narrow the parent Execution Lock. Worker lease ownership,
+atomic isolated child-Run binding, stale recovery, typed result readiness, and
+single delivery into a new parent Turn are canonical SQLite facts. The Worker
+Result enters Pi as typed runtime-owned context rather than user speech. It is
+advisory and cannot complete the parent; the Supervisor retains
+integration and final-outcome authority and can inspect exact Worker/child-Run
+evidence through `worker_inspect`. Only the child-contained `none`
+`worker_needs_input` Action may produce an explicit semantic `needs_input`
+Result; technical Action/model uncertainty remains paused for exact recovery
+and is never relabeled. Task timeouts above the supported Node timer bound fail
+before reservation. A token, timeout, or deadline overrun produces exactly one
+`failed` Result from the terminal child evidence and cannot cause repeated
+child execution or a permanently result-less Worker. Persisted-final-assistant
+recovery reconciles the original producing model dispatch, so the Result names
+the producer rather than an empty recovery execution.
+
+If the Supervisor's first integration attempt fails technically after Result
+delivery, the parent and current integration Turn become `paused`, not
+terminal. A later `continue` validates the same delivered Result digests,
+rebuilds their runtime-owned context from SQLite, and starts another bounded
+integration execution in that same Turn. Result delivery is not repeated and
+the Worker still cannot claim parent completion.
+
+`vnext worker execute` is the separate foreground process Adapter for all three
+Worker kinds. `vnext worker inspect` reads the bounded canonical Worker, lease,
+Delivery-Lineage, snapshot, and verification evidence without claiming a lease
+or loading a model. A discussion Worker uses the same state/profile/config selectors,
+the same Runtime Kernel, and the sole Pi Agent Loop. A terminal discussion
+child Run is recovered without replay.
+
+An execution Task instead binds an already-created clean linked Git worktree,
+exact repository/common-dir/branch/base identities, bounded writable paths,
+exact verification commands, rollback instruction, deadline, budget, and a
+narrowed child Execution Lock before the Action reservation. The protected
+root checkout, dirty or detached worktrees, wrong repository/branch/base,
+unregistered worktrees, path traversal, missing or non-directory writable
+roots, and writable-root symlinks fail before a reservation. One SQLite Delivery Lineage may be bound to only one execution
+Worker and holds one renewable writer lease. A Codex CLI Adapter may mutate
+only during that foreground lease; it cannot create a worktree, branch,
+commit, push, PR, merge, deployment, external communication, Adaptation
+activation, or parent completion.
+
+The concrete Codex Adapter is a runtime host effect behind the neutral
+`local_agent_process` kernel target. It launches `workspace-write` with the
+first exact writable directory as the primary workspace and only the remaining
+declared directories as harness-derived additional writable roots; the full
+worktree is not a writable sandbox root. The agent session is ephemeral.
+Prompt policy is defense in depth; this sandbox root projection is the
+repository write authority, and the later canonical Git snapshot remains the
+independent acceptance check.
+
+The executor's structured result remains advisory. The Evi-owned execution
+runtime independently captures canonical before/after Git identity, status,
+changed-path and path-digest evidence, then runs each exact verification
+command without a shell. Verification is restricted to `pnpm run <script>`,
+`node --test <repo-path>`, or `git diff --check`; arbitrary executables,
+`pnpm exec`, and Node eval forms fail before reservation. A completed Result requires unchanged branch and
+HEAD, at least one changed path, every changed path inside the writable set,
+passing verification, and budget/deadline compliance. Out-of-scope changes,
+commit creation, failed verification, or budget drift produce a non-integrable
+failed Result. A semantic executor block may produce typed `needs_input`, but
+the Supervisor still owns integration and completion. If the process or owner
+disappears without a terminal Result, expiry changes the Worker and Lineage to
+`paused/outcome_unknown`; no second writer is admitted and no execution is
+replayed automatically.
+
+Delivery-Lineage snapshot version 2 binds normalized regular-file Git mode
+(`100644` or `100755`) into each regular-file per-path digest in addition to file
+bytes; symlink target identity and deletion remain explicit. Version 1 snapshots
+remain parseable historical evidence, but review dispatch fails closed because
+they cannot prove exact final mode identity.
+
+`worker_review_dispatch` may target only one completed execution Worker owned
+by the same parent after its Result has been delivered into the current
+Supervisor Turn. Before reservation, Evi verifies the exact execution Task,
+Result, verification receipts, Delivery Lineage, and current final snapshot,
+then captures one bounded digest-addressed packet containing the changed text
+files' baseline and final content. Drift, unsupported Git modes, binary or
+non-UTF-8 content, or packet size overflow fails before reservation. The review
+dispatch has a dedicated 160 KiB prepared-argument ceiling so its bounded
+96 KiB packet can be reserved durably; every other Action retains the default
+16 KiB ceiling unless its handler declares another validated bounded override.
+Worker runs in a separate Pi child Run with only `none/local_read` Actions and
+must return one strict JSON decision. `approved` is valid only with zero
+findings; any finding requires `changes_required`, and every finding path must
+belong to the packet. Malformed or contradictory output becomes one terminal
+failed Review Result. Persisted terminal child evidence is reconciled after
+owner loss without model replay. The Review Result is delivered once as typed
+advisory context; it cannot mutate source, integrate the lineage, or complete
+the parent.
+
+Structured diagnostics distinguish `run_not_found`,
+`session_not_found`, `session_busy`, `execution_lock_mismatch`,
+`credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
+and invalid input. Multiple execution writers,
+automatic Delivery-Lineage creation, commit/push/PR/merge/integration,
+`signal/cancel`, optional Goal links, adaptation activation or observation,
+Web/IM routing,
+resident-service ownership, and vNext deployment remain outside this slice.
+Production v0.2 Web, daemon, and Feishu traffic is unchanged and serves only as
+the rollback runtime.
+
+### Inactive vNext Adaptation candidates and Evaluation Receipts
+
+The implemented Adaptation checkpoint is an Evi-owned, foreground CLI control
+surface over the same isolated `stable_cli` SQLite authority. It supports one
+artifact kind and three operations only: `propose`, `evaluate`, and `inspect`
+for local `procedure` candidates. It does not invoke Pi or a model.
+
+A proposal is bounded, digest-addressed, credential-shape screened, and backed
+by at least one completed vNext Run from the same database. The candidate is
+atomically paired with an `inactive` Self Registry version. One target slot may
+contain one inactive candidate alongside one current active baseline; this
+slice exposes no operation that creates, changes, activates, retires, or
+executes an active version. Repeating the exact proposal returns the existing
+candidate, while conflicting content for an occupied inactive slot fails
+closed.
+
+`evaluate` deterministically compares the candidate with the exact current
+active Self Registry baseline, or the explicit `none` baseline when no active
+version exists. The specialized `procedure-readiness-v1` Evaluation Receipt
+binds candidate digest, baseline identity, evaluator version, completed Run
+refs, exact checks, result, and timestamp. SQLite revalidates both the evidence
+and canonical evaluation policy before accepting the receipt. An incomplete
+candidate receives `failed`; a complete candidate may receive `passed`. Either
+result leaves the registry version inactive. Passing evaluation is readiness
+evidence only and is never activation authority.
+
+The structured envelope is marked `vnext_adaptation`. Inspection requires
+exactly one candidate or Evaluation identity and does not resolve model
+credentials. This checkpoint performs no background learning, discovery,
+source mutation, active-vault write, Action Gateway effect, Web/IM routing,
+state migration, deployment, or v0.2 write. Activation, observation,
+regression handling, rollback, and retirement remain later independently
+verified Adaptation slices.
+
+### Explicit vNext read-only ingress canary
+
+The implemented vNext canary is a separate, foreground CLI-only opt-in:
+
+```bash
+pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary continue --run-id run_... --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+pnpm run runtime -- vnext canary inspect --run-id run_... --sqlite /absolute/isolated/canary.sqlite
+```
+
+It composes the vNext Kernel, Action Gateway, Pi adapter, and one independent
+SQLite database only. The database path must be explicit and absolute and is
+rejected when its declared or physical identity overlaps the default v0.2
+shared root, including symlink and case-insensitive aliases. The guard resolves
+only the shared root's filesystem identity metadata; it never opens or reads
+v0.2 config, credentials, state files, or databases, and never imports,
+migrates, or dual-writes them.
+Model access is limited to the explicit Responses-compatible endpoint, model,
+and environment-variable credential reference; raw credentials never enter CLI
+arguments, SQLite, responses, or diagnostics.
+
+Every canary result and error is a structured envelope marked
+`vnext_readonly_ingress_canary`. Only `runtime_inspect` is registered, and the
+existing source-owned Action Gateway policy permits only `none` and
+`local_read`; write and external effects fail closed before dispatch. This is
+still a diagnostic surface, not the stable `vnext run` Interface, a deployed
+service, or general ingress. Its submit now persists the same safe per-Run
+Execution Lock shape, and continuation requires the same explicit selectors.
+Canary databases bind the immutable `diagnostic_canary` state profile. Do not
+reuse either an earlier or current canary database as stable state. Ordinary v0.2 Web, daemon, and
+Feishu traffic remains unchanged, with no shadow, mirror, percentage, or
+default route. It enables no worker, learning, discovery, self-evolution,
+Skill, LuBan, write, or external-action slice.
 
 The first-version local agent is one local TypeScript/Node runtime that can:
 
@@ -54,7 +303,7 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
 - Operator-facing discussion and final responses default to Simplified Chinese.
 - Keep model-facing default entrypoints and instruction files in English when
   that keeps the runtime contract clearer: `README.md`, `AGENTS.md`,
-  `.trellis/agents/AGENTS.md`, `core/soul.md`, and related prompt/context files.
+  `core/soul.md`, and related prompt/context files.
 - Use paired docs for important human-facing entrypoints. The first pair is
   `README.md` for models/tools and `docs/README.cn.md` for local Simplified
   Chinese reading. Root README files stay thin and link into Chinese companions
@@ -72,16 +321,18 @@ roadmaps, speculative product design, or Trellis agent onboarding text.
   references.
 - `docs/README.cn.md` is the compact Simplified Chinese entrypoint for local
   operators.
+- `docs/ARCHITECTURE.md` and `docs/ARCHITECTURE.cn.md` own current module
+  placement, own/delegate seams, architecture pressure, and staged replacement
+  order. They do not prove that a proposed migration is implemented.
 - `docs/RUNTIME_CONTRACT.md` is the runtime authority.
 - `docs/LOCAL_RUNTIME.md` is command and local service guidance.
 - `docs/LOCAL_LEARNING.md` is SOP, skill, and active-vault guidance.
 - `docs/ACTIVE_EXPLORATION.md` is opt-in design and acceptance material for
   content/publishing/image-generation work only.
-- `.trellis/spec/` and `.trellis/tasks/` are repo-local governance records, not
-  runtime state or durable memory.
-- Trellis-generated agent context is tool-owned project governance context. It
-  should be refreshed through Trellis commands instead of hand-owned as the
-  runtime contract.
+- `docs/adr/` holds accepted durable architectural and governance decisions.
+- `.trellis/` is a frozen historical archive and evidence source, not runtime
+  state, durable memory, active governance, or default context. Its generated
+  agent context must not be refreshed or loaded as active instruction.
 
 ## Reference Stance
 
@@ -170,6 +421,25 @@ No self-iteration stage may trade away existing core/basic capability,
 completion verification, evidence capture, or operator inspection in order to
 ship faster.
 
+### GitHub Discovery Radar v0
+
+The accepted GitHub Discovery Radar is an **Application Slice**, not a new Tool
+Protocol, Capability Profile, skill, portfolio entry, or default-context feed.
+It is manually invoked only as `discovery github scan --need "..."`, reads one
+fixed public GitHub Trending weekly URL without authentication, and stores only
+bounded repository identifiers plus source provenance under
+`capability-discovery/github/` in the selected state root. A report is marked
+`external_untrusted`; raw page text, descriptions, README bodies, repository
+files, credentials, and external instructions are never retained.
+
+The radar de-duplicates within a scan and against the latest successful scan.
+It does not run on a schedule, browse other sites, clone or download a
+repository, install or execute content, create an Opportunity Backlog item,
+enter model default context, activate a capability, write the active vault,
+draft or promote an SOP/skill, or invoke LuBan. A later, separately governed
+Capability Candidate must prove a named business linkage, bounded probe,
+verification, risk, and retirement path before any such effect is considered.
+
 Self-growth means preserving reusable procedures through SOPs and skills. When
 `runtime.promotion_enabled` is true, draft, audit, promotion, revision, and
 retirement are autonomous local harness decisions rather than per-item operator
@@ -186,10 +456,53 @@ validation before creating a parallel path.
 model sees, validate what the model asks to do, preserve evidence, and decide
 whether completion claims are acceptable.
 
-Trellis is the project self-iteration maintenance tool for bounded tasks,
-specs, decisions, and command-maintained agent context. It is not runtime
-state, durable memory, the active vault, the skill promotion gate, or the
-authority for current runtime behavior.
+The active self-evolution control plane is `GoalRuntime`, `Harness`, canonical
+evidence, and `OutcomeReceipt`, with stable direction in project docs and
+accepted ADRs. Dynamic controls scale with scope, risk, evidence, verification,
+recovery, reversibility, and current operator intent. `.trellis/` remains
+frozen historical evidence only; it is not runtime state, durable memory, the
+active vault, the skill promotion gate, active governance, or authority for
+current runtime behavior.
+
+### Dynamic Authority And Decision Ownership
+
+Runtime boundaries are context-sensitive decisions, not a frozen permission
+matrix. Before a material boundary change, the responsible Decision Owner must
+resolve the accepted mission, the latest operator intent, stable core and
+repository contracts, the current task contract, live evidence, risk, and
+reversibility. Depending on scope, the owner may be the operator, a named
+harness or governance gate, or a stable runtime contract. A model proposal,
+successful tool call, or verified completion is decision evidence; none of
+them is an authority decision by itself.
+
+The allowed decision outcomes are `allow`, `defer`, `ask`, `deny`, and
+`override`. A material `override` must preserve enough bounded provenance to
+answer all of the following:
+
+- `decision_owner`: who owns this decision for the affected scope
+- `authority_basis`: which mission, operator instruction, contract, or gate
+  authorizes the owner
+- `supersedes`: which earlier rule or task constraint is being replaced
+- `scope`: which actions, artifacts, runtime, task, and time window are covered
+- `evidence_refs` and risk: what changed and why the override is justified
+- verification and rollback or retirement: how the effect is checked and
+  safely reversed
+- re-evaluation or expiry: which condition makes the decision stale
+
+Local, reversible effects may be decided autonomously by their current owner.
+Mission changes, unresolved operator ownership, secret or private-data
+egress, public communication outside the requested flow, and destructive
+remote or otherwise irreversible external effects remain operator-owned.
+Earlier local rules may evolve, but no boundary is silently widened because a
+model was confident, a task succeeded, or standing local authority exists.
+
+Authority must be re-evaluated when the task changes, new evidence invalidates
+an assumption, risk or reversibility changes, a newer operator instruction
+arrives, or the recorded expiry condition is reached. Until the runtime
+persists a first-class Decision Owner record for every material override, the
+episode/action/evidence lineage is the minimum audit trail; missing lineage
+means the override is unproven, not automatically accepted or permanently
+forbidden.
 
 ### Core Execution
 
@@ -201,6 +514,8 @@ Core execution is the tool layer:
 - `repo.search`
 - `http.fetch`
 - `command.run`
+- `workspace.prepare`
+- `codex.run`
 - `code.execute_node`
 
 Current implementation status: the first-version core execution surface is
@@ -233,6 +548,432 @@ Runtime control is the minimal control plane:
 Runtime control is first-version infrastructure. It must not grow into a broad
 agent framework before core execution is reliable.
 
+### GoalRuntime Local Control Plane
+
+New goals created through the local `goal` CLI are owned by `GoalRuntime` from
+their first intent event through one terminal `OutcomeReceipt`. The public
+runtime boundary remains `handle(command)` and `read(goalId)`. A Continue
+command runs a bounded internal execution tranche: cognition proposes one
+tool action, one explicit Harness-state action, or one outcome at a time.
+`EffectPolicy` decides the semantic effect for tools, the runtime records the
+tool intent before dispatch, canonical observations return to the same event
+stream, and the verifier alone may accept the outcome. The model does not
+author general evidence-id matrices or parallel completion documents; ADR 0011
+defines the one typed exception for a state-only SOP draft.
+
+Each new Goal persists its real control checkout, Git common directory, branch,
+and start HEAD as immutable repository authority. Continue validates this
+control authority before cognition; exact-effect Resume validates it before
+dispatch. Its HEAD may advance only through descendants. Historical starts
+without the field remain readable, pausable, and abandonable, but cannot
+Continue or dispatch. Use the same control `--repo-root` throughout.
+
+At the same start boundary, the Harness captures a read-only **Goal Workspace
+Baseline** containing only the bound Git HEAD and sorted, normalized
+repository-relative tracked and untracked porcelain-status paths. It does not
+persist a diff, file body, status hash, command, or objective-derived policy.
+When its paths are non-empty, `OutcomeReceipt.inherited_changes[]` exposes them
+as `workspace_path` identities distinct from `changes[]` produced by canonical
+Goal observations. Acceptance then requires a later successful Harness-owned
+local-verification observation. This is a derived verification obligation, not
+a capability or test-command selection rule: cognition still chooses an
+available verification path dynamically. A clean baseline records empty path
+sets and adds no synthetic verification check, task routing, or automatic test
+pipeline.
+
+A Goal may later derive one isolated execution workspace from one successful
+canonical `workspace.prepare` observation. Current implementation compatibility
+requires a fresh `codex/issue-N-slug` branch, the exact control start HEAD as
+base, a clean and unchanged main control checkout, the same Git common
+directory, and a derived ignored `.worktrees/<branch-basename>` path. The
+legacy branch pattern does not require a live GitHub Issue; ADR 0001 records
+its replacement by a Goal-derived format as a separate, unimplemented runtime
+slice. The observation is the only source of the execution-workspace projection;
+there is no registry, second state owner, or ingress-time creation. Repo-scoped
+tools then use this workspace, while state-scoped tools keep the original state
+root. Continue, Resume, and immediate pre-dispatch checks live-validate the
+derived authority.
+
+For `codex.run`, Goal cognition proposes only a bounded `task` and `task_shape`.
+Its Capability Selection carries the explicit capability-fit assessment,
+verification plan, and fallback. GoalRuntime derives `new` versus `resume`,
+the new-worktree fields, auto-selected profile/model settings, budgets,
+delegation strategy, and any resume handle from its bound authority and
+retained canonical observations; low-level invocation fields supplied by the
+model are rejected. It resolves the resulting target or persisted resume handle
+against the execution workspace when one is bound, otherwise the control
+authority. It requires actual worktree, common directory, branch, and
+delegated base equality before recording a pending effect. The tool rechecks
+the same effective authority immediately before spawn.
+
+`workspace.prepare` is an adaptive isolation default, not an unconditional
+precondition: when the current repository authority is already a linked
+isolated worktree and `codex.run` is ready, that authority is the direct bounded
+target. Direct Goal writes cannot create `sop/`, `skills/`, or `vault/` assets;
+verified evidence enters the existing background-review and promotion path
+instead. Canonical evidence, containment, sensitive-data boundaries, exact
+effect confirmation, and completion ownership remain mandatory controls.
+
+Goal lifecycle and cognition readiness are deliberately separate. Start, Read,
+Pause, Resume, and Abandon construct the local control plane without resolving
+a model. Continue lazily resolves exactly one `goal_cognition` provider from
+layered runtime configuration. `active_model` uses the selected
+OpenAI-compatible model; `codex_cli` uses an Evi-owned isolated Codex contract
+with the `fast` service tier and an explicit local credential-store selector.
+It does not load the user's Codex config or profile. Provider selection never
+falls back silently. For either provider, Config reports exact selector/model
+gaps or `runtime_check_required`; it does not inspect login material, execute a
+provider, or turn config presence into a live-availability claim. A bootstrap
+or model failure is recorded as a blocked observation on the same Goal and may
+be repaired before a later Continue.
+
+The Codex cognition adapter is not a second agent or an effect executor. Each
+turn runs ephemerally in an empty temporary directory with user config and
+rules ignored, a minimal process environment, Web disabled, bounded capture
+and time, and a strict **Typed Cognition Envelope** schema. Its typed
+`decision` envelope requires exactly one complete `action`, `outcome`, or
+`blocked` object; Evi never places that decision inside an unconstrained JSON
+string, repairs malformed JSON, or retries it automatically. Action arguments
+are typed key/value entries and have only a deterministic fail-closed projection
+to the tool contract. The invocation disables shell/unified exec,
+apps/plugins, browser/computer, image, multi-agent, hooks, and related tool
+features. Its custom permission profile also denies the filesystem root and
+tool network access. JSONL inspection terminates any forbidden item as a
+second line of defense. GoalRuntime alone performs semantic validation, then
+executes a proposed normalized action and owns effect authority, evidence,
+verification, and the receipt.
+
+The stored soft budget applies to one Continue command, not to the Goal's
+lifetime. A later Continue opens another bounded tranche under the same
+identity; cumulative `usage` may therefore exceed the numeric tranche budget.
+Views and checkpoint projections expose `budget_scope: "per_continue_command"`
+so this continuation behavior cannot be mistaken for a lifetime cap.
+The action `summary` is the existing bounded cross-tranche working synthesis:
+confirmed facts, the unresolved question, and why the proposed action is next.
+After the action is observed, GoalRuntime carries that summary into the
+checkpoint and stably merges newly observed refs with prior refs, deduplicating
+and retaining the newest 32. The complete tool result remains a canonical
+observation in the event stream, including failures; its summary does not
+replace the working synthesis. A checkpoint is fallible, rebuildable working
+memory, not proof, authority, or a second evidence store. Canonical observations
+win any conflict. When rendered into recent evidence, a soft-budget event
+exposes only the neutral pause fact; its working synthesis and selected refs
+remain on the separate Goal checkpoint surface. This continuity mechanism does not enlarge the recent
+canonical-evidence window or add event schemas, planners, citation matrices, or
+parallel completion state.
+Before each cognition call, the model input names the Goal-wide counter
+`lifetime_usage` and separately supplies the current `execution_budget` with
+`scope`, `limit`, `used`, and non-negative `remaining` values. That current
+tranche is derived from canonical events for the active Continue command and is
+not another persisted budget store. Only its `used` value is compared with the
+tranche limit; a later Continue begins at zero while lifetime usage remains
+cumulative.
+
+Every canonical evidence view supplied to Goal cognition or outcome
+verification also carries `continue_scope: current_continue | prior_continue`
+relative to the active Continue command. `prior_continue` remains canonical
+proof of the historical event; it is not by itself proof that mutable state is
+still current. Cognition must acquire a fresh bounded observation before it
+repeats a drift-sensitive blocker or proposes a drift-sensitive outcome, while
+choosing the capability dynamically from the current Portfolio. The harness is
+the fail-closed backstop after `goal_blocked` or `goal_verification_failed`:
+the most recent such boundary creates an observation obligation. Pause,
+resume, denied planning, soft-budget checkpoints, and other neutral lifecycle
+events do not erase it; only a later canonical `goal_action_observed` event
+satisfies it. A model-authored blocker or outcome is rejected while the
+obligation remains. Rejected blockers receive the
+`post_boundary_observation_required` checkpoint; rejected outcomes receive a
+failed `post_boundary_observation` verification check. The satisfying
+observation can precede a later soft-budget checkpoint, so it need not belong
+to the Continue command that finally proposes the outcome. Goal cognition sees
+the same ordering as a derived `observation_obligation` status: `none`,
+`required`, or `satisfied`. `satisfied` tells cognition that a
+post-boundary observation cleared the harness obligation even when that
+observation is now `prior_continue`; it must not reacquire the observation
+solely because of that scope change. Cognition still evaluates whether the
+canonical observation supports the next decision and refreshes when evidence
+indicates material drift or the decision requires a different fact. This
+temporal projection writes no new event, ledger, cache, state owner, task
+router, or tool-specific refresh rule. A soft-budget boundary alone does not
+create the hard obligation; otherwise a one-model-round tranche could never
+accept the observation it was forced to checkpoint immediately after
+recording.
+
+A fresh observation is not automatically progress. After a model-authored
+blocker, GoalRuntime compares the canonical observations that follow it with
+the last observation that preceded it, independent of Continue tranche
+boundaries. If their action digests and decision-facing identities remain
+equivalent and cognition proposes another blocker, the proposal is rejected
+inside the remaining tranche rather than ending the Continue. The
+decision-facing identity uses the tool result's bounded normalized output plus
+its semantic summary, success, effect, refs, typed changes, failure,
+verification, and workspace control markers. Result-envelope ids and
+recognized observation timestamps do not manufacture progress, while changed
+file text or other bounded semantic output remains progress. Cognition
+then receives ephemeral `repeated_non_progress_observation` decision feedback
+and must dynamically choose a materially different evidence path or propose a
+supported outcome. While that feedback is active, the same action digest is
+not dispatched again. The feedback is not canonical evidence and names no
+mandatory fallback tool. If no model round remains, the existing blocked event
+shape records a `non_progress_replan_required` checkpoint and the rejected
+round's usage; this harness checkpoint does not create a new observation
+obligation or mask the last model-authored blocker during a later comparison.
+The existing `post_boundary_observation_required` freshness rejection is also
+transparent only to that model-blocker lookup; it still owns its normal fresh
+observation obligation until a later canonical observation satisfies it.
+The projection is derived from existing events and adds no event
+schema, progress ledger, mutable score, task router, or second lifecycle owner.
+
+A successful no-change `codex.run` observation is delegated execution evidence,
+not independent verification. Until a later successful Harness-owned
+`command.run` observation with `purpose="verification"` clears that boundary,
+GoalRuntime supplies derived `independent_verification_required` feedback. It
+rejects a further delegated action, a direct-tool substitute, a blocker while
+`command.run` is available, and an outcome proposal within the same Continue;
+cognition must select one bounded command verification instead. This is a
+hard evidence bridge for that unresolved delegated result, not a task router or
+automatic test pipeline: cognition still chooses the narrow command from the
+Capability Portfolio, while Harness contains, executes, observes, and accepts
+it. The feedback is ephemeral and derived from canonical events; it creates no
+new state owner, effect authority, or automatic command executor.
+
+Before the same cognition call, GoalRuntime resolves one bounded Capability
+Portfolio. `packages/runtime/src/goal_capability_portfolio.ts` combines current
+tool contracts and their model-visible constraints, readiness under the Goal's
+control and any derived execution authority, at most two recalled skill bodies,
+and bounded capability competence. It is a read-only decision context: it
+invokes no model, executes no tool, writes no state, grants no effect authority,
+and cannot accept completion.
+There is no keyword task router. The existing cognition call chooses from the
+current candidates using the Goal, evidence, readiness, competence, authority,
+cost, risk, reversibility, and verifiability.
+
+The same input carries a derived execution-workspace freshness view comparing
+the live bound-worktree HEAD with the latest harness-owned workspace
+observation. For a bound workspace, only `aligned` permits a model blocker or
+outcome; both `changed_unobserved` and `unavailable` fail closed. A workspace
+observation counts only when its canonical planned action resolves to execution
+placement and its branch and worktree match the bound authority. A
+control-scoped observation may satisfy an independent temporal observation
+obligation, but it cannot clear this workspace-specific condition even if its
+result contains a workspace-shaped marker. Capability candidates expose their
+existing workspace-placement contract so cognition can choose a relevant
+execution-scoped action dynamically; GoalRuntime does not prescribe a tool or
+persist another freshness owner. Outcome verification rechecks the same derived
+condition after the verifier returns and before a receipt is appended, so an
+external worktree advance during verification fails closed.
+
+Every new cognition action must include a typed `capability_selection` with
+`capability_id`, `execution_purpose`, `skill_refs`, `rationale`,
+`verification_plan`, and `fallback`. GoalRuntime validates before EffectPolicy
+or dispatch that the capability exists, is currently available, matches the
+action tool and execution role, and cites only skills present in the Portfolio.
+Invalid selection becomes a same-Goal blocked checkpoint without planning or
+executing the effect. Direct tools may support bounded orientation,
+verification, recovery, or an atomic task; delegated executors represent
+specialist execution. These are role semantics, not a task-to-tool map.
+Historical `goal_action_planned` events without selection metadata remain
+readable; new planned events retain the validated selection as evidence of the
+decision, not as a second authority.
+
+#### Goal-scoped Harness-state SOP proposal
+
+`goal start` may explicitly carry `learning_effects: ["propose_sop"]`. Only
+then does the current Capability Portfolio add `harness.propose_sop`. It is a
+`harness_state` capability, not a Tool Contract, `file.write_state` alias, or
+general local-write surface. The typed `harness_state_action` must select that
+exact capability with `atomic_task`, no Skill refs, and a
+`completion_claim.status` of `not_done`.
+
+Its payload names one new SOP id and only prior successful, same-Goal,
+nondelegated canonical observations. GoalRuntime writes the JSON/Markdown pair
+only beneath the selected state root's `sop/drafts/`, then records a distinct
+canonical Harness-state observation with two `state_change` identities. It
+does not invoke EffectPolicy, a Tool Contract, a live-runner action, audit,
+promotion, repository write, active-vault write, Skill creation, activation,
+or completion. A missing opt-in, invalid capability selection, duplicate id,
+or a foreign, failed, planned, or `codex.run` evidence ref blocks before that
+draft write.
+
+The action is nonterminal. Before a later ordinary outcome can complete,
+GoalRuntime independently re-reads the draft, verifies its same-Goal refs and
+draft status, rejects related audits/promotions or active-vault SOP artifacts,
+and appends a separate Harness-state verification observation. An accepted
+`OutcomeReceipt` may therefore state verified draft delivery and include its
+two state changes; it never states capability promotion. Audit, promotion, and
+activation remain separate Decision Owner paths.
+
+When integration was performed outside a Goal's bound execution worktree, the
+control-placed `runtime.inspect` tool may supply one fresh bounded snapshot of
+the current control repository and local Git provenance, current and exact
+prior deployment, installed controller, service-health, previous-runtime, and
+channel-liveness owners. Prior deployment lineage requires one validated
+exact-commit history record and bounded local Git parents/ancestry; missing,
+corrupt, ambiguous, or unreadable input remains explicit and fails closed. The
+snapshot is derived on demand and persists nothing. Its `consistent`,
+`inconsistent`, or `incomplete` evidence state is verification input only: it
+neither routes a task nor grants effect or completion authority.
+
+Capability competence is derived from action observations belonging only to
+previously terminal Goals with current OutcomeReceipts.
+`packages/runtime/src/goal_tool_competence.ts` limits the recent signal window,
+number of tools, and failure-summary length. Direct `ok`/failure counts are
+execution observations; accepted/abandoned Goal counts are association only,
+never causal attribution. Sparse history remains `emerging`; repeated recent
+failures become `degraded` fallback guidance; repeated successful history may
+become `reliable`. The projection writes no state, invokes no model, promotes
+no learning artifact, and never overrides current canonical evidence,
+EffectPolicy, or verification.
+
+`EffectPolicy` classifies operation, target, data exposure, and reversibility.
+It does not trust a model-provided `side_effect_level` to grant authority. Safe
+bounded local reads, query-free public reads whose resolved public address is
+pinned to the actual connection, and reversible repo/state writes may run under
+standing local-evolution authority. Query-bearing public requests and
+repo-controlled verification commands require exact-effect confirmation because
+they can transmit local data or execute mutable code. Secrets and private
+egress, destructive local effects, unknown tools, and
+foreground writes into GoalRuntime, queue, episode, working-memory, SOP, skill,
+deployment, service, channel, or governance-owned state fail closed. External,
+irreversible, runtime-mutating, dynamic-code, and nested coding effects require
+confirmation of the exact effect identity and digest.
+
+An allowed effect is written as an intent before dispatch and as an observation
+after dispatch. If the process stops between them, the same goal is exposed as
+`effect_outcome_unknown`; command replay never guesses that the effect is safe
+to repeat. A confirmation decision pauses the same goal with one pending effect
+whose view exposes the complete proposed action together with its digest, so
+confirmation is informed rather than blind. It does not create a separate
+confirmation-document chain. Local `goal resume
+--confirm-effect <effect-id>` authorizes only that stored action. Manual pause,
+resume, abandon, soft-budget continuation, verification failure, and later
+repair retain the original goal identity.
+
+For a Goal-owned `codex.run`, the parent reserves
+`goals/dispatches/<goal-id>/<effect-id>.json` before launching a detached child
+worker. The journal is bound to the Goal id, effect id, action digest, and
+provisional authority digest; it contains only lifecycle metadata and the
+bounded terminal tool result, never raw prompts. The child writes its own
+terminal record after the same authority checks and fixed post-run workspace
+observation. A later Goal command may append the missing canonical observation
+only from a matching, validated terminal record. Missing, active, malformed, or
+mismatched records preserve `effect_outcome_unknown` and cannot replay the
+effect. A matching terminal `blocked` or `failed` result is instead a canonical
+non-success observation: its checkpoint names the recorded terminal result and
+requires inspection before any new action, never replay of that effect.
+
+Denied actions are redacted before canonical persistence. A secret-bearing or
+private URL is classified with a query-free target; only a non-sensitive query
+that can legitimately reach `confirm` is exposed in the pending proposed
+action.
+
+Canonical state is `goals/events.jsonl`; `goals/checkpoints/<goal-id>.json` and
+`goals/receipts/<goal-id>.json` are rebuildable projections. Intended tool
+effects may change authorized repo or task state, but the foreground control
+path writes no legacy queue, opportunity, episode, working-checkpoint,
+completion, iteration, SOP, skill, deployment, or learning-promotion state.
+The one ADR 0011 exception is `harness.propose_sop`, which writes only a
+state-root SOP draft and records its two Harness-derived `state_change`
+identities. GoalRuntime derives the accepted receipt's complete, ordered,
+deduplicated `changes[]` from typed canonical observations; the model neither
+declares nor copies change identities. Existing singular `change` fields count
+only on a successful observation. Harness-authored plural changes remain
+canonical even when a delegated worker fails after mutation, so partial effects
+cannot vanish.
+An empty set therefore means that no typed canonical change observation exists.
+This complete change lineage is independent from the recent
+model-evidence window and is also retained by an abandonment receipt, so partial
+effects remain visible after a direction is retired. Receipt capacity is
+402 canonical identities: one 201-identity execution envelope plus one
+201-identity verification recovery envelope. One atomic `codex.run` reserves
+201 slots before dispatch: at most 200 status paths plus one post-run HEAD identity. A
+verification-purpose `command.run` reserves the same recovery envelope because
+a command that violates its unchanged-workspace contract may expose those
+typed paths and commit while failing verification. A
+potentially mutating effect that would cross the remaining capacity is blocked before
+dispatch, leaving the existing Goal completeable or abandonable instead of
+dropping early observations. Every Git commit and delegated `workspace_path`
+additionally requires a later successful local-verification observation. That
+satisfying observation is pinned with the change lineage and cannot age out of
+the recent evidence window. Effect classification does not define this
+correctness role: EffectPolicy still decides whether the actual action is
+allowed, confirmed, or denied, while GoalRuntime consumes a harness-authored
+`local_verification` observation role. For `command.run`, verification purpose
+alone is not proof. The process must succeed and fixed pre/post Git HEAD plus
+bounded semantic-index and Git-visible content fingerprints must remain
+identical. The content snapshot includes tracked and untracked files, so
+rewriting an already-dirty path is detected even when porcelain status is
+unchanged. Snapshot inspection is bounded to 10,000 files, 1,000 changed paths,
+and 64 MiB of content; unavailable, unsupported, or over-limit snapshots fail
+closed. Dynamic code keeps
+its exact-effect confirmation even when the resulting unchanged observation is
+eligible as verification evidence. New observations carry
+`verification_role_v1` semantics whether or not a role is granted, so a new
+execute-purpose known verification command cannot inherit correctness from its
+safety classification. Historical known `run_local_verification` observations
+without that marker remain compatible. Diagnostic tool output may be truncated, but typed
+control fields such as `change`, plural `changes`,
+failure kind, and bounded refs survive truncation. Free-text substring matches and a model proposal
+without decisive observation or fail-closed policy evidence cannot create an
+accepted receipt.
+
+Current cutover includes the explicit local `goal` lifecycle, the standalone
+`live` convenience ingress, and the local Web ingress:
+
+```bash
+pnpm run runtime -- goal start --task "..." [--learning-effect propose_sop] [--repo-root /absolute/worktree]
+pnpm run runtime -- goal continue --goal goal_... [--repo-root /same/absolute/worktree]
+pnpm run runtime -- goal read --goal goal_...
+pnpm run runtime -- goal pause --goal goal_... --reason "..."
+pnpm run runtime -- goal resume --goal goal_... [--confirm-effect goal_effect_...]
+pnpm run runtime -- goal abandon --goal goal_... --reason "..."
+pnpm run runtime -- live --task "..." [--repo-root /absolute/worktree]
+```
+
+`live` issues one Start and exactly one bounded Continue to the same GoalRuntime
+identity, then returns the canonical Goal view. An active or paused result is
+continued through `goal continue` or `goal resume` with the returned `goal_id`.
+It does not translate the Goal into a legacy `RunResult`, automatically run
+additional tranches, or write query/todo discipline; `live --query-todo` fails
+before GoalRuntime construction instead of silently dual-writing old state.
+
+`POST /api/runs` in both standalone `web` and daemon-hosted Web uses that same
+canonical Goal ingress: it issues exactly one Start and one Continue, returns
+the canonical `GoalView`, and renders the returned `goal_id` with an explicit
+`goal continue`/`goal resume` instruction. New Web submissions write no legacy
+task queue, task-run, channel-outbox, completion, episode, iteration, SOP,
+skill, or deployment state. Session, inbox, and historical run/queue read
+surfaces remain readable; the Web request does not bind a new Goal to a session.
+Legacy `runtime_session_id` and `execution_contract` request fields fail closed
+instead of being ignored or translated into Goal authority.
+
+Ordinary allowed Feishu p2p tasks and bound Feishu, Telegram, and Discord
+runtime-session `/run` or accepted-mention tasks use the same canonical Goal
+ingress. Each task starts one Goal and
+executes one bounded Continue, then replies with Goal status, receipt summary
+when terminal, and status-aware continuation guidance. These new interactive
+Goals
+write no legacy queue, task-run, provider-neutral outbox, completion, episode,
+iteration, SOP, skill, or deployment state. Provider adapters retain direct
+delivery and provider-specific evidence containing `goal_id`, Goal status, and
+receipt id. For p2p, bounded same-chat history is rendered into the Goal objective
+before inbound evidence is recorded. The Feishu adapter retains allowlisting,
+deduplication, in-memory follow-up queuing, transport sends, and read-only
+operator commands, but it does not own a legacy runner or compatibility result.
+Foreground learning remains deferred to a receipt-driven asynchronous
+`LearningRuntime`.
+
+Allowed Feishu p2p operators may address that same canonical control plane with
+strict `/goal read goal_...`, `/goal continue goal_...`, `/goal resume
+goal_...`, and `/goal confirm goal_... goal_effect_...` commands. These commands
+name the Goal and, for confirmation, the exact pending effect; there is no
+latest-Goal lookup or conversational `yes` inference. Read is read-only;
+Continue, Resume, and Confirm translate to one canonical GoalRuntime command.
+Malformed or mismatched identifiers fail closed and never become new task
+prose. The interaction edge owns generated command ids and provider evidence,
+not Goal state. Feishu renders canonical lifecycle status separately from
+receipt outcome prose and returns provider-native next commands.
+
 ### Basic Entrypoints
 
 The local CLI is the primary foreground entrypoint.
@@ -257,6 +998,9 @@ starts Feishu, Telegram, and Discord adapters.
 Provider startability and concrete adapter construction live in
 `packages/runtime/src/im_adapters.ts`; the config loader only resolves the
 provider-neutral scenario.
+IM Goal execution is owned exclusively by `goal_cognition`; stale scenario
+`model_id`/discipline fields are ignored input and do not gate daemon, service,
+or doctor readiness.
 The resident heartbeat carries the MessageGateway state and per-channel health
 for operator diagnostics. `service health --target runtime` renders the
 heartbeat-carried gateway summary, but it must not read provider logs, provider
@@ -269,6 +1013,19 @@ Legacy channel health without the optional field is not inferred from display
 text. If an adapter fails during daemon startup, the daemon must write an
 `error` heartbeat with the failed MessageGateway channel before the foreground
 process or resident service exits.
+
+`runtime.asset_projection_root` is an optional, explicit node-local projection
+root. Its value must resolve to an absolute path; a relative value or reference
+to an unset environment variable is rejected rather than guessed. When it is
+configured, the daemon carries its resolved absolute value in
+the local heartbeat and `service health` may read only `active.json`,
+`previous.json`, and the matching `releases/<lock-hash>/asset-lock.json` under
+that root. The health result returns bounded lock and activation identity
+metadata (`unconfigured`, `absent`, `probation`, `verified`, or fail-closed
+`invalid`) without returning the root path, enumerating releases, reading
+projected asset bodies, or reading activation-receipt bodies. This read model
+does not activate, verify, roll back, or otherwise modify a projection.
+Runtime config summaries likewise validate but never return the projection root.
 
 Runtime channel messages use a provider-neutral source envelope before they are
 bound to sessions. The stable source shape is channel kind, configured channel
@@ -285,8 +1042,9 @@ reply transport logic, but must not reimplement session-routing rules.
 
 The local web console is also a first-version basic entrypoint. `web` starts a
 localhost-only operator surface over runtime sessions, channel inbox entries,
-profile binding, and task-run history. It may submit an explicit local task run
-through the existing live runner. Profile binding must use the same
+profile binding, task-run history, and canonical Goal submission. It submits a
+new Goal through one Start plus one Continue and returns its `GoalView`; it does
+not invoke the live runner or write a new task-run row. Profile binding must use the same
 provider-neutral route key shape as Feishu, Telegram, and Discord channel
 sources. Under `daemon serve`, the same console is a Web channel adapter
 managed by the `MessageGateway`. It is not a hosted, multi-user, authenticated,
@@ -297,32 +1055,96 @@ database. A channel source can map to one runtime session through a source
 route key. Unknown Feishu groups can be bootstrapped only by an authorized
 operator and start as pending/unassigned. A profile can be bound through
 `/session use <profile>` in the group or through the web console. Ordinary
-bound group messages append session inbox entries; model execution requires
-`/run <task>`, an explicit mention, an authorized private/direct task, or a web
-console Run action. Explicit task runs append `queued`, `running`, and final
-task-run rows with the same run id; read models show the latest status per run
-id.
+bound group messages append session inbox entries; `/run <task>` and accepted
+mentions submit one canonical Goal through the shared Goal ingress. Adapters
+send the returned presentation directly and persist only provider-specific
+delivery evidence. No IM adapter receives a `TaskRunner`; Feishu p2p and group
+execution both receive Goal ingress.
 
-Explicit IM and web-console task runs also write a local runtime task queue
-ledger under `runs/task_queue.jsonl`. The queue is single-machine and
-append-only: enqueue, strict claim, recoverable claim, complete, fail, list, and
-recoverable-task inspection. Feishu group runs and web-console runs
-synchronously claim their own queued task before invoking the runner, while the
-task-run index mirrors `queued`, `running`, and final rows for GUI/history
-visibility. The resident daemon also runs a bounded queue worker that consumes
-stale queued or stale running entries and writes `services/<target>/task_queue.json`
-status. This is local durability and best-effort recovery for self-contained
-runner tasks, not a remote broker, cancellation system, or multi-process
-scheduler.
+The resident daemon does not start a runtime task-queue worker for current
+session work. Existing queue, task-run, and provider-neutral outbox ledgers
+remain readable, and adapters may drain already-queued provider rows for
+delivery compatibility. The queue implementation remains a historical/manual
+compatibility surface; it is not an ingress owner, resident scheduler, remote
+broker, cancellation system, or multi-process scheduler. New Goal failures
+also stay out of the provider-neutral outbox and are recorded only in the
+provider adapter's error evidence. Current service manifests and `service status`
+do not expose the retired queue worker; an old
+`services/runtime/task_queue.json` file may remain as historical evidence but
+is not current component state.
 
-Outbound task communication also has a provider-neutral local ledger under
-`channels/outbox.jsonl`. Feishu final/error replies, web-console final/error
-responses, and daemon recovery final/error outcomes append rows with source
-kind, source route/source key when available, runtime session id, task run id,
-reply purpose, text, provider delivery ref when a real adapter sent the reply,
-and status. Feishu/Telegram/Discord-sourced daemon recovery rows are queued for adapter
-replay; rows without a deliverable provider source remain skipped. This outbox
-is the standard local communication read model. Provider adapters must mark
+Historical legacy queue rows may retain an explicit `execution_contract` for
+one operator-confirmed task. The append-only queue read model preserves that
+stored contract when a historical/manual recovery path reads it. This is compatibility for existing
+rows, not a current Web or IM ingress capability. The contract names the
+operator as Decision Owner, records the
+authority basis, allowed and forbidden effects, an external-command allowlist,
+forbidden arguments for every direct command, model-round and tool-call budgets, and a side-
+effect ceiling. It must state `operator_confirmed=true` and
+`expires_with_task=true`; external-write authority is invalid without at least
+one allowlisted external command. The runtime computes and persists an
+`authority_digest`; a stored digest mismatch fails closed by removing authority
+from the normalized read model. Free-form task text never creates this authority.
+
+When present, the live runner exposes the same structured snapshot in the turn
+context, uses its model-round/tool budgets, and rejects a tool before execution
+when the requested effect exceeds the ceiling, the total tool-call budget is
+exhausted, an external command is not allowlisted, or a forbidden command
+argument is present. When the ceiling is `external_write`, it also rejects
+shells, general interpreters, `code.execute_node`, and package-manager exec/dlx
+indirection so external tools cannot be hidden inside script text instead of
+direct binary argv. A rejection is a failed harness tool result and therefore
+cannot support a false `done` claim. The outer task contract does not weaken the
+narrower immutable `codex.run` authority snapshot or move completion authority
+away from `main_harness`. Current Web and runtime-session IM ingress never
+enqueue this object; they reject legacy authority fields and use GoalRuntime
+effect confirmation instead. Feishu p2p/private chat also does not create
+external-write authority from task prose.
+
+The retained historical/manual queue worker's own shutdown clears future
+ticks, rejects new runs, waits for its startup/current run and every accepted
+status write, then persists `stopped` before its stop promise resolves. The
+resident daemon no longer constructs or awaits this worker. Heartbeat shutdown
+still drains an already-started heartbeat write before
+the daemon writes its final `stopping` and `stopped` states, so these components
+do not append or replace state after daemon stop returns.
+
+Queue completion is derived only from the structured live-run
+`completion_status` and `verification_status`; verdict prose never changes a
+task to `done`, `blocked`, or `failed`. A verified structured `done` completes
+the task, a structured `done` with failed or skipped verification fails it,
+and `not_done` or `blocked` remains unfinished. An unfinished historical/manual queue run
+retains the same task id, runtime session id, worktree, first live session id,
+working-checkpoint ref, and latest concrete `next_action`. It requeues that same
+entry for a later stale-queue resume and stops after at most three claimed
+attempts; it never enqueues a replacement continuation task. A resumed runner
+prompt names those stable fields and the attempt bound. When the selected
+checkpoint carries a non-empty actual `worktree`, settlement updates the queue
+to that path before resume; when it is absent, including for legacy checkpoints,
+the existing queue worktree is retained. Terminal or exhausted
+entries are not recoverable, so repeated worker ticks do not execute them
+again.
+
+For a live engineering run whose structured completion is `not_done` or
+`blocked`, a valid checkpoint emitted through `update_working_state` remains
+the current checkpoint, including its model- or harness-authored
+`next_action`. Post-run selected-skill telemetry is recorded separately and
+must not overwrite that engineering continuation. If the unfinished run did
+not emit a valid checkpoint, the harness writes a bounded resume fallback
+instead of a skill-telemetry next action. `RunResult` carries the structured
+completion and verification statuses plus the selected checkpoint ref and
+next action, and the checkpoint's optional actual worktree, so the local queue
+can persist continuity without reading verdict text.
+
+Historical/manual queue recovery has a provider-neutral local ledger under
+`channels/outbox.jsonl`. Queue-worker final/error outcomes append rows with
+source kind, source route/source key when available, runtime session id, task
+run id, reply purpose, text, and status. Feishu/Telegram/Discord-sourced
+historical recovery rows are queued for adapter replay; rows without a
+deliverable provider source remain skipped. New Feishu p2p Goal final/error
+delivery writes provider-specific evidence and does not append this ledger.
+The outbox is a compatibility communication read model, not a current Goal
+ingress owner. Provider adapters must mark
 rows that match their provider but not their configured channel as skipped
 instead of leaving them queued forever. It is not a retry broker, provider SDK
 wrapper, or hosted messaging system.
@@ -347,197 +1169,6 @@ the core capability direction. When core execution, Harness, and context gates
 are ready while basic entrypoints still require `operator_check`, the default
 slice is derived from that basic-entrypoint gate and remains verification-only;
 the audit does not claim that doctor, service health, Web, or IM checks ran.
-
-The CLI also exposes `governance scorecard` as a read-only self-evolution
-maturity view. It tracks current core project design, basic runtime substrate,
-general-agent delegation, SOP/skill/memory loop, and memory/dream direction
-from local metadata. Its lenses are advisory context only and cannot close work
-or grant execution authority. The core project-design dimension and architect lens retain
-the total derived-artifact count in the summary but expose only the newest
-requested `limit` artifact refs, so repeated verified iterations cannot grow
-the read model without bound. Expert specialization and multi-agent scheduling
-stay deferred until the general delegation loop is stable.
-project-design planning may expose `learning_authority` to distinguish
-self-evolution SOPs or skills as repeatable procedure scaffolds from runtime
-judgment authority. Core/basic layer selection remains with project-design,
-scorecard, iteration contracts, and current evidence; completion authority
-remains with verified iteration outcomes and completion-gate coverage, not SOP
-text, selected-skill recall, dream snapshots, or expert advice.
-`governance experts` exposes the corresponding read-only expert orchestration
-contract. It defines advisory expert roles, scheduling boundaries, and
-main-thread verification authority; it does not invoke models, spawn agents,
-execute tools, mutate state, or prove completion.
-`governance experts --gate <gate-id>` renders the selected gate as an advisory
-delegation plan with role set, required inputs, expected output, rejection
-cases, and main-runtime verification surface. It is still read-only and does
-not call expert agents, schedule model work, execute recommendations, or prove
-completion.
-`governance record-iteration` writes one bounded self-evolution iteration
-contract under local state. It records the declared capability layer, owner
-surface, proposed slice, evidence refs, verification commands, non-goals, and
-advisory expert roles before major work is treated as core/basic/local-learning
-or application progress. `governance iterations` lists or inspects those
-records. `governance record-iteration-outcome` updates an existing iteration
-record with operator-supplied verification status, evidence refs, verification
-commands that were run, verification claims, and next moves. Use repeated
-`--verification-claim "<entrypoint>: <claim>"` values to bind required
-entrypoints such as `project-design`, `scorecard`, `iterations`,
-`service-health`, and `check` to the completion claim they support. It does not
-run those commands or prove global completion. When the CLI is invoked with a
-current state root,
-record-iteration and record-iteration-outcome response packets bind their
-`inspect_command` to that root so the returned inspection command is directly
-executable.
-By default, `record-iteration-outcome` replaces the existing outcome. Use
-`--merge-existing-outcome` only for explicit evidence repair, where the new
-status and summary replace the old status and summary but existing outcome
-evidence refs, verification commands, verification claims, and next moves are
-preserved and de-duplicated before new values are added.
-When `governance iterations --iteration <id>` inspects one concrete iteration,
-the CLI may add `runtime_verification_commands` by binding the current state
-root and iteration id into the stored verification command templates. This is
-presentation-only guidance for the current runtime; it does not mutate the
-stored iteration record or prove that any verification command has run.
-`governance iterations --iteration <id> --audit-seed <seed-id>` narrows one
-project-design completion seed against one concrete iteration's declared and
-outcome evidence. It is a read-only basic entrypoint; it must not run
-verification, write outcomes, mutate state, or prove completion. Its
-`seed_evidence_status` may summarize whether declared evidence, outcome
-evidence, and verification command refs are present, but that status is not a
-semantic proof that the seed is satisfied. Audit evidence may include
-`runtime_iteration_verification_commands`, which binds the current state root
-and iteration id into the stored iteration command templates for the current
-CLI run only; the stored `iteration_verification_commands` remain unchanged.
-`seed_evidence_status.evidence_counts` may count both stored and runtime-bound
-verification command views, but those counts remain evidence presence
-diagnostics, not completion proof. For the `verification_scope` seed,
-`seed_evidence_status` must also respect outcome verification claim coverage, so
-claim refs that omit a required entrypoint still keep the seed out of
-`ready_for_manual_review`.
-The audit packet's `iteration` summary keeps `source_ref` when present so project design
-project-design completion review can trace the planned slice back to its source
-iteration without reading the full record.
-The packet also includes `plan_ref_coverage`, a read-only comparison between
-the project-design plan `refs` and the audited iteration/source/outcome refs;
-missing refs are diagnostics, not completion proof. When refs are missing,
-`required_outcome_evidence_refs` repeats the refs that must be added as outcome
-evidence before the completion gate can clear. Because
-`record-iteration-outcome` replaces the outcome by default, the operator should
-use `--merge-existing-outcome` or manually preserve existing outcome fields
-while adding those refs.
-Its top-level `refs` list should cite the same audited surfaces: iteration ref,
-source ref, iteration evidence refs, outcome evidence refs, and plan refs.
-For a matching open iteration with `outcome_evidence_scope`, plan-ref coverage
-requires only plan refs that the same scope permits, plus the iteration and
-source identities. Context-only plan refs outside that contract cannot create
-an impossible requirement to cite evidence that scope coverage must reject.
-`implementation_contract_coverage` compares the project-design plan
-`implementation_contract` with the audited iteration state record when the plan
-still targets that iteration; it covers the source artifact and source slice,
-selected slice/layer/owner, contract type, scope, delivery standard, and safety
-boundary. When the contract declares an `outcome_evidence_scope`, coverage also
-requires the same structured scope in the iteration record. After the plan
-advances, it checks the audited iteration's persisted contract for
-self-consistency. New and reused iteration records also persist a SHA-256
-fingerprint of the exact implementation contract; when present, the audit
-validates it so later field drift remains visible after the plan advances.
-Legacy records without a fingerprint remain readable and are not migrated.
-This is an integrity diagnostic, not a signature or file-content proof.
-Missing, incomplete, or mismatched contract fields keep the
-completion gate blocked; the diagnostic is read-only and does not repair state
-or prove completion.
-`outcome_evidence_scope_coverage` applies a declared scope to outcome evidence
-refs: every ref must use one allowed prefix and every required evidence group
-must have a matching ref. A file-shaped prefix matches only that exact ref;
-only an explicit directory prefix ending in `/` may match descendants. Thus
-neither `docs/RUNTIME_CONTRACT.md.forged` nor
-`docs/RUNTIME_CONTRACT.md/forged` can satisfy a file scope.
-It is a bounded path-prefix check only; it does not read file bodies or infer
-that an evidence ref proves the change. Historical contracts without this
-optional scope remain `not_required`. It uses the audited iteration's persisted
-contract after a plan advances, rather than applying a successor slice's scope
-to historical evidence.
-`verification_command_coverage` compares selected required commands with
-runtime-bound iteration commands and outcome verification command refs; it is
-declaration coverage only and must not imply execution success. For the matching
-open iteration, selected commands come from the current project-design plan.
-For a source or historical iteration, selected commands come from that audited
-iteration's own runtime-bound verification commands, so later successor plans do
-not move the completion-audit target. `audit_guidance.verification_commands`
-renders that same selected set: the matching open iteration shows current-plan
-commands, while any other audited iteration shows its frozen commands.
-`outcome_verification_command_coverage` compares that same selected command set
-with outcome verification command refs only, so a completion audit can show
-when an outcome has not recorded the commands required for the audited
-iteration. It is still a coverage diagnostic, not proof that those commands
-passed.
-`outcome_verification_claim_coverage` compares required verification entrypoints
-with outcome verification claims, so the audit can show whether each entrypoint
-maps to a completion claim. A mapping requires the exact entrypoint identity and
-a non-empty claim body: bare markers such as `check:` or `entrypoint=check`, and
-prefix collisions such as `entrypoint=checklist`, do not cover `check` or displace
-a later valid required claim in a derived project-design artifact. New
-implementation contracts persist those
-entrypoints in `required_verification_entrypoints`; audit guidance reads the
-audited iteration's frozen contract first, falling back to the current plan and
-then legacy selection text only when an older contract has no structured field.
-`runtime_attention_outcome_coverage` reads bounded service health during the
-iteration audit. When `service-health` is a required entrypoint and current
-service health has non-healthy reasons, the `service-health:` outcome
-verification claim must include `status=<status>`, the current reason codes,
-`classification=acceptable|repair_needed|verification_blocker`, and
-`handling=<policy>`; `repair_needed` claims must also include `follow_up=...`,
-`follow-up=...`, `followup=...`, or `no_follow_up=...`. This is read-only claim
-coverage, not a service repair or proof of health. The health snapshot uses the
-same selected state root as the audited iteration; it does not substitute a
-home-scoped fallback runtime state.
-`workspace_outcome_coverage` reads the bounded fixed `git status` workspace
-diagnostic during the iteration audit. When the worktree is dirty, the
-`workspace:` outcome verification claim must include `status=dirty` and each
-reported changed path. Truncated workspace diagnostics remain blocked until the
-change list is not truncated. This is read-only current-state coverage; it does
-not read file bodies, stage, commit, reset, or prove completion.
-`completion_gate` summarizes the structural blockers before an iteration can be
-treated as ready for manual completion review: verified outcome record, outcome
-evidence refs, plan ref coverage, implementation contract coverage, outcome
-evidence scope coverage, outcome verification command coverage, outcome
-verification claim coverage, runtime attention outcome coverage, and workspace
-outcome coverage. A partial or failed outcome remains blocked by
-`verified_outcome`. Missing coverage diagnostics are blockers too; omitting a
-claim, runtime-attention, or workspace coverage object must not be interpreted
-as not applicable. It is a read-only gate and does not approve seeds, execute
-checks, or prove completion.
-`governance iterations --iteration <id> --audit-seed all` aggregates every
-project-design completion seed against the same iteration evidence in one
-read-only packet, including per-seed evidence status and bounded
-`audit_guidance` copied from the project-design plan: core identity,
-goal scope, iteration focus, capability stage plan, phase gates, acceptance
-criteria, acceptance trace, non-goals, scorecard basis, selection
-status/reasons/checks, layer decision, application boundary, learning
-authority, verification entrypoints, and required commands before an outcome is
-recorded. Iteration focus keeps the
-direction, next steps, and anti-drift checks visible; phase gates keep their
-`forbidden_shortcuts`; acceptance criteria keep their audit-seed labels;
-acceptance trace maps those criteria to required verification entrypoints and
-outcome claim prefixes;
-selection evidence keeps source verification, fresh successor, target-layer,
-owner-surface, and scorecard-basis checks visible; and layer decision keeps
-source/selected layer, core-identity reasons, application boundaries, and
-required-before-outcome commands visible. Together these let completion review
-see anti-drift constraints, review criteria, explicit non-goal boundaries, and
-why the slice is still core/basic without switching back to the project-design
-packet. The
-guidance must name whether
-it applies to the matching open iteration, the source iteration for the current
-plan, or only the current plan context, so successor status is not mistaken for
-the audited iteration's status. When an audited iteration is selected, guidance
-commands must bind `<iteration-ref>` to that iteration id and bind `<state-root>` to the
-current runtime state root; the packet's top-level `next_command` must bind the
-same current state root. For open iterations, `next_command` must keep
-repeatable evidence-ref, verification-command, verification-claim, and next-move
-placeholders visible so the suggested writeback can satisfy the completion
-gate. It must not run checks, write outcomes, mutate state, or approve
-completion.
 
 Current acceptance guidance tracks proposal-only and explicit gated slices:
 
@@ -585,18 +1216,22 @@ Current acceptance guidance tracks proposal-only and explicit gated slices:
 The CLI exposes `workspace status` as a fixed read-only workspace diagnostic.
 Feishu mirrors it through `/workspace` and `/workspace status`. This surface
 may run only fixed `git status --porcelain=v1 -b` argv against the configured
-repo root. It summarizes branch, upstream, ahead/behind, dirty-file counts, and
-bounded path/status entries. It must not accept shell text, read file bodies,
+repo root with `LANG=C` and `LC_ALL=C`. A failed spawn is retried exactly once
+only when its resource error is `EAGAIN`, `EMFILE`, or `ENFILE`; ordinary git
+failures and every other spawn error are returned without retry or relabeling.
+It summarizes branch, upstream, ahead/behind, dirty-file counts, and bounded
+path/status entries. It must not accept shell text, read file bodies,
 stage, commit, reset, checkout, mutate state, invoke the model, write the repo,
 or write the active vault.
 
-The CLI also exposes `workspace runtime` as a read-only repo-local runtime
-workspace diagnostic. It may scan only top-level directory names under the
-configured repo root and report unsupported `.runtime-*` and `.runtime_*`
-directories. The only supported repo-local runtime layout is `.runtime/state`,
-`.runtime/stage`, and `.runtime/smoke/<name>`. It must not read file bodies,
-move, delete, migrate, mutate state, accept shell text, invoke the model, write
-the repo, or write the active vault.
+The CLI also exposes `workspace runtime` as a read-only repository workspace
+diagnostic. It may scan only top-level directory names under the configured
+repo root and report every `.runtime/`, `.runtime-*`, and `.runtime_*`
+directory as forbidden. The supported state locations are
+`~/.local-runtime/state/evi`, `~/.local-runtime/state-baselines/<name>`, and
+`~/.local-runtime/archives/<archive-id>` outside the checkout. It must not
+read file bodies, move, delete, migrate, mutate state, accept shell text,
+invoke the model, write the repo, or write the active vault.
 
 ### Capability Catalog Read Model
 
@@ -606,7 +1241,7 @@ must derive core tools from `coreToolContracts` and harness actions from the
 runtime action list so it cannot drift from the execution contract.
 When a category groups mixed surfaces, the capability-level `layer` is the
 authority; category layer is only navigation. For example,
-`self_evolution.scorecard` is a `core_runtime` read-only selection surface even
+`goal.tool_competence` is a `core_runtime` cognition feedback surface even
 though it is grouped near local-learning evidence.
 Catalog entries must expose both `category_layer` and `effective_layer`.
 `category_layer` is the owning category's default layer, `layer` is only a
@@ -619,524 +1254,23 @@ bodies, or arbitrary state artifacts. They must not invoke the model, execute
 tools, request confirmations, execute follow-up actions, restart services,
 mutate state, write the repo, or write the active vault.
 
-### Self-Evolution Scorecard Rules
+### Legacy Self-Evolution Diagnostics
 
-The self-evolution scorecard is a local truth source for answering how the
-runtime is progressing against its own core/basic learning standards. It is a
-`core_runtime` read-only selection surface implemented in
-`packages/core/src/self_evolution_scorecard.ts`; it may inspect local-learning
-maturity metadata only as gated context.
-Live context must keep the core project design stage and the basic runtime substrate
-stage visible together, so future core/basic slices are chosen from both design
-progress and local runtime health. This summary is context only; it does not
-prove completion.
-`delegate_agent` remains an active baseline until a matching
-`general_agent_delegation_hardening_after_*` iteration has a verified outcome.
-That outcome makes the delegation dimension `stable` and lets the default
-core/basic selection return to project design unless an open iteration or attention
-state takes priority; it does not grant expert, tool, or completion authority.
-A later verified project-design successor does not reopen stable delegation by
-itself. Delegation hardening requires new negative evidence or a future explicit
-direction decision; attention and open-iteration guards still take precedence.
+`governance scorecard`, `governance project-design`, and `governance
+iterations` remain readable for historical state inspection and migration
+diagnostics. They are not resident context sections, capability-selection
+authority, active-work owners, or completion truth. New engineering delivery
+is activated through a bounded Goal, Decision Owner acceptance, and the native
+harness; new runtime learning derives from canonical Goal events and one
+OutcomeReceipt.
 
-Each new project-design implementation contract also carries a concise
-target-specific `intent`. It makes the planned work inspectable without
-decoding an opaque slice id; a current-plan audit treats a missing or changed
-intent as contract coverage failure. Historical contracts without the field
-remain readable.
-The contract also carries target-specific `acceptance_criteria`, so the frozen
-success standard travels with the iteration instead of only living in the
-advisory plan. Plan-derived iteration reuse may backfill the field; current-plan
-audit rejects missing or changed criteria, while historical contracts remain
-readable without migration. Historical audit still requires at least one
-non-blank criterion before treating that acceptance standard as covered. More
-generally, every required top-level contract string must be non-blank and every
-required text list must contain only non-blank items before implementation
-contract coverage can pass.
-When a project-design reader has no recognized scorecard target, it likewise
-defaults to core project design rather than reopening delegation; a matching open
-iteration still takes precedence.
-Each project-design plan exposes `target_selection_origin` so an operator can
-distinguish bootstrap, matching-open-iteration, recognized-scorecard, unknown
-scorecard fallback, and no-scorecard default selection without inferring it.
-
-`governance project-design` exposes the core project design contract from
-`packages/core/src/project_design.ts`. The contract defines the reusable
-goal intake -> capability layering -> contract design -> execution planning ->
-verification review -> learning persistence loop. It is a read-only source of
-truth for project design, not a scheduler or execution engine.
-The same read model also derives project-design `artifacts` from verified
-self-evolution iteration outcomes. These artifacts make accumulated project-design
-design lessons visible for reuse, but they do not write state, mutate memory,
-draft SOPs, promote skills, or prove future completion. `artifact_count` is the
-total reusable artifact count; `listed_artifact_count` is the current limited
-response size. Historical iteration evidence refs must be collapsed during
-successor planning so plan refs stay bounded to the current source artifact and
-direct evidence.
-Derived artifacts also preserve up to ten of the verified outcome's
-`verification_claims`. Within that bound, the first claim for every entrypoint
-required by the source implementation contract is retained before remaining
-claims fill the available slots, so a late required mapping cannot disappear
-behind repeated claims for one entrypoint. Successor planning can therefore
-inspect which entrypoint claim each recorded command supported. Historical
-outcomes without claims remain readable and surface a thin-claims attention
-reason instead of being migrated. A source artifact that lacks any claim mapping
-required by its implementation contract also remains readable, but its
-successor plan stays `needs_attention` until a fully covered source is selected.
-The artifact keeps the combined iteration/outcome command list in
-`verification_commands` for inspection and exposes the executed-evidence view
-separately as `outcome_verification_commands`. Verified-source quality counts
-and required-entrypoint command mappings use only the outcome-recorded view, so
-a command declared before implementation cannot stand in for executed outcome
-evidence. This is metadata lineage validation only; it does not execute or
-prove the result of either command list.
-
-When a verified source iteration carries an implementation-contract SHA-256,
-artifact derivation recomputes it before admitting the iteration as reusable
-project design evidence. A mismatch excludes the artifact and therefore prevents it
-from sourcing a successor plan. Legacy iterations without fingerprints remain
-readable and reusable; this check does not migrate or repair state, verify file
-bodies, or turn the digest into a signature.
-
-`governance project-design --artifact <artifact-or-iteration-ref>` narrows that
-view to one derived artifact by artifact id, source iteration id, source state
-ref, or source filename. The packet may show whether the artifact is the source
-for the current `next_core_basic_plan`; it is still read-only reuse guidance and
-must not derive new artifacts, record iterations, execute tools, mutate state,
-or prove completion.
-If the artifact is the current plan source, the packet may include the plan's
-`iteration_focus` summary so artifact-scoped review still sees the intended
-core/basic direction.
-That embedded `next_core_basic_plan` is the same full read-only planning packet
-exposed by the project-design read model, not a narrower hand-maintained
-projection, so future plan fields stay aligned across both entrypoints.
-It may include plan identity and authority fields such as `schema_version`,
-`action`, `status`, `title`, target ids, `layer`, `owner_surface`, `refs`, and
-`boundary`, so the artifact-scoped plan keeps its versioned read-only advisory
-status visible.
-It may include `source_kind`, `source_artifact_id`, `source_iteration_ref`,
-`source_proposed_slice`, `planning_basis`, `next_iteration_seed`, and
-`non_goals`, so review can distinguish a verified artifact source from a
-fresh-state bootstrap source and keep that source separate from the successor
-target.
-It may include `source_continuation`, a read-only summary of source kind,
-artifact identity, source status, layer, owner surface, completed slice, source
-iteration ref, source implementation contract, primary `next_use`, and bounded
-`source_next_moves` candidates. It also carries the source outcome's bounded
-verification claims and their count. This field preserves source direction for the
-next core/basic slice; it does not execute the next move, prove completion, or
-promote SOP, skill, memory, dream, expert, or adapter work.
-It may also include `capability_stage_plan`; this does not add execution or
-completion authority.
-It may include `scorecard_basis`, `selection_reasons`, `selection_checks`, and
-`layer_decision`, so source-artifact review can inspect why the successor is
-core project design work instead of an external-tool application slice.
-It may include `phase_gates` with their `forbidden_shortcuts`, so source-artifact
-review sees the same phase-level anti-drift constraints as the full plan.
-It may include `completion_audit_seeds` and `verification_commands`, so
-source-artifact review sees the required completion evidence and basic runtime
-checks before outcome claims.
-It may include audit-seed-labeled `acceptance_criteria` for the same read-only
-review target exposed by the full project-design view.
-It may include `implementation_contract`, so artifact-scoped review can inspect
-the allowed reusable project-design contract/read-model change, deferred scopes, and
-delivery standard before implementation.
-When a derived artifact belongs to `core_runtime` or `basic_entrypoint`, the
-read model may expose `next_core_basic_plan`: a read-only planning packet with
-phase gates, acceptance criteria, verification commands, non-goals, and a
-record-iteration command template. The packet may include a read-only
-`next_iteration_seed` containing the summary, layer, owner surface, proposed
-slice, source ref, evidence refs, verification commands, and non-goals needed
-to open the next iteration. This packet is advisory context only; it does not
-execute the slice, write backlog state, or prove completion. Its
-phase gates must carry their `forbidden_shortcuts`, so phase-level anti-drift
-rules remain visible in the planning packet. Its
-source artifact is evidence, not the next target: the plan must name a fresh
-core/basic target slice and preserve the completed source slice only as
-`source_proposed_slice`. It also exposes bounded `scorecard_basis` entries for
-the current scorecard `next_core_basic_slice`, target dimension, target layer,
-and scorecard command, plus short read-only `selection_checks` that show
-whether the source artifact is verified, the successor slice is fresh, the
-target layer/owner are core/basic, and the verification entrypoints are present.
-Core/basic plan verification commands must include bounded resident service
-health, so basic runtime state stays visible before a core design outcome is
-claimed.
-`selection_status` and `selection_reasons` summarize the same planning readiness
-for context handoff. Any bounded source-artifact quality warning forces
-`needs_attention` while leaving the artifact readable; an unknown non-empty
-scorecard target is retained as
-`scorecard_target_status=unrecognized` and forces `needs_attention`; the
-fallback target is diagnostic only, not an executable-ready plan. These fields
-are planning quality hints, not completion proof.
-`iteration_focus` must keep the next core/basic direction, immediate next
-steps, and anti-drift checks explicit, so the runtime does not infer purpose
-from an opaque successor slice id or application-tool pressure.
-`capability_stage_plan` must split current core capability stages from basic
-capability stages and name the next iteration plan as read-only planning
-context.
-Every listed stage must carry `exit_criteria` so progress is judged by evidence
-standards, not intent, labels, or application-tool pressure.
-The next iteration plan must use layer and audit-seed labeled steps so
-core-runtime hardening, basic entrypoint verification, deferred local-learning
-reuse, and completion review stay separate.
-Acceptance criteria must use the same audit-seed labels so review can map each
-criterion to goal scope, current state, verification scope, or learning
-persistence without inference.
-The plan may also expose `acceptance_trace`: one row per acceptance criterion
-with its audit seed, phase, required verification entrypoints, and expected
-outcome claim prefixes. This is traceability guidance for outcome writeback and
-review; it does not execute commands, satisfy claims, or prove completion.
-The `current_state` acceptance trace explicitly requires implementation scope,
-deferred scope, delivery standard, and rollback strategy before outcome; compact
-context preserves this criterion instead of dropping rollback from handoff.
-The plan may also expose `implementation_contract`, which constrains the next
-slice to one reusable project-design contract/read-model improvement and
-names deferred external-tool, local-learning, and expert-orchestration scopes.
-It also carries an explicit `rollback_strategy`: revert the single bounded
-implementation commit without rewriting prior iteration evidence; when the
-change is service-facing, restart the resident runtime and rerun targeted,
-full, and service-health checks before reuse. A matching open iteration may
-backfill this newly derived field. Current contracts with a missing or drifted
-rollback strategy fail implementation-contract coverage, while historical
-contracts that never expected the field remain readable.
-For `general_agent_delegation`, the same contract must name the allowed
-`delegate_agent` task, context, result, trace/replay, or completion-verification
-surface and keep delegated tool/write/mutation authority, delegated completion
-authority, model fan-out, autonomous scheduling, and expert personas out of
-scope.
-The contract carries that surface in a structured `delegation_contract` copied
-from the shared project design delegation loop: payload and output keys, limits, failure
-kinds, completion-gate check ids, recovery requirements, replay metadata/checks,
-and main-harness authority remain inspectable from the implementation contract
-itself. Plan-derived iteration reuse may backfill this newly derived field on a
-matching open record; iteration audit treats a missing or mismatched field as
-incomplete contract coverage. That audit compares the persisted field with the
-shared authoritative constructor as well as the current plan, so matching
-plan/state copies do not hide drift in task, result, completion, or replay
-boundaries. Historical iteration contracts that predate the structured field
-remain inspectable without a retroactive migration.
-It is pre-execution boundary guidance, not an executor, scheduler, learning
-promotion, or completion proof.
-Completion-audit seeds may require the outcome to show that the delivered
-change stayed inside `implementation_scope`, did not enter `deferred_scope`, and
-kept the selected layer, owner surface, and delivery standard aligned with that
-contract.
-Plan-derived self-evolution iteration records persist the same implementation
-contract so later audits can inspect the boundary from the iteration state
-record itself, not only from the advisory project-design packet.
-The basic `runtime_observability` stage may be `attention_guard`; this is a
-guard role that keeps service-health attention visible and must not be treated
-as a healthy service claim.
-`layer_decision` makes the capability classification explicit for the next
-slice: recurring project design is the core identity, external tools and
-adapters remain application slices by default, and SOP/skill/memory/dream
-promotion follows only after core/basic evidence supports reuse.
-`iteration_record_status` reports whether a matching open iteration already
-exists for the proposed layer, owner surface, slice, and source ref. If it
-exists, `next_command` may point to the existing iteration inspection command
-instead of another record command. This is duplicate-avoidance context only; it
-must not write state or prove completion. An open fresh-bootstrap iteration
-keeps its bootstrap planning packet available for its required audit and outcome
-writeback; it is not treated as a verified source artifact. A matching open
-record also reports
-`implementation_contract_status=aligned|missing|drifted` by comparing its
-persisted contract with the current authoritative plan. Missing or drifted
-contracts make plan selection `needs_attention` before implementation; the
-read model does not repair or overwrite the record. When the CLI is invoked with
-a current state root, `next_core_basic_plan.next_command`,
-`iteration_record_status` command fields, `scorecard_basis` command entries,
-and `next_iteration_seed` command fields bind that root so the surfaced
-runtime commands are directly executable; unresolved `<iteration-ref>`
-placeholders may remain only where no concrete iteration has been selected.
-The packet also exposes `completion_audit_seeds` for goal scope, current state,
-verification scope, and learning persistence. These seeds name evidence to
-inspect before a completion claim; they do not execute checks or approve the
-slice.
-`governance project-design --audit-seed <seed-id>` returns one seed as a small
-read-only packet with plan and source refs. It is a basic entrypoint for
-completion review only; it must not execute audits, write outcomes, mutate
-state, or prove completion.
-`governance record-iteration --from-project-design-plan` copies the current
-read-only `next_iteration_seed` into one self-evolution iteration contract. It
-is a bounded local state write only. If the same layer, owner surface, proposed
-slice, and source ref already have an open iteration, it must return that
-existing record instead of writing a duplicate. It must not execute the planned
-slice, run verification commands, mutate repo files, promote learning
-artifacts, or prove completion.
-Manual `governance record-iteration` for `core_runtime` or `basic_entrypoint`
-must include `--implementation-scope`, `--deferred-scope`, and
-`--delivery-standard`. These fields create the auditable implementation
-contract; omitting them for core/basic work is rejected instead of producing an
-open iteration that later cannot explain its boundary.
-
-Required policy:
-
-- project design must keep the original operator objective intact while
-  deriving concrete success criteria and evidence requirements
-- dimensions must distinguish core runtime, basic entrypoint, local learning,
-  and orchestration readiness
-- scorecard output must include structure sufficient to choose a next bounded
-  slice without treating application-tool pressure as core identity
-- scorecard output must surface the latest `basic_entrypoint` iteration ref and
-  outcome status inside the basic runtime substrate dimension, and open
-  core/basic iterations must prompt outcome closure before verified progress is
-  claimed
-- application adapters and external tools may appear only as evidence pressure,
-  not as core capability identity
-- major self-evolution work should have a self-evolution iteration contract
-  declaring the capability layer, owner surface, proposed slice, verification
-  commands, and non-goals
-- completed self-evolution work should record an iteration outcome with
-  verification status, cited evidence, commands run, and next moves before it
-  drives the next scorecard slice
-- verified iteration outcomes with outcome evidence refs and verification
-  commands may appear as derived project-design artifacts inside `governance
-  project-design`; artifacts are reuse guidance only
-- `governance project-design --artifact <artifact-or-iteration-ref>` may inspect
-  exactly one derived artifact as reuse evidence, without deriving new artifacts
-  or granting completion authority
-- `next_core_basic_plan` must not copy the source artifact's completed
-  `proposed_slice` as the next work target; it must use the artifact as
-  evidence for selecting a fresh core/basic slice
-- `next_core_basic_plan.goal_scope` must restate the operator objective,
-  owner surface, source of truth, and success evidence before the next slice is
-  reused; it is read-only orientation, not execution authority or completion
-  proof
-- The `goal_scope` completion audit seed must require that structured
-  `goal_scope` evidence and reject outcomes whose success evidence does not
-  distinguish the completed source slice from the successor slice
-- `next_core_basic_plan.scorecard_basis` must keep the scorecard
-  `next_core_basic_slice`, target dimension, target layer, and scorecard command
-  visible as read-only planning evidence; when a matching open plan-derived
-  iteration intentionally overrides the current scorecard guard, it must also
-  include `plan_target_slice`
-- `governance project-design` must bind the scorecard target before deriving the
-  plan seed, keep display limits separate from target selection, and preserve an
-  already-open matching plan-derived iteration for the same source artifact
-- an unknown non-empty scorecard target must remain visible as
-  `scorecard_target_status=unrecognized` and move plan selection to
-  `needs_attention`; it must not silently make the fallback core target ready
-- `next_core_basic_plan.selection_checks` must remain bounded strings derived
-  from the same read-only metadata, including source artifact evidence and
-  verification-command counts, and must not execute verification
-- `next_core_basic_plan.selection_checks` may include bounded
-  `source_artifact_warning` entries when a verified source lacks its
-  `implementation_contract` or when evidence refs or verification commands are
-  too thin. A missing source contract keeps the successor at
-  `needs_attention` because its acceptance, scope, required entrypoints, and
-  rollback cannot be checked; the historical artifact remains readable and is
-  not migrated. These warnings are plan-quality hints only and must not execute
-  verification or prove failure
-- A present but incomplete source implementation contract also remains readable
-  while its successor stays `needs_attention`. The plan emits
-  `source_artifact_warning=incomplete_implementation_contract; missing=<fields>`
-  unless contract identity, intent, acceptance criteria, required verification
-  entrypoints, bounded outcome-evidence scope, implementation/deferred scope,
-  delivery standard, rollback strategy, and boundary are all non-empty. This
-  read-only completeness check does not repair or migrate historical state
-- `next_core_basic_plan.selection_checks` must keep the
-  `source_artifact_warning_thresholds` visible beside source artifact counts, so
-  threshold tuning does not require reading source code
-- When a source implementation contract declares required verification
-  entrypoints, the source artifact's bounded outcome-recorded
-  verification-command identities must cover each entrypoint. Iteration-level
-  declared commands remain inspectable but cannot satisfy this quality gate. A
-  command identity must begin with the canonical `pnpm run runtime --
-  governance ...`, `pnpm run runtime -- service health`, or `pnpm run check`
-  invocation for its entrypoint; embedded phrases such as `echo governance
-  project-design` do not count. This intentionally is not a general shell
-  parser and does not accept prefixed wrappers. A missing mapping emits
-  `source_artifact_warning=missing_verification_command; entrypoint=<id>` and
-  keeps the successor at `needs_attention`. This is structural command
-  coverage only; it does not execute a command or prove its result
-- The compact Project Design Plan context keeps the source verification and
-  count checks plus one actionable source warning without increasing the
-  three-check bound. When a required verification claim mapping is missing, it
-  takes priority over thinner-evidence warnings and the threshold summary;
-  the complete plan still exposes every warning and the thresholds
-- The compact Project Design Plan context must also surface the
-  `fresh_successor_slice` check separately, so repeated completed slices are
-  visible during handoff
-- The compact Project Design Plan context must also surface the
-  `target_layer` and `owner_surface` check separately, so application slices are
-  not mistaken for core project design work during handoff
-- When a matching open iteration exists, the compact Project Design Plan
-  context may surface a bounded `review_gate` line with the missing outcome
-  record, outcome verification command coverage, outcome verification claim
-  coverage, required verification entrypoints, and required completion coverage
-  list; this is handoff guidance, not the authoritative completion audit
-- The same compact context may surface a bounded `after_verify` outcome-record
-  command template for the matching open iteration; it is only used after the
-  required verification commands have run, must keep repeatable evidence-ref and
-  verification-command and verification-claim placeholders plus a next-move
-  placeholder visible, and does not replace audit review
-- The compact context may also render bounded `evidence_basis` refs from the
-  plan so outcome writeback can cite concrete refs without dumping full
-  artifacts; these refs are candidates, not completion proof
-- When `evidence_basis` appears for a matching open iteration, compact context
-  may also render `proof_boundary`; it must keep the requirement for a verified
-  outcome, outcome evidence refs, plan ref coverage, implementation contract
-  coverage, outcome verification command coverage, outcome verification claim
-  coverage, runtime attention outcome coverage, and workspace outcome coverage
-  explicit
-- Compact `acceptance` must preserve at least one criterion for each audit-seed
-  label (`goal_scope`, `current_state`, `verification_scope`, and
-  `learning_persistence`) using stable prefix priority rather than raw array
-  position
-- `next_core_basic_plan.verification_commands` and
-  `next_iteration_seed.verification_commands` must stay aligned as the same
-  slice-scoped command list, including bounded service health for the resident
-  runtime target before `pnpm run check`
-- Compact `verify_commands` may render a short identity summary of that command
-  list, including the project-design artifact id, matching iteration id, service
-  health target, and broad check; it is handoff guidance only and does not
-  replace outcome verification command refs
-- `next_core_basic_plan.selection_status` and `selection_reasons` must describe
-  plan readiness only; they must not claim execution or completion
-- `next_core_basic_plan.selection_reasons` must include
-  `source_artifact_quality=ok|attention` derived from source artifact warnings,
-  and source quality attention must force plan `needs_attention` without
-  becoming an iteration completion gate or migrating the source artifact
-- The compact Project Design Plan context must preserve `source_kind`,
-  `source_status`, and `source_artifact_quality` using stable reason-prefix
-  priority rather than raw array position
-- Compact `source_truth` must preserve the source artifact id, source iteration
-  ref, completed source slice, target successor slice, source status, source
-  quality, and fresh-successor flag in one bounded handoff line; it is source
-  orientation only and does not prove completion
-- Compact `source_continuation` must preserve source kind, artifact identity,
-  source iteration ref, source status, source layer/owner, completed source
-  slice, source implementation contract id and frozen verification entrypoints
-  when present, source next-move candidate count, one candidate next move, and
-  the primary next-use hint. Missing historical verification entrypoints remain
-  `not_recorded`. It is source direction only and does not prove completion
-- `next_core_basic_plan.iteration_focus` must explain the next core/basic
-  direction and anti-drift checks without authorizing execution
-- Compact Project Design Plan context must preserve bounded anti-drift checks
-  from `iteration_focus`, so external-adapter pressure, premature SOP/skill/
-  memory/dream promotion, and unverified completion claims stay visible during
-  handoff
-- Compact `non_goals` must preserve the critical local-learning and application
-  boundaries from the plan, including no SOP/skill/memory/dream promotion, no
-  external-tool execution, and no completion proof without executed
-  verification; this is handoff guidance only, not an audit runner
-- Compact `layer_guard` must preserve the layer-decision stage plus source and
-  selected layer/owner continuity, so core/basic successor handoff does not rely
-  on a target slice id alone
-- Compact `phase_forbid` must preserve one forbidden shortcut for every phase
-  gate, rather than only the capability-layering adapter boundary
-- `next_core_basic_plan.capability_stage_plan` must list core capability stages,
-  basic capability stages, and the next iteration plan without scheduling work
-- Compact `runtime_guard` may preserve the `runtime_observability`
-  `attention_guard` current state, next iteration, and outcome naming exit
-  criterion, so runtime attention reasons are not hidden behind application
-  progress; it does not prove resident service health
-- The `current_state` completion audit seed must require service-health status
-  and reasons when resident runtime behavior changed, and must reject verified
-  outcomes that omit runtime attention reasons while service health is not
-  healthy
-- When service health is in the required verification command list, the
-  `current_state` completion audit seed must require the outcome to cite
-  service-health status and reasons even for read-only project design slices
-- When service health is not healthy, the `current_state` completion audit seed
-  must require runtime attention to be classified as `acceptable`,
-  `repair_needed`, or `verification_blocker`; naming the reason without a
-  classification is not sufficient
-- Classified runtime attention must also name a handling policy: why
-  `acceptable` is safe for the claim, what `repair_needed` follows up, or why
-  `verification_blocker` stops the verified outcome
-- A `repair_needed` handling policy must name a follow-up action or explain why
-  no follow-up is required; classification alone does not make the attention
-  item traceable
-- The `verification_scope` completion audit seed must require the outcome to
-  explain which completion claim each verification command supports; a command
-  list without claim coverage is not sufficient verification evidence
-- The same seed must require every required verification entrypoint to map to a
-  completion claim, and reject outcomes that omit an entrypoint from claim
-  coverage
-- `capability_stage_plan.next_iteration_plan` must keep layer and audit-seed
-  labeled steps so core/basic work is not confused with deferred local-learning
-  reuse or completion review
-- `next_core_basic_plan.acceptance_criteria` must keep audit-seed labels that
-  match the completion audit seed vocabulary
-- Compact `audit_require` must preserve the requirement for every completion
-  audit seed, so seed ids are not mistaken for sufficient review evidence
-- Compact `audit_evidence` must preserve one evidence-needed item for every
-  completion audit seed, so handoff shows what a later outcome must cite
-  without replacing the authoritative audit
-- For `current_state`, compact `audit_evidence` should prefer the service-health
-  status/reasons item when service health is a required verification command
-- For `verification_scope`, compact `audit_evidence` should prefer the
-  required verification-entrypoint claim-coverage evidence when present
-- Compact `audit_reject` must preserve one reject condition for every
-  completion audit seed, so false-completion failure modes stay visible during
-  handoff without replacing the authoritative iteration audit
-- For `current_state`, compact `audit_reject` should prefer the service-health
-  missing-status/reasons reject when service health is a required verification
-  command
-- For `verification_scope`, compact `audit_reject` should prefer the required
-  verification-entrypoint claim-coverage reject when present, so handoff keeps
-  the strongest missing-entrypoint failure visible
-- Compact `acceptance` must keep one criterion for every audit-seed label plus
-  the fresh-successor and external-adapter boundary criteria, so core project design
-  handoff cannot hide copied slices or application-slice drift
-- every `capability_stage_plan` stage must include exit criteria without
-  granting automatic approval
-- Compact `stage_exit` must preserve one exit criterion for every listed core
-  and basic capability stage, rather than only the currently hardened stage
-- `runtime_observability:attention_guard` must keep service-health attention
-  visible rather than claiming resident runtime health
-- `next_core_basic_plan.next_iteration_seed` may feed
-  `governance record-iteration --from-project-design-plan`, but the seed itself
-  must remain read-only
-- `governance record-iteration --from-project-design-plan` may write one
-  iteration contract from the current seed, or reuse a matching open iteration,
-  without executing or verifying the planned slice
-- `next_core_basic_plan.completion_audit_seeds` must preserve goal scope,
-  current-state evidence, verification scope, and learning-persistence checks
-  as advisory requirements only
-- `governance project-design --audit-seed <seed-id>` may narrow inspection to
-  one seed, but it must remain read-only and advisory
-- `governance iterations --iteration <id> --audit-seed all` may aggregate every
-  completion audit seed for one iteration, but it must remain read-only and
-  advisory
-- review lenses are advisory review perspectives, not autonomous expert agents
-- expert specialization and multi-agent orchestration are later scheduling
-  layers after the general-agent delegation loop, core/basic stability, and
-  learning-persistence gates, not current peers of core/basic iteration work
-- expert orchestration contracts must keep scheduling advisory and completion
-  authority in the main runtime
-- expert delegation gates must define trigger, required inputs, expected
-  output, rejection cases, and main-runtime completion authority before advice
-  can influence a slice
-- selected expert delegation plans may format one gate into a review packet,
-  but they must remain read-only advisory context
-- scorecard output may guide the next iteration but does not prove completion
-- scorecard `default_next_slice` is the default core/basic planning outlet when
-  present; `next_slices` are read-only all-dimension prioritization hints
-  derived from dimension stage, score, and layer, and they must not execute,
-  mutate backlog, or override core/basic direction
-- active dream-backed low-maturity dimensions may enter `governance gaps` as
-  proposal-only self-evolution gaps using existing Opportunity Backlog and SOP
-  gates; resolved contract gaps must be suppressed by capability presence
-- verified self-evolution iteration outcomes may enter `governance gaps` as
-  SOP-candidate items when no state-only SOP draft cites the iteration yet; they
-  must still pass through review tick, draft-sop, audit-sop, and promote-sop
-  gates before any active-vault skill write
-
-Forbidden behavior:
-
-- no model invocation, tool execution, service restart, state mutation, SOP
-  promotion, skill promotion, repo writes, active-vault writes, or completion
-  proof
-- project-design output must not create projects, spawn experts, execute
-  external adapters, mutate memory, or prove completion
-- expert delegation gates must not spawn agents, schedule model calls, execute
-  recommendations, restart services, write memory, or approve completion
-- expert delegation plans must not call expert agents, execute the selected
-  advice, mutate state, or bypass the gate rejection rules
-- iteration contracts and outcomes do not execute work or prove more than their
-  cited evidence supports
+These legacy commands may read their existing bounded state and may preserve
+historical write commands for compatibility during staged retirement. They
+must not invoke a model, execute tools, create a current Goal, promote an SOP
+or skill, change Goal acceptance, or make their projections authoritative.
+No new runtime path should depend on them. A later bounded replacement task
+may delete each command after remaining callers and historical operator needs
+are measured.
 
 ### Capability Acceptance Audit Rules
 
@@ -1223,7 +1357,7 @@ Local service runtime is a resident mode for one user on this machine. It may:
 Service lifecycle and service health commands resolve state root with one
 ordered contract: explicit `--state-root`, then the valid absolute `state_root`
 in the installed `<LOCAL_RUNTIME_HOME>/service/runtime.json` manifest, then
-`<LOCAL_RUNTIME_HOME>/state/runtime` as the safe fallback. A missing, malformed,
+`~/.local-runtime/state/evi` as the safe fallback. A missing, malformed,
 wrong-target, wrong-home, or relative-root manifest must not redirect the
 command. This rule is limited to the resident service harness and does not
 change ordinary interactive runtime state selection for live, pipeline,
@@ -1238,17 +1372,28 @@ the replaceable runtime bundle. This supervisor may stage and atomically switch
 the local `next`, `current`, and `previous` slots; enforce bounded
 commit/heartbeat/Web/IM startup readiness and local probation; accept an
 explicit evidence-bound failure signal; roll back hard local failures; preserve
-bounded deployment evidence; and append one fix-forward task to the existing
-local runtime task queue after the previous build recovers. It must not invoke a
-model, edit repository source, infer semantic failure from ordinary log text,
+bounded deployment evidence; and emit one typed failure/recovery observation
+after the previous build recovers. A deployment request must first verify that
+the installed copied controller matches the canonical stable runtime controller;
+a mismatch returns `controller_handoff_required` before candidate build or slot
+mutation. The supervisor must not create, enqueue, resume, or select a repair
+goal. It must not invoke a model, edit repository source, infer semantic failure
+from ordinary log text,
 publish or communicate externally, perform remote deployment, coordinate other
 machines, or accept an incompatible state-schema migration. A failed commit is
-not eligible for redeployment, and an automatic repair chain is bounded before
-operator attention is required. A deployment-repair queue item may reach `done`
-only after a distinct verified deployment request names the failed deployment
-through `repair_of`; diagnostic prose or model completion confidence is not a
-completion signal. Incomplete repair sessions may be continued only through a
-small bounded retry count.
+not eligible for redeployment. An operator or the future GoalRuntime may later
+choose a distinct verified fix-forward deployment linked through `repair_of`,
+but controller recovery itself has no authority to make that goal decision.
+
+Repository source reaches the installed runtime through one commit-bound
+transaction. A deployment request must freshly build one unchanged clean commit
+before staging it. Ordinary service install/start/restart actions preserve an
+existing usable `current` bundle and own only installed service and launchd
+lifecycle; first-install bootstrap is allowed only when `current` is absent.
+An explicit evidence-bound reconciliation may adopt an already running clean,
+ready bundle when recovering legacy ledger drift, while preserving superseded
+history. Reconciliation must not build, activate, restart, weaken failed-commit
+exclusion, or become the normal deployment path.
 
 ### Local Learning
 
@@ -1332,77 +1477,11 @@ accepted goal, non-secret model context budget, latest context-pressure
 manifest metadata, and current working checkpoint metadata. It must not read
 raw context Markdown, raw skill/SOP/review artifacts, compact context, invoke
 tools, authorize mutation, or appear when no attention signal exists.
-When rendered, `Project Design Plan` must keep the verification entrypoint
-summary visible when present, including `service-health` for core/basic plans,
-without rendering full artifacts or executing the checks.
-
-When rendered, `Project Design Plan` is a short read-only context section
-over `governance project-design.next_core_basic_plan`. It may show the plan id,
-target layer, owner surface, proposed slice, source artifact, acceptance
-summary, planning basis, iteration focus, capability-stage summary, phase
-forbidden-shortcut summary, layer-decision summary, selection-check summary,
-`source_continuation`, `iteration_record_status`, and the current next command.
-The planning basis names the verified artifact and
-completed source slice so the next model turn does not infer purpose from an
-opaque slice id alone. A compact `anti_drift` line may preserve the bounded
-checks that keep external-adapter pressure, premature SOP/skill/memory/dream
-promotion, and unverified completion claims visible during handoff. The
-layer-decision summary keeps recurring project design as the core identity
-and keeps external tools or adapters as application slices unless they name a
-reusable runtime contract. A compact `layer_guard` line may keep the
-layer-decision stage plus source and selected layer/owner continuity visible
-without proving completion. When a matching open
-iteration exists, the next command may be the existing iteration inspection
-command rather than the record-iteration command, and the section may show the
-matching `--audit-seed all` audit command as operator guidance. It may also show
-a compact `review_gate` line when the matching open iteration still lacks an
-outcome record, outcome verification command coverage, and outcome verification
-claim coverage. The line may include the required verification entrypoints and
-required completion coverage list, while the full
-`governance iterations --audit-seed all` packet remains the authoritative
-completion-audit view. The section may also include
-`after_verify` with a bounded
-`record-iteration-outcome` template for the matching open iteration, but only as
-post-verification writeback guidance. The template must keep repeatable
-evidence-ref, verification-command, and verification-claim placeholders, plus a
-next-move placeholder, visible so an outcome record is not mistaken for
-completion evidence by itself or a terminal stop. The section may also include a
-short `evidence_basis` line from the plan refs; it is citation guidance only and
-does not read or prove those refs. When present, `proof_boundary` keeps that same
-distinction explicit by requiring a verified outcome, outcome evidence refs,
-plan ref coverage, implementation contract coverage, outcome verification
-command coverage, outcome verification claim coverage, runtime attention outcome
-coverage, and workspace outcome coverage. The source artifact is
-only the evidence basis; the
-rendered proposed slice must not be a blind repeat of a completed source slice.
-The audit-seed summary should name goal scope, current state, verification
-scope, and learning persistence so completion review does not skip verification
-or outcome reuse evidence. A compact `audit_require` line should preserve the
-requirement for each seed, so a seed id is not mistaken for enough completion
-review evidence. A compact `audit_reject` line should preserve one reject
-condition for each seed, so copied success criteria, stale memory, narrow
-verification, and premature SOP/skill/memory/dream promotion stay visible as
-failure cases. The compact `acceptance` line should keep one
-criterion for each of those audit-seed labels, plus the fresh-successor and
-external-adapter boundary criteria, so repeated `goal_scope` or `current_state`
-criteria cannot hide copied slices, application-slice drift, verification-scope,
-or learning-persistence review. The compact `stage_exit` line should keep one exit criterion for every
-listed core and basic capability stage, so capability-stage labels are not
-mistaken for progress without their evidence standard. The compact
-`phase_forbid` line should keep one forbidden shortcut for each phase gate, so
-goal intake, contract design, execution planning, verification review, and
-learning persistence do not disappear behind the adapter-boundary warning. A
-compact `implementation_contract` line may show the allowed contract/read-model
-change, the first deferred scope, and the first delivery standard, so model
-handoff does not infer execution scope from the opaque slice id. The selection checks are
-quality hints only. It must not dump full
-project-design artifacts, record iterations, execute commands, schedule
-experts, write state, or prove completion.
-
-Verified iteration outcomes from `core_runtime` or `basic_entrypoint` remain
-visible as self-evolution follow-ups, but Opportunity Backlog ranks their SOP
-candidate review behind real local-learning SOP work. The canonical next move
-for those layers is the project-design plan, not immediate SOP churn.
+Self-Evolution Scorecard, Project Design Plan, and Self-Evolution Iteration
+are not resident context sections. Their historical commands are on-demand
+diagnostics only. Active context keeps current Goal evidence, bounded
+attention signals, selected capability contracts, and working continuity
+instead of a recursive planning/proof packet.
 
 The `Workspace Status` context section uses the same fixed
 `workspace status` read model. It is pre-write orientation only: it may show
@@ -2288,7 +2367,10 @@ Common result audit policy:
 
 ### `file.read`
 
-Reads text from repo or state scope by relative path.
+Reads text from repo or state scope by relative path. The default remains a
+bounded prefix read from line 1. Callers may provide a one-based `start_line`
+and bounded `max_lines` to read a deep source window directly after a
+`repo.search` hit.
 
 Required policy:
 
@@ -2297,7 +2379,25 @@ Required policy:
 - for `repo` scope, reject repo-local runtime state paths such as `.runtime/`,
   `.runtime-*`, `.runtime_*`, and `.local-runtime*`; use `state` scope for the
   selected state root instead
-- enforce max chars
+- accept only positive integer `start_line <= 1000000`,
+  `max_lines <= 400`, and `max_chars <= 50000`; defaults are line 1, 200
+  lines, and 12000 characters
+- stream the selected file and stop at the first line or character bound rather
+  than loading an arbitrarily large file into memory
+- stop with `scan_limit_exceeded` after 4 MiB of decoded-window scanning, even
+  when the requested `start_line` has not been reached
+- count complete Unicode code points; treat CRLF as one logical newline token,
+  and never return a split code point or a dangling carriage return
+- preserve full-line continuation when a later line would cross the character
+  bound; if the first selected line alone crosses it, return the bounded prefix
+  and mark `line_truncated=true`, `has_more=true`, and
+  `next_start_line=null` because a line-only cursor cannot recover its tail
+- return `start_line`, nullable `end_line`, `truncated`, nullable
+  `truncation_reason`, `line_truncated`, `has_more`, nullable
+  `next_start_line`, `chars_returned`, `scanned_bytes`, and
+  `max_scan_bytes` beside the bounded text
+- fail explicitly for a missing or non-file path instead of reporting an empty
+  successful read
 - side effect: `none`
 
 ### `file.write_state`
@@ -2342,6 +2442,8 @@ Searches repository text.
 Required policy:
 
 - use `rg` when available
+- when `rg` is unavailable, fail closed with typed `search_error` evidence
+  rather than emulate a second glob/search engine inside the runtime
 - reject searches rooted inside repo-local runtime state paths such as
   `.runtime/`, `.runtime-*`, `.runtime_*`, and `.local-runtime*`
 - exclude repo-local runtime state paths from broad repo searches
@@ -2374,10 +2476,154 @@ Required policy:
 - max output chars
 - environment allowlist
 - side-effect label declared before execution
+- bounded purpose: ordinary execution or verification. Purpose never grants
+  execution authority and cannot override EffectPolicy
+- verification purpose requires the repo cwd, process success, and unchanged
+  harness-owned pre/post Git HEAD plus bounded semantic-index and
+  tracked/untracked content fingerprints. Missing, unsupported, over-limit, or
+  changed snapshots fail the verification and expose newly observed typed
+  paths/commit where available. The strict snapshots survive diagnostic output
+  truncation and are rechecked during event replay
 - command and exit code recorded as evidence
 
 `command.run` is how the agent should run `pnpm run check`, `rg`, `git diff
 --check`, and local scripts.
+
+### `workspace.prepare`
+
+Prepares one lazy Goal-bound isolated linked worktree for later repo-scoped
+actions and delegated execution. It is a placement capability, not a task
+router, VCS control plane, or delivery workflow.
+
+Required policy:
+
+- require GoalRuntime execution context; standalone calls fail closed
+- accept only the strict `branch` and `base_commit` fields; unknown fields are
+  denied before dispatch
+- current implementation accepts only a fresh legacy `codex/issue-N-slug`
+  branch and the exact immutable control-authority start HEAD as `base_commit`;
+  current control HEAD must still equal that start HEAD at preparation time.
+  This compatibility pattern does not require a live GitHub Issue and is slated
+  for Goal-derived replacement in a separately verified runtime slice
+- require the control authority to be a clean, unchanged main checkout and the
+  target `.worktrees/<branch-basename>` path to be Git-ignored and absent
+- atomically acquire the fresh branch, reserve the derived path, create the
+  registered linked worktree, then live-validate repository root, exact derived
+  worktree path, Git common directory, branch, and base
+- return one typed `execution_workspace`; GoalRuntime derives it only from the
+  successful canonical observation and rejects a second preparation
+- on preparation failure, remove only a path and branch whose ownership was
+  acquired by that attempt; preserve concurrent artifacts and report incomplete
+  rollback instead of swallowing cleanup errors
+- do not mutate the state root, create a workspace registry, choose a task
+  class, run Codex, commit, push, merge, deploy, or claim completion
+- semantic effect: reversible `prepare_local_workspace`; malformed shapes are
+  denied before dispatch
+
+### `codex.run`
+
+Runs one typed Codex CLI coding execution as an independent core tool above
+generic `command.run`; it is not an arbitrary command or argument passthrough.
+
+Required policy:
+
+- require every new request to record model and reasoning selection. Ordinary
+  GoalRuntime delegation uses explicit `auto` for both, which delegates
+  provider-specific resolution to the named Codex profile and omits the model
+  and reasoning CLI overrides. The Goal-owned authority seam rejects a pinned
+  new request or persisted pinned resume before action planning or dispatch;
+  it must start a new auto-selected thread. Evidence-backed standalone
+  harnesses may still pin a safe model token and one bounded reasoning effort
+  (`minimal|low|medium|high|xhigh`). Keep profile `fast`, service tier `fast`,
+  sandbox `read-only` or `workspace-write`, and approval `never` explicit or
+  allowlisted
+- require bounded `selection_rationale`, `task_shape`, and an immutable
+  delegation strategy: `single` with zero subagents and no workstreams, or
+  `parallel` with two to three subagents, two to the declared maximum unique
+  independent workstreams, and `main_codex_thread` as integration owner
+- live-validate a registered sibling isolated worktree under the configured Git
+  common directory, together with its repository root, base, branch, and cwd;
+  reject non-repositories, other common directories, unregistered worktrees,
+  main checkouts, and drift
+- bind execution authority, selection, delegation strategy, mode, thread
+  handle, original-user/effective-prompt digests, output-schema digest, and
+  timeout/output-capture/context/tool/retry budgets in an immutable v2 digest
+- construct allowlisted argv without shell concatenation; prohibit
+  danger-full-access, bypass flags, add-dir, and search
+- when invoked by GoalRuntime, reserve one child-owned durable dispatch record
+  before spawning the detached worker; preserve only Goal/effect/action and
+  authority digests plus bounded terminal evidence, never raw prompts; recover
+  a missing parent observation only from that exact validated terminal record
+  and never by replaying an unknown effect
+- support one bounded `new` execution or `resume <thread-id>` bound to the same
+  authority snapshot, without another worktree, scheduler, or automatic retry;
+  standalone resume inherits recorded `auto` or explicit selection and
+  strategy and rejects any re-submitted drift; GoalRuntime resumes only an
+  auto-selected thread
+- for a parallel strategy, inject a bounded supervision block naming the
+  subagent maximum, independent workstreams, exclusive integration owner, and
+  evidence boundary; count one slot for the first `started` or `completed` JSONL
+  observation of each unique attributable `spawn_agent` `item_id`; a later
+  `completed` observation for that same item replaces its `started` evidence
+  without increasing the count; stop only when unique item IDs exceed immutable
+  `max_subagents`
+- continue consuming and validating JSONL after the output-capture retention
+  limit is reached; retain only bounded event-summary/redacted-diagnostic
+  prefix and suffix evidence, and record observed, retained, truncated, and
+  effective-limit metadata
+- parse the terminal strict structured `done|blocked|failed` output separately
+  from diagnostic retention; `done` requires an empty `blockers` list while
+  `blocked` and `failed` require a non-empty one. Spawn, nonzero exit, timeout, tool-call budget,
+  invalid JSONL, missing or mismatched thread authority, invalid schema, or
+  absent/invalid structured output failures cannot claim completion
+- on POSIX, run in an independent process group and clean up the whole group
+  with TERM followed by bounded KILL
+- derive tracked and untracked changed paths from fixed live pre/post Git
+  status evidence and derive commit identity from fixed pre/post HEAD evidence;
+  fail the execution result when the post-run snapshot is
+  unavailable; expose those paths as canonical plural `workspace_path` changes
+  even when Codex fails after mutation, and expose the post-run `git_commit`
+  identity when HEAD changed even if both status snapshots are clean
+- compare the observed introduced paths with structured `changed_files` and
+  retain matched, missing, and unobserved-claim diagnostics; the structured
+  list is model self-report and never grants change authority
+- reuse tool-result/episode metadata to record selection, requested plan,
+  capture, tool-call and timeout facts, structured result, both prompt digests,
+  and authority verifiability; requested workstreams and model self-report are
+  not subagent evidence, so record subagent facts only from attributable Codex
+  JSONL `collab_tool_call` events
+- side effect: `local_write`
+
+`codex.run` returns execution evidence only. Review, independent diff and test
+verification, permissions, commit, pull request, merge, deploy, and completion
+authority remain exclusively with `main_harness`. The tool is strictly separate
+from advisory-only `delegate_agent` and does not change its payload, result,
+tool, write, or completion authority.
+
+When a successful `codex.run` has no canonical workspace or commit change, its
+self-reported tests and checks remain diagnostics. The current GoalRuntime
+derives the independent-verification bridge above before another delegation or
+outcome may proceed; only the later Harness-owned `command.run` observation can
+clear it.
+
+`max_output_chars` is an evidence/diagnostic retention limit, not a process
+termination budget. An explicit caller value wins. When omitted for a new run,
+the runtime derives it from the active model's configured `max_output_tokens`
+through the typed tool-execution context; direct callers without model config
+use the existing context-budget fallback. For output-capture migration,
+`process.output_budget_exceeded` remains present as `false`; consumers should
+use `process.output_capture.truncated` and its observed/retained/effective-limit
+fields instead. Version-1 thread snapshots predate immutable selection,
+strategy, and dual prompt digests, so resume rejects them fail-closed and the
+caller must start a new bounded request. The one-time verified selection
+`gpt-5.6-sol` / `xhigh` / `fast` profile and tier is current compatibility
+evidence, not a compile-time singleton or future default. `auto` does not read
+or snapshot a Desktop-owned model cache, retry another model, or weaken
+selection provenance: the immutable authority records that the named Codex
+profile owns resolution for the thread.
+Historical explicit v2 thread records remain parseable and resumable through
+the standalone harness. GoalRuntime does not inherit their provider pin; it
+starts a new auto-selected thread under the same Goal repository authority.
 
 ### `code.execute_node`
 
@@ -2444,6 +2690,12 @@ The first-version context layer selects only what the run needs:
 - selected local skills
 - tool contracts
 - working checkpoint
+
+Self-Evolution Scorecard, Project Design Plan, and Self-Evolution Iteration are
+not resident context sections. Their legacy diagnostics remain explicit,
+on-demand commands only while staged retirement is measured. Active Goal
+evidence and the bounded Prior Tool Experience projection affect current
+cognition without injecting those proof-oriented read models.
 
 The live runner writes `memory/episodes/<session>-context.md` and
 `memory/episodes/<session>-context.json`. The Markdown file is the model-facing
@@ -2621,7 +2873,7 @@ command, and explicit restart guidance for the operator. They must not inspect
 launchd, read service logs, restart services, invoke the model, mutate state,
 read source file bodies, or run shell commands.
 Because service lifecycle and service health share the
-`<LOCAL_RUNTIME_HOME>/state/runtime` default, generated `service_health` inspect and
+`~/.local-runtime/state/evi` default, generated `service_health` inspect and
 restart guidance should omit `--state-root <state-root>` by default. Explicit
 state-root guidance is reserved for an operator-selected alternate service
 state root.
@@ -3891,6 +4143,9 @@ First-version IM supports:
 - bounded same-sender in-memory follow-up queue for normal private-chat tasks
 - state-only operator notification outbox drained by the resident Feishu
   service
+- explicit Feishu p2p Goal interaction commands: `/goal read <goal-id>`,
+  `/goal continue <goal-id>`, `/goal resume <goal-id>`, and
+  `/goal confirm <goal-id> <effect-id>`
 - read-only local operator commands in private chat:
   `/status`, `/config`, `/runtime config`, `/service config`, `/health`,
   `/service health`, `/logs [lines]`, `/service logs [lines]`,
@@ -4029,10 +4284,12 @@ adapter sends the configured queued response, records a queued trace artifact
 under `channels/feishu/queued/`, and drains queued messages after the current
 run reaches its local boundary. Queue-full messages may receive the configured
 busy response. This queue is process-local scheduling only. It must not apply
-to operator commands, cross users, group chats, remote Feishu state, service
-restart recovery, multi-process coordination, durable replay, steering,
-cancel/resume semantics, model invocation outside the normal task runner, or
-self-evolution confirmation execution.
+to read-only operator commands, cross users, group chats, remote Feishu state,
+service restart recovery, multi-process coordination, durable replay, or
+implicit conversational steering. Explicit `/goal` interactions share this
+same-sender lane and are reparsed when dequeued, so Continue, Resume, and exact
+Confirm cannot race a current task or become replacement Goal prose. Goal
+control messages are excluded from later ordinary-task conversation history.
 
 Operator progress notifications are not Feishu operator commands and are not a
 general send API. `notify queue` writes a local request under
@@ -4110,6 +4367,8 @@ packages/core/src/memory_store.ts     # episode memory FTS index
 packages/runtime/src/config.ts        # JSONL config loader
 packages/runtime/src/model.ts         # model adapter
 packages/runtime/src/background_review.ts # proposal-only background review
+packages/runtime/src/goal_runtime.ts    # canonical Goal lifecycle and receipt
+packages/runtime/src/goal_tool_competence.ts # bounded terminal-Goal experience projection
 packages/runtime/src/tools.ts         # core tool execution
 packages/runtime/src/runner.ts        # live local run
 packages/runtime/src/stage_runner.ts  # short local stages
@@ -4120,90 +4379,81 @@ packages/runtime/src/channels/feishu/ # first IM provider
 ## Command Contract
 
 Target first-version commands:
-The list includes available inspection, application, and local-learning
-surfaces. It is not the self-evolution priority order. Current iteration
-selection stays with core/basic scorecard output and bounded general-agent
-delegation unless a later verified slice explicitly selects SOP/skill,
-memory/dream, content, or expert surfaces.
+The list includes available inspection, application, local-learning, and
+legacy diagnostic surfaces. It does not select active work. Engineering
+activation belongs to bounded Goals, their Decision Owner, and the native
+harness; runtime continuity and outcomes belong to GoalRuntime and
+OutcomeReceipt.
 
 ```bash
 pnpm run runtime -- doctor
 pnpm run runtime -- doctor --no-auth
 pnpm run runtime -- doctor --no-im
-pnpm run runtime -- config --state-root .runtime/state
-pnpm run runtime -- live --query-todo --task "..." --state-root .runtime/state
-pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root .runtime/stage
-pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root .runtime/state
-pnpm run runtime -- pipeline runs --state-root .runtime/state
-pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root .runtime/state
-pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root .runtime/state
-pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root .runtime/state
+pnpm run runtime -- config --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- live --task "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline --query-todo --task "..." --stages intake,tool_check,final --state-root ~/.local-runtime/state-baselines/stage
+pnpm run runtime -- pipeline resume --pipeline pipeline_run_... --from-stage tool_check --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- pipeline runs --pipeline pipeline_run_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- web --host 127.0.0.1 --port 8765 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- daemon serve --provider feishu --scenario im-default --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- service install|start|stop|restart|rollback|status|logs|uninstall --target runtime
-pnpm run runtime -- workspace status --state-root .runtime/state
-pnpm run runtime -- workspace runtime --state-root .runtime/state
+pnpm run runtime -- workspace status --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- workspace runtime --state-root ~/.local-runtime/state/evi
 pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md]
 pnpm run runtime -- skills --action validate
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
-pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root .runtime/state
-pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root .runtime/state
-pnpm run runtime -- memory layers --state-root .runtime/state
-pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root .runtime/state
-pnpm run runtime -- memory dream --state-root .runtime/state
-pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root .runtime/state
-pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root .runtime/state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root .runtime/state
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root .runtime/state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root .runtime/state
-pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root .runtime/state
-pnpm run runtime -- governance project-design --artifact project_design_artifact_iteration_contract_... --state-root .runtime/state
-pnpm run runtime -- governance project-design --audit-seed verification_scope --state-root .runtime/state
-pnpm run runtime -- governance experts --gate core_boundary_review --state-root .runtime/state
-pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice self_evolution_iteration_contract --implementation-scope "..." --deferred-scope "..." --delivery-standard "..." --reuse-open --state-root .runtime/state
-pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
-pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed all --state-root .runtime/state
-pnpm run runtime -- governance iterations --iteration iteration_contract_... --audit-seed verification_scope --state-root .runtime/state
-pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified --summary "..." --state-root .runtime/state
-pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root .runtime/state
-pnpm run runtime -- review background --state-root .runtime/state
-pnpm run runtime -- review reports --state-root .runtime/state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
-pnpm run runtime -- review completions --state-root .runtime/state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review traces --state-root .runtime/state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review tick --state-root .runtime/state
-pnpm run runtime -- review ticks --state-root .runtime/state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
-pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root .runtime/state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root .runtime/state
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
-pnpm run runtime -- review coverage --sop sop_... --state-root .runtime/state
-pnpm run runtime -- show-events --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory status|sync|search|session|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive-health --archive 2026-06-30 --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory layers --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory working --checkpoint memory/working/current.json --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dream --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dreams --dream memory/dreams/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- context list|show|usage|pressure|health|repair [--context <ref-or-id>] --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --review background_review_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --completion completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --trace completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review tick --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --tick review_tick_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review inbox --status active|all|open|confirmation_requested|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --gate all|current|stale|executed --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review audit-sop --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review chain --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review coverage --sop sop_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- show-events --state-root ~/.local-runtime/state/evi
 ```
 
 Implementation note: the core-tool surface and IM command surface match this
 first-version command contract.
 
-Repo-local runtime artifacts should stay under `.runtime/`: `.runtime/state`
-for default interactive state, `.runtime/stage` for pipeline experiments, and
-`.runtime/smoke/<name>` for one-off smoke runs. Top-level `.runtime-*` and
-`.runtime_*` directories are unsupported and should be deleted or moved into
-the supported `.runtime/` layout. Resident service state keeps its existing
-checkout-independent default under `<LOCAL_RUNTIME_HOME>/state/runtime` unless
-an operator explicitly passes `--state-root`.
+The shared Evi control state is `~/.local-runtime/state/evi`. Isolated
+rehearsals and migration evidence use `~/.local-runtime/state-baselines/<name>`.
+No project-local `.runtime/`, `.runtime-*`, or `.runtime_*` layout is supported;
+after attributable evidence is migrated or archived, the checkout-local
+directory must be removed. The resident service uses the same absolute Evi
+state root after its verified migration cutover.
 
 ## Explicit Non-Goals
 

@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { listRuntimeChannelOutbox, recordRuntimeChannelOutbound } from "../packages/core/src/runtime_channel_outbox.js";
 import { listRuntimeTaskQueue } from "../packages/core/src/runtime_task_queue.js";
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
 import { AgentStore } from "../packages/core/src/store.js";
 import { TelegramBotAdapter } from "../packages/runtime/src/channels/telegram/adapter.js";
+import type { GoalIngressPort } from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
 import type {
-  TaskRunner,
   TelegramChannelConfig,
   TelegramSendResult,
   TelegramTransport,
@@ -20,12 +20,12 @@ import type {
 test("Telegram group session bind and run use the provider-neutral runtime path", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner();
+    const goalIngress = stubGoalIngress("goal_telegram");
     const transport = new MockTelegramTransport();
     const adapter = new TelegramBotAdapter({
       config: testTelegramConfig({ allowedUserIds: ["42"] }),
       transport,
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -52,29 +52,57 @@ test("Telegram group session bind and run use the provider-neutral runtime path"
     assert.equal(sessions[0]?.profile, "ops");
     const inbox = await listRuntimeInbox(fixture.store, sessions[0]!.id);
     assert.deepEqual(inbox.map((entry) => entry.trigger_kind), ["session_command", "run_command"]);
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /Telegram runtime session message received/);
-    assert.match(runner.tasks[0], /check service status/);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /Telegram runtime session message received/);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
     assert.deepEqual(transport.sent.map((item) => item.text), [
       `已绑定 runtime session: ${sessions[0]!.id}\nprofile: ops\n后续普通消息会进入 inbox；使用 /run 才会执行任务。`,
       "收到，正在处理。",
-      "telegram done"
+      "Goal: goal_telegram\nStatus: active\nRun goal continue --goal goal_telegram to continue this Goal."
     ]);
 
-    const runs = await listRuntimeTaskRuns(fixture.store);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]?.source_kind, "telegram");
-    assert.equal(runs[0]?.status, "done");
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
     const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.source_kind, "telegram");
-    assert.equal(tasks[0]?.source_route_key, "telegram:telegram-main:supergroup:-100123:main");
+    assert.equal(tasks.length, 0);
     const outbox = await listRuntimeChannelOutbox(fixture.store);
-    assert.equal(outbox.length, 1);
-    assert.equal(outbox[0]?.source_kind, "telegram");
-    assert.equal(outbox[0]?.status, "sent");
-    assert.equal(outbox[0]?.task_run_id, runs[0]?.id);
-    assert.equal(outbox[0]?.text, "telegram done");
+    assert.equal(outbox.length, 0);
+    const delivery = JSON.parse(await readFile(join(fixture.stateRoot, "channels/telegram/outbound/11.json"), "utf8"));
+    assert.deepEqual({
+      goal_id: delivery.goal_id,
+      goal_status: delivery.goal_status,
+      receipt_id: delivery.receipt_id
+    }, { goal_id: "goal_telegram", goal_status: "active", receipt_id: null });
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Telegram session Goal failure stays out of legacy orchestration state", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockTelegramTransport();
+    const adapter = new TelegramBotAdapter({
+      config: testTelegramConfig({ allowedUserIds: ["42"] }),
+      transport,
+      goalIngress: failingGoalIngress("goal ingress failed"),
+      store: fixture.store
+    });
+
+    await adapter.handleUpdate(telegramUpdate({
+      updateId: 110, messageId: 20, chatId: -100123, chatType: "supergroup", userId: 42,
+      text: "/session use ops"
+    }));
+    await adapter.handleUpdate(telegramUpdate({
+      updateId: 111, messageId: 21, chatId: -100123, chatType: "supergroup", userId: 99,
+      text: "/run fail safely"
+    }));
+
+    assert.deepEqual(transport.sent.map((item) => item.text).slice(-2), ["收到，正在处理。", "error"]);
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    const evidence = JSON.parse(await readFile(join(fixture.stateRoot, "channels/telegram/errors/21.json"), "utf8"));
+    assert.equal(evidence.error, "goal ingress failed");
   } finally {
     await fixture.cleanup();
   }
@@ -87,7 +115,7 @@ test("Telegram adapter drains queued provider-neutral outbox replies", async () 
     const adapter = new TelegramBotAdapter({
       config: testTelegramConfig(),
       transport,
-      runner: new StubRunner(),
+      goalIngress: stubGoalIngress("goal_telegram_compat"),
       store: fixture.store
     });
     const queued = await recordRuntimeChannelOutbound(fixture.store, {
@@ -182,31 +210,16 @@ class MockTelegramTransport implements TelegramTransport {
   }
 }
 
-class StubRunner implements TaskRunner {
-  readonly tasks: string[] = [];
+function stubGoalIngress(goalId: string): GoalIngressPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return { objectives, submit: async (objective) => {
+    objectives.push(objective);
+    return { goal_id: goalId, status: "active", receipt: null } as GoalView;
+  } };
+}
 
-  async runTask(task: string): Promise<RunResult> {
-    this.tasks.push(task);
-    return {
-      trigger_id: "trigger_telegram",
-      opportunity_id: "opp_telegram",
-      session_id: "session_telegram",
-      turn_id: "turn_telegram",
-      context_ref: "memory/episodes/telegram-context.md",
-      context_manifest_ref: null,
-      model_response_ref: "memory/episodes/telegram-model.json",
-      envelope_ref: "memory/episodes/telegram-envelope.json",
-      evidence_refs: [],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: null,
-      completion_report_ref: null,
-      discipline_refs: null,
-      verdict: "telegram done"
-    };
-  }
+function failingGoalIngress(message: string): GoalIngressPort {
+  return { submit: async () => { throw new Error(message); } };
 }
 
 async function createFixture(): Promise<{

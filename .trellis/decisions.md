@@ -1,5 +1,707 @@
 # Decisions
 
+## 2026-07-19 One-Time Stabilization Evidence Reconciliation
+
+Decision Owner: operator, through explicit authorization to complete the
+stabilization and architecture audit, reconcile GitHub/Trellis state, merge to
+`develop`, deploy exact commits, and stop only after the real self-evolution
+Goal reached terminal acceptance.
+
+Decision:
+
+- use `Issue: none` for one small post-completion maintenance change on branch
+  `codex/stabilization-evidence-reconciliation`, worktree
+  `.worktrees/stabilization-evidence-reconciliation`, and PR #118;
+- record already-observed PR, merge, deployment, rollback, Issue closure, and
+  same-Goal terminal evidence for Tasks262-268 without creating another
+  closure task whose only purpose would be to close this reconciliation;
+- keep Task267 and Issue #114 open because the required post-deployment
+  same-Goal `repo.search` observation did not occur. Do not create a new Goal
+  solely to make that document status green;
+- describe Task268 live evidence narrowly: the unchanged Goal escaped its old
+  blocker loop and completed, while the deterministic regression suite remains
+  the evidence for the `non_progress_replan_required` branch itself.
+
+Authority and boundary:
+
+- this exception is governance maintenance only. It introduces no product
+  direction, runtime behavior, architecture owner, schema, dependency,
+  capability, tool route, deployment semantic, or learning surface;
+- the operator remains the Decision Owner. GitHub PRs, deployment history,
+  canonical Goal events, the terminal OutcomeReceipt, and live runtime reads
+  remain the owners of the facts being reconciled;
+- this decision does not reopen the completed Goal, authorize `/new`, or
+  resume the older stopped Goal.
+
+Verification, recovery, and expiry:
+
+- verify exact PR heads and merge commits, stable zero-failure deployment
+  records and rollback sources, GitHub Issue state, Goal sequence 235 and
+  receipt `goal_receipt_20260719150711_125a50d2`, final diff, and independent
+  Spec/Standards review before merging PR #118;
+- rollback is a normal PR revert. Closed Issues can be reopened, as demonstrated
+  for #114, and the docs-only worktree can be reconstructed from its remote
+  branch;
+- this exception expires when PR #118 is merged, the final exact `develop`
+  commit is deployed and audited, and completed feature worktrees are removed.
+  Any later behavior change or unresolved acceptance work uses the normal
+  Issue/task governance path.
+
+## 2026-07-18 Goal-Bound Lazy Execution Workspace
+
+Decision Owner: operator, through approval of the bounded real self-evolution
+acceptance Goal and Issue #97 / Task 259.
+
+Decision:
+
+- a Goal's persisted repository authority remains the immutable control
+  checkout used by Continue and Resume; preparing an execution worktree does
+  not replace that authority or move the state root;
+- `workspace.prepare` is a dynamically selected placement capability. It may
+  create one fresh `codex/issue-N-slug` linked worktree from the exact control
+  start HEAD only after EffectPolicy allows the recorded semantic intent;
+- its arguments are strict, branch ownership and the derived path are acquired
+  before Git checkout, and failed-attempt cleanup reports uncertainty rather
+  than deleting concurrent artifacts or swallowing cleanup errors;
+- one successful canonical tool observation is the sole source of the Goal's
+  derived execution-workspace projection. Later repo-scoped tools and
+  `codex.run` use that workspace after live authority checks; state-scoped tools
+  keep the original state root;
+- the deep module owns only prepare, validation, and exact local rollback on a
+  failed preparation. It does not own task classification, a workspace
+  registry, lifecycle scheduling, delivery, deployment, or completion;
+- this is a lazy cognition choice, not an ingress side effect, keyword router,
+  second model call, second Goal, or automatic per-task worktree rule.
+
+Authority and supersession:
+
+- this decision extends the Goal-owned authority seam introduced by Issue #78
+  and the dynamic Capability Portfolio from Issue #95;
+- it preserves GoalRuntime, EffectPolicy, canonical evidence, verifier-owned
+  acceptance, and the existing `codex.run` independent authority checks;
+- it does not yet add Feishu same-Goal continuation or confirmation, automate
+  PR/merge/deploy, decompose `app/cli/src/main.ts`, or resume the stopped
+  historical self-evolution Goal.
+
+Verification and recovery:
+
+- real-Git interface tests cover creation, strict branch/base/control checks,
+  concurrent acquisition, replay, forged-main observation rejection,
+  second-prepare rejection, repo-versus-state scoping, and exact cleanup after
+  a checkout-hook failure;
+- GoalRuntime tests keep the control checkout authoritative while proving later
+  repo actions and confirmed `codex.run` resolve against the execution workspace;
+- rollback is a normal revert. No state migration is required because the
+  projection derives from canonical observations and historical Goals have no
+  execution workspace.
+
+Re-evaluation:
+
+- add cleanup scheduling, alternative branch namespaces, or another placement
+  host only from observed Goal evidence and a separate bounded Issue;
+- do not add a registry or static routing layer unless measured failures prove
+  the observation-derived one-workspace model inadequate.
+
+## 2026-07-18 Dynamic Capability Orchestration And Goal-Owned Acceptance
+
+Decision Owner: operator, through explicit approval in the Issue #95 / Task
+258 architecture discussion.
+
+Decision:
+
+- Evi is the outcome-owning capability orchestrator, not the default specialist
+  worker. It owns Goal continuity, authority, evidence requirements, result
+  inspection, fallback judgment, and acceptance;
+- capability choice remains a dynamic cognition decision rather than a
+  task-to-tool or keyword mapping in architecture documents or runtime code;
+- before each Goal cognition call, a read-only bounded Capability Portfolio
+  combines current tool contracts and constraints, authority-bound readiness,
+  selected skills, and evidence-derived competence without adding a model call,
+  planner, queue, database, or persisted state owner;
+- every proposed action names its selected capability, execution purpose,
+  selected skill refs, rationale, verification plan, and fallback. GoalRuntime
+  validates the choice before EffectPolicy or dispatch;
+- direct tools are valid for bounded orientation, verification, recovery, or a
+  genuinely atomic task. A delegated executor represents specialist production
+  when suitable and available. These are role semantics, not hard task classes;
+- unavailable, mismatched, or ungrounded selections block on the same Goal
+  before effect planning. Evi does not silently replace a missing specialist by
+  becoming the worker.
+
+Authority and supersession:
+
+- this decision refines the own/delegate direction from Issue #91 and the
+  outcome-driven competence direction from Issue #93; it does not supersede
+  GoalRuntime, EffectPolicy, repository authority, canonical evidence, or
+  verifier ownership;
+- it does not activate the paused historical self-evolution Goal, LuBan,
+  multi-agent scheduling, automatic worktree/session creation, automatic
+  SOP/skill promotion, Feishu command expansion, or `main.ts` decomposition.
+
+Verification and recovery:
+
+- interface tests cover bounded portfolio assembly, selected-skill loading,
+  tool constraints, linked-worktree readiness, selection/action agreement,
+  role agreement, and unselected skill rejection;
+- GoalRuntime tests prove invalid selection blocks before policy and tools,
+  portfolio failure consumes no model round, terminal competence remains
+  bounded, and historical planned events without selection metadata replay;
+- rollback is a normal revert. No state migration is required because new
+  action-planned metadata is optional for historical events and the Portfolio
+  has no persisted owner.
+
+Re-evaluation:
+
+- widen candidates, add execution hosts, or change selection roles only from
+  observed Goal evidence and a separately bounded Issue;
+- do not add a static router or another planning/state layer unless measured
+  failures show that the current single-cognition seam cannot express a needed
+  decision.
+
+## 2026-07-18 Outcome-Driven Self-Evolution Resumption
+
+Decision Owner: operator, through explicit approval after Issue #91 completed
+the stabilization and architecture-audit gates.
+
+Decision:
+
+- resume parent Issue #56 through exactly one bounded child, Issue #93 / Task
+  257; do not resume the prior chain of automatically selected feature slices;
+- define development standards to make the repository understandable and
+  maintainable. Those standards own project structure, not the permission or
+  scoring rules for self-evolution;
+- use self-evolution boundaries to prevent repeated context, harness, sandbox,
+  communication, and ownership failures observed in prior sessions;
+- judge growth by whether canonical outcomes improve a later decision. A
+  scorecard, iteration record, project-design packet, test count, or generated
+  report is not self-evolution merely because it describes progress;
+- derive bounded tool competence from terminal Goal events and one
+  OutcomeReceipt, without a new ledger or causal overclaim, and remove the
+  legacy proof-oriented views from resident context;
+- keep legacy project-design, scorecard, and iteration commands readable only
+  as on-demand diagnostics during staged retirement. They do not own active
+  work, resident context, current capability selection, or completion.
+
+Authority and supersession:
+
+- this decision satisfies and supersedes the scheduling pause in the
+  2026-07-18 Stabilization decision for Issue #93 only;
+- it preserves the one-persistent-Self, GoalRuntime, EffectPolicy, evidence,
+  rollback, secret, private-egress, and irreversible-effect boundaries;
+- it does not activate LuBan/multi-node work, automatic SOP/skill promotion,
+  another feature child, or broad sandbox/package redesign.
+
+Verification and recovery:
+
+- one isolated Issue/task/branch/worktree/PR owns the change;
+- interface tests must show that only prior terminal Goals affect later
+  cognition, direct execution outcomes remain distinct from Goal association,
+  and no new learning state is written;
+- context tests must show the three proof sections are absent; the final diff
+  must include net removal of their render/test path and concise paired docs;
+- rollback is a normal revert and exact-commit redeploy. Canonical Goal events,
+  receipts, and historical diagnostic state remain readable and require no
+  migration.
+
+Re-evaluation:
+
+- after Issue #93 integration and live verification, measure remaining callers
+  before retiring legacy command/source modules;
+- any later child under #56 requires a fresh operator-accepted bounded Issue
+  and must not be derived automatically from the legacy diagnostic chain.
+
+## 2026-07-18 Stabilization Pause And Own-Delegate Architecture
+
+Decision Owner: operator, through explicit approval in the 2026-07-18 Codex
+discussion and GitHub Issue #91.
+
+Decision:
+
+- pause creation or execution of new Codex-supervised Evi self-evolution
+  feature children under Issue #56 while Issue #91 / Task 256 stabilizes the
+  repository and audits core capability boundaries;
+- keep the existing GoalRuntime and ordinary resident operation supported;
+  this is a scheduling pause, not abandonment or rollback of the persistent
+  GoalRuntime direction;
+- treat `docs/ARCHITECTURE.md` and its Chinese companion as the owner of current
+  module placement, own/delegate seams, architecture pressure, staged
+  replacement order, and feature-resumption gates;
+- follow GA-inspired restraint: keep the observe/decide/act/verify/learn loop
+  small, reuse mature tools, and preserve Evi ownership of continuity,
+  authority, evidence, learning, and result acceptance;
+- later refactors replace one complete vertical path through a deep module
+  interface and delete the superseded path. They do not add indefinite
+  compatibility layers, dual writes, or speculative adapter interfaces.
+
+Authority and supersession:
+
+- this decision temporarily supersedes the active-child scheduling momentum in
+  Issue #56 and any derived scorecard/project-design suggestion that would
+  automatically activate another feature slice;
+- it does not supersede the one-persistent-Self vision, open local evolution
+  authority, the implemented GoalRuntime contract, the v0.2 LuBan target, or
+  operator-authorized bug repair and ordinary operation;
+- only the operator, as current Decision Owner, may resume Issue #56 or accept
+  a successor feature program after the documented gates pass.
+
+Evidence:
+
+- clean and synchronized `develop@396fd193b35332581503b10818d1883959610c41`,
+  full `pnpm run check` with 966 passing tests, and a healthy/current resident
+  runtime provide a stable baseline;
+- 37 registered worktrees, two uncommitted worktrees, one prunable record,
+  stale Issue/Task status, 78,704 source lines, 66,535 test lines, 12,024 docs
+  lines, and 112 commits since `1fc29f7` show that delivery velocity had
+  outpaced environment and architecture consolidation;
+- current `tools.ts`, `context.ts`, CLI, channel adapter, tests, and long
+  contracts carry several concerns each; current process bounds do not prove
+  OS/filesystem confinement, and valid skill packaging does not prove reusable
+  tool competence;
+- pinned local GenericAgent, Codex, pi, OpenCode, OpenClaw, Hermes, and
+  learn-claude-code snapshots provide reusable patterns but remain evidence,
+  not standards or dependencies.
+
+Risk, verification, and recovery:
+
+- the stabilization task changes governance and documentation only; it does
+  not change runtime behavior, schemas, dependencies, state contracts, or
+  deployment implementation. A normal exact-commit deployment after merge may
+  align resident source identity with `develop`;
+- worktree/branch cleanup first proves commit reachability and inspects dirty
+  artifacts. Tracked documentation passes paired-owner, link, diff, and full
+  repository checks before integration;
+- the documentation change is reverted through a normal PR if it misstates
+  current ownership. Closed Issues can be reopened and removed worktrees can be
+  reconstructed from retained commits and remote refs.
+
+Re-evaluation and expiry:
+
+- re-evaluate after Issue #91 is merged and root/worktree/GitHub/Trellis state
+  is clean;
+- resumption then requires one newly accepted bounded child naming the owner
+  module, interface, replacement/deletion path, sandbox/context limits,
+  verification, and rollback, with no parallel feature slice or automatic
+  learning promotion;
+- until explicit operator resumption, the pause remains active even if tests,
+  runtime health, or an autonomous proposal suggests another feature.
+
+## 2026-07-17 Persistent GoalRuntime And Observation-Only Execution Controllers
+
+The operator accepts replacing Evi's chained runtime-task, completion-reference,
+and synchronous-learning orchestration with a persistent GoalRuntime control
+plane. This decision activates GitHub parent Issue #56 and is implemented one
+bounded child Issue and Trellis task at a time. It refines the accepted One
+Persistent Self direction: Evi remains the owner of durable goals, outcome
+acceptance, and learning judgment, while Codex Goal is an external engineering
+orchestrator for this migration and never becomes a second Evi self.
+
+GoalRuntime is the single owner of goal lifecycle, continuity, checkpoints,
+pause and resume, outcome verification, and the canonical OutcomeReceipt.
+EffectPolicy owns only action-effect decisions through a small allow, confirm,
+or deny interface. LearningRuntime consumes completed receipts asynchronously
+and cannot block or mutate a foreground goal. Evidence persistence and outcome
+verification are internal GoalRuntime seams rather than public orchestration
+modules.
+
+Execution controllers such as deployment own their transaction state and emit
+typed observations. They must not create, resume, or synthesize goals. In
+particular, deployment recovery may restore the known-good runtime and record a
+failure observation, but it may not enqueue a repair task. The active
+GoalRuntime decides whether a failure means continue, pause, repair, or stop.
+
+Migration cuts over by complete goal identity. Legacy queue, iteration,
+completion, and learning records remain readable as historical evidence, but a
+new goal must not dual-write those stores. Operator views, scorecards, and
+learning signals derive from raw goal events and one OutcomeReceipt. The old
+orchestration and its implementation-shaped tests must be retired after the
+new interface passes local, integration, deployment, rollback, and recovery
+acceptance.
+
+The first child, Issue #57, repairs the deployment seam that currently permits
+candidate activation under a stale copied controller and then creates a repair
+task after rollback. It does not implement GoalRuntime. Later child work is
+activated from measured evidence under Issue #56 instead of being pre-created
+as a fixed backlog.
+
+This decision supersedes any implementation assumption that runtime task queue
+entries, working checkpoint files, completion-reference graphs, deployment
+repair tasks, or synchronous SOP proposals may independently own goal
+continuity. It does not weaken secret handling, repository/worktree isolation,
+operator authority over irreversible external effects, the `main` release
+gate, verified deployment, or rollback requirements.
+
+## 2026-07-17 Local GoalRuntime Execution And Semantic Effect Cutover
+
+Issue #65 activates the first whole-goal ingress cutover under the persistent
+GoalRuntime decision. The explicit local `goal` CLI creates and addresses only
+GoalRuntime-owned identities. `live`, Web, IM, daemon, and resident task-queue
+work remain legacy until a later whole-ingress child; no individual goal may
+enter both paths.
+
+GoalRuntime now owns the bounded model loop, durable pre-effect intent, tool
+observation, soft execution tranche, verification, and receipt. One model turn
+proposes one action, outcome, or blocked result. The model does not pass
+caller-authored observations or completion candidates into the runtime and
+does not maintain evidence-reference matrices. The runtime binds same-goal
+canonical events to the verifier and one receipt.
+
+EffectPolicy is the only foreground action-effect decision owner. It derives
+operation, target, reversibility, and data exposure from the actual proposal;
+model-declared side-effect labels cannot widen authority. Standing local
+authority allows bounded reads, reversible local writes, and known local
+verification. Secrets, private egress, destructive effects, unknown effects,
+and writes into orchestration or synchronous-learning owner paths fail closed.
+External, irreversible, runtime-mutating, dynamic-code, and nested coding
+effects pause the same goal for exact-effect confirmation.
+
+An allowed or confirmed effect is persisted before dispatch. If no matching
+observation is appended, replay exposes `effect_outcome_unknown` and never
+repeats the effect automatically. Exact confirmation reuses the stored action
+and digest; it does not create a separate confirmation artifact chain. This
+decision does not yet move IM/Web/daemon ingress, deployment adoption,
+LearningRuntime, or historical legacy readers.
+
+## 2026-07-18 Explicit Goal Cognition Bootstrap
+
+Issue #68 activates the next measured foundation slice after Issue #65. Model
+configuration and authentication readiness do not own goal lifecycle: local
+Start, Read, Pause, Resume, and Abandon must work without resolving a model.
+Continue resolves one lazy GoalCognition provider inside the GoalRuntime path,
+so provider failure becomes a bounded same-goal observation rather than a CLI
+bootstrap exception or a successor goal.
+
+Provider selection is explicit. `active_model` keeps the existing
+OpenAI-compatible client. `codex_cli` is an operator-selected local cognition
+substrate, not a fallback: one ephemeral isolated `codex exec` turn receives
+only the bounded GoalRuntime input and must return the strict cognition schema.
+It does not load user Codex configuration, profiles, rules, MCP servers,
+plugins, or hooks. An Evi-owned fixed contract disables shell, unified exec,
+apps, browser/computer, image, multi-agent, and related tool features; a custom
+permission profile denies the filesystem root and tool network access. JSONL is
+still inspected online as defense in depth and terminates an attempted tool
+item. GoalRuntime remains the only owner of action execution, semantic effect
+authority, evidence, verification, and receipts.
+
+This slice restores a usable cognition bootstrap before broadening ingress. It
+does not yet authorize `codex.run` engineering effects, move IM/Web/daemon,
+adopt changes, start asynchronous learning, or delete legacy orchestration.
+
+## 2026-07-18 Goal-Bound Delegated Workspace Attribution
+
+Issue #76 makes repository placement part of executable Goal identity. A new
+Goal start records the real Git worktree, Git common directory, branch, and
+start HEAD. Continue and exact-effect dispatch must validate that authority
+before cognition or tool execution. The start HEAD is provenance and may move
+forward only through descendant commits. Historical starts without this field
+remain readable, pausable, and abandonable, but may not acquire mutation
+authority through an inferred or first-reader binding.
+
+`codex.run` change authority comes only from its fixed pre/post live Git status
+snapshots. Introduced repository-relative paths are emitted as plural
+`workspace_path` identities even when Codex fails after mutation. The
+structured `changed_files` list is compared for diagnostics but never owns
+attribution. A missing post-run snapshot fails the tool result rather than
+turning absence of evidence into an empty change set.
+
+The Goal owner also validates the actual nested coding target, not only the
+checkout used by the Goal CLI. A new target or persisted resume handle must
+match the Goal worktree, common directory, branch, and start-HEAD base before
+planning and again before dispatch. Fixed pre/post HEAD snapshots emit the
+post-run `git_commit` when HEAD changes, including a clean-status commit that is
+later rejected as Codex authority drift. Receipt capacity is 256 identities;
+the runtime reserves 201 slots for the full 200-path-plus-one-commit atomic
+envelope before dispatch instead of discovering overflow after mutation.
+
+GoalRuntime consumes plural changes through its existing observation, lineage,
+candidate, verifier, and OutcomeReceipt surfaces. Existing singular typed
+changes remain compatible. Git commits and delegated workspace paths require a
+later successful local-verification observation under the bound Goal
+authority. This decision supersedes the assumption that only successful
+singular tool observations can represent changes; it does not grant Codex
+completion, commit, PR, merge, deployment, external-write, or release
+authority.
+
+## 2026-07-18 Profile-Owned Codex Execution Selection
+
+Issue #78 repairs a measured owner mismatch discovered during Issue #76 live
+acceptance. Evi twice chose a provider model token and reasoning level that the
+current Codex runtime did not advertise; both runs failed before a tool call or
+workspace change. A live read-only run succeeded when the existing `fast`
+profile resolved those values. The Desktop-owned model cache also had a newer
+schema than the installed CLI, so importing that cache into Evi would create an
+unstable provider implementation dependency.
+
+Evi owns coding intent, Goal repository authority, sandbox, budgets, and
+delegation shape. For ordinary Goal-owned `codex.run`, model and reasoning are
+recorded as `auto`, and the named Codex profile owns provider-specific
+resolution. `auto` omits only those two CLI overrides. It is immutable
+selection authority, not an unrecorded default, cache lookup, fallback chain,
+or retry policy. The Goal-owned seam rejects both a pinned new request and a
+persisted pinned resume before action planning or dispatch; the same Goal must
+start a new auto-selected thread. An evidence-backed external main harness may
+still pin a safe model token and bounded reasoning effort, and standalone
+explicit v2 threads remain parseable and resumable.
+
+This decision supersedes Task241's assumption that every Goal-owned run must
+guess a concrete model and reasoning effort. It does not weaken worktree
+isolation, effect confirmation, prompt and authority digests, JSONL evidence,
+Git change attribution, later local verification, or main-harness completion
+ownership. No capability registry, cache parser, or model fallback is added.
+
+## 2026-07-18 Separate Effect Safety From Verification Evidence
+
+Issue #80 repairs a measured owner coupling from the original Issue #76 live
+Goal. Evi obtained a successful exact post-change assertion after correcting a
+Git untracked-directory display assumption, but outcome acceptance still
+failed because GoalRuntime recognized verification only when EffectPolicy had
+classified the command as `run_local_verification`. The bounded shell was
+correctly classified as `execute_dynamic_code` for safety, so a safety label
+incorrectly controlled correctness evidence.
+
+EffectPolicy remains the only owner of allow, confirm, or deny based on the
+actual command, target, reversibility, and exposure. A command purpose or
+model-declared side-effect label never widens that authority; dynamic code
+still requires exact-effect confirmation. Correctness evidence is now a
+separate harness-owned observation role. `command.run` verification purpose
+creates `local_verification` only when the process succeeds and fixed pre/post
+Git HEAD plus bounded semantic-index and Git-visible content fingerprints are
+identical. The content snapshot includes tracked and untracked files, so a
+rewrite of an already-dirty path cannot pass merely because porcelain status is
+unchanged. Missing, over-limit, unsupported, or changed snapshots fail closed,
+and newly observed Git paths or commits remain typed recovery evidence where
+available. Dispatch reserves the existing
+200-path-plus-one-commit recovery envelope before this potentially dynamic
+command. Purpose or command output alone is not proof.
+
+GoalRuntime uses that role for post-change acceptance and evidence pinning.
+New observations carry `verification_role_v1` semantics even when no role is
+granted; EffectPolicy classification can no longer write correctness evidence.
+Historical observations without that marker and already classified as
+`run_local_verification` remain compatible without rewriting event history.
+Bounded receipt capacity becomes 402 identities, exactly one maximum
+execution envelope plus one maximum recovery envelope; retaining 256 would
+deadlock a valid 200-path Codex result before its required verification. This
+decision adds no verifier service, evidence graph, shell parser, command
+authority, or approval bypass.
+
+## 2026-07-18 Standalone Live GoalRuntime Ingress
+
+Issue #82 activates the first legacy ingress after the explicit Goal CLI. The
+standalone `live --task` command now creates one GoalRuntime identity and issues
+exactly one bounded Continue to that same identity. It returns the canonical
+Goal view; soft budget, blocked cognition, verification failure, pause, or
+effect confirmation remains a state of the same Goal and is addressed through
+`goal continue` or `goal resume`.
+
+The live ingress owns no lifecycle, retry, completion, evidence, learning, or
+compatibility state. It does not convert GoalRuntime output into the legacy
+`RunResult` shape or invoke more tranches automatically. Query/todo discipline
+would write the legacy working/completion path, so explicit `--query-todo` or
+`--discipline query_todo` fails before GoalRuntime construction rather than
+being ignored or dual-written.
+
+This decision deliberately does not delete `LiveAgentRunner`: Web, IM, daemon,
+and the resident task worker still share that runner with runtime queue,
+session/run, and channel-outbox owners. Their later cutover must retire those
+orchestration seams by complete Goal identity; a compatibility mapper that
+writes both stores is not an acceptable intermediate architecture.
+
+## 2026-07-18 Web GoalRuntime Ingress
+
+Issue #84 activates the second whole-ingress cutover. Standalone and
+daemon-hosted Web share one runtime-owned Goal ingress port: each new Web task
+issues one Start and exactly one bounded Continue, then returns the canonical
+`GoalView` and same-goal Continue/Resume guidance.
+
+A new Web Goal writes no runtime task queue, task-run, channel-outbox, legacy
+completion, episode, iteration, or synchronous-learning state. Historical
+session, inbox, run, and queue views remain readable. Legacy
+`runtime_session_id` and `execution_contract` submission fields fail closed;
+they are not silently ignored or mapped into Goal authority. In a Web-only
+daemon, the legacy runner and task-queue worker are not constructed. When IM
+is enabled, those components remain explicitly owned by the deferred legacy IM
+path until its own whole-ingress cutover.
+
+The Web ingress does not automatically run additional tranches or create a
+replacement Goal. An active or paused result is continued through the existing
+Goal lifecycle. This decision adds no Goal scheduler, queue projection,
+provider-specific Goal adapter, compatibility result mapper, service, database,
+or dependency.
+
+## 2026-07-18 Runtime-Session IM Goal Ingress
+
+Issue #86 activates the provider-neutral runtime-session cutover as the next
+complete ingress identity. A bound Feishu, Telegram, or Discord session that
+receives `/run` or an accepted mention starts one canonical Goal and executes
+exactly one bounded Continue. Session binding, inbox append, trigger
+classification, busy/ack handling, and direct provider replies remain channel
+adapter responsibilities; GoalRuntime alone owns execution lifecycle,
+continuity, verification, and receipt.
+
+A new runtime-session Goal writes no legacy task queue, task-run,
+provider-neutral channel-outbox, completion, episode, iteration, SOP, or skill
+state. Provider-specific outbound delivery evidence records canonical Goal and
+receipt identity rather than creating a second task owner. Historical queue,
+task-run, and outbox records remain readable; the live activation inventory had
+no queued/running task and no queued outbox row, so resident legacy task-queue
+recovery is not kept alive for new session work.
+
+Feishu private-chat execution, bounded conversation history, follow-up queue,
+and operator commands form a separate provider-specific ingress. They remain
+explicitly legacy for a later whole-ingress child. Until then, only the Feishu
+scenario may construct a clearly named legacy private runner. This decision
+does not add automatic Goal continuation, a queue-backed Goal projection,
+provider SDK behavior, a channel-session-to-Goal mapper, or a new service.
+
+## 2026-07-16 One Persistent Self, Many Doors, And Context-Placed Execution
+
+The operator accepts Evi's long-term product identity as a local-first general
+agent brain, not a new universal workbench, a shallow model/agent aggregator,
+or one independent personality per workspace or channel. One persistent Evi
+self owns durable goals, raw memory, result acceptance, and learning judgment.
+Central Web, Desktop, IM mentions, IDEs, browsers, CLI, APIs, connectors, and
+host tools are contextual doors into that same self; they do not own parallel
+runtime state.
+
+Local-first means self sovereignty and a trusted default home, not forced
+all-local execution. The task's authoritative context, credentials, data
+gravity, availability, and environment determine whether a run executes on the
+local machine, a remote node, a hosted specialist agent, or a vertical SaaS.
+Those targets are workers or execution environments. They may receive bounded
+task context and checkpoints, but they do not become another Evi self. The
+parent Evi retains goal continuity, outcome attribution, completion acceptance,
+and capability learning.
+
+Capability management is split into infrastructure and intelligence. Catalogs,
+source identity, conflict checks, immutable projection, activation receipts,
+and rollback make assets portable and operable; they are not evidence that Evi
+has learned. Learning requires verified outcomes and a Tool Competence Model
+that captures when, where, and under which conditions to use a tool, connector,
+specialist agent, execution environment, Skill, or SOP, including confidence,
+failure, fallback, revision, and retirement evidence.
+
+Broad trusted local authority does not remove the harness. In this product
+direction, the harness is also the experiment record for task identity,
+compiled context, selected environment and capabilities, outcome contract,
+evidence, attribution, and recovery. Permission breadth is not a learning or
+completion metric.
+
+This decision supersedes the earlier long-term dependency order that placed a
+full Capability Manager MVP before Cognitive Continuity. After current gates,
+the preferred direction is Session Runtime Foundation, then Cognitive
+Continuity and Outcome Attribution, then Capability Intelligence and Tool
+Mastery, then Multi-Environment Delegated Execution, and finally broad Presence
+and Product Expansion. Thin real-world entry surfaces may continue earlier to
+produce evidence. Already accepted v0.2 capability-infrastructure work still
+finishes its own gates; this decision does not rewrite the implemented v0.1
+contract, expand v0.2 scope, or activate a new implementation slice.
+
+## 2026-07-16 Engineering Governance And Delivery Truth
+
+Evi uses subject-specific sources of truth instead of one document that tries
+to own every layer. Accepted product vision owns the long-term north star;
+version specifications and GitHub Issues/Projects own accepted direction,
+milestones, priority, and delivery status; Trellis decisions, specifications,
+and tasks own bounded repository implementation; code, tests, and live runtime
+evidence own current implemented fact. A planning artifact must never be used
+as proof that a capability exists.
+
+Material engineering work starts from an accepted GitHub Issue and one linked
+Trellis task per repository. The task binds scope, non-goals, owner, Decision
+Owner, authority, dependencies, branch/worktree, acceptance, verification,
+rollback, and evidence. A direct Trellis task is allowed for an explicitly
+operator-directed governance bootstrap, an urgent repair, or a truly small
+maintenance change, but it must say why no Issue exists and must not silently
+expand product direction.
+
+The default engineering strategy is the smallest architecture-consistent
+change: inspect real code and runtime state, reuse existing tools and adapters,
+avoid duplicate mechanisms and invented data, and keep Evi's core compact.
+GenericAgent and projects under `Common/github_evi` are evidence-bearing
+references, not standards. Their ideas must be evaluated against Evi's current
+contract, provenance, maintenance cost, and verification surface before reuse.
+
+The full task contract and delivery gates are defined in
+`.trellis/spec/engineering-delivery-contract.md`. Stable policies belong in
+that specification and this decision log; transient progress stays in the
+linked Issue, Trellis task, branch, pull request, checks, and runtime evidence.
+Codex or other implementation skills may execute this contract by reference,
+but must not copy it into a competing policy source.
+
+## 2026-07-16 Develop Autonomy And Main Release Gate
+
+The operator authorizes Evi to complete the full local and integration loop for
+accepted work: create and maintain a feature branch, commit, push, open a pull
+request, and merge the verified pull request into `develop` without a separate
+per-merge approval. `develop` remains pull-request-only so Issue, Trellis, diff,
+verification, and merge evidence stay connected; direct push, force push, and
+branch deletion are not authorized.
+
+`main` remains the only human merge gate. Evi may prepare a release pull request
+from `develop` to `main`, but merging it requires an explicit operator
+instruction for that release. Direct push, automatic merge, Agent bypass,
+force push, and deletion remain prohibited. Version tags and GitHub Releases
+also require explicit operator authorization after the release verification
+contract passes.
+
+This decision changes delivery authority, not runtime mutation authority or
+completion standards. A failed check, unresolved blocker, scope drift, or
+missing evidence still prevents autonomous merge to `develop`. GitHub rulesets
+and CI should enforce the policy when those repository controls are added; the
+policy applies even before enforcement exists.
+
+## 2026-07-16 Dynamic Authority And Decision Owner Boundary
+
+The operator confirms that Evi's permissions and boundaries are dynamic. They
+are not a permanent allow/deny table: the appropriate Decision Owner may adapt
+local boundaries as tasks, evidence, risk, reversibility, and recommended
+practice change.
+
+A model proposal or successful outcome is evidence for that decision, not the
+decision itself. Every material boundary override must identify its Decision
+Owner, authority basis, superseded rule or task constraint, bounded scope,
+evidence and risk, verification, rollback or retirement path, and re-evaluation
+or expiry condition. Missing lineage means the override is unresolved; it does
+not prove that the action is permanently forbidden or silently authorized.
+
+Local, reversible evolution remains autonomous under the standing local
+mission. Mission changes, unresolved operator ownership, secret/private-data
+egress, public or out-of-flow external communication, and destructive remote
+or otherwise irreversible effects remain operator-owned. Runtime enforcement
+may be implemented incrementally, but stable soul, repository instructions,
+runtime contracts, and local-learning guidance must all preserve this dynamic
+Decision Owner rule.
+
+## 2026-07-16 v0.2 Multi-Node Evolution And LuBan Registry
+
+The operator accepts v0.2 as a federated, single-user, multi-node evolution
+direction. Runtime execution, raw memory, secrets, queues, working state, and
+activation state remain node-local. Multi-node does not mean shared runtime
+state or a hosted control plane.
+
+LuBan will become a private Git repository and the canonical registry for
+accepted reusable agent assets, including skills, prompts, reusable SOPs,
+profiles, instruction templates, governed identity overlays, shared knowledge
+packs, and cross-agent policies. LuBan stores typed bodies, metadata,
+provenance, and version history. It does not decide usage, install assets,
+orchestrate nodes, or own runtime state.
+
+Evi is the primary v0.2 agent. Evi owns local incubation, autonomous
+evidence-backed review, LuBan proposals, compatibility and selection judgment,
+node-local activation, outcome observation, revision, retirement, and rollback.
+`skill-manager` remains a reference for implementation techniques only and is
+not a standard or required dependency.
+
+GitHub Issues and Projects are the direction and Kanban surface. Trellis owns
+bounded implementation tasks after direction is accepted. Evi's web console
+owns runtime/evidence inspection and must not duplicate GitHub planning.
+
+This decision supersedes the v0.1 prohibition on designing multi-machine skill
+sharing for v0.2 work only. It does not rewrite the released v0.1 contract or
+claim that v0.2 is implemented. The implementation boundary is
+`.trellis/spec/v0.2-multi-node-evolution.md` and the stable design is
+`docs/V0.2_MULTI_NODE_EVOLUTION.md`.
+
 ## 2026-06-29 Scope Grilling
 
 1. The first version is local-only and single-machine.

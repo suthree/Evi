@@ -27,6 +27,56 @@ The first version does not support:
 - cross-node conflict handling
 - compatibility promises for external runtimes
 
+Public discovery is not local learning. The GitHub Discovery Radar may retain
+only bounded, untrusted repository identifiers and provenance for an explicit
+business need. Its reports stay outside default context, Opportunity Backlog,
+SOP/skill/active-vault paths, and LuBan. A signal cannot itself be drafted,
+audited, promoted, installed, activated, or treated as a reusable procedure.
+Those effects require a separately governed Capability Candidate with evidence
+of business linkage, bounded probing, verification, risk, and retirement.
+
+## Approved v0.2 Extension
+
+v0.2 does not turn the local active vault into a shared vault. It adds a
+separate promotion boundary:
+
+```text
+node-local evidence and active vault
+  -> sanitized reusable candidate
+  -> LuBan branch or pull request
+  -> accepted private LuBan commit
+  -> independent node selection and activation
+```
+
+LuBan owns accepted reusable assets; each node continues to own its active
+vault, raw episode memory, semantic-memory working set, usage telemetry, and
+activation state. Local promotion means usable on the current node. Shared
+promotion is a distinct external Git effect with provenance, sensitivity,
+compatibility, verification, and retirement evidence.
+
+Raw episodes, conversations, checkpoints, queues, secrets, and runtime
+databases must never be exported. Only deliberately scoped and redacted
+semantic summaries may become LuBan knowledge packs. See
+`docs/V0.2_MULTI_NODE_EVOLUTION.md` for the target lifecycle and acceptance
+contract.
+
+### Implemented v0.2 slice: deterministic skill source conflicts
+
+Production skill discovery checks the node-local active vault and only
+explicitly configured read-only projections. Repository `vault/` and `skills/`
+directories are development fixtures, never implicit production seed roots.
+Same-name packages with identical raw-content SHA-256 hashes resolve to one
+deterministic registry entry and keep every source, path, and hash in
+`provenance`. Same-name packages with different hashes fail closed with a
+diagnostic that identifies each source and path. Neither modification timestamps
+nor filesystem discovery order select a winner.
+
+This slice does not parse the LuBan typed catalog or distinguish accepted,
+inbox, and retired LuBan lifecycle paths. A project skill root must therefore
+be a read-only projection containing only already-selected consumable skill
+packages; the LuBan repository root is not a safe direct discovery root yet.
+Local promotion continues to write only to the node-local active vault.
+
 ## Standing Local Evolution Authority
 
 Within the accepted local self-growing mission, the runtime may write state,
@@ -41,12 +91,36 @@ and a rollback or retirement path. Explicitly read-only commands remain
 read-only. Secrets, public publishing, private-data disclosure, and destructive
 remote operations are outside this standing local authority.
 
+## Decision Owner For Learning Effects
+
+Local-learning boundaries are dynamic decisions, not a rule that every
+verified `done` run should promote a reusable-looking procedure. The model may
+identify a candidate, but the current learning Decision Owner must resolve the
+task constraint, standing mission, existing skill coverage, evidence quality,
+risk, reversibility, and operator intent before draft, audit, promotion,
+revision, or retirement effects are accepted.
+
+That owner may choose `allow`, `defer`, `ask`, `deny`, or `override`. If a
+current task says not to create or promote learning assets, the default is to
+defer the learning effect. An autonomous override remains possible inside the
+standing local mission, but only when the responsible owner records the
+authority basis, the exact constraint being superseded, bounded scope,
+evidence, verification, rollback or retirement, and a re-evaluation or expiry
+condition. `runtime.promotion_enabled`, a model `propose_sop` action, or task
+success alone is not sufficient override provenance.
+
+If an effect occurs without that decision lineage, preserve the episode and
+append-only event evidence, then retire or roll back the active learning
+artifact through the existing governance path. Until first-class dynamic
+authority records are implemented, treat implicit promotion as unproven and
+use the bounded action/evidence lineage for diagnosis and recovery.
+
 ## Local Active Vault
 
 The active local vault lives under `LOCAL_RUNTIME_HOME`:
 
 ```text
-<LOCAL_RUNTIME_HOME>/vault/
+<LOCAL_RUNTIME_HOME>/vault/evi/
 ├── sop/
 │   ├── drafts/
 │   └── promoted/
@@ -58,8 +132,9 @@ The active local vault lives under `LOCAL_RUNTIME_HOME`:
 ```
 
 Repository `vault/` and `skills/` are seed/dev fixtures. They can provide sample
-skills and test fixtures, but the local active vault is the runtime write target
-for promoted procedures.
+skills and test fixtures only through an explicit development configuration;
+they are not eligible for production discovery. The local active vault is the
+runtime write target for promoted procedures.
 
 ## Skill Package Shape
 
@@ -112,9 +187,11 @@ model proposes SOP
 The model must not claim that a skill has been promoted. Promotion is a harness
 result backed by local evidence.
 
-When `runtime.promotion_enabled` is true, this harness decision may run
-autonomously after verified completion. Operator confirmation is not required
-for each local draft, audit, promotion, revision, or retirement event.
+`runtime.promotion_enabled` defaults to false for a clean node baseline. It may
+be enabled after a verified local promotion/reuse loop. When it is true, this
+harness decision may run autonomously after verified completion. Operator
+confirmation is not required for each local draft, audit, promotion, revision,
+or retirement event.
 
 ## Reuse Before Promotion
 
@@ -155,8 +232,51 @@ registry entry.
 
 Self-iteration work that improves context assembly, harness validation, tool
 boundaries, evidence capture, completion checks, recovery, or operator
-inspection belongs in the runtime contract and Trellis task governance before it
-becomes a local-learning artifact.
+inspection belongs in the runtime contract and the native evolution control
+plane before it becomes a local-learning artifact. For ambiguity or a material
+boundary change, create a bounded `Direction Proposal` through `grill-me`; after
+acceptance, record durable decisions under `docs/adr/` as defined by ADR 0001.
+
+## Capability Experience And Competence
+
+GoalRuntime derives bounded tool competence from direct action observations
+belonging to previously terminal Goals. Tool success/failure is direct execution
+evidence; accepted/abandoned Goal counts are association only, not proof that a
+tool caused the Goal result. The projection changes later cognition guidance but
+persists no new ledger and does not promote an SOP, skill, memory, or identity.
+
+For operator audit, `pnpm run runtime -- goal inspect --goal goal_...` exposes
+bounded local-read metadata for that Goal alongside this shared projection. It
+omits observation bodies and does not create a Capability Profile, add default
+context, or grant capability/effect authority.
+
+A Goal may opt into a structured `read_policy` at Start when an evaluation
+needs exact input confinement. That policy is canonical Goal evidence and is
+enforced before local-read tool execution; it is not inferred from task prose,
+selected references, competence, or a Skill. An absent policy preserves the
+normal dynamic root-bounded reading path.
+
+A separately explicit Start field, `learning_effects: ["propose_sop"]`, exposes
+one **Harness-State Capability** for a supervised Goal. It is not a Tool
+Contract, `file.write_state` route, default capability, Skill, or promotion
+permission. The Goal cognition envelope may then emit exactly one
+`harness_state_action` for `harness.propose_sop` with
+`completion_claim.status=not_done`, a new SOP id, and refs to prior successful
+same-Goal nondelegated canonical observations. GoalRuntime writes only the
+state-root `sop/drafts/*.json` and `sop/drafts/*.md` pair, records a distinct
+canonical Harness-state observation, and remains nonterminal.
+
+Before a normal Goal outcome can describe that delivery, Harness independently
+re-reads the draft, validates the refs and draft status, and rejects a related
+audit, promotion, or active-vault artifact. The accepted receipt may say
+“draft delivered”; it cannot claim a capability, SOP, or Skill is promoted.
+No opt-in is inferred from objective prose, a Tool Operation Protocol, prior
+experience, a model preference, or the existence of a draft.
+
+Competence stays provisional with sparse evidence, records recent failure and
+fallback guidance, and yields to current canonical evidence. Durable procedural
+promotion still requires the normal reuse, audit, regression, freshness,
+revision, and retirement gates in this document.
 
 ## CLI
 
@@ -187,16 +307,16 @@ events when the registry snapshot is already current.
 Rebuild and query episode evidence:
 
 ```bash
-pnpm run runtime -- memory sync --state-root .runtime/state
-pnpm run runtime -- memory search --query "feishu" --state-root .runtime/state
-pnpm run runtime -- memory session --session session_... --state-root .runtime/state
-pnpm run runtime -- memory recap --session session_... --state-root .runtime/state
-pnpm run runtime -- memory archive --state-root .runtime/state
-pnpm run runtime -- memory archives --state-root .runtime/state
-pnpm run runtime -- memory archive-health --state-root .runtime/state
-pnpm run runtime -- memory layers --state-root .runtime/state
-pnpm run runtime -- memory dream --state-root .runtime/state
-pnpm run runtime -- memory dreams --state-root .runtime/state
+pnpm run runtime -- memory sync --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory search --query "feishu" --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory session --session session_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory recap --session session_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archives --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory archive-health --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory layers --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dream --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory dreams --state-root ~/.local-runtime/state/evi
 ```
 
 The MemoryStore index is local and rebuildable. It does not replace the episode
@@ -240,8 +360,9 @@ The design goal is continuity without authority drift:
 
 Dream consumes facts and verified outcomes; semantic memory remains the
 durable fact layer, episode/session archives remain recall evidence, SOPs and
-skills remain procedural memory, and iteration outcomes remain completion
-evidence. Dream may recommend which layer deserves attention next, but cannot
+skills remain procedural memory, current OutcomeReceipts remain Goal completion
+evidence, and historical iteration outcomes remain migration evidence. Dream
+may recommend which layer deserves attention next, but cannot
 promote, execute, reconcile state roots, or prove completion.
 
 External implementations inform this separation but do not define
@@ -289,64 +410,17 @@ registry fields such as source, status, trust level, refs, version, and usage
 counters. They do not rewrite registry metadata, mutate skill files, write the
 active vault, invoke the model, or run shell commands.
 
-Operators can inspect self-evolution maturity through
-`governance scorecard`. The scorecard reads only capability catalog metadata,
-memory-layer diagnostics, accepted dream snapshots, the SOP evolution ledger,
-and the Opportunity Backlog. It classifies current progress across core project design
-design, basic runtime substrate, general-agent delegation, SOP/skill/memory
-loop, and memory/dream direction. Its review lenses are advisory context, not
-delegated agents, and the command never promotes SOPs, writes skills, invokes
-models, or proves completion.
-The scorecard also emits `default_next_slice`, `next_core_basic_slice`, and
-`next_slices`. `default_next_slice` is the bounded core/basic planning outlet by
-default. `next_slices` stays read-only, all-dimension prioritization context
-derived from dimension stage, score, and layer; it may surface local-learning
-SOP follow-ups first, but those hints must not redefine the agent's core
-capability direction or execute the slice.
-`governance project-design` exposes the core project design contract. It
-keeps goal intake, capability layering, contract design, execution planning,
-verification review, and learning persistence as the reusable loop before a
-project slice is treated as durable progress. It is read-only and does not
-execute tools, create projects, spawn experts, promote memories, or prove
+Legacy `governance scorecard`, `governance project-design`, and
+`governance iterations` commands remain available for on-demand historical
+diagnosis. They do not enter resident context, select active engineering work,
+or own current completion. Do not add new learning or promotion dependencies
+to them; current runtime experience begins with canonical Goal events and one
+OutcomeReceipt. Existing historical state remains readable until a later
+bounded retirement task measures its remaining callers.
+
+`governance experts` remains a read-only advisory contract and cannot spawn
+experts, call models, execute tools, mutate state, promote learning, or claim
 completion.
-Verified self-evolution iteration outcomes can also appear there as read-only
-project-design artifacts. They are reusable project design lessons, not state
-writes, SOP drafts, skill promotion, or future completion proof.
-If the latest reusable artifact is core/basic, `project-design` also emits
-`next_core_basic_plan`, an advisory planning packet with phase gates,
-acceptance criteria, verification commands, non-goals, selection readiness, and
-completion-audit seeds. It is not an execution plan, backlog write, SOP draft,
-or completion claim. Its `acceptance_trace` can map each criterion to required
-verification entrypoints and outcome claim prefixes, but that trace is review
-guidance only and does not promote SOPs, skills, memory, or dreams.
-Operators can record the layer discipline for a major iteration through
-`governance record-iteration`. The record declares whether the work is
-`core_runtime`, `basic_entrypoint`, `local_learning`, `application_slice`, or
-`boundary`, plus owner surface, proposed slice, evidence refs, verification
-commands, non-goals, and advisory expert roles. `governance iterations` lists
-or inspects these records. They are context and governance evidence only; they
-do not execute work, write repo files, write the active vault, promote SOPs, or
-prove completion.
-`governance experts` exposes the matching read-only expert orchestration
-contract. It defines advisory roles, scheduling boundaries, and main-thread
-verification authority; it does not spawn expert agents, call multiple models,
-execute tools, mutate state, or prove completion.
-The same contract includes delegation gates for core-boundary, runtime-health,
-learning-persistence, and delegation-budget reviews. Each gate names trigger,
-required inputs, expected output, rejection cases, and main-runtime completion
-authority before advice can affect an iteration.
-`governance experts --gate <gate-id>` turns one gate into a read-only advisory
-plan packet. The packet can guide a review, but it cannot call experts, execute
-recommendations, promote memory/SOP/skills, or prove completion.
-If an active dream snapshot exists, low-maturity scorecard dimensions can become
-proposal-only `governance gaps` items. The general-agent delegation gap is
-suppressed once `delegate_agent` exists in the harness action catalog; any
-future durable SOP or skill still moves through the normal review, audit, and
-promotion gates.
-Verified self-evolution iteration outcomes can also become SOP-candidate gaps
-when no state-only SOP draft cites the iteration yet. This preserves reusable
-learning pressure without auto-drafting, auditing, promoting, accepting memory,
-or writing the active vault.
 
 Operators can also inspect active-vault skill registry health through
 `skills health`, `skills health --skill-name <name>`, Feishu `/skill health`,
@@ -546,9 +620,9 @@ or command strings, and it does not replay or authorize another execution.
 Record and inspect memory proposal candidates without promotion:
 
 ```bash
-pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --scope local --artifact-ref memory/episodes/events.jsonl --state-root .runtime/state
-pnpm run runtime -- memory candidates --state-root .runtime/state
-pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime/state
+pnpm run runtime -- memory propose-candidate --summary "..." --content "..." --scope local --artifact-ref memory/episodes/events.jsonl --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory candidates --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/memory candidates` and
@@ -559,8 +633,8 @@ request confirmations, or write the active vault.
 Accept a reviewed memory candidate through an explicit local confirmation gate:
 
 ```bash
-pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root .runtime/state
-pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime/state
+pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/session_...-memory-proposal-r1-0.json --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root ~/.local-runtime/state/evi
 ```
 
 The request step writes a pending confirmation and marks the candidate as
@@ -575,8 +649,8 @@ revise skills, call the model, or publish externally.
 Inspect memory candidate confirmations:
 
 ```bash
-pnpm run runtime -- memory confirmations --state-root .runtime/state
-pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root .runtime/state
+pnpm run runtime -- memory confirmations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory confirmations --confirmation memory/semantic/confirmations/memory_confirmation_123.json --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/memory confirmations` and
@@ -589,8 +663,8 @@ channel operator artifacts.
 Inspect accepted semantic memory:
 
 ```bash
-pnpm run runtime -- memory accepted --state-root .runtime/state
-pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/semantic_memory_123.json --state-root .runtime/state
+pnpm run runtime -- memory accepted --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- memory accepted --semantic memory/semantic/accepted/semantic_memory_123.json --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/memory accepted` and
@@ -601,7 +675,7 @@ MemoryStore indexes, write state, or call the model.
 Inspect aggregate governance status:
 
 ```bash
-pnpm run runtime -- governance status --state-root .runtime/state
+pnpm run runtime -- governance status --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/governance` and
@@ -618,7 +692,7 @@ render raw artifacts, run shell commands, or call the model.
 Inspect effective runtime config without reading secrets:
 
 ```bash
-pnpm run runtime -- config --state-root .runtime/state
+pnpm run runtime -- config --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/config`, `/runtime config`, and
@@ -633,7 +707,7 @@ or restart the service.
 Inspect SOP and skill evolution across local state and the active vault:
 
 ```bash
-pnpm run runtime -- governance evolution --state-root .runtime/state
+pnpm run runtime -- governance evolution --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/evolution` and
@@ -666,9 +740,9 @@ or local operator commands.
 Run a proposal-only background review:
 
 ```bash
-pnpm run runtime -- review background --state-root .runtime/state
-pnpm run runtime -- review background --query "skill promotion" --state-root .runtime/state
-pnpm run runtime -- review background --session session_... --state-root .runtime/state
+pnpm run runtime -- review background --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --query "skill promotion" --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review background --session session_... --state-root ~/.local-runtime/state/evi
 ```
 
 Background review writes `autonomy/reviews/*.json` and `autonomy/reviews/*.md`
@@ -683,8 +757,8 @@ decision.
 Inspect recent background review reports without rerunning background review:
 
 ```bash
-pnpm run runtime -- review reports --state-root .runtime/state
-pnpm run runtime -- review reports --review background_review_... --state-root .runtime/state
+pnpm run runtime -- review reports --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review reports --review background_review_... --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/review reports` and
@@ -697,7 +771,7 @@ vault, or call the model.
 Plan follow-up actions for one review proposal without executing them:
 
 ```bash
-pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command returns a dry-run plan with suggested actions, optional commands,
@@ -711,7 +785,7 @@ evidence.
 Execute a read-only follow-up action:
 
 ```bash
-pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command recomputes the dry-run plan and executes only a selected
@@ -722,7 +796,7 @@ audit, promote, revise a skill, collect evidence, or rerun background review.
 Run one self-evolution review tick:
 
 ```bash
-pnpm run runtime -- review tick --query "skill promotion" --state-root .runtime/state
+pnpm run runtime -- review tick --query "skill promotion" --state-root ~/.local-runtime/state/evi
 ```
 
 This command runs background review, plans follow-up actions for each proposal,
@@ -760,26 +834,26 @@ Inspect completion verification history without reading raw completion
 artifacts:
 
 ```bash
-pnpm run runtime -- review completions --state-root .runtime/state
-pnpm run runtime -- review completions --completion completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review traces --state-root .runtime/state
-pnpm run runtime -- review traces --trace completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review replay-audit --trace completion_verification_... --state-root .runtime/state
-pnpm run runtime -- review replays --state-root .runtime/state
-pnpm run runtime -- review replays --replay harness_replay_... --state-root .runtime/state
+pnpm run runtime -- review completions --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review completions --completion completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review traces --trace completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review replay-audit --trace completion_verification_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review replays --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review replays --replay harness_replay_... --state-root ~/.local-runtime/state/evi
 ```
 
 Inspect selected-skill outcome history without reading raw skill or run
 artifacts:
 
 ```bash
-pnpm run runtime -- skills outcomes --state-root .runtime/state
-pnpm run runtime -- skills outcomes --outcome skill_usage_... --state-root .runtime/state
-pnpm run runtime -- skills health --state-root .runtime/state
-pnpm run runtime -- skills health --skill-name skill-name --state-root .runtime/state
-pnpm run runtime -- skills drifts --state-root .runtime/state
-pnpm run runtime -- skills drifts --skill-name skill-name --state-root .runtime/state
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
+pnpm run runtime -- skills outcomes --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills outcomes --outcome skill_usage_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills health --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills health --skill-name skill-name --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills drifts --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills drifts --skill-name skill-name --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/skills` and
@@ -792,8 +866,8 @@ registry, write the active vault, run review, or render raw artifacts.
 Inspect recent review tick history without rerunning autonomous review:
 
 ```bash
-pnpm run runtime -- review ticks --state-root .runtime/state
-pnpm run runtime -- review ticks --tick review_tick_... --state-root .runtime/state
+pnpm run runtime -- review ticks --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review ticks --tick review_tick_... --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/review ticks` and
@@ -817,10 +891,10 @@ or execute the focused follow-up.
 Inspect or gate an inbox item:
 
 ```bash
-pnpm run runtime -- review inbox --state-root .runtime/state
-pnpm run runtime -- review inbox --item review_inbox_... --state-root .runtime/state
-pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root .runtime/state
-pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root .runtime/state
+pnpm run runtime -- review inbox --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review inbox --item review_inbox_... --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review decide-inbox --item review_inbox_... --status deferred --reason "..." --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... --state-root ~/.local-runtime/state/evi
 ```
 
 The inbox request path reads the current inbox item, recomputes the referenced
@@ -855,7 +929,7 @@ command.
 Request confirmation for a mutation follow-up action:
 
 ```bash
-pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root .runtime/state
+pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command recomputes the dry-run plan, selects a mutation action by stable
@@ -867,9 +941,9 @@ active vault, or execute the selected action.
 Inspect follow-up confirmations:
 
 ```bash
-pnpm run runtime -- review confirmations --state-root .runtime/state
-pnpm run runtime -- review confirmations --gate stale --state-root .runtime/state
-pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review confirmations --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --gate stale --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
 ```
 
 Feishu private chat also supports read-only `/review confirmations` and
@@ -883,7 +957,7 @@ artifacts.
 Execute a confirmed mutation follow-up:
 
 ```bash
-pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root .runtime/state
+pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command reads a pending confirmation request, recomputes the follow-up
@@ -904,7 +978,7 @@ telemetry, but both paths stay validation-only.
 Create a state-only SOP draft from an eligible proposal:
 
 ```bash
-pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root .runtime/state
+pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command writes `sop/drafts/*.json` and `sop/drafts/*.md` under the selected
@@ -917,6 +991,12 @@ writes the same state-only SOP draft artifacts and returns their refs as Harness
 State Observations for the next model round. It does not audit, promote, request
 confirmations, write the active vault, or create a skill package.
 
+This live-runner path is separate from the Goal-scoped `harness.propose_sop`
+capability above. The Goal path is available only through explicit Start
+`learning_effects`, accepts only same-Goal nondelegated canonical observation
+ids, records GoalRuntime events rather than episode evidence, and requires a
+later independent delivery check before a normal OutcomeReceipt can close.
+
 `governance evolution`, `governance opportunities`, and Feishu
 `/opportunities` may render a structured next command for draft or promote-ready
 SOP chains. This is copyable operator guidance only; the read surfaces do not
@@ -925,7 +1005,7 @@ run the command.
 Request a confirmation for the current SOP chain next command:
 
 ```bash
-pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review request-sop-confirmation --sop sop_... --state-root ~/.local-runtime/state/evi
 ```
 
 The request writes a pending confirmation under `autonomy/followups/` and
@@ -976,7 +1056,7 @@ the decision.
 Audit a state-only SOP draft:
 
 ```bash
-pnpm run runtime -- review audit-sop --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review audit-sop --sop sop_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command reads `sop/drafts/*.json`, writes `governance/audits/*.json`, and
@@ -986,7 +1066,7 @@ repository, write the active vault, or create a skill package.
 Promote an audited state-only SOP draft into the local active vault:
 
 ```bash
-pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root .runtime/state
+pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command requires a matching `promote` audit verdict and checks recalled
@@ -998,7 +1078,7 @@ evidence. It does not write repository seed vaults or publish externally.
 Rehearse the full SOP promotion/reuse path in a sandbox:
 
 ```bash
-pnpm run runtime -- review rehearse-sop-loop --state-root .runtime/state
+pnpm run runtime -- review rehearse-sop-loop --state-root ~/.local-runtime/state/evi
 ```
 
 This command is an explicit local acceptance gate. It creates a sandbox repo,
@@ -1014,8 +1094,8 @@ commands, or execute from Feishu.
 Inspect active-vault skill registry events directly:
 
 ```bash
-pnpm run runtime -- skills events --state-root .runtime/state
-pnpm run runtime -- skills events --event skill_event_... --state-root .runtime/state
+pnpm run runtime -- skills events --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- skills events --event skill_event_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command reads the configured active-vault
@@ -1026,7 +1106,7 @@ do not correspond to a skill package rewrite.
 Close a historical orphan skill registry event explicitly:
 
 ```bash
-pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root .runtime/state
+pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." --state-root ~/.local-runtime/state/evi
 ```
 
 This command appends a bounded `retired` event to
@@ -1038,7 +1118,7 @@ event, invoke the model, or run shell commands.
 Inspect a SOP self-evolution chain:
 
 ```bash
-pnpm run runtime -- review chain --sop sop_... --state-root .runtime/state
+pnpm run runtime -- review chain --sop sop_... --state-root ~/.local-runtime/state/evi
 ```
 
 This command reads the state SOP draft and append-only episode event log, then

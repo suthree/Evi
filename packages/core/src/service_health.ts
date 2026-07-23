@@ -1,5 +1,9 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
+import {
+  inspectAssetProjectionHealth,
+  type AssetProjectionHealthSummary
+} from "./asset_projection_health.js";
 import { AgentStore } from "./store.js";
 
 const DEFAULT_SERVICE_HEALTH_TARGET = "runtime";
@@ -14,7 +18,7 @@ const SERVICE_LIFECYCLE_REASON_CODES = new Set([
   "heartbeat_stale",
   "runtime_not_running"
 ]);
-const BOUNDARY = "read-only local service health; reads heartbeat, resident loop status, typed content daily job/run metadata, bounded operator notification status/timestamp metadata, state parse diagnostics, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read source file bodies, open browsers, fetch platform state, publish externally, or mutate state";
+const BOUNDARY = "read-only local service health; reads heartbeat, explicitly configured local projection pointer and lock identity metadata, resident loop status, typed content daily job/run metadata, bounded operator notification status/timestamp metadata, state parse diagnostics, latest local opportunity action coverage metadata, autonomy pause state, and bounded repo git identity from .git/HEAD/refs only; does not inspect launchd, read logs, run shell commands, invoke the model, read projected asset or activation-receipt bodies, open browsers, fetch platform state, publish externally, or mutate state";
 const SUPPRESSING_MANUAL_ACTION_SLICES = new Set([
   "external_publish_preflight_contract",
   "post_publish_feedback_capture_contract",
@@ -159,6 +163,7 @@ export interface ServiceHealthResult {
   refs: string[];
   state_parse_errors: ServiceStateParseError[];
   service: ServiceHealthServiceSummary;
+  asset_projection: AssetProjectionHealthSummary;
   operator_notifications: ServiceOperatorNotificationSummary;
   review_tick: {
     state: string;
@@ -361,6 +366,9 @@ export async function getServiceHealth(
   const heartbeatFreshness = serviceHeartbeatFreshness(heartbeat, now, staleAfterMs);
   const activePause = stringField(pauseSignal.record, "status") === "active";
   const runtimeBuild = normalizeRuntimeBuild(recordField(heartbeat.record, "runtime_build"));
+  const assetProjection = await inspectAssetProjectionHealth({
+    projection_root: stringField(heartbeat.record, "asset_projection_root") ?? undefined
+  });
   const channelId = stringField(heartbeat.record, "channel_id") ?? undefined;
   const scenarioId = stringField(heartbeat.record, "scenario_id") ?? undefined;
   const deployment = summarizeDeployment(runtimeBuild, repoHead, {
@@ -427,6 +435,7 @@ export async function getServiceHealth(
     ],
     state_parse_errors: stateParseErrors,
     service,
+    asset_projection: assetProjection,
     operator_notifications: operatorNotifications.summary,
     review_tick: {
       state: stringField(reviewTick.record, "state") ?? "unknown",
@@ -801,6 +810,8 @@ function runtimeSubstrateReasonCodes(result: ServiceHealthResult): string[] {
       return channel.state === "running"
         && (connectionState === "idle" || connectionState === "connecting" || connectionState === "reconnecting");
     }) ? "gateway_inbound_not_ready" : undefined,
+    result.asset_projection.status === "invalid" ? "asset_projection_invalid" : undefined,
+    result.asset_projection.status === "probation" ? "asset_projection_probation" : undefined,
     result.state_parse_errors.length > 0 ? "state_parse_error" : undefined,
     result.review_tick.last_auto_action_status === "blocked" ? "review_tick_auto_action_blocked" : undefined
   ]);
@@ -835,6 +846,20 @@ function serviceHealthAttentionFollowup(
       reason_code: reason,
       summary: "resident runtime was built from a dirty checkout; inspect workspace status before treating the service as clean",
       command: "pnpm run runtime -- workspace status"
+    };
+  }
+  if (reason === "asset_projection_invalid") {
+    return {
+      reason_code: reason,
+      summary: "configured asset projection identity metadata is absent, malformed, or inconsistent; inspect the bounded projection summary before any activation or recovery decision",
+      command: "pnpm run runtime -- service health --target runtime"
+    };
+  }
+  if (reason === "asset_projection_probation") {
+    return {
+      reason_code: reason,
+      summary: "the configured asset projection remains in probation; keep activation and rollback decisions with the applicable owner until its evidence is reviewed",
+      command: "pnpm run runtime -- service health --target runtime"
     };
   }
   if (reason === "autonomy_pause_active") {

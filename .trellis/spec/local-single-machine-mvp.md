@@ -1,5 +1,9 @@
 # Local Single-Machine MVP
 
+Status: implemented v0.1 scope. Preserve this document as the v0.1 contract;
+the approved v0.2 direction is defined in
+`.trellis/spec/v0.2-multi-node-evolution.md`.
+
 ## Purpose
 
 The first version is a local single-machine self-growing agent runtime. It
@@ -326,14 +330,16 @@ state, or production service governance.
 The local service runtime may install one stable deployment supervisor outside
 the replaceable current runtime bundle. It may manage only the local
 next/current/previous slots, readiness and probation state, automatic rollback
-for hard local failures, bounded failure evidence, and one fix-forward task in
-the existing local runtime task queue. It must not invoke a model, edit source,
+for hard local failures, bounded failure evidence, and typed failure/recovery
+observations. Before a candidate is staged, the installed controller must match
+the canonical stable runtime controller; otherwise the request returns
+`controller_handoff_required` without slot mutation. The supervisor must not
+create, resume, or enqueue a repair goal. It must not invoke a model, edit source,
 infer failure from ordinary log text, accept incompatible state migration,
 perform remote deployment, or coordinate another machine. Failed commits are
-not redeployed and one repair chain has a bounded automatic-attempt limit. A
-repair queue item is complete only when state contains a distinct verified
-deployment request linked by `repair_of`; diagnosis-only model output is
-continued at most three times and cannot be recorded as a successful repair.
+not redeployed. A later operator or GoalRuntime decision may request a distinct
+verified fix-forward deployment linked by `repair_of`; deployment recovery
+itself records `goal_action: none`.
 
 The service may attach a configurable local review tick loop for self-evolution
 inbox materialization. It is disabled by default, reports status under the

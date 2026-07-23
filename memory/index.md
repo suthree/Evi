@@ -7,9 +7,12 @@ This file is the compact resident index for the agent. It should stay small enou
 - Stable identity and self-modification policy: `core/soul.md`
 - Memory and recall policy: `core/memory.md`
 - Documentation and evidence router: `docs/INDEX.md`
+- Current module ownership and delegated capability seams: `docs/ARCHITECTURE.md`
 - Runtime object contract, on demand: `docs/RUNTIME_CONTRACT.md`
 - Runtime/reference boundary: `core/runtimes.md`
 - Shared vocabulary: `CONTEXT.md`
+- Accepted long-term product and gated evolution vision: `docs/PRODUCT_VISION.md`
+- Approved v0.2 multi-node asset direction: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
 
 ## Seed Durable Facts
 

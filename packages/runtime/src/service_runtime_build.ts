@@ -11,6 +11,7 @@ export interface ServiceRuntimeBuild {
   source_commit_short?: string;
   source_branch?: string;
   source_is_dirty?: boolean;
+  build_command?: string;
 }
 
 export async function readServiceRuntimeBuild(path: string): Promise<ServiceRuntimeBuild | null> {
@@ -41,7 +42,8 @@ export function normalizeServiceRuntimeBuild(value: unknown): ServiceRuntimeBuil
     source_commit: stringField(value, "source_commit") ?? undefined,
     source_commit_short: stringField(value, "source_commit_short") ?? undefined,
     source_branch: stringField(value, "source_branch") ?? undefined,
-    source_is_dirty: booleanField(value, "source_is_dirty") ?? undefined
+    source_is_dirty: booleanField(value, "source_is_dirty") ?? undefined,
+    build_command: stringField(value, "build_command") ?? undefined
   };
 }
 

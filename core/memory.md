@@ -25,6 +25,19 @@ Durable facts, operator-provided preferences, project conventions, known pitfall
 **Procedural Memory**:
 Reusable methods: SOPs, skills, scripts, playbooks, templates, evaluation cases, and known workflows. These belong in `skills/` or supporting references when they become executable.
 
+**Capability Profile**:
+Scoped, evidence-linked decision support for one tool or delegated agent surface:
+its declared contract and readiness together with observed scope, competence,
+cost, risk, failure modes, fallback guidance, and freshness. It helps choose how
+to use a capability in a later task; it is neither a permission grant, a causal
+claim about Goal completion, a semantic-memory fact, nor a procedural skill.
+
+**Shared Knowledge Pack (v0.2 target)**:
+A deliberately promoted, scoped, redacted semantic summary stored as a
+versioned LuBan asset. It is imported as bounded read-only context. It is not a
+copy of raw episodes, a MemoryStore database merge, or a replacement for
+project-owned documentation.
+
 ## Promotion Criteria
 
 A memory signal should be promoted only when it satisfies most of these:
@@ -80,6 +93,8 @@ Do not store:
 - unverified model guesses
 - broad summaries that erase the evidence needed to audit them
 - project rules that should instead be committed to project documentation or `AGENTS.md`
+- raw episodes, conversations, working checkpoints, or node runtime state
+  intended only for cross-node convenience
 
 ## Relationship to Skills
 

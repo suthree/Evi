@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
   loadAppSecretAuth,
   loadConfig,
+  loadConfigSelectors,
+  loadGoalCognitionConfig,
   loadImageModelConfig,
   loadRuntimeAuthDiagnostics,
   loadRuntimeConfigSummary,
@@ -15,6 +17,49 @@ import {
 const DIRECT_AUTH_API_KEY_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_API_KEY";
 const DIRECT_AUTH_APP_ID_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_FEISHU_APP_ID";
 const DIRECT_AUTH_APP_SECRET_ENV = "AGENT_CONFIG_DIRECT_PRIORITY_FEISHU_APP_SECRET";
+
+test("config selectors expand the shared Evi state-root declaration", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-config-shared-state-"));
+  const configDir = join(root, "config");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: join(root, "home") }),
+      JSON.stringify({ type: "state", root: "~/.local-runtime/state/evi" })
+    ].join("\n") + "\n", "utf8");
+
+    const selectors = await loadConfigSelectors({ configDir });
+    assert.equal(selectors.stateRoot, join(homedir(), ".local-runtime/state/evi"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime config summary rejects relative and unset asset projection roots", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-config-projection-root-"));
+  const configDir = join(root, "config");
+  const unsetEnvironment = "EVI_TEST_UNSET_ASSET_PROJECTION_ROOT";
+  const previousEnvironment = process.env[unsetEnvironment];
+  try {
+    delete process.env[unsetEnvironment];
+    await mkdir(configDir, { recursive: true });
+    for (const assetProjectionRoot of ["projection", `\${${unsetEnvironment}}`]) {
+      await writeFile(join(configDir, "config.jsonl"), [
+        JSON.stringify({ type: "home", root: join(root, "home") }),
+        JSON.stringify({ type: "state", root: join(root, "state") }),
+        JSON.stringify({ type: "runtime", asset_projection_root: assetProjectionRoot })
+      ].join("\n") + "\n", "utf8");
+      await assert.rejects(
+        loadRuntimeConfigSummary({ configDir }),
+        /runtime\.asset_projection_root (must resolve to an absolute path|references unset environment variable)/
+      );
+    }
+  } finally {
+    if (previousEnvironment === undefined) delete process.env[unsetEnvironment];
+    else process.env[unsetEnvironment] = previousEnvironment;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("runtime config summary reports effective non-secret config with source refs", async () => {
   const root = await mkdtemp(join(tmpdir(), "agent-config-summary-"));
@@ -30,8 +75,8 @@ test("runtime config summary reports effective non-secret config with source ref
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
-      JSON.stringify({ type: "vault", mode: "user", active_root: "${LOCAL_RUNTIME_HOME}/vault", seed_roots: ["vault", "skills"] }),
-      JSON.stringify({ type: "runtime", promotion_enabled: true, structured_output: true }),
+      JSON.stringify({ type: "vault", mode: "user", active_root: "${LOCAL_RUNTIME_HOME}/vault/evi", seed_roots: [] }),
+      JSON.stringify({ type: "runtime", promotion_enabled: false, structured_output: true }),
       JSON.stringify({ type: "active_model", model_id: "local-model" }),
       JSON.stringify({ type: "active_image_model", model_id: "local-image-model" }),
       JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
@@ -66,7 +111,8 @@ test("runtime config summary reports effective non-secret config with source ref
       content_creator_metrics_creator_url: "https://creator.xiaohongshu.com/new/note-manager",
       content_creator_metrics_browser_session_name: "local-runtime-test-creator",
       content_creator_metrics_browser_auto_connect: true,
-      content_creator_metrics_browser_cdp_port: "9222"
+      content_creator_metrics_browser_cdp_port: "9222",
+      asset_projection_root: "${LOCAL_RUNTIME_HOME}/projection"
     })}\n`, "utf8");
     await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
       type: "model",
@@ -148,8 +194,17 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.runtime.content_creator_metrics_browser_session_name, "local-runtime-test-creator");
     assert.equal(summary.runtime.content_creator_metrics_browser_auto_connect, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
+    assert.equal("asset_projection_root" in summary.runtime, false);
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
     assert.deepEqual(summary.runtime.defaulted_fields, ["promotion_enabled", "structured_output"]);
+    assert.equal(summary.runtime.promotion_enabled, false);
+    assert.deepEqual(summary.goal_cognition, {
+      provider: "active_model",
+      source_ref: "default:goal_cognition",
+      readiness: "runtime_check_required",
+      timeout_ms: 120000,
+      max_output_chars: 64000
+    });
     assert.equal(summary.active_model.id, "local-model");
     assert.equal(summary.active_model.model, "gpt-test");
     assert.equal(summary.active_model.auth_id, "model-secret");
@@ -168,7 +223,8 @@ test("runtime config summary reports effective non-secret config with source ref
     assert.equal(summary.active_channel.auth_id, "feishu-secret");
     assert.equal(summary.active_channel.followup_queue_size, 6);
     assert.equal(summary.active_scenario.discipline, "query_todo");
-    assert.equal(summary.vault.active_root, join(homeRoot, "vault"));
+    assert.equal(summary.vault.active_root, join(homeRoot, "vault/evi"));
+    assert.deepEqual(summary.vault.seed_roots, []);
     assert.equal(summary.refs.includes("repo:models.jsonl#1"), true);
     const serialized = JSON.stringify(summary);
     assert.doesNotMatch(serialized, /MODEL_SECRET_SHOULD_NOT_APPEAR/);
@@ -250,7 +306,16 @@ test("repo-local ignored config overlays tracked defaults before home and state"
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "config.local.jsonl"), [
       JSON.stringify({ type: "active_model", model_id: "local-model" }),
-      JSON.stringify({ type: "active_channel", channel_id: "local-channel" })
+      JSON.stringify({ type: "active_channel", channel_id: "local-channel" }),
+      JSON.stringify({
+        type: "goal_cognition",
+        provider: "codex_cli",
+        service_tier: "fast",
+        credential_store: "keyring",
+        reasoning_effort: "medium",
+        timeout_ms: 45000,
+        max_output_chars: 32000
+      })
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
       type: "model",
@@ -299,12 +364,71 @@ test("repo-local ignored config overlays tracked defaults before home and state"
     assert.equal(config.model.api_key, "LOCAL_SECRET_SHOULD_NOT_APPEAR");
 
     const summary = await loadRuntimeConfigSummary({ configDir });
+    const goalCognition = await loadGoalCognitionConfig({ configDir });
     assert.equal(summary.active_model.id, "local-model");
     assert.equal(summary.active_model.source_ref, "local:models.local.jsonl#1");
     assert.equal(summary.active_channel.id, "local-channel");
     assert.equal(summary.active_channel.source_ref, "local:settings.local.jsonl#1");
     assert.equal(summary.refs.includes("local:config.local.jsonl#1"), true);
+    assert.deepEqual(summary.goal_cognition, {
+      provider: "codex_cli",
+      service_tier: "fast",
+      credential_store: "keyring",
+      source_ref: "local:config.local.jsonl#3",
+      readiness: "runtime_check_required",
+      reasoning_effort: "medium",
+      timeout_ms: 45000,
+      max_output_chars: 32000
+    });
+    assert.equal(goalCognition.provider, "codex_cli");
+    assert.equal(goalCognition.service_tier, "fast");
+    assert.equal(goalCognition.credential_store, "keyring");
+    assert.equal(goalCognition.source_ref, "local:config.local.jsonl#3");
     assert.doesNotMatch(JSON.stringify(summary), /LOCAL_SECRET_SHOULD_NOT_APPEAR/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("goal cognition summary exposes a missing selected model without resolving auth", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-goal-cognition-gap-"));
+  const configDir = join(root, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  await mkdir(configDir, { recursive: true });
+  await mkdir(stateRoot, { recursive: true });
+  try {
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "missing-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), "", "utf8");
+    const summary = await loadRuntimeConfigSummary({ configDir });
+    assert.equal(summary.goal_cognition.provider, "active_model");
+    assert.equal(summary.goal_cognition.readiness, "missing_active_model");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("goal cognition config rejects unbounded process settings and unsupported reasoning", async () => {
+  const root = await mkdtemp(join(tmpdir(), "agent-goal-cognition-bounds-"));
+  const configDir = join(root, "config");
+  await mkdir(configDir, { recursive: true });
+  try {
+    for (const invalid of [
+      { timeout_ms: 600_001 },
+      { max_output_chars: 1_000_001 },
+      { reasoning_effort: "ultra" }
+    ]) {
+      await writeFile(join(configDir, "config.jsonl"), `${JSON.stringify({
+        type: "goal_cognition",
+        provider: "codex_cli",
+        ...invalid
+      })}\n`, "utf8");
+      await assert.rejects(loadGoalCognitionConfig({ configDir }), /goal_cognition/);
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -322,7 +446,12 @@ test("runtime config update appends safe content daily settings to home config",
     await writeFile(join(configDir, "config.jsonl"), [
       JSON.stringify({ type: "home", root: homeRoot }),
       JSON.stringify({ type: "state", root: stateRoot }),
-      JSON.stringify({ type: "runtime", promotion_enabled: true, structured_output: true })
+      JSON.stringify({
+        type: "runtime",
+        promotion_enabled: true,
+        structured_output: true,
+        asset_projection_root: "${LOCAL_RUNTIME_HOME}/projection"
+      })
     ].join("\n") + "\n", "utf8");
 
     const result = await updateRuntimeConfig({
@@ -386,6 +515,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(result.after.content_daily_publish_enabled, false);
     assert.equal(result.after.content_feedback_refresh_enabled, true);
     assert.equal(result.after.content_feedback_refresh_limit, 3);
+    assert.equal("asset_projection_root" in result.after, false);
     assert.equal(result.boundary.includes("never reads or writes auth.jsonl"), true);
 
     const raw = await readFile(join(homeConfigDir, "config.jsonl"), "utf8");
@@ -397,6 +527,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(JSON.parse(raw).content_feedback_refresh_server_url, "http://localhost:18061/mcp");
     assert.equal(JSON.parse(raw).content_creator_metrics_enabled, true);
     assert.equal(JSON.parse(raw).content_creator_metrics_browser_session_name, "runtime-creator-metrics-test");
+    assert.equal(JSON.parse(raw).asset_projection_root, join(homeRoot, "projection"));
 
     const summary = await loadRuntimeConfigSummary({ configDir });
     assert.equal(summary.runtime.source_ref, "home:config.jsonl#1");
@@ -408,6 +539,7 @@ test("runtime config update appends safe content daily settings to home config",
     assert.equal(summary.runtime.content_feedback_refresh_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_enabled, true);
     assert.equal(summary.runtime.content_creator_metrics_browser_cdp_port, "9222");
+    assert.equal("asset_projection_root" in summary.runtime, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

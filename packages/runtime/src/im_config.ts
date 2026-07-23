@@ -7,7 +7,6 @@ import { loadTelegramChannelConfig } from "./channels/telegram/config.js";
 import type { TelegramChannelConfig } from "./channels/telegram/types.js";
 import { loadDiscordChannelConfig } from "./channels/discord/config.js";
 import type { DiscordChannelConfig } from "./channels/discord/types.js";
-import type { DisciplineMode } from "./runner.js";
 
 export type ImProvider = Extract<RuntimeChannelKind, "feishu" | "telegram" | "discord">;
 
@@ -44,10 +43,6 @@ export interface ImScenarioBase {
   id: string;
   provider: ImProvider;
   channelId: string;
-  modelId: string;
-  discipline: DisciplineMode;
-  replyPolicy: "final_response";
-  concurrency: "per_sender";
   channelDescriptor: {
     id: string;
     kind: ImProvider;
@@ -95,16 +90,10 @@ export async function loadImScenarioConfig(options: ImScenarioLoadOptions = {}):
     throw new Error(`Configured IM scenario ${scenario.id} points to channel ${scenario.channel_id}, not selected channel ${channel.id}.`);
   }
 
-  const modelId = scenario?.model_id ?? selectors.activeModelId;
-  if (!modelId) throw new Error("No model found for IM scenario; set scenario.model_id or active_model.");
   const base: ImScenarioBase = {
     id: scenario?.id ?? `default-${channel.kind}-scenario`,
     provider: channel.kind,
     channelId: channel.id,
-    modelId,
-    discipline: scenario?.discipline ?? "query_todo",
-    replyPolicy: scenario?.reply_policy ?? "final_response",
-    concurrency: scenario?.concurrency ?? "per_sender",
     channelDescriptor: {
       id: channel.id,
       kind: channel.kind,

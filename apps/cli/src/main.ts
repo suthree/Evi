@@ -89,6 +89,7 @@ import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_wo
 import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
 import type { SkillResolverLike } from "../../../packages/core/src/skill_resolver.js";
 import { AgentStore } from "../../../packages/core/src/store.js";
+import { newId } from "../../../packages/core/src/ids.js";
 import { getServiceHealth, type ServiceHealthResult } from "../../../packages/core/src/service_health.js";
 import {
   getContentRun,
@@ -103,7 +104,9 @@ import {
   reviewContentFeedback
 } from "../../../packages/core/src/content_pipeline.js";
 import {
+  DEFAULT_SHARED_STATE_ROOT,
   loadConfig,
+  loadConfigSelectors,
   loadImageModelConfig,
   loadRuntimeConfigSummary,
   updateRuntimeConfig,
@@ -163,24 +166,85 @@ import {
   type ServiceAction,
   type ServiceTarget
 } from "../../../packages/runtime/src/service.js";
+import { runDeploymentCommand } from "./deployment_command.js";
 import {
-  getLocalDeploymentStatus,
-  listLocalDeployments,
-  reportLocalDeploymentFailure,
-  requestLocalDeployment
-} from "../../../packages/runtime/src/deployment.js";
+  canaryErrorEnvelope,
+  executeVNextCanary,
+  type VNextCanaryAction
+} from "./vnext_canary.js";
+import {
+  executeVNextRun,
+  vnextRunErrorEnvelope,
+  type VNextRunAction
+} from "./vnext_run.js";
+import {
+  executeVNextWorker,
+  vnextWorkerErrorEnvelope,
+  type VNextWorkerAction
+} from "./vnext_worker.js";
+import {
+  executeVNextAdaptation,
+  vnextAdaptationErrorEnvelope,
+  type VNextAdaptationAction
+} from "./vnext_adaptation.js";
+import {
+  runGitHubDiscoveryCommand,
+  type GitHubDiscoveryAction
+} from "./github_discovery_command.js";
 import { serveRuntimeDaemon } from "../../../packages/runtime/src/runtime_daemon.js";
 import { StageRunner } from "../../../packages/runtime/src/stage_runner.js";
+import { createConfiguredGoalIngress } from "../../../packages/runtime/src/goal_ingress.js";
 import { startRuntimeWebConsole } from "../../../packages/runtime/src/web_console.js";
 import type {
   ReviewFollowUpConfirmationGateFilter,
   ReviewFollowUpConfirmationRecoveryDecisionStatus,
   ReviewInboxDecisionStatus
 } from "../../../packages/runtime/src/background_review.js";
+import {
+  assertLocalLiveGoalRequest,
+  createLocalGoalRuntime,
+  executeLocalLiveGoalRequest,
+  executeLocalGoalRequest,
+  isLocalGoalAction,
+  type LocalGoalAction
+} from "./goal.js";
+import type { GoalLearningEffect, GoalReadPolicy } from "../../../packages/runtime/src/goal_runtime.js";
 
 interface CliOptions {
   command: string;
+  vnextSurface?: "canary" | "run" | "worker" | "adaptation";
+  vnextCanaryAction?: VNextCanaryAction;
+  vnextCanarySqlite?: string;
+  vnextCanaryBaseUrl?: string;
+  vnextCanaryModel?: string;
+  vnextCanaryApiKeyEnv?: string;
+  vnextCanaryRunId?: string;
+  vnextRunAction?: VNextRunAction;
+  vnextRunId?: string;
+  vnextRunSessionId?: string;
+  vnextWorkerAction?: VNextWorkerAction;
+  vnextWorkerId?: string;
+  vnextAdaptationAction?: VNextAdaptationAction;
+  vnextAdaptationTargetSlot?: string;
+  vnextAdaptationName?: string;
+  vnextAdaptationSummary?: string;
+  vnextAdaptationTriggerConditions: string[];
+  vnextAdaptationSteps: string[];
+  vnextAdaptationExpectedResult?: string;
+  vnextAdaptationVerificationRequirements: string[];
+  vnextAdaptationFailureModes: string[];
+  vnextAdaptationRollbackRule?: string;
+  vnextAdaptationEvidenceRunIds: string[];
+  vnextAdaptationCandidateId?: string;
+  vnextAdaptationEvaluationId?: string;
+  vnextStateRoot?: string;
   task?: string;
+  goalAction?: LocalGoalAction;
+  goalId?: string;
+  goalCommandId?: string;
+  goalConfirmEffectId?: string;
+  goalReadReferences: GoalReadPolicy["references"];
+  goalLearningEffects: GoalLearningEffect[];
   configDir: string;
   repoRoot: string;
   stateRoot?: string;
@@ -197,11 +261,15 @@ interface CliOptions {
   imAction?: "serve";
   daemonAction?: "serve";
   serviceAction?: ServiceAction | "health";
-  deploymentAction?: "request" | "status" | "fail" | "history";
+  deploymentAction?: "request" | "reconcile" | "controller-handoff" | "status" | "fail" | "history";
   deploymentId?: string;
   deploymentRepairOf?: string;
   deploymentVerificationRefs: string[];
   deploymentEvidenceRefs: string[];
+  discoverySource?: "github";
+  discoveryAction?: GitHubDiscoveryAction;
+  discoveryBusinessNeed?: string;
+  discoveryReportId?: string;
   capabilitiesAction?: "catalog" | "acceptance" | "verify-entrypoints";
   workspaceAction?: "status" | "runtime";
   notifyAction?: "queue" | "list";
@@ -1449,7 +1517,36 @@ function bindStateRoot(command: string, stateRoot?: string): string {
 }
 
 export async function main(): Promise<number> {
-  const options = parseArgs(process.argv.slice(2));
+  let options: CliOptions;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    if (isVNextInvocation(process.argv.slice(2))) {
+      const surface = vnextInvocationSurface(process.argv.slice(2));
+      console.log(JSON.stringify(
+        surface === "run"
+          ? vnextRunErrorEnvelope(error, null)
+          : surface === "worker"
+            ? vnextWorkerErrorEnvelope(error, null)
+            : surface === "adaptation"
+              ? vnextAdaptationErrorEnvelope(error, null)
+            : canaryErrorEnvelope(error, null),
+        null,
+        2
+      ));
+      return 1;
+    }
+    throw error;
+  }
+  if (options.command === "vnext") {
+    return options.vnextSurface === "run"
+      ? runVNextRunCommand(options)
+      : options.vnextSurface === "worker"
+        ? runVNextWorkerCommand(options)
+        : options.vnextSurface === "adaptation"
+          ? runVNextAdaptationCommand(options)
+        : runVNextCanaryCommand(options);
+  }
   if (options.command === "doctor") {
     const report = await runDoctor({
       repoRoot: options.repoRoot,
@@ -1524,6 +1621,31 @@ export async function main(): Promise<number> {
     return result.status === "error" ? 1 : 0;
   }
 
+  if (options.command === "goal") {
+    const action = options.goalAction;
+    if (!action) throw new Error("goal requires an action: start, continue, read, inspect, pause, resume, or abandon");
+    if (action !== "start" && (options.goalReadReferences.length > 0 || options.goalLearningEffects.length > 0)) {
+      throw new Error("--read-file, --read-tree, and --learning-effect are valid only with goal start");
+    }
+    const runtime = await createLocalGoalRuntime({
+      repoRoot: options.repoRoot,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
+    const result = await executeLocalGoalRequest(runtime, {
+      action,
+      commandId: options.goalCommandId ?? newId("goal_command"),
+      ...(options.task ? { objective: options.task } : {}),
+      ...(options.goalId ? { goalId: options.goalId } : {}),
+      ...(options.reason ? { reason: options.reason } : {}),
+      ...(options.goalConfirmEffectId ? { confirmEffectId: options.goalConfirmEffectId } : {}),
+      ...(options.goalReadReferences.length > 0 ? { readPolicy: { references: options.goalReadReferences } } : {}),
+      ...(options.goalLearningEffects.length > 0 ? { learningEffects: options.goalLearningEffects } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return 0;
+  }
+
   if (options.command === "notify") {
     const config = await loadConfig({
       configDir: options.configDir,
@@ -1575,7 +1697,6 @@ export async function main(): Promise<number> {
       provider: options.imProvider,
       channelId: options.channelId,
       scenarioId: options.scenarioId,
-      discipline: options.discipline,
       enableIm: options.requireIm,
       enableWeb: options.webEnabled,
       webHost: options.webHost,
@@ -1587,54 +1708,39 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "deployment") {
-    const action = options.deploymentAction ?? "status";
-    const selectors = await resolveServiceConfigSelectors({
-      target: options.serviceTarget,
+    return runDeploymentCommand({
+      action: options.deploymentAction,
       configDir: options.configDir,
-      stateRoot: options.stateRoot
+      repoRoot: options.repoRoot,
+      stateRoot: options.stateRoot,
+      limit: options.limit,
+      serviceTarget: options.serviceTarget,
+      provider: options.imProvider,
+      channelId: options.channelId,
+      scenarioId: options.scenarioId,
+      enableIm: options.requireIm,
+      enableWeb: options.webEnabled,
+      webHost: options.webHost,
+      webPort: options.webPort,
+      deploymentId: options.deploymentId,
+      repairOf: options.deploymentRepairOf,
+      verificationRefs: options.deploymentVerificationRefs,
+      evidenceRefs: options.deploymentEvidenceRefs,
+      reason: options.reason
     });
-    if (action === "request") {
-      const definition = await resolveServiceDefinition({
-        action: "restart",
-        target: options.serviceTarget,
-        configDir: options.configDir,
-        repoRoot: options.repoRoot,
-        stateRoot: selectors.stateRoot,
-        provider: options.imProvider,
-        channelId: options.channelId,
-        scenarioId: options.scenarioId,
-        discipline: options.discipline,
-        enableIm: options.requireIm,
-        enableWeb: options.webEnabled,
-        webHost: options.webHost,
-        webPort: options.webPort
-      }, true);
-      const result = await requestLocalDeployment(definition, {
-        verificationRefs: options.deploymentVerificationRefs,
-        repairOf: options.deploymentRepairOf
-      });
-      console.log(JSON.stringify({ action, ...result }, null, 2));
-      return 0;
-    }
-    if (action === "fail") {
-      const result = await reportLocalDeploymentFailure(selectors.stateRoot, {
-        deploymentId: options.deploymentId,
-        reason: required(options.reason, "deployment fail requires --reason"),
-        evidenceRefs: options.deploymentEvidenceRefs
-      });
-      console.log(JSON.stringify({ action, ...result }, null, 2));
-      return 0;
-    }
-    if (action === "history") {
-      console.log(JSON.stringify({
-        action,
-        boundary: "read-only local deployment history",
-        deployments: await listLocalDeployments(selectors.stateRoot, options.limit)
-      }, null, 2));
-      return 0;
-    }
-    console.log(JSON.stringify({ action, ...await getLocalDeploymentStatus(selectors.stateRoot) }, null, 2));
-    return 0;
+  }
+
+  if (options.command === "discovery") {
+    if (options.discoverySource !== "github") throw new Error("discovery requires source: github");
+    return runGitHubDiscoveryCommand({
+      action: options.discoveryAction,
+      configDir: options.configDir,
+      repoRoot: options.repoRoot,
+      stateRoot: options.stateRoot,
+      limit: options.limit,
+      businessNeed: options.discoveryBusinessNeed,
+      reportId: options.discoveryReportId
+    });
   }
 
   if (options.command === "daemon") {
@@ -1653,14 +1759,12 @@ export async function main(): Promise<number> {
     const config = await loadConfig({
       configDir: options.configDir,
       stateRoot: options.stateRoot,
-      modelId: scenario?.modelId,
-      skipAuth: !options.requireIm
+      skipAuth: true
     });
     await serveRuntimeDaemon({
       repoRoot: options.repoRoot,
       config,
       configDir: options.configDir,
-      discipline: options.discipline === "none" ? scenario?.discipline : options.discipline,
       target: "runtime",
       service: scenario
         ? {
@@ -1689,40 +1793,18 @@ export async function main(): Promise<number> {
 
   if (options.command === "web") {
     if (!Number.isFinite(options.webPort) || options.webPort <= 0) throw new Error("--port must be a positive integer");
-    const readConfig = await loadConfig({
-      configDir: options.configDir,
-      stateRoot: options.stateRoot,
-      skipAuth: true
-    });
+    const readConfig = await loadConfig({ configDir: options.configDir, stateRoot: options.stateRoot, skipAuth: true });
     const store = new AgentStore(resolve(options.repoRoot), readConfig.state.root);
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot: options.repoRoot,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
     const handle = await startRuntimeWebConsole({
       store,
       host: options.webHost,
       port: options.webPort,
-      runTask: async (task, args) => {
-        const runConfig = await loadConfig({
-          configDir: options.configDir,
-          stateRoot: options.stateRoot
-        });
-        const model = new OpenAICompatibleClient(runConfig.model);
-        const runner = new LiveAgentRunner({
-          repoRoot: resolve(options.repoRoot),
-          stateRoot: runConfig.state.root,
-          config: runConfig,
-          configDir: options.configDir,
-          model,
-          discipline: options.discipline
-        });
-        return runner.runTask(args.runtimeSessionId
-          ? [
-            "Runtime session task submitted from the local web console.",
-            `Runtime session ID: ${args.runtimeSessionId}`,
-            "",
-            "Task:",
-            task
-          ].join("\n")
-          : task);
-      }
+      goalIngress
     });
     console.log(`Runtime web console listening at ${handle.url}`);
     await new Promise(() => undefined);
@@ -1730,18 +1812,21 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "live") {
-    const config = await loadConfig({ configDir: options.configDir, stateRoot: options.stateRoot });
-    const stateRoot = config.state.root;
-    const model = new OpenAICompatibleClient(config.model);
-    const runner = new LiveAgentRunner({
-      repoRoot: resolve(options.repoRoot),
-      stateRoot,
-      config,
-      configDir: options.configDir,
-      model,
+    assertLocalLiveGoalRequest({
+      objective: options.task,
       discipline: options.discipline
     });
-    const result = await runner.runTask(required(options.task, "--task is required"));
+    const runtime = await createLocalGoalRuntime({
+      repoRoot: options.repoRoot,
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
+    const result = await executeLocalLiveGoalRequest(runtime, {
+      objective: options.task,
+      discipline: options.discipline,
+      startCommandId: newId("goal_command"),
+      continueCommandId: newId("goal_command")
+    });
     console.log(JSON.stringify(result, null, 2));
     return 0;
   }
@@ -2141,7 +2226,11 @@ export async function main(): Promise<number> {
   }
 
   if (options.command === "show-events") {
-    const store = new AgentStore(resolve(options.repoRoot), options.stateRoot ?? ".runtime/state");
+    const selectors = await loadConfigSelectors({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot
+    });
+    const store = new AgentStore(resolve(options.repoRoot), selectors.stateRoot);
     const path = store.statePath("memory/episodes/events.jsonl");
     const raw = await readFile(path, "utf8");
     const rows = raw.trim().split("\n").filter(Boolean).slice(-options.limit);
@@ -2957,6 +3046,122 @@ export async function main(): Promise<number> {
   return 2;
 }
 
+async function runVNextCanaryCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextCanaryAction ?? null;
+  try {
+    if (!action) throw new Error("vnext requires explicit canary submit, continue, or inspect action.");
+    const result = await executeVNextCanary({
+      action,
+      sqlite: options.vnextCanarySqlite ?? "",
+      ...(options.task ? { task: options.task } : {}),
+      ...(options.vnextCanaryRunId ? { run_id: options.vnextCanaryRunId } : {}),
+      ...(options.vnextCanaryBaseUrl ? { base_url: options.vnextCanaryBaseUrl } : {}),
+      ...(options.vnextCanaryModel ? { model: options.vnextCanaryModel } : {}),
+      ...(options.vnextCanaryApiKeyEnv ? { api_key_env: options.vnextCanaryApiKeyEnv } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.canary.status === "failed" || result.canary.status === "error" ? 1 : 0;
+  } catch (error) {
+    console.log(JSON.stringify(canaryErrorEnvelope(error, action, options.vnextCanaryApiKeyEnv), null, 2));
+    return 1;
+  }
+}
+
+async function runVNextRunCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextRunAction ?? null;
+  try {
+    if (!action) throw new Error("vnext run requires explicit submit, continue, or inspect action.");
+    const result = await executeVNextRun({
+      action,
+      ...(options.task ? { task: options.task } : {}),
+      ...(options.vnextRunId ? { run_id: options.vnextRunId } : {}),
+      ...(options.vnextRunSessionId ? { session_id: options.vnextRunSessionId } : {}),
+      ...(options.vnextStateRoot ? { state_root: options.vnextStateRoot } : {}),
+      config_dir: options.configDir,
+      repo_root: options.repoRoot
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.vnext.status === "failed"
+      || result.vnext.status === "error"
+      || result.vnext.status === "not_found"
+      ? 1
+      : 0;
+  } catch (error) {
+    console.log(JSON.stringify(vnextRunErrorEnvelope(error, action), null, 2));
+    return 1;
+  }
+}
+
+async function runVNextWorkerCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextWorkerAction ?? null;
+  try {
+    if (action !== "execute" && action !== "inspect") {
+      throw new Error("vnext worker requires explicit execute or inspect action.");
+    }
+    const result = await executeVNextWorker({
+      action,
+      worker_id: options.vnextWorkerId ?? "",
+      ...(options.vnextStateRoot ? { state_root: options.vnextStateRoot } : {}),
+      config_dir: options.configDir,
+      repo_root: options.repoRoot
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.worker.status === "error"
+      || result.worker.status === "not_found"
+      || result.worker.status === "failed"
+      ? 1
+      : 0;
+  } catch (error) {
+    console.log(JSON.stringify(vnextWorkerErrorEnvelope(error, action), null, 2));
+    return 1;
+  }
+}
+
+async function runVNextAdaptationCommand(options: CliOptions): Promise<number> {
+  const action = options.vnextAdaptationAction ?? null;
+  try {
+    if (!action) throw new Error("vnext adaptation requires explicit propose, evaluate, or inspect action.");
+    const result = await executeVNextAdaptation({
+      action,
+      ...(options.vnextStateRoot ? { state_root: options.vnextStateRoot } : {}),
+      ...(options.vnextAdaptationTargetSlot ? { target_slot: options.vnextAdaptationTargetSlot } : {}),
+      ...(options.vnextAdaptationName ? { name: options.vnextAdaptationName } : {}),
+      ...(options.vnextAdaptationSummary ? { summary: options.vnextAdaptationSummary } : {}),
+      trigger_conditions: options.vnextAdaptationTriggerConditions,
+      steps: options.vnextAdaptationSteps,
+      ...(options.vnextAdaptationExpectedResult ? {
+        expected_result: options.vnextAdaptationExpectedResult
+      } : {}),
+      verification_requirements: options.vnextAdaptationVerificationRequirements,
+      failure_modes: options.vnextAdaptationFailureModes,
+      ...(options.vnextAdaptationRollbackRule ? { rollback_rule: options.vnextAdaptationRollbackRule } : {}),
+      evidence_run_ids: options.vnextAdaptationEvidenceRunIds,
+      ...(options.vnextAdaptationCandidateId ? { candidate_id: options.vnextAdaptationCandidateId } : {}),
+      ...(options.vnextAdaptationEvaluationId ? { evaluation_id: options.vnextAdaptationEvaluationId } : {})
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.adaptation.status === "error" || result.adaptation.status === "not_found" ? 1 : 0;
+  } catch (error) {
+    console.log(JSON.stringify(vnextAdaptationErrorEnvelope(error, action), null, 2));
+    return 1;
+  }
+}
+
+function isVNextInvocation(argv: string[]): boolean {
+  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
+  return normalized[0] === "vnext";
+}
+
+function vnextInvocationSurface(argv: string[]): "canary" | "run" | "worker" | "adaptation" | null {
+  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
+  return normalized[0] === "vnext" && (normalized[1] === "canary"
+    || normalized[1] === "run"
+    || normalized[1] === "worker"
+    || normalized[1] === "adaptation")
+    ? normalized[1]
+    : null;
+}
+
 export function parseArgs(argv: string[]): CliOptions {
   const normalizedArgv = argv[0] === "--" ? argv.slice(1) : argv;
   const [command = "help", ...rest] = normalizedArgv;
@@ -2990,19 +3195,61 @@ export function parseArgs(argv: string[]): CliOptions {
     iterationReuseOpen: false,
     iterationNextMoves: [],
     memoryCandidateArtifactRefs: [],
+    goalReadReferences: [],
+    goalLearningEffects: [],
     notifyRefs: [],
     deploymentVerificationRefs: [],
     deploymentEvidenceRefs: [],
+    vnextAdaptationTriggerConditions: [],
+    vnextAdaptationSteps: [],
+    vnextAdaptationVerificationRequirements: [],
+    vnextAdaptationFailureModes: [],
+    vnextAdaptationEvidenceRunIds: [],
     sourceUrls: [],
     tickers: []
   };
+  const vnextCanarySelected = options.command === "vnext" && rest[0] === "canary";
+  const vnextRunSelected = options.command === "vnext" && rest[0] === "run";
+  const vnextWorkerSelected = options.command === "vnext" && rest[0] === "worker";
+  const vnextAdaptationSelected = options.command === "vnext" && rest[0] === "adaptation";
+  if (vnextCanarySelected) options.vnextSurface = "canary";
+  if (vnextRunSelected) options.vnextSurface = "run";
+  if (vnextWorkerSelected) options.vnextSurface = "worker";
+  if (vnextAdaptationSelected) options.vnextSurface = "adaptation";
+  if (options.command === "vnext" && !vnextCanarySelected && !vnextRunSelected && !vnextWorkerSelected && !vnextAdaptationSelected) {
+    throw new Error("vnext requires the explicit canary surface, stable run surface, worker surface, or adaptation surface.");
+  }
+  if (vnextRunSelected) assertVNextRunTokens(rest);
+  if (vnextWorkerSelected) assertVNextWorkerTokens(rest);
+  if (vnextAdaptationSelected) assertVNextAdaptationTokens(rest);
 
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
-    if (options.command === "im" && arg === "serve") options.imAction = arg;
+    if (vnextCanarySelected && (arg === "--state-root" || arg === "--config-dir" || arg === "--repo-root" || arg === "--vnext-state-root")) {
+      throw new Error("vnext canary does not accept v0.2 config, repo, or state-root options.");
+    }
+    if (options.command === "vnext" && index === 0 && (arg === "canary" || arg === "run" || arg === "worker" || arg === "adaptation")) {
+      continue;
+    }
+    else if (options.command === "vnext" && vnextCanarySelected && index === 1 && isVNextCanaryAction(arg)) {
+      options.vnextCanaryAction = arg;
+    }
+    else if (options.command === "vnext" && vnextRunSelected && index === 1 && isVNextRunAction(arg)) {
+      options.vnextRunAction = arg;
+    }
+    else if (options.command === "vnext" && vnextWorkerSelected && index === 1
+      && (arg === "execute" || arg === "inspect")) {
+      options.vnextWorkerAction = arg;
+    }
+    else if (options.command === "vnext" && vnextAdaptationSelected && index === 1 && isVNextAdaptationAction(arg)) {
+      options.vnextAdaptationAction = arg;
+    }
+    else if (options.command === "im" && arg === "serve") options.imAction = arg;
     else if (options.command === "daemon" && arg === "serve") options.daemonAction = arg;
     else if (options.command === "service" && isCliServiceAction(arg)) options.serviceAction = arg;
     else if (options.command === "deployment" && isDeploymentAction(arg)) options.deploymentAction = arg;
+    else if (options.command === "discovery" && arg === "github") options.discoverySource = "github";
+    else if (options.command === "discovery" && options.discoverySource === "github" && isGitHubDiscoveryAction(arg)) options.discoveryAction = arg;
     else if (options.command === "config" && (arg === "summary" || arg === "set-runtime")) options.configAction = arg;
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
@@ -3015,7 +3262,34 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "governance" && isGovernanceAction(arg)) options.governanceAction = arg;
     else if (options.command === "context" && isContextAction(arg)) options.contextAction = arg;
     else if (options.command === "review" && isReviewAction(arg)) options.reviewAction = arg;
+    else if (options.command === "goal" && isLocalGoalAction(arg)) options.goalAction = arg;
+    else if (arg === "--read-file" && options.command === "goal") options.goalReadReferences.push(parseGoalReadReference(required(rest[++index], "--read-file requires a scope:path value"), "file"));
+    else if (arg === "--read-tree" && options.command === "goal") options.goalReadReferences.push(parseGoalReadReference(required(rest[++index], "--read-tree requires a scope:path value"), "tree"));
+    else if (arg === "--learning-effect" && options.command === "goal") options.goalLearningEffects.push(parseGoalLearningEffect(required(rest[++index], "--learning-effect requires a value")));
     else if (arg === "--task") options.task = required(rest[++index], "--task requires a value");
+    else if (arg === "--sqlite" && vnextCanarySelected) options.vnextCanarySqlite = required(rest[++index], "--sqlite requires a value");
+    else if (arg === "--base-url" && vnextCanarySelected) options.vnextCanaryBaseUrl = required(rest[++index], "--base-url requires a value");
+    else if (arg === "--model" && vnextCanarySelected) options.vnextCanaryModel = required(rest[++index], "--model requires a value");
+    else if (arg === "--api-key-env" && vnextCanarySelected) options.vnextCanaryApiKeyEnv = required(rest[++index], "--api-key-env requires a value");
+    else if (arg === "--run-id" && vnextCanarySelected) options.vnextCanaryRunId = required(rest[++index], "--run-id requires a value");
+    else if (arg === "--run-id" && vnextRunSelected) options.vnextRunId = required(rest[++index], "--run-id requires a value");
+    else if (arg === "--session-id" && vnextRunSelected) options.vnextRunSessionId = required(rest[++index], "--session-id requires a value");
+    else if (arg === "--worker-id" && vnextWorkerSelected) options.vnextWorkerId = required(rest[++index], "--worker-id requires a value");
+    else if (arg === "--vnext-state-root" && (vnextRunSelected || vnextWorkerSelected || vnextAdaptationSelected)) options.vnextStateRoot = required(rest[++index], "--vnext-state-root requires a value");
+    else if (arg === "--target-slot" && vnextAdaptationSelected) options.vnextAdaptationTargetSlot = required(rest[++index], "--target-slot requires a value");
+    else if (arg === "--name" && vnextAdaptationSelected) options.vnextAdaptationName = required(rest[++index], "--name requires a value");
+    else if (arg === "--summary" && vnextAdaptationSelected) options.vnextAdaptationSummary = required(rest[++index], "--summary requires a value");
+    else if (arg === "--trigger" && vnextAdaptationSelected) options.vnextAdaptationTriggerConditions.push(required(rest[++index], "--trigger requires a value"));
+    else if (arg === "--step" && vnextAdaptationSelected) options.vnextAdaptationSteps.push(required(rest[++index], "--step requires a value"));
+    else if (arg === "--expected-result" && vnextAdaptationSelected) options.vnextAdaptationExpectedResult = required(rest[++index], "--expected-result requires a value");
+    else if (arg === "--verify" && vnextAdaptationSelected) options.vnextAdaptationVerificationRequirements.push(required(rest[++index], "--verify requires a value"));
+    else if (arg === "--failure-mode" && vnextAdaptationSelected) options.vnextAdaptationFailureModes.push(required(rest[++index], "--failure-mode requires a value"));
+    else if (arg === "--rollback-rule" && vnextAdaptationSelected) options.vnextAdaptationRollbackRule = required(rest[++index], "--rollback-rule requires a value");
+    else if (arg === "--evidence-run-id" && vnextAdaptationSelected) options.vnextAdaptationEvidenceRunIds.push(required(rest[++index], "--evidence-run-id requires a value"));
+    else if (arg === "--candidate-id" && vnextAdaptationSelected) options.vnextAdaptationCandidateId = required(rest[++index], "--candidate-id requires a value");
+    else if (arg === "--evaluation-id" && vnextAdaptationSelected) options.vnextAdaptationEvaluationId = required(rest[++index], "--evaluation-id requires a value");
+    else if (arg === "--need" && options.command === "discovery") options.discoveryBusinessNeed = required(rest[++index], "--need requires a value");
+    else if (arg === "--report" && options.command === "discovery") options.discoveryReportId = required(rest[++index], "--report requires a value");
     else if (arg === "--host") options.webHost = required(rest[++index], "--host requires a value");
     else if (arg === "--port") options.webPort = Number.parseInt(required(rest[++index], "--port requires a value"), 10);
     else if (arg === "--dry-run") options.dryRun = true;
@@ -3127,6 +3401,9 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--config-dir") options.configDir = required(rest[++index], "--config-dir requires a value");
     else if (arg === "--repo-root") options.repoRoot = required(rest[++index], "--repo-root requires a value");
     else if (arg === "--state-root") options.stateRoot = required(rest[++index], "--state-root requires a value");
+    else if (arg === "--goal") options.goalId = required(rest[++index], "--goal requires a value");
+    else if (arg === "--command-id") options.goalCommandId = required(rest[++index], "--command-id requires a value");
+    else if (arg === "--confirm-effect") options.goalConfirmEffectId = required(rest[++index], "--confirm-effect requires a value");
     else if (arg === "--open-id") options.notifyOpenId = required(rest[++index], "--open-id requires a value");
     else if (arg === "--text") options.notifyText = required(rest[++index], "--text requires a value");
     else if (arg === "--source") options.notifySource = required(rest[++index], "--source requires a value");
@@ -3210,7 +3487,153 @@ export function parseArgs(argv: string[]): CliOptions {
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
+  if (options.command === "vnext") {
+    if (vnextCanarySelected && !options.vnextCanaryAction) {
+      throw new Error("vnext requires explicit canary submit, continue, or inspect action.");
+    }
+    if (vnextCanarySelected && options.vnextCanaryAction === "submit" && options.vnextCanaryRunId !== undefined) {
+      throw new Error("vnext canary submit does not accept --run-id.");
+    }
+    if (vnextCanarySelected && options.vnextCanaryAction !== "submit" && options.task !== undefined) {
+      throw new Error(`vnext canary ${options.vnextCanaryAction} does not accept --task.`);
+    }
+    if (vnextCanarySelected && options.vnextCanaryAction === "inspect" && (
+      options.vnextCanaryBaseUrl !== undefined
+      || options.vnextCanaryModel !== undefined
+      || options.vnextCanaryApiKeyEnv !== undefined
+    )) {
+      throw new Error("vnext canary inspect does not accept model or credential options.");
+    }
+    if (vnextRunSelected) validateVNextRunOptions(options);
+    if (vnextWorkerSelected) validateVNextWorkerOptions(options);
+    if (vnextAdaptationSelected) validateVNextAdaptationOptions(options);
+  }
   return options;
+}
+
+function assertVNextRunTokens(rest: string[]): void {
+  const valuedFlags = new Set([
+    "--task",
+    "--run-id",
+    "--session-id",
+    "--vnext-state-root",
+    "--config-dir",
+    "--repo-root"
+  ]);
+  for (let index = 2; index < rest.length; index += 2) {
+    const flag = rest[index];
+    if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext run argument: ${flag}`);
+    if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function assertVNextWorkerTokens(rest: string[]): void {
+  const valuedFlags = new Set([
+    "--worker-id",
+    "--vnext-state-root",
+    "--config-dir",
+    "--repo-root"
+  ]);
+  for (let index = 2; index < rest.length; index += 2) {
+    const flag = rest[index];
+    if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext worker argument: ${flag}`);
+    if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function assertVNextAdaptationTokens(rest: string[]): void {
+  const valuedFlags = new Set([
+    "--target-slot",
+    "--name",
+    "--summary",
+    "--trigger",
+    "--step",
+    "--expected-result",
+    "--verify",
+    "--failure-mode",
+    "--rollback-rule",
+    "--evidence-run-id",
+    "--candidate-id",
+    "--evaluation-id",
+    "--vnext-state-root"
+  ]);
+  for (let index = 2; index < rest.length; index += 2) {
+    const flag = rest[index];
+    if (!valuedFlags.has(flag)) throw new Error(`Unknown vnext adaptation argument: ${flag}`);
+    if (rest[index + 1] === undefined) throw new Error(`${flag} requires a value`);
+  }
+}
+
+function validateVNextAdaptationOptions(options: CliOptions): void {
+  const action = options.vnextAdaptationAction;
+  if (!action) throw new Error("vnext adaptation requires explicit propose, evaluate, or inspect action.");
+  const candidateId = options.vnextAdaptationCandidateId;
+  const evaluationId = options.vnextAdaptationEvaluationId;
+  if (action === "evaluate") {
+    if (!candidateId) throw new Error("vnext adaptation evaluate requires --candidate-id.");
+    if (evaluationId) throw new Error("vnext adaptation evaluate does not accept --evaluation-id.");
+    assertNoAdaptationCandidateFields(options, action);
+    return;
+  }
+  if (action === "inspect") {
+    if (Boolean(candidateId) === Boolean(evaluationId)) {
+      throw new Error("vnext adaptation inspect requires exactly one of --candidate-id or --evaluation-id.");
+    }
+    assertNoAdaptationCandidateFields(options, action);
+    return;
+  }
+  if (candidateId || evaluationId) {
+    throw new Error("vnext adaptation propose does not accept candidate or evaluation identifiers.");
+  }
+  if (!options.vnextAdaptationTargetSlot || !options.vnextAdaptationName || !options.vnextAdaptationSummary) {
+    throw new Error("vnext adaptation propose requires --target-slot, --name, and --summary.");
+  }
+  if (options.vnextAdaptationEvidenceRunIds.length === 0) {
+    throw new Error("vnext adaptation propose requires at least one --evidence-run-id.");
+  }
+}
+
+function assertNoAdaptationCandidateFields(options: CliOptions, action: VNextAdaptationAction): void {
+  if (options.vnextAdaptationTargetSlot
+    || options.vnextAdaptationName
+    || options.vnextAdaptationSummary
+    || options.vnextAdaptationTriggerConditions.length > 0
+    || options.vnextAdaptationSteps.length > 0
+    || options.vnextAdaptationExpectedResult
+    || options.vnextAdaptationVerificationRequirements.length > 0
+    || options.vnextAdaptationFailureModes.length > 0
+    || options.vnextAdaptationRollbackRule
+    || options.vnextAdaptationEvidenceRunIds.length > 0) {
+    throw new Error(`vnext adaptation ${action} does not accept candidate content fields.`);
+  }
+}
+
+function validateVNextWorkerOptions(options: CliOptions): void {
+  if (options.vnextWorkerAction !== "execute" && options.vnextWorkerAction !== "inspect") {
+    throw new Error("vnext worker requires explicit execute or inspect action.");
+  }
+  if (!options.vnextWorkerId) {
+    throw new Error(`vnext worker ${options.vnextWorkerAction} requires --worker-id.`);
+  }
+}
+
+function validateVNextRunOptions(options: CliOptions): void {
+  const action = options.vnextRunAction;
+  if (!action) throw new Error("vnext run requires explicit submit, continue, or inspect action.");
+  if (action === "submit") {
+    if (!options.task) throw new Error("vnext run submit requires --task.");
+    if (options.vnextRunId) throw new Error("vnext run submit does not accept --run-id.");
+    return;
+  }
+  if (options.task) throw new Error(`vnext run ${action} does not accept --task.`);
+  if (action === "continue") {
+    if (!options.vnextRunId) throw new Error("vnext run continue requires --run-id.");
+    if (options.vnextRunSessionId) throw new Error("vnext run continue does not accept --session-id.");
+    return;
+  }
+  if (Boolean(options.vnextRunId) === Boolean(options.vnextRunSessionId)) {
+    throw new Error("vnext run inspect requires exactly one of --run-id or --session-id.");
+  }
 }
 
 function buildRuntimeConfigPatch(options: CliOptions): RuntimeConfigUpdatePatch {
@@ -3284,6 +3707,18 @@ function required<T>(value: T | undefined, message: string): T {
 function parseDiscipline(value: string): DisciplineMode {
   if (value === "none" || value === "query_todo") return value;
   throw new Error(`Unsupported discipline: ${value}`);
+}
+
+function isVNextCanaryAction(value: string): value is VNextCanaryAction {
+  return value === "submit" || value === "continue" || value === "inspect";
+}
+
+function isVNextRunAction(value: string): value is VNextRunAction {
+  return value === "submit" || value === "continue" || value === "inspect";
+}
+
+function isVNextAdaptationAction(value: string): value is VNextAdaptationAction {
+  return value === "propose" || value === "evaluate" || value === "inspect";
 }
 
 function parseStages(value: string): string[] {
@@ -3507,8 +3942,12 @@ function isCliServiceAction(value: string): value is ServiceAction | "health" {
   return value === "health" || isServiceAction(value);
 }
 
-function isDeploymentAction(value: string): value is "request" | "status" | "fail" | "history" {
-  return value === "request" || value === "status" || value === "fail" || value === "history";
+function isDeploymentAction(value: string): value is "request" | "reconcile" | "controller-handoff" | "status" | "fail" | "history" {
+  return value === "request" || value === "reconcile" || value === "controller-handoff" || value === "status" || value === "fail" || value === "history";
+}
+
+function isGitHubDiscoveryAction(value: string): value is GitHubDiscoveryAction {
+  return value === "scan" || value === "reports" || value === "report";
 }
 
 function parseServiceTarget(value: string): ServiceTarget {
@@ -3516,100 +3955,139 @@ function parseServiceTarget(value: string): ServiceTarget {
   throw new Error(`Unsupported service target: ${value}`);
 }
 
+function parseGoalReadReference(
+  value: string,
+  kind: GoalReadPolicy["references"][number]["kind"]
+): GoalReadPolicy["references"][number] {
+  const separator = value.indexOf(":");
+  const scope = value.slice(0, separator);
+  const path = value.slice(separator + 1);
+  if ((scope !== "repo" && scope !== "state") || !path) {
+    throw new Error("read references must use repo:path or state:path");
+  }
+  return { scope, kind, path };
+}
+
+function parseGoalLearningEffect(value: string): GoalLearningEffect {
+  if (value === "propose_sop") return value;
+  throw new Error(`Unsupported Goal learning effect: ${value}; only propose_sop is available`);
+}
+
 function printUsage(): void {
+  const stateRootUsage = DEFAULT_SHARED_STATE_ROOT;
   console.error(`Usage:
-  pnpm run runtime -- doctor [--config-dir config] [--state-root .runtime/state] [--no-auth] [--no-im]
-  pnpm run runtime -- config [--config-dir config] [--state-root .runtime/state]
+  pnpm run runtime -- doctor [--config-dir config] [--state-root ${stateRootUsage}] [--no-auth] [--no-im]
+  pnpm run runtime -- vnext canary submit --task "..." --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+  pnpm run runtime -- vnext canary continue --run-id run_... --sqlite /absolute/isolated/canary.sqlite --base-url https://responses.example/v1 --model model-id --api-key-env CANARY_API_KEY
+  pnpm run runtime -- vnext canary inspect --run-id run_... --sqlite /absolute/isolated/canary.sqlite
+  pnpm run runtime -- vnext run submit --task "..." [--session-id session_...] [--config-dir config] [--repo-root /absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext run continue --run-id run_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext run inspect --run-id run_...|--session-id session_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext worker execute --worker-id worker_... [--config-dir config] [--repo-root /same/absolute/worktree] [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext worker inspect --worker-id worker_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation propose --target-slot procedure.runtime-recovery --name "..." --summary "..." --trigger "..." --step "..." --expected-result "..." --verify "..." --failure-mode "..." --rollback-rule "..." --evidence-run-id run_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation evaluate --candidate-id candidate_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- vnext adaptation inspect --candidate-id candidate_...|--evaluation-id evaluation_... [--vnext-state-root ~/.local-runtime/state/vnext-cli]
+  pnpm run runtime -- config [--config-dir config] [--state-root ${stateRootUsage}]
   pnpm run runtime -- config set-runtime --content-daily-enabled --content-daily-dry-run --no-content-daily-preflight [--content-daily-interval-ms 3600000] [--topic "..."] [--source-url https://...] [--ticker NVDA]
   pnpm run runtime -- config set-runtime --review-tick-enabled [--review-tick-interval-ms 1800000] [--review-tick-limit 20]
   pnpm run runtime -- config set-runtime --content-feedback-refresh-enabled [--content-feedback-refresh-interval-ms 3600000] [--content-feedback-refresh-limit 10] [--content-feedback-refresh-min-follow-up-age-ms 21600000] [--content-feedback-refresh-server-url http://localhost:18060/mcp]
   pnpm run runtime -- config set-runtime --content-creator-metrics-enabled [--content-creator-metrics-interval-ms 3600000] [--content-creator-metrics-limit 10] [--content-creator-metrics-creator-url https://creator.xiaohongshu.com/new/note-manager] [--content-creator-metrics-browser-session-name runtime-creator-metrics]
-  pnpm run runtime -- capabilities [catalog|acceptance|audit|verify-entrypoints] [--state-root .runtime/state]
-  pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root .runtime/state]
-  pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root .runtime/state]
-  pnpm run runtime -- live --task "..." [--config-dir config] [--state-root .runtime/state] [--query-todo]
+  pnpm run runtime -- capabilities [catalog|acceptance|audit|verify-entrypoints] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github scan --need "bounded business need" [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github reports [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- discovery github report --report github_discovery_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- web [--host 127.0.0.1] [--port 8765] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- daemon serve [--host 127.0.0.1] [--port 8765] [--no-im] [--no-web] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- live --task "..." [--config-dir config] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal start --task "..." [--read-file repo:README.md] [--read-tree repo:docs] [--learning-effect propose_sop] [--repo-root /absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal continue|read|inspect --goal goal_... [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal pause|abandon --goal goal_... --reason "..." [--repo-root /same/absolute/worktree] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- goal resume --goal goal_... [--repo-root /same/absolute/worktree] [--confirm-effect goal_effect_...] [--command-id goal_command_...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- pipeline --task "..." [--stages intake,tool_check,final] [--query-todo]
   pnpm run runtime -- pipeline resume --pipeline pipeline_run_... [--from-stage tool_check] [--query-todo]
-  pnpm run runtime -- pipeline runs [--pipeline pipeline_run_...] [--limit 10] [--state-root .runtime/state]
-  pnpm run runtime -- content run --dry-run [--live-sources] [--topic "..."] [--strategy-from content_run_...] [--image-model gpt-image-2] [--source-url https://...] [--ticker NVDA] [--state-root .runtime/state]
-  pnpm run runtime -- content daily [--dry-run] [--date YYYY-MM-DD] [--track ai_applications] [--force] [--preflight] [--external-write --confirmed] [--topic "..."] [--strategy-from content_run_...] [--image-model gpt-image-2] [--source-url https://...] [--ticker NVDA] [--login-status logged_in] [--adapter-available] [--state-root .runtime/state]
-  pnpm run runtime -- content daily-readiness [--date YYYY-MM-DD] [--state-root .runtime/state]
-  pnpm run runtime -- content channel-readiness [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-launch-check] [--state-root .runtime/state]
-  pnpm run runtime -- content daily-advance [--date YYYY-MM-DD] [--track ai_applications] [--force] [--preflight] [--image-model gpt-image-2] [--login-status logged_in] [--adapter-available] [--state-root .runtime/state]
-  pnpm run runtime -- content runs [--limit 10] [--state-root .runtime/state]
-  pnpm run runtime -- content show --run content_run_... [--state-root .runtime/state]
-  pnpm run runtime -- content publish-history [--limit 10] [--run content_run_...] [--adapter xiaohongshu-mcp] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-history [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-review [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-needed [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root .runtime/state]
-  pnpm run runtime -- content creator-metrics-needed [--limit 10] [--run content_run_...] [--captured-by xiaohongshu-mcp] [--state-root .runtime/state]
-  pnpm run runtime -- content creator-metrics-capture --run content_run_... [--creator-url https://creator.xiaohongshu.com/new/note-manager] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--notes "..."] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-trends [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-strategy [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-capture --run content_run_... [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--notes "..."] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-refresh [--limit 10] [--run content_run_...] [--server-url http://localhost:18060/mcp] [--notes "..."] [--state-root .runtime/state]
-  pnpm run runtime -- content generate-image --run content_run_... [--image /absolute/state/path/cover.png] [--image-model gpt-image-2] [--state-root .runtime/state]
-  pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png [--image-status generated|failed] [--image-model gpt-image-2] [--state-root .runtime/state]
-  pnpm run runtime -- content publish-preflight --run content_run_... [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--login-status logged_in] [--adapter-available] [--image /absolute/path/cover.png] [--state-root .runtime/state]
-  pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--login-status logged_in] [--state-root .runtime/state]
-  pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published|failed [--adapter xiaohongshu-mcp] [--tool publish_content] [--external-write] [--confirmed] [--login-status logged_in] [--post-id ...] [--post-url ...] [--screenshot ...] [--state-root .runtime/state]
-  pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root .runtime/state]
-  pnpm run runtime -- content reconcile-publish-evidence --source-state-root .runtime/state [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- service install|start|stop|restart|rollback|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- deployment request --verification-ref "pnpm run check" [--repair-of deployment_...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- deployment status|history [--limit 20] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- deployment fail --reason "..." [--deployment deployment_...] [--failure-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- workspace runtime [--repo-root .] [--state-root .runtime/state]
-  pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ~/.local-runtime/state/runtime]
-  pnpm run runtime -- notify list [--status queued|sent|failed] [--limit 20] [--state-root ~/.local-runtime/state/runtime]
+  pnpm run runtime -- pipeline runs [--pipeline pipeline_run_...] [--limit 10] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content run --dry-run [--live-sources] [--topic "..."] [--strategy-from content_run_...] [--image-model gpt-image-2] [--source-url https://...] [--ticker NVDA] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content daily [--dry-run] [--date YYYY-MM-DD] [--track ai_applications] [--force] [--preflight] [--external-write --confirmed] [--topic "..."] [--strategy-from content_run_...] [--image-model gpt-image-2] [--source-url https://...] [--ticker NVDA] [--login-status logged_in] [--adapter-available] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content daily-readiness [--date YYYY-MM-DD] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content channel-readiness [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-launch-check] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content daily-advance [--date YYYY-MM-DD] [--track ai_applications] [--force] [--preflight] [--image-model gpt-image-2] [--login-status logged_in] [--adapter-available] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content runs [--limit 10] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content show --run content_run_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content publish-history [--limit 10] [--run content_run_...] [--adapter xiaohongshu-mcp] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-history [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-review [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-needed [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content creator-metrics-needed [--limit 10] [--run content_run_...] [--captured-by xiaohongshu-mcp] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content creator-metrics-capture --run content_run_... [--creator-url https://creator.xiaohongshu.com/new/note-manager] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--notes "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-trends [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-strategy [--limit 10] [--run content_run_...] [--captured-by operator] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-capture --run content_run_... [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--notes "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-refresh [--limit 10] [--run content_run_...] [--server-url http://localhost:18060/mcp] [--notes "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content generate-image --run content_run_... [--image /absolute/state/path/cover.png] [--image-model gpt-image-2] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content image-evidence --run content_run_... --image /absolute/path/cover.png [--image-status generated|failed] [--image-model gpt-image-2] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content publish-preflight --run content_run_... [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--login-status logged_in] [--adapter-available] [--image /absolute/path/cover.png] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content publish-execute --run content_run_... --external-write --confirmed [--adapter xiaohongshu-mcp] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--login-status logged_in] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content publish-evidence --run content_run_... --publish-status published|failed [--adapter xiaohongshu-mcp] [--tool publish_content] [--external-write] [--confirmed] [--login-status logged_in] [--post-id ...] [--post-url ...] [--screenshot ...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content feedback-evidence --run content_run_... [--captured-by operator|agent-browser-cli|xiaohongshu-mcp] [--views 0] [--likes 0] [--comments 0] [--collects 0] [--shares 0] [--follows 0] [--post-url ...] [--screenshot ...] [--source-ref ...] [--notes "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- content reconcile-publish-evidence --source-state-root ${stateRootUsage} [--dry-run] [--run content_run_...] [--source-run content_run_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- service install|start|stop|restart|rollback|status|health|logs|uninstall [--target runtime] [--provider feishu|telegram|discord] [--scenario im-default] [--channel feishu-main] [--host 127.0.0.1] [--port 8765] [--no-im] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- deployment request --verification-ref "pnpm run check" [--repair-of deployment_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- deployment reconcile --reason "verified bootstrap baseline" --verification-ref "live entrypoints verified" [--state-root ${stateRootUsage}]
+  pnpm run runtime -- deployment controller-handoff [--state-root ${stateRootUsage}]
+  pnpm run runtime -- deployment status|history [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- deployment fail --reason "..." [--deployment deployment_...] [--failure-ref memory/episodes/...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- workspace runtime [--repo-root .] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- notify list [--status queued|sent|failed] [--limit 20] [--state-root ${stateRootUsage}]
   pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md] [--action list|validate|sync|health|retire-event]
-  pnpm run runtime -- skills health [--skill-name name] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- skills outcomes [--outcome skill_usage_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- skills drifts [--skill-name name] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- skills events [--event skill_event_...] [--skill-name name] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." [--state-root .runtime/state]
-  pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted [--query "..."] [--session session_...] [--archive 2026-06-30] [--checkpoint memory/working/current.json] [--dream memory/dreams/...] [--candidate memory/semantic/candidates/...] [--confirmation memory/semantic/confirmations/...] [--semantic memory/semantic/accepted/...] [--state-root .runtime/state]
-  pnpm run runtime -- memory dream [--limit 5] [--state-root .runtime/state]
-  pnpm run runtime -- memory dreams [--dream memory/dreams/...] [--state-root .runtime/state]
-  pnpm run runtime -- memory propose-candidate --summary "..." --content "..." [--scope local] [--rationale "..."] [--artifact-ref memory/episodes/events.jsonl] [--state-root .runtime/state]
-  pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... [--state-root .runtime/state]
-  pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... [--state-root .runtime/state]
-  pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact project_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root .runtime/state]
-  pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--implementation-scope "..."] [--deferred-scope "..."] [--delivery-standard "..."] [--reuse-open] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root .runtime/state]
-  pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root .runtime/state
-  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root .runtime/state]
-  pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root .runtime/state]
-  pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--state-root .runtime/state]
-  pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." [--state-root .runtime/state]
-  pnpm run runtime -- governance resume-autonomy --reason "..." [--state-root .runtime/state]
-  pnpm run runtime -- context list|show|usage|pressure|health|repair [--context memory/episodes/session_...-context.json|context_health_...] [--session session_...] [--limit 10] [--state-root .runtime/state]
-  pnpm run runtime -- review background [--query "..."] [--session session_...] [--state-root .runtime/state]
-  pnpm run runtime -- review reports [--review background_review_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review completions [--completion completion_verification_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review traces [--trace completion_verification_...|session_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review replay-audit [--trace completion_verification_...|session_...] [--state-root .runtime/state]
-  pnpm run runtime -- review replays [--replay harness_replay_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review tick [--query "..."] [--session session_...] [--state-root .runtime/state]
-  pnpm run runtime -- review ticks [--tick review_tick_...] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review inbox [--item review_inbox_...] [--status active|all|open|confirmation_requested|executed] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review confirmations [--gate all|current|stale|executed] [--limit 20] [--state-root .runtime/state]
-  pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... [--state-root .runtime/state]
-  pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... [--state-root .runtime/state]
-  pnpm run runtime -- review request-sop-confirmation --sop sop_... [--state-root .runtime/state]
-  pnpm run runtime -- review decide-sop-recovery --confirmation follow_up_confirmation_... --status open|deferred|fresh_requested|historical --reason "..." [--state-root .runtime/state]
-  pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." [--state-root .runtime/state]
-  pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... [--state-root .runtime/state]
-  pnpm run runtime -- review audit-sop --sop sop_... [--state-root .runtime/state]
-  pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... [--skill-name my-skill] [--state-root .runtime/state]
-  pnpm run runtime -- review chain --sop sop_... [--state-root .runtime/state]
-  pnpm run runtime -- review coverage --sop sop_... [--state-root .runtime/state]
-  pnpm run runtime -- review rehearse-sop-loop [--state-root .runtime/state]
-  pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... [--state-root .runtime/state]
-  pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... [--state-root .runtime/state]
-  pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... [--state-root .runtime/state]
-  pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... [--state-root .runtime/state]
-  pnpm run runtime -- show-events [--state-root .runtime/state]`);
+  pnpm run runtime -- skills health [--skill-name name] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- skills outcomes [--outcome skill_usage_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- skills drifts [--skill-name name] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- skills events [--event skill_event_...] [--skill-name name] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- skills retire-event --event skill_event_... --reason "..." [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory status|sync|search|session|recap|archive|archives|archive-health|layers|working|dream|dreams|propose-candidate|candidates|confirmations|accepted [--query "..."] [--session session_...] [--archive 2026-06-30] [--checkpoint memory/working/current.json] [--dream memory/dreams/...] [--candidate memory/semantic/candidates/...] [--confirmation memory/semantic/confirmations/...] [--semantic memory/semantic/accepted/...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory dream [--limit 5] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory dreams [--dream memory/dreams/...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory propose-candidate --summary "..." --content "..." [--scope local] [--rationale "..."] [--artifact-ref memory/episodes/events.jsonl] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory request-candidate-confirmation --candidate memory/semantic/candidates/... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- memory execute-candidate-confirmation --confirmation memory/semantic/confirmations/... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance status|opportunities|evolution|gaps|scorecard|project-design|experts|iterations [--gap gap_external_publish_evidence_...] [--artifact project_design_artifact_...] [--audit-seed verification_scope|all] [--gate core_boundary_review] [--iteration iteration_contract_...] [--limit 10] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance record-iteration --summary "..." --layer core_runtime --owner-surface runtime_contract --proposed-slice iteration_contract [--iteration-source-ref memory/dreams/...] [--implementation-scope "..."] [--deferred-scope "..."] [--delivery-standard "..."] [--reuse-open] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--non-goal "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance record-iteration --from-project-design-plan --state-root ${stateRootUsage}
+  pnpm run runtime -- governance record-iteration-outcome --iteration iteration_contract_... --outcome-status verified|partial|failed --summary "..." [--merge-existing-outcome] [--evidence-ref docs/RUNTIME_CONTRACT.md] [--verification-command "pnpm run check"] [--verification-claim "check: claim covered by this command"] [--next-move "..."] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance record-correction --summary "..." [--owner-surface runtime_contract] [--proposed-slice operator_correction_to_sop_guard] [--correction-source-ref memory/episodes/...] [--evidence-ref CONTEXT.md] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance act-next [--opportunity gap_external_publish_evidence_...] [--server-url http://localhost:18060/mcp] [--tool publish_content] [--browser-auto-connect | --browser-cdp-port 9222 | --browser-session-name runtime-creator-metrics] [--page-text-file creator-page.txt] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance decide-opportunity --opportunity opportunity_... --status deferred|completed|retired|open --reason "..." [--state-root ${stateRootUsage}]
+  pnpm run runtime -- governance resume-autonomy --reason "..." [--state-root ${stateRootUsage}]
+  pnpm run runtime -- context list|show|usage|pressure|health|repair [--context memory/episodes/session_...-context.json|context_health_...] [--session session_...] [--limit 10] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review background [--query "..."] [--session session_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review reports [--review background_review_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review completions [--completion completion_verification_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review traces [--trace completion_verification_...|session_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review replay-audit [--trace completion_verification_...|session_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review replays [--replay harness_replay_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review tick [--query "..."] [--session session_...] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review ticks [--tick review_tick_...] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review inbox [--item review_inbox_...] [--status active|all|open|confirmation_requested|executed] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review confirmations [--gate all|current|stale|executed] [--limit 20] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review confirmations --confirmation follow_up_confirmation_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review request-inbox-confirmation --item review_inbox_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review request-sop-confirmation --sop sop_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review decide-sop-recovery --confirmation follow_up_confirmation_... --status open|deferred|fresh_requested|historical --reason "..." [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review decide-inbox --item review_inbox_... --status open|deferred|completed|retired --reason "..." [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review draft-sop --review background_review_... --proposal review_proposal_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review audit-sop --sop sop_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review promote-sop --sop sop_... --audit audit_... [--skill-name my-skill] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review chain --sop sop_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review coverage --sop sop_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review rehearse-sop-loop [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review plan-follow-up --review background_review_... --proposal review_proposal_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review execute-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review request-follow-up --review background_review_... --proposal review_proposal_... --action follow_up_action_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- review execute-confirmed-follow-up --confirmation follow_up_confirmation_... [--state-root ${stateRootUsage}]
+  pnpm run runtime -- show-events [--state-root ${stateRootUsage}]`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

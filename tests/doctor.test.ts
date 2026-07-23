@@ -152,7 +152,7 @@ test("doctor checks IM by default and reports missing Feishu app auth", async ()
   }
 });
 
-test("doctor rejects an IM scenario whose model is absent from configured model layers", async () => {
+test("doctor ignores a stale Feishu scenario model when Goal cognition owns execution", async () => {
   const fixture = await createDoctorFixture({ scenarioModelId: "missing-scenario-model" });
   const previous = process.env[TEST_ENV];
   const previousFeishuAppId = process.env[TEST_FEISHU_APP_ID_ENV];
@@ -167,10 +167,11 @@ test("doctor rejects an IM scenario whose model is absent from configured model 
       stateRoot: fixture.stateRoot
     });
 
-    assert.equal(report.ok, false);
+    assert.equal(report.ok, true);
     assert.equal(check(report, "config")?.level, "ok");
-    assert.equal(check(report, "im")?.level, "error");
-    assert.match(check(report, "im")?.summary ?? "", /missing-scenario-model/);
+    assert.equal(check(report, "im")?.level, "ok");
+    assert.equal(check(report, "im")?.details?.execution_owner, "goal_cognition");
+    assert.doesNotMatch(JSON.stringify(check(report, "im")?.details), /missing-scenario-model|legacy_private/);
   } finally {
     restoreEnv(TEST_ENV, previous);
     restoreEnv(TEST_FEISHU_APP_ID_ENV, previousFeishuAppId);
@@ -195,10 +196,13 @@ test("doctor resolves Discord IM provider with API-key channel auth", async () =
 
     assert.equal(report.ok, true);
     assert.equal(check(report, "im")?.level, "ok");
-    assert.equal(check(report, "im")?.summary, "IM scenario and discord auth resolved.");
+    assert.equal(check(report, "im")?.summary, "IM discord channel and Goal cognition selection resolved.");
     const details = check(report, "im")?.details as Record<string, unknown>;
     assert.equal(details.provider, "discord");
     assert.equal(details.channel_id, "discord-test");
+    assert.equal(details.execution_owner, "goal_cognition");
+    assert.equal(details.goal_cognition_provider, "active_model");
+    assert.equal("model_id" in details, false);
     assert.equal(details.allowed_user_ids_count, 1);
     assert.equal(details.allowed_guild_ids_count, 1);
     assert.equal((details.active_channel_auth as Record<string, unknown>).auth_id, "discord-test");
@@ -225,12 +229,41 @@ test("doctor resolves Telegram IM provider with API-key channel auth", async () 
 
     assert.equal(report.ok, true);
     assert.equal(check(report, "im")?.level, "ok");
-    assert.equal(check(report, "im")?.summary, "IM scenario and telegram auth resolved.");
+    assert.equal(check(report, "im")?.summary, "IM telegram channel and Goal cognition selection resolved.");
     const details = check(report, "im")?.details as Record<string, unknown>;
     assert.equal(details.provider, "telegram");
     assert.equal(details.channel_id, "telegram-test");
+    assert.equal(details.execution_owner, "goal_cognition");
+    assert.equal(details.goal_cognition_provider, "active_model");
+    assert.equal("model_id" in details, false);
     assert.equal(details.allowed_user_ids_count, 1);
     assert.equal((details.active_channel_auth as Record<string, unknown>).auth_id, "telegram-test");
+  } finally {
+    restoreEnv(TEST_ENV, previous);
+    restoreEnv(TEST_TELEGRAM_TOKEN_ENV, previousTelegramToken);
+    await fixture.cleanup();
+  }
+});
+
+test("doctor ignores an unused Telegram scenario model", async () => {
+  const fixture = await createDoctorFixture({
+    imProvider: "telegram",
+    scenarioModelId: "unused-missing-model"
+  });
+  const previous = process.env[TEST_ENV];
+  const previousTelegramToken = process.env[TEST_TELEGRAM_TOKEN_ENV];
+  process.env[TEST_ENV] = "test-key";
+  process.env[TEST_TELEGRAM_TOKEN_ENV] = "telegram-test-token";
+  try {
+    const report = await runDoctor({
+      repoRoot: fixture.repoRoot,
+      configDir: fixture.configDir,
+      stateRoot: fixture.stateRoot,
+      provider: "telegram"
+    });
+
+    assert.equal(report.ok, true);
+    assert.equal(check(report, "im")?.level, "ok");
   } finally {
     restoreEnv(TEST_ENV, previous);
     restoreEnv(TEST_TELEGRAM_TOKEN_ENV, previousTelegramToken);

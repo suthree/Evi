@@ -1,4 +1,4 @@
-import { recordRuntimeChannelOutbound, recordRuntimeChannelOutboundDelivery, type RuntimeChannelOutboundRecord } from "../../../../core/src/runtime_channel_outbox.js";
+import { recordRuntimeChannelOutboundDelivery, type RuntimeChannelOutboundRecord } from "../../../../core/src/runtime_channel_outbox.js";
 import type { RuntimeChannelSource } from "../../../../core/src/runtime_channel_messages.js";
 import type { RuntimeSessionRecord, RuntimeSessionSource } from "../../../../core/src/runtime_sessions.js";
 import { AgentStore } from "../../../../core/src/store.js";
@@ -6,16 +6,14 @@ import { utcNow } from "../../../../core/src/ids.js";
 import { dispatchRuntimeChannelMessage } from "../../channel_message_dispatcher.js";
 import type { RuntimeChannelAdapter, RuntimeChannelHealth } from "../../message_gateway.js";
 import { drainRuntimeChannelOutboxForAdapter } from "../../runtime_channel_outbox_drainer.js";
-import { runRuntimeChannelTask } from "../../runtime_channel_task.js";
+import { renderGoalIngressPresentation, type GoalIngressPort } from "../../goal_ingress.js";
 import type {
-  TaskRunner,
   TelegramChannelConfig,
   TelegramMessage,
   TelegramSendResult,
   TelegramTransport,
   TelegramUpdate
 } from "./types.js";
-import type { RunResult } from "../../../../core/src/schemas.js";
 
 interface TelegramOffsetState {
   next_update_id: number;
@@ -26,7 +24,7 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
   readonly channelId: string;
   private readonly config: TelegramChannelConfig;
   private readonly transport: TelegramTransport;
-  private readonly runner: TaskRunner;
+  private readonly goalIngress: GoalIngressPort;
   private readonly store: AgentStore;
   private readonly activeRuntimeSessionIds = new Set<string>();
   private readonly seenUpdateIds: number[] = [];
@@ -39,13 +37,13 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
   constructor(args: {
     config: TelegramChannelConfig;
     transport: TelegramTransport;
-    runner: TaskRunner;
+    goalIngress: GoalIngressPort;
     store: AgentStore;
   }) {
     this.config = args.config;
     this.channelId = args.config.channelId;
     this.transport = args.transport;
-    this.runner = args.runner;
+    this.goalIngress = args.goalIngress;
     this.store = args.store;
   }
 
@@ -145,7 +143,7 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
       return;
     }
 
-    await this.runRuntimeSessionMessage(message, dispatched.session, dispatched.source, dispatched.taskText);
+    await this.runRuntimeSessionMessage(message, dispatched.session, dispatched.taskText);
   }
 
   async drainRuntimeChannelOutbox(limit = 10): Promise<{
@@ -174,7 +172,6 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
   private async runRuntimeSessionMessage(
     message: NormalizedTelegramTextMessage,
     session: RuntimeSessionRecord,
-    source: RuntimeSessionSource,
     taskText: string
   ): Promise<void> {
     if (this.activeRuntimeSessionIds.has(session.id)) {
@@ -190,36 +187,25 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
     this.activeRuntimeSessionIds.add(session.id);
     try {
       await this.sendChunks(message, this.config.ackText);
-      const task = renderTelegramTask(message, session, taskText);
-      const executed = await runRuntimeChannelTask(this.store, {
-        session,
-        source,
-        taskText,
-        runnerTask: task,
-        runTask: (runnerTask) => this.runner.runTask(runnerTask, { recallQuery: taskText })
-      });
-      const finalText = await this.finalTextForRun(executed.result);
+      const goal = await this.goalIngress.submit(renderTelegramTask(message, session, taskText));
+      const finalText = renderGoalIngressPresentation(goal);
       const sends = await this.sendChunks(message, finalText);
       const ref = await this.store.writeJson(`channels/telegram/outbound/${message.messageId}.json`, {
         source_message_id: message.messageId,
         chat_id: message.chatId,
         thread_id: message.threadId,
-        session_id: executed.result.session_id,
-        turn_id: executed.result.turn_id,
+        runtime_session_id: session.id,
+        goal_id: goal.goal_id,
+        goal_status: goal.status,
+        receipt_id: goal.receipt?.id ?? null,
         text: finalText,
         sends,
         created_at: utcNow()
       });
-      await recordRuntimeChannelOutbound(this.store, {
-        source,
-        runtimeSessionId: session.id,
-        taskRunId: executed.queued.id,
-        inReplyToMessageId: message.messageId,
-        purpose: "final",
-        status: "sent",
-        text: finalText,
-        providerDeliveryRef: ref,
-        providerMessageIds: sentMessageIds(sends)
+      await this.recordEvent("goal_delivered", `Delivered Telegram Goal ${goal.goal_id}.`, {
+        message_id: message.messageId, runtime_session_id: session.id, goal_id: goal.goal_id,
+        goal_status: goal.status, receipt_id: goal.receipt?.id ?? null, provider_delivery_ref: ref,
+        provider_message_ids: sentMessageIds(sends)
       });
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
@@ -231,21 +217,12 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
         sends,
         created_at: utcNow()
       });
-      await recordRuntimeChannelOutbound(this.store, {
-        source,
-        runtimeSessionId: session.id,
-        inReplyToMessageId: message.messageId,
-        purpose: "error",
-        status: "sent",
-        text: this.config.errorText,
-        providerDeliveryRef: ref,
-        providerMessageIds: sentMessageIds(sends),
-        error: messageText
-      });
       await this.recordEvent("error", `Telegram runtime session message ${message.messageId} failed: ${messageText}`, {
         message_id: message.messageId,
         runtime_session_id: session.id,
-        error: messageText
+        error: messageText,
+        provider_delivery_ref: ref,
+        provider_message_ids: sentMessageIds(sends)
       });
     } finally {
       this.activeRuntimeSessionIds.delete(session.id);
@@ -316,13 +293,6 @@ export class TelegramBotAdapter implements RuntimeChannelAdapter {
     }
   }
 
-  private async finalTextForRun(result: RunResult): Promise<string> {
-    if (result.final_response_ref) {
-      const text = await this.store.readStateText(result.final_response_ref, 20000);
-      if (text.trim()) return text.trim();
-    }
-    return result.verdict;
-  }
 
   private isAllowed(actorId: string | null): boolean {
     if (!actorId) return false;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { channel } from "node:diagnostics_channel";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -9,7 +10,6 @@ import { delegateAgentAuthoringContract } from "../packages/core/src/action_cont
 import type { ContextBundleManifest } from "../packages/core/src/context.js";
 import { runHarnessReplayAudit } from "../packages/core/src/harness_replay.js";
 import { decideOpportunity } from "../packages/core/src/opportunity_backlog.js";
-import type { RunResult } from "../packages/core/src/schemas.js";
 import { listRuntimeTaskQueue } from "../packages/core/src/runtime_task_queue.js";
 import {
   listRuntimeChannelOutbox,
@@ -17,10 +17,20 @@ import {
 } from "../packages/core/src/runtime_channel_outbox.js";
 import { listRuntimeInbox, listRuntimeSessions, listRuntimeTaskRuns } from "../packages/core/src/runtime_sessions.js";
 import { AgentStore } from "../packages/core/src/store.js";
-import { FeishuPrivateChatAdapter, normalizePrivateTextMessage, parseFeishuTextContent, splitText } from "../packages/runtime/src/channels/feishu/adapter.js";
-import { loadFeishuChannelConfig, loadFeishuScenarioConfig } from "../packages/runtime/src/channels/feishu/config.js";
+import {
+  FeishuPrivateChatAdapter,
+  normalizePrivateTextMessage,
+  parseFeishuGoalControlCommand,
+  parseFeishuTextContent,
+  splitText
+} from "../packages/runtime/src/channels/feishu/adapter.js";
+import {
+  GoalInteractionError,
+  type GoalInteractionPort
+} from "../packages/runtime/src/goal_ingress.js";
+import type { GoalView } from "../packages/runtime/src/goal_runtime.js";
+import { loadFeishuChannelConfig } from "../packages/runtime/src/channels/feishu/config.js";
 import type {
-  TaskRunner,
   FeishuChannelConfig,
   FeishuInboundEvent,
   FeishuSendResult,
@@ -34,6 +44,8 @@ import {
   recordContentPublishEvidence,
   runDailyContentJob
 } from "../packages/runtime/src/content_pipeline.js";
+import { VNEXT_CANARY_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_canary.js";
+import { VNEXT_RUN_DIAGNOSTIC_CHANNEL } from "../apps/cli/src/vnext_run.js";
 
 const TEST_FEISHU_APP_ID_ENV = "AGENT_TEST_FEISHU_APP_ID";
 const TEST_FEISHU_APP_SECRET_ENV = "AGENT_TEST_FEISHU_APP_SECRET";
@@ -87,7 +99,7 @@ test("Feishu adapter exposes a failed inbound connection without SDK details", a
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner: new StubRunner(fixture.store, "unused"),
+      goalIngress: new StubGoalIngress(fixture.store, "unused"),
       store: fixture.store
     });
 
@@ -116,7 +128,7 @@ test("Feishu adapter keeps a connecting inbound connection running", async () =>
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner: new StubRunner(fixture.store, "unused"),
+      goalIngress: new StubGoalIngress(fixture.store, "unused"),
       store: fixture.store
     });
 
@@ -139,7 +151,7 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
     const first = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport: new MockFeishuTransport(),
-      runner: new StubRunner(fixture.store, "done"),
+      goalIngress: new StubGoalIngress(fixture.store, "done"),
       store: fixture.store
     });
     await first.start();
@@ -157,7 +169,7 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
     const restarted = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport: new MockFeishuTransport(),
-      runner: new StubRunner(fixture.store, "done"),
+      goalIngress: new StubGoalIngress(fixture.store, "done"),
       store: fixture.store
     });
     await restarted.start();
@@ -168,15 +180,23 @@ test("Feishu adapter preserves accepted inbound liveness across restart", async 
   }
 });
 
-test("private text message runs the agent and sends final response", async () => {
+test("private text message submits one Goal and records provider-only delivery evidence", async () => {
   const fixture = await createFixture();
+  const canaryDispatches: unknown[] = [];
+  const stableDispatches: unknown[] = [];
+  const canaryChannel = channel(VNEXT_CANARY_DIAGNOSTIC_CHANNEL);
+  const stableChannel = channel(VNEXT_RUN_DIAGNOSTIC_CHANNEL);
+  const recordCanaryDispatch = (message: unknown) => canaryDispatches.push(message);
+  const recordStableDispatch = (message: unknown) => stableDispatches.push(message);
+  canaryChannel.subscribe(recordCanaryDispatch);
+  stableChannel.subscribe(recordStableDispatch);
   try {
-    const runner = new StubRunner(fixture.store, "Final answer.");
+    const goalIngress = completedGoalIngress("goal_feishu_private", "Final answer.");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -187,19 +207,284 @@ test("private text message runs the agent and sends final response", async () =>
       text: "请处理这个任务"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /请处理这个任务/);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /请处理这个任务/);
     assert.deepEqual(transport.sent.map((item) => item.text), [
       "收到，正在处理。",
-      "Final answer."
+      "Goal: goal_feishu_private\nCanonical status: completed\nReceipt: goal_receipt_goal_feishu_private\nOutcome (receipt content; canonical lifecycle is shown above): Final answer.\nGoal goal_feishu_private is completed; no continuation command is required."
     ]);
 
     const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
     assert.equal(channelEvents.some((event) => event.kind === "inbound"), true);
-    assert.equal(channelEvents.some((event) => event.kind === "outbound"), true);
+    assert.equal(channelEvents.some((event) => event.kind === "goal_delivered"), true);
+    const delivery = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/outbound/om_run.json"), "utf8"));
+    assert.deepEqual({ goal_id: delivery.goal_id, goal_status: delivery.goal_status, receipt_id: delivery.receipt_id }, {
+      goal_id: "goal_feishu_private", goal_status: "completed", receipt_id: "goal_receipt_goal_feishu_private"
+    });
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
+    assert.deepEqual(canaryDispatches, []);
+    assert.deepEqual(stableDispatches, []);
+  } finally {
+    canaryChannel.unsubscribe(recordCanaryDispatch);
+    stableChannel.unsubscribe(recordStableDispatch);
+    await fixture.cleanup();
+  }
+});
 
-    const memoryEvents = await readJsonl(join(fixture.stateRoot, "memory/episodes/events.jsonl"));
-    assert.equal(memoryEvents.some((event) => String(event.summary).includes("Handled Feishu private message om_run")), true);
+test("Feishu Goal control parser accepts only exact provider commands", () => {
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal read goal_control_123"), {
+    kind: "command", command: { operation: "read", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal continue goal_control_123"), {
+    kind: "command", command: { operation: "continue", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal resume goal_control_123"), {
+    kind: "command", command: { operation: "resume", goalId: "goal_control_123" }
+  });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goal confirm goal_control_123 goal_effect_confirm_123"), {
+    kind: "command",
+    command: { operation: "confirm", goalId: "goal_control_123", confirmEffectId: "goal_effect_confirm_123" }
+  });
+  assert.equal(parseFeishuGoalControlCommand("/goal continue goal_control_123 extra").kind, "invalid");
+  assert.equal(parseFeishuGoalControlCommand("/goal confirm goal_control_123 wrong_effect").kind, "invalid");
+  assert.equal(parseFeishuGoalControlCommand("/goal read goal_effect_not_a_goal").kind, "invalid");
+  assert.deepEqual(parseFeishuGoalControlCommand("please continue the work"), { kind: "none" });
+  assert.deepEqual(parseFeishuGoalControlCommand("/goalkeeper continue goal_control_123"), { kind: "none" });
+});
+
+test("private Goal controls keep one named canonical identity and record provider evidence", async () => {
+  const fixture = await createFixture();
+  try {
+    const calls: Array<{ operation: string; goalId: string; effectId?: string }> = [];
+    const goalId = "goal_control_123";
+    const effectId = "goal_effect_confirm_123";
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        throw new Error("Goal control must not submit a replacement Goal");
+      },
+      read: async (requestedGoalId) => {
+        calls.push({ operation: "read", goalId: requestedGoalId });
+        return activeGoalView(requestedGoalId);
+      },
+      continue: async (requestedGoalId) => {
+        calls.push({ operation: "continue", goalId: requestedGoalId });
+        return {
+          ...activeGoalView(requestedGoalId),
+          status: "paused",
+          pending_effect: { effect_id: effectId, state: "awaiting_confirmation" }
+        } as GoalView;
+      },
+      resume: async (requestedGoalId, confirmEffectId) => {
+        calls.push({
+          operation: confirmEffectId ? "confirm" : "resume",
+          goalId: requestedGoalId,
+          ...(confirmEffectId ? { effectId: confirmEffectId } : {})
+        });
+        return confirmEffectId
+          ? {
+              goal_id: requestedGoalId,
+              status: "completed",
+              pending_effect: null,
+              receipt: { id: "goal_receipt_control_123", summary: "Delegated change verified." }
+            } as GoalView
+          : activeGoalView(requestedGoalId);
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    for (const [messageId, text] of [
+      ["om_goal_read", `/goal read ${goalId}`],
+      ["om_goal_continue", `/goal continue ${goalId}`],
+      ["om_goal_resume", `/goal resume ${goalId}`],
+      ["om_goal_confirm", `/goal confirm ${goalId} ${effectId}`]
+    ]) {
+      await adapter.handleInboundEvent(feishuEvent({
+        messageId, chatType: "p2p", openId: "ou_allowed", text
+      }));
+    }
+
+    assert.deepEqual(calls, [
+      { operation: "read", goalId },
+      { operation: "continue", goalId },
+      { operation: "resume", goalId },
+      { operation: "confirm", goalId, effectId }
+    ]);
+    assert.equal(transport.sent.some((item) => item.text.includes(`/goal confirm ${goalId} ${effectId}`)), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: completed")), true);
+    const evidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_confirm.json"), "utf8"
+    ));
+    assert.deepEqual({
+      operation: evidence.operation,
+      requested_goal_id: evidence.requested_goal_id,
+      requested_effect_id: evidence.requested_effect_id,
+      goal_id: evidence.goal_id,
+      goal_status: evidence.goal_status,
+      receipt_id: evidence.receipt_id,
+      status: evidence.status
+    }, {
+      operation: "confirm",
+      requested_goal_id: goalId,
+      requested_effect_id: effectId,
+      goal_id: goalId,
+      goal_status: "completed",
+      receipt_id: "goal_receipt_control_123",
+      status: "delivered"
+    });
+    assert.equal(existsSync(join(fixture.stateRoot, "runs/task_queue.jsonl")), false);
+    assert.equal(existsSync(join(fixture.stateRoot, "channels/outbox.jsonl")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("malformed and mismatched private Goal controls fail closed without replacement Goals", async () => {
+  const fixture = await createFixture();
+  try {
+    let submissions = 0;
+    const expectedEffectId = "goal_effect_expected_123";
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        submissions += 1;
+        return activeGoalView("goal_replacement_forbidden");
+      },
+      read: async (goalId) => activeGoalView(goalId),
+      continue: async (goalId) => activeGoalView(goalId),
+      resume: async (goalId, effectId) => {
+        const latest = {
+          ...activeGoalView(goalId),
+          status: "paused",
+          pending_effect: { effect_id: expectedEffectId, state: "awaiting_confirmation" }
+        } as GoalView;
+        throw new GoalInteractionError(goalId, latest, new Error(`confirmation does not match pending effect: ${expectedEffectId}; received ${effectId}`));
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_malformed", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal continue goal_control_123 extra"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_mismatch", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal confirm goal_control_123 goal_effect_wrong_123"
+    }));
+
+    assert.equal(submissions, 0);
+    assert.equal(transport.sent.some((item) => item.text.includes("Goal control command rejected.")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Goal control command failed closed.")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: paused")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("confirmation does not match pending effect")), false);
+    const failed = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_mismatch.json"), "utf8"
+    ));
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.goal_status, "paused");
+    assert.equal(failed.pending_effect_id, expectedEffectId);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("terminal and outcome-unknown Goal controls preserve canonical state and fail closed", async () => {
+  const fixture = await createFixture();
+  try {
+    let submissions = 0;
+    const terminalGoal = {
+      goal_id: "goal_terminal_123",
+      status: "completed",
+      pending_effect: null,
+      receipt: { id: "goal_receipt_terminal_123", summary: "Already complete." }
+    } as GoalView;
+    const unknownGoal = {
+      ...activeGoalView("goal_unknown_123"),
+      status: "paused",
+      pending_effect: { effect_id: "goal_effect_unknown_123", state: "outcome_unknown" }
+    } as GoalView;
+    const goalIngress: GoalInteractionPort = {
+      submit: async () => {
+        submissions += 1;
+        return activeGoalView("goal_replacement_forbidden");
+      },
+      read: async (goalId) => activeGoalView(goalId),
+      continue: async (goalId) => {
+        throw new GoalInteractionError(goalId, terminalGoal, new Error("completed Goal cannot continue"));
+      },
+      resume: async (goalId) => {
+        throw new GoalInteractionError(goalId, unknownGoal, new Error("unknown effect outcome requires reconciliation"));
+      }
+    };
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(), transport, goalIngress, store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_terminal", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal continue goal_terminal_123"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_goal_unknown", chatType: "p2p", openId: "ou_allowed",
+      text: "/goal resume goal_unknown_123"
+    }));
+
+    assert.equal(submissions, 0);
+    assert.equal(transport.sent.some((item) => item.text.includes("Canonical status: completed")), true);
+    assert.equal(transport.sent.some((item) => item.text.includes("No safe continuation command")), true);
+    const terminalEvidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_terminal.json"), "utf8"
+    ));
+    const unknownEvidence = JSON.parse(await readFile(
+      join(fixture.stateRoot, "channels/feishu/goal-control/om_goal_unknown.json"), "utf8"
+    ));
+    assert.equal(terminalEvidence.goal_status, "completed");
+    assert.equal(terminalEvidence.receipt_id, "goal_receipt_terminal_123");
+    assert.equal(unknownEvidence.goal_status, "paused");
+    assert.equal(unknownEvidence.pending_effect_id, "goal_effect_unknown_123");
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("private text Goal failure stays out of legacy orchestration state", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig(),
+      transport,
+      goalIngress: failingGoalIngress("goal ingress failed"),
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_private_goal_failure",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "安全失败"
+    }));
+
+    assert.deepEqual(transport.sent.map((item) => item.text), ["收到，正在处理。", "error"]);
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
+    const error = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/errors/om_private_goal_failure.json"), "utf8"));
+    assert.equal(error.error, "goal ingress failed");
+    assert.deepEqual({ goal_id: error.goal_id, goal_status: error.goal_status, receipt_id: error.receipt_id }, {
+      goal_id: "goal_feishu_failed", goal_status: "active", receipt_id: null
+    });
+    assert.equal(error.inbound_ref.endsWith("channels/feishu/inbound/om_private_goal_failure.json"), true);
+    assert.deepEqual(error.provider_message_ids, ["sent_2"]);
   } finally {
     await fixture.cleanup();
   }
@@ -214,12 +499,12 @@ test("operator notification drain sends queued Feishu notifications", async () =
       source: "codex",
       refs: ["memory/episodes/session_notify.json"]
     });
-    const runner = new StubRunner(fixture.store, "unused");
+    const runner = new StubGoalIngress(fixture.store, "unused");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -250,12 +535,12 @@ test("operator notification drain fails unauthorized Feishu targets without send
       openId: "ou_denied",
       text: "这条不应发送。"
     });
-    const runner = new StubRunner(fixture.store, "unused");
+    const runner = new StubGoalIngress(fixture.store, "unused");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -274,7 +559,7 @@ test("operator notification drain fails unauthorized Feishu targets without send
   }
 });
 
-test("private text message includes bounded local conversation history", async () => {
+test("private text Goal objective includes bounded local conversation history", async () => {
   const fixture = await createFixture();
   try {
     await fixture.store.writeJson("channels/feishu/inbound/om_prior.json", {
@@ -311,12 +596,19 @@ test("private text message includes bounded local conversation history", async (
       text: "不应该出现在当前上下文",
       created_at: "2026-06-29T00:00:03.000Z"
     });
-    const runner = new StubRunner(fixture.store, "Final answer.");
+    await fixture.store.writeJson("channels/feishu/inbound/om_goal_control.json", {
+      message_id: "om_goal_control",
+      chat_id: "chat_ou_allowed",
+      open_id: "ou_allowed",
+      text: "/goal confirm goal_history_123 goal_effect_history_123",
+      created_at: "2026-06-29T00:00:03.500Z"
+    });
+    const goalIngress = stubGoalIngress("goal_feishu_history");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -327,15 +619,15 @@ test("private text message includes bounded local conversation history", async (
       text: "现在呢？"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /Recent conversation context/);
-    assert.match(runner.tasks[0], /之前我问过部署状态/);
-    assert.match(runner.tasks[0], /之前的回答是服务正在运行/);
-    assert.doesNotMatch(runner.tasks[0], /不应该混入其他聊天回复/);
-    assert.doesNotMatch(runner.tasks[0], /无 chat_id 回复不应该进入上下文/);
-    assert.doesNotMatch(runner.tasks[0], /不应该出现在当前上下文/);
-    assert.match(runner.tasks[0], /User message:\n现在呢？/);
-    assert.equal(runner.recallQueries[0], "现在呢？");
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /Recent conversation context/);
+    assert.match(goalIngress.objectives[0]!, /之前我问过部署状态/);
+    assert.match(goalIngress.objectives[0]!, /之前的回答是服务正在运行/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /不应该混入其他聊天回复/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /无 chat_id 回复不应该进入上下文/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /不应该出现在当前上下文/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /goal_effect_history_123/);
+    assert.match(goalIngress.objectives[0]!, /User message:\n现在呢？/);
 
     const outbound = JSON.parse(
       await readFile(join(fixture.stateRoot, "channels/feishu/outbound/om_followup.json"), "utf8")
@@ -349,12 +641,12 @@ test("private text message includes bounded local conversation history", async (
 test("private text messages queue same-sender follow-ups while a run is active", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new BlockingRunner(fixture.store);
+    const runner = new BlockingGoalIngress(fixture.store);
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ queuedText: "queued" }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -392,9 +684,9 @@ test("private text messages queue same-sender follow-ups while a run is active",
     assert.deepEqual(transport.sent.map((item) => item.text), [
       "收到，正在处理。",
       "queued",
-      "First answer.",
+      "Goal: goal_blocking_1\nCanonical status: completed\nReceipt: goal_receipt_blocking_1\nOutcome (receipt content; canonical lifecycle is shown above): First answer.\nGoal goal_blocking_1 is completed; no continuation command is required.",
       "收到，正在处理。",
-      "Second answer."
+      "Goal: goal_blocking_2\nCanonical status: completed\nReceipt: goal_receipt_blocking_2\nOutcome (receipt content; canonical lifecycle is shown above): Second answer.\nGoal goal_blocking_2 is completed; no continuation command is required."
     ]);
 
     const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
@@ -407,15 +699,59 @@ test("private text messages queue same-sender follow-ups while a run is active",
   }
 });
 
+test("private Goal control waits in the same-sender lane and never becomes a replacement Goal", async () => {
+  const fixture = await createFixture();
+  try {
+    const runner = new BlockingGoalIngress(fixture.store);
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ queuedText: "queued" }),
+      transport,
+      goalIngress: runner,
+      store: fixture.store
+    });
+
+    const firstRun = adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_control_lane_first",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "先执行一个新 Goal"
+    }));
+    await waitUntil(() => runner.tasks.length === 1);
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_control_lane_second",
+      chatType: "p2p",
+      openId: "ou_allowed",
+      text: "/goal continue goal_existing_123"
+    }));
+    assert.equal(runner.tasks.length, 1);
+    assert.equal(runner.controlCalls.length, 0);
+    assert.equal(transport.sent.some((item) => item.text === "queued"), true);
+
+    runner.resolveNext("First answer.");
+    await firstRun;
+    assert.deepEqual(runner.controlCalls, [
+      { operation: "continue", goalId: "goal_existing_123" }
+    ]);
+    assert.equal(runner.tasks.length, 1);
+    const channelEvents = await readJsonl(join(fixture.stateRoot, "channels/feishu/events.jsonl"));
+    assert.equal(channelEvents.some((event) => event.kind === "queued_followup"), true);
+    assert.equal(channelEvents.some((event) => event.kind === "goal_control_delivered"), true);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("private text messages keep busy response when same-sender follow-up queue is full", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new BlockingRunner(fixture.store);
+    const runner = new BlockingGoalIngress(fixture.store);
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ busyText: "busy", queuedText: "queued", followupQueueSize: 1 }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -469,12 +805,12 @@ test("private text messages keep busy response when same-sender follow-up queue 
 test("duplicate Feishu message id does not run twice", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
     const event = feishuEvent({
@@ -498,12 +834,12 @@ test("duplicate Feishu message id does not run twice", async () => {
 test("allowlist blocks unauthorized private users without replying", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_allowed"] }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -524,12 +860,12 @@ test("allowlist blocks unauthorized private users without replying", async () =>
 test("authorized Feishu group bootstrap creates a pending runtime session", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -558,12 +894,12 @@ test("authorized Feishu group bootstrap creates a pending runtime session", asyn
 test("bound Feishu group member messages go to runtime session inbox without running", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -597,15 +933,16 @@ test("bound Feishu group member messages go to runtime session inbox without run
   }
 });
 
-test("bound Feishu group run command executes and records a runtime task run", async () => {
+test("bound Feishu group run command submits one Goal without legacy task state", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "Group final answer.");
+    const runner = new StubGoalIngress(fixture.store, "unused");
+    const goalIngress = stubGoalIngress("goal_feishu_group");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport,
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -624,41 +961,60 @@ test("bound Feishu group run command executes and records a runtime task run", a
       text: "/run check service status"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /Feishu group runtime session message received/);
-    assert.match(runner.tasks[0], /Runtime session profile: ops/);
-    assert.match(runner.tasks[0], /check service status/);
+    assert.equal(runner.tasks.length, 0);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /Feishu group runtime session message received/);
+    assert.match(goalIngress.objectives[0]!, /Runtime session profile: ops/);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
     assert.deepEqual(transport.chatSent.map((item) => item.text), [
       "已绑定 runtime session: " + (await listRuntimeSessions(fixture.store))[0]!.id + "\nprofile: ops\n后续普通群消息会进入 inbox；使用 /run 或 @bot 才会执行任务。",
       "收到，正在处理。",
-      "Group final answer."
+      "Goal: goal_feishu_group\nStatus: active\nRun goal continue --goal goal_feishu_group to continue this Goal."
     ]);
 
-    const runs = await listRuntimeTaskRuns(fixture.store);
-    assert.equal(runs.length, 1);
-    assert.equal(runs[0]?.status, "done");
-    assert.equal(runs[0]?.task, "check service status");
-    assert.equal(runs[0]?.source_kind, "feishu");
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
     const tasks = await listRuntimeTaskQueue(fixture.store);
-    assert.equal(tasks.length, 1);
-    assert.equal(tasks[0]?.id, runs[0]?.id);
-    assert.equal(tasks[0]?.status, "done");
-    const rawRuns = await readJsonl(join(fixture.stateRoot, "runs/index.jsonl"));
-    assert.deepEqual(rawRuns.map((entry) => entry.status), ["queued", "running", "done"]);
-    assert.equal(rawRuns[0]?.id, rawRuns[1]?.id);
-    assert.equal(rawRuns[1]?.id, rawRuns[2]?.id);
-    const rawQueue = await readJsonl(join(fixture.stateRoot, "runs/task_queue.jsonl"));
-    assert.deepEqual(rawQueue.map((entry) => entry.status), ["queued", "running", "done"]);
-    assert.match(String(rawQueue[0]?.runner_task), /Feishu group runtime session message received/);
+    assert.equal(tasks.length, 0);
     const outbox = await listRuntimeChannelOutbox(fixture.store);
-    assert.equal(outbox.length, 1);
-    assert.equal(outbox[0]?.source_kind, "feishu");
-    assert.equal(outbox[0]?.purpose, "final");
-    assert.equal(outbox[0]?.status, "sent");
-    assert.equal(outbox[0]?.task_run_id, runs[0]?.id);
-    assert.equal(outbox[0]?.runtime_session_id, runs[0]?.runtime_session_id);
-    assert.equal(outbox[0]?.in_reply_to_message_id, "om_group_run");
-    assert.equal(outbox[0]?.text, "Group final answer.");
+    assert.equal(outbox.length, 0);
+    const delivery = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/outbound/om_group_run.json"), "utf8"));
+    assert.deepEqual({
+      goal_id: delivery.goal_id,
+      goal_status: delivery.goal_status,
+      receipt_id: delivery.receipt_id
+    }, { goal_id: "goal_feishu_group", goal_status: "active", receipt_id: null });
+    assert.equal(existsSync(join(fixture.stateRoot, "memory/episodes/events.jsonl")), false);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("Feishu group Goal failure stays out of legacy orchestration state", async () => {
+  const fixture = await createFixture();
+  try {
+    const transport = new MockFeishuTransport();
+    const adapter = new FeishuPrivateChatAdapter({
+      config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
+      transport,
+      goalIngress: failingGoalIngress("goal ingress failed"),
+      store: fixture.store
+    });
+
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_fail_bind", chatType: "group", chatId: "oc_group_fail",
+      openId: "ou_operator", text: "/session use ops"
+    }));
+    await adapter.handleInboundEvent(feishuEvent({
+      messageId: "om_group_fail", chatType: "group", chatId: "oc_group_fail",
+      openId: "ou_member", text: "/run fail safely"
+    }));
+
+    assert.deepEqual(transport.chatSent.map((item) => item.text).slice(-2), ["收到，正在处理。", "error"]);
+    assert.equal((await listRuntimeTaskRuns(fixture.store)).length, 0);
+    assert.equal((await listRuntimeTaskQueue(fixture.store)).length, 0);
+    assert.equal((await listRuntimeChannelOutbox(fixture.store)).length, 0);
+    const evidence = JSON.parse(await readFile(join(fixture.stateRoot, "channels/feishu/errors/om_group_fail.json"), "utf8"));
+    assert.equal(evidence.error, "goal ingress failed");
   } finally {
     await fixture.cleanup();
   }
@@ -667,11 +1023,12 @@ test("bound Feishu group run command executes and records a runtime task run", a
 test("bound Feishu group bot mention executes without leaking the mention into the task", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "Mention final answer.");
+    const runner = new StubGoalIngress(fixture.store, "unused");
+    const goalIngress = stubGoalIngress("goal_feishu_mention");
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig({ allowedOpenIds: ["ou_operator"] }),
       transport: new MockFeishuTransport(),
-      runner,
+      goalIngress,
       store: fixture.store
     });
 
@@ -690,9 +1047,10 @@ test("bound Feishu group bot mention executes without leaking the mention into t
       text: "@bot check service status"
     }));
 
-    assert.equal(runner.tasks.length, 1);
-    assert.match(runner.tasks[0], /check service status/);
-    assert.doesNotMatch(runner.tasks[0], /@bot/i);
+    assert.equal(runner.tasks.length, 0);
+    assert.equal(goalIngress.objectives.length, 1);
+    assert.match(goalIngress.objectives[0]!, /check service status/);
+    assert.doesNotMatch(goalIngress.objectives[0]!, /@bot/i);
     const session = (await listRuntimeSessions(fixture.store))[0]!;
     const inbox = await listRuntimeInbox(fixture.store, session.id);
     assert.equal(inbox.at(-1)?.trigger_kind, "mention");
@@ -704,12 +1062,12 @@ test("bound Feishu group bot mention executes without leaking the mention into t
 test("Feishu adapter drains queued provider-neutral outbox replies", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "unused");
+    const runner = new StubGoalIngress(fixture.store, "unused");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
     const queued = await recordRuntimeChannelOutbound(fixture.store, {
@@ -750,12 +1108,12 @@ test("Feishu adapter drains queued provider-neutral outbox replies", async () =>
 test("Feishu outbox drain can replay p2p replies by chat id", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "unused");
+    const runner = new StubGoalIngress(fixture.store, "unused");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
     await recordRuntimeChannelOutbound(fixture.store, {
@@ -893,12 +1251,12 @@ test("operator status command replies from local state without running the agent
       reason: "Operator should review self-evolution direction before more autonomous ticks.",
       resume_hint: "Clear or replace the pause signal after review."
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -956,12 +1314,12 @@ test("operator config command replies with non-secret runtime config without run
   const fixture = await createFixture();
   const configFixture = await createConfigFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store,
       configDir: configFixture.configDir
     });
@@ -1062,12 +1420,12 @@ test("operator content command replies with latest daily job and linked run with
       last_job_status: job.status,
       updated_at: "2026-07-01T00:00:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1127,12 +1485,12 @@ test("operator content run command replies with bounded run metadata only", asyn
         text: "RUN_DETAIL_RAW_BODY_SHOULD_NOT_BE_SENT. AI application launches and chip demand are active."
       })
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1176,12 +1534,12 @@ test("operator content command can inspect a tracked daily job by track and date
         text: "TRACKED_RAW_BODY_SHOULD_NOT_BE_SENT. New AI agents are moving into product workflows."
       })
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1206,12 +1564,12 @@ test("operator content command can inspect a tracked daily job by track and date
 test("operator capabilities command replies with local capability catalog without running the agent", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1229,8 +1587,8 @@ test("operator capabilities command replies with local capability catalog withou
     assert.match(fullText, /Core tools \(implemented, layer: core_runtime\)/);
     assert.match(fullText, /file\.read/);
     assert.match(fullText, /SOP self-evolution/);
-    assert.match(fullText, /Self-evolution scorecard \[core_runtime\]/);
-    assert.doesNotMatch(fullText, /Self-evolution scorecard \[local_learning\]/);
+    assert.match(fullText, /Goal outcome-driven tool competence \[core_runtime\]/);
+    assert.doesNotMatch(fullText, /Goal outcome-driven tool competence \[local_learning\]/);
     assert.match(fullText, /Content planning and evidence \[application_slice\]/);
     assert.doesNotMatch(fullText, /Content planning and evidence \[core_runtime\]/);
     assert.match(fullText, /delegate_agent/);
@@ -1257,12 +1615,12 @@ test("operator capabilities command replies with local capability catalog withou
 test("operator capability acceptance command replies with next-version gates without running the agent", async () => {
   const fixture = await createFixture();
   try {
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1376,12 +1734,12 @@ test("operator recap command summarizes latest session without running the agent
     await fixture.store.writeJson("memory/episodes/session_feishu_recap-model-response-r1.json", {
       raw: "RAW_FEISHU_RECAP_RESPONSE_SHOULD_NOT_BE_SENT"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1424,12 +1782,12 @@ test("operator service logs command reads bounded local log tails without runnin
       "recent stderr one",
       "recent stderr two"
     ].join("\n"));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store,
       homeRoot
     });
@@ -1469,12 +1827,12 @@ test("operator workspace command reads fixed git status without running the agen
     await writeFile(join(fixture.repoRoot, "tracked.txt"), "two\n", "utf8");
     await writeFile(join(fixture.repoRoot, "untracked.txt"), "RAW_WORKSPACE_BODY_SHOULD_NOT_BE_SENT\n", "utf8");
 
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1668,12 +2026,12 @@ test("operator health command replies with bounded service health without runnin
       next_wake_delay_ms: 3600000,
       next_wake_reason: "interval"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -1890,12 +2248,12 @@ test("operator governance command replies with aggregate state without running t
       safety_boundary: ["This request records operator intent only."],
       next_step: "Review before execution."
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2013,12 +2371,12 @@ test("operator governance command explains decision-closed self-evolution gaps",
       reason: "source-quality gate already implemented"
     });
 
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2067,12 +2425,12 @@ test("operator governance commands render selected skill outcome summaries", asy
       final_response_ref: "memory/episodes/session_operator_skill-final-response.md",
       created_at: "2026-06-30T00:00:10.000Z"
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2144,12 +2502,12 @@ test("operator opportunities command renders stale daily step service recovery",
       current_job_ref: "content/daily/ai_applications/2026-07-02.json",
       current_run_ref: "content/runs/content_run_stale_daily/run.json"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2221,12 +2579,12 @@ test("operator governance commands render working checkpoint backlog summaries",
       }],
       created_at: "2026-06-30T00:00:02.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2491,12 +2849,12 @@ test("operator opportunities command replies with ranked backlog without running
       ],
       created_at: "2026-06-30T00:00:11.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2599,12 +2957,12 @@ test("operator review tick commands read tick history without running the agent"
         markdown_ref: "autonomy/ticks/review_tick_feishu_new.md"
       }
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2694,12 +3052,12 @@ test("operator review report commands read background review history without run
       },
       evidence_event_id: "evidence_background_review_feishu_new"
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -2770,12 +3128,12 @@ test("operator completion verification commands read report history without runn
         }
       ]
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3001,12 +3359,12 @@ test("operator live run trace commands read bounded run metadata without running
     const replay = await runHarnessReplayAudit(fixture.store, {
       traceRef: "completion_verification_trace_feishu_new"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3160,12 +3518,12 @@ test("operator selected skill outcome commands read usage history without runnin
       },
       created_at: "2026-06-30T00:02:00.000Z"
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3241,12 +3599,12 @@ test("operator skill catalog commands read skill metadata without running the ag
       created_at: "2026-06-30T00:00:00.000Z",
       updated_at: "2026-06-30T00:01:00.000Z"
     })}\n`);
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3300,12 +3658,12 @@ test("operator skill registry health commands inspect active-vault health withou
       metadata_ref: "vault/registry/skills.jsonl#feishu-health",
       content_hash: "stale-hash"
     }))}\n`);
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3354,12 +3712,12 @@ test("operator skill registry health commands render orphan event retirement gui
       summary: "Historical Feishu orphan event.",
       created_at: "2026-06-30T00:00:00.000Z"
     })}\n`);
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3424,12 +3782,12 @@ test("operator selected skill drift commands read grouped usage summaries withou
       },
       created_at: "2026-06-30T00:03:00.000Z"
     }));
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3505,12 +3863,12 @@ test("operator skill registry event commands read active-vault event history wit
       summary: "Validated Feishu selected-skill drift without changing the skill body.",
       created_at: "2026-06-30T00:01:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3626,12 +3984,12 @@ test("operator evolution command replies with SOP evolution ledger without runni
       summary: "Promoted Feishu SOP evolution ledger skill.",
       created_at: "2026-06-30T00:03:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3697,12 +4055,12 @@ test("operator review coverage command reads reused skill coverage without runni
       ],
       created_at: "2026-06-29T00:00:01.000Z"
     });
-    const runner = new StubRunner(fixture.store, "Final answer.");
+    const runner = new StubGoalIngress(fixture.store, "Final answer.");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3776,12 +4134,12 @@ test("operator opportunities command renders pipeline resume guidance without ru
       final_response_ref: "pipelines/pipeline_operator_resume/artifacts/verify.md",
       updated_at: "2026-06-30T00:00:14.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3844,12 +4202,12 @@ test("operator opportunities command renders repo write guard attention without 
       artifact_refs: [`memory/episodes/${sessionId}-tool_result_write.json`],
       created_at: "2026-06-30T00:42:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -3920,12 +4278,12 @@ test("operator context commands read manifest sidecars without running the agent
     await fixture.store.writeText("memory/episodes/session_new-context.md", "RAW_CONTEXT_SHOULD_NOT_APPEAR");
     await fixture.store.writeText("memory/episodes/session_pressure-context.md", "RAW_PRESSURE_CONTEXT_SHOULD_NOT_APPEAR");
     await fixture.store.writeText("memory/episodes/session_orphan-context.md", "RAW_ORPHAN_CONTEXT_SHOULD_NOT_APPEAR");
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store,
       configDir: configFixture.configDir
     });
@@ -4063,12 +4421,12 @@ test("operator working checkpoint commands read bounded checkpoints without runn
       ],
       created_at: "2026-06-30T00:05:01.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4153,12 +4511,12 @@ test("operator pipeline commands read bounded history without running the agent"
       final_response_ref: "pipelines/pipeline_feishu/artifacts/intake.md",
       updated_at: "2026-06-30T00:00:03.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4222,12 +4580,12 @@ test("operator episode memory commands scan local JSONL without running the agen
       created_at: "2026-06-30T00:02:00.000Z"
     });
     await fixture.store.writeText("memory/episodes/session_replay-raw.md", "RAW_EPISODE_DETAIL_SHOULD_NOT_APPEAR");
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4297,12 +4655,12 @@ test("operator episode archive commands read archive summaries without running t
         created_at: "2026-06-30T00:05:00.000Z"
       }]
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4356,12 +4714,12 @@ test("operator archive health commands diagnose archive freshness without runnin
       artifact_refs: ["memory/episodes/archive-health-raw.md"],
       created_at: "2026-06-30T00:00:00.000Z"
     })}\n`);
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4460,12 +4818,12 @@ test("operator review inbox command lists active items without running the agent
       ],
       would_write: ["active_vault"]
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4697,12 +5055,12 @@ test("operator review confirmation commands read local confirmations without run
       reason: "The stale request is kept only as historical evidence.",
       created_at: "2026-06-30T00:04:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4838,12 +5196,12 @@ test("operator memory candidate commands read local candidates without running t
       accepted_markdown_ref: "memory/semantic/accepted/semantic_memory_c.md",
       accepted_at: "2026-06-30T00:04:00.000Z"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4912,12 +5270,12 @@ test("operator accepted memory commands read local accepted memory without runni
       accepted_at: "2026-06-30T00:01:00.000Z",
       boundary: "local state semantic memory"
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -4989,12 +5347,12 @@ test("operator memory confirmation commands read local confirmations without run
         evidence_event_id: "evt_memory_executed"
       }
     });
-    const runner = new StubRunner(fixture.store, "done");
+    const runner = new StubGoalIngress(fixture.store, "done");
     const transport = new MockFeishuTransport();
     const adapter = new FeishuPrivateChatAdapter({
       config: testFeishuConfig(),
       transport,
-      runner,
+      goalIngress: runner,
       store: fixture.store
     });
 
@@ -5037,7 +5395,7 @@ test("operator memory confirmation commands read local confirmations without run
   }
 });
 
-test("Feishu channel and scenario resolve from settings and auth env refs without model auth", async () => {
+test("Feishu channel resolves from settings and auth env refs without model auth", async () => {
   const fixture = await createConfigFixture();
   const previousAppId = process.env[TEST_FEISHU_APP_ID_ENV];
   const previousAppSecret = process.env[TEST_FEISHU_APP_SECRET_ENV];
@@ -5046,19 +5404,16 @@ test("Feishu channel and scenario resolve from settings and auth env refs withou
   process.env[TEST_FEISHU_APP_SECRET_ENV] = "secret_from_env";
   delete process.env.API_KEY;
   try {
-    const scenario = await loadFeishuScenarioConfig({
+    const channel = await loadFeishuChannelConfig({
       configDir: fixture.configDir,
       stateRoot: fixture.stateRoot
     });
 
-    assert.equal(scenario.id, "im-default");
-    assert.equal(scenario.modelId, "test-model");
-    assert.equal(scenario.discipline, "query_todo");
-    assert.equal(scenario.channel.appId, "cli_from_env");
-    assert.equal(scenario.channel.appSecret, "secret_from_env");
-    assert.equal(scenario.channel.ackText, "ack from settings");
-    assert.equal(scenario.channel.queuedText, "queued from settings");
-    assert.equal(scenario.channel.followupQueueSize, 3);
+    assert.equal(channel.appId, "cli_from_env");
+    assert.equal(channel.appSecret, "secret_from_env");
+    assert.equal(channel.ackText, "ack from settings");
+    assert.equal(channel.queuedText, "queued from settings");
+    assert.equal(channel.followupQueueSize, 3);
   } finally {
     restoreEnv(TEST_FEISHU_APP_ID_ENV, previousAppId);
     restoreEnv(TEST_FEISHU_APP_SECRET_ENV, previousAppSecret);
@@ -5127,70 +5482,116 @@ class MockFeishuTransport implements FeishuTransport {
   }
 }
 
-class StubRunner implements TaskRunner {
+class StubGoalIngress implements GoalInteractionPort {
   readonly tasks: string[] = [];
-  readonly recallQueries: Array<string | undefined> = [];
 
   constructor(
-    private readonly store: AgentStore,
+    private readonly _store: AgentStore,
     private readonly finalText: string
   ) {}
 
-  async runTask(task: string, options: { recallQuery?: string } = {}): Promise<RunResult> {
+  async submit(task: string): Promise<GoalView> {
     this.tasks.push(task);
-    this.recallQueries.push(options.recallQuery);
-    const finalRef = "memory/episodes/session_test-final-response.md";
-    await this.store.writeText(finalRef, this.finalText);
+    const index = this.tasks.length;
     return {
-      trigger_id: "trigger_test",
-      opportunity_id: "opp_test",
-      session_id: "session_test",
-      turn_id: "turn_test",
-      context_ref: "memory/episodes/session_test-context.md",
-      model_response_ref: "memory/episodes/session_test-model-response.json",
-      envelope_ref: "memory/episodes/session_test-model-action.json",
-      evidence_refs: ["evidence_test"],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: finalRef,
-      discipline_refs: null,
-      verdict: "no_sop"
-    };
+      goal_id: `goal_stub_${index}`,
+      status: "completed",
+      receipt: { id: `goal_receipt_stub_${index}`, summary: this.finalText }
+    } as GoalView;
+  }
+
+  async read(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
+  }
+
+  async continue(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
+  }
+
+  async resume(goalId: string): Promise<GoalView> {
+    return activeGoalView(goalId);
   }
 }
 
-class BlockingRunner implements TaskRunner {
+function stubGoalIngress(goalId: string): GoalInteractionPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return {
+    objectives,
+    ...passiveGoalControls(),
+    submit: async (objective) => {
+      objectives.push(objective);
+      return activeGoalView(goalId);
+    }
+  };
+}
+
+function completedGoalIngress(goalId: string, summary: string): GoalInteractionPort & { objectives: string[] } {
+  const objectives: string[] = [];
+  return {
+    objectives,
+    ...passiveGoalControls(),
+    submit: async (objective) => {
+      objectives.push(objective);
+      return {
+        goal_id: goalId,
+        status: "completed",
+        receipt: { id: `goal_receipt_${goalId}`, summary }
+      } as GoalView;
+    }
+  };
+}
+
+function failingGoalIngress(message: string): GoalInteractionPort {
+  return {
+    ...passiveGoalControls(),
+    submit: async () => {
+      const goal = {
+        goal_id: "goal_feishu_failed",
+        status: "active",
+        pending_effect: null,
+        receipt: null
+      } as GoalView;
+      throw new GoalInteractionError(goal.goal_id, goal, new Error(message));
+    }
+  };
+}
+
+class BlockingGoalIngress implements GoalInteractionPort {
   readonly tasks: string[] = [];
+  readonly controlCalls: Array<{ operation: string; goalId: string; effectId?: string }> = [];
   private readonly pending: Array<{ resolve: (text: string) => void; promise: Promise<string> }> = [];
 
-  constructor(private readonly store: AgentStore) {}
+  constructor(private readonly _store: AgentStore) {}
 
-  async runTask(task: string): Promise<RunResult> {
+  async submit(task: string): Promise<GoalView> {
     this.tasks.push(task);
+    const index = this.tasks.length;
     const pending = this.createPending();
     const finalText = await pending.promise;
-    const sessionId = `session_blocking_${this.tasks.length}`;
-    const finalRef = `memory/episodes/${sessionId}-final-response.md`;
-    await this.store.writeText(finalRef, finalText);
     return {
-      trigger_id: `trigger_${sessionId}`,
-      opportunity_id: `opp_${sessionId}`,
-      session_id: sessionId,
-      turn_id: `turn_${sessionId}`,
-      context_ref: `memory/episodes/${sessionId}-context.md`,
-      model_response_ref: `memory/episodes/${sessionId}-model-response.json`,
-      envelope_ref: `memory/episodes/${sessionId}-model-action.json`,
-      evidence_refs: [`evidence_${sessionId}`],
-      sop_ref: null,
-      audit_ref: null,
-      skill_ref: null,
-      recalled_skill_refs: [],
-      final_response_ref: finalRef,
-      discipline_refs: null,
-      verdict: "no_sop"
-    };
+      goal_id: `goal_blocking_${index}`,
+      status: "completed",
+      receipt: { id: `goal_receipt_blocking_${index}`, summary: finalText }
+    } as GoalView;
+  }
+
+  async read(goalId: string): Promise<GoalView> {
+    this.controlCalls.push({ operation: "read", goalId });
+    return activeGoalView(goalId);
+  }
+
+  async continue(goalId: string): Promise<GoalView> {
+    this.controlCalls.push({ operation: "continue", goalId });
+    return activeGoalView(goalId);
+  }
+
+  async resume(goalId: string, effectId?: string): Promise<GoalView> {
+    this.controlCalls.push({
+      operation: effectId ? "confirm" : "resume",
+      goalId,
+      ...(effectId ? { effectId } : {})
+    });
+    return activeGoalView(goalId);
   }
 
   resolveNext(text: string): void {
@@ -5208,6 +5609,18 @@ class BlockingRunner implements TaskRunner {
     this.pending.push(pending);
     return pending;
   }
+}
+
+function passiveGoalControls(): Pick<GoalInteractionPort, "read" | "continue" | "resume"> {
+  return {
+    read: async (goalId) => activeGoalView(goalId),
+    continue: async (goalId) => activeGoalView(goalId),
+    resume: async (goalId) => activeGoalView(goalId)
+  };
+}
+
+function activeGoalView(goalId: string): GoalView {
+  return { goal_id: goalId, status: "active", pending_effect: null, receipt: null } as GoalView;
 }
 
 function testFeishuConfig(overrides: Partial<FeishuChannelConfig> = {}): FeishuChannelConfig {

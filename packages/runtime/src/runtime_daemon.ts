@@ -11,10 +11,9 @@ import { createContentFeedbackRefreshLoop } from "./content_feedback_refresh_ser
 import { RuntimeMessageGateway, type RuntimeChannelAdapter, type RuntimeChannelHealth } from "./message_gateway.js";
 import { createRuntimeImAdapter } from "./im_adapters.js";
 import type { ImScenarioConfig } from "./im_config.js";
-import { OpenAICompatibleClient, OpenAICompatibleImageClient } from "./model.js";
+import { OpenAICompatibleImageClient } from "./model.js";
 import { createReviewTickLoop } from "./review_tick_service.js";
-import { LiveAgentRunner, type DisciplineMode } from "./runner.js";
-import { createRuntimeTaskQueueWorker } from "./runtime_task_queue_worker.js";
+import { createConfiguredGoalIngress, type GoalIngressPort } from "./goal_ingress.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 import { startRuntimeWebConsole, type RuntimeWebConsoleHandle } from "./web_console.js";
 import { XiaohongshuMcpClient } from "./xiaohongshu_mcp.js";
@@ -25,7 +24,6 @@ export interface RuntimeDaemonOptions {
   repoRoot: string;
   config: RuntimeConfig;
   configDir?: string;
-  discipline?: DisciplineMode;
   target?: RuntimeDaemonTarget;
   service?: {
     channelId?: string;
@@ -54,21 +52,18 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   const target = args.target ?? "runtime";
   const repoRoot = resolve(args.repoRoot);
   const store = new AgentStore(repoRoot, args.config.state.root);
-  const model = new OpenAICompatibleClient(args.config.model);
-  const runner = new LiveAgentRunner({
-    repoRoot,
-    stateRoot: args.config.state.root,
-    config: args.config,
-    configDir: args.configDir,
-    model,
-    discipline: args.discipline ?? "query_todo"
-  });
+  const imEnabled = args.im?.enabled !== false && Boolean(args.im?.scenario);
   const adapters: RuntimeChannelAdapter[] = [];
 
-  if (args.im?.enabled !== false && args.im?.scenario) {
+  if (imEnabled && args.im?.scenario) {
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot,
+      configDir: args.configDir,
+      stateRoot: args.config.state.root
+    });
     adapters.push(createRuntimeImAdapter({
       scenario: args.im.scenario,
-      runner,
+      goalIngress,
       store,
       vaultRoot: args.config.vault,
       homeRoot: args.config.home.root,
@@ -77,9 +72,14 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
   }
 
   if (args.web?.enabled) {
+    const goalIngress = await createConfiguredGoalIngress({
+      repoRoot,
+      configDir: args.configDir,
+      stateRoot: args.config.state.root
+    });
     adapters.push(createWebConsoleChannel({
       store,
-      runner,
+      goalIngress,
       host: args.web.host,
       port: args.web.port
     }));
@@ -94,6 +94,7 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     channelId: args.service?.channelId,
     scenarioId: args.service?.scenarioId,
     runtimeBuild,
+    assetProjectionRoot: args.config.runtime.asset_projection_root,
     gatewayHealth: () => gateway.health()
   });
   const reviewTickLoop = createReviewTickLoop({
@@ -161,12 +162,6 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     browserCdpPort: args.config.runtime.content_creator_metrics_browser_cdp_port,
     statusRef: serviceRef(target, "content_creator_metrics.json")
   });
-  const taskQueueWorker = createRuntimeTaskQueueWorker({
-    store,
-    runTask: async (task) => runner.runTask(task),
-    statusRef: serviceRef(target, "task_queue.json")
-  });
-
   await heartbeat.write("starting");
   try {
     await gateway.start();
@@ -175,27 +170,28 @@ export async function startRuntimeDaemon(args: RuntimeDaemonOptions): Promise<Ru
     throw error;
   }
   heartbeat.start();
-  taskQueueWorker.start();
   reviewTickLoop.start();
   contentDailyLoop.start();
   contentFeedbackRefreshLoop.start();
   contentCreatorMetricsLoop.start();
 
-  let stopped = false;
+  let stopPromise: Promise<void> | null = null;
   return {
     gateway,
     stop: async () => {
-      if (stopped) return;
-      stopped = true;
-      contentCreatorMetricsLoop.stop();
-      contentFeedbackRefreshLoop.stop();
-      contentDailyLoop.stop();
-      reviewTickLoop.stop();
-      taskQueueWorker.stop();
-      heartbeat.stop();
-      await heartbeat.write("stopping");
-      await gateway.stop();
-      await heartbeat.write("stopped");
+      if (!stopPromise) {
+        stopPromise = (async () => {
+          contentCreatorMetricsLoop.stop();
+          contentFeedbackRefreshLoop.stop();
+          contentDailyLoop.stop();
+          reviewTickLoop.stop();
+          await heartbeat.stop();
+          await heartbeat.write("stopping");
+          await gateway.stop();
+          await heartbeat.write("stopped");
+        })();
+      }
+      await stopPromise;
     }
   };
 }
@@ -209,7 +205,7 @@ export async function serveRuntimeDaemon(args: RuntimeDaemonOptions): Promise<vo
 
 function createWebConsoleChannel(args: {
   store: AgentStore;
-  runner: LiveAgentRunner;
+  goalIngress: GoalIngressPort;
   host?: string;
   port?: number;
 }): RuntimeChannelAdapter {
@@ -226,15 +222,7 @@ function createWebConsoleChannel(args: {
           store: args.store,
           host: args.host,
           port: args.port,
-          runTask: async (task, runArgs) => args.runner.runTask(runArgs.runtimeSessionId
-            ? [
-              "Runtime session task submitted from the local web console.",
-              `Runtime session ID: ${runArgs.runtimeSessionId}`,
-              "",
-              "Task:",
-              task
-            ].join("\n")
-            : task)
+          goalIngress: args.goalIngress
         });
       } catch (caught) {
         error = caught instanceof Error ? caught.message : String(caught);
@@ -263,17 +251,21 @@ function createServiceHeartbeat(
     channelId?: string;
     scenarioId?: string;
     runtimeBuild?: ServiceRuntimeBuild | null;
+    assetProjectionRoot?: string;
     gatewayHealth?: () => unknown;
   }
 ): {
   start: () => void;
-  stop: () => void;
+  stop: () => Promise<void>;
   write: (state: HeartbeatState, error?: string) => Promise<void>;
 } {
   const startedAt = new Date().toISOString();
   let timer: NodeJS.Timeout | null = null;
+  let started = false;
+  let stopPromise: Promise<void> | null = null;
+  const inflightWrites = new Set<Promise<void>>();
 
-  const write = async (state: HeartbeatState, error?: string): Promise<void> => {
+  const write = (state: HeartbeatState, error?: string): Promise<void> => {
     const payload: Record<string, unknown> = {
       service: args.target,
       state,
@@ -287,27 +279,51 @@ function createServiceHeartbeat(
       updated_at: new Date().toISOString()
     };
     if (args.runtimeBuild) payload.runtime_build = args.runtimeBuild;
+    if (args.assetProjectionRoot) payload.asset_projection_root = args.assetProjectionRoot;
     if (error) payload.error = error;
-    await store.writeJson(serviceRef(args.target, "heartbeat.json"), payload);
+    const promise = store.writeJson(serviceRef(args.target, "heartbeat.json"), payload).then(() => undefined);
+    inflightWrites.add(promise);
+    void promise.then(
+      () => inflightWrites.delete(promise),
+      () => inflightWrites.delete(promise)
+    );
+    return promise;
   };
 
   return {
     start: () => {
-      if (timer) return;
+      if (started || stopPromise) return;
+      started = true;
       void write("running").catch((error: unknown) => {
         console.error(error instanceof Error ? error.message : String(error));
       });
       timer = setInterval(() => {
+        if (!started) return;
         void write("running").catch((error: unknown) => {
           console.error(error instanceof Error ? error.message : String(error));
         });
       }, 30000);
       timer.unref();
     },
-    stop: () => {
-      if (!timer) return;
-      clearInterval(timer);
-      timer = null;
+    stop: async () => {
+      if (stopPromise) return stopPromise;
+      started = false;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      stopPromise = (async () => {
+        while (inflightWrites.size > 0) {
+          const results = await Promise.allSettled(Array.from(inflightWrites));
+          const rejected = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+          if (rejected) throw rejected.reason;
+        }
+      })();
+      try {
+        await stopPromise;
+      } finally {
+        stopPromise = null;
+      }
     },
     write
   };

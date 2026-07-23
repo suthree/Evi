@@ -22,10 +22,19 @@ const skillUsageSchema = z.object({
   patch_count: z.number().int().nonnegative().default(0)
 });
 
+const skillSourceKindSchema = z.enum(["personal", "installed", "seed", "project", "vault", "bundled"]);
+
+export const skillSourceProvenanceSchema = z.object({
+  source: skillSourceKindSchema,
+  path: z.string().min(1),
+  content_hash: z.string().min(1)
+});
+
 export const skillRegistryEntrySchema = z.object({
   name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
   description: z.string().min(1),
-  source: z.enum(["personal", "installed", "seed", "project", "vault", "bundled"]).default("personal"),
+  source: skillSourceKindSchema.default("personal"),
+  provenance: z.array(skillSourceProvenanceSchema).default([]),
   status: z.enum(["active", "stale", "archived", "retired"]).default("active"),
   instructions_ref: z.string().min(1),
   metadata_ref: z.string().min(1),
@@ -83,6 +92,23 @@ export interface SkillRegistrySyncResult {
 
 export type SkillRegistryEntry = z.infer<typeof skillRegistryEntrySchema>;
 export type SkillRegistryEvent = z.infer<typeof skillRegistryEventSchema>;
+export type SkillSourceProvenance = z.infer<typeof skillSourceProvenanceSchema>;
+
+export class SkillSourceConflictError extends Error {
+  readonly skill_name: string;
+  readonly provenance: SkillSourceProvenance[];
+
+  constructor(skillName: string, provenance: SkillSourceProvenance[]) {
+    const sorted = sortProvenance(provenance);
+    const diagnostic = sorted
+      .map((item) => `source=${item.source} path=${item.path} content_hash=${item.content_hash}`)
+      .join("; ");
+    super(`Skill source conflict for ${skillName}: ${diagnostic}`);
+    this.name = "SkillSourceConflictError";
+    this.skill_name = skillName;
+    this.provenance = sorted;
+  }
+}
 
 export async function ensureVaultLayout(store: AgentStore, scope: SkillResolverLike = "vault"): Promise<void> {
   const vaultRoot = resolveSkillResolver(scope).active_root;
@@ -115,19 +141,21 @@ export async function scanSkillRegistry(store: AgentStore, vaultRoot: SkillResol
       if (!parsed.ok || !parsed.name || !parsed.description) continue;
       const previous = existingByRef.get(instructionsRef) ?? existingByName.get(parsed.name);
       const source = classifySource(root.source, instructionsRef);
+      const contentHash = sha256(raw);
       entries.push(skillRegistryEntrySchema.parse({
         ...previous,
         name: parsed.name,
         description: parsed.description,
         source,
+        provenance: [{ source, path: instructionsRef, content_hash: contentHash }],
         status: previous?.status ?? "active",
         instructions_ref: instructionsRef,
         metadata_ref: `${activeVaultRef(resolver, "registry/skills.jsonl")}#${parsed.name}`,
         origin_ref: previous?.origin_ref ?? (source === "seed" || source === "project" ? instructionsRef : null),
         trust_level: previous?.trust_level ?? trustLevelForSource(source),
-        content_hash: sha256(raw),
+        content_hash: contentHash,
         created_at: previous?.created_at ?? utcNow(),
-        updated_at: previous?.content_hash === sha256(raw) ? previous.updated_at : utcNow()
+        updated_at: previous?.content_hash === contentHash ? previous.updated_at : utcNow()
       }));
     }
   }
@@ -137,21 +165,33 @@ export async function scanSkillRegistry(store: AgentStore, vaultRoot: SkillResol
 
 export async function validateSkillPackages(store: AgentStore, vaultRoot: SkillResolverLike = "vault"): Promise<SkillValidationReport[]> {
   const resolver = resolveSkillResolver(vaultRoot);
-  const refs = unique((await Promise.all(
-    resolver.search_roots.map((root) => store.listRepoFiles(root.skills_dir, "SKILL.md"))
-  )).flat());
   const reports: SkillValidationReport[] = [];
-  for (const ref of refs) {
-    const raw = await store.readRepoText(ref);
-    const parsed = parseSkillFrontmatter(raw);
-    reports.push({
-      ref,
-      ok: parsed.ok,
-      errors: parsed.errors,
-      name: parsed.name,
-      description: parsed.description
-    });
+  const reportedRefs = new Set<string>();
+  const discovered: Array<{ name: string; provenance: SkillSourceProvenance }> = [];
+  for (const root of resolver.search_roots) {
+    for (const ref of await store.listRepoFiles(root.skills_dir, "SKILL.md")) {
+      const raw = await store.readRepoText(ref);
+      const parsed = parseSkillFrontmatter(raw);
+      if (!reportedRefs.has(ref)) {
+        reports.push({
+          ref,
+          ok: parsed.ok,
+          errors: parsed.errors,
+          name: parsed.name,
+          description: parsed.description
+        });
+        reportedRefs.add(ref);
+      }
+      if (parsed.ok && parsed.name) {
+        const source = classifySource(root.source, ref);
+        discovered.push({
+          name: parsed.name,
+          provenance: { source, path: ref, content_hash: sha256(raw) }
+        });
+      }
+    }
   }
+  assertNoSkillSourceConflicts(discovered);
   return reports;
 }
 
@@ -256,11 +296,13 @@ export async function promoteSkillToVault(args: {
   await args.store.writeRepoText(skillRef, markdown);
 
   const now = utcNow();
+  const contentHash = sha256(markdown);
   const entry = skillRegistryEntrySchema.parse({
     ...previous,
     name: skill.name,
     description: skill.description,
     source: "personal",
+    provenance: [{ source: "personal", path: skill.instructions_ref, content_hash: contentHash }],
     status: "active",
     instructions_ref: skill.instructions_ref,
     metadata_ref: `${activeVaultRef(resolver, "registry/skills.jsonl")}#${skill.name}`,
@@ -271,7 +313,7 @@ export async function promoteSkillToVault(args: {
     tool_requirements: skill.tool_requirements,
     verification: skill.verification,
     evidence_refs: args.evidenceRefs,
-    content_hash: sha256(markdown),
+    content_hash: contentHash,
     version: previous ? previous.version + 1 : 1,
     usage: previous?.usage ?? { use_count: 0, last_used_at: null, patch_count: 0 },
     created_at: previous?.created_at ?? now,
@@ -372,10 +414,6 @@ function trustLevelForSource(source: SkillSourceKind): "local" | "seed" | "trust
   return "local";
 }
 
-function unique(values: string[]): string[] {
-  return Array.from(new Set(values));
-}
-
 function registryEntryChanged(previous: SkillRegistryEntry | undefined, next: SkillRegistryEntry): boolean {
   if (!previous) return true;
   return JSON.stringify(registryEntryComparable(previous)) !== JSON.stringify(registryEntryComparable(next));
@@ -433,14 +471,76 @@ function unquoteScalar(value: string): string {
 }
 
 function dedupeEntries(entries: SkillRegistryEntry[]): SkillRegistryEntry[] {
-  const byName = new Map<string, SkillRegistryEntry>();
+  const byName = new Map<string, SkillRegistryEntry[]>();
   for (const entry of entries) {
-    const current = byName.get(entry.name);
-    if (!current || entry.updated_at > current.updated_at) {
-      byName.set(entry.name, entry);
+    const group = byName.get(entry.name) ?? [];
+    group.push(entry);
+    byName.set(entry.name, group);
+  }
+  return Array.from(byName.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, group]) => mergeSameNameEntries(name, group));
+}
+
+function mergeSameNameEntries(name: string, entries: SkillRegistryEntry[]): SkillRegistryEntry {
+  const provenance = sortProvenance(entries.flatMap((entry) =>
+    [
+      { source: entry.source, path: entry.instructions_ref, content_hash: entry.content_hash },
+      ...entry.provenance
+    ]
+  ));
+  const contentHashes = new Set(provenance.map((item) => item.content_hash));
+  if (contentHashes.size > 1) throw new SkillSourceConflictError(name, provenance);
+
+  const canonical = [...entries].sort(compareSkillEntries)[0];
+  return skillRegistryEntrySchema.parse({
+    ...canonical,
+    provenance
+  });
+}
+
+function assertNoSkillSourceConflicts(
+  discovered: Array<{ name: string; provenance: SkillSourceProvenance }>
+): void {
+  const byName = new Map<string, SkillSourceProvenance[]>();
+  for (const asset of discovered) {
+    const provenance = byName.get(asset.name) ?? [];
+    provenance.push(asset.provenance);
+    byName.set(asset.name, provenance);
+  }
+  for (const [name, provenance] of byName) {
+    if (new Set(provenance.map((item) => item.content_hash)).size > 1) {
+      throw new SkillSourceConflictError(name, provenance);
     }
   }
-  return Array.from(byName.values());
+}
+
+function compareSkillEntries(left: SkillRegistryEntry, right: SkillRegistryEntry): number {
+  return skillSourceRank(left.source) - skillSourceRank(right.source)
+    || left.source.localeCompare(right.source)
+    || left.instructions_ref.localeCompare(right.instructions_ref)
+    || left.content_hash.localeCompare(right.content_hash);
+}
+
+function sortProvenance(provenance: SkillSourceProvenance[]): SkillSourceProvenance[] {
+  const uniqueEntries = new Map<string, SkillSourceProvenance>();
+  for (const item of provenance) {
+    uniqueEntries.set(`${item.source}\0${item.path}\0${item.content_hash}`, item);
+  }
+  return Array.from(uniqueEntries.values()).sort((left, right) =>
+    skillSourceRank(left.source) - skillSourceRank(right.source)
+    || left.source.localeCompare(right.source)
+    || left.path.localeCompare(right.path)
+    || left.content_hash.localeCompare(right.content_hash)
+  );
+}
+
+function skillSourceRank(source: SkillSourceKind): number {
+  if (source === "personal") return 0;
+  if (source === "installed") return 1;
+  if (source === "seed" || source === "bundled") return 2;
+  if (source === "project") return 3;
+  return 4;
 }
 
 function sha256(text: string): string {

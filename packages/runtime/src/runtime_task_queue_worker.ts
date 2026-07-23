@@ -3,13 +3,11 @@ import {
   completeRuntimeTask,
   failRuntimeTask,
   listRecoverableRuntimeTasks,
-  requeueRuntimeTask,
+  settleRuntimeTaskFromResult,
   type RuntimeTaskQueueEntry,
-  type RuntimeTaskQueueTerminalStatus
 } from "../../core/src/runtime_task_queue.js";
 import {
-  recordRuntimeTaskRun,
-  runtimeTaskRunStatusFromResult
+  recordRuntimeTaskRun
 } from "../../core/src/runtime_sessions.js";
 import {
   runtimeChannelSourceFromRouteKey,
@@ -18,7 +16,6 @@ import {
 import { recordRuntimeChannelOutbound } from "../../core/src/runtime_channel_outbox.js";
 import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
-import type { DeploymentRecord } from "./service_supervisor.js";
 
 type RuntimeTaskQueueWorkerState = "idle" | "running" | "ok" | "skipped" | "error" | "stopped";
 
@@ -60,7 +57,7 @@ export interface RuntimeTaskQueueWorkerStatus {
 export interface RuntimeTaskQueueWorkerHandle {
   readonly statusRef: string;
   start: () => void;
-  stop: () => void;
+  stop: () => Promise<void>;
   runOnce: (trigger?: string) => Promise<RuntimeTaskQueueWorkerStatus>;
 }
 
@@ -68,7 +65,6 @@ const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_LIMIT = 1;
 const DEFAULT_QUEUED_STALE_MS = 60_000;
 const DEFAULT_RUNNING_STALE_MS = 6 * 60 * 60 * 1000;
-const MAX_DEPLOYMENT_REPAIR_TASK_ATTEMPTS = 3;
 
 export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOptions): RuntimeTaskQueueWorkerHandle {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
@@ -78,8 +74,12 @@ export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOpti
   const statusRef = options.statusRef ?? "services/runtime/task_queue.json";
   const startedAt = new Date().toISOString();
   let timer: NodeJS.Timeout | null = null;
+  let started = false;
+  let acceptingRuns = true;
   let running = false;
   let lastStatus: RuntimeTaskQueueWorkerStatus | null = null;
+  let stopPromise: Promise<void> | null = null;
+  const inflightRuns = new Set<Promise<RuntimeTaskQueueWorkerStatus>>();
 
   const buildStatus = (
     state: RuntimeTaskQueueWorkerState,
@@ -105,7 +105,7 @@ export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOpti
     return status;
   };
 
-  const runOnce = async (_trigger = "interval"): Promise<RuntimeTaskQueueWorkerStatus> => {
+  const executeRunOnce = async (_trigger = "interval"): Promise<RuntimeTaskQueueWorkerStatus> => {
     await options.store.ensureLayout();
     if (running) return writeStatus(buildStatus("idle"));
     running = true;
@@ -142,10 +142,25 @@ export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOpti
     }
   };
 
+  const runOnce = (trigger = "interval"): Promise<RuntimeTaskQueueWorkerStatus> => {
+    if (!acceptingRuns) {
+      return Promise.resolve(lastStatus ?? buildStatus("stopped", { next_wake_at: undefined }));
+    }
+    const promise = executeRunOnce(trigger);
+    inflightRuns.add(promise);
+    void promise.then(
+      () => inflightRuns.delete(promise),
+      () => inflightRuns.delete(promise)
+    );
+    return promise;
+  };
+
   return {
     statusRef,
     start: () => {
-      if (timer) return;
+      if (started || stopPromise) return;
+      started = true;
+      acceptingRuns = true;
       void runOnce("startup").catch((error: unknown) => {
         console.error(error instanceof Error ? error.message : String(error));
       });
@@ -156,13 +171,25 @@ export function createRuntimeTaskQueueWorker(options: RuntimeTaskQueueWorkerOpti
       }, intervalMs);
       timer.unref();
     },
-    stop: () => {
-      if (!timer) return;
-      clearInterval(timer);
-      timer = null;
-      void writeStatus(buildStatus("stopped", { next_wake_at: undefined })).catch((error: unknown) => {
-        console.error(error instanceof Error ? error.message : String(error));
-      });
+    stop: async () => {
+      if (stopPromise) return stopPromise;
+      started = false;
+      acceptingRuns = false;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      stopPromise = (async () => {
+        while (inflightRuns.size > 0) {
+          await Promise.allSettled(Array.from(inflightRuns));
+        }
+        await writeStatus(buildStatus("stopped", { next_wake_at: undefined }));
+      })();
+      try {
+        await stopPromise;
+      } finally {
+        stopPromise = null;
+      }
     },
     runOnce
   };
@@ -196,6 +223,28 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
   const taskIds: string[] = [];
 
   for (const entry of due) {
+    if (entry.attempt >= entry.max_attempts) {
+      const exhausted = await completeRuntimeTask(options.store, {
+        id: entry.id,
+        status: "blocked",
+        now
+      });
+      if (exhausted) {
+        taskIds.push(entry.id);
+        await recordRuntimeTaskRun(options.store, {
+          id: entry.id,
+          createdAt: entry.created_at,
+          runtimeSessionId: entry.runtime_session_id,
+          sourceKind: entry.source_kind,
+          sourceKey: entry.source_key,
+          task: entry.task,
+          status: "blocked",
+          now
+        });
+        failedCount += 1;
+      }
+      continue;
+    }
     const claimed = await claimRecoverableRuntimeTask(options.store, { id: entry.id, now });
     if (!claimed) continue;
     claimedCount += 1;
@@ -213,34 +262,12 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
 
     try {
       const result = await options.runTask(renderRunnerTask(claimed), claimed);
-      const completion = await validateRuntimeTaskCompletion(options.store, claimed);
-      if (!completion.complete) {
-        const message = `runtime task completion gate failed: ${completion.reason}`;
-        if (isDeploymentRepairTask(claimed) && claimed.attempt < MAX_DEPLOYMENT_REPAIR_TASK_ATTEMPTS) {
-          await requeueRuntimeTask(options.store, {
-            id: claimed.id,
-            error: message,
-            runnerTask: renderDeploymentRepairContinuation(claimed, result.verdict, completion.reason),
-            now
-          });
-          await recordRuntimeTaskRun(options.store, {
-            id: claimed.id,
-            createdAt: claimed.created_at,
-            runtimeSessionId: claimed.runtime_session_id,
-            sourceKind: claimed.source_kind,
-            sourceKey: claimed.source_key,
-            task: claimed.task,
-            status: "blocked"
-          });
-          requeuedCount += 1;
-          continue;
-        }
-        throw new Error(message);
-      }
-      await completeRuntimeTask(options.store, {
+      const settlement = await settleRuntimeTaskFromResult(options.store, {
         id: claimed.id,
-        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
+        result,
+        now
       });
+      if (!settlement) throw new Error(`runtime task ${claimed.id} could not be settled`);
       await recordRuntimeTaskRun(options.store, {
         id: claimed.id,
         createdAt: claimed.created_at,
@@ -250,17 +277,23 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
         task: claimed.task,
         runResult: result
       });
+      if (settlement.action === "requeued") {
+        requeuedCount += 1;
+        continue;
+      }
       await recordRuntimeChannelOutbound(options.store, {
         source: sourceFromQueueEntry(claimed),
         sourceKind: claimed.source_kind,
         sourceKey: claimed.source_key,
         runtimeSessionId: claimed.runtime_session_id,
         taskRunId: claimed.id,
-        purpose: "final",
+        purpose: settlement.run_status === "failed" ? "error" : "final",
         status: shouldQueueProviderReply(claimed) ? "queued" : "skipped",
-        text: result.verdict
+        text: result.verdict,
+        error: settlement.run_status === "failed" ? settlement.entry.error : null
       });
-      completedCount += 1;
+      if (settlement.run_status === "done") completedCount += 1;
+      else failedCount += 1;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       await failRuntimeTask(options.store, { id: claimed.id, error: message });
@@ -299,78 +332,30 @@ export async function runRuntimeTaskQueueOnce(options: RuntimeTaskQueueWorkerOpt
   };
 }
 
-async function validateRuntimeTaskCompletion(
-  store: AgentStore,
-  entry: RuntimeTaskQueueEntry
-): Promise<{ complete: boolean; reason: string }> {
-  if (!isDeploymentRepairTask(entry)) return { complete: true, reason: "not a deployment repair task" };
-  const deploymentId = entry.source_key!.slice("deployment:".length);
-  if (!/^[a-zA-Z0-9_-]+$/.test(deploymentId)) {
-    return { complete: false, reason: "deployment repair source id is invalid" };
-  }
-  const prior = await readDeploymentRecord(store, `deployments/history/${deploymentId}.json`);
-  if (!prior || prior.id !== deploymentId) {
-    return { complete: false, reason: `failed deployment ${deploymentId} is unavailable` };
-  }
-  for (const ref of await store.listStateFiles("deployments/history")) {
-    const repair = await readDeploymentRecord(store, ref);
-    if (!repair || repair.repair_of !== deploymentId) continue;
-    if (repair.source_commit === prior.source_commit) continue;
-    if (repair.repair_attempt !== prior.repair_attempt + 1) continue;
-    if (repair.repair_chain_id !== prior.repair_chain_id) continue;
-    if (!Array.isArray(repair.verification_refs) || !repair.verification_refs.length) continue;
-    return { complete: true, reason: `repair deployment ${repair.id} was requested` };
-  }
-  return {
-    complete: false,
-    reason: `no clean distinct deployment request with repair_of=${deploymentId} exists`
-  };
-}
-
-function isDeploymentRepairTask(entry: RuntimeTaskQueueEntry): boolean {
-  return entry.source_kind === "runtime" && Boolean(entry.source_key?.startsWith("deployment:"));
-}
-
-async function readDeploymentRecord(store: AgentStore, ref: string): Promise<DeploymentRecord | null> {
-  try {
-    const value = JSON.parse(await store.readStateText(ref)) as DeploymentRecord;
-    return value?.type === "local_runtime_deployment" ? value : null;
-  } catch {
-    return null;
-  }
-}
-
-function renderDeploymentRepairContinuation(
-  entry: RuntimeTaskQueueEntry,
-  verdict: string,
-  reason: string
-): string {
-  const original = boundContinuationText(entry.runner_task ?? entry.task, 8_000);
+function renderRunnerTask(entry: RuntimeTaskQueueEntry): string {
+  const original = entry.runner_task ?? (entry.runtime_session_id
+    ? [
+      "Recovered runtime session task from the local daemon queue.",
+      `Runtime session ID: ${entry.runtime_session_id}`,
+      `Source: ${entry.source_kind}${entry.source_key ? ` ${entry.source_key}` : ""}`,
+      "",
+      "Task:",
+      entry.task
+    ].join("\n")
+    : entry.task);
+  if (entry.attempt <= 1) return original;
   return [
     original,
     "",
-    `Previous attempt ${entry.attempt} stopped before the repair completion gate.`,
-    `Gate failure: ${reason}`,
-    `Previous response: ${boundContinuationText(verdict, 2_000)}`,
-    "Continue the repair now. Do not respond, propose an SOP, or claim completion until a new clean distinct commit has passed targeted checks and pnpm run check and the required deployment request with --repair-of has succeeded."
-  ].join("\n");
-}
-
-function boundContinuationText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) return value;
-  return `${value.slice(0, maxChars)}\n[truncated by deployment repair continuation bound]`;
-}
-
-function renderRunnerTask(entry: RuntimeTaskQueueEntry): string {
-  if (entry.runner_task) return entry.runner_task;
-  if (!entry.runtime_session_id) return entry.task;
-  return [
-    "Recovered runtime session task from the local daemon queue.",
-    `Runtime session ID: ${entry.runtime_session_id}`,
-    `Source: ${entry.source_kind}${entry.source_key ? ` ${entry.source_key}` : ""}`,
-    "",
-    "Task:",
-    entry.task
+    "Resume the same unfinished local runtime task from its durable checkpoint.",
+    `Stable task ID: ${entry.id}`,
+    `Runtime session ID: ${entry.runtime_session_id ?? "none"}`,
+    `Live session ID: ${entry.live_session_id ?? "none"}`,
+    `Worktree: ${entry.worktree}`,
+    `Working checkpoint: ${entry.working_checkpoint_ref ?? "none"}`,
+    `Attempt: ${entry.attempt}/${entry.max_attempts}`,
+    `Next action: ${entry.next_action ?? "inspect the persisted checkpoint before continuing"}`,
+    "Do not create a replacement task. Continue this task once and report structured completion status."
   ].join("\n");
 }
 

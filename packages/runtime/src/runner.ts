@@ -50,6 +50,10 @@ import {
 } from "../../core/src/schemas.js";
 import { ensureVaultLayout, promoteSkillToVault } from "../../core/src/skill_registry.js";
 import { AgentStore } from "../../core/src/store.js";
+import type {
+  RuntimeTaskExecutionContract,
+  RuntimeTaskSideEffectLevel
+} from "../../core/src/runtime_task_queue.js";
 import { loadRuntimeConfigSummary, type RuntimeConfig } from "./config.js";
 import type { ModelClient, ModelResponse } from "./model.js";
 import { executeTool, type ToolResult } from "./tools.js";
@@ -158,6 +162,7 @@ interface EpisodeRecallPlan {
 
 export interface LiveRunOptions {
   recallQuery?: string;
+  executionContract?: RuntimeTaskExecutionContract;
 }
 
 export class LiveAgentRunner {
@@ -202,6 +207,13 @@ export class LiveAgentRunner {
         risk: 1,
         cost: 1
       },
+      ...(options.executionContract ? {
+        budget_hint: {
+          max_turns: options.executionContract.budget.max_model_rounds,
+          max_tool_calls: options.executionContract.budget.max_tool_calls,
+          side_effect_level: options.executionContract.side_effect_ceiling
+        }
+      } : {}),
       status: "selected"
     });
     await this.store.appendJsonl("autonomy/opportunities.jsonl", opportunity);
@@ -221,7 +233,10 @@ export class LiveAgentRunner {
         base_score: skill.base_score,
         quality: skill.quality
       })),
-      discipline: discipline?.refs
+      discipline: discipline?.refs,
+      execution_contract: options.executionContract
+        ? JSON.parse(JSON.stringify(options.executionContract)) as Record<string, unknown>
+        : null
     });
     const renderedContext = await renderContextBundleWithManifest(this.store, snapshot, {
       vaultRoot: this.config.vault,
@@ -312,7 +327,8 @@ export class LiveAgentRunner {
     let modelFormatRepairAttempts = 0;
     const modelFailureRecoveryGuidance: string[] = [];
 
-    const maxRounds = discipline ? 5 : 3;
+    const maxRounds = options.executionContract?.budget.max_model_rounds ?? (discipline ? 5 : 3);
+    let attemptedToolCalls = 0;
     for (let round = 1; round <= maxRounds; round += 1) {
       const hadObservationsBeforeRound = toolResults.length > 0 || delegatedResults.length > 0 || harnessActionResults.length > 0;
       let roundModelFailed = false;
@@ -524,7 +540,16 @@ export class LiveAgentRunner {
           discipline.iteration_log.push(`Round ${round}: executing tool ${(action.payload as Record<string, unknown>).tool ?? "unknown"}.`);
           await this.writeDisciplineTodo(discipline);
         }
-        const toolResult = await executeTool(action, { store: this.store });
+        attemptedToolCalls += 1;
+        const contractBlock = options.executionContract
+          ? taskExecutionContractBlockReason(action, options.executionContract, attemptedToolCalls)
+          : null;
+        const toolResult = contractBlock
+          ? blockedTaskExecutionToolResult(action, contractBlock)
+          : await executeTool(action, {
+            store: this.store,
+            modelMaxOutputTokens: this.config.model.max_output_tokens
+          });
         toolResults.push(toolResult);
         const toolRef = await this.store.writeJson(`memory/episodes/${snapshot.session_id}-${toolResult.id}.json`, toolResult);
         toolArtifactRefs.push(toolRef);
@@ -920,9 +945,15 @@ export class LiveAgentRunner {
     });
     evidenceRefs.push(...skillUsageEventIds);
 
-    const checkpoint: WorkingCheckpoint = workingCheckpointSchema.parse({
+    const genuineCheckpoint = completionReport.completion_status !== "done"
+      ? await latestHarnessWorkingCheckpoint(this.store, harnessActionResults)
+      : null;
+    const checkpoint: WorkingCheckpoint = genuineCheckpoint ?? workingCheckpointSchema.parse({
       goal: task,
-      current_step: "save_point",
+      current_step: completionReport.completion_status === "done"
+        ? "save_point"
+        : `unfinished_${completionReport.completion_status}`,
+      worktree: this.store.repoRoot,
       known_constraints: [
         "This run used a live model response, but harness validation and promotion stayed outside the model.",
         `Model response artifact: ${basename(modelResponseRef)}`,
@@ -930,12 +961,14 @@ export class LiveAgentRunner {
       ],
       recent_evidence_refs: evidenceRefs,
       open_questions: [],
-      next_action: recalledSkills.length > 0
-        ? "Inspect whether the recalled skill improved the model action; keep or revise it based on later telemetry."
-        : "Recall the generated skill on a similar task and append usage telemetry.",
+      next_action: completionReport.completion_status === "done"
+        ? recalledSkills.length > 0
+          ? "Inspect whether the recalled skill improved the model action; keep or revise it based on later telemetry."
+          : "Recall the generated skill on a similar task and append usage telemetry."
+        : `Resume this ${completionReport.completion_status} run from its completion report and latest evidence.`,
       created_at: utcNow()
     });
-    await this.store.writeJson("memory/working/current.json", checkpoint);
+    const workingCheckpointRef = await this.store.writeJson("memory/working/current.json", checkpoint);
 
     return runResultSchema.parse({
       trigger_id: trigger.id,
@@ -957,6 +990,11 @@ export class LiveAgentRunner {
         query_ref: discipline.refs.query_ref,
         todo_ref: discipline.refs.todo_ref
       } : null,
+      completion_status: completionReport.completion_status,
+      verification_status: completionReport.verification_status,
+      worktree: checkpoint.worktree ?? null,
+      working_checkpoint_ref: workingCheckpointRef,
+      next_action: checkpoint.next_action,
       verdict
     });
   }
@@ -1123,6 +1161,7 @@ export class LiveAgentRunner {
     const checkpoint = workingCheckpointSchema.parse({
       goal: firstString(rawCheckpoint.goal, "Model working checkpoint for current live run."),
       current_step: firstString(rawCheckpoint.current_step, rawCheckpoint.step, action.rationale),
+      worktree: firstString(rawCheckpoint.worktree) || undefined,
       known_constraints: stringArray(rawCheckpoint.known_constraints ?? rawCheckpoint.open_constraints).slice(0, 20),
       recent_evidence_refs: stringArray(rawCheckpoint.recent_evidence_refs).slice(0, 50),
       open_questions: stringArray(rawCheckpoint.open_questions).slice(0, 20),
@@ -2288,6 +2327,139 @@ function isWriteOrRunToolResult(result: ToolResult): boolean {
     || result.side_effect_level === "external_write";
 }
 
+function taskExecutionContractBlockReason(
+  action: ActionProposal,
+  contract: RuntimeTaskExecutionContract,
+  attemptedToolCalls: number
+): string | null {
+  if (attemptedToolCalls > contract.budget.max_tool_calls) {
+    return `task execution contract exceeded max_tool_calls=${contract.budget.max_tool_calls}`;
+  }
+  const requestedEffect = requestedToolSideEffect(action);
+  if (sideEffectRank(requestedEffect) > sideEffectRank(contract.side_effect_ceiling)) {
+    return `tool requested side_effect_level=${requestedEffect} above ceiling=${contract.side_effect_ceiling}`;
+  }
+  const payload = action.payload as Record<string, unknown>;
+  if (contract.side_effect_ceiling === "external_write" && payload.tool === "code.execute_node") {
+    return "external-write task execution contracts forbid code.execute_node as an indirect command carrier";
+  }
+  if (payload.tool !== "command.run") return null;
+  const args = isPlainRecord(payload.arguments) ? payload.arguments : {};
+  const command = typeof args.command === "string" ? args.command : "";
+  const commandArgs = Array.isArray(args.args)
+    ? args.args.filter((item): item is string => typeof item === "string")
+    : [];
+  if (contract.side_effect_ceiling === "external_write" && isIndirectCommandCarrier(command, commandArgs)) {
+    return `external-write task execution contracts forbid indirect command carrier ${command}; use direct binary argv`;
+  }
+  const forbidden = commandArgs.find((arg) => contract.forbidden_command_arguments.some((value) =>
+    arg === value || arg.startsWith(`${value}=`)
+  ));
+  if (forbidden) {
+    return `command argument ${forbidden} is forbidden by the task execution contract`;
+  }
+  const externalWriteCommand = command === "gh" || (command === "git" && gitCommandName(commandArgs) === "push");
+  if (externalWriteCommand && requestedEffect !== "external_write") {
+    return `external command ${command} must declare side_effect_level=external_write`;
+  }
+  if (requestedEffect !== "external_write") return null;
+  if (!contract.external_command_allowlist.includes(command)) {
+    return `external command ${command || "(missing)"} is not allowlisted by the task execution contract`;
+  }
+  return null;
+}
+
+function isIndirectCommandCarrier(command: string, args: readonly string[]): boolean {
+  if (new Set([
+    "bash",
+    "bun",
+    "dash",
+    "env",
+    "fish",
+    "ksh",
+    "node",
+    "nodejs",
+    "npx",
+    "perl",
+    "php",
+    "python",
+    "python3",
+    "ruby",
+    "sh",
+    "xargs",
+    "zsh"
+  ]).has(command)) return true;
+  const subcommand = args[0] ?? "";
+  return (command === "pnpm" && (subcommand === "exec" || subcommand === "dlx"))
+    || (command === "npm" && subcommand === "exec")
+    || (command === "yarn" && subcommand === "dlx");
+}
+
+function gitCommandName(args: readonly string[]): string {
+  const optionsWithValues = new Set([
+    "-C",
+    "-c",
+    "--config-env",
+    "--exec-path",
+    "--git-dir",
+    "--namespace",
+    "--super-prefix",
+    "--work-tree"
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg === "--") return args[index + 1] ?? "";
+    if (optionsWithValues.has(arg)) {
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return "";
+}
+
+function requestedToolSideEffect(action: ActionProposal): RuntimeTaskSideEffectLevel {
+  const payload = action.payload as Record<string, unknown>;
+  const tool = typeof payload.tool === "string" ? payload.tool : "";
+  const args = isPlainRecord(payload.arguments) ? payload.arguments : {};
+  if (tool === "file.write_state" || tool === "file.write_repo" || tool === "codex.run") return "local_write";
+  if (tool === "code.execute_node") return "local_reversible";
+  if (tool === "command.run") {
+    const level = args.side_effect_level;
+    if (level === "none" || level === "local_reversible" || level === "local_write" || level === "external_write") {
+      return level;
+    }
+  }
+  return "none";
+}
+
+function sideEffectRank(value: RuntimeTaskSideEffectLevel): number {
+  return ["none", "local_reversible", "local_write", "external_write"].indexOf(value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function blockedTaskExecutionToolResult(action: ActionProposal, reason: string): ToolResult {
+  const payload = action.payload as Record<string, unknown>;
+  const tool = typeof payload.tool === "string" && payload.tool ? payload.tool : "unknown";
+  return {
+    id: newId("tool_result"),
+    tool,
+    ok: false,
+    summary: `Task execution contract blocked ${tool}: ${reason}.`,
+    output: {
+      failure_kind: "task_execution_contract_blocked",
+      reason,
+      requested_side_effect_level: requestedToolSideEffect(action)
+    },
+    side_effect_level: "none",
+    created_at: utcNow()
+  };
+}
+
 function compactRefs(refs: Array<string | null | undefined>): string[] {
   return refs.filter((ref): ref is string => typeof ref === "string" && ref.length > 0);
 }
@@ -2355,6 +2527,22 @@ function modelActionInputEventMetadata(delegatedResults: DelegatedResult[]) {
 
 function uniqueRefs(refs: Array<string | null | undefined>): string[] {
   return [...new Set(compactRefs(refs))];
+}
+
+async function latestHarnessWorkingCheckpoint(
+  store: AgentStore,
+  results: HarnessActionResult[]
+): Promise<WorkingCheckpoint | null> {
+  for (const result of [...results].reverse()) {
+    if (result.action_type !== "update_working_state") continue;
+    const checkpointRef = result.artifact_refs.find((ref) =>
+      ref.startsWith("memory/working/") && ref.endsWith(".json")
+    );
+    if (!checkpointRef) continue;
+    const parsed = workingCheckpointSchema.safeParse(await store.readStateJson<unknown>(checkpointRef));
+    if (parsed.success) return parsed.data;
+  }
+  return null;
 }
 
 function isHarnessStateAction(action: ActionProposal, completionStatus = "not_done"): action is ActionProposal & { type: HarnessActionResult["action_type"] } {

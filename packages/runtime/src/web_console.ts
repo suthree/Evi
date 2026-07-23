@@ -5,31 +5,21 @@ import {
   listRuntimeInbox,
   listRuntimeSessionBindings,
   listRuntimeSessions,
-  listRuntimeTaskRuns,
-  recordRuntimeTaskRun,
-  runtimeTaskRunStatusFromResult
+  listRuntimeTaskRuns
 } from "../../core/src/runtime_sessions.js";
-import { recordRuntimeChannelOutbound } from "../../core/src/runtime_channel_outbox.js";
 import {
   isRuntimeChannelKind,
-  runtimeChannelSourceFromRouteKey,
-  type RuntimeChannelSource
+  runtimeChannelSourceFromRouteKey
 } from "../../core/src/runtime_channel_messages.js";
-import {
-  claimRuntimeTask,
-  completeRuntimeTask,
-  enqueueRuntimeTask,
-  failRuntimeTask,
-  type RuntimeTaskQueueTerminalStatus
-} from "../../core/src/runtime_task_queue.js";
-import type { RunResult } from "../../core/src/schemas.js";
 import { AgentStore } from "../../core/src/store.js";
+import { goalContinuationHint, type GoalIngressPort } from "./goal_ingress.js";
+import type { GoalView } from "./goal_runtime.js";
 
 export interface RuntimeWebConsoleOptions {
   store: AgentStore;
   host?: string;
   port?: number;
-  runTask?: (task: string, args: { runtimeSessionId: string | null }) => Promise<RunResult>;
+  goalIngress?: GoalIngressPort;
 }
 
 export interface RuntimeWebConsoleHandle {
@@ -132,8 +122,8 @@ async function handleRequest(
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/runs") {
-      if (!options.runTask) {
-        writeJson(response, 503, { error: "runTask is not configured for this console" });
+      if (!options.goalIngress) {
+        writeJson(response, 503, { error: "Goal ingress is not configured for this console" });
         return;
       }
       const body = await readJsonBody(request);
@@ -142,84 +132,23 @@ async function handleRequest(
         writeJson(response, 400, { error: "task is required" });
         return;
       }
-      const runtimeSessionId = stringField(body, "runtime_session_id")?.trim() || null;
-      const sourceKind = runtimeSessionId ? "runtime" : "local";
-      const sourceKey = runtimeSessionId;
-      const webSource = webConsoleSource(runtimeSessionId);
-      const queued = await enqueueRuntimeTask(options.store, {
-        runtimeSessionId,
-        sourceKind,
-        sourceKey,
-        task
-      });
-      await recordRuntimeTaskRun(options.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId,
-        sourceKind,
-        sourceKey,
-        task,
-        status: "queued"
-      });
-      const started = await claimRuntimeTask(options.store, { id: queued.id });
-      if (!started) throw new Error(`runtime task ${queued.id} could not be claimed`);
-      await recordRuntimeTaskRun(options.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId,
-        sourceKind,
-        sourceKey,
-        task,
-        status: "running"
-      });
-      let result: RunResult;
-      try {
-        result = await options.runTask(task, { runtimeSessionId });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        await failRuntimeTask(options.store, { id: queued.id, error: message });
-        await recordRuntimeTaskRun(options.store, {
-          id: queued.id,
-          createdAt: queued.created_at,
-          runtimeSessionId,
-          sourceKind,
-          sourceKey,
-          task,
-          status: "failed"
+      if (body.execution_contract !== undefined) {
+        writeJson(response, 400, {
+          error: "execution_contract belongs to the legacy runner and cannot be mapped into a Goal; use GoalRuntime effect confirmation"
         });
-        await recordRuntimeChannelOutbound(options.store, {
-          source: webSource,
-          runtimeSessionId,
-          taskRunId: queued.id,
-          purpose: "error",
-          status: "failed",
-          text: message,
-          error: message
-        });
-        throw error;
+        return;
       }
-      await completeRuntimeTask(options.store, {
-        id: queued.id,
-        status: runtimeTaskRunStatusFromResult(result) as RuntimeTaskQueueTerminalStatus
+      if (body.runtime_session_id !== undefined) {
+        writeJson(response, 400, {
+          error: "runtime_session_id belongs to legacy task-run orchestration; submit a standalone Goal objective"
+        });
+        return;
+      }
+      const goal = await options.goalIngress.submit(task);
+      writeJson(response, 200, {
+        goal,
+        continue_hint: goalContinuationHint(goal)
       });
-      const run = await recordRuntimeTaskRun(options.store, {
-        id: queued.id,
-        createdAt: queued.created_at,
-        runtimeSessionId,
-        sourceKind,
-        sourceKey,
-        task,
-        runResult: result
-      });
-      await recordRuntimeChannelOutbound(options.store, {
-        source: webSource,
-        runtimeSessionId,
-        taskRunId: queued.id,
-        purpose: "final",
-        status: "sent",
-        text: result.verdict
-      });
-      writeJson(response, 200, { run, result });
       return;
     }
     writeJson(response, 404, { error: "not found" });
@@ -227,6 +156,8 @@ async function handleRequest(
     writeJson(response, 500, { error: error instanceof Error ? error.message : String(error) });
   }
 }
+
+export { goalContinuationHint } from "./goal_ingress.js";
 
 async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -258,15 +189,6 @@ function writeText(response: ServerResponse, status: number, text: string): void
 function stringField(value: Record<string, unknown>, field: string): string | null {
   const raw = value[field];
   return typeof raw === "string" ? raw : null;
-}
-
-function webConsoleSource(runtimeSessionId: string | null): RuntimeChannelSource {
-  return {
-    kind: "web",
-    channelId: "console",
-    conversationType: runtimeSessionId ? "runtime_session" : "local",
-    conversationId: runtimeSessionId ?? "local"
-  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -335,13 +257,13 @@ function renderConsoleHtml(): string {
       </div>
       <div class="split">
         <div class="pane">
-          <div class="bar"><h2>Runs</h2></div>
+          <div class="bar"><h2>Legacy runs</h2></div>
           <div id="runs"></div>
         </div>
         <form id="runForm" class="form">
-          <label>Session<select id="runSession"></select></label>
-          <label>Task<textarea id="task" name="task"></textarea></label>
-          <button class="primary" type="submit">Run</button>
+          <label>Goal task<textarea id="task" name="task"></textarea></label>
+          <button class="primary" type="submit">Start Goal</button>
+          <div id="goalResult" class="empty">New web tasks create one Goal and one Continue tranche.</div>
         </form>
       </div>
     </section>
@@ -367,16 +289,20 @@ function renderConsoleHtml(): string {
       event.preventDefault();
       const task = $("task").value.trim();
       if (!task) return;
-      const runtime_session_id = $("runSession").value || null;
       $("runForm").querySelector("button").disabled = true;
       try {
-        await fetch("/api/runs", {
+        const response = await fetch("/api/runs", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ task, runtime_session_id })
+          body: JSON.stringify({ task })
         });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Goal submission failed");
+        $("goalResult").textContent = "Goal " + result.goal.goal_id + ": " + result.continue_hint;
         $("task").value = "";
         await refresh();
+      } catch (error) {
+        $("goalResult").textContent = error instanceof Error ? error.message : String(error);
       } finally {
         $("runForm").querySelector("button").disabled = false;
       }
@@ -391,7 +317,6 @@ function renderConsoleHtml(): string {
       state.runs = runs.runs || [];
       if (!state.selected && state.sessions[0]) state.selected = state.sessions[0].id;
       renderSessions();
-      renderRunSelect();
       renderRuns();
       await renderInbox();
     }
@@ -404,7 +329,7 @@ function renderConsoleHtml(): string {
         state.sessions.map((s) => '<tr data-id="' + escapeHtml(s.id) + '" class="' + (s.id === state.selected ? "selected" : "") + '"><td>' + escapeHtml(s.title) + '<br><small>' + escapeHtml(s.id) + '</small></td><td><span class="status ' + escapeHtml(s.status) + '">' + escapeHtml(s.status) + '</span></td><td>' + escapeHtml(s.profile) + '</td></tr>').join("") +
         '</tbody></table>';
       document.querySelectorAll("#sessions tr[data-id]").forEach((row) => {
-        row.onclick = () => { state.selected = row.getAttribute("data-id"); renderSessions(); renderRunSelect(); renderInbox(); };
+        row.onclick = () => { state.selected = row.getAttribute("data-id"); renderSessions(); renderInbox(); };
       });
     }
     async function renderInbox() {
@@ -417,11 +342,6 @@ function renderConsoleHtml(): string {
       $("inbox").innerHTML = entries.length ? entries.map((entry) =>
         '<div class="msg"><strong>' + escapeHtml(entry.trigger_kind) + '</strong> <small>' + escapeHtml(entry.created_at) + '</small><pre>' + escapeHtml(entry.text) + '</pre></div>'
       ).join("") : '<div class="empty">No inbox entries</div>';
-    }
-    function renderRunSelect() {
-      $("runSession").innerHTML = '<option value="">local task</option>' + state.sessions.map((s) =>
-        '<option value="' + escapeHtml(s.id) + '"' + (s.id === state.selected ? " selected" : "") + '>' + escapeHtml(s.profile + " / " + s.id) + '</option>'
-      ).join("");
     }
     function renderRuns() {
       if (!state.runs.length) {

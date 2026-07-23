@@ -1,14 +1,31 @@
 # Local Runtime
 
-Local Runtime is a local-first, single-machine runtime for a self-growing agent. It
-turns a local task or IM message into bounded context, validated actions,
-evidence, verification, and a response.
+Local Runtime is a local-first, single-machine runtime for a self-growing
+agent. It turns a local task or IM message into bounded context, validated
+actions, evidence, verification, and a response. vNext is the active delivery
+direction. The installed v0.2 runtime is frozen as an executable rollback path
+until a separately verified vNext cutover; it is not a parallel roadmap.
+
+The accepted vNext architecture keeps one persistent local-first Evi self while
+replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
+a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
+Evi Action Gateway owns effects. This target does not expand the implemented
+v0.1/v0.2 contract or claim a deployment cutover. Current source behavior and
+delivery status are owned by source, tests, bounded Issues/PRs, and deployment
+evidence; the architecture and runtime-contract documents below define the
+stable owner model and acceptance semantics.
 
 ## Start here
 
 - Chinese operator entrypoint: [docs/README.cn.md](docs/README.cn.md)
 - Compact documentation router: [docs/INDEX.md](docs/INDEX.md) and
   [docs/INDEX.cn.md](docs/INDEX.cn.md)
+- Current module ownership, delegated capability seams, and staged migration:
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
+  [docs/ARCHITECTURE.cn.md](docs/ARCHITECTURE.cn.md)
+- Source, directory, dependency, test, and documentation structure:
+  [docs/ENGINEERING.md](docs/ENGINEERING.md) and
+  [docs/ENGINEERING.cn.md](docs/ENGINEERING.cn.md)
 - Repository work rules: [AGENTS.md](AGENTS.md) and
   [docs/AGENTS.cn.md](docs/AGENTS.cn.md)
 - Stable identity and learning stance: [core/soul.md](core/soul.md) and
@@ -18,6 +35,12 @@ evidence, verification, and a response.
   [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md)
 - SOP, skill, and active-vault boundaries:
   [docs/LOCAL_LEARNING.md](docs/LOCAL_LEARNING.md)
+- Accepted long-term product and gated evolution vision:
+  [docs/PRODUCT_VISION.md](docs/PRODUCT_VISION.md) and
+  [docs/PRODUCT_VISION.cn.md](docs/PRODUCT_VISION.cn.md)
+- Historical v0.2 multi-node design (not the active roadmap):
+  [docs/V0.2_MULTI_NODE_EVOLUTION.md](docs/V0.2_MULTI_NODE_EVOLUTION.md) and
+  [docs/V0.2_MULTI_NODE_EVOLUTION.cn.md](docs/V0.2_MULTI_NODE_EVOLUTION.cn.md)
 
 The linked documents are authoritative for their own subjects. Keep this file
 as the short entrypoint; do not duplicate detailed command references,
@@ -25,49 +48,68 @@ contracts, or historical decisions here.
 
 ## Scope
 
-The runtime is intentionally narrow:
+The currently installed rollback runtime is intentionally narrow:
 
 - one local user and one machine;
 - bounded repo/state actions through the harness;
 - CLI, localhost web console, and local IM adapters;
 - evidence-backed verification and explicit learning gates.
 
-It is not a hosted, multi-user, multi-machine, marketplace, or autonomous
-rewrite system.
+vNext keeps execution, raw memory, and runtime state node-local. It is still
+not a hosted multi-user service, public marketplace, shared runtime-state
+system, or autonomous rewrite system.
 
 ## Development flow
 
-`main` is the release branch. Each `f/*` branch starts from `main`, is
-validated and merged into `develop`, then validated `develop` changes merge
-back into `main`.
+`main` is the release branch. `develop` is the protected integration branch.
+Every source change begins and remains in one isolated worktree branch until a
+pull request has passed its required verification and is merged into `develop`.
+No source change is committed or pushed directly to `develop`.
 
 ```text
-main -> f/* -> develop -> main
+main -> feature worktree -> PR -> develop -> main
 ```
 
-The integration branch is `develop`. A release candidate is verified from an
-isolated local environment before `develop` merges into `main` and receives a
-version tag.
+The root checkout stays clean on `develop` as the control plane. A release
+candidate is verified from an isolated local environment before `develop`
+merges into `main` and receives a version tag.
 
 Runtime identifiers, config fields, capability IDs, scripts, and persisted
 state use capability-oriented names such as `local-runtime`, `project_design`,
 `model`, and `im-channel`. Names of this repository or external reference
 projects must not become implementation contracts.
 
-## Trellis owns iteration governance
+## Runtime evolution direction
 
-Trellis is the source of truth for bounded iteration work:
+The current v0.2 deployment is still owned by `GoalRuntime`, its Harness,
+canonical evidence, and `OutcomeReceipt`; [ADR 0001](docs/adr/0001-native-evolution-control-plane.md)
+records that implemented boundary. The accepted replacement is
+[ADR 0012](docs/adr/0012-vnext-runtime-kernel.md): ordinary Turns do not require
+a Goal, Pi owns the only Agent Loop, and SQLite is the structured state
+authority. [ADR 0013](docs/adr/0013-reservation-first-action-gateway.md) defines
+the reservation-first Action Gateway; the currently composed effect set is
+reported only by the implemented Runtime Contract.
+[ADR 0014](docs/adr/0014-reconciled-run-continuation.md) defines explicit
+continuation after terminal Action reconciliation. [ADR 0015](docs/adr/0015-run-execution-lease-and-dispatch-recovery.md)
+defines Run Execution ownership and model-dispatch crash recovery.
+[ADR 0016](docs/adr/0016-pi-tool-protocol-recovery.md) closes persisted Pi
+tool-call protocol recovery and marks the Kernel-foundation exit gate.
+[ADR 0017](docs/adr/0017-evi-owned-orchestration-and-adaptation.md) owns the
+final Evi/Pi division, parent-child orchestration, Delivery Lineage, and
+specialized completion model.
+v0.2 remains the rollback runtime until a separately verified cutover.
 
 | Need | Source |
 | --- | --- |
-| Current scope | [.trellis/spec/local-single-machine-mvp.md](.trellis/spec/local-single-machine-mvp.md) |
-| Work slices | [.trellis/tasks/](.trellis/tasks/) |
-| Direction decisions | [.trellis/decisions.md](.trellis/decisions.md) |
-| Trellis agent context | [.trellis/agents/](.trellis/agents/) |
+| Implemented behavior | source, tests, and `docs/RUNTIME_CONTRACT.md` |
+| Accepted durable direction | `docs/adr/` and stable project docs |
+| Current v0.2 execution and verified terminal result | `GoalRuntime`, Harness, evidence, `OutcomeReceipt` |
+| Accepted vNext owner model | Turn / Run, Pi Agent Loop, SQLite, Action Gateway, optional Goal, Adaptation |
+| Reflection before material evolution | `grill-me` -> bounded `Direction Proposal` |
+| Historical task/spec/decision evidence | frozen [.trellis/](.trellis/) archive |
 
-Do not manually duplicate or edit Trellis-generated agent context. Use the
-project's configured Trellis workflow and supported CLI commands to refresh
-that surface.
+Do not refresh or preload Trellis-generated agent context. It is retained only
+as historical evidence and is not the default workflow for new work.
 
 ## Local development
 
@@ -75,14 +117,14 @@ that surface.
 pnpm install --frozen-lockfile
 pnpm run check
 pnpm run release:verify
-pnpm run runtime -- doctor --state-root .runtime/state
+pnpm run runtime -- doctor --state-root ~/.local-runtime/state/evi
 ```
 
 Start the local runtime after configuring ignored local credentials:
 
 ```bash
-pnpm run runtime -- service restart --target runtime --state-root .runtime/state
-pnpm run runtime -- service health --target runtime --state-root .runtime/state
+pnpm run runtime -- service restart --target runtime --state-root ~/.local-runtime/state/evi
+pnpm run runtime -- service health --target runtime --state-root ~/.local-runtime/state/evi
 ```
 
 Tracked files under `config/` are safe defaults. API keys and app secrets
@@ -95,8 +137,9 @@ never commit them.
 apps/cli/          CLI entrypoint
 packages/core/     context, harness, evidence, governance
 packages/runtime/  config, models, service, web and IM adapters
+packages/kernel/   vNext Turn/Run kernel, SQLite state, Action Gateway, Pi adapter
 config/            tracked safe defaults
 core/              stable identity and memory policy
-docs/              runtime and operator documentation
-.trellis/          iteration spec, tasks, decisions, generated context
+docs/              architecture, engineering, runtime and operator documentation
+.trellis/          frozen historical specs, tasks, decisions, generated context
 ```

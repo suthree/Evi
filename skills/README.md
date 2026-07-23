@@ -2,9 +2,10 @@
 
 Skills are agent procedural memory: reusable ways of doing work.
 
-This directory documents the skill model. Active skills live under the local
-active vault selected by `LOCAL_RUNTIME_HOME`; repository `vault/skills/` and
-`vault/registry/` are seed/dev fixtures.
+This directory documents the skill model. Production active skills live under
+the Evi-namespaced local vault selected by `LOCAL_RUNTIME_HOME` (normally
+`~/.local-runtime/vault/evi`); repository `vault/skills/` and `vault/registry/`
+are explicit seed/dev fixtures, never implicit production discovery roots.
 
 ## What Counts as a Skill
 

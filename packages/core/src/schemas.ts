@@ -461,6 +461,7 @@ export const selectedSkillUsageOutcomeSchema = z.object({
 export const workingCheckpointSchema = z.object({
   goal: z.string(),
   current_step: z.string(),
+  worktree: z.string().trim().min(1).optional(),
   known_constraints: z.array(z.string()).default([]),
   recent_evidence_refs: z.array(z.string()).default([]),
   open_questions: z.array(z.string()).default([]),
@@ -555,6 +556,11 @@ export const runResultSchema = z.object({
     query_ref: z.string(),
     todo_ref: z.string()
   }).nullable().default(null),
+  completion_status: z.enum(["not_done", "done", "blocked"]),
+  verification_status: z.enum(["passed", "failed", "skipped"]),
+  worktree: z.string().trim().min(1).nullable().default(null),
+  working_checkpoint_ref: z.string().nullable().default(null),
+  next_action: z.string().nullable().default(null),
   verdict: z.string()
 });
 

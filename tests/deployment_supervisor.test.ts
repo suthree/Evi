@@ -5,19 +5,24 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { promisify } from "node:util";
-import { requestLocalDeployment } from "../packages/runtime/src/deployment.js";
+import {
+  getLocalDeploymentStatus,
+  reconcileLocalDeploymentBaseline,
+  requestLocalDeployment
+} from "../packages/runtime/src/deployment.js";
 import { buildRuntimeServiceDefinition, isCurrentRuntimeKnownGood } from "../packages/runtime/src/service.js";
 import {
   checkRuntimeReadiness,
   recordOperatorServiceRollback,
   runSupervisorOnce,
+  type DeploymentFailureObservation,
   type DeploymentRecord,
   type SupervisorManifest
 } from "../packages/runtime/src/service_supervisor.js";
 
 const execFile = promisify(execFileCallback);
 
-test("deployment supervisor activates, rolls back, preserves evidence, and queues repair", async () => {
+test("deployment supervisor activates, rolls back, preserves evidence, and emits an observation without queue repair", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-supervisor-"));
   const manifest = buildManifest(root);
   const paths = deploymentPaths(manifest);
@@ -31,13 +36,26 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
     return { stdout: "", stderr: "", exitCode: 0 };
   };
   try {
-    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit");
-    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit");
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
     await mkdir(resolve(manifest.state_root, "deployments/history"), { recursive: true });
     await mkdir(resolve(root, "logs"), { recursive: true });
     await writeFile(manifest.stdout_path, "old output\n", "utf8");
     await writeFile(manifest.stderr_path, "", "utf8");
-    const request = deploymentRecord("candidate-commit", "pending");
+    const stable = {
+      ...deploymentRecord("stable-commit", "stable"),
+      id: "deployment_test_stable",
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root,
+      stable_at: "2026-07-14T23:59:00.000Z"
+    };
+    const request = {
+      ...deploymentRecord("candidate-commit", "pending"),
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root
+    };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
     await writeJson(paths.request, request);
 
     const activated = await runSupervisorOnce(manifest, {
@@ -45,6 +63,18 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
       runLaunchctl
     });
     assert.equal(activated.action, "activated");
+    assert.deepEqual(activated.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 1,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: []
+    });
+    assert.deepEqual(activated.deployment?.controller_assessment, {
+      installed_source_commit: "stable-commit",
+      candidate_source_commit: "candidate-commit",
+      status: "service_lifecycle_handoff_required",
+      reason: "candidate activation keeps the installed copied supervisor controller; a later explicit service lifecycle start or restart is required to activate the candidate controller"
+    });
     assert.equal(await bundleCommit(manifest.runtime_current_root), "candidate-commit");
     assert.equal(await bundleCommit(manifest.runtime_previous_root), "stable-commit");
     await appendFile(manifest.stdout_path, "candidate output\n", "utf8");
@@ -80,9 +110,661 @@ test("deployment supervisor activates, rolls back, preserves evidence, and queue
       runLaunchctl
     });
     assert.equal(recovered.action, "recovered");
-    assert.equal(recovered.deployment?.status, "recovered");
-    assert.match(await readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), /Repair a failed local runtime deployment/);
+    assert.equal(recovered.deployment?.id, stable.id);
+    assert.equal(recovered.deployment?.source_commit, "stable-commit");
+    assert.equal(recovered.deployment?.status, "stable");
+    assert.equal(recovered.deployment?.previous_source_commit, "candidate-commit");
+    const canonical = JSON.parse(await readFile(paths.current, "utf8")) as DeploymentRecord;
+    const recoveredCandidate = JSON.parse(
+      await readFile(resolve(paths.historyRoot, `${request.id}.json`), "utf8")
+    ) as DeploymentRecord;
+    assert.equal(canonical.id, stable.id);
+    assert.equal(canonical.source_commit, "stable-commit");
+    assert.equal(canonical.status, "stable");
+    assert.equal(recoveredCandidate.source_commit, "candidate-commit");
+    assert.equal(recoveredCandidate.status, "recovered");
+    assert.equal(recoveredCandidate.failure_reason, "candidate task failed deterministically");
+    assert.ok(recoveredCandidate.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
+    assert.equal(recoveredCandidate.repair_task_id, undefined);
+    assert.match(recoveredCandidate.failure_observation_ref ?? "", /deployments\/observations\/deployment_observation_/);
+    const observation = JSON.parse(await readFile(paths.latestObservation, "utf8")) as DeploymentFailureObservation;
+    assert.equal(observation.kind, "deployment_failed_recovered");
+    assert.equal(observation.deployment_id, request.id);
+    assert.equal(observation.candidate.source_commit, "candidate-commit");
+    assert.equal(observation.stable_runtime.source_commit, "stable-commit");
+    assert.equal(observation.controller.installed_source_commit, "stable-commit");
+    assert.equal(observation.controller.candidate_runtime_source_commit, "candidate-commit");
+    assert.equal(observation.failure.reason, "candidate task failed deterministically");
+    assert.ok(observation.failure.evidence_refs.some((ref) => ref.endsWith("failure.json")));
+    assert.equal(observation.recovery.status, "known_good_restored");
+    assert.equal(observation.goal_action, "none");
+    assert.equal((await getLocalDeploymentStatus(manifest.state_root)).latest_observation?.id, observation.id);
+    await assert.rejects(readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), { code: "ENOENT" });
     assert.match(await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/stderr.log`), "utf8"), /candidate error/);
+
+    const baseDefinition = buildRuntimeServiceDefinition({
+      repoRoot: manifest.repo_root,
+      configDir: resolve(manifest.repo_root, "config"),
+      stateRoot: manifest.state_root,
+      homeRoot: root,
+      nodePath: process.execPath
+    });
+    const definition = {
+      ...baseDefinition,
+      supervisorPlistPath: resolve(root, "supervisor.plist")
+    };
+    await mkdir(resolve(manifest.repo_root, "dist/apps/cli/src"), { recursive: true });
+    await mkdir(resolve(manifest.repo_root, "node_modules"), { recursive: true });
+    await mkdir(resolve(manifest.repo_root, "config"), { recursive: true });
+    await writeFile(resolve(manifest.repo_root, "dist/apps/cli/src/main.js"), "export const version = 2;\n", "utf8");
+    await execFile("git", ["init", "-q"], { cwd: manifest.repo_root });
+    await execFile("git", ["config", "user.email", "test@example.invalid"], { cwd: manifest.repo_root });
+    await execFile("git", ["config", "user.name", "Test"], { cwd: manifest.repo_root });
+    await execFile("git", ["add", "."], { cwd: manifest.repo_root });
+    await execFile("git", ["commit", "-qm", "next verified candidate"], { cwd: manifest.repo_root });
+    const nextCommit = (await execFile("git", ["rev-parse", "HEAD"], { cwd: manifest.repo_root })).stdout.trim();
+    await writeJson(definition.supervisorManifestPath, manifest);
+    await writeFile(definition.supervisorEntryPath, controllerSource("stable-commit"), "utf8");
+    await writeFile(definition.supervisorPlistPath, "plist", "utf8");
+    const nextRequest = await requestLocalDeployment(definition, {
+      verificationRefs: ["focused deployment supervisor regression"],
+      now: new Date("2026-07-15T00:00:07.000Z")
+    }, {
+      prepareCandidate: async () => ({
+        schema_version: 1,
+        target: "runtime",
+        runtime_current_root: definition.runtimeCurrentRoot,
+        repo_root: manifest.repo_root,
+        built_at: "2026-07-15T00:00:07.000Z",
+        node_version: process.version,
+        source_commit: nextCommit,
+        source_commit_short: nextCommit.slice(0, 12),
+        source_branch: "main",
+        source_is_dirty: false,
+        build_command: "pnpm run build"
+      })
+    });
+    assert.equal(nextRequest.status, "pending");
+    assert.equal(nextRequest.source_commit, nextCommit);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deployment supervisor recovers a dead recorded lock owner but preserves a live owner lock", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-stale-lock-"));
+  const manifest = await preparePendingActivation(root);
+  const lockRoot = resolve(manifest.state_root, "deployments/.supervisor-lock");
+  let loaded = true;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap" || args[0] === "kickstart") loaded = true;
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await mkdir(lockRoot, { recursive: true });
+    await writeJson(resolve(lockRoot, "owner.json"), {
+      schema_version: 1,
+      pid: 999_999_999,
+      acquired_at: "2026-07-15T00:00:00.000Z"
+    });
+
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:01.000Z"),
+      runLaunchctl
+    });
+    assert.equal(recovered.action, "activated");
+    assert.equal(recovered.deployment?.status, "starting");
+    await assert.rejects(readFile(resolve(lockRoot, "owner.json"), "utf8"), { code: "ENOENT" });
+
+    await mkdir(lockRoot, { recursive: true });
+    await writeJson(resolve(lockRoot, "owner.json"), {
+      schema_version: 1,
+      pid: process.pid,
+      acquired_at: "2026-07-15T00:00:02.000Z"
+    });
+    const protectedLock = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:03.000Z"),
+      runLaunchctl
+    });
+    assert.equal(protectedLock.action, "locked");
+    assert.equal(JSON.parse(await readFile(resolve(lockRoot, "owner.json"), "utf8")).pid, process.pid);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation accepts a no-such-process bootout only after the job is absent on postcondition inspection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-absent-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return calls.filter(([action]) => action === "print").length === 1
+          ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+          : { stdout: "", stderr: "Could not find service", exitCode: 3 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    });
+
+    assert.equal(result.deployment?.status, "starting");
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"],
+      ["print", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation rejects a no-such-process bootout when postcondition inspection still finds the job loaded", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-still-loaded-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.deployment?.status, "recovering");
+    assert.match(result.deployment?.failure_reason ?? "", /launchctl bootout failed: Boot-out failed: 3: No such process/);
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"],
+      ["print", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation preserves unrelated bootout failures without postcondition inspection", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-bootout-error-"));
+  const manifest = await preparePendingActivation(root);
+  const calls: string[][] = [];
+  try {
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl: async (args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 5: Input/output error", exitCode: 5 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.deployment?.status, "recovering");
+    assert.match(result.deployment?.failure_reason ?? "", /launchctl bootout failed: Boot-out failed: 5: Input\/output error/);
+    assert.deepEqual(calls.slice(0, 2), [
+      ["print", "gui/501/local.runtime.runtime"],
+      ["bootout", "gui/501/local.runtime.runtime"]
+    ]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation retries a transient kickstart failure with persisted attempt evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-kickstart-retry-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  let loaded = true;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") loaded = true;
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts < 3) return { stdout: "", stderr: `transient kickstart ${kickstartAttempts}`, exitCode: 5 };
+      loaded = true;
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async () => undefined
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "starting");
+    assert.equal(kickstartAttempts, 3);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 3,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: [
+        { attempt: 1, exit_code: 5, detail: "transient kickstart 1", retry_delay_ms: 250 },
+        { attempt: 2, exit_code: 5, detail: "transient kickstart 2", retry_delay_ms: 500 }
+      ]
+    });
+    assert.equal(await bundleCommit(manifest.runtime_current_root), "candidate-commit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation re-bootstraps a missing launchd job before the next kickstart", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-rebootstrap-success-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") {
+      bootstrapAttempts += 1;
+      loaded = true;
+    }
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts === 1) {
+        loaded = false;
+        return { stdout: "", stderr: "Kickstart failed: 5: Input/output error", exitCode: 5 };
+      }
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "starting");
+    assert.equal(bootstrapAttempts, 2);
+    assert.equal(kickstartAttempts, 2);
+    assert.deepEqual(retryDelays, [250]);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 2,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: [{
+        attempt: 1,
+        exit_code: 5,
+        detail: "Kickstart failed: 5: Input/output error",
+        retry_delay_ms: 250
+      }],
+      rebootstrap_attempts: [{
+        after_kickstart_attempt: 1,
+        job_inspection_exit_code: 113,
+        job_inspection_detail: "Could not find service",
+        bootstrap_attempts: 1
+      }]
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation preserves kickstart exhaustion after bounded missing-job re-bootstrap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-rebootstrap-exhausted-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") {
+      bootstrapAttempts += 1;
+      loaded = true;
+    }
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts <= 3) {
+        loaded = false;
+        return { stdout: "", stderr: "Kickstart failed: 5: Input/output error", exitCode: 5 };
+      }
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "recovering");
+    assert.equal(bootstrapAttempts, 4);
+    assert.equal(kickstartAttempts, 4);
+    assert.deepEqual(retryDelays, [250, 500]);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 3,
+      kickstart_attempt_limit: 3,
+      kickstart_failures: [250, 500, null].map((retryDelayMs, index) => ({
+        attempt: index + 1,
+        exit_code: 5,
+        detail: "Kickstart failed: 5: Input/output error",
+        retry_delay_ms: retryDelayMs
+      })),
+      rebootstrap_attempts: [1, 2].map((attempt) => ({
+        after_kickstart_attempt: attempt,
+        job_inspection_exit_code: 113,
+        job_inspection_detail: "Could not find service",
+        bootstrap_attempts: 1
+      })),
+      kickstart_exhausted: true
+    });
+    assert.equal(result.deployment?.recovery_start?.kickstart_attempts, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation spans the launchd throttle window and succeeds on attempt seven", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-kickstart-seven-"));
+  const manifest = { ...buildManifest(root), launchctl_start_attempts: undefined };
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") loaded = true;
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts < 7) return { stdout: "", stderr: `throttled ${kickstartAttempts}`, exitCode: 5 };
+      loaded = true;
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(kickstartAttempts, 7);
+    assert.deepEqual(retryDelays, [250, 500, 1_000, 2_000, 4_000, 8_000]);
+    assert.equal(result.deployment?.activation_start?.kickstart_attempts, 7);
+    assert.equal(result.deployment?.activation_start?.kickstart_attempt_limit, 7);
+    assert.equal(result.deployment?.activation_start?.kickstart_failures.length, 6);
+    assert.equal(result.deployment?.activation_start?.kickstart_exhausted, undefined);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("candidate activation persists typed evidence and a precise error when kickstart exhausts", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-kickstart-exhausted-"));
+  const manifest = { ...buildManifest(root), launchctl_start_attempts: 7 };
+  const paths = deploymentPaths(manifest);
+  const retryDelays: number[] = [];
+  let loaded = true;
+  let kickstartAttempts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return loaded
+      ? { stdout: "state = running\npid = 123\n", stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "bootout") loaded = false;
+    if (args[0] === "bootstrap") loaded = true;
+    if (args[0] === "kickstart") {
+      kickstartAttempts += 1;
+      if (kickstartAttempts <= 7) return { stdout: "", stderr: "Kickstart failed: 5: throttled", exitCode: 5 };
+      loaded = true;
+    }
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+    const stable = { ...deploymentRecord("stable-commit", "stable"), id: "deployment_stable" };
+    const request = { ...deploymentRecord("candidate-commit", "pending") };
+    await writeJson(paths.current, stable);
+    await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+    await writeJson(paths.request, request);
+
+    const result = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:00.000Z"),
+      runLaunchctl,
+      delay: async (milliseconds) => { retryDelays.push(milliseconds); }
+    });
+
+    assert.equal(result.action, "activated");
+    assert.equal(result.deployment?.status, "recovering");
+    assert.equal(kickstartAttempts, 8);
+    assert.deepEqual(retryDelays, [250, 500, 1_000, 2_000, 4_000, 8_000]);
+    assert.deepEqual(result.deployment?.activation_start, {
+      bootstrap_attempts: 1,
+      kickstart_attempts: 7,
+      kickstart_attempt_limit: 7,
+      kickstart_failures: Array.from({ length: 7 }, (_, index) => ({
+        attempt: index + 1,
+        exit_code: 5,
+        detail: "Kickstart failed: 5: throttled",
+        retry_delay_ms: index < 6 ? [250, 500, 1_000, 2_000, 4_000, 8_000][index] : null
+      })),
+      kickstart_exhausted: true
+    });
+    assert.equal(result.deployment?.recovery_start?.kickstart_attempts, 1);
+    assert.equal(
+      result.deployment?.failure_reason,
+      "candidate activation failed: launchctl kickstart exhausted 7/7 attempts for gui/501/local.runtime.runtime; last exit_code=5; last_error=Kickstart failed: 5: throttled"
+    );
+    assert.ok(result.deployment?.evidence_refs?.some((ref) => ref.endsWith("failure.json")));
+
+    await writeHeartbeat(manifest, "stable-commit", "2026-07-15T00:00:01.000Z");
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:02.000Z"),
+      runLaunchctl
+    });
+    assert.equal(recovered.action, "recovered");
+    const observation = JSON.parse(await readFile(paths.latestObservation, "utf8")) as DeploymentFailureObservation;
+    assert.equal(observation.kind, "deployment_failed_recovered");
+    assert.equal(observation.deployment_id, request.id);
+    assert.equal(observation.candidate.source_commit, "candidate-commit");
+    assert.equal(observation.stable_runtime.source_commit, "stable-commit");
+    assert.ok(observation.failure.evidence_refs.some((ref) => ref.endsWith("failure.json")));
+    assert.match(
+      await readFile(resolve(manifest.state_root, `deployments/evidence/${request.id}/failure.json`), "utf8"),
+      /candidate activation failed/
+    );
+    await assert.rejects(readFile(resolve(manifest.state_root, "runs/task_queue.jsonl"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recovering actively and idempotently restores and starts the known-good runtime", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-active-recovery-"));
+  const manifest = { ...buildManifest(root), launchctl_start_attempts: 1, recovery_max_attempts: 3 };
+  const paths = deploymentPaths(manifest);
+  let kickstarts = 0;
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "kickstart") kickstarts += 1;
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "candidate-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_previous_root, "stable-commit", manifest.repo_root);
+    const recovering = {
+      ...deploymentRecord("candidate-commit", "recovering"),
+      previous_source_commit: "stable-commit",
+      failure_reason: "candidate activation failed: launchctl kickstart failed",
+      readiness_deadline: "2026-07-15T00:00:10.000Z"
+    };
+    await writeJson(paths.current, recovering);
+    await writeJson(resolve(paths.historyRoot, `${recovering.id}.json`), recovering);
+
+    const first = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:01.000Z"),
+      runLaunchctl
+    });
+    assert.equal(first.action, "recovery_attempted");
+    assert.equal(first.deployment?.recovery_attempts, 1);
+    assert.equal(await bundleCommit(manifest.runtime_current_root), "stable-commit");
+    assert.equal(await bundleCommit(manifest.runtime_previous_root), "candidate-commit");
+
+    const second = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:02.000Z"),
+      runLaunchctl
+    });
+    assert.equal(second.action, "recovery_attempted");
+    assert.equal(second.deployment?.recovery_attempts, 2);
+    assert.equal(await bundleCommit(manifest.runtime_current_root), "stable-commit");
+    assert.equal(await bundleCommit(manifest.runtime_previous_root), "candidate-commit");
+    assert.equal(kickstarts, 2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recovery exhaustion retains exact launchctl and readiness evidence without claiming recovery", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-recovery-exhaustion-"));
+  const manifest = { ...buildManifest(root), launchctl_start_attempts: 1, recovery_max_attempts: 2 };
+  const paths = deploymentPaths(manifest);
+  const runLaunchctl = async (args: string[]) => {
+    if (args[0] === "print") return { stdout: "", stderr: "not loaded", exitCode: 1 };
+    if (args[0] === "kickstart") return { stdout: "", stderr: "Kickstart failed: 5: transient", exitCode: 5 };
+    return { stdout: "", stderr: "", exitCode: 0 };
+  };
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_previous_root, "candidate-commit", manifest.repo_root);
+    const recovering = {
+      ...deploymentRecord("candidate-commit", "recovering"),
+      previous_source_commit: "stable-commit",
+      failure_reason: "candidate activation failed: launchctl kickstart failed:",
+      readiness_deadline: "2026-07-15T00:00:10.000Z"
+    };
+    await writeJson(paths.current, recovering);
+    await writeJson(resolve(paths.historyRoot, `${recovering.id}.json`), recovering);
+
+    const first = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:01.000Z"),
+      runLaunchctl
+    });
+    assert.equal(first.action, "recovery_retry");
+    assert.equal(first.deployment?.status, "recovering");
+    assert.equal(
+      first.deployment?.recovery_last_error,
+      "launchctl kickstart exhausted 1/1 attempts for gui/501/local.runtime.runtime; last exit_code=5; last_error=Kickstart failed: 5: transient"
+    );
+
+    const exhausted = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:02.000Z"),
+      runLaunchctl
+    });
+    assert.equal(exhausted.action, "rollback_failed");
+    assert.equal(exhausted.deployment?.status, "rollback_failed");
+    assert.match(exhausted.deployment?.failure_reason ?? "", /candidate activation failed: launchctl kickstart failed:/);
+    assert.match(exhausted.deployment?.failure_reason ?? "", /rollback recovery exhausted after 2\/2 attempts/);
+    assert.match(exhausted.deployment?.failure_reason ?? "", /readiness=heartbeat_missing/);
+    assert.match(
+      exhausted.deployment?.failure_reason ?? "",
+      /last_error=launchctl kickstart exhausted 1\/1 attempts for gui\/501\/local\.runtime\.runtime; last exit_code=5; last_error=Kickstart failed: 5: transient/
+    );
+    assert.equal(await bundleCommit(manifest.runtime_current_root), "stable-commit");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("automatic rollback creates a distinct stable ledger when the prior known-good source had no deployment record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-recovery-baseline-"));
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  try {
+    await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+    await writeRuntimeBundle(manifest.runtime_previous_root, "candidate-commit", manifest.repo_root);
+    await writeHeartbeat(manifest, "stable-commit", "2026-07-15T00:00:05.000Z");
+    const candidate = {
+      ...deploymentRecord("candidate-commit", "recovering"),
+      repo_root: manifest.repo_root,
+      state_root: manifest.state_root,
+      previous_source_commit: "stable-commit",
+      failure_reason: "candidate startup failed",
+      evidence_refs: ["deployments/evidence/deployment_test_candidate/failure.json"]
+    };
+    await writeJson(paths.current, candidate);
+    await writeJson(resolve(paths.historyRoot, `${candidate.id}.json`), candidate);
+
+    const recovered = await runSupervisorOnce(manifest, {
+      now: () => new Date("2026-07-15T00:00:06.000Z")
+    });
+    const canonical = JSON.parse(await readFile(paths.current, "utf8")) as DeploymentRecord;
+    const recoveredCandidate = JSON.parse(
+      await readFile(resolve(paths.historyRoot, `${candidate.id}.json`), "utf8")
+    ) as DeploymentRecord;
+
+    assert.equal(recovered.action, "recovered");
+    assert.notEqual(canonical.id, candidate.id);
+    assert.equal(canonical.source_commit, "stable-commit");
+    assert.equal(canonical.status, "stable");
+    assert.equal(recoveredCandidate.source_commit, "candidate-commit");
+    assert.equal(recoveredCandidate.status, "recovered");
+    assert.equal(recoveredCandidate.failure_reason, "candidate startup failed");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -218,9 +900,53 @@ test("deployment request requires a clean distinct commit and stages an immutabl
       repo_root: repoRoot,
       state_root: stateRoot
     });
+    await writeJson(resolve(stateRoot, "deployments/current.json"), {
+      ...deploymentRecord(stableCommit, "stable"),
+      id: "deployment_request_stable",
+      repo_root: repoRoot,
+      state_root: stateRoot,
+      stable_at: "2026-07-14T23:59:00.000Z"
+    });
     await mkdir(definition.supervisorRoot, { recursive: true });
-    await writeFile(definition.supervisorManifestPath, `${JSON.stringify({ max_repair_attempts: 2 })}\n`, "utf8");
+    await writeJson(definition.supervisorManifestPath, {
+      ...buildManifest(root),
+      controller_source_commit: stableCommit,
+      domain: definition.domain,
+      runtime_label: definition.label,
+      runtime_plist_path: definition.plistPath,
+      runtime_current_root: definition.runtimeCurrentRoot,
+      runtime_previous_root: definition.runtimePreviousRoot,
+      runtime_next_root: definition.runtimeNextRoot,
+      runtime_build_path: definition.runtimeBuildPath,
+      runtime_previous_build_path: definition.runtimePreviousBuildPath,
+      heartbeat_path: definition.heartbeatPath,
+      stdout_path: definition.stdoutPath,
+      stderr_path: definition.stderrPath,
+      state_root: definition.stateRoot,
+      repo_root: definition.repoRoot
+    });
+    await writeFile(definition.supervisorEntryPath, controllerSource(stableCommit), "utf8");
     await writeFile(definition.supervisorPlistPath, "plist", "utf8");
+
+    const preparedReceipt = (sourceCommit: string) => ({
+      schema_version: 1 as const,
+      target: "runtime" as const,
+      runtime_current_root: definition.runtimeCurrentRoot,
+      repo_root: repoRoot,
+      built_at: "2026-07-15T00:00:00.000Z",
+      node_version: process.version,
+      source_commit: sourceCommit,
+      source_commit_short: sourceCommit.slice(0, 12),
+      source_branch: "develop",
+      source_is_dirty: false,
+      build_command: "pnpm run build"
+    });
+    await assert.rejects(requestLocalDeployment(definition, {
+      verificationRefs: ["pnpm run check"]
+    }, {
+      prepareCandidate: async () => preparedReceipt(stableCommit)
+    }), /candidate commit matches the running commit/);
+    await assert.rejects(readFile(resolve(definition.runtimeNextRoot, "build.json"), "utf8"), { code: "ENOENT" });
 
     await writeFile(resolve(repoRoot, "dist/apps/cli/src/main.js"), "export const version = 2;\n", "utf8");
     await execFile("git", ["add", "."], { cwd: repoRoot });
@@ -229,11 +955,75 @@ test("deployment request requires a clean distinct commit and stages an immutabl
     const result = await requestLocalDeployment(definition, {
       verificationRefs: ["pnpm run check"],
       now: new Date("2026-07-15T00:00:00.000Z")
+    }, {
+      prepareCandidate: async () => preparedReceipt(candidateCommit)
     });
     assert.equal(result.source_commit, candidateCommit);
     assert.equal(result.status, "pending");
     assert.match(result.release_id, new RegExp(`^${candidateCommit}:[a-f0-9]{16}`));
     assert.equal(await bundleCommit(definition.runtimeNextRoot), candidateCommit);
+    assert.equal(JSON.parse(await readFile(resolve(definition.runtimeNextRoot, "build.json"), "utf8")).build_command, "pnpm run build");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deployment reconciliation adopts only the ready running commit and retains prior ledger history", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-reconcile-"));
+  const repoRoot = resolve(root, "repo");
+  const stateRoot = resolve(root, "state");
+  const homeRoot = resolve(root, "home");
+  const baseDefinition = buildRuntimeServiceDefinition({
+    repoRoot,
+    configDir: resolve(repoRoot, "config"),
+    stateRoot,
+    homeRoot,
+    nodePath: process.execPath
+  });
+  const definition = {
+    ...baseDefinition,
+    supervisorPlistPath: resolve(homeRoot, "service/supervisor.plist")
+  };
+  const manifest: SupervisorManifest = {
+    ...buildManifest(root),
+    runtime_current_root: definition.runtimeCurrentRoot,
+    runtime_previous_root: definition.runtimePreviousRoot,
+    runtime_next_root: definition.runtimeNextRoot,
+    runtime_build_path: definition.runtimeBuildPath,
+    runtime_previous_build_path: definition.runtimePreviousBuildPath,
+    heartbeat_path: definition.heartbeatPath,
+    state_root: stateRoot,
+    repo_root: repoRoot
+  };
+  const now = new Date("2026-07-17T00:00:00.000Z");
+  try {
+    await writeRuntimeBundle(definition.runtimeCurrentRoot, "running-commit", repoRoot);
+    await writeRuntimeBundle(definition.runtimePreviousRoot, "previous-commit", repoRoot);
+    await writeJson(definition.supervisorManifestPath, manifest);
+    await writeFile(definition.supervisorPlistPath, "plist", "utf8");
+    await writeHeartbeat(manifest, "running-commit", now.toISOString());
+    const prior = {
+      ...deploymentRecord("ledger-old-commit", "recovered"),
+      id: "deployment_old_ledger",
+      repo_root: repoRoot,
+      state_root: stateRoot
+    };
+    await writeJson(resolve(stateRoot, "deployments/current.json"), prior);
+    await writeJson(resolve(stateRoot, `deployments/history/${prior.id}.json`), prior);
+
+    const adopted = await reconcileLocalDeploymentBaseline(definition, {
+      reason: "operator verified bootstrap recovery",
+      verificationRefs: ["service health: Web and IM ready", "pnpm run check"],
+      now
+    });
+
+    assert.equal(adopted.status, "stable");
+    assert.equal(adopted.source_commit, "running-commit");
+    assert.equal(adopted.previous_source_commit, "previous-commit");
+    assert.equal(adopted.superseded_deployment_id, prior.id);
+    assert.equal(adopted.adoption_reason, "operator verified bootstrap recovery");
+    assert.equal((await readJson(resolve(stateRoot, "deployments/current.json"))).source_commit, "running-commit");
+    assert.equal((await readJson(resolve(stateRoot, `deployments/history/${prior.id}.json`))).source_commit, "ledger-old-commit");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -264,6 +1054,44 @@ test("supervisor-stable deployment evidence keeps the current clean bundle known
   }
 });
 
+test("local deployment status distinguishes corrupt sources and rejects untyped deployment statuses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-deployment-status-read-"));
+  const stateRoot = resolve(root, "state");
+  const deploymentRoot = resolve(stateRoot, "deployments");
+  const longStatus = "x".repeat(10_000);
+  try {
+    await mkdir(deploymentRoot, { recursive: true });
+    await writeJson(resolve(deploymentRoot, "current.json"), {
+      ...deploymentRecord("current-commit", "stable"),
+      status: longStatus
+    });
+    await writeJson(resolve(deploymentRoot, "request.json"), {
+      ...deploymentRecord("pending-commit", "pending"),
+      status: { unexpected: true }
+    });
+    await writeFile(resolve(deploymentRoot, "failure.json"), "{invalid-json", "utf8");
+    await writeJson(resolve(deploymentRoot, "supervisor.json"), []);
+
+    const status = await getLocalDeploymentStatus(stateRoot);
+
+    assert.equal(status.current, null);
+    assert.equal(status.pending, null);
+    assert.equal(status.failure, null);
+    assert.equal(status.supervisor, null);
+    assert.equal(status.latest_observation, null);
+    assert.deepEqual(status.sources, {
+      current: { ref: "deployments/current.json", status: "invalid", reason: "invalid_value" },
+      request: { ref: "deployments/request.json", status: "invalid", reason: "invalid_value" },
+      supervisor: { ref: "deployments/supervisor.json", status: "invalid", reason: "invalid_value" },
+      failure: { ref: "deployments/failure.json", status: "invalid", reason: "invalid_json" },
+      latest_observation: { ref: "deployments/observations/latest.json", status: "missing" }
+    });
+    assert.doesNotMatch(JSON.stringify(status), new RegExp(longStatus.slice(0, 1_000)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function buildManifest(root: string): SupervisorManifest {
   const runtimeRoot = resolve(root, "service/runtime");
   return {
@@ -273,6 +1101,9 @@ function buildManifest(root: string): SupervisorManifest {
     probation_ms: 1_000,
     heartbeat_max_age_ms: 30_000,
     max_repair_attempts: 2,
+    launchctl_start_attempts: 3,
+    recovery_max_attempts: 6,
+    controller_source_commit: "stable-commit",
     domain: "gui/501",
     runtime_label: "local.runtime.runtime",
     runtime_plist_path: resolve(root, "runtime.plist"),
@@ -297,6 +1128,7 @@ function deploymentPaths(manifest: SupervisorManifest) {
     request: resolve(root, "request.json"),
     current: resolve(root, "current.json"),
     failure: resolve(root, "failure.json"),
+    latestObservation: resolve(root, "observations/latest.json"),
     historyRoot: resolve(root, "history")
   };
 }
@@ -322,11 +1154,39 @@ function deploymentRecord(commit: string, status: DeploymentRecord["status"]): D
   };
 }
 
+async function preparePendingActivation(root: string): Promise<SupervisorManifest> {
+  const manifest = buildManifest(root);
+  const paths = deploymentPaths(manifest);
+  await writeRuntimeBundle(manifest.runtime_current_root, "stable-commit", manifest.repo_root);
+  await writeRuntimeBundle(manifest.runtime_next_root, "candidate-commit", manifest.repo_root);
+  await mkdir(paths.historyRoot, { recursive: true });
+  await mkdir(resolve(root, "logs"), { recursive: true });
+  await writeFile(manifest.stdout_path, "", "utf8");
+  await writeFile(manifest.stderr_path, "", "utf8");
+  const stable = {
+    ...deploymentRecord("stable-commit", "stable"),
+    id: "deployment_test_stable",
+    repo_root: manifest.repo_root,
+    state_root: manifest.state_root
+  };
+  const request = {
+    ...deploymentRecord("candidate-commit", "pending"),
+    repo_root: manifest.repo_root,
+    state_root: manifest.state_root
+  };
+  await writeJson(resolve(manifest.state_root, "deployments/current.json"), stable);
+  await writeJson(resolve(paths.historyRoot, `${stable.id}.json`), stable);
+  await writeJson(paths.request, request);
+  return manifest;
+}
+
 async function writeRuntimeBundle(root: string, commit: string, repoRoot = "/work/repo"): Promise<void> {
   await mkdir(resolve(root, "dist/apps/cli/src"), { recursive: true });
+  await mkdir(resolve(root, "dist/packages/runtime/src"), { recursive: true });
   await mkdir(resolve(root, "node_modules"), { recursive: true });
   await mkdir(resolve(root, "config"), { recursive: true });
   await writeFile(resolve(root, "dist/apps/cli/src/main.js"), `export const commit = ${JSON.stringify(commit)};\n`, "utf8");
+  await writeFile(resolve(root, "dist/packages/runtime/src/service_supervisor.js"), controllerSource(commit), "utf8");
   await writeJson(resolve(root, "build.json"), {
     schema_version: 1,
     target: "runtime",
@@ -337,6 +1197,10 @@ async function writeRuntimeBundle(root: string, commit: string, repoRoot = "/wor
     built_at: "2026-07-15T00:00:00.000Z",
     node_version: process.version
   });
+}
+
+function controllerSource(commit: string): string {
+  return `export const controllerCommit = ${JSON.stringify(commit)};\n`;
 }
 
 async function writeHeartbeat(manifest: SupervisorManifest, commit: string, updatedAt: string): Promise<void> {
@@ -362,4 +1226,8 @@ async function bundleCommit(root: string): Promise<string> {
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(resolve(path, ".."), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+async function readJson(path: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
 }

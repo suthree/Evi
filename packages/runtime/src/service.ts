@@ -13,8 +13,6 @@ import type { ContentDailyLoopStatus } from "./content_daily_service.js";
 import type { ContentCreatorMetricsLoopStatus } from "./content_creator_metrics_service.js";
 import type { ContentFeedbackRefreshLoopStatus } from "./content_feedback_refresh_service.js";
 import type { ReviewTickLoopStatus } from "./review_tick_service.js";
-import type { DisciplineMode } from "./runner.js";
-import type { RuntimeTaskQueueWorkerStatus } from "./runtime_task_queue_worker.js";
 import { recordOperatorServiceRollback } from "./service_supervisor.js";
 import { readServiceRuntimeBuild, type ServiceRuntimeBuild } from "./service_runtime_build.js";
 
@@ -35,7 +33,6 @@ export interface ServiceCommandOptions {
   provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
-  discipline?: DisciplineMode;
   enableIm?: boolean;
   enableWeb?: boolean;
   webHost?: string;
@@ -49,7 +46,11 @@ export interface CommandResult {
   exitCode: number;
 }
 
-export type CommandRunner = (command: string, args: string[], options?: { timeoutMs?: number }) => Promise<CommandResult>;
+export type CommandRunner = (
+  command: string,
+  args: string[],
+  options?: { timeoutMs?: number; cwd?: string }
+) => Promise<CommandResult>;
 
 export interface ServiceDefinitionInput {
   repoRoot: string;
@@ -59,7 +60,6 @@ export interface ServiceDefinitionInput {
   provider?: ImProvider;
   channelId?: string;
   scenarioId?: string;
-  discipline?: DisciplineMode;
   enableIm?: boolean;
   enableWeb?: boolean;
   webHost?: string;
@@ -94,7 +94,6 @@ export interface ServiceDefinition {
   stderrPath: string;
   heartbeatPath: string;
   reviewTickStatusPath: string;
-  taskQueueStatusPath: string;
   contentDailyStatusPath: string;
   contentFeedbackRefreshStatusPath: string;
   contentCreatorMetricsStatusPath: string;
@@ -135,7 +134,6 @@ export interface ServiceCommandResult {
   previous_runtime?: ServiceRuntimeBuild | null;
   heartbeat?: ServiceHeartbeat | null;
   review_tick?: ReviewTickLoopStatus | null;
-  task_queue?: RuntimeTaskQueueWorkerStatus | null;
   content_daily?: ContentDailyLoopStatus | null;
   content_feedback_refresh?: ContentFeedbackRefreshLoopStatus | null;
   content_creator_metrics?: ContentCreatorMetricsLoopStatus | null;
@@ -161,6 +159,7 @@ export interface ServiceHeartbeat {
   scenario_id?: string;
   gateway?: unknown;
   runtime_build?: ServiceRuntimeBuild;
+  asset_projection_root?: string;
   started_at: string;
   updated_at: string;
 }
@@ -183,13 +182,21 @@ export interface AutonomyPauseStatus {
 
 export async function runServiceCommand(
   options: ServiceCommandOptions,
-  deps: { run?: CommandRunner; platform?: NodeJS.Platform } = {}
+  deps: {
+    run?: CommandRunner;
+    platform?: NodeJS.Platform;
+    recordRollback?: typeof recordOperatorServiceRollback;
+    prepareRuntimeSource?: typeof prepareServiceRuntimeSource;
+    resolveDefinition?: typeof resolveServiceDefinition;
+  } = {}
 ): Promise<ServiceCommandResult> {
   const action = options.action;
   const validateRuntime = action === "install" || action === "start" || action === "restart";
-  const definition = await resolveServiceDefinition(options, validateRuntime);
+  const definition = await (deps.resolveDefinition ?? resolveServiceDefinition)(options, validateRuntime);
   const run = deps.run ?? runCommand;
   const platform = deps.platform ?? process.platform;
+  const recordRollback = deps.recordRollback ?? recordOperatorServiceRollback;
+  const prepareRuntimeSource = deps.prepareRuntimeSource ?? prepareServiceRuntimeSource;
 
   if (platform !== "darwin") {
     if (action === "status" || action === "logs") return buildResult(action, definition, {
@@ -202,7 +209,6 @@ export async function runServiceCommand(
       },
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -216,27 +222,28 @@ export async function runServiceCommand(
   if (action === "install") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     return buildResult(action, definition, {
       launchd: await inspectLaunchd(definition, run),
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service definition installed. Run service start to load it."
+      message: bootstrapped
+        ? "Service definition installed with the first commit-bound runtime bundle. Run service start to load it."
+        : "Service definition installed without changing the current runtime bundle. Run service start to load it."
     });
   }
 
   if (action === "start") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     await startLaunchd(definition, run);
     await startSupervisor(definition, run);
     return buildResult(action, definition, {
@@ -244,14 +251,15 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service start requested."
+      message: bootstrapped
+        ? "Service start requested after first-install runtime bootstrap."
+        : "Service start requested for the installed runtime bundle; repository source was not deployed."
     });
   }
 
@@ -263,7 +271,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -277,7 +284,7 @@ export async function runServiceCommand(
   if (action === "restart") {
     await stopSupervisor(definition, run);
     await stopLaunchd(definition, run);
-    await writeServiceFiles(definition);
+    const bootstrapped = await writeServiceFiles(definition, run, prepareRuntimeSource);
     await startLaunchd(definition, run);
     await startSupervisor(definition, run);
     return buildResult(action, definition, {
@@ -285,14 +292,15 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
       runtime: await readRuntimeBuild(definition),
       previousRuntime: await readPreviousRuntimeBuild(definition),
       autonomyPause: await readAutonomyPauseStatus(definition),
-      message: "Service restart requested."
+      message: bootstrapped
+        ? "Service restart requested after first-install runtime bootstrap."
+        : "Service restart requested for the installed runtime bundle; repository source was not deployed."
     });
   }
 
@@ -307,13 +315,17 @@ export async function runServiceCommand(
     await rollbackServiceRuntimeBundle(definition);
     try {
       if (replacedBuild?.source_commit && restoredBuild?.source_commit) {
-        await recordOperatorServiceRollback(definition.stateRoot, {
+        await recordRollback(definition.stateRoot, {
           restoredCommit: restoredBuild.source_commit,
           replacedCommit: replacedBuild.source_commit
         });
       }
     } catch (error) {
       await rollbackServiceRuntimeBundle(definition).catch(() => undefined);
+      await startLaunchd(definition, run).catch(() => undefined);
+      if (existsSync(definition.supervisorManifestPath)) {
+        await startSupervisor(definition, run).catch(() => undefined);
+      }
       throw error;
     }
     await startLaunchd(definition, run);
@@ -325,7 +337,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -344,7 +355,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -361,7 +371,6 @@ export async function runServiceCommand(
       supervisor: await inspectSupervisor(definition, run),
       heartbeat: await readHeartbeat(definition),
       reviewTick: await readReviewTickStatus(definition),
-      taskQueue: await readTaskQueueStatus(definition),
       contentDaily: await readContentDailyStatus(definition),
       contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
       contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -378,7 +387,6 @@ export async function runServiceCommand(
     supervisor: await inspectSupervisor(definition, run),
     heartbeat: await readHeartbeat(definition),
     reviewTick: await readReviewTickStatus(definition),
-    taskQueue: await readTaskQueueStatus(definition),
     contentDaily: await readContentDailyStatus(definition),
     contentFeedbackRefresh: await readContentFeedbackRefreshStatus(definition),
     contentCreatorMetrics: await readContentCreatorMetricsStatus(definition),
@@ -398,7 +406,6 @@ export async function resolveServiceDefinition(
   let channelId = options.channelId ?? serviceSelectors.activeChannelId ?? undefined;
   let scenarioId = options.scenarioId ?? serviceSelectors.activeScenarioId ?? undefined;
   let provider = options.provider;
-  let discipline: "query_todo" | undefined = options.discipline === "query_todo" ? "query_todo" : undefined;
   const enableIm = options.enableIm !== false;
   const enableWeb = options.enableWeb !== false;
 
@@ -414,16 +421,11 @@ export async function resolveServiceDefinition(
     await loadConfig({
       configDir: options.configDir,
       stateRoot: serviceSelectors.stateRoot,
-      modelId: scenario.modelId
+      skipAuth: true
     });
     channelId = scenario.channelId;
     scenarioId = scenario.id;
     provider = scenario.provider;
-    discipline = options.discipline === "query_todo"
-      ? "query_todo"
-      : scenario.discipline === "query_todo"
-        ? "query_todo"
-        : undefined;
   }
   if (validateRuntime && !enableIm) {
     await loadConfig({
@@ -441,7 +443,6 @@ export async function resolveServiceDefinition(
     provider,
     channelId,
     scenarioId,
-    discipline,
     enableIm,
     enableWeb,
     webHost: options.webHost,
@@ -463,7 +464,7 @@ export async function resolveServiceConfigSelectors(
     : await readInstalledServiceStateRoot(options.target, selectors.homeRoot);
   const serviceStateRoot = options.stateRoot
     ? selectors.stateRoot
-    : installedStateRoot ?? resolve(selectors.homeRoot, "state/runtime");
+    : installedStateRoot ?? selectors.stateRoot;
   const serviceSelectors = await loadConfigSelectors({
     configDir: options.configDir,
     stateRoot: serviceStateRoot
@@ -528,7 +529,6 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
   if (input.scenarioId) serviceArgs.push("--scenario", input.scenarioId);
   if (input.provider) serviceArgs.push("--provider", input.provider);
   if (input.channelId) serviceArgs.push("--channel", input.channelId);
-  if (input.discipline && input.discipline !== "none") serviceArgs.push("--discipline", input.discipline);
   if (input.enableIm === false) serviceArgs.push("--no-im");
   if (input.enableWeb === false) serviceArgs.push("--no-web");
   if (input.webHost) serviceArgs.push("--host", input.webHost);
@@ -561,7 +561,6 @@ function buildLocalRuntimeServiceDefinition(target: ServiceTarget, input: Servic
     stderrPath,
     heartbeatPath: resolve(stateRoot, `services/${target}/heartbeat.json`),
     reviewTickStatusPath: resolve(stateRoot, `services/${target}/review_tick.json`),
-    taskQueueStatusPath: resolve(stateRoot, `services/${target}/task_queue.json`),
     contentDailyStatusPath: resolve(stateRoot, `services/${target}/content_daily.json`),
     contentFeedbackRefreshStatusPath: resolve(stateRoot, `services/${target}/content_feedback_refresh.json`),
     contentCreatorMetricsStatusPath: resolve(stateRoot, `services/${target}/content_creator_metrics.json`),
@@ -693,18 +692,33 @@ function renderPlist(input: {
   ].join("\n");
 }
 
-async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
+async function writeServiceFiles(
+  definition: ServiceDefinition,
+  run: CommandRunner,
+  prepareRuntimeSource: typeof prepareServiceRuntimeSource
+): Promise<boolean> {
   if (!existsSync(definition.programArguments[0])) {
     throw new Error(`node executable not found: ${definition.programArguments[0]}`);
   }
   await rotateServiceLogs(definition);
-  await syncServiceRuntimeBundle(definition);
-  const sourceSupervisorEntry = resolve(definition.repoRoot, "dist/packages/runtime/src/service_supervisor.js");
+  let bootstrapped = false;
+  if (existsSync(definition.runtimeCurrentRoot)) {
+    await assertRuntimeBundleUsable(definition.runtimeCurrentRoot, "installed runtime");
+  } else {
+    const preparedBuild = await prepareRuntimeSource(definition, run);
+    await syncServiceRuntimeBundle(definition, preparedBuild);
+    bootstrapped = true;
+  }
+  const sourceSupervisorEntry = resolve(
+    definition.runtimeCurrentRoot,
+    "dist/packages/runtime/src/service_supervisor.js"
+  );
   if (!existsSync(sourceSupervisorEntry)) {
-    throw new Error(`Built service supervisor not found: ${sourceSupervisorEntry}; run pnpm run build before service install/start.`);
+    throw new Error(`Installed service supervisor not found: ${sourceSupervisorEntry}; deploy or bootstrap a complete runtime bundle first.`);
   }
   await mkdir(definition.supervisorRoot, { recursive: true });
   await cp(sourceSupervisorEntry, definition.supervisorEntryPath, { force: true });
+  const controllerBuild = await readRuntimeBuild(definition);
   for (const file of definition.runnerFiles) {
     if (!existsSync(file)) throw new Error(`Local Runtime service runner file not found: ${file}`);
   }
@@ -720,6 +734,9 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     probation_ms: 60_000,
     heartbeat_max_age_ms: 30_000,
     max_repair_attempts: 2,
+    launchctl_start_attempts: 7,
+    recovery_max_attempts: 6,
+    controller_source_commit: controllerBuild?.source_commit,
     domain: definition.domain,
     runtime_label: definition.label,
     runtime_plist_path: definition.plistPath,
@@ -756,7 +773,6 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     stderr_path: definition.stderrPath,
     heartbeat_path: definition.heartbeatPath,
     review_tick_status_path: definition.reviewTickStatusPath,
-    task_queue_status_path: definition.taskQueueStatusPath,
     content_daily_status_path: definition.contentDailyStatusPath,
     content_feedback_refresh_status_path: definition.contentFeedbackRefreshStatusPath,
     content_creator_metrics_status_path: definition.contentCreatorMetricsStatusPath,
@@ -771,14 +787,21 @@ async function writeServiceFiles(definition: ServiceDefinition): Promise<void> {
     program_arguments: definition.programArguments,
     updated_at: new Date().toISOString()
   }, null, 2)}\n`, "utf8");
+  return bootstrapped;
 }
 
-export async function syncServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
-  await stageServiceRuntimeBundle(definition);
+export async function syncServiceRuntimeBundle(
+  definition: ServiceDefinition,
+  preparedBuild?: ServiceRuntimeBuild
+): Promise<void> {
+  await stageServiceRuntimeBundle(definition, preparedBuild);
   await activateStagedServiceRuntimeBundle(definition);
 }
 
-export async function stageServiceRuntimeBundle(definition: ServiceDefinition): Promise<ServiceRuntimeBuild> {
+export async function stageServiceRuntimeBundle(
+  definition: ServiceDefinition,
+  preparedBuild?: ServiceRuntimeBuild
+): Promise<ServiceRuntimeBuild> {
   const sourceDist = resolve(definition.repoRoot, "dist");
   const sourceCliEntry = resolve(sourceDist, "apps/cli/src/main.js");
   const sourceNodeModules = resolve(definition.repoRoot, "node_modules");
@@ -792,26 +815,79 @@ export async function stageServiceRuntimeBundle(definition: ServiceDefinition): 
   if (!existsSync(definition.sourceConfigDir)) {
     throw new Error(`Config directory not found: ${definition.sourceConfigDir}`);
   }
+  if (preparedBuild) await assertPreparedRuntimeSource(definition, preparedBuild);
 
   await rm(definition.runtimeNextRoot, { recursive: true, force: true });
-  await mkdir(definition.runtimeNextRoot, { recursive: true });
-  await cp(sourceDist, resolve(definition.runtimeNextRoot, "dist"), { recursive: true, force: true });
-  await cp(sourceNodeModules, resolve(definition.runtimeNextRoot, "node_modules"), {
-    recursive: true,
-    force: true
+  try {
+    await mkdir(definition.runtimeNextRoot, { recursive: true });
+    await cp(sourceDist, resolve(definition.runtimeNextRoot, "dist"), { recursive: true, force: true });
+    await cp(sourceNodeModules, resolve(definition.runtimeNextRoot, "node_modules"), {
+      recursive: true,
+      force: true
+    });
+    await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
+    if (preparedBuild) await assertPreparedRuntimeSource(definition, preparedBuild);
+    const build = preparedBuild ?? await buildServiceRuntimeBuild(definition);
+    await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
+      build,
+      null,
+      2
+    )}\n`, "utf8");
+    await writeFile(resolve(definition.runtimeNextRoot, "package.json"), `${JSON.stringify({
+      private: true,
+      type: "module"
+    }, null, 2)}\n`, "utf8");
+    return build;
+  } catch (error) {
+    await rm(definition.runtimeNextRoot, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function prepareServiceRuntimeSource(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<ServiceRuntimeBuild> {
+  const before = await buildServiceRuntimeBuild(definition);
+  if (!before.source_commit || before.source_is_dirty !== false) {
+    throw new Error("runtime build requires a clean Git commit before pnpm run build");
+  }
+  const result = await run("pnpm", ["run", "build"], {
+    cwd: definition.repoRoot,
+    timeoutMs: 300_000
   });
-  await cp(definition.sourceConfigDir, resolve(definition.runtimeNextRoot, "config"), { recursive: true, force: true });
-  const build = await buildServiceRuntimeBuild(definition);
-  await writeFile(resolve(definition.runtimeNextRoot, "build.json"), `${JSON.stringify(
-    build,
-    null,
-    2
-  )}\n`, "utf8");
-  await writeFile(resolve(definition.runtimeNextRoot, "package.json"), `${JSON.stringify({
-    private: true,
-    type: "module"
-  }, null, 2)}\n`, "utf8");
-  return build;
+  if (result.exitCode !== 0) {
+    const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.exitCode}`;
+    throw new Error(`runtime build failed: ${detail}`);
+  }
+  const after = await buildServiceRuntimeBuild(definition);
+  if (after.source_commit !== before.source_commit || after.source_is_dirty !== false) {
+    throw new Error("runtime source changed or became dirty during pnpm run build");
+  }
+  const required = [
+    resolve(definition.repoRoot, "dist/apps/cli/src/main.js"),
+    resolve(definition.repoRoot, "dist/packages/runtime/src/service_supervisor.js")
+  ];
+  const missing = required.filter((path) => !existsSync(path));
+  if (missing.length > 0) throw new Error(`runtime build output is incomplete: ${missing.join(", ")}`);
+  return {
+    ...after,
+    build_command: "pnpm run build"
+  };
+}
+
+async function assertPreparedRuntimeSource(
+  definition: ServiceDefinition,
+  preparedBuild: ServiceRuntimeBuild
+): Promise<void> {
+  const current = await buildServiceRuntimeBuild(definition);
+  if (!preparedBuild.source_commit
+    || preparedBuild.source_is_dirty !== false
+    || current.source_commit !== preparedBuild.source_commit
+    || current.source_is_dirty !== false
+    || current.repo_root !== preparedBuild.repo_root) {
+    throw new Error("prepared runtime source no longer matches the same clean Git commit");
+  }
 }
 
 export async function activateStagedServiceRuntimeBundle(definition: ServiceDefinition): Promise<void> {
@@ -982,11 +1058,7 @@ async function startLaunchdJob(
   job: { domain: string; label: string; plistPath: string },
   run: CommandRunner
 ): Promise<void> {
-  const current = await inspectLaunchdJob(job, run);
-  if (current.loaded) {
-    const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
-    if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed before start: ${bootout.stderr || bootout.stdout}`);
-  }
+  await stopLaunchdJob(job, run, "launchctl bootout failed before start");
   let bootstrap: CommandResult | null = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     bootstrap = await run("launchctl", ["bootstrap", job.domain, job.plistPath], { timeoutMs: 30000 });
@@ -998,6 +1070,19 @@ async function startLaunchdJob(
   }
   const kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
   if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed: ${kickstart.stderr || kickstart.stdout}`);
+}
+
+async function restartLaunchdJob(
+  job: { domain: string; label: string; plistPath: string },
+  run: CommandRunner
+): Promise<void> {
+  const current = await inspectLaunchdJob(job, run);
+  if (!current.loaded) {
+    await startLaunchdJob(job, run);
+    return;
+  }
+  const kickstart = await run("launchctl", ["kickstart", "-k", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
+  if (kickstart.exitCode !== 0) throw new Error(`launchctl kickstart failed during restart: ${kickstart.stderr || kickstart.stdout}`);
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -1019,12 +1104,18 @@ async function stopSupervisor(definition: ServiceDefinition, run: CommandRunner)
 
 async function stopLaunchdJob(
   job: { domain: string; label: string; plistPath: string },
-  run: CommandRunner
+  run: CommandRunner,
+  failurePrefix = "launchctl bootout failed"
 ): Promise<void> {
   const current = await inspectLaunchdJob(job, run);
   if (!current.loaded) return;
   const bootout = await run("launchctl", ["bootout", `${job.domain}/${job.label}`], { timeoutMs: 30000 });
-  if (bootout.exitCode !== 0) throw new Error(`launchctl bootout failed: ${bootout.stderr || bootout.stdout}`);
+  if (bootout.exitCode === 0) return;
+  const detail = bootout.stderr || bootout.stdout;
+  if (!/no such process/i.test(detail)) throw new Error(`${failurePrefix}: ${detail}`);
+  const postcondition = await inspectLaunchdJob(job, run);
+  if (!postcondition.loaded) return;
+  throw new Error(`${failurePrefix}: ${detail}`);
 }
 
 async function inspectLaunchd(definition: ServiceDefinition, run: CommandRunner): Promise<LaunchdStatus> {
@@ -1037,6 +1128,40 @@ async function inspectSupervisor(definition: ServiceDefinition, run: CommandRunn
     label: definition.supervisorLabel,
     plistPath: definition.supervisorPlistPath
   }, run);
+}
+
+export async function inspectServiceSupervisor(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<LaunchdStatus> {
+  return inspectSupervisor(definition, run);
+}
+
+export async function restartServiceSupervisor(
+  definition: ServiceDefinition,
+  run: CommandRunner = runCommand
+): Promise<LaunchdStatus> {
+  await restartLaunchdJob({
+    domain: definition.domain,
+    label: definition.supervisorLabel,
+    plistPath: definition.supervisorPlistPath
+  }, run);
+  return inspectSupervisor(definition, run);
+}
+
+export async function inspectServiceSupervisorProcessIdentity(
+  definition: ServiceDefinition,
+  pid: number,
+  run: CommandRunner = runCommand
+): Promise<{ matches: boolean; command: string }> {
+  const result = await run("ps", ["-p", String(pid), "-o", "command="], { timeoutMs: 10000 });
+  const command = result.stdout.trim();
+  return {
+    matches: result.exitCode === 0
+      && command.includes(definition.supervisorEntryPath)
+      && command.includes(definition.supervisorManifestPath),
+    command: command || (result.stderr || "process identity unavailable").trim()
+  };
 }
 
 async function inspectLaunchdJob(
@@ -1091,15 +1216,6 @@ async function readReviewTickStatus(definition: ServiceDefinition): Promise<Revi
   try {
     const raw = await readFile(definition.reviewTickStatusPath, "utf8");
     return JSON.parse(raw) as ReviewTickLoopStatus;
-  } catch {
-    return null;
-  }
-}
-
-async function readTaskQueueStatus(definition: ServiceDefinition): Promise<RuntimeTaskQueueWorkerStatus | null> {
-  try {
-    const raw = await readFile(definition.taskQueueStatusPath, "utf8");
-    return JSON.parse(raw) as RuntimeTaskQueueWorkerStatus;
   } catch {
     return null;
   }
@@ -1177,7 +1293,6 @@ function buildResult(
     supervisor?: LaunchdStatus;
     heartbeat?: ServiceHeartbeat | null;
     reviewTick?: ReviewTickLoopStatus | null;
-    taskQueue?: RuntimeTaskQueueWorkerStatus | null;
     contentDaily?: ContentDailyLoopStatus | null;
     contentFeedbackRefresh?: ContentFeedbackRefreshLoopStatus | null;
     contentCreatorMetrics?: ContentCreatorMetricsLoopStatus | null;
@@ -1212,7 +1327,6 @@ function buildResult(
     previous_runtime: args.previousRuntime,
     heartbeat: args.heartbeat,
     review_tick: args.reviewTick,
-    task_queue: args.taskQueue,
     content_daily: args.contentDaily,
     content_feedback_refresh: args.contentFeedbackRefresh,
     content_creator_metrics: args.contentCreatorMetrics,
@@ -1221,10 +1335,15 @@ function buildResult(
   };
 }
 
-async function runCommand(command: string, args: string[], options: { timeoutMs?: number } = {}): Promise<CommandResult> {
+async function runCommand(
+  command: string,
+  args: string[],
+  options: { timeoutMs?: number; cwd?: string } = {}
+): Promise<CommandResult> {
   try {
     const result = await execFile(command, args, {
       timeout: options.timeoutMs ?? 30000,
+      cwd: options.cwd,
       encoding: "utf8"
     });
     return {

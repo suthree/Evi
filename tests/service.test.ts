@@ -1,13 +1,17 @@
 import assert from "node:assert/strict";
+import { execFile as execFileCallback } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 import {
   buildRuntimeServiceDefinition,
   parseLaunchdPid,
+  prepareServiceRuntimeSource,
   renderLaunchdPlist,
   renderSupervisorLaunchdPlist,
+  restartServiceSupervisor,
   rollbackServiceRuntimeBundle,
   resolveServiceDefinition,
   resolveServiceConfigSelectors,
@@ -15,6 +19,8 @@ import {
   runServiceCommand,
   syncServiceRuntimeBundle
 } from "../packages/runtime/src/service.js";
+
+const execFile = promisify(execFileCallback);
 
 test("launchd plist uses explicit runtime daemon runner and does not contain secrets", () => {
   const definition = buildRuntimeServiceDefinition({
@@ -25,7 +31,6 @@ test("launchd plist uses explicit runtime daemon runner and does not contain sec
     provider: "feishu",
     channelId: "feishu-main",
     scenarioId: "im-default",
-    discipline: "query_todo",
     nodePath: "/usr/local/bin/node",
     pathEnv: "/usr/local/bin:/usr/bin:/bin"
   });
@@ -55,7 +60,6 @@ test("runtime service definition starts the unified daemon with configurable cha
     provider: "feishu",
     channelId: "feishu-main",
     scenarioId: "im-default",
-    discipline: "query_todo",
     enableIm: false,
     webHost: "127.0.0.1",
     webPort: 9876,
@@ -68,7 +72,6 @@ test("runtime service definition starts the unified daemon with configurable cha
   assert.equal(definition.label, "local.runtime.runtime");
   assert.equal(definition.manifestPath, "/home/user/.local-runtime/service/runtime.json");
   assert.equal(definition.heartbeatPath, "/work/runtime/.runtime/state/services/runtime/heartbeat.json");
-  assert.equal(definition.taskQueueStatusPath, "/work/runtime/.runtime/state/services/runtime/task_queue.json");
   assert.equal(definition.runtimePreviousRoot, "/home/user/.local-runtime/service/runtime/previous");
   assert.match(plist, /<string>daemon<\/string>/);
   assert.match(plist, /<string>serve<\/string>/);
@@ -104,6 +107,89 @@ test("deployment supervisor launchd job uses the stable copied controller withou
 test("parseLaunchdPid reads launchctl print output", () => {
   assert.equal(parseLaunchdPid("state = running\npid = 12345\n"), 12345);
   assert.equal(parseLaunchdPid("state = waiting\n"), null);
+});
+
+test("supervisor restart kickstarts a loaded job without unloading it", async () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    nodePath: "/usr/local/bin/node"
+  });
+  let loaded = true;
+  let removalPending = false;
+  let pid = 101;
+  let kickstartAttempts = 0;
+  let bootoutAttempts = 0;
+  let bootstrapAttempts = 0;
+  const status = await restartServiceSupervisor(definition, async (_command, args) => {
+    const action = args[0];
+    if (action === "print") return loaded
+      ? { stdout: `state = running\npid = ${pid}\n`, stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (action === "bootout") {
+      bootoutAttempts += 1;
+      loaded = false;
+      removalPending = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "bootstrap") {
+      bootstrapAttempts += 1;
+      if (!removalPending) loaded = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "kickstart") {
+      kickstartAttempts += 1;
+      if (!loaded) return { stdout: "", stderr: "Could not find service", exitCode: 113 };
+      pid = 202;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    throw new Error(`unexpected launchctl action: ${action}`);
+  });
+
+  assert.equal(bootoutAttempts, 0);
+  assert.equal(bootstrapAttempts, 0);
+  assert.equal(kickstartAttempts, 1);
+  assert.equal(status.loaded, true);
+  assert.equal(status.pid, 202);
+});
+
+test("supervisor restart starts the job when it is not loaded", async () => {
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot: "/work/runtime",
+    configDir: "/work/runtime/config",
+    stateRoot: "/work/runtime/.runtime/state",
+    homeRoot: "/home/user/.local-runtime",
+    nodePath: "/usr/local/bin/node"
+  });
+  let loaded = false;
+  let pid: number | null = null;
+  let bootstrapAttempts = 0;
+  let kickstartAttempts = 0;
+  const status = await restartServiceSupervisor(definition, async (_command, args) => {
+    const action = args[0];
+    if (action === "print") return loaded
+      ? { stdout: `state = running\npid = ${pid}\n`, stderr: "", exitCode: 0 }
+      : { stdout: "", stderr: "Could not find service", exitCode: 113 };
+    if (action === "bootstrap") {
+      bootstrapAttempts += 1;
+      assert.equal(args[2], definition.supervisorPlistPath);
+      loaded = true;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    if (action === "kickstart") {
+      kickstartAttempts += 1;
+      pid = 303;
+      return { stdout: "", stderr: "", exitCode: 0 };
+    }
+    throw new Error(`unexpected launchctl action: ${action}`);
+  });
+
+  assert.equal(bootstrapAttempts, 1);
+  assert.equal(kickstartAttempts, 1);
+  assert.equal(status.loaded, true);
+  assert.equal(status.pid, 303);
 });
 
 test("service runtime rollback swaps current and previous bundles reversibly", async () => {
@@ -201,6 +287,59 @@ test("service rollback retries transient launchd bootstrap failure after bundle 
   }
 });
 
+test("service rollback restores identities and service attempts when reconciliation fails", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-rollback-reconcile-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  const reconciliationError = new Error("rollback ledger reconciliation rejected");
+  const bootstrapPaths: string[] = [];
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot })
+    ].join("\n") + "\n", "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "current-commit");
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "stable-commit");
+    await mkdir(definition.supervisorRoot, { recursive: true });
+    await writeFile(definition.supervisorManifestPath, "{}\n", "utf8");
+
+    await assert.rejects(runServiceCommand({
+      action: "rollback",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot
+    }, {
+      platform: "darwin",
+      recordRollback: async () => {
+        throw reconciliationError;
+      },
+      run: async (_command, args) => {
+        const action = args[0];
+        if (action === "print") return { stdout: "", stderr: "not loaded", exitCode: 1 };
+        if (action === "bootstrap") {
+          bootstrapPaths.push(args[2]);
+          return { stdout: "", stderr: "", exitCode: 0 };
+        }
+        if (action === "kickstart" && args[2]?.endsWith("/local.runtime.runtime")) {
+          return { stdout: "", stderr: "runtime restart failed", exitCode: 1 };
+        }
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    }), (error: unknown) => error === reconciliationError);
+
+    assert.equal(JSON.parse(await readFile(definition.runtimeBuildPath, "utf8")).source_commit, "current-commit");
+    assert.equal(JSON.parse(await readFile(definition.runtimePreviousBuildPath, "utf8")).source_commit, "stable-commit");
+    assert.deepEqual(bootstrapPaths, [definition.plistPath, definition.supervisorPlistPath]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("service logs rotate at the lifecycle size cap and retain bounded history", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-log-"));
   const stdoutPath = join(root, "runtime.out.log");
@@ -257,6 +396,211 @@ test("runtime sync preserves only commit-bound verified current builds as last k
   }
 });
 
+test("runtime source preparation builds one unchanged clean commit before staging", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-build-source-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const definition = buildRuntimeServiceDefinition({
+    repoRoot,
+    configDir,
+    stateRoot: join(root, "state"),
+    homeRoot: join(root, "home"),
+    nodePath: process.execPath
+  });
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), "", "utf8");
+    await writeFile(join(repoRoot, "source.ts"), "export const value = 1;\n", "utf8");
+    await writeFile(join(repoRoot, ".gitignore"), "dist/\n", "utf8");
+    await execFile("git", ["init", "-q"], { cwd: repoRoot });
+    await execFile("git", ["config", "user.email", "test@example.invalid"], { cwd: repoRoot });
+    await execFile("git", ["config", "user.name", "Test"], { cwd: repoRoot });
+    await execFile("git", ["add", "."], { cwd: repoRoot });
+    await execFile("git", ["commit", "-qm", "source"], { cwd: repoRoot });
+    const commit = (await execFile("git", ["rev-parse", "HEAD"], { cwd: repoRoot })).stdout.trim();
+    let buildCalls = 0;
+    const build = await prepareServiceRuntimeSource(definition, async (command, args, options) => {
+      buildCalls += 1;
+      assert.equal(command, "pnpm");
+      assert.deepEqual(args, ["run", "build"]);
+      assert.equal(options?.cwd, repoRoot);
+      await mkdir(join(repoRoot, "dist/apps/cli/src"), { recursive: true });
+      await mkdir(join(repoRoot, "dist/packages/runtime/src"), { recursive: true });
+      await writeFile(join(repoRoot, "dist/apps/cli/src/main.js"), "export {};\n", "utf8");
+      await writeFile(join(repoRoot, "dist/packages/runtime/src/service_supervisor.js"), "export {};\n", "utf8");
+      return { stdout: "", stderr: "", exitCode: 0 };
+    });
+    assert.equal(buildCalls, 1);
+    assert.equal(build.source_commit, commit);
+    assert.equal(build.source_is_dirty, false);
+    assert.equal(build.build_command, "pnpm run build");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service restart preserves installed current and previous bundles", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-restart-installed-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  const definition = buildRuntimeServiceDefinition({ repoRoot, configDir, stateRoot, homeRoot, nodePath: process.execPath });
+  const isolatedDefinition = {
+    ...definition,
+    plistPath: join(homeRoot, "LaunchAgents/local.runtime.runtime.plist"),
+    supervisorPlistPath: join(homeRoot, "LaunchAgents/local.runtime.runtime.supervisor.plist")
+  };
+  try {
+    await mkdir(configDir, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "model-main"
+    })}\n`, "utf8");
+    await writeTestRuntimeBundle(definition.runtimeCurrentRoot, "installed-commit", repoRoot);
+    await writeTestRuntimeBundle(definition.runtimePreviousRoot, "previous-commit", repoRoot);
+    let prepareCalls = 0;
+    let loaded = true;
+    const result = await runServiceCommand({
+      action: "restart",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      enableIm: false
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => isolatedDefinition,
+      prepareRuntimeSource: async () => {
+        prepareCalls += 1;
+        throw new Error("restart must not build repo source");
+      },
+      run: async (_command, args) => {
+        if (args[0] === "print") return loaded
+          ? { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 }
+          : { stdout: "", stderr: "not loaded", exitCode: 1 };
+        if (args[0] === "bootout") loaded = false;
+        if (args[0] === "bootstrap" || args[0] === "kickstart") loaded = true;
+        return { stdout: "", stderr: "", exitCode: 0 };
+      }
+    });
+    assert.equal(prepareCalls, 0);
+    assert.equal(result.runtime?.source_commit, "installed-commit");
+    assert.equal(result.previous_runtime?.source_commit, "previous-commit");
+    assert.equal(result.plist_path, isolatedDefinition.plistPath);
+    assert.match(await readFile(isolatedDefinition.plistPath, "utf8"), /local\.runtime\.runtime/);
+    const supervisorManifest = JSON.parse(await readFile(isolatedDefinition.supervisorManifestPath, "utf8")) as Record<string, unknown>;
+    assert.equal(supervisorManifest.controller_source_commit, "installed-commit");
+    assert.equal(supervisorManifest.launchctl_start_attempts, 7);
+    assert.equal(supervisorManifest.recovery_max_attempts, 6);
+    assert.match(result.message ?? "", /repository source was not deployed/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("service stop accepts a no-such-process bootout only when the exact job is absent on postcondition inspection", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+    let prints = 0;
+
+    const result = await runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") {
+          prints += 1;
+          return prints === 1
+            ? { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 }
+            : { stdout: "", stderr: "Could not find service", exitCode: 3 };
+        }
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    });
+
+    assert.equal(result.action, "stop");
+    assert.deepEqual(calls.slice(0, 3), [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`],
+      ["print", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
+test("service stop rejects a no-such-process bootout when the exact job remains loaded", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+
+    await assert.rejects(runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 3: No such process", exitCode: 3 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    }), /launchctl bootout failed: Boot-out failed: 3: No such process/);
+
+    assert.deepEqual(calls, [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`],
+      ["print", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
+test("service stop preserves unrelated bootout failures without postcondition inspection", async () => {
+  await withServiceStopDefinition(async (definition) => {
+    const calls: string[][] = [];
+
+    await assert.rejects(runServiceCommand({
+      action: "stop",
+      target: "runtime",
+      repoRoot: definition.repoRoot,
+      configDir: definition.sourceConfigDir,
+      stateRoot: definition.stateRoot
+    }, {
+      platform: "darwin",
+      resolveDefinition: async () => definition,
+      run: async (_command, args) => {
+        calls.push(args);
+        if (args[0] === "print") return { stdout: "state = running\npid = 456\n", stderr: "", exitCode: 0 };
+        if (args[0] === "bootout") return { stdout: "", stderr: "Boot-out failed: 5: Input/output error", exitCode: 5 };
+        throw new Error(`unexpected launchctl action: ${args[0]}`);
+      }
+    }), /launchctl bootout failed: Boot-out failed: 5: Input\/output error/);
+
+    assert.deepEqual(calls, [
+      ["print", `${definition.domain}/${definition.label}`],
+      ["bootout", `${definition.domain}/${definition.label}`]
+    ]);
+  });
+});
+
 test("service definition accepts configured Discord IM providers with an adapter", async () => {
   const root = await mkdtemp(join(tmpdir(), "local-runtime-service-provider-"));
   const repoRoot = join(root, "repo");
@@ -286,7 +630,7 @@ test("service definition accepts configured Discord IM providers with an adapter
         type: "scenario",
         id: "im-discord",
         channel_id: "discord-main",
-        model_id: "test-model",
+        model_id: "unused-missing-model",
         discipline: "query_todo"
       })
     ].join("\n") + "\n", "utf8");
@@ -301,7 +645,6 @@ test("service definition accepts configured Discord IM providers with an adapter
       })
     ].join("\n") + "\n", "utf8");
     await writeFile(join(configDir, "auth.jsonl"), [
-      JSON.stringify({ type: "api_key", id: "model-main", key: "sk-test" }),
       JSON.stringify({ type: "api_key", id: "discord-main", key: "discord-test" })
     ].join("\n") + "\n", "utf8");
 
@@ -314,16 +657,16 @@ test("service definition accepts configured Discord IM providers with an adapter
       provider: "discord"
     }, true);
 
-    assert.deepEqual(definition.programArguments.slice(-10, -2), [
+    const serviceArgs = definition.programArguments.slice(2);
+    assert.deepEqual(serviceArgs.slice(serviceArgs.indexOf("--scenario"), serviceArgs.indexOf("--runtime-build")), [
       "--scenario",
       "im-discord",
       "--provider",
       "discord",
       "--channel",
-      "discord-main",
-      "--discipline",
-      "query_todo"
+      "discord-main"
     ]);
+    assert.equal(serviceArgs.includes("--discipline"), false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -373,7 +716,7 @@ test("runtime service provider flag overrides stale active IM selectors", async 
         type: "scenario",
         id: "im-telegram",
         channel_id: "telegram-main",
-        model_id: "test-model",
+        model_id: "unused-missing-model",
         discipline: "query_todo"
       })
     ].join("\n") + "\n", "utf8");
@@ -408,11 +751,83 @@ test("runtime service provider flag overrides stale active IM selectors", async 
       "--provider",
       "telegram",
       "--channel",
-      "telegram-main",
-      "--discipline",
-      "query_todo"
+      "telegram-main"
     ]);
+    assert.equal(serviceArgs.includes("--discipline"), false);
     assert.equal(serviceArgs.includes("--no-im"), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime service ignores a stale Feishu scenario model and emits no discipline owner", async () => {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-feishu-goal-owner-"));
+  const repoRoot = join(root, "repo");
+  const configDir = join(repoRoot, "config");
+  const stateRoot = join(root, "state");
+  const homeRoot = join(root, "home");
+  try {
+    await mkdir(configDir, { recursive: true });
+    await mkdir(stateRoot, { recursive: true });
+    await writeFile(join(configDir, "config.jsonl"), [
+      JSON.stringify({ type: "home", root: homeRoot }),
+      JSON.stringify({ type: "state", root: stateRoot }),
+      JSON.stringify({ type: "active_model", model_id: "test-model" }),
+      JSON.stringify({ type: "active_channel", channel_id: "feishu-main" }),
+      JSON.stringify({ type: "active_scenario", scenario_id: "im-feishu" })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "settings.jsonl"), [
+      JSON.stringify({
+        type: "channel",
+        id: "feishu-main",
+        kind: "feishu",
+        transport: "websocket",
+        mode: "private_chat",
+        auth_id: "feishu-main"
+      }),
+      JSON.stringify({
+        type: "scenario",
+        id: "im-feishu",
+        channel_id: "feishu-main",
+        model_id: "missing-scenario-model",
+        discipline: "query_todo"
+      })
+    ].join("\n") + "\n", "utf8");
+    await writeFile(join(configDir, "models.jsonl"), `${JSON.stringify({
+      type: "model",
+      id: "test-model",
+      provider: "openai-compatible",
+      base_url: "https://api.example.test/v1",
+      model: "test-model",
+      auth_id: "model-main"
+    })}\n`, "utf8");
+    await writeFile(join(configDir, "auth.jsonl"), `${JSON.stringify({
+      type: "app_secret",
+      id: "feishu-main",
+      app_id: "cli-test",
+      app_secret: "secret-test"
+    })}\n`, "utf8");
+
+    const definition = await resolveServiceDefinition({
+      action: "start",
+      target: "runtime",
+      repoRoot,
+      configDir,
+      stateRoot,
+      provider: "feishu"
+    }, true);
+
+    const serviceArgs = definition.programArguments.slice(2);
+    assert.equal(serviceArgs.includes("missing-scenario-model"), false);
+    assert.equal(serviceArgs.includes("--discipline"), false);
+    assert.deepEqual(serviceArgs.slice(serviceArgs.indexOf("--scenario"), serviceArgs.indexOf("--runtime-build")), [
+      "--scenario",
+      "im-feishu",
+      "--provider",
+      "feishu",
+      "--channel",
+      "feishu-main"
+    ]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -437,7 +852,7 @@ test("service config selectors prefer installed manifest state and preserve expl
       target: "runtime",
       configDir
     });
-    assert.equal(defaultSelectors.stateRoot, join(homeRoot, "state/runtime"));
+    assert.equal(defaultSelectors.stateRoot, repoStateRoot);
 
     await mkdir(join(homeRoot, "service"), { recursive: true });
     await writeFile(join(homeRoot, "service/runtime.json"), `${JSON.stringify({
@@ -464,7 +879,7 @@ test("service config selectors prefer installed manifest state and preserve expl
       target: "runtime",
       configDir
     });
-    assert.equal(malformedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+    assert.equal(malformedManifestSelectors.stateRoot, repoStateRoot);
 
     for (const manifest of [
       { target: "other", home_root: homeRoot, state_root: installedStateRoot },
@@ -476,7 +891,7 @@ test("service config selectors prefer installed manifest state and preserve expl
         target: "runtime",
         configDir
       });
-      assert.equal(rejectedManifestSelectors.stateRoot, join(homeRoot, "state/runtime"));
+      assert.equal(rejectedManifestSelectors.stateRoot, repoStateRoot);
     }
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -679,9 +1094,7 @@ test("service status combines launchd status and heartbeat", async () => {
     assert.equal(result.previous_runtime?.source_commit_short, "abcdef012345");
     assert.equal(result.review_tick?.state, "ok");
     assert.equal(result.review_tick?.last_inbox_count, 2);
-    assert.equal(result.task_queue?.state, "ok");
-    assert.equal(result.task_queue?.last_recoverable_count, 2);
-    assert.deepEqual(result.task_queue?.last_task_ids, ["runtime_task_1"]);
+    assert.equal("task_queue" in result, false);
     assert.equal(result.content_daily?.state, "ok");
     assert.equal(result.content_daily?.last_job_ref, "content/daily/2026-07-01.json");
     assert.equal(result.content_daily?.last_job_status, "preflight_ok");
@@ -738,11 +1151,35 @@ test("runtime service status points operators to runtime bounded health", async 
   }
 });
 
+async function withServiceStopDefinition(
+  callback: (definition: ReturnType<typeof buildRuntimeServiceDefinition>) => Promise<void>
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), "local-runtime-service-stop-"));
+  try {
+    const definition = buildRuntimeServiceDefinition({
+      repoRoot: join(root, "repo"),
+      configDir: join(root, "repo/config"),
+      stateRoot: join(root, "state"),
+      homeRoot: join(root, "home"),
+      nodePath: process.execPath
+    });
+    await callback({
+      ...definition,
+      plistPath: join(root, "LaunchAgents/local.runtime.runtime.plist"),
+      supervisorPlistPath: join(root, "LaunchAgents/local.runtime.runtime.supervisor.plist")
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
 async function writeTestRuntimeBundle(root: string, sourceCommit: string, repoRoot = "/repo"): Promise<void> {
   await mkdir(join(root, "dist/apps/cli/src"), { recursive: true });
+  await mkdir(join(root, "dist/packages/runtime/src"), { recursive: true });
   await mkdir(join(root, "node_modules"), { recursive: true });
   await mkdir(join(root, "config"), { recursive: true });
   await writeFile(join(root, "dist/apps/cli/src/main.js"), "export {};\n", "utf8");
+  await writeFile(join(root, "dist/packages/runtime/src/service_supervisor.js"), "export {};\n", "utf8");
   await writeFile(join(root, "config/config.jsonl"), "", "utf8");
   await writeFile(join(root, "build.json"), `${JSON.stringify({
     schema_version: 1,
