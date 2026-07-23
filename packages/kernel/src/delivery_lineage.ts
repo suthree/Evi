@@ -10,6 +10,10 @@ import {
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { stableJson } from "./canonical_json.js";
+import {
+  canonicalDeliveryLineageFileIdentity,
+  canonicalDeliveryLineageSymlinkDigest
+} from "./delivery_lineage_path_identity.js";
 
 const execFileAsync = promisify(execFile);
 const LINEAGE_SCHEMA_VERSION = 1;
@@ -38,7 +42,7 @@ export interface DeliveryLineage {
 }
 
 export interface DeliveryLineageSnapshot {
-  schema_version: 1;
+  schema_version: 1 | 2;
   lineage_id: string;
   lineage_digest: string;
   repository_root: string;
@@ -176,7 +180,7 @@ export async function captureDeliveryLineageSnapshot(
     pathDigests[path] = await pathDigest(worktree, path);
   }
   const body = {
-    schema_version: 1 as const,
+    schema_version: 2 as const,
     lineage_id: lineage.id,
     lineage_digest: lineage.digest,
     repository_root: lineage.repository_root,
@@ -209,7 +213,9 @@ export function parseDeliveryLineageSnapshot(input: unknown): DeliveryLineageSna
     "captured_at",
     "digest"
   ], "Delivery Lineage snapshot");
-  if (value.schema_version !== 1) throw new Error("Delivery Lineage snapshot schema is invalid.");
+  if (value.schema_version !== 1 && value.schema_version !== 2) {
+    throw new Error("Delivery Lineage snapshot schema is invalid.");
+  }
   if (!Array.isArray(value.changed_paths)) {
     throw new Error("Delivery Lineage snapshot changed paths are invalid.");
   }
@@ -232,7 +238,7 @@ export function parseDeliveryLineageSnapshot(input: unknown): DeliveryLineageSna
     pathDigests[path] = digest as string | null;
   }
   const body = {
-    schema_version: 1 as const,
+    schema_version: value.schema_version as 1 | 2,
     lineage_id: boundedIdentifier(value.lineage_id, "Delivery Lineage snapshot id", 240),
     lineage_digest: digestValue(value.lineage_digest, "Delivery Lineage snapshot lineage digest"),
     repository_root: absolute(value.repository_root, "Delivery Lineage snapshot repository root"),
@@ -343,12 +349,19 @@ async function pathDigest(worktree: string, path: string): Promise<string | null
   const absolutePath = resolve(worktree, path);
   try {
     const info = await lstat(absolutePath);
-    if (info.isSymbolicLink()) return sha256(`symlink\u0000${await readlink(absolutePath)}`);
+    if (info.isSymbolicLink()) {
+      return canonicalDeliveryLineageSymlinkDigest(
+        await readlink(absolutePath, { encoding: "buffer" })
+      );
+    }
     if (!info.isFile()) return sha256(`mode\u0000${info.mode}\u0000${info.size}`);
     if (info.size > MAX_HASHED_FILE_BYTES) {
       throw new Error(`Delivery Lineage changed file exceeds ${MAX_HASHED_FILE_BYTES} bytes: ${path}`);
     }
-    return createHash("sha256").update(await readFile(absolutePath)).digest("hex");
+    return canonicalDeliveryLineageFileIdentity(
+      await readFile(absolutePath),
+      (info.mode & 0o111) !== 0
+    ).digest;
   } catch (error) {
     if (isMissing(error)) return null;
     throw error;

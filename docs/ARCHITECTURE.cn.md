@@ -135,6 +135,15 @@ Worker dispatch 本身是 Action Gateway effect。Worker 启动前，reservation
 identity、Task Envelope digest、Execution Lock digest、model/executor selection、budget 与
 可选 Delivery Lineage；Owner 丢失时先 reconcile，不能盲目 replay。
 
+当前顺序执行的 vNext checkpoint 已把 discussion、execution 与 review Worker 放进同一套
+lifecycle ledger。Review Worker 是独立 read-only child Run，只能在某个 completed execution
+Result 已交付到当前 Supervisor Turn 后，与该 execution Worker 建立窄绑定。它接收来自该
+execution 最终 Delivery-Lineage snapshot 的有界、digest-addressed before/after packet；snapshot
+的 per-path identity 同时绑定规范化 Git mode 与内容。Reviewer 只返回 `approved` 或带结构化
+finding 的 `changes_required`。Verdict 是独立 evidence，不拥有
+integration 或 Parent completion authority。有界并发 dispatch 与独占 Integration Run 仍属于
+后续 orchestration 阶段。
+
 ### Delivery Lineage 与并发
 
 v0.2 把一个 worktree 绑定给一个 source-mutating Goal，这只保留为当前实现事实。vNext 中，

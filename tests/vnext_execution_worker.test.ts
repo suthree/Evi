@@ -497,7 +497,7 @@ test("expired execution lease becomes outcome_unknown and never transfers to a s
   }
 });
 
-test("schema 8 state upgrades in place to schema 10 and creates the common Worker ledger", async () => {
+test("schema 8 state upgrades in place to schema 11 and creates the common Worker ledger", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-8-to-10-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -539,18 +539,19 @@ test("schema 8 state upgrades in place to schema 10 and creates the common Worke
     const version = inspected.prepare(
       "SELECT value FROM schema_meta WHERE key = 'schema_version'"
     ).get() as { value: string };
-    assert.equal(version.value, "10");
+    assert.equal(version.value, "11");
     const tables = inspected.prepare(`
       SELECT name FROM sqlite_master
       WHERE type = 'table' AND name IN (
         'worker_sessions', 'delivery_lineages', 'execution_worker_bindings',
-        'execution_worker_sessions'
+        'execution_worker_sessions', 'review_worker_bindings'
       )
       ORDER BY name
     `).all() as Array<{ name: string }>;
     assert.deepEqual(tables.map(({ name }) => name), [
       "delivery_lineages",
       "execution_worker_bindings",
+      "review_worker_bindings",
       "worker_sessions"
     ]);
   } finally {
@@ -559,7 +560,7 @@ test("schema 8 state upgrades in place to schema 10 and creates the common Worke
   }
 });
 
-test("schema 9 preserves discussion and execution Worker identities in one schema 10 ledger", async () => {
+test("schema 9 preserves discussion and execution Worker identities in one schema 11 ledger", async () => {
   const fixture = await createGitFixture("schema-nine");
   const sqlite = join(fixture.root, "state", "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -642,7 +643,7 @@ test("schema 9 preserves discussion and execution Worker identities in one schem
       const version = inspected.prepare(
         "SELECT value FROM schema_meta WHERE key = 'schema_version'"
       ).get() as { value: string };
-      assert.equal(version.value, "10");
+      assert.equal(version.value, "11");
       const kinds = inspected.prepare(`
         SELECT worker_kind, COUNT(*) AS count
         FROM worker_sessions GROUP BY worker_kind ORDER BY worker_kind
@@ -665,6 +666,102 @@ test("schema 9 preserves discussion and execution Worker identities in one schem
   } finally {
     upgraded.close();
     await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("schema 10 preserves the common Worker ledger exactly while adding review bindings", async () => {
+  const fixture = await createGitFixture("schema-ten");
+  const sqlite = join(fixture.root, "state", "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  const execution = await dispatchExecutionWorker(store, fixture);
+  const executionCompleted = await new ExecutionWorkerRuntime(
+    store,
+    fakeExecutor(async (task) => {
+      await writeFile(join(task.lineage.worktree, "src", "feature.txt"), "schema ten result\n");
+    })
+  ).execute(execution.worker.id);
+  const discussionDispatch = await dispatchDiscussionWorker(store, fixture.repository);
+  const discussion = await new DiscussionWorkerRuntime(
+    store,
+    new ActionGateway(store, []),
+    { create: () => ({ execute: async () => ({ answer: "Preserved schema 10 discussion." }) }) }
+  ).execute(discussionDispatch.worker.id);
+  const expected = {
+    execution_task: execution.worker.task_envelope.digest,
+    execution_result: executionCompleted.result_envelope?.digest,
+    execution_lineage: execution.worker.lineage.digest,
+    execution_attempt: executionCompleted.attempt_id,
+    discussion_task: discussion.task_envelope.digest,
+    discussion_result: discussion.result_envelope?.digest,
+    discussion_child_run: discussion.child_run_id
+  };
+  store.close();
+
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  downgradeWorkerLedgerToTen(legacy);
+  legacy.prepare("UPDATE schema_meta SET value = '10' WHERE key = 'schema_version'").run();
+  legacy.close();
+
+  const upgraded = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const migratedExecution = upgraded.inspectExecutionWorker(execution.worker.id);
+    assert.equal(migratedExecution?.task_envelope.digest, expected.execution_task);
+    assert.equal(migratedExecution?.result_envelope?.digest, expected.execution_result);
+    assert.equal(migratedExecution?.lineage.digest, expected.execution_lineage);
+    assert.equal(migratedExecution?.attempt_id, expected.execution_attempt);
+    const migratedDiscussion = upgraded.inspectWorker(discussion.id);
+    assert.equal(migratedDiscussion?.task_envelope.digest, expected.discussion_task);
+    assert.equal(migratedDiscussion?.result_envelope?.digest, expected.discussion_result);
+    assert.equal(migratedDiscussion?.child_run_id, expected.discussion_child_run);
+    const inspected = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      const version = inspected.prepare(
+        "SELECT value FROM schema_meta WHERE key = 'schema_version'"
+      ).get() as { value: string };
+      assert.equal(version.value, "11");
+      const reviewBindings = inspected.prepare(`
+        SELECT COUNT(*) AS count FROM sqlite_master
+        WHERE type = 'table' AND name = 'review_worker_bindings'
+      `).get() as { count: number };
+      assert.equal(Number(reviewBindings.count), 1);
+      const kinds = inspected.prepare(`
+        SELECT worker_kind, COUNT(*) AS count
+        FROM worker_sessions GROUP BY worker_kind ORDER BY worker_kind
+      `).all() as Array<{ worker_kind: string; count: number }>;
+      assert.deepEqual(kinds.map((row) => ({
+        worker_kind: row.worker_kind,
+        count: Number(row.count)
+      })), [
+        { worker_kind: "discussion", count: 1 },
+        { worker_kind: "execution", count: 1 }
+      ]);
+    } finally {
+      inspected.close();
+    }
+  } finally {
+    upgraded.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("schema 10 metadata rejects a mixed schema 11 Worker ledger before migration", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-ten-mixed-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  store.close();
+  const mixed = new DatabaseSync(sqlite);
+  mixed.exec("PRAGMA foreign_keys = OFF");
+  mixed.exec("DROP TABLE review_worker_bindings");
+  mixed.prepare("UPDATE schema_meta SET value = '10' WHERE key = 'schema_version'").run();
+  mixed.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 10\/mixed:worker_sessions/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
   }
 });
 
@@ -782,6 +879,7 @@ async function dispatchDiscussionWorker(store: SqliteRuntimeStore, repository: s
 }
 
 function downgradeWorkerLedgerToEight(db: DatabaseSync): void {
+  db.exec("DROP TABLE review_worker_bindings");
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
   createLegacyDiscussionWorkerTable(db);
   db.exec(`
@@ -808,6 +906,7 @@ function downgradeWorkerLedgerToEight(db: DatabaseSync): void {
 }
 
 function downgradeWorkerLedgerToNine(db: DatabaseSync): void {
+  db.exec("DROP TABLE review_worker_bindings");
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
   createLegacyDiscussionWorkerTable(db);
   createLegacyExecutionWorkerTable(db);
@@ -851,6 +950,105 @@ function downgradeWorkerLedgerToNine(db: DatabaseSync): void {
 
     DROP TABLE execution_worker_bindings;
     DROP TABLE worker_sessions_v10;
+  `);
+}
+
+function downgradeWorkerLedgerToTen(db: DatabaseSync): void {
+  db.exec(`
+    DROP TABLE review_worker_bindings;
+    ALTER TABLE execution_worker_bindings RENAME TO execution_worker_bindings_v11;
+    ALTER TABLE worker_sessions RENAME TO worker_sessions_v11;
+  `);
+  createLegacyCommonWorkerTableTen(db);
+  db.exec(`
+    INSERT INTO worker_sessions (
+      id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+      created_at, updated_at
+    )
+    SELECT
+      id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+      task_envelope_digest, task_envelope_json,
+      child_execution_lock_digest, child_execution_lock_json,
+      child_session_id, child_run_id,
+      result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+      lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+      created_at, updated_at
+    FROM worker_sessions_v11
+    WHERE worker_kind IN ('discussion', 'execution');
+
+    CREATE TABLE execution_worker_bindings (
+      worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+      lineage_id TEXT NOT NULL UNIQUE REFERENCES delivery_lineages(id) ON DELETE RESTRICT
+    );
+    INSERT INTO execution_worker_bindings (worker_id, lineage_id)
+    SELECT worker_id, lineage_id FROM execution_worker_bindings_v11;
+    DROP TABLE execution_worker_bindings_v11;
+    DROP TABLE worker_sessions_v11;
+  `);
+}
+
+function createLegacyCommonWorkerTableTen(db: DatabaseSync): void {
+  db.exec(`
+    DROP INDEX IF EXISTS worker_sessions_parent_status_idx;
+    DROP INDEX IF EXISTS worker_sessions_one_kind_per_parent_idx;
+    DROP INDEX IF EXISTS worker_sessions_parent_delivery_idx;
+    CREATE TABLE worker_sessions (
+      id TEXT PRIMARY KEY,
+      reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+      parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      worker_kind TEXT NOT NULL CHECK (worker_kind IN ('discussion', 'execution')),
+      status TEXT NOT NULL CHECK (
+        status IN ('queued', 'running', 'paused', 'needs_input', 'completed', 'failed')
+      ),
+      task_envelope_digest TEXT NOT NULL UNIQUE,
+      task_envelope_json TEXT NOT NULL,
+      child_execution_lock_digest TEXT NOT NULL,
+      child_execution_lock_json TEXT NOT NULL,
+      child_session_id TEXT UNIQUE REFERENCES sessions(id),
+      child_run_id TEXT UNIQUE REFERENCES runs(id),
+      result_envelope_digest TEXT UNIQUE,
+      result_envelope_json TEXT,
+      result_delivered_to_turn_id TEXT REFERENCES turns(id),
+      lease_ordinal INTEGER NOT NULL DEFAULT 0 CHECK (lease_ordinal >= 0),
+      lease_owner_digest TEXT,
+      lease_expires_at TEXT,
+      attempt_id TEXT UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      CHECK (
+        (child_session_id IS NULL AND child_run_id IS NULL)
+        OR (child_session_id IS NOT NULL AND child_run_id IS NOT NULL)
+      ),
+      CHECK (
+        (status = 'running' AND lease_owner_digest IS NOT NULL AND lease_expires_at IS NOT NULL)
+        OR (status != 'running' AND lease_owner_digest IS NULL AND lease_expires_at IS NULL)
+      ),
+      CHECK (
+        (worker_kind = 'discussion' AND attempt_id IS NULL AND status != 'paused')
+        OR (worker_kind = 'execution' AND child_session_id IS NULL AND child_run_id IS NULL
+          AND ((status = 'queued' AND attempt_id IS NULL)
+            OR (status != 'queued' AND attempt_id IS NOT NULL)))
+      ),
+      CHECK (
+        (worker_kind = 'discussion' AND status IN ('queued', 'running')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (worker_kind = 'discussion' AND status IN ('needs_input', 'completed', 'failed')
+          AND child_session_id IS NOT NULL AND child_run_id IS NOT NULL
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+        OR (worker_kind = 'execution' AND status IN ('queued', 'running', 'paused')
+          AND result_envelope_digest IS NULL AND result_envelope_json IS NULL
+          AND result_delivered_to_turn_id IS NULL)
+        OR (worker_kind = 'execution' AND status IN ('needs_input', 'completed', 'failed')
+          AND result_envelope_digest IS NOT NULL AND result_envelope_json IS NOT NULL)
+      )
+    );
   `);
 }
 

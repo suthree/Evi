@@ -70,6 +70,16 @@ import {
   type DeliveryLineage,
   type DeliveryLineageSnapshot
 } from "./delivery_lineage.js";
+import {
+  materializeReviewTaskEnvelope,
+  normalizeReviewTaskInput,
+  parseReviewResultEnvelope,
+  parseReviewTaskEnvelope,
+  parseReviewWorkerInspection,
+  type ReviewResultEnvelope,
+  type ReviewTaskEnvelope,
+  type ReviewWorkerInspection
+} from "./review_worker_types.js";
 import type {
   ModelDispatchRecord,
   RunExecutionKind,
@@ -166,8 +176,10 @@ interface WorkerSessionRow {
   reservation_id: string;
   parent_run_id: string;
   parent_turn_id: string;
-  worker_kind: "discussion" | "execution";
-  status: WorkerInspection["status"] | ExecutionWorkerInspection["status"];
+  worker_kind: "discussion" | "execution" | "review";
+  status: WorkerInspection["status"]
+    | ExecutionWorkerInspection["status"]
+    | ReviewWorkerInspection["status"];
   task_envelope_digest: string;
   task_envelope_json: string;
   child_execution_lock_digest: string;
@@ -211,6 +223,20 @@ interface ExecutionWorkerSessionRow extends WorkerSessionRow {
   status: ExecutionWorkerInspection["status"];
   lineage_id: string;
 }
+
+interface ReviewWorkerSessionRow extends WorkerSessionRow {
+  worker_kind: "review";
+  status: ReviewWorkerInspection["status"];
+  execution_worker_id: string;
+}
+
+interface SupervisorWorkerSessionRow extends WorkerSessionRow {
+  lineage_id: string | null;
+  review_execution_worker_id: string | null;
+}
+
+type SupervisorWorker = WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection;
+type ChildRunWorker = WorkerInspection | ReviewWorkerInspection;
 
 interface AdaptationCandidateRow {
   id: string;
@@ -1040,6 +1066,10 @@ export class SqliteRuntimeStore {
     this.assertCanDispatchWorkerKind(runId, invocationId, "execution");
   }
 
+  assertCanDispatchReviewWorker(runId: string, invocationId: string): void {
+    this.assertCanDispatchWorkerKind(runId, invocationId, "review");
+  }
+
   private assertCanDispatchWorkerKind(
     runId: string,
     invocationId: string,
@@ -1073,6 +1103,31 @@ export class SqliteRuntimeStore {
     const durable = normalizeExecutionTaskInput(reservation.arguments);
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Execution Worker invocation arguments drifted: ${runId}/${invocationId}`);
+    }
+    return reservation.arguments;
+  }
+
+  getPreparedReviewWorkerDispatch(
+    runId: string,
+    invocationId: string,
+    input: unknown
+  ): JsonObject | null {
+    const reservation = this.getActionReservationByInvocation(runId, invocationId);
+    if (!reservation) return null;
+    if (reservation.action_name !== "worker_review_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "external_read") {
+      throw new Error(`Review Worker invocation identity is already owned: ${runId}/${invocationId}`);
+    }
+    const requested = normalizeReviewTaskInput(input);
+    const durable = normalizeReviewTaskInput({
+      execution_worker_id: reservation.arguments.execution_worker_id,
+      checklist: reservation.arguments.checklist,
+      deadline_at: reservation.arguments.deadline_at,
+      budget: reservation.arguments.budget
+    });
+    if (stableJson(requested) !== stableJson(durable)) {
+      throw new Error(`Review Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
     return reservation.arguments;
   }
@@ -1115,17 +1170,21 @@ export class SqliteRuntimeStore {
     return row?.present === 1;
   }
 
-  getDeliverableWorkerResults(runId: string): Array<WorkerInspection | ExecutionWorkerInspection> {
+  getDeliverableWorkerResults(runId: string): SupervisorWorker[] {
     const run = this.requireRun(runId);
     if (run.status !== "waiting") throw new Error(`Run is not waiting: ${runId}`);
     const workers = (this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.parent_run_id = ? AND workers.result_envelope_json IS NOT NULL
         AND workers.result_delivered_to_turn_id IS NULL
       ORDER BY workers.created_at ASC, workers.id ASC
-    `).all(runId) as unknown as Array<WorkerSessionRow & { lineage_id: string | null }>)
+    `).all(runId) as unknown as SupervisorWorkerSessionRow[])
       .map((row) => this.toSupervisorWorkerInspection(row));
     for (const worker of workers) {
       if (worker.parent_turn_id !== run.turn_id) {
@@ -1136,18 +1195,22 @@ export class SqliteRuntimeStore {
     return workers.sort(workerOrder);
   }
 
-  getDeliveredWorkerResults(runId: string, turnId: string): Array<WorkerInspection | ExecutionWorkerInspection> {
+  getDeliveredWorkerResults(runId: string, turnId: string): SupervisorWorker[] {
     const run = this.requireRun(runId);
     if (run.turn_id !== turnId) {
       throw new Error(`Worker Result runtime context Turn is not current: ${runId}/${turnId}`);
     }
     const workers = (this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.parent_run_id = ? AND workers.result_delivered_to_turn_id = ?
       ORDER BY workers.created_at ASC, workers.id ASC
-    `).all(runId, turnId) as unknown as Array<WorkerSessionRow & { lineage_id: string | null }>)
+    `).all(runId, turnId) as unknown as SupervisorWorkerSessionRow[])
       .map((row) => this.toSupervisorWorkerInspection(row));
     for (const worker of workers) {
       this.assertSupervisorWorkerDeliveryIdentity(run, worker);
@@ -1395,27 +1458,39 @@ export class SqliteRuntimeStore {
 
   inspectWorker(workerId: string): WorkerInspection | null {
     const row = this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.id = ? AND workers.worker_kind = 'discussion'
-    `).get(workerId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    `).get(workerId) as SupervisorWorkerSessionRow | undefined;
     if (!row) return null;
     const worker = this.toSupervisorWorkerInspection(row);
-    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${workerId}`);
+    if (!isDiscussionWorker(worker)) {
+      throw new Error(`Discussion Worker kind drifted: ${workerId}`);
+    }
     return worker;
   }
 
   inspectWorkerByChildRun(childRunId: string): WorkerInspection | null {
     const row = this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.child_run_id = ? AND workers.worker_kind = 'discussion'
-    `).get(childRunId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    `).get(childRunId) as SupervisorWorkerSessionRow | undefined;
     if (!row) return null;
     const worker = this.toSupervisorWorkerInspection(row);
-    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${worker.id}`);
+    if (!isDiscussionWorker(worker)) {
+      throw new Error(`Discussion Worker kind drifted: ${worker.id}`);
+    }
     return worker;
   }
 
@@ -1423,69 +1498,15 @@ export class SqliteRuntimeStore {
     worker: WorkerInspection;
     lease: WorkerExecutionLease;
   } {
-    validateRuntimeLeaseDuration(leaseMs, "Worker Session");
-    const ownerToken = randomBytes(32).toString("hex");
-    return this.transaction(() => {
-      const current = this.requireWorker(workerId);
-      this.assertWorkerReservationIdentity(current);
-      const now = Date.now();
-      const expired = current.lease_expires_at !== null
-        && Date.parse(current.lease_expires_at) <= now;
-      if (current.status !== "queued" && !(current.status === "running" && expired)) {
-        throw new Error(`Worker Session cannot be claimed: ${workerId}/${current.status}`);
-      }
-      const ordinal = current.lease_ordinal + 1;
-      const expiresAt = new Date(now + leaseMs).toISOString();
-      const updatedAt = new Date(now).toISOString();
-      const update = this.db.prepare(`
-        UPDATE worker_sessions
-        SET status = 'running', lease_ordinal = ?, lease_owner_digest = ?,
-            lease_expires_at = ?, updated_at = ?
-        WHERE id = ? AND worker_kind = 'discussion' AND lease_ordinal = ?
-      `).run(ordinal, sha256(ownerToken), expiresAt, updatedAt, workerId, current.lease_ordinal);
-      if (Number(update.changes) !== 1) throw new Error(`Worker Session claim raced: ${workerId}`);
-      this.insertEvent(current.parent_run_id, current.parent_turn_id, expired
-        ? "worker_lease_reclaimed"
-        : "worker_lease_claimed", {
-        worker_id: workerId,
-        lease_ordinal: ordinal,
-        lease_expires_at: expiresAt
-      });
-      return {
-        worker: this.requireWorker(workerId),
-        lease: {
-          worker_id: workerId,
-          owner_token: ownerToken,
-          ordinal,
-          lease_expires_at: expiresAt
-        }
-      };
-    });
+    const claimed = this.claimChildRunWorker(workerId, "discussion", leaseMs);
+    if (!isDiscussionWorker(claimed.worker)) {
+      throw new Error(`Discussion Worker kind drifted after claim: ${workerId}`);
+    }
+    return { worker: claimed.worker, lease: claimed.lease };
   }
 
   renewWorkerLease(lease: WorkerExecutionLease, leaseMs: number): WorkerExecutionLease {
-    validateRuntimeLeaseDuration(leaseMs, "Worker Session");
-    return this.transaction(() => {
-      const worker = this.requireActiveWorkerLease(lease);
-      const expiresAt = new Date(Math.max(
-        Date.now() + leaseMs,
-        Date.parse(worker.lease_expires_at!) + 1
-      )).toISOString();
-      const update = this.db.prepare(`
-        UPDATE worker_sessions
-        SET lease_expires_at = ?, updated_at = ?
-        WHERE id = ? AND worker_kind = 'discussion' AND status = 'running'
-          AND lease_ordinal = ? AND lease_owner_digest = ?
-      `).run(
-        expiresAt,
-        new Date().toISOString(),
-        worker.id,
-        lease.ordinal,
-        sha256(lease.owner_token)
-      );
-      if (Number(update.changes) !== 1) throw new Error(`Worker Session lease renewal raced: ${worker.id}`);
-      return { ...lease, lease_expires_at: expiresAt };
-    });
+    return this.renewChildRunWorkerLease(lease, "discussion", leaseMs);
   }
 
   completeWorker(lease: WorkerExecutionLease, resultInput: ResultEnvelope): WorkerInspection {
@@ -1525,6 +1546,218 @@ export class SqliteRuntimeStore {
         status: result.status
       });
       return this.requireWorker(worker.id);
+    });
+  }
+
+  dispatchReviewWorker(input: {
+    worker_id: string;
+    reservation_id: string;
+    task_envelope: ReviewTaskEnvelope;
+    child_execution_lock: ExecutionLock;
+  }): ReviewWorkerInspection {
+    const task = parseReviewTaskEnvelope(input.task_envelope);
+    const childLock = parseExecutionLock(input.child_execution_lock);
+    return this.transaction(() => {
+      const reservation = this.requireActionReservation(input.reservation_id);
+      if (reservation.run_id !== task.parent_run_id || reservation.turn_id !== task.parent_turn_id) {
+        throw new Error(`Review Worker dispatch parent identity mismatch: ${input.reservation_id}`);
+      }
+      if (reservation.state !== "dispatching" && reservation.state !== "outcome_unknown") {
+        throw new Error(`Review Worker dispatch reservation is not reconcilable: ${input.reservation_id}`);
+      }
+      const parent = this.requireRun(reservation.run_id);
+      if ((parent.status !== "running" && parent.status !== "paused")
+        || parent.turn_id !== reservation.turn_id) {
+        throw new Error(`Review Worker dispatch requires the current parent Turn: ${parent.id}`);
+      }
+      const parentLock = this.getExecutionLock(parent.id);
+      assertExecutionLockNarrowing(parentLock, childLock);
+      const subject = this.requireExecutionWorker(task.execution_worker_id);
+      if (subject.parent_run_id !== parent.id
+        || subject.status !== "completed"
+        || subject.result_envelope?.status !== "completed"
+        || subject.result_delivered_to_turn_id !== parent.turn_id
+        || task.execution_task_digest !== subject.task_envelope.digest
+        || task.execution_result_digest !== subject.result_envelope.digest
+        || task.lineage_id !== subject.lineage.id
+        || task.lineage_digest !== subject.lineage.digest
+        || task.baseline_snapshot_digest !== subject.task_envelope.baseline.digest
+        || task.final_snapshot_digest !== subject.result_envelope.final_snapshot.digest
+        || !sameStrings(
+          task.verification_receipt_digests,
+          subject.result_envelope.verification_receipts.map((receipt) => receipt.digest)
+        )
+        || !sameStrings(
+          task.review_packet.changed_paths,
+          subject.result_envelope.final_snapshot.changed_paths
+        )
+        || task.child_execution_lock_digest !== childLock.digest) {
+        throw new Error(`Review Worker subject identity is invalid: ${subject.id}`);
+      }
+
+      const workerId = workerSessionId(input.worker_id);
+      const existing = this.getReviewWorkerByReservation(input.reservation_id);
+      if (existing) {
+        if (existing.id !== workerId
+          || existing.task_envelope.digest !== task.digest
+          || existing.child_execution_lock.digest !== childLock.digest
+          || existing.execution_worker_id !== subject.id) {
+          throw new Error(`Review Worker dispatch identity mismatch: ${input.reservation_id}`);
+        }
+        return existing;
+      }
+
+      const createdAt = new Date().toISOString();
+      this.db.prepare(`
+        INSERT INTO worker_sessions (
+          id, reservation_id, parent_run_id, parent_turn_id, worker_kind, status,
+          task_envelope_digest, task_envelope_json,
+          child_execution_lock_digest, child_execution_lock_json,
+          child_session_id, child_run_id,
+          result_envelope_digest, result_envelope_json, result_delivered_to_turn_id,
+          lease_ordinal, lease_owner_digest, lease_expires_at, attempt_id,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'review', 'queued', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, ?, ?)
+      `).run(
+        workerId,
+        reservation.id,
+        parent.id,
+        parent.turn_id,
+        task.digest,
+        JSON.stringify(task),
+        childLock.digest,
+        JSON.stringify(childLock),
+        createdAt,
+        createdAt
+      );
+      this.db.prepare(`
+        INSERT INTO review_worker_bindings (worker_id, execution_worker_id) VALUES (?, ?)
+      `).run(workerId, subject.id);
+      this.insertEvent(parent.id, parent.turn_id, "review_worker_dispatched", {
+        worker_id: workerId,
+        reservation_id: reservation.id,
+        execution_worker_id: subject.id,
+        task_envelope_digest: task.digest,
+        review_packet_digest: task.review_packet.digest,
+        child_execution_lock_digest: childLock.digest,
+        worker_kind: "review"
+      });
+      return this.requireReviewWorker(workerId);
+    });
+  }
+
+  inspectReviewWorker(workerId: string): ReviewWorkerInspection | null {
+    const row = this.db.prepare(`
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
+      WHERE workers.id = ? AND workers.worker_kind = 'review'
+    `).get(workerId) as SupervisorWorkerSessionRow | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if (!isReviewWorker(worker)) {
+      throw new Error(`Review Worker kind drifted: ${workerId}`);
+    }
+    return worker;
+  }
+
+  inspectReviewWorkerByReservation(reservationId: string): ReviewWorkerInspection | null {
+    return this.getReviewWorkerByReservation(reservationId);
+  }
+
+  claimReviewWorker(workerId: string, leaseMs: number): {
+    worker: ReviewWorkerInspection;
+    lease: WorkerExecutionLease;
+  } {
+    const claimed = this.claimChildRunWorker(workerId, "review", leaseMs);
+    if (!isReviewWorker(claimed.worker)) {
+      throw new Error(`Review Worker kind drifted after claim: ${workerId}`);
+    }
+    return { worker: claimed.worker, lease: claimed.lease };
+  }
+
+  renewReviewWorkerLease(lease: WorkerExecutionLease, leaseMs: number): WorkerExecutionLease {
+    return this.renewChildRunWorkerLease(lease, "review", leaseMs);
+  }
+
+  completeReviewWorker(
+    lease: WorkerExecutionLease,
+    resultInput: ReviewResultEnvelope
+  ): ReviewWorkerInspection {
+    const result = parseReviewResultEnvelope(resultInput);
+    return this.transaction(() => {
+      const worker = this.requireActiveReviewWorkerLease(lease);
+      this.assertReviewWorkerReservationIdentity(worker);
+      const child = worker.child_run_id ? this.requireRun(worker.child_run_id) : null;
+      const actualExecution = child
+        ? this.getResultProducingRunExecution(child.id)
+        : null;
+      const dispatchIds = actualExecution?.dispatches.map((dispatch) => dispatch.id) ?? [];
+      const providers = [...new Set(
+        actualExecution?.dispatches.map((dispatch) => dispatch.provider) ?? []
+      )];
+      const models = [...new Set(
+        actualExecution?.dispatches.map((dispatch) => dispatch.model) ?? []
+      )];
+      const expectedDuration = Math.max(
+        0,
+        Date.parse(result.created_at) - Date.parse(worker.created_at)
+      );
+      if (!worker.child_run_id || !worker.child_session_id
+        || result.worker_id !== worker.id
+        || result.child_run_id !== worker.child_run_id
+        || result.task_envelope_digest !== worker.task_envelope.digest
+        || result.review_packet_digest !== worker.task_envelope.review_packet.digest
+        || result.execution_worker_id !== worker.execution_worker_id
+        || result.execution_result_digest !== worker.task_envelope.execution_result_digest
+        || result.actual_execution_lock_digest !== worker.child_execution_lock.digest
+        || result.consumed.duration_ms !== expectedDuration
+        || Date.parse(result.created_at) < Date.parse(worker.created_at)
+        || !actualExecution
+        || result.actual_execution.execution_id !== actualExecution.execution_id
+        || result.actual_execution.execution_ordinal !== actualExecution.ordinal
+        || !sameStrings(result.actual_execution.model_dispatch_ids, dispatchIds)
+        || providers.length > 1
+        || models.length > 1
+        || result.actual_execution.provider !== (providers[0] ?? null)
+        || result.actual_execution.model !== (models[0] ?? null)
+        || (result.status === "completed" && dispatchIds.length === 0)
+        || result.findings.some(
+          (finding) => !worker.task_envelope.review_packet.changed_paths.includes(finding.path)
+        )) {
+        throw new Error(`Review Worker Result identity mismatch: ${worker.id}`);
+      }
+      const update = this.db.prepare(`
+        UPDATE worker_sessions
+        SET status = ?, result_envelope_digest = ?, result_envelope_json = ?,
+            lease_owner_digest = NULL, lease_expires_at = NULL, updated_at = ?
+        WHERE id = ? AND worker_kind = 'review' AND status = 'running'
+          AND lease_ordinal = ? AND lease_owner_digest = ?
+      `).run(
+        result.status,
+        result.digest,
+        JSON.stringify(result),
+        new Date().toISOString(),
+        worker.id,
+        lease.ordinal,
+        sha256(lease.owner_token)
+      );
+      if (Number(update.changes) !== 1) {
+        throw new Error(`Review Worker Result delivery raced: ${worker.id}`);
+      }
+      this.insertEvent(worker.parent_run_id, worker.parent_turn_id, "review_worker_result_ready", {
+        worker_id: worker.id,
+        child_run_id: result.child_run_id,
+        execution_worker_id: worker.execution_worker_id,
+        result_envelope_digest: result.digest,
+        verdict: result.verdict,
+        status: result.status
+      });
+      return this.requireReviewWorker(worker.id);
     });
   }
 
@@ -1637,15 +1870,21 @@ export class SqliteRuntimeStore {
 
   inspectExecutionWorker(workerId: string): ExecutionWorkerInspection | null {
     const row = this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.id = ? AND workers.worker_kind = 'execution'
     `)
-      .get(workerId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+      .get(workerId) as SupervisorWorkerSessionRow | undefined;
     if (!row) return null;
     const worker = this.toSupervisorWorkerInspection(row);
-    if (!("lineage" in worker)) throw new Error(`Execution Worker kind drifted: ${workerId}`);
+    if (!isExecutionWorker(worker)) {
+      throw new Error(`Execution Worker kind drifted: ${workerId}`);
+    }
     return worker;
   }
 
@@ -2552,28 +2791,59 @@ export class SqliteRuntimeStore {
 
   private getWorkerByReservation(reservationId: string): WorkerInspection | null {
     const row = this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.reservation_id = ? AND workers.worker_kind = 'discussion'
-    `).get(reservationId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+    `).get(reservationId) as SupervisorWorkerSessionRow | undefined;
     if (!row) return null;
     const worker = this.toSupervisorWorkerInspection(row);
-    if ("lineage" in worker) throw new Error(`Discussion Worker kind drifted: ${row.id}`);
+    if (!isDiscussionWorker(worker)) {
+      throw new Error(`Discussion Worker kind drifted: ${row.id}`);
+    }
     return worker;
   }
 
   private getExecutionWorkerByReservation(reservationId: string): ExecutionWorkerInspection | null {
     const row = this.db.prepare(`
-      SELECT workers.*, bindings.lineage_id
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
       FROM worker_sessions AS workers
-      LEFT JOIN execution_worker_bindings AS bindings ON bindings.worker_id = workers.id
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
       WHERE workers.reservation_id = ? AND workers.worker_kind = 'execution'
     `)
-      .get(reservationId) as (WorkerSessionRow & { lineage_id: string | null }) | undefined;
+      .get(reservationId) as SupervisorWorkerSessionRow | undefined;
     if (!row) return null;
     const worker = this.toSupervisorWorkerInspection(row);
-    if (!("lineage" in worker)) throw new Error(`Execution Worker kind drifted: ${row.id}`);
+    if (!isExecutionWorker(worker)) {
+      throw new Error(`Execution Worker kind drifted: ${row.id}`);
+    }
+    return worker;
+  }
+
+  private getReviewWorkerByReservation(reservationId: string): ReviewWorkerInspection | null {
+    const row = this.db.prepare(`
+      SELECT workers.*, execution_bindings.lineage_id,
+             review_bindings.execution_worker_id AS review_execution_worker_id
+      FROM worker_sessions AS workers
+      LEFT JOIN execution_worker_bindings AS execution_bindings
+        ON execution_bindings.worker_id = workers.id
+      LEFT JOIN review_worker_bindings AS review_bindings
+        ON review_bindings.worker_id = workers.id
+      WHERE workers.reservation_id = ? AND workers.worker_kind = 'review'
+    `).get(reservationId) as SupervisorWorkerSessionRow | undefined;
+    if (!row) return null;
+    const worker = this.toSupervisorWorkerInspection(row);
+    if (!isReviewWorker(worker)) {
+      throw new Error(`Review Worker kind drifted: ${row.id}`);
+    }
     return worker;
   }
 
@@ -2605,18 +2875,74 @@ export class SqliteRuntimeStore {
   }
 
   private toSupervisorWorkerInspection(
-    row: WorkerSessionRow & { lineage_id: string | null }
-  ): WorkerInspection | ExecutionWorkerInspection {
+    row: SupervisorWorkerSessionRow
+  ): SupervisorWorker {
     if (row.worker_kind === "discussion") {
-      if (row.lineage_id !== null) {
-        throw new Error(`Discussion Worker has an execution binding: ${row.id}`);
+      if (row.lineage_id !== null || row.review_execution_worker_id !== null) {
+        throw new Error(`Discussion Worker has a kind-specific binding: ${row.id}`);
       }
       return toWorkerInspection(row);
     }
-    if (row.lineage_id === null) {
-      throw new Error(`Execution Worker has no Delivery Lineage binding: ${row.id}`);
+    if (row.worker_kind === "execution") {
+      if (row.lineage_id === null) {
+        throw new Error(`Execution Worker has no Delivery Lineage binding: ${row.id}`);
+      }
+      if (row.review_execution_worker_id !== null) {
+        throw new Error(`Execution Worker binding identity is invalid: ${row.id}`);
+      }
+      return this.toExecutionWorkerInspection({
+        ...row,
+        worker_kind: "execution",
+        lineage_id: row.lineage_id
+      });
     }
-    return this.toExecutionWorkerInspection({ ...row, worker_kind: "execution", lineage_id: row.lineage_id });
+    if (row.review_execution_worker_id === null) {
+      throw new Error(`Review Worker has no execution Worker binding: ${row.id}`);
+    }
+    if (row.lineage_id !== null) {
+      throw new Error(`Review Worker binding identity is invalid: ${row.id}`);
+    }
+    return this.toReviewWorkerInspection({
+      ...row,
+      worker_kind: "review",
+      status: row.status as ReviewWorkerInspection["status"],
+      execution_worker_id: row.review_execution_worker_id
+    });
+  }
+
+  private toReviewWorkerInspection(row: ReviewWorkerSessionRow): ReviewWorkerInspection {
+    if (row.worker_kind !== "review" || row.attempt_id !== null) {
+      throw new Error(`Review Worker lifecycle identity is invalid: ${row.id}`);
+    }
+    const task = JSON.parse(row.task_envelope_json) as unknown;
+    const lock = JSON.parse(row.child_execution_lock_json) as unknown;
+    const result = row.result_envelope_json === null
+      ? null
+      : JSON.parse(row.result_envelope_json) as unknown;
+    const inspection = parseReviewWorkerInspection({
+      id: row.id,
+      reservation_id: row.reservation_id,
+      parent_run_id: row.parent_run_id,
+      parent_turn_id: row.parent_turn_id,
+      status: row.status,
+      task_envelope: task,
+      child_execution_lock: lock,
+      execution_worker_id: row.execution_worker_id,
+      child_session_id: row.child_session_id,
+      child_run_id: row.child_run_id,
+      result_envelope: result,
+      result_delivered_to_turn_id: row.result_delivered_to_turn_id,
+      lease_ordinal: Number(row.lease_ordinal),
+      lease_expires_at: row.lease_expires_at,
+      created_at: row.created_at,
+      updated_at: row.updated_at
+    });
+    if (inspection.task_envelope.digest !== row.task_envelope_digest
+      || inspection.child_execution_lock.digest !== row.child_execution_lock_digest
+      || (inspection.result_envelope?.digest ?? null) !== row.result_envelope_digest) {
+      throw new Error(`Review Worker stored digest is invalid: ${row.id}`);
+    }
+    return inspection;
   }
 
   private toExecutionWorkerInspection(row: ExecutionWorkerSessionRow): ExecutionWorkerInspection {
@@ -2695,12 +3021,139 @@ export class SqliteRuntimeStore {
     return worker;
   }
 
+  private requireReviewWorker(workerId: string): ReviewWorkerInspection {
+    const worker = this.inspectReviewWorker(workerId);
+    if (!worker) throw new Error(`Review Worker Session not found: ${workerId}`);
+    return worker;
+  }
+
+  private requireChildRunWorker(
+    workerId: string,
+    workerKind?: "discussion" | "review"
+  ): ChildRunWorker {
+    const worker = workerKind === "discussion"
+      ? this.inspectWorker(workerId)
+      : workerKind === "review"
+        ? this.inspectReviewWorker(workerId)
+        : this.inspectWorker(workerId) ?? this.inspectReviewWorker(workerId);
+    if (!worker) throw new Error(`Child-Run Worker Session not found: ${workerId}`);
+    return worker;
+  }
+
+  private claimChildRunWorker(
+    workerId: string,
+    workerKind: "discussion" | "review",
+    leaseMs: number
+  ): { worker: ChildRunWorker; lease: WorkerExecutionLease } {
+    validateRuntimeLeaseDuration(leaseMs, `${workerKind} Worker Session`);
+    const ownerToken = randomBytes(32).toString("hex");
+    return this.transaction(() => {
+      const current = this.requireChildRunWorker(workerId, workerKind);
+      this.assertChildRunWorkerReservationIdentity(current);
+      const now = Date.now();
+      const expired = current.lease_expires_at !== null
+        && Date.parse(current.lease_expires_at) <= now;
+      if (current.status !== "queued" && !(current.status === "running" && expired)) {
+        throw new Error(`${workerKind} Worker Session cannot be claimed: ${workerId}/${current.status}`);
+      }
+      const ordinal = current.lease_ordinal + 1;
+      const expiresAt = new Date(now + leaseMs).toISOString();
+      const updatedAt = new Date(now).toISOString();
+      const update = this.db.prepare(`
+        UPDATE worker_sessions
+        SET status = 'running', lease_ordinal = ?, lease_owner_digest = ?,
+            lease_expires_at = ?, updated_at = ?
+        WHERE id = ? AND worker_kind = ? AND lease_ordinal = ?
+      `).run(
+        ordinal,
+        sha256(ownerToken),
+        expiresAt,
+        updatedAt,
+        workerId,
+        workerKind,
+        current.lease_ordinal
+      );
+      if (Number(update.changes) !== 1) {
+        throw new Error(`${workerKind} Worker Session claim raced: ${workerId}`);
+      }
+      const eventKind = workerKind === "discussion"
+        ? expired ? "worker_lease_reclaimed" : "worker_lease_claimed"
+        : expired ? "review_worker_lease_reclaimed" : "review_worker_lease_claimed";
+      this.insertEvent(current.parent_run_id, current.parent_turn_id, eventKind, {
+        worker_id: workerId,
+        worker_kind: workerKind,
+        lease_ordinal: ordinal,
+        lease_expires_at: expiresAt
+      });
+      return {
+        worker: this.requireChildRunWorker(workerId, workerKind),
+        lease: {
+          worker_id: workerId,
+          owner_token: ownerToken,
+          ordinal,
+          lease_expires_at: expiresAt
+        }
+      };
+    });
+  }
+
+  private renewChildRunWorkerLease(
+    lease: WorkerExecutionLease,
+    workerKind: "discussion" | "review",
+    leaseMs: number
+  ): WorkerExecutionLease {
+    validateRuntimeLeaseDuration(leaseMs, `${workerKind} Worker Session`);
+    return this.transaction(() => {
+      const worker = this.requireActiveChildRunWorkerLease(lease, workerKind);
+      const expiresAt = new Date(Math.max(
+        Date.now() + leaseMs,
+        Date.parse(worker.lease_expires_at!) + 1
+      )).toISOString();
+      const update = this.db.prepare(`
+        UPDATE worker_sessions
+        SET lease_expires_at = ?, updated_at = ?
+        WHERE id = ? AND worker_kind = ? AND status = 'running'
+          AND lease_ordinal = ? AND lease_owner_digest = ?
+      `).run(
+        expiresAt,
+        new Date().toISOString(),
+        worker.id,
+        workerKind,
+        lease.ordinal,
+        sha256(lease.owner_token)
+      );
+      if (Number(update.changes) !== 1) {
+        throw new Error(`${workerKind} Worker Session lease renewal raced: ${worker.id}`);
+      }
+      return { ...lease, lease_expires_at: expiresAt };
+    });
+  }
+
   private requireActiveWorkerLease(lease: WorkerExecutionLease): WorkerInspection {
-    const worker = this.requireWorker(lease.worker_id);
+    const worker = this.requireActiveChildRunWorkerLease(lease, "discussion");
+    if (!isDiscussionWorker(worker)) {
+      throw new Error(`Discussion Worker lease kind drifted: ${lease.worker_id}`);
+    }
+    return worker;
+  }
+
+  private requireActiveReviewWorkerLease(lease: WorkerExecutionLease): ReviewWorkerInspection {
+    const worker = this.requireActiveChildRunWorkerLease(lease, "review");
+    if (!isReviewWorker(worker)) {
+      throw new Error(`Review Worker lease kind drifted: ${lease.worker_id}`);
+    }
+    return worker;
+  }
+
+  private requireActiveChildRunWorkerLease(
+    lease: WorkerExecutionLease,
+    workerKind: "discussion" | "review"
+  ): ChildRunWorker {
+    const worker = this.requireChildRunWorker(lease.worker_id, workerKind);
     if (worker.status !== "running"
       || worker.lease_ordinal !== lease.ordinal
       || worker.lease_expires_at !== lease.lease_expires_at) {
-      throw new Error(`Worker Session lease identity mismatch: ${lease.worker_id}`);
+      throw new Error(`${workerKind} Worker Session lease identity mismatch: ${lease.worker_id}`);
     }
     const row = this.db.prepare(`
       SELECT lease_owner_digest
@@ -2709,7 +3162,7 @@ export class SqliteRuntimeStore {
     `).get(worker.id) as { lease_owner_digest: string | null } | undefined;
     if (row?.lease_owner_digest !== sha256(lease.owner_token)
       || Date.parse(worker.lease_expires_at) <= Date.now()) {
-      throw new Error(`Worker Session lease is unavailable or expired: ${lease.worker_id}`);
+      throw new Error(`${workerKind} Worker Session lease is unavailable or expired: ${lease.worker_id}`);
     }
     return worker;
   }
@@ -2719,8 +3172,8 @@ export class SqliteRuntimeStore {
     session_id: string;
     execution_lock_digest: string;
   }): void {
-    const worker = this.requireWorker(binding.worker_id);
-    this.assertWorkerReservationIdentity(worker);
+    const worker = this.requireChildRunWorker(binding.worker_id);
+    this.assertChildRunWorkerReservationIdentity(worker);
     if (worker.status !== "running" || worker.child_run_id !== null || worker.child_session_id !== null) {
       throw new Error(`Worker Session cannot bind a new child Run: ${worker.id}`);
     }
@@ -2747,8 +3200,12 @@ export class SqliteRuntimeStore {
       WHERE id = ? AND status = 'running' AND child_session_id IS NULL AND child_run_id IS NULL
     `).run(child.session_id, child.run_id, new Date().toISOString(), worker.id);
     if (Number(update.changes) !== 1) throw new Error(`Worker child Run binding raced: ${worker.id}`);
-    this.insertEvent(worker.parent_run_id, worker.parent_turn_id, "worker_run_bound", {
+    const eventKind = worker.task_envelope.worker_kind === "discussion"
+      ? "worker_run_bound"
+      : "review_worker_run_bound";
+    this.insertEvent(worker.parent_run_id, worker.parent_turn_id, eventKind, {
       worker_id: worker.id,
+      worker_kind: worker.task_envelope.worker_kind,
       child_session_id: child.session_id,
       child_run_id: child.run_id,
       child_execution_lock_digest: child.execution_lock_digest
@@ -2772,13 +3229,25 @@ export class SqliteRuntimeStore {
 
   private assertSupervisorWorkerDeliveryIdentity(
     parent: RunRecord,
-    worker: WorkerInspection | ExecutionWorkerInspection
+    worker: SupervisorWorker
   ): void {
-    if ("lineage" in worker) {
+    if (isExecutionWorker(worker)) {
       this.assertExecutionWorkerDeliveryIdentity(parent, worker);
       return;
     }
+    if (isReviewWorker(worker)) {
+      this.assertReviewWorkerDeliveryIdentity(parent, worker);
+      return;
+    }
     this.assertWorkerDeliveryIdentity(parent, worker);
+  }
+
+  private assertChildRunWorkerReservationIdentity(worker: ChildRunWorker): void {
+    if (isReviewWorker(worker)) {
+      this.assertReviewWorkerReservationIdentity(worker);
+      return;
+    }
+    this.assertWorkerReservationIdentity(worker);
   }
 
   private assertWorkerDeliveryIdentity(parent: RunRecord, worker: WorkerInspection): void {
@@ -2812,7 +3281,7 @@ export class SqliteRuntimeStore {
     }
     const terminalExecution = this.getLatestSettledRunExecution(child.id);
     const producerExecution = this.getResultProducingRunExecution(child.id);
-    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id).sort();
+    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id);
     const providers = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.provider))];
     const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
     const provider = providers.length === 0 ? null : providers[0]!;
@@ -2921,6 +3390,149 @@ export class SqliteRuntimeStore {
       || receipt.output.task_envelope_digest !== worker.task_envelope.digest
       || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
       throw new Error(`Worker reservation identity drifted: ${worker.id}`);
+    }
+  }
+
+  private assertReviewWorkerDeliveryIdentity(
+    parent: RunRecord,
+    worker: ReviewWorkerInspection
+  ): void {
+    const result = worker.result_envelope;
+    if (!result || !worker.child_run_id || !worker.child_session_id) {
+      throw new Error(`Review Worker Result delivery identity is incomplete: ${worker.id}`);
+    }
+    this.assertReviewWorkerReservationIdentity(worker);
+    const task = worker.task_envelope;
+    const child = this.requireRun(worker.child_run_id);
+    const childLock = this.getExecutionLock(child.id);
+    const subject = this.requireExecutionWorker(worker.execution_worker_id);
+    const terminalExecution = this.getLatestSettledRunExecution(child.id);
+    const producerExecution = this.getResultProducingRunExecution(child.id);
+    const dispatchIds = producerExecution.dispatches.map((dispatch) => dispatch.id);
+    const providers = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.provider))];
+    const models = [...new Set(producerExecution.dispatches.map((dispatch) => dispatch.model))];
+    const provider = providers.length === 0 ? null : providers[0]!;
+    const model = models.length === 0 ? null : models[0]!;
+    const expectedDuration = Math.max(
+      0,
+      Date.parse(result.created_at) - Date.parse(worker.created_at)
+    );
+    const budgetExceeded = result.consumed.output_tokens > task.budget.max_output_tokens
+      || result.consumed.duration_ms > task.budget.timeout_ms
+      || Date.parse(result.created_at) > Date.parse(task.deadline_at);
+    if (worker.parent_run_id !== parent.id
+      || task.parent_run_id !== parent.id
+      || child.session_id !== worker.child_session_id
+      || childLock.digest !== worker.child_execution_lock.digest
+      || subject.parent_run_id !== parent.id
+      || subject.id !== task.execution_worker_id
+      || subject.task_envelope.digest !== task.execution_task_digest
+      || subject.result_envelope?.digest !== task.execution_result_digest
+      || subject.lineage.id !== task.lineage_id
+      || subject.lineage.digest !== task.lineage_digest
+      || subject.task_envelope.baseline.digest !== task.baseline_snapshot_digest
+      || subject.result_envelope?.final_snapshot.digest !== task.final_snapshot_digest
+      || !sameStrings(
+        task.verification_receipt_digests,
+        subject.result_envelope?.verification_receipts.map((receipt) => receipt.digest) ?? []
+      )
+      || !sameStrings(
+        task.review_packet.changed_paths,
+        subject.result_envelope?.final_snapshot.changed_paths ?? []
+      )
+      || result.worker_id !== worker.id
+      || result.child_run_id !== child.id
+      || result.task_envelope_digest !== task.digest
+      || result.review_packet_digest !== task.review_packet.digest
+      || result.execution_worker_id !== subject.id
+      || result.execution_result_digest !== task.execution_result_digest
+      || result.actual_execution_lock_digest !== childLock.digest
+      || result.consumed.duration_ms !== expectedDuration
+      || Date.parse(result.created_at) < Date.parse(worker.created_at)
+      || this.getObservedOutputTokens(child.session_id) !== result.consumed.output_tokens
+      || result.actual_execution.execution_id !== producerExecution.execution_id
+      || result.actual_execution.execution_ordinal !== producerExecution.ordinal
+      || !sameStrings(result.actual_execution.model_dispatch_ids, dispatchIds)
+      || providers.length > 1
+      || models.length > 1
+      || result.actual_execution.provider !== provider
+      || result.actual_execution.model !== model
+      || result.findings.some(
+        (finding) => !task.review_packet.changed_paths.includes(finding.path)
+      )
+      || (provider !== null && provider !== childLock.model.provider)
+      || (model !== null && model !== childLock.model.model)
+      || (result.status === "completed" && dispatchIds.length === 0)
+      || (result.status === "completed" && terminalExecution.outcome !== "completed")
+      || (result.status === "completed" && budgetExceeded)
+      || (result.status === "failed"
+        && terminalExecution.outcome !== "completed" && terminalExecution.outcome !== "failed")) {
+      throw new Error(`Review Worker Result delivery identity drifted: ${worker.id}`);
+    }
+  }
+
+  private assertReviewWorkerReservationIdentity(worker: ReviewWorkerInspection): void {
+    const reservation = this.requireActionReservation(worker.reservation_id);
+    const receipt = this.requireEffectReceipt(worker.reservation_id);
+    const parentLock = this.getExecutionLock(worker.parent_run_id);
+    const subject = this.requireExecutionWorker(worker.execution_worker_id);
+    const argumentKeys = [
+      "budget",
+      "checklist",
+      "child_execution_lock_digest",
+      "deadline_at",
+      "execution_worker_id",
+      "parent_execution_lock_digest",
+      "review_packet",
+      "worker_id"
+    ];
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const expectedActionDigest = materializeActionDigest({
+      name: "worker_review_dispatch",
+      version: "1",
+      effect_class: "external_read"
+    }, reservation.arguments);
+    const taskInput = normalizeReviewTaskInput({
+      execution_worker_id: reservation.arguments.execution_worker_id,
+      checklist: reservation.arguments.checklist,
+      deadline_at: reservation.arguments.deadline_at,
+      budget: reservation.arguments.budget
+    });
+    const expectedTask = materializeReviewTaskEnvelope({
+      ...taskInput,
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: worker.child_execution_lock.digest,
+      subject,
+      review_packet: reservation.arguments.review_packet as never
+    });
+    if (reservation.run_id !== worker.parent_run_id
+      || reservation.turn_id !== worker.parent_turn_id
+      || reservation.action_name !== "worker_review_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "external_read"
+      || reservation.state !== "terminal"
+      || !argumentsAreExact
+      || reservation.action_digest !== expectedActionDigest
+      || reservation.arguments.worker_id !== worker.id
+      || reservation.arguments.parent_execution_lock_digest !== parentLock.digest
+      || reservation.arguments.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || expectedTask.digest !== worker.task_envelope.digest
+      || receipt.run_id !== worker.parent_run_id
+      || receipt.turn_id !== worker.parent_turn_id
+      || receipt.action_name !== reservation.action_name
+      || receipt.contract_version !== reservation.contract_version
+      || receipt.action_digest !== reservation.action_digest
+      || receipt.effect_class !== reservation.effect_class
+      || receipt.outcome !== "succeeded"
+      || receipt.output.worker_id !== worker.id
+      || receipt.output.status !== "queued"
+      || receipt.output.execution_worker_id !== worker.execution_worker_id
+      || receipt.output.task_envelope_digest !== worker.task_envelope.digest
+      || receipt.output.review_packet_digest !== worker.task_envelope.review_packet.digest
+      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
+      throw new Error(`Review Worker reservation identity drifted: ${worker.id}`);
     }
   }
 
@@ -3288,8 +3900,20 @@ function workerSessionId(input: string): string {
 }
 
 function workerOrder(
-  left: WorkerInspection | ExecutionWorkerInspection,
-  right: WorkerInspection | ExecutionWorkerInspection
+  left: SupervisorWorker,
+  right: SupervisorWorker
 ): number {
   return left.created_at.localeCompare(right.created_at) || left.id.localeCompare(right.id);
+}
+
+function isDiscussionWorker(worker: SupervisorWorker): worker is WorkerInspection {
+  return worker.task_envelope.worker_kind === "discussion";
+}
+
+function isExecutionWorker(worker: SupervisorWorker): worker is ExecutionWorkerInspection {
+  return worker.task_envelope.worker_kind === "execution";
+}
+
+function isReviewWorker(worker: SupervisorWorker): worker is ReviewWorkerInspection {
+  return worker.task_envelope.worker_kind === "review";
 }

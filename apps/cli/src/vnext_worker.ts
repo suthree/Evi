@@ -6,9 +6,11 @@ import {
   DiscussionWorkerRuntime,
   ExecutionWorkerRuntime,
   OrchestrationEngine,
+  ReviewWorkerRuntime,
   SqliteRuntimeStore,
   type ExecutionWorkerExecutor,
   type ExecutionWorkerInspection,
+  type ReviewWorkerInspection,
   type WorkerInspection,
   WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
@@ -25,6 +27,7 @@ import { VNextCodexExecutionExecutor } from "../../../packages/runtime/src/vnext
 
 export const VNEXT_WORKER_MARKER = "vnext_discussion_worker";
 export const VNEXT_EXECUTION_WORKER_MARKER = "vnext_execution_worker";
+export const VNEXT_REVIEW_WORKER_MARKER = "vnext_review_worker";
 export type VNextWorkerAction = "execute" | "inspect";
 
 export interface VNextWorkerRequest {
@@ -43,11 +46,17 @@ export type VNextWorkerDependencies = Pick<
 export interface VNextWorkerEnvelope {
   worker: {
     schema_version: 1;
-    marker: typeof VNEXT_WORKER_MARKER | typeof VNEXT_EXECUTION_WORKER_MARKER;
+    marker: typeof VNEXT_WORKER_MARKER
+      | typeof VNEXT_EXECUTION_WORKER_MARKER
+      | typeof VNEXT_REVIEW_WORKER_MARKER;
     surface: "cli_process";
     action: VNextWorkerAction | null;
-    status: WorkerInspection["status"] | ExecutionWorkerInspection["status"] | "not_found" | "error";
-    worker_kind?: "discussion" | "execution";
+    status: WorkerInspection["status"]
+      | ExecutionWorkerInspection["status"]
+      | ReviewWorkerInspection["status"]
+      | "not_found"
+      | "error";
+    worker_kind?: "discussion" | "execution" | "review";
     worker_id?: string;
     parent_run_id?: string;
     child_run_id?: string | null;
@@ -61,9 +70,13 @@ export interface VNextWorkerEnvelope {
       lease_expires_at: string | null;
       attempt_id: string | null;
       result_delivered_to_turn_id: string | null;
+      execution_worker_id: string | null;
+      review_packet_digest: string | null;
       lineage: ExecutionWorkerInspection["lineage"] | null;
       baseline_snapshot: ExecutionWorkerInspection["task_envelope"]["baseline"] | null;
-      result_envelope: WorkerInspection["result_envelope"] | ExecutionWorkerInspection["result_envelope"];
+      result_envelope: WorkerInspection["result_envelope"]
+        | ExecutionWorkerInspection["result_envelope"]
+        | ReviewWorkerInspection["result_envelope"];
     };
     diagnostic?: { code: string; message: string };
     boundary: string;
@@ -92,9 +105,14 @@ export async function executeVNextWorker(
   try {
     const worker = store.inspectWorker(workerId);
     const executionWorker = store.inspectExecutionWorker(workerId);
-    if (worker && executionWorker) throw new Error(`Worker identity is ambiguous: ${workerId}`);
-    if (!worker && !executionWorker) return envelope("not_found", workerId, undefined, input.action);
-    const selected = executionWorker ?? worker!;
+    const reviewWorker = store.inspectReviewWorker(workerId);
+    if ([worker, executionWorker, reviewWorker].filter(Boolean).length > 1) {
+      throw new Error(`Worker identity is ambiguous: ${workerId}`);
+    }
+    if (!worker && !executionWorker && !reviewWorker) {
+      return envelope("not_found", workerId, undefined, input.action);
+    }
+    const selected = executionWorker ?? reviewWorker ?? worker!;
     if (input.action === "inspect") {
       return envelope(selected.status, selected.id, selected, "inspect");
     }
@@ -104,6 +122,24 @@ export async function executeVNextWorker(
       }
       const executor = dependencies.execution_executor ?? new VNextCodexExecutionExecutor();
       const completed = await new ExecutionWorkerRuntime(store, executor).execute(executionWorker.id);
+      return envelope(completed.status, completed.id, completed, "execute");
+    }
+    if (reviewWorker) {
+      if (reviewWorker.status === "completed" || reviewWorker.status === "failed") {
+        return envelope(reviewWorker.status, reviewWorker.id, reviewWorker, "execute");
+      }
+      assertContinuationSelectors(reviewWorker.child_execution_lock, repoRoot, configDir);
+      const loadModel = dependencies.load_model ?? loadConfiguredVNextModel;
+      const model = await loadModel({
+        config_dir: configDir,
+        state_root: stateRoot,
+        model_id: reviewWorker.child_execution_lock.model.config_id
+      });
+      assertCredentialBinding(reviewWorker.child_execution_lock, model);
+      const runtimeInspect = createRuntimeInspectAction(store);
+      const gateway = new ActionGateway(store, [runtimeInspect]);
+      const loops = createLoopFactory(dependencies, store, model.api_key);
+      const completed = await new ReviewWorkerRuntime(store, gateway, loops).execute(reviewWorker.id);
       return envelope(completed.status, completed.id, completed, "execute");
     }
     if (!worker) throw new Error(`Worker Session not found: ${workerId}`);
@@ -161,14 +197,18 @@ export function vnextWorkerErrorEnvelope(
 function envelope(
   status: VNextWorkerEnvelope["worker"]["status"],
   workerId: string,
-  worker?: WorkerInspection | ExecutionWorkerInspection,
+  worker?: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection,
   action: VNextWorkerAction = "execute"
 ): VNextWorkerEnvelope {
   const workerKind = worker?.task_envelope.worker_kind;
   return {
     worker: {
       schema_version: 1,
-      marker: workerKind === "execution" ? VNEXT_EXECUTION_WORKER_MARKER : VNEXT_WORKER_MARKER,
+      marker: workerKind === "execution"
+        ? VNEXT_EXECUTION_WORKER_MARKER
+        : workerKind === "review"
+          ? VNEXT_REVIEW_WORKER_MARKER
+          : VNEXT_WORKER_MARKER,
       surface: "cli_process",
       action,
       status,
@@ -191,9 +231,10 @@ function envelope(
 }
 
 function workerInspectionEvidence(
-  worker: WorkerInspection | ExecutionWorkerInspection
+  worker: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection
 ): NonNullable<VNextWorkerEnvelope["worker"]["inspection"]> {
   const execution = isExecutionWorker(worker) ? worker : null;
+  const review = isReviewWorker(worker) ? worker : null;
   return {
     reservation_id: worker.reservation_id,
     parent_turn_id: worker.parent_turn_id,
@@ -203,6 +244,8 @@ function workerInspectionEvidence(
     lease_expires_at: worker.lease_expires_at,
     attempt_id: execution?.attempt_id ?? null,
     result_delivered_to_turn_id: worker.result_delivered_to_turn_id,
+    execution_worker_id: review?.execution_worker_id ?? null,
+    review_packet_digest: review?.task_envelope.review_packet.digest ?? null,
     lineage: execution?.lineage ?? null,
     baseline_snapshot: execution?.task_envelope.baseline ?? null,
     result_envelope: worker.result_envelope
@@ -210,13 +253,19 @@ function workerInspectionEvidence(
 }
 
 function isExecutionWorker(
-  worker: WorkerInspection | ExecutionWorkerInspection
+  worker: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection
 ): worker is ExecutionWorkerInspection {
   return worker.task_envelope.worker_kind === "execution";
 }
 
+function isReviewWorker(
+  worker: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection
+): worker is ReviewWorkerInspection {
+  return worker.task_envelope.worker_kind === "review";
+}
+
 function boundary(): string {
-  return "One separate CLI process may claim one exact Worker lease. Discussion stays read-only; execution stays inside one pre-bound single-writer Delivery Lineage and returns canonical Git plus verification evidence to the Supervisor.";
+  return "One separate CLI process may claim one exact Worker lease. Discussion and review stay read-only; execution stays inside one pre-bound single-writer Delivery Lineage; every Result remains advisory to the Supervisor.";
 }
 
 function errorMessage(error: unknown): string {

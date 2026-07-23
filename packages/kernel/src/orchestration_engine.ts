@@ -34,6 +34,15 @@ import {
   type ExecutionTaskInput,
   type ExecutionWorkerInspection
 } from "./execution_worker_types.js";
+import {
+  deriveReviewWorkerLock,
+  materializeReviewTaskEnvelope,
+  normalizeReviewTaskInput,
+  type ReviewResultEnvelope,
+  type ReviewTaskInput,
+  type ReviewWorkerInspection
+} from "./review_worker_types.js";
+import { captureReviewEvidencePacket } from "./review_evidence_capture.js";
 import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
@@ -83,6 +92,19 @@ const executionParameters = Type.Object({
   rollback_instruction: Type.String({ minLength: 1, maxLength: 4_000 })
 }, { additionalProperties: false });
 
+const reviewParameters = Type.Object({
+  execution_worker_id: Type.String({ minLength: 1, maxLength: 240 }),
+  checklist: Type.Array(Type.String({ minLength: 1, maxLength: 240 }), {
+    minItems: 1,
+    maxItems: 32
+  }),
+  deadline_at: Type.String({ minLength: 24, maxLength: 32 }),
+  budget: Type.Object({
+    max_output_tokens: Type.Integer({ minimum: 1 }),
+    timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
+  }, { additionalProperties: false })
+}, { additionalProperties: false });
+
 const workerInspectParameters = Type.Object({
   worker_id: Type.String({ minLength: 1, maxLength: 240 })
 }, { additionalProperties: false });
@@ -91,6 +113,8 @@ const workerNeedsInputParameters = Type.Object({
   question: Type.String({ minLength: 1, maxLength: 240 }),
   proposed_next_step: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 }))
 }, { additionalProperties: false });
+
+const REVIEW_ACTION_ARGUMENT_MAX_BYTES = 160 * 1024;
 
 export const WORKER_NEEDS_INPUT_CONTRACT: ActionToolContract = {
   name: "worker_needs_input",
@@ -111,11 +135,11 @@ export interface SupervisorWorkerContinuation {
 export class OrchestrationEngine {
   constructor(
     private readonly store: SqliteRuntimeStore,
-    private readonly discussionWorkerActions: ActionToolContract[]
+    private readonly readOnlyChildActions: ActionToolContract[]
   ) {
-    if (discussionWorkerActions.some((contract) => contract.effect_class !== "none"
+    if (readOnlyChildActions.some((contract) => contract.effect_class !== "none"
       && contract.effect_class !== "local_read")) {
-      throw new Error("Discussion worker Actions must be none or local_read.");
+      throw new Error("Read-only child Worker Actions must be none or local_read.");
     }
   }
 
@@ -127,7 +151,7 @@ export class OrchestrationEngine {
     const parentLock = this.store.getExecutionLock(parentRunId);
     const childLock = deriveDiscussionWorkerLock(
       parentLock,
-      executionLockActions(this.discussionWorkerActions),
+      executionLockActions(this.readOnlyChildActions),
       input.budget
     );
     return {
@@ -149,7 +173,7 @@ export class OrchestrationEngine {
     }
     const childLock = deriveDiscussionWorkerLock(
       parentLock,
-      executionLockActions(this.discussionWorkerActions),
+      executionLockActions(this.readOnlyChildActions),
       task.budget
     );
     if (input.child_execution_lock_digest !== childLock.digest) {
@@ -232,12 +256,133 @@ export class OrchestrationEngine {
     });
   }
 
+  async prepareReview(
+    parentRunId: string,
+    invocationId: string,
+    input: ReviewTaskInput
+  ): Promise<JsonObject> {
+    this.store.assertCanDispatchReviewWorker(parentRunId, invocationId);
+    const prepared = this.store.getPreparedReviewWorkerDispatch(parentRunId, invocationId, input);
+    if (prepared) return prepared;
+    if (Date.parse(input.deadline_at) <= Date.now()) {
+      throw new Error("Review Worker deadline must be in the future at dispatch.");
+    }
+    const parent = this.store.inspectRun(parentRunId);
+    const subject = this.store.inspectExecutionWorker(input.execution_worker_id);
+    if (!parent || !subject
+      || subject.parent_run_id !== parent.id
+      || subject.status !== "completed"
+      || subject.result_envelope?.status !== "completed"
+      || subject.result_delivered_to_turn_id !== parent.turn_id) {
+      throw new Error(`Review Worker requires a completed execution Result in the current Turn: ${input.execution_worker_id}`);
+    }
+    const parentLock = this.store.getExecutionLock(parentRunId);
+    const reviewActions = this.readOnlyChildActions.filter(
+      (contract) => contract.name !== WORKER_NEEDS_INPUT_CONTRACT.name
+    );
+    const childLock = deriveReviewWorkerLock(
+      parentLock,
+      executionLockActions(reviewActions),
+      input.budget
+    );
+    const packet = await captureReviewEvidencePacket(subject);
+    return {
+      ...input,
+      worker_id: deriveReviewWorkerId(parentRunId, invocationId),
+      parent_execution_lock_digest: parentLock.digest,
+      child_execution_lock_digest: childLock.digest,
+      review_packet: packet
+    } as unknown as JsonObject;
+  }
+
+  async dispatchReview(
+    reservation: ActionDispatch["reservation"],
+    input: JsonObject
+  ): Promise<ReviewWorkerInspection> {
+    const task = normalizeReviewTaskInput({
+      execution_worker_id: input.execution_worker_id,
+      checklist: input.checklist,
+      deadline_at: input.deadline_at,
+      budget: input.budget
+    });
+    if (typeof input.worker_id !== "string") {
+      throw new Error("Review Worker dispatch durable identity is missing.");
+    }
+    const parentLock = this.store.getExecutionLock(reservation.run_id);
+    if (input.parent_execution_lock_digest !== parentLock.digest) {
+      throw new Error("Review Worker parent Execution Lock identity drifted after reservation.");
+    }
+    const reviewActions = this.readOnlyChildActions.filter(
+      (contract) => contract.name !== WORKER_NEEDS_INPUT_CONTRACT.name
+    );
+    const childLock = deriveReviewWorkerLock(
+      parentLock,
+      executionLockActions(reviewActions),
+      task.budget
+    );
+    if (input.child_execution_lock_digest !== childLock.digest) {
+      throw new Error("Review Worker child Execution Lock identity drifted after reservation.");
+    }
+    const parent = this.store.inspectRun(reservation.run_id);
+    const subject = this.store.inspectExecutionWorker(task.execution_worker_id);
+    if (!parent || !subject
+      || subject.parent_run_id !== parent.id
+      || subject.status !== "completed"
+      || subject.result_envelope?.status !== "completed"
+      || subject.result_delivered_to_turn_id !== reservation.turn_id) {
+      throw new Error(`Review Worker subject identity drifted after reservation: ${task.execution_worker_id}`);
+    }
+    const preparedPacketDigest = isRecord(input.review_packet)
+      ? input.review_packet.digest
+      : null;
+    const preparedTaskEnvelope = materializeReviewTaskEnvelope({
+      ...task,
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: childLock.digest,
+      subject,
+      review_packet: input.review_packet as never
+    });
+    if (this.store.inspectReviewWorkerByReservation(reservation.id)) {
+      return this.store.dispatchReviewWorker({
+        worker_id: input.worker_id,
+        reservation_id: reservation.id,
+        task_envelope: preparedTaskEnvelope,
+        child_execution_lock: childLock
+      });
+    }
+    const currentPacket = await captureReviewEvidencePacket(subject);
+    if (preparedPacketDigest !== currentPacket.digest) {
+      throw new Error(`Review evidence packet drifted after reservation: ${task.execution_worker_id}`);
+    }
+    const taskEnvelope = materializeReviewTaskEnvelope({
+      ...task,
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: childLock.digest,
+      subject,
+      review_packet: currentPacket
+    });
+    return this.store.dispatchReviewWorker({
+      worker_id: input.worker_id,
+      reservation_id: reservation.id,
+      task_envelope: taskEnvelope,
+      child_execution_lock: childLock
+    });
+  }
+
   inspect(workerId: string): WorkerInspection | null {
     return this.store.inspectWorker(workerId);
   }
 
   inspectExecution(workerId: string): ExecutionWorkerInspection | null {
     return this.store.inspectExecutionWorker(workerId);
+  }
+
+  inspectReview(workerId: string): ReviewWorkerInspection | null {
+    return this.store.inspectReviewWorker(workerId);
   }
 
   inspectChildEvidence(parentRunId: string, workerId: string): JsonObject {
@@ -260,6 +405,36 @@ export class OrchestrationEngine {
         lineage_id: executionWorker.lineage.id,
         lineage_digest: executionWorker.lineage.digest,
         result_delivered_to_turn_id: executionWorker.result_delivered_to_turn_id
+      };
+    }
+    const reviewWorker = this.inspectReview(workerId);
+    if (reviewWorker) {
+      if (reviewWorker.parent_run_id !== parentRunId) {
+        return { worker_id: workerId, found: false };
+      }
+      const child = reviewWorker.child_run_id
+        ? this.store.inspectRun(reviewWorker.child_run_id)
+        : null;
+      if (reviewWorker.child_run_id && (!child
+        || child.session_id !== reviewWorker.child_session_id
+        || child.execution_lock_digest !== reviewWorker.child_execution_lock.digest)) {
+        throw new Error(`Review Worker child Run evidence identity is invalid: ${reviewWorker.id}`);
+      }
+      return {
+        worker_id: reviewWorker.id,
+        found: true,
+        worker_kind: "review",
+        worker_status: reviewWorker.status,
+        execution_worker_id: reviewWorker.execution_worker_id,
+        task_envelope_digest: reviewWorker.task_envelope.digest,
+        review_packet_digest: reviewWorker.task_envelope.review_packet.digest,
+        result_envelope_digest: reviewWorker.result_envelope?.digest ?? null,
+        result_status: reviewWorker.result_envelope?.status ?? null,
+        verdict: reviewWorker.result_envelope?.verdict ?? null,
+        child_run_id: reviewWorker.child_run_id,
+        child_run_status: child?.status ?? null,
+        child_execution_lock_digest: reviewWorker.child_execution_lock.digest,
+        result_delivered_to_turn_id: reviewWorker.result_delivered_to_turn_id
       };
     }
     const worker = this.inspect(workerId);
@@ -370,6 +545,24 @@ export class OrchestrationEngine {
     return this.store.completeWorker(lease, result);
   }
 
+  claimReview(workerId: string, leaseMs: number): {
+    worker: ReviewWorkerInspection;
+    lease: WorkerExecutionLease;
+  } {
+    return this.store.claimReviewWorker(workerId, leaseMs);
+  }
+
+  renewReview(lease: WorkerExecutionLease, leaseMs: number): WorkerExecutionLease {
+    return this.store.renewReviewWorkerLease(lease, leaseMs);
+  }
+
+  completeReview(
+    lease: WorkerExecutionLease,
+    result: ReviewResultEnvelope
+  ): ReviewWorkerInspection {
+    return this.store.completeReviewWorker(lease, result);
+  }
+
   prepareNeedsInput(childRunId: string, input: unknown): JsonObject {
     const worker = this.store.inspectWorkerByChildRun(childRunId);
     if (!worker || worker.status !== "running") {
@@ -461,6 +654,13 @@ function deriveExecutionWorkerId(parentRunId: string, invocationId: string): str
   return `worker_${digest.slice(0, 32)}`;
 }
 
+function deriveReviewWorkerId(parentRunId: string, invocationId: string): string {
+  const digest = createHash("sha256")
+    .update(`review-worker-v1\u0000${parentRunId}\u0000${invocationId}`)
+    .digest("hex");
+  return `worker_${digest.slice(0, 32)}`;
+}
+
 export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
     const worker = engine.dispatchExecution(dispatch.reservation, dispatch.arguments);
@@ -509,6 +709,42 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
       }
       if (!invocation) throw new Error("worker_execution_dispatch requires Action invocation identity.");
       return engine.prepareExecution(invocation.run_id, invocation.invocation_id, value);
+    },
+    execute: observe,
+    reconcile: observe
+  };
+}
+
+export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
+  const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
+    const worker = await engine.dispatchReview(dispatch.reservation, dispatch.arguments);
+    return {
+      outcome: "succeeded",
+      summary: "One independent read-only Reviewer Worker was durably queued.",
+      output: {
+        worker_id: worker.id,
+        status: worker.status,
+        execution_worker_id: worker.execution_worker_id,
+        task_envelope_digest: worker.task_envelope.digest,
+        review_packet_digest: worker.task_envelope.review_packet.digest,
+        child_execution_lock_digest: worker.child_execution_lock.digest
+      }
+    };
+  };
+  return {
+    contract: {
+      name: "worker_review_dispatch",
+      version: "1",
+      label: "Dispatch reviewer worker",
+      description: "Review one exact completed execution Worker Result through an independent read-only child Run.",
+      parameters: reviewParameters,
+      effect_class: "external_read"
+    },
+    prepared_argument_max_bytes: REVIEW_ACTION_ARGUMENT_MAX_BYTES,
+    async prepare(argumentsInput: unknown, invocation?: ActionInvocation): Promise<JsonObject> {
+      const value = normalizeReviewTaskInput(argumentsInput);
+      if (!invocation) throw new Error("worker_review_dispatch requires Action invocation identity.");
+      return engine.prepareReview(invocation.run_id, invocation.invocation_id, value);
     },
     execute: observe,
     reconcile: observe
@@ -628,4 +864,8 @@ export function createWorkerNeedsInputAction(engine: OrchestrationEngine): Actio
 
 function sha256(input: string): string {
   return createHash("sha256").update(input).digest("hex");
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return Boolean(input) && typeof input === "object" && !Array.isArray(input);
 }

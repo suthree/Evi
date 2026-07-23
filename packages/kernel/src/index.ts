@@ -13,6 +13,20 @@ export * from "./execution_lock.js";
 export * from "./kernel_runtime.js";
 export * from "./orchestration_engine.js";
 export * from "./orchestration_types.js";
+export type {
+  ReviewDecision,
+  ReviewEvidenceFile,
+  ReviewEvidencePacket,
+  ReviewFinding,
+  ReviewResultEnvelope,
+  ReviewTaskEnvelope,
+  ReviewTaskInput,
+  ReviewWorkerInspection
+} from "./review_worker_types.js";
+export {
+  ReviewWorkerRuntime,
+  type ReviewWorkerRuntimeOptions
+} from "./review_worker_runtime.js";
 export * from "./pi_agent_harness_adapter.js";
 export * from "./runtime_inspect_action.js";
 export * from "./runtime_limits.js";
