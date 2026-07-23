@@ -76,6 +76,7 @@ export interface ActionDispatch {
 
 export interface ActionHandler {
   contract: ActionToolContract;
+  prepared_argument_max_bytes?: number;
   prepare(argumentsInput: unknown, invocation?: ActionInvocation): JsonObject | Promise<JsonObject>;
   execute(dispatch: ActionDispatch, signal?: AbortSignal): Promise<ActionObservation>;
   reconcile?(dispatch: ActionDispatch, signal?: AbortSignal): Promise<ActionObservation | null>;

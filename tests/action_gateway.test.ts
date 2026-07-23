@@ -107,6 +107,47 @@ test("Action Gateway safely dispatches an exact reservation that never entered d
   }
 });
 
+test("Action Gateway keeps the default argument bound and permits one validated handler override", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  const largeValue = "x".repeat(20 * 1024);
+  const base = probeHandler({
+    async execute() {
+      return { outcome: "succeeded", summary: "Bounded override accepted.", output: {} };
+    }
+  });
+  try {
+    const { run } = store.beginRun({
+      request: "Exercise one action-specific prepared argument bound.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [base.contract] })
+    }, 30_000);
+    const invocation = {
+      run_id: run.id,
+      turn_id: run.turn_id,
+      invocation_id: "large-prepared-argument",
+      action_name: base.contract.name,
+      arguments: { value: largeValue }
+    };
+
+    const denied = await new ActionGateway(store, [base]).invoke(invocation);
+    assert.equal(denied.status, "denied");
+    assert.match(denied.status === "denied" ? denied.reason : "", /exceeds 16384 bytes/iu);
+    assert.equal(store.listUnresolvedActions(run.id).length, 0);
+
+    const enlarged = { ...base, prepared_argument_max_bytes: 32 * 1024 };
+    const completed = await new ActionGateway(store, [enlarged]).invoke(invocation);
+    assert.equal(completed.status, "completed", JSON.stringify(completed));
+
+    assert.throws(
+      () => new ActionGateway(store, [{ ...base, prepared_argument_max_bytes: 128 * 1024 + 1 }]),
+      /prepared argument limit is invalid/iu
+    );
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("Action Gateway rejects invocation identity drift without replay", async () => {
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));

@@ -1570,9 +1570,11 @@ export class SqliteRuntimeStore {
         throw new Error(`Review Worker subject identity is invalid: ${subject.id}`);
       }
 
+      const workerId = workerSessionId(input.worker_id);
       const existing = this.getReviewWorkerByReservation(input.reservation_id);
       if (existing) {
-        if (existing.task_envelope.digest !== task.digest
+        if (existing.id !== workerId
+          || existing.task_envelope.digest !== task.digest
           || existing.child_execution_lock.digest !== childLock.digest
           || existing.execution_worker_id !== subject.id) {
           throw new Error(`Review Worker dispatch identity mismatch: ${input.reservation_id}`);
@@ -1580,7 +1582,6 @@ export class SqliteRuntimeStore {
         return existing;
       }
 
-      const workerId = workerSessionId(input.worker_id);
       const createdAt = new Date().toISOString();
       this.db.prepare(`
         INSERT INTO worker_sessions (
@@ -1637,6 +1638,10 @@ export class SqliteRuntimeStore {
       throw new Error(`Review Worker kind drifted: ${workerId}`);
     }
     return worker;
+  }
+
+  inspectReviewWorkerByReservation(reservationId: string): ReviewWorkerInspection | null {
+    return this.getReviewWorkerByReservation(reservationId);
   }
 
   claimReviewWorker(workerId: string, leaseMs: number): {

@@ -114,6 +114,8 @@ const workerNeedsInputParameters = Type.Object({
   proposed_next_step: Type.Optional(Type.String({ minLength: 1, maxLength: 4_000 }))
 }, { additionalProperties: false });
 
+const REVIEW_ACTION_ARGUMENT_MAX_BYTES = 112 * 1024;
+
 export const WORKER_NEEDS_INPUT_CONTRACT: ActionToolContract = {
   name: "worker_needs_input",
   version: "1",
@@ -328,10 +330,27 @@ export class OrchestrationEngine {
       || subject.result_delivered_to_turn_id !== reservation.turn_id) {
       throw new Error(`Review Worker subject identity drifted after reservation: ${task.execution_worker_id}`);
     }
-    const currentPacket = await captureReviewEvidencePacket(subject);
     const preparedPacketDigest = isRecord(input.review_packet)
       ? input.review_packet.digest
       : null;
+    const preparedTaskEnvelope = materializeReviewTaskEnvelope({
+      ...task,
+      task_id: `task_${reservation.id}`,
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      child_execution_lock_digest: childLock.digest,
+      subject,
+      review_packet: input.review_packet as never
+    });
+    if (this.store.inspectReviewWorkerByReservation(reservation.id)) {
+      return this.store.dispatchReviewWorker({
+        worker_id: input.worker_id,
+        reservation_id: reservation.id,
+        task_envelope: preparedTaskEnvelope,
+        child_execution_lock: childLock
+      });
+    }
+    const currentPacket = await captureReviewEvidencePacket(subject);
     if (preparedPacketDigest !== currentPacket.digest) {
       throw new Error(`Review evidence packet drifted after reservation: ${task.execution_worker_id}`);
     }
@@ -719,6 +738,7 @@ export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): A
       parameters: reviewParameters,
       effect_class: "external_read"
     },
+    prepared_argument_max_bytes: REVIEW_ACTION_ARGUMENT_MAX_BYTES,
     async prepare(argumentsInput: unknown, invocation?: ActionInvocation): Promise<JsonObject> {
       const value = normalizeReviewTaskInput(argumentsInput);
       if (!invocation) throw new Error("worker_review_dispatch requires Action invocation identity.");

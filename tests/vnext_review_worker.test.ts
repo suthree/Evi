@@ -348,6 +348,69 @@ test("Reviewer dispatch revalidates the exact Delivery Lineage snapshot after re
   }
 });
 
+test("Reviewer dispatch reconciliation reuses a persisted Worker after source drift", async () => {
+  const fixture = await createGitFixture("dispatch-reconcile");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const completeAction = store.completeAction.bind(store);
+    store.completeAction = () => {
+      throw new Error("simulated crash after Review Worker insertion");
+    };
+    const first = await flow.gateway.invoke(reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-dispatch-reconcile"
+    ));
+    assert.equal(first.status, "outcome_unknown", JSON.stringify(first));
+    if (first.status !== "outcome_unknown") return;
+    const workerId = String(first.reservation.arguments.worker_id);
+    const persisted = store.inspectReviewWorker(workerId);
+    assert.ok(persisted);
+
+    store.completeAction = completeAction;
+    await writeFile(join(fixture.worktree, "src", "feature.txt"), "drift after persisted review\n");
+    const reconciled = await flow.gateway.reconcileRun(flow.resumed.run.id);
+    assert.equal(reconciled.length, 1);
+    assert.equal(reconciled[0]?.status, "completed", JSON.stringify(reconciled));
+    if (reconciled[0]?.status !== "completed") return;
+    assert.equal(reconciled[0].receipt.reconciled, true);
+    assert.equal(reconciled[0].receipt.output.worker_id, workerId);
+    assert.equal(store.inspectReviewWorkerByReservation(first.reservation.id)?.id, workerId);
+    assert.equal(store.listUnresolvedActions(flow.resumed.run.id).length, 0);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("Reviewer dispatch durably reserves a packet larger than the default Action bound", async () => {
+  const fixture = await createGitFixture("packet-action-bound", "a".repeat(20 * 1024));
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const dispatched = await flow.gateway.invoke(reviewInvocation(
+      flow.resumed.run.id,
+      flow.resumed.run.turn_id,
+      flow.executionWorker.id,
+      "review-large-action-packet"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    const worker = store.inspectReviewWorker(String(dispatched.receipt.output.worker_id));
+    assert.ok(worker);
+    assert.ok(Buffer.byteLength(stableJson(worker.task_envelope.review_packet), "utf8") > 16 * 1024);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("Reviewer dispatch rejects post-execution Git mode drift with unchanged bytes", async () => {
   const fixture = await createGitFixture("mode-drift");
   const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
@@ -1142,7 +1205,7 @@ interface GitFixture {
   baseCommit: string;
 }
 
-async function createGitFixture(label: string): Promise<GitFixture> {
+async function createGitFixture(label: string, featureBaseline = "baseline\n"): Promise<GitFixture> {
   const root = await mkdtemp(join(tmpdir(), `evi-vnext-review-${label}-`));
   const repository = join(root, "repository");
   const worktree = join(root, "lineage");
@@ -1151,7 +1214,7 @@ async function createGitFixture(label: string): Promise<GitFixture> {
   await git(repository, ["init", "-b", "develop"]);
   await git(repository, ["config", "user.name", "Evi Test"]);
   await git(repository, ["config", "user.email", "evi-test@example.invalid"]);
-  await writeFile(join(repository, "src", "feature.txt"), "baseline\n");
+  await writeFile(join(repository, "src", "feature.txt"), featureBaseline);
   await writeFile(join(repository, "src", "removed.txt"), "removed baseline\n");
   await writeFile(join(repository, "verify.test.js"), [
     "import assert from 'node:assert/strict';",

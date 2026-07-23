@@ -15,6 +15,7 @@ import { stableJson } from "./canonical_json.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 const MAX_ARGUMENT_BYTES = 16 * 1024;
+const MAX_PREPARED_ARGUMENT_BYTES = 128 * 1024;
 const MAX_OUTPUT_BYTES = 32 * 1024;
 const MAX_SUMMARY_LENGTH = 2_000;
 
@@ -33,6 +34,7 @@ export class ActionGateway {
   ) {
     const entries = handlers.map((handler) => {
       validateContract(handler.contract);
+      validatePreparedArgumentLimit(handler);
       return [handler.contract.name, handler] as const;
     });
     if (new Set(entries.map(([name]) => name)).size !== entries.length) {
@@ -65,7 +67,7 @@ export class ActionGateway {
     try {
       durableArguments = boundedJsonObject(
         await handler.prepare(input.arguments, input),
-        MAX_ARGUMENT_BYTES,
+        handler.prepared_argument_max_bytes ?? MAX_ARGUMENT_BYTES,
         "Action arguments"
       );
     } catch (error) {
@@ -215,6 +217,15 @@ function validateContract(contract: ActionToolContract): void {
   }
   if (!contract.description.trim() || contract.description.length > 1_000) {
     throw new Error(`Action contract description is invalid: ${contract.name}`);
+  }
+}
+
+function validatePreparedArgumentLimit(handler: ActionHandler): void {
+  const limit = handler.prepared_argument_max_bytes;
+  if (limit !== undefined && (!Number.isInteger(limit)
+    || limit < MAX_ARGUMENT_BYTES
+    || limit > MAX_PREPARED_ARGUMENT_BYTES)) {
+    throw new Error(`Action prepared argument limit is invalid: ${handler.contract.name}`);
   }
 }
 
