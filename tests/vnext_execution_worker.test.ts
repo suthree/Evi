@@ -98,7 +98,7 @@ test("one parent may claim two execution Workers only through separate Delivery 
     state_profile: "stable_cli"
   });
   try {
-    const parent = await beginExecutionParent(store, fixture.repository);
+    const parent = await beginExecutionParent(store, fixture.repository, 60_000);
     const deadline = new Date(Date.now() + 90_000).toISOString();
     const group = {
       group_key: "parallel-source-work",
@@ -1274,7 +1274,11 @@ async function dispatchExecutionWorker(store: SqliteRuntimeStore, fixture: GitFi
   return { ...parent, invocation, result, worker };
 }
 
-async function beginExecutionParent(store: SqliteRuntimeStore, repository: string) {
+async function beginExecutionParent(
+  store: SqliteRuntimeStore,
+  repository: string,
+  timeoutMs = 30_000
+) {
   const engine = new OrchestrationEngine(store, []);
   const dispatch = createExecutionWorkerDispatchAction(engine);
   const gateway = new ActionGateway(store, [dispatch], { allowed_effect_classes: ["local_write"] });
@@ -1291,7 +1295,7 @@ async function beginExecutionParent(store: SqliteRuntimeStore, repository: strin
         reasoning_effort: null,
         context_window_tokens: 128_000,
         max_output_tokens: 4_000,
-        timeout_ms: 30_000
+        timeout_ms: timeoutMs
       },
       authority: { cwd: repository },
       configuration: { selector: "test", source_refs: ["test:execution-worker"] },

@@ -137,8 +137,8 @@ identity、Task Envelope digest、Execution Lock digest、model/executor selecti
 
 当前 vNext checkpoint 已把 discussion、execution 与 review Worker 放进同一套 lifecycle
 ledger，并统一通过带 schema version 的 Worker Group 准入。一个 Group 精确绑定 Parent
-Run/Turn、确定性的 key 与 digest、1 到 4 个 task slot、Group deadline、聚合 token/time
-budget，以及最多 2 个同时 claim。Supervisor 跨 Group 最多保留 4 个未交付 Worker、最多
+Run/Turn、确定性的 key 与 digest、1 到 4 个 task slot、Group deadline、且收窄 Parent
+Execution Lock 的聚合 token/time budget，以及最多 2 个同时 claim。Supervisor 跨 Group 最多保留 4 个未交付 Worker、最多
 2 个 running claim。容量不足的 Worker 保持 queued 且不获得 lease，容量释放后可重试。
 调用方不显式传 Group 时，会规范化成确定性 singleton Group，因此不扩大旧调用 Interface，
 仍共享同一套 storage 与 recovery invariant。

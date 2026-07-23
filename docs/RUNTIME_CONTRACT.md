@@ -96,7 +96,9 @@ allocation. The Group binds the exact parent Run/Turn, deterministic key and
 digest, one to four expected tasks, at most two simultaneous claims, a deadline,
 and aggregate output-token and duration budgets. A Supervisor may hold at most
 four undelivered Workers and two running claims across Groups. A call without
-an explicit Group receives a deterministic singleton Group. Duplicate task
+an explicit Group receives a deterministic singleton Group. A Group aggregate
+budget must not exceed the parent Execution Lock's output-token or timeout
+budget. Duplicate task
 slots, configuration drift, exhausted counts, elapsed deadlines, and aggregate
 budget oversubscription fail before a Worker becomes claimable. When
 already-prepared Actions concurrently contend for the last capacity, the losing

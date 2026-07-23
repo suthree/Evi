@@ -14,7 +14,7 @@ import {
   parseDeliveryLineage,
   parseDeliveryLineageSnapshot
 } from "./delivery_lineage.js";
-import type { RunRecord } from "./contracts.js";
+import type { ExecutionLock, RunRecord } from "./contracts.js";
 import { executionLockActions } from "./execution_lock.js";
 import {
   deriveDiscussionWorkerLock,
@@ -204,6 +204,7 @@ export class OrchestrationEngine {
     const workerId = deriveWorkerId(parentRunId, invocationId);
     const workerGroup = this.prepareWorkerGroup(
       parent,
+      parentLock,
       workerId,
       "discussion",
       input,
@@ -290,6 +291,7 @@ export class OrchestrationEngine {
     const workerId = deriveExecutionWorkerId(parentRunId, invocationId);
     const workerGroup = this.prepareWorkerGroup(
       parent,
+      parentLock,
       workerId,
       "execution",
       input,
@@ -397,6 +399,7 @@ export class OrchestrationEngine {
     const workerId = deriveReviewWorkerId(parentRunId, invocationId);
     const workerGroup = this.prepareWorkerGroup(
       parent,
+      parentLock,
       workerId,
       "review",
       input,
@@ -513,6 +516,7 @@ export class OrchestrationEngine {
 
   private prepareWorkerGroup(
     parent: RunRecord,
+    parentLock: ExecutionLock,
     workerId: string,
     workerKind: WorkerKind,
     task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } },
@@ -530,6 +534,10 @@ export class OrchestrationEngine {
       task_deadline_at: task.deadline_at,
       task_budget: task.budget
     });
+    if (prepared.group.budget.max_output_tokens > parentLock.model.max_output_tokens
+      || prepared.group.budget.max_duration_ms > parentLock.model.timeout_ms) {
+      throw new Error("Worker Group aggregate budget exceeds its parent Execution Lock.");
+    }
     this.store.assertCanReserveWorkerGroupTask(prepared);
     return prepared;
   }

@@ -24,7 +24,7 @@ test("one Worker Group admits three tasks, leases at most two, and keeps the thi
     state_profile: "stable_cli"
   });
   try {
-    const setup = createDiscussionParent(store, fixture);
+    const setup = createDiscussionParent(store, fixture, 3_000);
     const deadline = new Date(Date.now() + 90_000).toISOString();
     const group = {
       group_key: "bounded-analysis",
@@ -343,6 +343,68 @@ test("Worker Group reservation fails closed on duplicate slots, identity drift, 
       /task deadline exceeds the group deadline/iu
     );
     assert.equal(store.inspectRun(setup.parent.run.id)?.action_count, 2);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Worker Group aggregate budget must narrow its parent Execution Lock", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-parent-budget-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const setup = createDiscussionParent(store, fixture, 1_500);
+    const deadline = new Date(Date.now() + 90_000).toISOString();
+    const result = await setup.gateway.invoke({
+      run_id: setup.parent.run.id,
+      turn_id: setup.parent.run.turn_id,
+      invocation_id: "parent-budget-exceeded",
+      action_name: setup.workerDispatch.contract.name,
+      arguments: {
+        ...discussionTask(deadline),
+        worker_group: {
+          group_key: "parent-bounded-analysis",
+          task_key: "first",
+          expected_worker_count: 2,
+          max_parallel: 2,
+          deadline_at: deadline,
+          budget: { max_output_tokens: 2_000, max_duration_ms: 60_000 }
+        }
+      }
+    });
+    assert.equal(result.status, "denied");
+    assert.match(
+      result.status === "denied" ? result.reason : "",
+      /aggregate budget exceeds its parent Execution Lock/iu
+    );
+    assert.equal(store.inspectRun(setup.parent.run.id)?.action_count, 0);
+    assert.equal(store.inspectWorkerGroup("worker_group_missing"), null);
+
+    const durationResult = await setup.gateway.invoke({
+      run_id: setup.parent.run.id,
+      turn_id: setup.parent.run.turn_id,
+      invocation_id: "parent-duration-budget-exceeded",
+      action_name: setup.workerDispatch.contract.name,
+      arguments: {
+        ...discussionTask(deadline),
+        worker_group: {
+          group_key: "parent-duration-bounded-analysis",
+          task_key: "first",
+          expected_worker_count: 1,
+          max_parallel: 1,
+          deadline_at: deadline,
+          budget: { max_output_tokens: 1_000, max_duration_ms: 120_001 }
+        }
+      }
+    });
+    assert.equal(durationResult.status, "denied");
+    assert.match(
+      durationResult.status === "denied" ? durationResult.reason : "",
+      /aggregate budget exceeds its parent Execution Lock/iu
+    );
+    assert.equal(store.inspectRun(setup.parent.run.id)?.action_count, 0);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
@@ -732,7 +794,11 @@ test("schema 12 fails closed when binding counts match but a Worker relation is 
   }
 });
 
-function createDiscussionParent(store: SqliteRuntimeStore, cwd: string) {
+function createDiscussionParent(
+  store: SqliteRuntimeStore,
+  cwd: string,
+  maxOutputTokens = 2_400
+) {
   const runtimeInspect = createRuntimeInspectAction(store);
   const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
   const workerDispatch = createDiscussionWorkerDispatchAction(engine);
@@ -741,7 +807,18 @@ function createDiscussionParent(store: SqliteRuntimeStore, cwd: string) {
   });
   const parent = store.beginRun({
     request: "Dispatch one bounded Worker Group.",
-    execution_lock: testExecutionLock({ cwd, contracts: gateway.contracts() })
+    execution_lock: testExecutionLock({
+      cwd,
+      contracts: gateway.contracts(),
+      model: {
+        id: "test-model",
+        api: "openai-completions",
+        provider: "test-provider",
+        baseUrl: "https://provider.example.test/v1",
+        contextWindow: 128_000,
+        maxTokens: maxOutputTokens
+      }
+    })
   }, 30_000);
   return { engine, gateway, parent, workerDispatch };
 }

@@ -165,8 +165,8 @@ starts. Owner loss reconciles that dispatch before any replay.
 The current vNext checkpoint stores discussion, execution, and review Workers
 in one lifecycle ledger and admits them through schema-versioned Worker Groups.
 A Group binds one exact parent Run/Turn, a deterministic key and digest, one to
-four task slots, a group deadline, an aggregate token/time budget, and at most
-two simultaneous claims. The Supervisor may retain at most four undelivered
+four task slots, a group deadline, an aggregate token/time budget that narrows
+its parent Execution Lock, and at most two simultaneous claims. The Supervisor may retain at most four undelivered
 Workers and at most two running claims across Groups. Capacity-blocked Workers
 remain queued without a lease and may be retried after capacity is released.
 Calls that omit a Group are normalized to deterministic singleton Groups, so
