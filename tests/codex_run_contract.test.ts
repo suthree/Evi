@@ -268,6 +268,10 @@ test("codex.run JSON schema gives every enum and const an explicit string type",
   visit(CODEX_STRUCTURED_RESULT_SCHEMA);
 });
 
+test("codex.run output schema avoids unsupported conditional composition", () => {
+  assert.equal("allOf" in CODEX_STRUCTURED_RESULT_SCHEMA, false);
+});
+
 function snapshot(mode: "new" | "resume", id: string | null) {
   return createCodexAuthoritySnapshot({
     repo_root: "/repo/worktree",
