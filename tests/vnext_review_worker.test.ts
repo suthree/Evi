@@ -104,6 +104,139 @@ test("a delivered execution Result receives one independent approved review and 
   }
 });
 
+test("one Supervisor may receive two independent Reviews for two distinct execution subjects", async () => {
+  const fixture = await createGitFixture("parallel-reviews");
+  const secondBranch = "codex/test-review-parallel-reviews-b";
+  const secondWorktreePath = join(fixture.root, "lineage-b");
+  await git(fixture.repository, [
+    "worktree",
+    "add",
+    "-b",
+    secondBranch,
+    secondWorktreePath,
+    fixture.baseCommit
+  ]);
+  const secondFixture: GitFixture = {
+    ...fixture,
+    worktree: await realpath(secondWorktreePath),
+    branch: secondBranch
+  };
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = beginSupervisor(store, fixture.repository);
+    const executionDeadline = new Date(Date.now() + 90_000).toISOString();
+    const executionGroup = {
+      group_key: "parallel-review-subjects",
+      expected_worker_count: 2,
+      max_parallel: 2,
+      deadline_at: executionDeadline,
+      budget: { max_output_tokens: 2_000, max_duration_ms: 40_000 }
+    };
+    const executionWorkers = [];
+    for (const [taskKey, current] of [
+      ["subject-a", fixture],
+      ["subject-b", secondFixture]
+    ] as const) {
+      const base = executionInvocation(
+        flow.started.run.id,
+        flow.started.run.turn_id,
+        current,
+        `parallel-review-execution-${taskKey}`
+      );
+      const dispatched = await flow.gateway.invoke({
+        ...base,
+        arguments: {
+          ...base.arguments,
+          deadline_at: executionDeadline,
+          worker_group: { ...executionGroup, task_key: taskKey }
+        }
+      });
+      assert.equal(dispatched.status, "completed");
+      if (dispatched.status !== "completed") return;
+      const worker = store.inspectExecutionWorker(String(dispatched.receipt.output.worker_id));
+      assert.ok(worker);
+      executionWorkers.push(worker);
+    }
+    for (const [index, worker] of executionWorkers.entries()) {
+      const completed = await new ExecutionWorkerRuntime(store, fakeExecutor(async (task) => {
+        await writeFile(
+          join(task.lineage.worktree, "src", "feature.txt"),
+          `parallel review subject ${index + 1}\n`
+        );
+      })).execute(worker.id);
+      assert.equal(completed.status, "completed");
+    }
+    flow.engine.settleSupervisorTurn(
+      flow.started.execution,
+      "Deliver both execution subjects before independent review."
+    );
+    const executionTurn = flow.engine.resumeSupervisor(flow.started.run.id, 30_000);
+    assert.ok(executionTurn);
+
+    const reviewDeadline = new Date(Date.now() + 90_000).toISOString();
+    const reviewGroup = {
+      group_key: "parallel-independent-reviews",
+      expected_worker_count: 2,
+      max_parallel: 2,
+      deadline_at: reviewDeadline,
+      budget: { max_output_tokens: 1_600, max_duration_ms: 40_000 }
+    };
+    const reviewWorkers = [];
+    for (const [index, subject] of executionWorkers.entries()) {
+      const base = reviewInvocation(
+        executionTurn.run.id,
+        executionTurn.run.turn_id,
+        subject.id,
+        `parallel-review-${index + 1}`
+      );
+      const dispatched = await flow.gateway.invoke({
+        ...base,
+        arguments: {
+          ...base.arguments,
+          deadline_at: reviewDeadline,
+          worker_group: { ...reviewGroup, task_key: `review-${index + 1}` }
+        }
+      });
+      assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+      if (dispatched.status !== "completed") return;
+      const worker = store.inspectReviewWorker(String(dispatched.receipt.output.worker_id));
+      assert.ok(worker);
+      reviewWorkers.push(worker);
+    }
+    assert.notEqual(reviewWorkers[0]!.execution_worker_id, reviewWorkers[1]!.execution_worker_id);
+    assert.equal(
+      store.inspectWorkerGroupForWorker(reviewWorkers[0]!.id)?.group.id,
+      store.inspectWorkerGroupForWorker(reviewWorkers[1]!.id)?.group.id
+    );
+    flow.engine.settleSupervisorTurn(
+      executionTurn.execution,
+      "Wait for both independent Reviewer Results."
+    );
+    for (const [index, worker] of reviewWorkers.entries()) {
+      const completed = await new ReviewWorkerRuntime(
+        store,
+        new ActionGateway(store, [createRuntimeInspectAction(store)]),
+        reviewLoop(store, {
+          verdict: "approved",
+          summary: `Independent review ${index + 1} approved the exact subject.`,
+          findings: []
+        })
+      ).execute(worker.id);
+      assert.equal(completed.status, "completed");
+    }
+    const reviewTurn = flow.engine.resumeSupervisor(flow.started.run.id, 30_000);
+    assert.ok(reviewTurn);
+    const delivered = JSON.stringify(reviewTurn.runtime_context);
+    for (const worker of reviewWorkers) assert.match(delivered, new RegExp(worker.id, "u"));
+    store.failRun(reviewTurn.execution, "Test-only stop after both Review Results were delivered.");
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("review findings require changes while malformed or contradictory output fails without replay", async () => {
   for (const scenario of ["findings", "malformed", "contradictory"] as const) {
     const fixture = await createGitFixture(scenario);

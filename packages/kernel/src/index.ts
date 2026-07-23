@@ -13,6 +13,7 @@ export * from "./execution_lock.js";
 export * from "./kernel_runtime.js";
 export * from "./orchestration_engine.js";
 export * from "./orchestration_types.js";
+export * from "./worker_group_types.js";
 export type {
   ReviewDecision,
   ReviewEvidenceFile,

@@ -1,7 +1,12 @@
 import { DatabaseSync } from "node:sqlite";
+import {
+  materializePreparedWorkerGroup,
+  singletonWorkerGroupRequest,
+  type WorkerKind
+} from "./worker_group_types.js";
 
-export const RUNTIME_SCHEMA_VERSION = "11";
-const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", RUNTIME_SCHEMA_VERSION]);
+export const RUNTIME_SCHEMA_VERSION = "12";
+const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", "11", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -17,7 +22,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   if (version !== null && !MIGRATABLE_SCHEMA_VERSIONS.has(version)) {
     throw new RuntimeSchemaIncompatibleError(version);
   }
-  if (version === "8" || version === "9" || version === "10"
+  if (version === "8" || version === "9" || version === "10" || version === "11"
     || version === RUNTIME_SCHEMA_VERSION) {
     assertWorkerLifecycleShape(db, version);
   }
@@ -33,6 +38,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   try {
     if (version === "8" || version === "9" || version === "10") {
       migrateWorkerLifecycleLedger(db, version);
+    }
+    if (version === "8" || version === "9" || version === "10" || version === "11") {
+      migrateWorkerGroups(db, version);
     }
     db.exec(`
       CREATE TABLE IF NOT EXISTS sessions (
@@ -197,10 +205,9 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       ${workerLifecycleTableSql(true)}
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_status_idx
         ON worker_sessions(parent_run_id, status, created_at);
-      CREATE UNIQUE INDEX IF NOT EXISTS worker_sessions_one_kind_per_parent_idx
-        ON worker_sessions(parent_run_id, worker_kind);
       CREATE INDEX IF NOT EXISTS worker_sessions_parent_delivery_idx
         ON worker_sessions(parent_run_id, result_delivered_to_turn_id, created_at);
+      ${workerGroupTableSql(true)}
       CREATE TABLE IF NOT EXISTS delivery_lineages (
         id TEXT PRIMARY KEY,
         digest TEXT NOT NULL UNIQUE,
@@ -300,55 +307,227 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   }
 }
 
-function assertWorkerLifecycleShape(db: DatabaseSync, version: "8" | "9" | "10" | "11"): void {
+function assertWorkerLifecycleShape(
+  db: DatabaseSync,
+  version: "8" | "9" | "10" | "11" | "12"
+): void {
   const required = version === "8"
     ? ["worker_sessions"]
     : version === "9"
       ? ["worker_sessions", "delivery_lineages", "execution_worker_sessions"]
       : version === "10"
         ? ["worker_sessions", "delivery_lineages", "execution_worker_bindings"]
-        : [
+        : version === "11"
+          ? [
+            "worker_sessions",
+            "delivery_lineages",
+            "execution_worker_bindings",
+            "review_worker_bindings"
+          ]
+          : [
           "worker_sessions",
           "delivery_lineages",
           "execution_worker_bindings",
-          "review_worker_bindings"
-        ];
+          "review_worker_bindings",
+          "worker_groups",
+          "worker_group_bindings"
+          ];
   const forbidden = version === "8"
     ? [
       "delivery_lineages",
       "execution_worker_sessions",
       "execution_worker_bindings",
-      "review_worker_bindings"
+      "review_worker_bindings",
+      "worker_groups",
+      "worker_group_bindings"
     ]
     : version === "9"
-      ? ["execution_worker_bindings", "review_worker_bindings"]
+      ? ["execution_worker_bindings", "review_worker_bindings", "worker_groups", "worker_group_bindings"]
       : version === "10"
-        ? ["execution_worker_sessions", "review_worker_bindings"]
-        : ["execution_worker_sessions"];
+        ? ["execution_worker_sessions", "review_worker_bindings", "worker_groups", "worker_group_bindings"]
+        : version === "11"
+          ? ["execution_worker_sessions", "worker_groups", "worker_group_bindings"]
+          : ["execution_worker_sessions"];
   const missing = required.filter((name) => !tableExists(db, name));
   const unexpected = forbidden.filter((name) => tableExists(db, name));
-  const workerSql = (version === "10" || version === "11") && tableExists(db, "worker_sessions")
+  const workerSql = (version === "10" || version === "11" || version === "12")
+    && tableExists(db, "worker_sessions")
     ? (db.prepare(`
       SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'worker_sessions'
     `).get() as { sql: string | null } | undefined)?.sql?.replace(/\s+/gu, " ") ?? ""
     : "";
   const expectedKindConstraint = version === "10"
     ? "worker_kind IN ('discussion', 'execution')"
-    : version === "11"
+    : version === "11" || version === "12"
       ? "worker_kind IN ('discussion', 'execution', 'review')"
       : "";
   const mixedWorkerShape = expectedKindConstraint !== ""
     && !workerSql.includes(expectedKindConstraint);
-  if (missing.length > 0 || unexpected.length > 0 || mixedWorkerShape) {
+  const oneKindIndex = indexExists(db, "worker_sessions_one_kind_per_parent_idx");
+  const mixedGroupShape = (version === "12" && oneKindIndex)
+    || (version === "11" && !oneKindIndex)
+    || (version === "12" && workerGroupBindingCount(db) !== workerCount(db));
+  if (missing.length > 0 || unexpected.length > 0 || mixedWorkerShape || mixedGroupShape) {
     throw new RuntimeSchemaIncompatibleError([
       version,
       missing.length > 0 ? `missing:${missing.join(",")}` : "",
       unexpected.length > 0 ? `unexpected:${unexpected.join(",")}` : "",
-      mixedWorkerShape ? "mixed:worker_sessions" : ""
+      mixedWorkerShape ? "mixed:worker_sessions" : "",
+      mixedGroupShape ? "mixed:worker-groups" : ""
     ].filter(Boolean).join("/"));
-}
+  }
 }
 
+function migrateWorkerGroups(
+  db: DatabaseSync,
+  sourceVersion: "8" | "9" | "10" | "11"
+): void {
+  db.exec("DROP INDEX IF EXISTS worker_sessions_one_kind_per_parent_idx");
+  db.exec(workerGroupTableSql(false));
+  const workers = db.prepare(`
+    SELECT id, parent_run_id, parent_turn_id, worker_kind, task_envelope_json,
+           created_at, updated_at
+    FROM worker_sessions
+    ORDER BY created_at, id
+  `).all() as unknown as Array<{
+    id: string;
+    parent_run_id: string;
+    parent_turn_id: string;
+    worker_kind: WorkerKind;
+    task_envelope_json: string;
+    created_at: string;
+    updated_at: string;
+  }>;
+  for (const worker of workers) {
+    let task: Record<string, unknown>;
+    try {
+      task = JSON.parse(worker.task_envelope_json) as Record<string, unknown>;
+    } catch {
+      throw new RuntimeSchemaIncompatibleError(`${sourceVersion}/invalid-worker-task-json`);
+    }
+    const budget = task.budget as Record<string, unknown> | undefined;
+    if (typeof task.deadline_at !== "string" || !budget) {
+      throw new RuntimeSchemaIncompatibleError(`${sourceVersion}/invalid-worker-task-budget`);
+    }
+    let prepared;
+    try {
+      prepared = materializePreparedWorkerGroup({
+        request: singletonWorkerGroupRequest({
+          parent_run_id: worker.parent_run_id,
+          invocation_id: `migration-${worker.id}`,
+          worker_kind: worker.worker_kind,
+          deadline_at: task.deadline_at,
+          budget: {
+            max_output_tokens: Number(budget.max_output_tokens),
+            timeout_ms: Number(budget.timeout_ms)
+          }
+        }),
+        parent_run_id: worker.parent_run_id,
+        parent_turn_id: worker.parent_turn_id,
+        worker_id: worker.id,
+        worker_kind: worker.worker_kind,
+        task_deadline_at: task.deadline_at,
+        task_budget: {
+          max_output_tokens: Number(budget.max_output_tokens),
+          timeout_ms: Number(budget.timeout_ms)
+        }
+      });
+    } catch {
+      throw new RuntimeSchemaIncompatibleError(`${sourceVersion}/invalid-worker-task-budget`);
+    }
+    insertWorkerGroup(db, prepared.group, worker.created_at, worker.updated_at);
+    insertWorkerGroupBinding(db, prepared.allocation, worker.created_at);
+  }
+}
+
+function workerGroupTableSql(ifNotExists: boolean): string {
+  const clause = ifNotExists ? "IF NOT EXISTS " : "";
+  return `
+    CREATE TABLE ${clause}worker_groups (
+      id TEXT PRIMARY KEY,
+      parent_run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      parent_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      group_key TEXT NOT NULL,
+      digest TEXT NOT NULL UNIQUE,
+      envelope_json TEXT NOT NULL,
+      expected_worker_count INTEGER NOT NULL CHECK (expected_worker_count BETWEEN 1 AND 4),
+      max_parallel INTEGER NOT NULL CHECK (max_parallel BETWEEN 1 AND 2),
+      deadline_at TEXT NOT NULL,
+      budget_max_output_tokens INTEGER NOT NULL CHECK (budget_max_output_tokens > 0),
+      budget_max_duration_ms INTEGER NOT NULL CHECK (budget_max_duration_ms > 0),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (parent_run_id, parent_turn_id, group_key),
+      CHECK (max_parallel <= expected_worker_count)
+    );
+    CREATE INDEX ${clause}worker_groups_parent_idx
+      ON worker_groups(parent_run_id, parent_turn_id, created_at);
+    CREATE TABLE ${clause}worker_group_bindings (
+      worker_id TEXT PRIMARY KEY REFERENCES worker_sessions(id) ON DELETE CASCADE,
+      group_id TEXT NOT NULL REFERENCES worker_groups(id) ON DELETE CASCADE,
+      task_key TEXT NOT NULL,
+      allocation_digest TEXT NOT NULL UNIQUE,
+      allocation_json TEXT NOT NULL,
+      allocation_max_output_tokens INTEGER NOT NULL CHECK (allocation_max_output_tokens > 0),
+      allocation_timeout_ms INTEGER NOT NULL CHECK (allocation_timeout_ms > 0),
+      created_at TEXT NOT NULL,
+      UNIQUE (group_id, task_key)
+    );
+    CREATE INDEX ${clause}worker_group_bindings_group_idx
+      ON worker_group_bindings(group_id, created_at);
+  `;
+}
+
+function insertWorkerGroup(
+  db: DatabaseSync,
+  group: import("./worker_group_types.js").WorkerGroupEnvelope,
+  createdAt: string,
+  updatedAt: string
+): void {
+  db.prepare(`
+    INSERT INTO worker_groups (
+      id, parent_run_id, parent_turn_id, group_key, digest, envelope_json,
+      expected_worker_count, max_parallel, deadline_at,
+      budget_max_output_tokens, budget_max_duration_ms, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    group.id,
+    group.parent_run_id,
+    group.parent_turn_id,
+    group.group_key,
+    group.digest,
+    JSON.stringify(group),
+    group.expected_worker_count,
+    group.max_parallel,
+    group.deadline_at,
+    group.budget.max_output_tokens,
+    group.budget.max_duration_ms,
+    createdAt,
+    updatedAt
+  );
+}
+
+function insertWorkerGroupBinding(
+  db: DatabaseSync,
+  allocation: import("./worker_group_types.js").WorkerGroupAllocation,
+  createdAt: string
+): void {
+  db.prepare(`
+    INSERT INTO worker_group_bindings (
+      worker_id, group_id, task_key, allocation_digest, allocation_json,
+      allocation_max_output_tokens, allocation_timeout_ms, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    allocation.worker_id,
+    allocation.group_id,
+    allocation.task_key,
+    allocation.digest,
+    JSON.stringify(allocation),
+    allocation.budget.max_output_tokens,
+    allocation.budget.timeout_ms,
+    createdAt
+  );
+}
 function migrateWorkerLifecycleLedger(db: DatabaseSync, version: "8" | "9" | "10"): void {
   if (version === "10") {
     db.exec(`
@@ -516,6 +695,27 @@ function tableExists(db: DatabaseSync, name: string): boolean {
     SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?
   `).get(name) as { present: number } | undefined;
   return row?.present === 1;
+}
+
+function indexExists(db: DatabaseSync, name: string): boolean {
+  const row = db.prepare(`
+    SELECT 1 AS present FROM sqlite_master WHERE type = 'index' AND name = ?
+  `).get(name) as { present: number } | undefined;
+  return row?.present === 1;
+}
+
+function workerCount(db: DatabaseSync): number {
+  if (!tableExists(db, "worker_sessions")) return 0;
+  const row = db.prepare("SELECT COUNT(*) AS count FROM worker_sessions").get() as { count: number };
+  return Number(row.count);
+}
+
+function workerGroupBindingCount(db: DatabaseSync): number {
+  if (!tableExists(db, "worker_group_bindings")) return 0;
+  const row = db.prepare("SELECT COUNT(*) AS count FROM worker_group_bindings").get() as {
+    count: number;
+  };
+  return Number(row.count);
 }
 
 function existingSchemaVersion(db: DatabaseSync): string | null {

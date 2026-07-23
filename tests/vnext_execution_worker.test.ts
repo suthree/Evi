@@ -77,6 +77,82 @@ test("Supervisor queues one execution Worker, obtains canonical Git verification
   }
 });
 
+test("one parent may claim two execution Workers only through separate Delivery Lineages", async () => {
+  const fixture = await createGitFixture("parallel-lineages");
+  const secondBranch = "codex/test-parallel-lineages-b";
+  const secondWorktreePath = join(fixture.root, "lineage-b");
+  await git(fixture.repository, [
+    "worktree",
+    "add",
+    "-b",
+    secondBranch,
+    secondWorktreePath,
+    fixture.baseCommit
+  ]);
+  const secondFixture: GitFixture = {
+    ...fixture,
+    worktree: await realpath(secondWorktreePath),
+    branch: secondBranch
+  };
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const parent = await beginExecutionParent(store, fixture.repository);
+    const deadline = new Date(Date.now() + 90_000).toISOString();
+    const group = {
+      group_key: "parallel-source-work",
+      expected_worker_count: 2,
+      max_parallel: 2,
+      deadline_at: deadline,
+      budget: { max_output_tokens: 2_000, max_duration_ms: 40_000 }
+    };
+    const results = [];
+    for (const [taskKey, current] of [
+      ["lineage-a", fixture],
+      ["lineage-b", secondFixture]
+    ] as const) {
+      const result = await parent.gateway.invoke({
+        run_id: parent.started.run.id,
+        turn_id: parent.started.run.turn_id,
+        invocation_id: `parallel-execution-${taskKey}`,
+        action_name: "worker_execution_dispatch",
+        arguments: {
+          ...executionTask(current),
+          deadline_at: deadline,
+          worker_group: { ...group, task_key: taskKey }
+        }
+      });
+      assert.equal(result.status, "completed");
+      if (result.status !== "completed") return;
+      results.push(result);
+    }
+    const workers = results.map((result) => {
+      const worker = store.inspectExecutionWorker(String(result.receipt.output.worker_id));
+      assert.ok(worker);
+      return worker;
+    });
+    assert.notEqual(workers[0]!.lineage.id, workers[1]!.lineage.id);
+    assert.equal(
+      store.inspectWorkerGroupForWorker(workers[0]!.id)?.group.id,
+      store.inspectWorkerGroupForWorker(workers[1]!.id)?.group.id
+    );
+    assert.equal(
+      store.claimExecutionWorker(workers[0]!.id, workers[0]!.task_envelope.baseline, 30_000)
+        .worker.status,
+      "running"
+    );
+    assert.equal(
+      store.claimExecutionWorker(workers[1]!.id, workers[1]!.task_envelope.baseline, 30_000)
+        .worker.status,
+      "running"
+    );
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("an exact duplicate dispatch remains idempotent after its persisted deadline", async () => {
   const fixture = await createGitFixture("deadline-idempotence");
   const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
@@ -327,6 +403,9 @@ test("stable vnext worker CLI surface executes the queued execution kind without
     });
     assert.equal(inspected.worker.status, "completed");
     assert.equal(inspected.worker.inspection?.lineage?.worktree, fixture.worktree);
+    assert.equal(inspected.worker.inspection?.worker_group.worker_count, 1);
+    assert.equal(inspected.worker.inspection?.worker_group.group.expected_worker_count, 1);
+    assert.equal(inspected.worker.inspection?.worker_group.task?.worker_id, workerId);
     assert.deepEqual(
       inspected.worker.inspection?.result_envelope?.result_kind === "execution"
         ? inspected.worker.inspection.result_envelope.final_snapshot.changed_paths
@@ -497,7 +576,7 @@ test("expired execution lease becomes outcome_unknown and never transfers to a s
   }
 });
 
-test("schema 8 state upgrades in place to schema 11 and creates the common Worker ledger", async () => {
+test("schema 8 state upgrades in place to schema 12 and creates singleton Worker Groups", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-8-to-10-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -539,12 +618,13 @@ test("schema 8 state upgrades in place to schema 11 and creates the common Worke
     const version = inspected.prepare(
       "SELECT value FROM schema_meta WHERE key = 'schema_version'"
     ).get() as { value: string };
-    assert.equal(version.value, "11");
+    assert.equal(version.value, "12");
     const tables = inspected.prepare(`
       SELECT name FROM sqlite_master
       WHERE type = 'table' AND name IN (
         'worker_sessions', 'delivery_lineages', 'execution_worker_bindings',
-        'execution_worker_sessions', 'review_worker_bindings'
+        'execution_worker_sessions', 'review_worker_bindings',
+        'worker_groups', 'worker_group_bindings'
       )
       ORDER BY name
     `).all() as Array<{ name: string }>;
@@ -552,15 +632,24 @@ test("schema 8 state upgrades in place to schema 11 and creates the common Worke
       "delivery_lineages",
       "execution_worker_bindings",
       "review_worker_bindings",
+      "worker_group_bindings",
+      "worker_groups",
       "worker_sessions"
     ]);
+    const groupCounts = inspected.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM worker_sessions) AS workers,
+        (SELECT COUNT(*) FROM worker_groups) AS groups,
+        (SELECT COUNT(*) FROM worker_group_bindings) AS bindings
+    `).get() as { workers: number; groups: number; bindings: number };
+    assert.deepEqual({ ...groupCounts }, { workers: 1, groups: 1, bindings: 1 });
   } finally {
     inspected.close();
     await rm(fixture, { recursive: true, force: true });
   }
 });
 
-test("schema 9 preserves discussion and execution Worker identities in one schema 11 ledger", async () => {
+test("schema 9 preserves discussion and execution Worker identities in one schema 12 ledger", async () => {
   const fixture = await createGitFixture("schema-nine");
   const sqlite = join(fixture.root, "state", "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -643,7 +732,7 @@ test("schema 9 preserves discussion and execution Worker identities in one schem
       const version = inspected.prepare(
         "SELECT value FROM schema_meta WHERE key = 'schema_version'"
       ).get() as { value: string };
-      assert.equal(version.value, "11");
+      assert.equal(version.value, "12");
       const kinds = inspected.prepare(`
         SELECT worker_kind, COUNT(*) AS count
         FROM worker_sessions GROUP BY worker_kind ORDER BY worker_kind
@@ -655,6 +744,13 @@ test("schema 9 preserves discussion and execution Worker identities in one schem
         { worker_kind: "discussion", count: 1 },
         { worker_kind: "execution", count: 1 }
       ]);
+      const groupCounts = inspected.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM worker_sessions) AS workers,
+          (SELECT COUNT(*) FROM worker_groups) AS groups,
+          (SELECT COUNT(*) FROM worker_group_bindings) AS bindings
+      `).get() as { workers: number; groups: number; bindings: number };
+      assert.deepEqual({ ...groupCounts }, { workers: 2, groups: 2, bindings: 2 });
       const removed = inspected.prepare(`
         SELECT COUNT(*) AS count FROM sqlite_master
         WHERE type = 'table' AND name = 'execution_worker_sessions'
@@ -719,7 +815,7 @@ test("schema 10 preserves the common Worker ledger exactly while adding review b
       const version = inspected.prepare(
         "SELECT value FROM schema_meta WHERE key = 'schema_version'"
       ).get() as { value: string };
-      assert.equal(version.value, "11");
+      assert.equal(version.value, "12");
       const reviewBindings = inspected.prepare(`
         SELECT COUNT(*) AS count FROM sqlite_master
         WHERE type = 'table' AND name = 'review_worker_bindings'
@@ -736,6 +832,13 @@ test("schema 10 preserves the common Worker ledger exactly while adding review b
         { worker_kind: "discussion", count: 1 },
         { worker_kind: "execution", count: 1 }
       ]);
+      const groupCounts = inspected.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM worker_sessions) AS workers,
+          (SELECT COUNT(*) FROM worker_groups) AS groups,
+          (SELECT COUNT(*) FROM worker_group_bindings) AS bindings
+      `).get() as { workers: number; groups: number; bindings: number };
+      assert.deepEqual({ ...groupCounts }, { workers: 2, groups: 2, bindings: 2 });
     } finally {
       inspected.close();
     }
@@ -752,6 +855,7 @@ test("schema 10 metadata rejects a mixed schema 11 Worker ledger before migratio
   store.close();
   const mixed = new DatabaseSync(sqlite);
   mixed.exec("PRAGMA foreign_keys = OFF");
+  mixed.exec("DROP TABLE worker_group_bindings; DROP TABLE worker_groups;");
   mixed.exec("DROP TABLE review_worker_bindings");
   mixed.prepare("UPDATE schema_meta SET value = '10' WHERE key = 'schema_version'").run();
   mixed.close();
@@ -879,6 +983,7 @@ async function dispatchDiscussionWorker(store: SqliteRuntimeStore, repository: s
 }
 
 function downgradeWorkerLedgerToEight(db: DatabaseSync): void {
+  db.exec("DROP TABLE worker_group_bindings; DROP TABLE worker_groups;");
   db.exec("DROP TABLE review_worker_bindings");
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
   createLegacyDiscussionWorkerTable(db);
@@ -906,6 +1011,7 @@ function downgradeWorkerLedgerToEight(db: DatabaseSync): void {
 }
 
 function downgradeWorkerLedgerToNine(db: DatabaseSync): void {
+  db.exec("DROP TABLE worker_group_bindings; DROP TABLE worker_groups;");
   db.exec("DROP TABLE review_worker_bindings");
   db.exec("ALTER TABLE worker_sessions RENAME TO worker_sessions_v10");
   createLegacyDiscussionWorkerTable(db);
@@ -954,6 +1060,7 @@ function downgradeWorkerLedgerToNine(db: DatabaseSync): void {
 }
 
 function downgradeWorkerLedgerToTen(db: DatabaseSync): void {
+  db.exec("DROP TABLE worker_group_bindings; DROP TABLE worker_groups;");
   db.exec(`
     DROP TABLE review_worker_bindings;
     ALTER TABLE execution_worker_bindings RENAME TO execution_worker_bindings_v11;

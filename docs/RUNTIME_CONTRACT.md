@@ -62,7 +62,7 @@ The default database is
 `~/.local-runtime/state/vnext-cli/runtime.sqlite`. `--vnext-state-root` may
 select another absolute independent root. Declared, physical, symlink, and
 case-insensitive aliases that overlap the v0.2 shared state root are rejected.
-The stable schema is version 11 and its immutable `stable_cli` state profile
+The stable schema is version 12 and its immutable `stable_cli` state profile
 refuses a `diagnostic_canary` database. Version 8 and 9 `stable_cli` state
 upgrade transactionally before the version marker advances. Version 9
 discussion and execution records retain their exact Task, Result, lease,
@@ -71,7 +71,13 @@ one common `worker_sessions` lifecycle ledger. Execution-only lineage authority
 is the narrow `execution_worker_bindings` relation, not a second lifecycle
 table. Version 10 preserves that exact common ledger while expanding its kind
 constraint and adding the narrow `review_worker_bindings` relation. Review has
-no third lifecycle table. All other older or unknown schemas still fail closed.
+no third lifecycle table. Version 11 upgrades transactionally by removing the
+former one-kind-per-parent index and giving every historical Worker a
+deterministic singleton entry in `worker_groups` and
+`worker_group_bindings`; historical Action, Task, Result, lease, and delivery
+identities are not rewritten. Versions 8 through 10 receive the same singleton
+bindings after their lifecycle-ledger migration. All other older or unknown
+schemas still fail closed.
 There is no v0.2 import or dual write. Model
 selection uses the normal safe config records. Raw `--base-url`, `--model`,
 `--api-key-env`, `--sqlite`, and v0.2 `--state-root` selectors are not part of
@@ -79,12 +85,23 @@ this Interface.
 
 New parent Runs register `runtime_inspect`, `worker_dispatch`,
 `worker_execution_dispatch`, `worker_review_dispatch`, `worker_inspect`, and
-child-contained `worker_needs_input`. The composition explicitly permits one
-reservation-first `external_read` discussion Worker, one reservation-first
-`external_read` review Worker, and one opt-in reservation-first
-`local_write` execution Worker. Discussion-child Actions remain
+child-contained `worker_needs_input`. Discussion and review dispatches are
+reservation-first `external_read`; execution dispatch is opt-in
+reservation-first `local_write`. Discussion-child Actions remain
 `none/local_read`; review-child Actions are also `none/local_read`; the
 execution Worker receives no child Action surface.
+
+Every newly reserved Worker has a schema-versioned Group envelope and task
+allocation. The Group binds the exact parent Run/Turn, deterministic key and
+digest, one to four expected tasks, at most two simultaneous claims, a deadline,
+and aggregate output-token and duration budgets. A Supervisor may hold at most
+four undelivered Workers and two running claims across Groups. A call without
+an explicit Group receives a deterministic singleton Group. Duplicate task
+slots, configuration drift, exhausted counts, elapsed deadlines, and aggregate
+budget oversubscription fail before dispatch. A capacity-blocked queued Worker
+receives no lease and remains retryable. Parallel execution Workers require
+separate Delivery Lineages; parallel reviews require distinct execution
+subjects.
 Task and Result Envelopes are immutable and digest-addressed. Tasks carry
 explicit context and artifact refs; Results bind the exact producing Run
 Execution, model dispatches, provider/model identity, and cumulative bounded
@@ -113,9 +130,10 @@ integration execution in that same Turn. Result delivery is not repeated and
 the Worker still cannot claim parent completion.
 
 `vnext worker execute` is the separate foreground process Adapter for all three
-Worker kinds. `vnext worker inspect` reads the bounded canonical Worker, lease,
-Delivery-Lineage, snapshot, and verification evidence without claiming a lease
-or loading a model. A discussion Worker uses the same state/profile/config selectors,
+Worker kinds. `vnext worker inspect` reads the bounded canonical Worker, its
+Group envelope, allocation, reserved/available budget, queue/running counts,
+lease, Delivery-Lineage, snapshot, and verification evidence without claiming
+a lease or loading a model. A discussion Worker uses the same state/profile/config selectors,
 the same Runtime Kernel, and the sole Pi Agent Loop. A terminal discussion
 child Run is recovered without replay.
 
@@ -183,8 +201,10 @@ the parent.
 Structured diagnostics distinguish `run_not_found`,
 `session_not_found`, `session_busy`, `execution_lock_mismatch`,
 `credential_unavailable`, `schema_incompatible`, recovery-evidence mismatch,
-and invalid input. Multiple execution writers,
-automatic Delivery-Lineage creation, commit/push/PR/merge/integration,
+and invalid input. Multiple writers on one Delivery Lineage,
+automatic Delivery-Lineage creation, dependency scheduling, cancellation
+cascades, automatic retry/background scheduling, remote workers,
+commit/push/PR/merge/integration,
 `signal/cancel`, optional Goal links, adaptation activation or observation,
 Web/IM routing,
 resident-service ownership, and vNext deployment remain outside this slice.

@@ -122,6 +122,19 @@ import {
 } from "./sqlite_runtime_schema.js";
 import { inspectRuntimeRun } from "./sqlite_runtime_inspection.js";
 import { selectRecoveryPiSessionEntries } from "./sqlite_runtime_recovery.js";
+import {
+  materializePreparedWorkerGroup,
+  normalizeWorkerGroupRequest,
+  parsePreparedWorkerGroup,
+  parseWorkerGroupAllocation,
+  parseWorkerGroupEnvelope,
+  singletonWorkerGroupRequest,
+  type PreparedWorkerGroup,
+  type WorkerGroupAllocation,
+  type WorkerGroupEnvelope,
+  type WorkerGroupInspection,
+  type WorkerGroupRequest
+} from "./worker_group_types.js";
 
 export class RunHasUnresolvedActionsError extends Error {
   constructor(readonly runId: string) {
@@ -233,6 +246,33 @@ interface ReviewWorkerSessionRow extends WorkerSessionRow {
 interface SupervisorWorkerSessionRow extends WorkerSessionRow {
   lineage_id: string | null;
   review_execution_worker_id: string | null;
+}
+
+interface WorkerGroupRow {
+  id: string;
+  parent_run_id: string;
+  parent_turn_id: string;
+  group_key: string;
+  digest: string;
+  envelope_json: string;
+  expected_worker_count: number;
+  max_parallel: number;
+  deadline_at: string;
+  budget_max_output_tokens: number;
+  budget_max_duration_ms: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WorkerGroupBindingRow {
+  worker_id: string;
+  group_id: string;
+  task_key: string;
+  allocation_digest: string;
+  allocation_json: string;
+  allocation_max_output_tokens: number;
+  allocation_timeout_ms: number;
+  created_at: string;
 }
 
 type SupervisorWorker = WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection;
@@ -1058,39 +1098,33 @@ export class SqliteRuntimeStore {
     return row?.present === 1;
   }
 
-  assertCanDispatchDiscussionWorker(runId: string, invocationId: string): void {
-    this.assertCanDispatchWorkerKind(runId, invocationId, "discussion");
-  }
-
-  assertCanDispatchExecutionWorker(runId: string, invocationId: string): void {
-    this.assertCanDispatchWorkerKind(runId, invocationId, "execution");
-  }
-
-  assertCanDispatchReviewWorker(runId: string, invocationId: string): void {
-    this.assertCanDispatchWorkerKind(runId, invocationId, "review");
-  }
-
-  private assertCanDispatchWorkerKind(
+  getPreparedDiscussionWorkerDispatch(
     runId: string,
     invocationId: string,
-    workerKind: WorkerSessionRow["worker_kind"]
-  ): void {
-    const row = this.db.prepare(`
-      SELECT reservations.invocation_id
-      FROM worker_sessions AS workers
-      JOIN action_reservations AS reservations ON reservations.id = workers.reservation_id
-      WHERE workers.parent_run_id = ? AND workers.worker_kind = ?
-      LIMIT 1
-    `).get(runId, workerKind) as { invocation_id: string } | undefined;
-    if (row && row.invocation_id !== invocationId) {
-      throw new Error(`This Supervisor Run already owns its one ${workerKind} Worker Session: ${runId}`);
+    input: unknown,
+    groupRequest: WorkerGroupRequest
+  ): JsonObject | null {
+    const reservation = this.getActionReservationByInvocation(runId, invocationId);
+    if (!reservation) return null;
+    if (reservation.action_name !== "worker_dispatch"
+      || reservation.contract_version !== "1"
+      || reservation.effect_class !== "external_read") {
+      throw new Error(`Discussion Worker invocation identity is already owned: ${runId}/${invocationId}`);
     }
+    const requested = normalizeDiscussionTaskInput(input);
+    const durable = normalizeDiscussionTaskInput(reservation.arguments);
+    if (stableJson(requested) !== stableJson(durable)) {
+      throw new Error(`Discussion Worker invocation arguments drifted: ${runId}/${invocationId}`);
+    }
+    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
+    return reservation.arguments;
   }
 
   getPreparedExecutionWorkerDispatch(
     runId: string,
     invocationId: string,
-    input: unknown
+    input: unknown,
+    groupRequest: WorkerGroupRequest
   ): JsonObject | null {
     const reservation = this.getActionReservationByInvocation(runId, invocationId);
     if (!reservation) return null;
@@ -1104,13 +1138,15 @@ export class SqliteRuntimeStore {
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Execution Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
+    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
     return reservation.arguments;
   }
 
   getPreparedReviewWorkerDispatch(
     runId: string,
     invocationId: string,
-    input: unknown
+    input: unknown,
+    groupRequest: WorkerGroupRequest
   ): JsonObject | null {
     const reservation = this.getActionReservationByInvocation(runId, invocationId);
     if (!reservation) return null;
@@ -1129,7 +1165,13 @@ export class SqliteRuntimeStore {
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Review Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
+    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
     return reservation.arguments;
+  }
+
+  assertCanReserveWorkerGroupTask(preparedInput: PreparedWorkerGroup): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    this.assertWorkerGroupTaskCapacity(prepared, true);
   }
 
   assertCanBindDeliveryLineage(
@@ -1389,9 +1431,11 @@ export class SqliteRuntimeStore {
     reservation_id: string;
     task_envelope: TaskEnvelope;
     child_execution_lock: ExecutionLock;
+    worker_group: PreparedWorkerGroup;
   }): WorkerInspection {
     const taskEnvelope = parseTaskEnvelope(input.task_envelope);
     const childLock = parseExecutionLock(input.child_execution_lock);
+    const workerGroup = parsePreparedWorkerGroup(input.worker_group);
     return this.transaction(() => {
       const reservation = this.requireActionReservation(input.reservation_id);
       if (reservation.run_id !== taskEnvelope.parent_run_id
@@ -1411,6 +1455,13 @@ export class SqliteRuntimeStore {
       if (taskEnvelope.child_execution_lock_digest !== childLock.digest) {
         throw new Error("Task Envelope child Execution Lock identity mismatch.");
       }
+      const workerId = workerSessionId(input.worker_id);
+      this.assertDispatchWorkerGroupIdentity(
+        reservation,
+        workerGroup,
+        workerId,
+        "discussion"
+      );
 
       const existing = this.getWorkerByReservation(input.reservation_id);
       if (existing) {
@@ -1418,10 +1469,10 @@ export class SqliteRuntimeStore {
           || existing.child_execution_lock.digest !== childLock.digest) {
           throw new Error(`Worker dispatch identity mismatch: ${input.reservation_id}`);
         }
+        this.assertWorkerGroupBinding(existing.id, workerGroup);
         return existing;
       }
 
-      const workerId = workerSessionId(input.worker_id);
       const createdAt = new Date().toISOString();
       this.db.prepare(`
         INSERT INTO worker_sessions (
@@ -1445,12 +1496,16 @@ export class SqliteRuntimeStore {
         createdAt,
         createdAt
       );
+      this.bindWorkerGroupInTransaction(workerGroup, createdAt);
       this.insertEvent(parent.id, parent.turn_id, "worker_dispatched", {
         worker_id: workerId,
         reservation_id: reservation.id,
         task_envelope_digest: taskEnvelope.digest,
         child_execution_lock_digest: childLock.digest,
-        worker_kind: taskEnvelope.worker_kind
+        worker_kind: taskEnvelope.worker_kind,
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.allocation.task_key
       });
       return this.requireWorker(workerId);
     });
@@ -1554,9 +1609,11 @@ export class SqliteRuntimeStore {
     reservation_id: string;
     task_envelope: ReviewTaskEnvelope;
     child_execution_lock: ExecutionLock;
+    worker_group: PreparedWorkerGroup;
   }): ReviewWorkerInspection {
     const task = parseReviewTaskEnvelope(input.task_envelope);
     const childLock = parseExecutionLock(input.child_execution_lock);
+    const workerGroup = parsePreparedWorkerGroup(input.worker_group);
     return this.transaction(() => {
       const reservation = this.requireActionReservation(input.reservation_id);
       if (reservation.run_id !== task.parent_run_id || reservation.turn_id !== task.parent_turn_id) {
@@ -1596,6 +1653,7 @@ export class SqliteRuntimeStore {
       }
 
       const workerId = workerSessionId(input.worker_id);
+      this.assertDispatchWorkerGroupIdentity(reservation, workerGroup, workerId, "review");
       const existing = this.getReviewWorkerByReservation(input.reservation_id);
       if (existing) {
         if (existing.id !== workerId
@@ -1604,6 +1662,7 @@ export class SqliteRuntimeStore {
           || existing.execution_worker_id !== subject.id) {
           throw new Error(`Review Worker dispatch identity mismatch: ${input.reservation_id}`);
         }
+        this.assertWorkerGroupBinding(existing.id, workerGroup);
         return existing;
       }
 
@@ -1633,6 +1692,7 @@ export class SqliteRuntimeStore {
       this.db.prepare(`
         INSERT INTO review_worker_bindings (worker_id, execution_worker_id) VALUES (?, ?)
       `).run(workerId, subject.id);
+      this.bindWorkerGroupInTransaction(workerGroup, createdAt);
       this.insertEvent(parent.id, parent.turn_id, "review_worker_dispatched", {
         worker_id: workerId,
         reservation_id: reservation.id,
@@ -1640,7 +1700,10 @@ export class SqliteRuntimeStore {
         task_envelope_digest: task.digest,
         review_packet_digest: task.review_packet.digest,
         child_execution_lock_digest: childLock.digest,
-        worker_kind: "review"
+        worker_kind: "review",
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.allocation.task_key
       });
       return this.requireReviewWorker(workerId);
     });
@@ -1667,6 +1730,19 @@ export class SqliteRuntimeStore {
 
   inspectReviewWorkerByReservation(reservationId: string): ReviewWorkerInspection | null {
     return this.getReviewWorkerByReservation(reservationId);
+  }
+
+  inspectWorkerGroup(groupId: string): WorkerGroupInspection | null {
+    const row = this.getWorkerGroupRow(groupId);
+    return row ? this.workerGroupInspection(row, null) : null;
+  }
+
+  inspectWorkerGroupForWorker(workerId: string): WorkerGroupInspection | null {
+    const binding = this.getWorkerGroupBindingRow(workerId);
+    if (!binding) return null;
+    const row = this.getWorkerGroupRow(binding.group_id);
+    if (!row) throw new Error(`Worker Group binding has no group: ${workerId}`);
+    return this.workerGroupInspection(row, binding);
   }
 
   claimReviewWorker(workerId: string, leaseMs: number): {
@@ -1768,11 +1844,13 @@ export class SqliteRuntimeStore {
     child_execution_lock: ExecutionLock;
     lineage: DeliveryLineage;
     baseline: DeliveryLineageSnapshot;
+    worker_group: PreparedWorkerGroup;
   }): ExecutionWorkerInspection {
     const task = parseExecutionTaskEnvelope(input.task_envelope);
     const childLock = parseExecutionLock(input.child_execution_lock);
     const lineage = parseDeliveryLineage(input.lineage);
     const baseline = parseDeliveryLineageSnapshot(input.baseline);
+    const workerGroup = parsePreparedWorkerGroup(input.worker_group);
     return this.transaction(() => {
       const reservation = this.requireActionReservation(input.reservation_id);
       if (reservation.run_id !== task.parent_run_id || reservation.turn_id !== task.parent_turn_id) {
@@ -1795,6 +1873,8 @@ export class SqliteRuntimeStore {
         || baseline.changed_paths.length !== 0) {
         throw new Error("Execution Worker Task authority identity mismatch.");
       }
+      const workerId = workerSessionId(input.worker_id);
+      this.assertDispatchWorkerGroupIdentity(reservation, workerGroup, workerId, "execution");
 
       const existing = this.getExecutionWorkerByReservation(input.reservation_id);
       if (existing) {
@@ -1803,10 +1883,10 @@ export class SqliteRuntimeStore {
           || existing.lineage.digest !== lineage.digest) {
           throw new Error(`Execution Worker dispatch identity mismatch: ${input.reservation_id}`);
         }
+        this.assertWorkerGroupBinding(existing.id, workerGroup);
         return existing;
       }
 
-      const workerId = workerSessionId(input.worker_id);
       const createdAt = new Date().toISOString();
       this.db.prepare(`
         INSERT INTO delivery_lineages (
@@ -1854,6 +1934,7 @@ export class SqliteRuntimeStore {
       this.db.prepare(`
         INSERT INTO execution_worker_bindings (worker_id, lineage_id) VALUES (?, ?)
       `).run(workerId, lineage.id);
+      this.bindWorkerGroupInTransaction(workerGroup, createdAt);
       this.insertEvent(parent.id, parent.turn_id, "execution_worker_dispatched", {
         worker_id: workerId,
         reservation_id: reservation.id,
@@ -1862,7 +1943,10 @@ export class SqliteRuntimeStore {
         lineage_id: lineage.id,
         lineage_digest: lineage.digest,
         baseline_snapshot_digest: baseline.digest,
-        worker_kind: "execution"
+        worker_kind: "execution",
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.allocation.task_key
       });
       return this.requireExecutionWorker(workerId);
     });
@@ -1928,6 +2012,7 @@ export class SqliteRuntimeStore {
       if (current.status !== "queued" || lineageRow.state !== "available") {
         throw new Error(`Execution Worker Session cannot be claimed: ${workerId}/${current.status}`);
       }
+      this.assertWorkerGroupClaimCapacity(workerId, now);
       assertDeliveryLineageBaseline(
         current.lineage,
         current.task_envelope.baseline,
@@ -2847,6 +2932,299 @@ export class SqliteRuntimeStore {
     return worker;
   }
 
+  private assertPreparedWorkerGroupRequest(
+    preparedInput: unknown,
+    requestedInput: WorkerGroupRequest
+  ): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    const requested = normalizeWorkerGroupRequest(requestedInput);
+    if (stableJson(prepared.request) !== stableJson(requested)) {
+      throw new Error(`Worker Group request drifted: ${prepared.group.id}`);
+    }
+  }
+
+  private assertWorkerGroupTaskCapacity(
+    preparedInput: PreparedWorkerGroup,
+    requireCurrentParent: boolean
+  ): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    const group = prepared.group;
+    const allocation = prepared.allocation;
+    const parent = this.requireRun(group.parent_run_id);
+    if (parent.turn_id !== group.parent_turn_id
+      || (requireCurrentParent && parent.status !== "running")) {
+      throw new Error(`Worker Group requires the current parent Turn: ${group.id}`);
+    }
+    if (requireCurrentParent && Date.parse(group.deadline_at) <= Date.now()) {
+      throw new Error(`Worker Group deadline has elapsed: ${group.id}`);
+    }
+    const stored = this.getWorkerGroupRow(group.id);
+    if (stored) this.assertWorkerGroupRowIdentity(stored, group);
+
+    const workerBinding = this.getWorkerGroupBindingRow(allocation.worker_id);
+    const taskBinding = this.db.prepare(`
+      SELECT * FROM worker_group_bindings WHERE group_id = ? AND task_key = ?
+    `).get(group.id, allocation.task_key) as WorkerGroupBindingRow | undefined;
+    if (workerBinding || taskBinding) {
+      throw new Error(`Worker Group task slot is already reserved: ${group.id}/${allocation.task_key}`);
+    }
+    const parentOutstanding = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM worker_sessions
+      WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL AND id != ?
+    `).get(group.parent_run_id, allocation.worker_id) as { count: number };
+    if (Number(parentOutstanding.count) >= 4) {
+      throw new Error(`Supervisor outstanding Worker limit is exhausted: ${group.parent_run_id}`);
+    }
+    const totals = this.workerGroupTotals(group.id);
+    if (totals.worker_count >= group.expected_worker_count) {
+      throw new Error(`Worker Group expected worker count is exhausted: ${group.id}`);
+    }
+    if (totals.max_output_tokens + allocation.budget.max_output_tokens
+        > group.budget.max_output_tokens
+      || totals.timeout_ms + allocation.budget.timeout_ms > group.budget.max_duration_ms) {
+      throw new Error(`Worker Group hierarchical budget is exhausted: ${group.id}`);
+    }
+  }
+
+  private bindWorkerGroupInTransaction(
+    preparedInput: PreparedWorkerGroup,
+    createdAt: string
+  ): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    this.assertWorkerGroupTaskCapacity(prepared, false);
+    const group = prepared.group;
+    const allocation = prepared.allocation;
+    if (!this.getWorkerGroupRow(group.id)) {
+      this.db.prepare(`
+        INSERT INTO worker_groups (
+          id, parent_run_id, parent_turn_id, group_key, digest, envelope_json,
+          expected_worker_count, max_parallel, deadline_at,
+          budget_max_output_tokens, budget_max_duration_ms, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        group.id,
+        group.parent_run_id,
+        group.parent_turn_id,
+        group.group_key,
+        group.digest,
+        JSON.stringify(group),
+        group.expected_worker_count,
+        group.max_parallel,
+        group.deadline_at,
+        group.budget.max_output_tokens,
+        group.budget.max_duration_ms,
+        createdAt,
+        createdAt
+      );
+    }
+    this.db.prepare(`
+      INSERT INTO worker_group_bindings (
+        worker_id, group_id, task_key, allocation_digest, allocation_json,
+        allocation_max_output_tokens, allocation_timeout_ms, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      allocation.worker_id,
+      group.id,
+      allocation.task_key,
+      allocation.digest,
+      JSON.stringify(allocation),
+      allocation.budget.max_output_tokens,
+      allocation.budget.timeout_ms,
+      createdAt
+    );
+    this.db.prepare("UPDATE worker_groups SET updated_at = ? WHERE id = ?")
+      .run(createdAt, group.id);
+  }
+
+  private assertWorkerGroupBinding(workerId: string, preparedInput: PreparedWorkerGroup): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    const binding = this.getWorkerGroupBindingRow(workerId);
+    const group = this.getWorkerGroupRow(prepared.group.id);
+    if (!binding || !group
+      || binding.group_id !== prepared.group.id
+      || binding.allocation_digest !== prepared.allocation.digest) {
+      throw new Error(`Worker Group binding identity mismatch: ${workerId}`);
+    }
+    this.assertWorkerGroupRowIdentity(group, prepared.group);
+    const allocation = this.parseWorkerGroupBindingRow(binding);
+    if (stableJson(allocation) !== stableJson(prepared.allocation)) {
+      throw new Error(`Worker Group allocation identity mismatch: ${workerId}`);
+    }
+  }
+
+  private assertDispatchWorkerGroupIdentity(
+    reservation: ActionReservation,
+    preparedInput: PreparedWorkerGroup,
+    workerId: string,
+    workerKind: "discussion" | "execution" | "review"
+  ): void {
+    const prepared = parsePreparedWorkerGroup(preparedInput);
+    const durable = parsePreparedWorkerGroup(reservation.arguments.worker_group);
+    if (stableJson(prepared) !== stableJson(durable)
+      || prepared.allocation.worker_id !== workerId
+      || prepared.allocation.worker_kind !== workerKind) {
+      throw new Error(`Worker Group dispatch identity mismatch: ${workerId}`);
+    }
+  }
+
+  private assertWorkerGroupReservationIdentity(
+    workerId: string,
+    workerKind: "discussion" | "execution" | "review",
+    reservation: ActionReservation,
+    task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } }
+  ): { prepared: PreparedWorkerGroup; legacy: boolean } {
+    const legacy = reservation.arguments.worker_group === undefined;
+    const prepared = legacy
+      ? materializePreparedWorkerGroup({
+        request: singletonWorkerGroupRequest({
+          parent_run_id: reservation.run_id,
+          invocation_id: `migration-${workerId}`,
+          worker_kind: workerKind,
+          deadline_at: task.deadline_at,
+          budget: task.budget
+        }),
+        parent_run_id: reservation.run_id,
+        parent_turn_id: reservation.turn_id,
+        worker_id: workerId,
+        worker_kind: workerKind,
+        task_deadline_at: task.deadline_at,
+        task_budget: task.budget
+      })
+      : parsePreparedWorkerGroup(reservation.arguments.worker_group);
+    if (prepared.allocation.worker_id !== workerId
+      || prepared.allocation.worker_kind !== workerKind) {
+      throw new Error(`Worker Group reservation identity mismatch: ${workerId}`);
+    }
+    this.assertWorkerGroupBinding(workerId, prepared);
+    return { prepared, legacy };
+  }
+
+  private assertWorkerGroupClaimCapacity(workerId: string, now: number): void {
+    const inspection = this.inspectWorkerGroupForWorker(workerId);
+    if (!inspection || !inspection.task) {
+      throw new Error(`Worker Group binding is missing: ${workerId}`);
+    }
+    if (Date.parse(inspection.group.deadline_at) <= now) {
+      throw new Error(`Worker Group deadline has elapsed: ${inspection.group.id}`);
+    }
+    if (inspection.running_count >= inspection.group.max_parallel) {
+      throw new Error(`Worker Group parallel claim capacity is exhausted: ${inspection.group.id}`);
+    }
+    const parentRunning = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM worker_sessions
+      WHERE parent_run_id = ? AND status = 'running' AND id != ?
+    `).get(inspection.group.parent_run_id, workerId) as { count: number };
+    if (Number(parentRunning.count) >= 2) {
+      throw new Error(
+        `Supervisor parallel Worker claim capacity is exhausted: ${inspection.group.parent_run_id}`
+      );
+    }
+  }
+
+  private getWorkerGroupRow(groupId: string): WorkerGroupRow | null {
+    return (this.db.prepare("SELECT * FROM worker_groups WHERE id = ?")
+      .get(groupId) as WorkerGroupRow | undefined) ?? null;
+  }
+
+  private getWorkerGroupBindingRow(workerId: string): WorkerGroupBindingRow | null {
+    return (this.db.prepare("SELECT * FROM worker_group_bindings WHERE worker_id = ?")
+      .get(workerId) as WorkerGroupBindingRow | undefined) ?? null;
+  }
+
+  private assertWorkerGroupRowIdentity(row: WorkerGroupRow, expected: WorkerGroupEnvelope): void {
+    const parsed = parseWorkerGroupEnvelope(JSON.parse(row.envelope_json));
+    if (stableJson(parsed) !== stableJson(expected)
+      || row.id !== parsed.id
+      || row.parent_run_id !== parsed.parent_run_id
+      || row.parent_turn_id !== parsed.parent_turn_id
+      || row.group_key !== parsed.group_key
+      || row.digest !== parsed.digest
+      || row.expected_worker_count !== parsed.expected_worker_count
+      || row.max_parallel !== parsed.max_parallel
+      || row.deadline_at !== parsed.deadline_at
+      || row.budget_max_output_tokens !== parsed.budget.max_output_tokens
+      || row.budget_max_duration_ms !== parsed.budget.max_duration_ms) {
+      throw new Error(`Worker Group stored identity is invalid: ${row.id}`);
+    }
+  }
+
+  private parseWorkerGroupBindingRow(row: WorkerGroupBindingRow): WorkerGroupAllocation {
+    const parsed = parseWorkerGroupAllocation(JSON.parse(row.allocation_json));
+    if (row.worker_id !== parsed.worker_id
+      || row.group_id !== parsed.group_id
+      || row.task_key !== parsed.task_key
+      || row.allocation_digest !== parsed.digest
+      || row.allocation_max_output_tokens !== parsed.budget.max_output_tokens
+      || row.allocation_timeout_ms !== parsed.budget.timeout_ms) {
+      throw new Error(`Worker Group allocation stored identity is invalid: ${row.worker_id}`);
+    }
+    return parsed;
+  }
+
+  private workerGroupTotals(groupId: string): {
+    worker_count: number;
+    max_output_tokens: number;
+    timeout_ms: number;
+  } {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS worker_count,
+             COALESCE(SUM(allocation_max_output_tokens), 0) AS max_output_tokens,
+             COALESCE(SUM(allocation_timeout_ms), 0) AS timeout_ms
+      FROM worker_group_bindings
+      WHERE group_id = ?
+    `).get(groupId) as {
+      worker_count: number;
+      max_output_tokens: number;
+      timeout_ms: number;
+    };
+    return {
+      worker_count: Number(row.worker_count),
+      max_output_tokens: Number(row.max_output_tokens),
+      timeout_ms: Number(row.timeout_ms)
+    };
+  }
+
+  private workerGroupInspection(
+    row: WorkerGroupRow,
+    binding: WorkerGroupBindingRow | null
+  ): WorkerGroupInspection {
+    const group = parseWorkerGroupEnvelope(JSON.parse(row.envelope_json));
+    this.assertWorkerGroupRowIdentity(row, group);
+    const counts = this.db.prepare(`
+      SELECT COUNT(*) AS worker_count,
+             SUM(CASE WHEN workers.status = 'queued' THEN 1 ELSE 0 END) AS queued_count,
+             SUM(CASE WHEN workers.status = 'running' THEN 1 ELSE 0 END) AS running_count,
+             SUM(CASE WHEN workers.status IN ('needs_input', 'completed', 'failed')
+               THEN 1 ELSE 0 END) AS terminal_count
+      FROM worker_group_bindings AS bindings
+      JOIN worker_sessions AS workers ON workers.id = bindings.worker_id
+      WHERE bindings.group_id = ?
+    `).get(group.id) as {
+      worker_count: number;
+      queued_count: number | null;
+      running_count: number | null;
+      terminal_count: number | null;
+    };
+    const totals = this.workerGroupTotals(group.id);
+    return {
+      group,
+      worker_count: Number(counts.worker_count),
+      queued_count: Number(counts.queued_count ?? 0),
+      running_count: Number(counts.running_count ?? 0),
+      terminal_count: Number(counts.terminal_count ?? 0),
+      reserved_budget: {
+        max_output_tokens: totals.max_output_tokens,
+        timeout_ms: totals.timeout_ms
+      },
+      available_budget: {
+        max_output_tokens: group.budget.max_output_tokens - totals.max_output_tokens,
+        duration_ms: group.budget.max_duration_ms - totals.timeout_ms
+      },
+      task: binding ? this.parseWorkerGroupBindingRow(binding) : null
+    };
+  }
+
   private requireExecutionWorker(workerId: string): ExecutionWorkerInspection {
     const worker = this.inspectExecutionWorker(workerId);
     if (!worker) throw new Error(`Execution Worker Session not found: ${workerId}`);
@@ -3055,6 +3433,9 @@ export class SqliteRuntimeStore {
         && Date.parse(current.lease_expires_at) <= now;
       if (current.status !== "queued" && !(current.status === "running" && expired)) {
         throw new Error(`${workerKind} Worker Session cannot be claimed: ${workerId}/${current.status}`);
+      }
+      if (current.status === "queued") {
+        this.assertWorkerGroupClaimCapacity(workerId, now);
       }
       const ordinal = current.lease_ordinal + 1;
       const expiresAt = new Date(now + leaseMs).toISOString();
@@ -3353,7 +3734,14 @@ export class SqliteRuntimeStore {
       "verification_requirements",
       "worker_id"
     ];
-    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const workerGroupIdentity = this.assertWorkerGroupReservationIdentity(
+      worker.id,
+      "discussion",
+      reservation,
+      worker.task_envelope
+    );
+    if (!workerGroupIdentity.legacy) argumentKeys.push("worker_group");
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys.sort());
     const expectedActionDigest = materializeActionDigest({
       name: "worker_dispatch",
       version: "1",
@@ -3366,6 +3754,7 @@ export class SqliteRuntimeStore {
       parent_turn_id: reservation.turn_id,
       child_execution_lock_digest: worker.child_execution_lock.digest
     });
+    const workerGroup = workerGroupIdentity.prepared;
     if (reservation.run_id !== worker.parent_run_id
       || reservation.turn_id !== worker.parent_turn_id
       || reservation.action_name !== "worker_dispatch"
@@ -3388,7 +3777,11 @@ export class SqliteRuntimeStore {
       || receipt.output.worker_id !== worker.id
       || receipt.output.status !== "queued"
       || receipt.output.task_envelope_digest !== worker.task_envelope.digest
-      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
+      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || (!workerGroupIdentity.legacy
+        && (receipt.output.worker_group_id !== workerGroup.group.id
+          || receipt.output.worker_group_digest !== workerGroup.group.digest
+          || receipt.output.worker_group_task_key !== workerGroup.allocation.task_key))) {
       throw new Error(`Worker reservation identity drifted: ${worker.id}`);
     }
   }
@@ -3486,7 +3879,14 @@ export class SqliteRuntimeStore {
       "review_packet",
       "worker_id"
     ];
-    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const workerGroupIdentity = this.assertWorkerGroupReservationIdentity(
+      worker.id,
+      "review",
+      reservation,
+      worker.task_envelope
+    );
+    if (!workerGroupIdentity.legacy) argumentKeys.push("worker_group");
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys.sort());
     const expectedActionDigest = materializeActionDigest({
       name: "worker_review_dispatch",
       version: "1",
@@ -3507,6 +3907,7 @@ export class SqliteRuntimeStore {
       subject,
       review_packet: reservation.arguments.review_packet as never
     });
+    const workerGroup = workerGroupIdentity.prepared;
     if (reservation.run_id !== worker.parent_run_id
       || reservation.turn_id !== worker.parent_turn_id
       || reservation.action_name !== "worker_review_dispatch"
@@ -3531,7 +3932,11 @@ export class SqliteRuntimeStore {
       || receipt.output.execution_worker_id !== worker.execution_worker_id
       || receipt.output.task_envelope_digest !== worker.task_envelope.digest
       || receipt.output.review_packet_digest !== worker.task_envelope.review_packet.digest
-      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest) {
+      || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest
+      || (!workerGroupIdentity.legacy
+        && (receipt.output.worker_group_id !== workerGroup.group.id
+          || receipt.output.worker_group_digest !== workerGroup.group.digest
+          || receipt.output.worker_group_task_key !== workerGroup.allocation.task_key))) {
       throw new Error(`Review Worker reservation identity drifted: ${worker.id}`);
     }
   }
@@ -3620,7 +4025,14 @@ export class SqliteRuntimeStore {
       "verification_commands",
       "worker_id"
     ];
-    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys);
+    const workerGroupIdentity = this.assertWorkerGroupReservationIdentity(
+      worker.id,
+      "execution",
+      reservation,
+      worker.task_envelope
+    );
+    if (!workerGroupIdentity.legacy) argumentKeys.push("worker_group");
+    const argumentsAreExact = sameStrings(Object.keys(reservation.arguments).sort(), argumentKeys.sort());
     const expectedActionDigest = materializeActionDigest({
       name: "worker_execution_dispatch",
       version: "1",
@@ -3637,6 +4049,7 @@ export class SqliteRuntimeStore {
       materialized_lineage: lineage,
       baseline
     });
+    const workerGroup = workerGroupIdentity.prepared;
     if (reservation.run_id !== worker.parent_run_id
       || reservation.turn_id !== worker.parent_turn_id
       || reservation.action_name !== "worker_execution_dispatch"
@@ -3664,7 +4077,11 @@ export class SqliteRuntimeStore {
       || receipt.output.child_execution_lock_digest !== worker.child_execution_lock.digest
       || receipt.output.lineage_id !== worker.lineage.id
       || receipt.output.lineage_digest !== worker.lineage.digest
-      || receipt.output.baseline_snapshot_digest !== worker.task_envelope.baseline.digest) {
+      || receipt.output.baseline_snapshot_digest !== worker.task_envelope.baseline.digest
+      || (!workerGroupIdentity.legacy
+        && (receipt.output.worker_group_id !== workerGroup.group.id
+          || receipt.output.worker_group_digest !== workerGroup.group.digest
+          || receipt.output.worker_group_task_key !== workerGroup.allocation.task_key))) {
       throw new Error(`Execution Worker reservation identity drifted: ${worker.id}`);
     }
   }

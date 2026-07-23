@@ -11,6 +11,7 @@ import {
   type ExecutionWorkerExecutor,
   type ExecutionWorkerInspection,
   type ReviewWorkerInspection,
+  type WorkerGroupInspection,
   type WorkerInspection,
   WORKER_NEEDS_INPUT_CONTRACT
 } from "../../../packages/kernel/src/index.js";
@@ -74,6 +75,7 @@ export interface VNextWorkerEnvelope {
       review_packet_digest: string | null;
       lineage: ExecutionWorkerInspection["lineage"] | null;
       baseline_snapshot: ExecutionWorkerInspection["task_envelope"]["baseline"] | null;
+      worker_group: WorkerGroupInspection;
       result_envelope: WorkerInspection["result_envelope"]
         | ExecutionWorkerInspection["result_envelope"]
         | ReviewWorkerInspection["result_envelope"];
@@ -114,7 +116,11 @@ export async function executeVNextWorker(
     }
     const selected = executionWorker ?? reviewWorker ?? worker!;
     if (input.action === "inspect") {
-      return envelope(selected.status, selected.id, selected, "inspect");
+      const workerGroup = store.inspectWorkerGroupForWorker(selected.id);
+      if (!workerGroup) {
+        throw new Error(`Worker Group binding is missing: ${selected.id}`);
+      }
+      return envelope(selected.status, selected.id, selected, "inspect", workerGroup);
     }
     if (executionWorker) {
       if (["completed", "failed", "needs_input"].includes(executionWorker.status)) {
@@ -198,9 +204,13 @@ function envelope(
   status: VNextWorkerEnvelope["worker"]["status"],
   workerId: string,
   worker?: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection,
-  action: VNextWorkerAction = "execute"
+  action: VNextWorkerAction = "execute",
+  workerGroup?: WorkerGroupInspection
 ): VNextWorkerEnvelope {
   const workerKind = worker?.task_envelope.worker_kind;
+  if (worker && action === "inspect" && !workerGroup) {
+    throw new Error(`Worker Group inspection is missing: ${worker.id}`);
+  }
   return {
     worker: {
       schema_version: 1,
@@ -220,7 +230,7 @@ function envelope(
         result_envelope_digest: worker.result_envelope?.digest ?? null
       } : {}),
       ...(worker && action === "inspect" ? {
-        inspection: workerInspectionEvidence(worker)
+        inspection: workerInspectionEvidence(worker, workerGroup as WorkerGroupInspection)
       } : {}),
       ...(status === "not_found"
         ? { diagnostic: { code: "worker_not_found", message: "Requested Worker Session was not found." } }
@@ -231,7 +241,8 @@ function envelope(
 }
 
 function workerInspectionEvidence(
-  worker: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection
+  worker: WorkerInspection | ExecutionWorkerInspection | ReviewWorkerInspection,
+  workerGroup: WorkerGroupInspection
 ): NonNullable<VNextWorkerEnvelope["worker"]["inspection"]> {
   const execution = isExecutionWorker(worker) ? worker : null;
   const review = isReviewWorker(worker) ? worker : null;
@@ -248,6 +259,7 @@ function workerInspectionEvidence(
     review_packet_digest: review?.task_envelope.review_packet.digest ?? null,
     lineage: execution?.lineage ?? null,
     baseline_snapshot: execution?.task_envelope.baseline ?? null,
+    worker_group: workerGroup,
     result_envelope: worker.result_envelope
   };
 }

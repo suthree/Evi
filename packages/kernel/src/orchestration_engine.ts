@@ -45,6 +45,27 @@ import {
 import { captureReviewEvidencePacket } from "./review_evidence_capture.js";
 import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
+import {
+  materializePreparedWorkerGroup,
+  normalizeWorkerGroupRequest,
+  parsePreparedWorkerGroup,
+  singletonWorkerGroupRequest,
+  type PreparedWorkerGroup,
+  type WorkerGroupRequest,
+  type WorkerKind
+} from "./worker_group_types.js";
+
+const workerGroupParameters = Type.Object({
+  group_key: Type.String({ minLength: 1, maxLength: 240 }),
+  task_key: Type.String({ minLength: 1, maxLength: 240 }),
+  expected_worker_count: Type.Integer({ minimum: 1, maximum: 4 }),
+  max_parallel: Type.Integer({ minimum: 1, maximum: 2 }),
+  deadline_at: Type.String({ minLength: 24, maxLength: 32 }),
+  budget: Type.Object({
+    max_output_tokens: Type.Integer({ minimum: 1 }),
+    max_duration_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
+  }, { additionalProperties: false })
+}, { additionalProperties: false });
 
 const parameters = Type.Object({
   objective: Type.String({ minLength: 1, maxLength: 4_000 }),
@@ -59,7 +80,8 @@ const parameters = Type.Object({
   budget: Type.Object({
     max_output_tokens: Type.Integer({ minimum: 1 }),
     timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
-  }, { additionalProperties: false })
+  }, { additionalProperties: false }),
+  worker_group: Type.Optional(workerGroupParameters)
 }, { additionalProperties: false });
 
 const executionParameters = Type.Object({
@@ -89,7 +111,8 @@ const executionParameters = Type.Object({
       maxItems: 32
     })
   }, { additionalProperties: false }),
-  rollback_instruction: Type.String({ minLength: 1, maxLength: 4_000 })
+  rollback_instruction: Type.String({ minLength: 1, maxLength: 4_000 }),
+  worker_group: Type.Optional(workerGroupParameters)
 }, { additionalProperties: false });
 
 const reviewParameters = Type.Object({
@@ -102,7 +125,8 @@ const reviewParameters = Type.Object({
   budget: Type.Object({
     max_output_tokens: Type.Integer({ minimum: 1 }),
     timeout_ms: Type.Integer({ minimum: 1, maximum: MAX_RUNTIME_TIMEOUT_MS })
-  }, { additionalProperties: false })
+  }, { additionalProperties: false }),
+  worker_group: Type.Optional(workerGroupParameters)
 }, { additionalProperties: false });
 
 const workerInspectParameters = Type.Object({
@@ -143,22 +167,50 @@ export class OrchestrationEngine {
     }
   }
 
-  prepare(parentRunId: string, invocationId: string, input: DiscussionTaskInput): JsonObject {
+  prepare(
+    parentRunId: string,
+    invocationId: string,
+    input: DiscussionTaskInput,
+    groupInput?: unknown
+  ): JsonObject {
+    const groupRequest = workerGroupRequest(
+      parentRunId,
+      invocationId,
+      "discussion",
+      input,
+      groupInput
+    );
+    const existing = this.store.getPreparedDiscussionWorkerDispatch(
+      parentRunId,
+      invocationId,
+      input,
+      groupRequest
+    );
+    if (existing) return existing;
     if (Date.parse(input.deadline_at) <= Date.now()) {
       throw new Error("Discussion worker deadline must be in the future at dispatch.");
     }
-    this.store.assertCanDispatchDiscussionWorker(parentRunId, invocationId);
+    const parent = this.requireCurrentParent(parentRunId);
     const parentLock = this.store.getExecutionLock(parentRunId);
     const childLock = deriveDiscussionWorkerLock(
       parentLock,
       executionLockActions(this.readOnlyChildActions),
       input.budget
     );
+    const workerId = deriveWorkerId(parentRunId, invocationId);
+    const workerGroup = this.prepareWorkerGroup(
+      parent,
+      workerId,
+      "discussion",
+      input,
+      groupRequest
+    );
     return {
       ...input,
-      worker_id: deriveWorkerId(parentRunId, invocationId),
+      worker_id: workerId,
       parent_execution_lock_digest: parentLock.digest,
-      child_execution_lock_digest: childLock.digest
+      child_execution_lock_digest: childLock.digest,
+      worker_group: workerGroup
     } as unknown as JsonObject;
   }
 
@@ -179,6 +231,12 @@ export class OrchestrationEngine {
     if (input.child_execution_lock_digest !== childLock.digest) {
       throw new Error("Worker dispatch child Execution Lock identity drifted after reservation.");
     }
+    const workerGroup = preparedWorkerGroupForTask(
+      input.worker_group,
+      input.worker_id,
+      "discussion",
+      task
+    );
     const taskEnvelope = materializeTaskEnvelope({
       ...task,
       task_id: `task_${reservation.id}`,
@@ -190,32 +248,55 @@ export class OrchestrationEngine {
       worker_id: input.worker_id,
       reservation_id: reservation.id,
       task_envelope: taskEnvelope,
-      child_execution_lock: childLock
+      child_execution_lock: childLock,
+      worker_group: workerGroup
     });
   }
 
   async prepareExecution(
     parentRunId: string,
     invocationId: string,
-    input: ExecutionTaskInput
+    input: ExecutionTaskInput,
+    groupInput?: unknown
   ): Promise<JsonObject> {
-    this.store.assertCanDispatchExecutionWorker(parentRunId, invocationId);
-    const prepared = this.store.getPreparedExecutionWorkerDispatch(parentRunId, invocationId, input);
+    const groupRequest = workerGroupRequest(
+      parentRunId,
+      invocationId,
+      "execution",
+      input,
+      groupInput
+    );
+    const prepared = this.store.getPreparedExecutionWorkerDispatch(
+      parentRunId,
+      invocationId,
+      input,
+      groupRequest
+    );
     if (prepared) return prepared;
     if (Date.parse(input.deadline_at) <= Date.now()) {
       throw new Error("Execution Worker deadline must be in the future at first dispatch.");
     }
+    const parent = this.requireCurrentParent(parentRunId);
     const parentLock = this.store.getExecutionLock(parentRunId);
     const childLock = deriveExecutionWorkerLock(parentLock, [], input.budget);
     const inspected = await inspectDeliveryLineage(parentLock.authority.cwd, input.lineage);
     this.store.assertCanBindDeliveryLineage(inspected.lineage, parentRunId, invocationId);
+    const workerId = deriveExecutionWorkerId(parentRunId, invocationId);
+    const workerGroup = this.prepareWorkerGroup(
+      parent,
+      workerId,
+      "execution",
+      input,
+      groupRequest
+    );
     return {
       ...input,
-      worker_id: deriveExecutionWorkerId(parentRunId, invocationId),
+      worker_id: workerId,
       parent_execution_lock_digest: parentLock.digest,
       child_execution_lock_digest: childLock.digest,
       materialized_lineage: inspected.lineage,
-      baseline: inspected.baseline
+      baseline: inspected.baseline,
+      worker_group: workerGroup
     } as unknown as JsonObject;
   }
 
@@ -237,6 +318,12 @@ export class OrchestrationEngine {
     }
     const lineage = parseDeliveryLineage(input.materialized_lineage);
     const baseline = parseDeliveryLineageSnapshot(input.baseline);
+    const workerGroup = preparedWorkerGroupForTask(
+      input.worker_group,
+      input.worker_id,
+      "execution",
+      task
+    );
     const taskEnvelope = materializeExecutionTaskEnvelope({
       ...task,
       task_id: `task_${reservation.id}`,
@@ -252,22 +339,35 @@ export class OrchestrationEngine {
       task_envelope: taskEnvelope,
       child_execution_lock: childLock,
       lineage,
-      baseline
+      baseline,
+      worker_group: workerGroup
     });
   }
 
   async prepareReview(
     parentRunId: string,
     invocationId: string,
-    input: ReviewTaskInput
+    input: ReviewTaskInput,
+    groupInput?: unknown
   ): Promise<JsonObject> {
-    this.store.assertCanDispatchReviewWorker(parentRunId, invocationId);
-    const prepared = this.store.getPreparedReviewWorkerDispatch(parentRunId, invocationId, input);
+    const groupRequest = workerGroupRequest(
+      parentRunId,
+      invocationId,
+      "review",
+      input,
+      groupInput
+    );
+    const prepared = this.store.getPreparedReviewWorkerDispatch(
+      parentRunId,
+      invocationId,
+      input,
+      groupRequest
+    );
     if (prepared) return prepared;
     if (Date.parse(input.deadline_at) <= Date.now()) {
       throw new Error("Review Worker deadline must be in the future at dispatch.");
     }
-    const parent = this.store.inspectRun(parentRunId);
+    const parent = this.requireCurrentParent(parentRunId);
     const subject = this.store.inspectExecutionWorker(input.execution_worker_id);
     if (!parent || !subject
       || subject.parent_run_id !== parent.id
@@ -286,12 +386,21 @@ export class OrchestrationEngine {
       input.budget
     );
     const packet = await captureReviewEvidencePacket(subject);
+    const workerId = deriveReviewWorkerId(parentRunId, invocationId);
+    const workerGroup = this.prepareWorkerGroup(
+      parent,
+      workerId,
+      "review",
+      input,
+      groupRequest
+    );
     return {
       ...input,
-      worker_id: deriveReviewWorkerId(parentRunId, invocationId),
+      worker_id: workerId,
       parent_execution_lock_digest: parentLock.digest,
       child_execution_lock_digest: childLock.digest,
-      review_packet: packet
+      review_packet: packet,
+      worker_group: workerGroup
     } as unknown as JsonObject;
   }
 
@@ -323,6 +432,12 @@ export class OrchestrationEngine {
     if (input.child_execution_lock_digest !== childLock.digest) {
       throw new Error("Review Worker child Execution Lock identity drifted after reservation.");
     }
+    const workerGroup = preparedWorkerGroupForTask(
+      input.worker_group,
+      input.worker_id,
+      "review",
+      task
+    );
     const parent = this.store.inspectRun(reservation.run_id);
     const subject = this.store.inspectExecutionWorker(task.execution_worker_id);
     if (!parent || !subject
@@ -349,7 +464,8 @@ export class OrchestrationEngine {
         worker_id: input.worker_id,
         reservation_id: reservation.id,
         task_envelope: preparedTaskEnvelope,
-        child_execution_lock: childLock
+        child_execution_lock: childLock,
+        worker_group: workerGroup
       });
     }
     const currentPacket = await captureReviewEvidencePacket(subject);
@@ -369,12 +485,44 @@ export class OrchestrationEngine {
       worker_id: input.worker_id,
       reservation_id: reservation.id,
       task_envelope: taskEnvelope,
-      child_execution_lock: childLock
+      child_execution_lock: childLock,
+      worker_group: workerGroup
     });
   }
 
   inspect(workerId: string): WorkerInspection | null {
     return this.store.inspectWorker(workerId);
+  }
+
+  private requireCurrentParent(parentRunId: string): RunRecord {
+    const parent = this.store.inspectRun(parentRunId);
+    if (!parent || parent.status !== "running") {
+      throw new Error(`Worker dispatch requires one current running parent Run: ${parentRunId}`);
+    }
+    return parent;
+  }
+
+  private prepareWorkerGroup(
+    parent: RunRecord,
+    workerId: string,
+    workerKind: WorkerKind,
+    task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } },
+    request: WorkerGroupRequest
+  ): PreparedWorkerGroup {
+    if (Date.parse(request.deadline_at) <= Date.now()) {
+      throw new Error("Worker Group deadline must be in the future at first dispatch.");
+    }
+    const prepared = materializePreparedWorkerGroup({
+      request,
+      parent_run_id: parent.id,
+      parent_turn_id: parent.turn_id,
+      worker_id: workerId,
+      worker_kind: workerKind,
+      task_deadline_at: task.deadline_at,
+      task_budget: task.budget
+    });
+    this.store.assertCanReserveWorkerGroupTask(prepared);
+    return prepared;
   }
 
   inspectExecution(workerId: string): ExecutionWorkerInspection | null {
@@ -383,6 +531,10 @@ export class OrchestrationEngine {
 
   inspectReview(workerId: string): ReviewWorkerInspection | null {
     return this.store.inspectReviewWorker(workerId);
+  }
+
+  inspectGroupForWorker(workerId: string) {
+    return this.store.inspectWorkerGroupForWorker(workerId);
   }
 
   inspectChildEvidence(parentRunId: string, workerId: string): JsonObject {
@@ -661,9 +813,55 @@ function deriveReviewWorkerId(parentRunId: string, invocationId: string): string
   return `worker_${digest.slice(0, 32)}`;
 }
 
+function workerGroupRequest(
+  parentRunId: string,
+  invocationId: string,
+  workerKind: WorkerKind,
+  task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } },
+  groupInput: unknown
+): WorkerGroupRequest {
+  return groupInput === undefined
+    ? singletonWorkerGroupRequest({
+      parent_run_id: parentRunId,
+      invocation_id: invocationId,
+      worker_kind: workerKind,
+      deadline_at: task.deadline_at,
+      budget: task.budget
+    })
+    : normalizeWorkerGroupRequest(groupInput);
+}
+
+function preparedWorkerGroupForTask(
+  input: unknown,
+  workerId: string,
+  workerKind: WorkerKind,
+  task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } }
+): PreparedWorkerGroup {
+  const prepared = parsePreparedWorkerGroup(input);
+  if (prepared.allocation.worker_id !== workerId
+    || prepared.allocation.worker_kind !== workerKind
+    || prepared.allocation.deadline_at !== task.deadline_at
+    || stableJson(prepared.allocation.budget) !== stableJson({
+      max_output_tokens: task.budget.max_output_tokens,
+      timeout_ms: task.budget.timeout_ms
+    })) {
+    throw new Error(`Worker Group task allocation identity drifted: ${workerId}`);
+  }
+  return prepared;
+}
+
+function requireWorkerGroupInspection(engine: OrchestrationEngine, workerId: string) {
+  const inspection = engine.inspectGroupForWorker(workerId);
+  if (!inspection?.task) {
+    throw new Error(`Worker Group binding is missing after dispatch: ${workerId}`);
+  }
+  return { ...inspection, task: inspection.task };
+}
+
 export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
     const worker = engine.dispatchExecution(dispatch.reservation, dispatch.arguments);
+    const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",
       summary: "One source-mutating execution Worker was durably queued without starting it.",
@@ -674,7 +872,10 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
         child_execution_lock_digest: worker.child_execution_lock.digest,
         lineage_id: worker.lineage.id,
         lineage_digest: worker.lineage.digest,
-        baseline_snapshot_digest: worker.task_envelope.baseline.digest
+        baseline_snapshot_digest: worker.task_envelope.baseline.digest,
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.task.task_key
       }
     };
   };
@@ -702,13 +903,19 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
         "deadline_at",
         "budget",
         "lineage",
-        "rollback_instruction"
+        "rollback_instruction",
+        "worker_group"
       ]);
       if (Object.keys(argumentsInput).some((key) => !allowed.has(key))) {
         throw new Error("worker_execution_dispatch arguments contain unsupported fields.");
       }
       if (!invocation) throw new Error("worker_execution_dispatch requires Action invocation identity.");
-      return engine.prepareExecution(invocation.run_id, invocation.invocation_id, value);
+      return engine.prepareExecution(
+        invocation.run_id,
+        invocation.invocation_id,
+        value,
+        (argumentsInput as Record<string, unknown>).worker_group
+      );
     },
     execute: observe,
     reconcile: observe
@@ -718,6 +925,7 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
 export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
     const worker = await engine.dispatchReview(dispatch.reservation, dispatch.arguments);
+    const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",
       summary: "One independent read-only Reviewer Worker was durably queued.",
@@ -727,7 +935,10 @@ export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): A
         execution_worker_id: worker.execution_worker_id,
         task_envelope_digest: worker.task_envelope.digest,
         review_packet_digest: worker.task_envelope.review_packet.digest,
-        child_execution_lock_digest: worker.child_execution_lock.digest
+        child_execution_lock_digest: worker.child_execution_lock.digest,
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.task.task_key
       }
     };
   };
@@ -742,9 +953,33 @@ export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): A
     },
     prepared_argument_max_bytes: REVIEW_ACTION_ARGUMENT_MAX_BYTES,
     async prepare(argumentsInput: unknown, invocation?: ActionInvocation): Promise<JsonObject> {
-      const value = normalizeReviewTaskInput(argumentsInput);
+      if (!argumentsInput || typeof argumentsInput !== "object" || Array.isArray(argumentsInput)) {
+        throw new Error("worker_review_dispatch arguments must be an object.");
+      }
+      const raw = argumentsInput as Record<string, unknown>;
+      const allowed = new Set([
+        "execution_worker_id",
+        "checklist",
+        "deadline_at",
+        "budget",
+        "worker_group"
+      ]);
+      if (Object.keys(raw).some((key) => !allowed.has(key))) {
+        throw new Error("worker_review_dispatch arguments contain unsupported fields.");
+      }
+      const value = normalizeReviewTaskInput({
+        execution_worker_id: raw.execution_worker_id,
+        checklist: raw.checklist,
+        deadline_at: raw.deadline_at,
+        budget: raw.budget
+      });
       if (!invocation) throw new Error("worker_review_dispatch requires Action invocation identity.");
-      return engine.prepareReview(invocation.run_id, invocation.invocation_id, value);
+      return engine.prepareReview(
+        invocation.run_id,
+        invocation.invocation_id,
+        value,
+        raw.worker_group
+      );
     },
     execute: observe,
     reconcile: observe
@@ -754,6 +989,7 @@ export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): A
 export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
     const worker = engine.dispatch(dispatch.reservation, dispatch.arguments);
+    const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",
       summary: "One asynchronous read-only discussion worker was durably queued.",
@@ -761,7 +997,10 @@ export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine
         worker_id: worker.id,
         status: worker.status,
         task_envelope_digest: worker.task_envelope.digest,
-        child_execution_lock_digest: worker.child_execution_lock.digest
+        child_execution_lock_digest: worker.child_execution_lock.digest,
+        worker_group_id: workerGroup.group.id,
+        worker_group_digest: workerGroup.group.digest,
+        worker_group_task_key: workerGroup.task.task_key
       }
     };
   };
@@ -786,13 +1025,19 @@ export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine
         "constraints",
         "verification_requirements",
         "deadline_at",
-        "budget"
+        "budget",
+        "worker_group"
       ]);
       if (keys.some((key) => !allowed.has(key))) {
         throw new Error("worker_dispatch arguments contain unsupported fields.");
       }
       if (!invocation) throw new Error("worker_dispatch requires Action invocation identity.");
-      return engine.prepare(invocation.run_id, invocation.invocation_id, value);
+      return engine.prepare(
+        invocation.run_id,
+        invocation.invocation_id,
+        value,
+        (argumentsInput as Record<string, unknown>).worker_group
+      );
     },
     execute: observe,
     reconcile: observe
