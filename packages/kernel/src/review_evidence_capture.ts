@@ -9,6 +9,10 @@ import {
   parseDeliveryLineageSnapshot,
   type DeliveryLineageSnapshot
 } from "./delivery_lineage.js";
+import {
+  canonicalDeliveryLineageFileIdentity,
+  canonicalDeliveryLineageSymlinkDigest
+} from "./delivery_lineage_path_identity.js";
 import type { ExecutionWorkerInspection } from "./execution_worker_types.js";
 import {
   REVIEW_EVIDENCE_PACKET_MAX_BYTES,
@@ -40,6 +44,11 @@ export async function captureReviewEvidencePacket(
     throw new Error(`Review subject must be one completed execution Worker: ${subject.id}`);
   }
   const expected = parseDeliveryLineageSnapshot(result.final_snapshot);
+  if (expected.schema_version !== 2) {
+    throw new Error(
+      `Review evidence requires a mode-bound Delivery Lineage snapshot: ${subject.id}`
+    );
+  }
   assertCurrentSnapshot(expected, await captureDeliveryLineageSnapshot(subject.lineage), subject.id);
   const files: ReviewEvidenceFile[] = [];
   const capturedAfterEntries = new Map<string, ReviewWorktreeEntry | null>();
@@ -92,6 +101,7 @@ function assertCurrentSnapshot(
   workerId: string
 ): void {
   const state = (snapshot: DeliveryLineageSnapshot) => ({
+    schema_version: snapshot.schema_version,
     lineage_id: snapshot.lineage_id,
     lineage_digest: snapshot.lineage_digest,
     repository_root: snapshot.repository_root,
@@ -145,11 +155,11 @@ async function readWorktreeEntry(
   try {
     const info = await lstat(target);
     if (info.isSymbolicLink()) {
-      const link = await readlink(target);
+      const link = await readlink(target, { encoding: "buffer" });
       return {
         mode: "120000",
-        text: decodeReviewText(Buffer.from(link), path),
-        canonical_digest: sha256(`symlink\u0000${link}`)
+        text: decodeReviewText(link, path),
+        canonical_digest: canonicalDeliveryLineageSymlinkDigest(link)
       };
     }
     if (!info.isFile()) throw new Error(`Review evidence path is not a text file: ${path}`);
@@ -159,10 +169,11 @@ async function readWorktreeEntry(
       );
     }
     const bytes = await readFile(target);
+    const identity = canonicalDeliveryLineageFileIdentity(bytes, (info.mode & 0o111) !== 0);
     return {
-      mode: (info.mode & 0o111) === 0 ? "100644" : "100755",
+      mode: identity.mode,
       text: decodeReviewText(bytes, path),
-      canonical_digest: createHash("sha256").update(bytes).digest("hex")
+      canonical_digest: identity.digest
     };
   } catch (error) {
     if (isMissing(error)) return null;

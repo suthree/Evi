@@ -167,7 +167,8 @@ review Workers in one lifecycle ledger. A review Worker is a separate read-only
 child Run bound narrowly to one completed execution Worker after that execution
 Result has been delivered into the current Supervisor Turn. It receives a
 bounded, digest-addressed before/after packet from the execution's exact final
-Delivery-Lineage snapshot and returns only `approved` or `changes_required`
+Delivery-Lineage snapshot. The snapshot's per-path identity binds normalized
+Git mode as well as content. The Reviewer returns only `approved` or `changes_required`
 with structured findings. Its verdict is independent evidence, not integration
 or parent-completion authority. Bounded parallel dispatch and an exclusive
 Integration Run remain later orchestration steps.

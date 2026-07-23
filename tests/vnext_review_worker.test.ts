@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, realpath, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,6 +24,7 @@ import {
   type ExecutionWorkerExecutor
 } from "../packages/kernel/src/index.js";
 import type { JsonObject } from "../packages/kernel/src/action_types.js";
+import { stableJson } from "../packages/kernel/src/canonical_json.js";
 import { captureReviewEvidencePacket } from "../packages/kernel/src/review_evidence_capture.js";
 import { materializeReviewResultEnvelope } from "../packages/kernel/src/review_worker_types.js";
 import {
@@ -346,6 +348,46 @@ test("Reviewer dispatch revalidates the exact Delivery Lineage snapshot after re
   }
 });
 
+test("Reviewer dispatch rejects post-execution Git mode drift with unchanged bytes", async () => {
+  const fixture = await createGitFixture("mode-drift");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const composition = beginSupervisor(store, fixture.repository);
+    const dispatched = await composition.gateway.invoke(executionInvocation(
+      composition.started.run.id,
+      composition.started.run.turn_id,
+      fixture,
+      "mode-drift-execution"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    const executionWorker = store.inspectExecutionWorker(String(dispatched.receipt.output.worker_id));
+    assert.ok(executionWorker);
+    await new ExecutionWorkerRuntime(store, fakeExecutor(async (task) => {
+      const path = join(task.lineage.worktree, "src", "feature.txt");
+      await writeFile(path, "reviewed change\n");
+      await chmod(path, 0o755);
+    })).execute(executionWorker.id);
+    composition.engine.settleSupervisorTurn(composition.started.execution, "Deliver mode-bound evidence.");
+    const resumed = composition.engine.resumeSupervisor(composition.started.run.id, 30_000)!;
+    await chmod(join(fixture.worktree, "src", "feature.txt"), 0o644);
+    const rejected = await composition.gateway.invoke(reviewInvocation(
+      resumed.run.id,
+      resumed.run.turn_id,
+      executionWorker.id,
+      "mode-drift-review"
+    ));
+    assert.equal(rejected.status, "denied");
+    assert.match(rejected.status === "denied" ? rejected.reason : "", /Lineage drifted/iu);
+    assert.equal(store.inspectRun(resumed.run.id)?.action_count, 1);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("Reviewer evidence capture rejects binary and oversized changed content before reservation", async () => {
   for (const scenario of ["binary", "oversized"] as const) {
     const fixture = await createGitFixture(`packet-${scenario}`);
@@ -391,32 +433,114 @@ test("Reviewer evidence capture rejects binary and oversized changed content bef
   }
 });
 
-test("Reviewer evidence rejects an ABA read that does not match the final snapshot bytes", async () => {
+test("Reviewer evidence rejects a non-UTF-8 symlink target without lossy normalization", async () => {
+  const fixture = await createGitFixture("packet-invalid-symlink");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const composition = beginSupervisor(store, fixture.repository);
+    const dispatched = await composition.gateway.invoke(executionInvocation(
+      composition.started.run.id,
+      composition.started.run.turn_id,
+      fixture,
+      "packet-invalid-symlink-execution"
+    ));
+    assert.equal(dispatched.status, "completed", JSON.stringify(dispatched));
+    if (dispatched.status !== "completed") return;
+    const executionWorker = store.inspectExecutionWorker(String(dispatched.receipt.output.worker_id));
+    assert.ok(executionWorker);
+    await new ExecutionWorkerRuntime(store, fakeExecutor(async (task) => {
+      await writeFile(join(task.lineage.worktree, "src", "feature.txt"), "reviewed change\n");
+      await symlink(
+        Buffer.from([0x62, 0x61, 0x64, 0xff]),
+        join(task.lineage.worktree, "src", "invalid-link.txt")
+      );
+    })).execute(executionWorker.id);
+    composition.engine.settleSupervisorTurn(composition.started.execution, "Deliver raw symlink evidence.");
+    const resumed = composition.engine.resumeSupervisor(composition.started.run.id, 30_000)!;
+    const rejected = await composition.gateway.invoke(reviewInvocation(
+      resumed.run.id,
+      resumed.run.turn_id,
+      executionWorker.id,
+      "packet-invalid-symlink-review"
+    ));
+    assert.equal(rejected.status, "denied");
+    assert.match(rejected.status === "denied" ? rejected.reason : "", /non-UTF-8 content/iu);
+    assert.equal(store.inspectRun(resumed.run.id)?.action_count, 1);
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("Reviewer evidence rejects ABA bytes or mode that do not match the final snapshot", async () => {
   const fixture = await createGitFixture("packet-aba");
   const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
     state_profile: "stable_cli"
   });
   try {
     const flow = await completedExecutionFlow(store, fixture);
-    await assert.rejects(
-      () => captureReviewEvidencePacket(flow.executionWorker, {
-        before_worktree_entry_read: async (path) => {
-          if (path === "src/feature.txt") {
-            await writeFile(join(fixture.worktree, path), "transient ABA bytes\n");
+    for (const scenario of ["bytes", "mode"] as const) {
+      await assert.rejects(
+        () => captureReviewEvidencePacket(flow.executionWorker, {
+          before_worktree_entry_read: async (path) => {
+            if (path !== "src/feature.txt") return;
+            if (scenario === "bytes") {
+              await writeFile(join(fixture.worktree, path), "transient ABA bytes\n");
+            } else {
+              await chmod(join(fixture.worktree, path), 0o755);
+            }
+          },
+          after_worktree_entry_read: async (path) => {
+            if (path !== "src/feature.txt") return;
+            if (scenario === "bytes") {
+              await writeFile(join(fixture.worktree, path), "reviewed change\n");
+            } else {
+              await chmod(join(fixture.worktree, path), 0o644);
+            }
           }
-        },
-        after_worktree_entry_read: async (path) => {
-          if (path === "src/feature.txt") {
-            await writeFile(join(fixture.worktree, path), "reviewed change\n");
-          }
-        }
-      }),
-      /does not match the final snapshot/iu
-    );
+        }),
+        /does not match the final snapshot/iu
+      );
+    }
     const stablePacket = await captureReviewEvidencePacket(flow.executionWorker);
     assert.equal(
       stablePacket.files.find((file) => file.path === "src/feature.txt")?.after,
       "reviewed change\n"
+    );
+  } finally {
+    store.close();
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("Reviewer evidence keeps legacy snapshot v1 readable but fails closed on missing mode identity", async () => {
+  const fixture = await createGitFixture("packet-v1");
+  const store = new SqliteRuntimeStore(join(fixture.root, "state", "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const flow = await completedExecutionFlow(store, fixture);
+    const result = flow.executionWorker.result_envelope!;
+    const { digest: _snapshotDigest, ...currentBody } = result.final_snapshot;
+    const legacyBody = {
+      ...currentBody,
+      schema_version: 1 as const,
+      path_digests: {
+        "src/feature.txt": createHash("sha256").update("reviewed change\n").digest("hex")
+      }
+    };
+    const legacySnapshot = {
+      ...legacyBody,
+      digest: createHash("sha256").update(stableJson(legacyBody)).digest("hex")
+    };
+    await assert.rejects(
+      () => captureReviewEvidencePacket({
+        ...flow.executionWorker,
+        result_envelope: { ...result, final_snapshot: legacySnapshot }
+      }),
+      /requires a mode-bound Delivery Lineage snapshot/iu
     );
   } finally {
     store.close();

@@ -155,6 +155,12 @@ disappears without a terminal Result, expiry changes the Worker and Lineage to
 `paused/outcome_unknown`; no second writer is admitted and no execution is
 replayed automatically.
 
+Delivery-Lineage snapshot version 2 binds normalized regular-file Git mode
+(`100644` or `100755`) into each regular-file per-path digest in addition to file
+bytes; symlink target identity and deletion remain explicit. Version 1 snapshots
+remain parseable historical evidence, but review dispatch fails closed because
+they cannot prove exact final mode identity.
+
 `worker_review_dispatch` may target only one completed execution Worker owned
 by the same parent after its Result has been delivered into the current
 Supervisor Turn. Before reservation, Evi verifies the exact execution Task,
