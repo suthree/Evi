@@ -331,6 +331,16 @@ test("Task and Result Envelopes reject digest drift and undeclared authority fie
       () => parseResultEnvelope({ ...result, summary: "drifted" }),
       /digest is invalid/
     );
+    assert.throws(
+      () => materializeResultEnvelope({
+        ...result,
+        actual_execution: {
+          ...result.actual_execution,
+          model_dispatch_ids: ["model_dispatch_duplicate", "model_dispatch_duplicate"]
+        }
+      }),
+      /model dispatch ids contain duplicates/
+    );
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
@@ -1095,9 +1105,10 @@ test("worker protocol recovery reports the original answer-producing model execu
   }
 });
 
-test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifies it, and alone completes the parent", async () => {
+test("a Supervisor delivers an ordered multi-dispatch Result once and terminal Worker execution does not replay", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-supervisor-worker-closure-"));
-  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), { state_profile: "stable_cli" });
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const runtimeInspect = createRuntimeInspectAction(store);
     const engine = new OrchestrationEngine(store, [runtimeInspect.contract]);
@@ -1160,15 +1171,62 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
     assert.equal(parentRuntime.inspect(first.run_id)?.execution_count, 1);
 
     const childGateway = new ActionGateway(store, [runtimeInspect]);
-    const worker = await new DiscussionWorkerRuntime(store, childGateway, {
-      create: () => ({
-        execute: async () => ({ answer: "Child found bounded evidence for the supervisor." })
-      })
-    }).execute(workerId);
+    let childLoopCalls = 0;
+    const childRuntime = new DiscussionWorkerRuntime(store, childGateway, {
+      create(input) {
+        return {
+          execute: async () => {
+            childLoopCalls += 1;
+            const first = store.startModelDispatch(input.execution, {
+              provider: input.execution_lock.model.provider,
+              model: input.execution_lock.model.model
+            });
+            store.observeModelResponse(input.execution, first.id, 200);
+            store.settleModelDispatch(input.execution, first.id, {
+              stop_reason: "toolUse",
+              message_digest: "a".repeat(64)
+            });
+            const second = store.startModelDispatch(input.execution, {
+              provider: input.execution_lock.model.provider,
+              model: input.execution_lock.model.model
+            });
+            store.observeModelResponse(input.execution, second.id, 200);
+            store.settleModelDispatch(input.execution, second.id, {
+              stop_reason: "stop",
+              message_digest: "b".repeat(64)
+            });
+            const raw = new DatabaseSync(sqlite);
+            try {
+              raw.prepare("UPDATE model_dispatches SET id = ? WHERE id = ?")
+                .run("model_dispatch_z", first.id);
+              raw.prepare("UPDATE model_dispatches SET id = ? WHERE id = ?")
+                .run("model_dispatch_a", second.id);
+            } finally {
+              raw.close();
+            }
+            return { answer: "Child found bounded evidence for the supervisor." };
+          }
+        };
+      }
+    });
+    const worker = await childRuntime.execute(workerId);
     childRunId = worker.child_run_id!;
+    assert.equal(childLoopCalls, 1);
+    assert.deepEqual(worker.result_envelope?.actual_execution.model_dispatch_ids, [
+      "model_dispatch_z",
+      "model_dispatch_a"
+    ]);
     assert.equal(parentRuntime.inspect(first.run_id)?.status, "waiting");
     assert.equal(parentRuntime.inspect(first.run_id)?.deliverable_worker_count, 1);
     assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, null);
+
+    const terminalIdentity = {
+      child_run_id: worker.child_run_id,
+      result_digest: worker.result_envelope?.digest,
+      execution_id: worker.result_envelope?.actual_execution.execution_id,
+      dispatch_ids: worker.result_envelope?.actual_execution.model_dispatch_ids,
+      dispatch_count: store.inspectRun(childRunId)?.model_dispatch_count
+    };
 
     const integrated = await parentRuntime.continueRun(first.run_id);
     assert.equal(integrated.status, "completed");
@@ -1184,6 +1242,17 @@ test("a Supervisor Run waits, receives one advisory Result in a new Turn, verifi
     assert.equal(parent?.deliverable_worker_count, 0);
     assert.equal(engine.inspect(workerId)?.result_delivered_to_turn_id, integrated.turn_id);
     assert.equal(store.inspectRun(childRunId)?.status, "completed");
+
+    await assert.rejects(() => childRuntime.execute(workerId), /cannot be claimed/);
+    const repeated = engine.inspect(workerId);
+    assert.equal(childLoopCalls, 1);
+    assert.deepEqual({
+      child_run_id: repeated?.child_run_id,
+      result_digest: repeated?.result_envelope?.digest,
+      execution_id: repeated?.result_envelope?.actual_execution.execution_id,
+      dispatch_ids: repeated?.result_envelope?.actual_execution.model_dispatch_ids,
+      dispatch_count: store.inspectRun(childRunId)?.model_dispatch_count
+    }, terminalIdentity);
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });

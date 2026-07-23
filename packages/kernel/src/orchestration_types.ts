@@ -306,7 +306,7 @@ export function materializeResultEnvelope(input: ResultEnvelopeInput): ResultEnv
         actualExecution.execution_ordinal,
         "Result Envelope execution ordinal"
       ),
-      model_dispatch_ids: stringArray(
+      model_dispatch_ids: orderedStringArray(
         actualExecution.model_dispatch_ids,
         "Result Envelope model dispatch ids",
         MAX_ITEMS
@@ -419,6 +419,13 @@ function text(input: unknown, label: string): string {
 function stringArray(input: unknown, label: string, max: number): string[] {
   if (!Array.isArray(input) || input.length > max) throw new Error(`${label} are invalid.`);
   return [...new Set(input.map((value) => identifier(value, label)))].sort();
+}
+
+function orderedStringArray(input: unknown, label: string, max: number): string[] {
+  if (!Array.isArray(input) || input.length > max) throw new Error(`${label} are invalid.`);
+  const values = input.map((value) => identifier(value, label));
+  if (new Set(values).size !== values.length) throw new Error(`${label} contain duplicates.`);
+  return values;
 }
 
 function positiveInteger(input: unknown, label: string): number {
