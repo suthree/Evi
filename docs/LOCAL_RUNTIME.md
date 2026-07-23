@@ -46,15 +46,20 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports or dual-writes
-v0.2 state. Schema version 11 plus the immutable `stable_cli` state profile
-refuses current `diagnostic_canary` databases. Version 8 and 9 stable state
-upgrade transactionally. The version 9 migration preserves both existing
-Worker kinds while consolidating their common lifecycle into one
-`worker_sessions` ledger; execution-only Delivery-Lineage authority remains in
-the narrow `execution_worker_bindings` table. Version 10 migrates that exact
-ledger in place, expands the kind constraint, and adds only the narrow
-`review_worker_bindings` relation; review does not create another lifecycle
-table. Other earlier or unknown versions fail closed.
+v0.2 state. Schema version 12 plus the immutable `stable_cli` state profile
+refuses current `diagnostic_canary` databases. Versions 8 through 11 upgrade
+transactionally before the version marker advances. Historical discussion,
+execution, and review records retain their exact Action, Task, Result, lease,
+delivery, child-Run, attempt, and Delivery-Lineage identities while converging
+on one `worker_sessions` lifecycle ledger. Execution-only lineage authority
+remains in the narrow `execution_worker_bindings` table and review subject
+authority remains in `review_worker_bindings`; neither creates another
+lifecycle table. The version 11 to 12 step removes the former
+one-kind-per-parent index and gives every historical Worker a deterministic
+singleton entry in `worker_groups` and `worker_group_bindings`. Versions 8
+through 10 receive the same singleton binding after their ledger migration.
+Missing, orphaned, or non-canonical Group state and all other older or unknown
+schemas fail closed.
 
 `submit` uses the active model from normal safe config resolution. Relative
 `--config-dir` is resolved below `--repo-root`; both selectors become part of

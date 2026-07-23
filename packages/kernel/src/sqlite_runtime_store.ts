@@ -184,6 +184,15 @@ export interface SqliteRuntimeStoreOptions {
   state_profile?: RuntimeStateProfile;
 }
 
+export class WorkerGroupAdmissionError extends Error {
+  readonly code = "worker_group_admission_denied";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "WorkerGroupAdmissionError";
+  }
+}
+
 interface WorkerSessionRow {
   id: string;
   reservation_id: string;
@@ -1102,7 +1111,8 @@ export class SqliteRuntimeStore {
     runId: string,
     invocationId: string,
     input: unknown,
-    groupRequest: WorkerGroupRequest
+    groupRequest: WorkerGroupRequest,
+    allowLegacyWithoutGroup: boolean
   ): JsonObject | null {
     const reservation = this.getActionReservationByInvocation(runId, invocationId);
     if (!reservation) return null;
@@ -1116,7 +1126,11 @@ export class SqliteRuntimeStore {
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Discussion Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
-    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
+    this.assertPreparedWorkerGroupRequest(
+      reservation.arguments.worker_group,
+      groupRequest,
+      allowLegacyWithoutGroup
+    );
     return reservation.arguments;
   }
 
@@ -1124,7 +1138,8 @@ export class SqliteRuntimeStore {
     runId: string,
     invocationId: string,
     input: unknown,
-    groupRequest: WorkerGroupRequest
+    groupRequest: WorkerGroupRequest,
+    allowLegacyWithoutGroup: boolean
   ): JsonObject | null {
     const reservation = this.getActionReservationByInvocation(runId, invocationId);
     if (!reservation) return null;
@@ -1138,7 +1153,11 @@ export class SqliteRuntimeStore {
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Execution Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
-    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
+    this.assertPreparedWorkerGroupRequest(
+      reservation.arguments.worker_group,
+      groupRequest,
+      allowLegacyWithoutGroup
+    );
     return reservation.arguments;
   }
 
@@ -1146,7 +1165,8 @@ export class SqliteRuntimeStore {
     runId: string,
     invocationId: string,
     input: unknown,
-    groupRequest: WorkerGroupRequest
+    groupRequest: WorkerGroupRequest,
+    allowLegacyWithoutGroup: boolean
   ): JsonObject | null {
     const reservation = this.getActionReservationByInvocation(runId, invocationId);
     if (!reservation) return null;
@@ -1165,7 +1185,11 @@ export class SqliteRuntimeStore {
     if (stableJson(requested) !== stableJson(durable)) {
       throw new Error(`Review Worker invocation arguments drifted: ${runId}/${invocationId}`);
     }
-    this.assertPreparedWorkerGroupRequest(reservation.arguments.worker_group, groupRequest);
+    this.assertPreparedWorkerGroupRequest(
+      reservation.arguments.worker_group,
+      groupRequest,
+      allowLegacyWithoutGroup
+    );
     return reservation.arguments;
   }
 
@@ -2934,8 +2958,13 @@ export class SqliteRuntimeStore {
 
   private assertPreparedWorkerGroupRequest(
     preparedInput: unknown,
-    requestedInput: WorkerGroupRequest
+    requestedInput: WorkerGroupRequest,
+    allowLegacyWithoutGroup: boolean
   ): void {
+    if (preparedInput === undefined) {
+      if (allowLegacyWithoutGroup) return;
+      throw new Error("Worker Group request drifted from a historical singleton Action.");
+    }
     const prepared = parsePreparedWorkerGroup(preparedInput);
     const requested = normalizeWorkerGroupRequest(requestedInput);
     if (stableJson(prepared.request) !== stableJson(requested)) {
@@ -2966,7 +2995,9 @@ export class SqliteRuntimeStore {
       SELECT * FROM worker_group_bindings WHERE group_id = ? AND task_key = ?
     `).get(group.id, allocation.task_key) as WorkerGroupBindingRow | undefined;
     if (workerBinding || taskBinding) {
-      throw new Error(`Worker Group task slot is already reserved: ${group.id}/${allocation.task_key}`);
+      throw new WorkerGroupAdmissionError(
+        `Worker Group task slot is already reserved: ${group.id}/${allocation.task_key}`
+      );
     }
     const parentOutstanding = this.db.prepare(`
       SELECT COUNT(*) AS count
@@ -2974,16 +3005,22 @@ export class SqliteRuntimeStore {
       WHERE parent_run_id = ? AND result_delivered_to_turn_id IS NULL AND id != ?
     `).get(group.parent_run_id, allocation.worker_id) as { count: number };
     if (Number(parentOutstanding.count) >= 4) {
-      throw new Error(`Supervisor outstanding Worker limit is exhausted: ${group.parent_run_id}`);
+      throw new WorkerGroupAdmissionError(
+        `Supervisor outstanding Worker limit is exhausted: ${group.parent_run_id}`
+      );
     }
     const totals = this.workerGroupTotals(group.id);
     if (totals.worker_count >= group.expected_worker_count) {
-      throw new Error(`Worker Group expected worker count is exhausted: ${group.id}`);
+      throw new WorkerGroupAdmissionError(
+        `Worker Group expected worker count is exhausted: ${group.id}`
+      );
     }
     if (totals.max_output_tokens + allocation.budget.max_output_tokens
         > group.budget.max_output_tokens
       || totals.timeout_ms + allocation.budget.timeout_ms > group.budget.max_duration_ms) {
-      throw new Error(`Worker Group hierarchical budget is exhausted: ${group.id}`);
+      throw new WorkerGroupAdmissionError(
+        `Worker Group hierarchical budget is exhausted: ${group.id}`
+      );
     }
   }
 
@@ -3060,7 +3097,23 @@ export class SqliteRuntimeStore {
     workerKind: "discussion" | "execution" | "review"
   ): void {
     const prepared = parsePreparedWorkerGroup(preparedInput);
-    const durable = parsePreparedWorkerGroup(reservation.arguments.worker_group);
+    const durable = reservation.arguments.worker_group === undefined
+      ? materializePreparedWorkerGroup({
+        request: singletonWorkerGroupRequest({
+          parent_run_id: reservation.run_id,
+          invocation_id: `migration-${workerId}`,
+          worker_kind: workerKind,
+          deadline_at: prepared.allocation.deadline_at,
+          budget: prepared.allocation.budget
+        }),
+        parent_run_id: reservation.run_id,
+        parent_turn_id: reservation.turn_id,
+        worker_id: workerId,
+        worker_kind: workerKind,
+        task_deadline_at: prepared.allocation.deadline_at,
+        task_budget: prepared.allocation.budget
+      })
+      : parsePreparedWorkerGroup(reservation.arguments.worker_group);
     if (stableJson(prepared) !== stableJson(durable)
       || prepared.allocation.worker_id !== workerId
       || prepared.allocation.worker_kind !== workerKind) {

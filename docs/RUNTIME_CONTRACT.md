@@ -98,10 +98,12 @@ and aggregate output-token and duration budgets. A Supervisor may hold at most
 four undelivered Workers and two running claims across Groups. A call without
 an explicit Group receives a deterministic singleton Group. Duplicate task
 slots, configuration drift, exhausted counts, elapsed deadlines, and aggregate
-budget oversubscription fail before dispatch. A capacity-blocked queued Worker
-receives no lease and remains retryable. Parallel execution Workers require
-separate Delivery Lineages; parallel reviews require distinct execution
-subjects.
+budget oversubscription fail before a Worker becomes claimable. When
+already-prepared Actions concurrently contend for the last capacity, the losing
+reservation closes with one replay-stable failed Effect Receipt instead of an
+unresolved outcome. A capacity-blocked queued Worker receives no lease and
+remains retryable. Parallel execution Workers require separate Delivery
+Lineages; parallel reviews require distinct execution subjects.
 Task and Result Envelopes are immutable and digest-addressed. Tasks carry
 explicit context and artifact refs; Results bind the exact producing Run
 Execution, model dispatches, provider/model identity, and cumulative bounded

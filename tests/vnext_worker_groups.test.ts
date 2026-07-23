@@ -114,6 +114,73 @@ test("one Worker Group admits three tasks, leases at most two, and keeps the thi
   }
 });
 
+test("concurrent admission contention becomes one durable failed receipt without an unresolved Action", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-concurrent-admission-"));
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), {
+    state_profile: "stable_cli"
+  });
+  try {
+    const setup = createDiscussionParent(store, fixture);
+    const deadline = new Date(Date.now() + 90_000).toISOString();
+    const group = {
+      group_key: "one-concurrent-slot",
+      expected_worker_count: 1,
+      max_parallel: 1,
+      deadline_at: deadline,
+      budget: { max_output_tokens: 1_000, max_duration_ms: 30_000 }
+    };
+    const invocations = ["concurrent-first", "concurrent-second"];
+    const results = await Promise.all(invocations.map((invocationId, index) =>
+      setup.gateway.invoke({
+        run_id: setup.parent.run.id,
+        turn_id: setup.parent.run.turn_id,
+        invocation_id: invocationId,
+        action_name: setup.workerDispatch.contract.name,
+        arguments: {
+          ...discussionTask(deadline),
+          worker_group: { ...group, task_key: `slot-${index + 1}` }
+        }
+      })));
+
+    assert.ok(results.every((result) => result.status === "completed"));
+    const completed = results.filter((result) => result.status === "completed");
+    assert.deepEqual(
+      completed.map((result) => result.receipt.outcome).sort(),
+      ["failed", "succeeded"]
+    );
+    const failed = completed.find((result) => result.receipt.outcome === "failed");
+    const succeeded = completed.find((result) => result.receipt.outcome === "succeeded");
+    assert.ok(failed);
+    assert.ok(succeeded);
+    assert.equal(failed.receipt.output.code, "worker_group_admission_denied");
+    assert.equal(store.listUnresolvedActions(setup.parent.run.id).length, 0);
+
+    const winningWorkerId = String(succeeded.receipt.output.worker_id);
+    assert.equal(setup.engine.inspectGroupForWorker(winningWorkerId)?.worker_count, 1);
+    const losingIndex = results.findIndex((result) => result.status === "completed"
+      && result.receipt.id === failed.receipt.id);
+    const replay = await setup.gateway.invoke({
+      run_id: setup.parent.run.id,
+      turn_id: setup.parent.run.turn_id,
+      invocation_id: invocations[losingIndex]!,
+      action_name: setup.workerDispatch.contract.name,
+      arguments: {
+        ...discussionTask(deadline),
+        worker_group: { ...group, task_key: `slot-${losingIndex + 1}` }
+      }
+    });
+    assert.equal(replay.status, "completed");
+    if (replay.status === "completed") {
+      assert.equal(replay.receipt.id, failed.receipt.id);
+      assert.equal(replay.receipt.outcome, "failed");
+    }
+    assert.equal(store.listUnresolvedActions(setup.parent.run.id).length, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("an elapsed Worker Group deadline denies a claim without consuming its queued lease", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-deadline-"));
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"), {
@@ -405,19 +472,26 @@ test("schema 11 migration adds a singleton binding without rewriting historical 
   const sqlite = join(fixture, "runtime.sqlite");
   let workerId = "";
   let taskDigest = "";
+  let parentRunId = "";
+  let parentTurnId = "";
+  let receiptId = "";
+  const deadline = new Date(Date.now() + 90_000).toISOString();
   const initial = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const setup = createDiscussionParent(initial, fixture);
+    parentRunId = setup.parent.run.id;
+    parentTurnId = setup.parent.run.turn_id;
     const dispatched = await setup.gateway.invoke({
-      run_id: setup.parent.run.id,
-      turn_id: setup.parent.run.turn_id,
+      run_id: parentRunId,
+      turn_id: parentTurnId,
       invocation_id: "historical-v11-worker",
       action_name: setup.workerDispatch.contract.name,
-      arguments: discussionTask(new Date(Date.now() + 90_000).toISOString())
+      arguments: discussionTask(deadline)
     });
     assert.equal(dispatched.status, "completed");
     if (dispatched.status !== "completed") return;
     workerId = String(dispatched.receipt.output.worker_id);
+    receiptId = dispatched.receipt.id;
     taskDigest = setup.engine.inspect(workerId)!.task_envelope.digest;
   } finally {
     initial.close();
@@ -459,14 +533,31 @@ test("schema 11 migration adds a singleton binding without rewriting historical 
     DROP TABLE worker_group_bindings;
     DROP TABLE worker_groups;
     CREATE UNIQUE INDEX worker_sessions_one_kind_per_parent_idx
-      ON worker_sessions(parent_run_id, worker_kind)
-      WHERE result_delivered_to_turn_id IS NULL;
+      ON worker_sessions(parent_run_id, worker_kind);
     UPDATE schema_meta SET value = '11' WHERE key = 'schema_version';
   `);
   legacy.close();
 
   const migrated = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
+    const runtimeInspect = createRuntimeInspectAction(migrated);
+    const engine = new OrchestrationEngine(migrated, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const gateway = new ActionGateway(migrated, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const duplicate = await gateway.invoke({
+      run_id: parentRunId,
+      turn_id: parentTurnId,
+      invocation_id: "historical-v11-worker",
+      action_name: workerDispatch.contract.name,
+      arguments: discussionTask(deadline)
+    });
+    assert.equal(duplicate.status, "completed");
+    if (duplicate.status === "completed") {
+      assert.equal(duplicate.receipt.id, receiptId);
+      assert.equal(duplicate.receipt.output.worker_id, workerId);
+    }
     assert.equal(migrated.inspectWorker(workerId)?.task_envelope.digest, taskDigest);
     const group = migrated.inspectWorkerGroupForWorker(workerId);
     assert.ok(group);
@@ -474,6 +565,95 @@ test("schema 11 migration adds a singleton binding without rewriting historical 
     assert.equal(group.group.expected_worker_count, 1);
     assert.equal(group.task?.task_key, "only");
     assert.equal(migrated.claimWorker(workerId, 30_000).worker.status, "running");
+  } finally {
+    migrated.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("schema 11 migration reconciles an unresolved historical Worker Action through its singleton binding", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-schema-eleven-reconcile-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const deadline = new Date(Date.now() + 90_000).toISOString();
+  let parentRunId = "";
+  let parentTurnId = "";
+  let workerId = "";
+  const initial = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const setup = createDiscussionParent(initial, fixture);
+    parentRunId = setup.parent.run.id;
+    parentTurnId = setup.parent.run.turn_id;
+    const dispatched = await setup.gateway.invoke({
+      run_id: parentRunId,
+      turn_id: parentTurnId,
+      invocation_id: "historical-v11-unresolved-worker",
+      action_name: setup.workerDispatch.contract.name,
+      arguments: discussionTask(deadline)
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status !== "completed") return;
+    workerId = String(dispatched.receipt.output.worker_id);
+  } finally {
+    initial.close();
+  }
+
+  const legacy = new DatabaseSync(sqlite);
+  legacy.exec("PRAGMA foreign_keys = OFF");
+  const reservation = legacy.prepare(`
+    SELECT id, action_name, contract_version, effect_class, arguments_json
+    FROM action_reservations WHERE invocation_id = 'historical-v11-unresolved-worker'
+  `).get() as {
+    id: string;
+    action_name: string;
+    contract_version: string;
+    effect_class: "external_read";
+    arguments_json: string;
+  };
+  const legacyArguments = JSON.parse(reservation.arguments_json) as Record<string, unknown>;
+  delete legacyArguments.worker_group;
+  const legacyDigest = materializeActionDigest({
+    name: reservation.action_name,
+    version: reservation.contract_version,
+    effect_class: reservation.effect_class
+  }, legacyArguments);
+  legacy.prepare("DELETE FROM effect_receipts WHERE reservation_id = ?").run(reservation.id);
+  legacy.prepare(`
+    UPDATE action_reservations
+    SET arguments_json = ?, action_digest = ?, state = 'outcome_unknown', error = ?
+    WHERE id = ?
+  `).run(
+    JSON.stringify(legacyArguments),
+    legacyDigest,
+    "Historical owner exited after Worker creation.",
+    reservation.id
+  );
+  legacy.exec(`
+    DROP TABLE worker_group_bindings;
+    DROP TABLE worker_groups;
+    CREATE UNIQUE INDEX worker_sessions_one_kind_per_parent_idx
+      ON worker_sessions(parent_run_id, worker_kind);
+    UPDATE schema_meta SET value = '11' WHERE key = 'schema_version';
+  `);
+  legacy.close();
+
+  const migrated = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(migrated);
+    const engine = new OrchestrationEngine(migrated, [runtimeInspect.contract]);
+    const workerDispatch = createDiscussionWorkerDispatchAction(engine);
+    const gateway = new ActionGateway(migrated, [runtimeInspect, workerDispatch], {
+      allowed_effect_classes: ["none", "local_read", "external_read"]
+    });
+    const reconciled = await gateway.reconcileRun(parentRunId);
+    assert.equal(reconciled.length, 1);
+    assert.equal(reconciled[0]?.status, "completed");
+    if (reconciled[0]?.status === "completed") {
+      assert.equal(reconciled[0].receipt.reconciled, true);
+      assert.equal(reconciled[0].receipt.output.worker_id, workerId);
+      assert.equal(reconciled[0].receipt.outcome, "succeeded");
+    }
+    assert.equal(migrated.listUnresolvedActions(parentRunId).length, 0);
+    assert.equal(migrated.inspectWorkerGroupForWorker(workerId)?.worker_count, 1);
   } finally {
     migrated.close();
     await rm(fixture, { recursive: true, force: true });
@@ -504,6 +684,43 @@ test("schema 12 fails closed when a Worker Group binding disappears", async () =
   const corrupt = new DatabaseSync(sqlite);
   corrupt.exec("PRAGMA foreign_keys = OFF");
   corrupt.prepare("DELETE FROM worker_group_bindings WHERE worker_id = ?").run(workerId);
+  corrupt.close();
+  try {
+    assert.throws(
+      () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
+      /Unsupported vNext runtime schema version: 12\/mixed:worker-groups/iu
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("schema 12 fails closed when binding counts match but a Worker relation is orphaned", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-corrupt-orphan-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  let workerId = "";
+  try {
+    const setup = createDiscussionParent(store, fixture);
+    const dispatched = await setup.gateway.invoke({
+      run_id: setup.parent.run.id,
+      turn_id: setup.parent.run.turn_id,
+      invocation_id: "orphan-binding-worker",
+      action_name: setup.workerDispatch.contract.name,
+      arguments: discussionTask(new Date(Date.now() + 90_000).toISOString())
+    });
+    assert.equal(dispatched.status, "completed");
+    if (dispatched.status === "completed") {
+      workerId = String(dispatched.receipt.output.worker_id);
+    }
+  } finally {
+    store.close();
+  }
+  const corrupt = new DatabaseSync(sqlite);
+  corrupt.exec("PRAGMA foreign_keys = OFF");
+  corrupt.prepare(`
+    UPDATE worker_group_bindings SET worker_id = ? WHERE worker_id = ?
+  `).run("worker_orphaned_binding_identity", workerId);
   corrupt.close();
   try {
     assert.throws(

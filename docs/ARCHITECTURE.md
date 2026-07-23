@@ -173,9 +173,13 @@ Calls that omit a Group are normalized to deterministic singleton Groups, so
 the same storage and recovery invariants apply without widening the caller
 Interface.
 
-The Action reservation durably binds each task allocation and Group identity
-before dispatch. Duplicate task slots, Group identity drift, exhausted counts,
-elapsed deadlines, or aggregate-budget oversubscription fail atomically.
+Action preparation durably binds each requested task allocation and Group
+identity into the reservation; the dispatch transaction atomically binds the
+actual Worker slot and budget. Duplicate task slots, Group identity drift,
+exhausted counts, elapsed deadlines, or aggregate-budget oversubscription fail
+without a partial Worker. If two already-prepared Actions contend for the last
+capacity, the loser closes with one replay-stable failed Effect Receipt rather
+than an unresolved outcome.
 Parallel execution Workers must use separate single-writer Delivery Lineages;
 parallel review Workers must bind distinct completed execution subjects. A
 review Worker remains a separate read-only child Run receiving the bounded,

@@ -44,7 +44,10 @@ import {
 } from "./review_worker_types.js";
 import { captureReviewEvidencePacket } from "./review_evidence_capture.js";
 import { MAX_RUNTIME_TIMEOUT_MS } from "./runtime_limits.js";
-import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
+import {
+  SqliteRuntimeStore,
+  WorkerGroupAdmissionError
+} from "./sqlite_runtime_store.js";
 import {
   materializePreparedWorkerGroup,
   normalizeWorkerGroupRequest,
@@ -184,7 +187,8 @@ export class OrchestrationEngine {
       parentRunId,
       invocationId,
       input,
-      groupRequest
+      groupRequest,
+      groupInput === undefined
     );
     if (existing) return existing;
     if (Date.parse(input.deadline_at) <= Date.now()) {
@@ -235,7 +239,8 @@ export class OrchestrationEngine {
       input.worker_group,
       input.worker_id,
       "discussion",
-      task
+      task,
+      reservation
     );
     const taskEnvelope = materializeTaskEnvelope({
       ...task,
@@ -270,7 +275,8 @@ export class OrchestrationEngine {
       parentRunId,
       invocationId,
       input,
-      groupRequest
+      groupRequest,
+      groupInput === undefined
     );
     if (prepared) return prepared;
     if (Date.parse(input.deadline_at) <= Date.now()) {
@@ -322,7 +328,8 @@ export class OrchestrationEngine {
       input.worker_group,
       input.worker_id,
       "execution",
-      task
+      task,
+      reservation
     );
     const taskEnvelope = materializeExecutionTaskEnvelope({
       ...task,
@@ -361,7 +368,8 @@ export class OrchestrationEngine {
       parentRunId,
       invocationId,
       input,
-      groupRequest
+      groupRequest,
+      groupInput === undefined
     );
     if (prepared) return prepared;
     if (Date.parse(input.deadline_at) <= Date.now()) {
@@ -436,7 +444,8 @@ export class OrchestrationEngine {
       input.worker_group,
       input.worker_id,
       "review",
-      task
+      task,
+      reservation
     );
     const parent = this.store.inspectRun(reservation.run_id);
     const subject = this.store.inspectExecutionWorker(task.execution_worker_id);
@@ -835,9 +844,26 @@ function preparedWorkerGroupForTask(
   input: unknown,
   workerId: string,
   workerKind: WorkerKind,
-  task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } }
+  task: { deadline_at: string; budget: { max_output_tokens: number; timeout_ms: number } },
+  reservation: ActionDispatch["reservation"]
 ): PreparedWorkerGroup {
-  const prepared = parsePreparedWorkerGroup(input);
+  const prepared = input === undefined
+    ? materializePreparedWorkerGroup({
+      request: singletonWorkerGroupRequest({
+        parent_run_id: reservation.run_id,
+        invocation_id: `migration-${workerId}`,
+        worker_kind: workerKind,
+        deadline_at: task.deadline_at,
+        budget: task.budget
+      }),
+      parent_run_id: reservation.run_id,
+      parent_turn_id: reservation.turn_id,
+      worker_id: workerId,
+      worker_kind: workerKind,
+      task_deadline_at: task.deadline_at,
+      task_budget: task.budget
+    })
+    : parsePreparedWorkerGroup(input);
   if (prepared.allocation.worker_id !== workerId
     || prepared.allocation.worker_kind !== workerKind
     || prepared.allocation.deadline_at !== task.deadline_at
@@ -850,6 +876,18 @@ function preparedWorkerGroupForTask(
   return prepared;
 }
 
+function workerGroupAdmissionObservation(error: unknown): ActionObservation | null {
+  if (!(error instanceof WorkerGroupAdmissionError)) return null;
+  return {
+    outcome: "failed",
+    summary: "Worker Group admission was rejected before any Worker became claimable.",
+    output: {
+      code: error.code,
+      message: error.message
+    }
+  };
+}
+
 function requireWorkerGroupInspection(engine: OrchestrationEngine, workerId: string) {
   const inspection = engine.inspectGroupForWorker(workerId);
   if (!inspection?.task) {
@@ -860,7 +898,14 @@ function requireWorkerGroupInspection(engine: OrchestrationEngine, workerId: str
 
 export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
-    const worker = engine.dispatchExecution(dispatch.reservation, dispatch.arguments);
+    let worker: ExecutionWorkerInspection;
+    try {
+      worker = engine.dispatchExecution(dispatch.reservation, dispatch.arguments);
+    } catch (error) {
+      const observation = workerGroupAdmissionObservation(error);
+      if (observation) return observation;
+      throw error;
+    }
     const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",
@@ -924,7 +969,14 @@ export function createExecutionWorkerDispatchAction(engine: OrchestrationEngine)
 
 export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
-    const worker = await engine.dispatchReview(dispatch.reservation, dispatch.arguments);
+    let worker: ReviewWorkerInspection;
+    try {
+      worker = await engine.dispatchReview(dispatch.reservation, dispatch.arguments);
+    } catch (error) {
+      const observation = workerGroupAdmissionObservation(error);
+      if (observation) return observation;
+      throw error;
+    }
     const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",
@@ -988,7 +1040,14 @@ export function createReviewWorkerDispatchAction(engine: OrchestrationEngine): A
 
 export function createDiscussionWorkerDispatchAction(engine: OrchestrationEngine): ActionHandler {
   const observe = async (dispatch: ActionDispatch): Promise<ActionObservation> => {
-    const worker = engine.dispatch(dispatch.reservation, dispatch.arguments);
+    let worker: WorkerInspection;
+    try {
+      worker = engine.dispatch(dispatch.reservation, dispatch.arguments);
+    } catch (error) {
+      const observation = workerGroupAdmissionObservation(error);
+      if (observation) return observation;
+      throw error;
+    }
     const workerGroup = requireWorkerGroupInspection(engine, worker.id);
     return {
       outcome: "succeeded",

@@ -143,8 +143,11 @@ budget，以及最多 2 个同时 claim。Supervisor 跨 Group 最多保留 4 �
 调用方不显式传 Group 时，会规范化成确定性 singleton Group，因此不扩大旧调用 Interface，
 仍共享同一套 storage 与 recovery invariant。
 
-Action reservation 在 dispatch 前持久绑定每个 task allocation 与 Group identity。重复 task
-slot、Group identity 漂移、expected count 耗尽、deadline 过期或聚合 budget 超配都原子失败。
+Action preparation 会把请求的 task allocation 与 Group identity 持久绑定进 reservation；
+dispatch transaction 再原子绑定实际 Worker slot 与 budget。重复 task slot、Group identity
+漂移、expected count 耗尽、deadline 过期或聚合 budget 超配都不会留下部分 Worker。若两个
+已完成 preparation 的 Action 竞争最后一个容量，输家会以一个可稳定 replay 的 failed Effect
+Receipt 终结，而不是留下 unresolved outcome。
 并行 execution Worker 必须使用不同的 single-writer Delivery Lineage；并行 review Worker
 必须绑定不同的 completed execution subject。Review Worker 仍是独立 read-only child Run，
 接收其 subject 最终 snapshot 的有界、digest-addressed packet。Verdict 是独立 evidence，

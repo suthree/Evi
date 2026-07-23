@@ -1,7 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import {
   materializePreparedWorkerGroup,
+  parseWorkerGroupAllocation,
+  parseWorkerGroupEnvelope,
   singletonWorkerGroupRequest,
+  type WorkerGroupEnvelope,
   type WorkerKind
 } from "./worker_group_types.js";
 
@@ -366,7 +369,7 @@ function assertWorkerLifecycleShape(
   const oneKindIndex = indexExists(db, "worker_sessions_one_kind_per_parent_idx");
   const mixedGroupShape = (version === "12" && oneKindIndex)
     || (version === "11" && !oneKindIndex)
-    || (version === "12" && workerGroupBindingCount(db) !== workerCount(db));
+    || (version === "12" && hasMixedWorkerGroupState(db));
   if (missing.length > 0 || unexpected.length > 0 || mixedWorkerShape || mixedGroupShape) {
     throw new RuntimeSchemaIncompatibleError([
       version,
@@ -704,18 +707,141 @@ function indexExists(db: DatabaseSync, name: string): boolean {
   return row?.present === 1;
 }
 
-function workerCount(db: DatabaseSync): number {
-  if (!tableExists(db, "worker_sessions")) return 0;
-  const row = db.prepare("SELECT COUNT(*) AS count FROM worker_sessions").get() as { count: number };
-  return Number(row.count);
-}
+function hasMixedWorkerGroupState(db: DatabaseSync): boolean {
+  try {
+    const missingRelation = db.prepare(`
+      SELECT 1 AS present
+      FROM worker_sessions AS workers
+      LEFT JOIN worker_group_bindings AS bindings ON bindings.worker_id = workers.id
+      WHERE bindings.worker_id IS NULL
+      UNION ALL
+      SELECT 1 AS present
+      FROM worker_group_bindings AS bindings
+      LEFT JOIN worker_sessions AS workers ON workers.id = bindings.worker_id
+      WHERE workers.id IS NULL
+      UNION ALL
+      SELECT 1 AS present
+      FROM worker_group_bindings AS bindings
+      LEFT JOIN worker_groups AS groups ON groups.id = bindings.group_id
+      WHERE groups.id IS NULL
+      UNION ALL
+      SELECT 1 AS present
+      FROM worker_groups AS groups
+      LEFT JOIN worker_group_bindings AS bindings ON bindings.group_id = groups.id
+      WHERE bindings.group_id IS NULL
+      LIMIT 1
+    `).get() as { present: number } | undefined;
+    if (missingRelation?.present === 1) return true;
 
-function workerGroupBindingCount(db: DatabaseSync): number {
-  if (!tableExists(db, "worker_group_bindings")) return 0;
-  const row = db.prepare("SELECT COUNT(*) AS count FROM worker_group_bindings").get() as {
-    count: number;
-  };
-  return Number(row.count);
+    const foreignKeyFailures = db.prepare("PRAGMA foreign_key_check").all() as Array<{
+      table: string;
+    }>;
+    if (foreignKeyFailures.some(({ table }) => table === "worker_groups"
+      || table === "worker_group_bindings")) {
+      return true;
+    }
+
+    const groupRows = db.prepare("SELECT * FROM worker_groups").all() as Array<{
+      id: string;
+      parent_run_id: string;
+      parent_turn_id: string;
+      group_key: string;
+      digest: string;
+      envelope_json: string;
+      expected_worker_count: number;
+      max_parallel: number;
+      deadline_at: string;
+      budget_max_output_tokens: number;
+      budget_max_duration_ms: number;
+    }>;
+    const groups = new Map<string, WorkerGroupEnvelope>();
+    for (const row of groupRows) {
+      const group = parseWorkerGroupEnvelope(JSON.parse(row.envelope_json));
+      if (row.id !== group.id
+        || row.parent_run_id !== group.parent_run_id
+        || row.parent_turn_id !== group.parent_turn_id
+        || row.group_key !== group.group_key
+        || row.digest !== group.digest
+        || Number(row.expected_worker_count) !== group.expected_worker_count
+        || Number(row.max_parallel) !== group.max_parallel
+        || row.deadline_at !== group.deadline_at
+        || Number(row.budget_max_output_tokens) !== group.budget.max_output_tokens
+        || Number(row.budget_max_duration_ms) !== group.budget.max_duration_ms) {
+        return true;
+      }
+      groups.set(group.id, group);
+    }
+
+    const bindingRows = db.prepare(`
+      SELECT bindings.*, workers.worker_kind, workers.parent_run_id,
+             workers.parent_turn_id, workers.task_envelope_json
+      FROM worker_group_bindings AS bindings
+      JOIN worker_sessions AS workers ON workers.id = bindings.worker_id
+    `).all() as Array<{
+      worker_id: string;
+      group_id: string;
+      task_key: string;
+      allocation_digest: string;
+      allocation_json: string;
+      allocation_max_output_tokens: number;
+      allocation_timeout_ms: number;
+      worker_kind: WorkerKind;
+      parent_run_id: string;
+      parent_turn_id: string;
+      task_envelope_json: string;
+    }>;
+    const totals = new Map<string, {
+      worker_count: number;
+      max_output_tokens: number;
+      timeout_ms: number;
+    }>();
+    for (const row of bindingRows) {
+      const allocation = parseWorkerGroupAllocation(JSON.parse(row.allocation_json));
+      const group = groups.get(row.group_id);
+      const task = JSON.parse(row.task_envelope_json) as {
+        deadline_at?: unknown;
+        budget?: { max_output_tokens?: unknown; timeout_ms?: unknown };
+      };
+      if (!group
+        || row.worker_id !== allocation.worker_id
+        || row.group_id !== allocation.group_id
+        || row.task_key !== allocation.task_key
+        || row.allocation_digest !== allocation.digest
+        || Number(row.allocation_max_output_tokens) !== allocation.budget.max_output_tokens
+        || Number(row.allocation_timeout_ms) !== allocation.budget.timeout_ms
+        || row.worker_kind !== allocation.worker_kind
+        || row.parent_run_id !== group.parent_run_id
+        || row.parent_turn_id !== group.parent_turn_id
+        || allocation.group_digest !== group.digest
+        || Date.parse(allocation.deadline_at) > Date.parse(group.deadline_at)
+        || task.deadline_at !== allocation.deadline_at
+        || task.budget?.max_output_tokens !== allocation.budget.max_output_tokens
+        || task.budget?.timeout_ms !== allocation.budget.timeout_ms) {
+        return true;
+      }
+      const total = totals.get(group.id) ?? {
+        worker_count: 0,
+        max_output_tokens: 0,
+        timeout_ms: 0
+      };
+      total.worker_count += 1;
+      total.max_output_tokens += allocation.budget.max_output_tokens;
+      total.timeout_ms += allocation.budget.timeout_ms;
+      totals.set(group.id, total);
+    }
+    for (const group of groups.values()) {
+      const total = totals.get(group.id);
+      if (!total
+        || total.worker_count > group.expected_worker_count
+        || total.max_output_tokens > group.budget.max_output_tokens
+        || total.timeout_ms > group.budget.max_duration_ms) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 function existingSchemaVersion(db: DatabaseSync): string | null {
