@@ -162,16 +162,30 @@ parent and child identity, Task Envelope digest, Execution Lock digest, model or
 executor selection, budget, and optional Delivery Lineage before the worker
 starts. Owner loss reconciles that dispatch before any replay.
 
-The current sequential vNext checkpoint stores discussion, execution, and
-review Workers in one lifecycle ledger. A review Worker is a separate read-only
-child Run bound narrowly to one completed execution Worker after that execution
-Result has been delivered into the current Supervisor Turn. It receives a
-bounded, digest-addressed before/after packet from the execution's exact final
-Delivery-Lineage snapshot. The snapshot's per-path identity binds normalized
-Git mode as well as content. The Reviewer returns only `approved` or `changes_required`
-with structured findings. Its verdict is independent evidence, not integration
-or parent-completion authority. Bounded parallel dispatch and an exclusive
-Integration Run remain later orchestration steps.
+The current vNext checkpoint stores discussion, execution, and review Workers
+in one lifecycle ledger and admits them through schema-versioned Worker Groups.
+A Group binds one exact parent Run/Turn, a deterministic key and digest, one to
+four task slots, a group deadline, an aggregate token/time budget that narrows
+its parent Execution Lock, and at most two simultaneous claims. The Supervisor may retain at most four undelivered
+Workers and at most two running claims across Groups. Capacity-blocked Workers
+remain queued without a lease and may be retried after capacity is released.
+Calls that omit a Group are normalized to deterministic singleton Groups, so
+the same storage and recovery invariants apply without widening the caller
+Interface.
+
+Action preparation durably binds each requested task allocation and Group
+identity into the reservation; the dispatch transaction atomically binds the
+actual Worker slot and budget. Duplicate task slots, Group identity drift,
+exhausted counts, elapsed deadlines, or aggregate-budget oversubscription fail
+without a partial Worker. If two already-prepared Actions contend for the last
+capacity, the loser closes with one replay-stable failed Effect Receipt rather
+than an unresolved outcome.
+Parallel execution Workers must use separate single-writer Delivery Lineages;
+parallel review Workers must bind distinct completed execution subjects. A
+review Worker remains a separate read-only child Run receiving the bounded,
+digest-addressed packet from its subject's exact final snapshot. Its verdict is
+independent evidence, not integration or parent-completion authority. An
+exclusive Integration Run remains the next orchestration step.
 
 ### Delivery Lineage and concurrency
 

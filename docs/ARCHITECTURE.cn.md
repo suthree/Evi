@@ -135,14 +135,24 @@ Worker dispatch 本身是 Action Gateway effect。Worker 启动前，reservation
 identity、Task Envelope digest、Execution Lock digest、model/executor selection、budget 与
 可选 Delivery Lineage；Owner 丢失时先 reconcile，不能盲目 replay。
 
-当前顺序执行的 vNext checkpoint 已把 discussion、execution 与 review Worker 放进同一套
-lifecycle ledger。Review Worker 是独立 read-only child Run，只能在某个 completed execution
-Result 已交付到当前 Supervisor Turn 后，与该 execution Worker 建立窄绑定。它接收来自该
-execution 最终 Delivery-Lineage snapshot 的有界、digest-addressed before/after packet；snapshot
-的 per-path identity 同时绑定规范化 Git mode 与内容。Reviewer 只返回 `approved` 或带结构化
-finding 的 `changes_required`。Verdict 是独立 evidence，不拥有
-integration 或 Parent completion authority。有界并发 dispatch 与独占 Integration Run 仍属于
-后续 orchestration 阶段。
+当前 vNext checkpoint 已把 discussion、execution 与 review Worker 放进同一套 lifecycle
+ledger，并统一通过带 schema version 的 Worker Group 准入。一个 Group 精确绑定 Parent
+Run/Turn、确定性的 key 与 digest、1 到 4 个 task slot、Group deadline、且收窄 Parent
+Execution Lock 的聚合 token/time budget，以及最多 2 个同时 claim。Supervisor 跨 Group 最多保留 4 个未交付 Worker、最多
+2 个 running claim。容量不足的 Worker 保持 queued 且不获得 lease，容量释放后可重试。
+调用方不显式传 Group 时，会规范化成确定性 singleton Group，因此不扩大旧调用 Interface，
+仍共享同一套 storage 与 recovery invariant。
+
+Action preparation 会把请求的 task allocation 与 Group identity 持久绑定进 reservation；
+dispatch transaction 再原子绑定实际 Worker slot 与 budget。重复 task slot、Group identity
+漂移、expected count 耗尽、deadline 过期或聚合 budget 超配都不会留下部分 Worker。若两个
+已完成 preparation 的 Action 竞争最后一个容量，输家会以一个可稳定 replay 的 failed Effect
+Receipt 终结，而不是留下 unresolved outcome。
+并行 execution Worker 必须使用不同的 single-writer Delivery Lineage；并行 review Worker
+必须绑定不同的 completed execution subject。Review Worker 仍是独立 read-only child Run，
+接收其 subject 最终 snapshot 的有界、digest-addressed packet。Verdict 是独立 evidence，
+不拥有 integration 或 Parent completion authority。独占 Integration Run 仍是下一步
+orchestration slice。
 
 ### Delivery Lineage 与并发
 

@@ -46,15 +46,20 @@ The default state root is `~/.local-runtime/state/vnext-cli`; override it only
 with an absolute independent `--vnext-state-root`. The command refuses roots
 whose declared or physical identity overlaps `~/.local-runtime/state/evi`,
 including symlink and case-insensitive aliases. It never imports or dual-writes
-v0.2 state. Schema version 11 plus the immutable `stable_cli` state profile
-refuses current `diagnostic_canary` databases. Version 8 and 9 stable state
-upgrade transactionally. The version 9 migration preserves both existing
-Worker kinds while consolidating their common lifecycle into one
-`worker_sessions` ledger; execution-only Delivery-Lineage authority remains in
-the narrow `execution_worker_bindings` table. Version 10 migrates that exact
-ledger in place, expands the kind constraint, and adds only the narrow
-`review_worker_bindings` relation; review does not create another lifecycle
-table. Other earlier or unknown versions fail closed.
+v0.2 state. Schema version 12 plus the immutable `stable_cli` state profile
+refuses current `diagnostic_canary` databases. Versions 8 through 11 upgrade
+transactionally before the version marker advances. Historical discussion,
+execution, and review records retain their exact Action, Task, Result, lease,
+delivery, child-Run, attempt, and Delivery-Lineage identities while converging
+on one `worker_sessions` lifecycle ledger. Execution-only lineage authority
+remains in the narrow `execution_worker_bindings` table and review subject
+authority remains in `review_worker_bindings`; neither creates another
+lifecycle table. The version 11 to 12 step removes the former
+one-kind-per-parent index and gives every historical Worker a deterministic
+singleton entry in `worker_groups` and `worker_group_bindings`. Versions 8
+through 10 receive the same singleton binding after their ledger migration.
+Missing, orphaned, or non-canonical Group state and all other older or unknown
+schemas fail closed.
 
 `submit` uses the active model from normal safe config resolution. Relative
 `--config-dir` is resolved below `--repo-root`; both selectors become part of
@@ -82,7 +87,7 @@ Execution Lock identities or a structured diagnostic. A new parent Run has
 `runtime_inspect`, `worker_dispatch`, `worker_execution_dispatch`,
 `worker_review_dispatch`, `worker_inspect`, and the child-contained
 `worker_needs_input`. `worker_dispatch` and `worker_review_dispatch` are the
-explicit `external_read` exceptions. The former reserves and queues at most one
+explicit `external_read` exceptions. The former reserves and queues a bounded
 read-only discussion Worker with a narrowed immutable child Execution Lock.
 The Worker does not run inside the parent model request. Execute it in a
 separate process with `vnext worker execute`; it claims a durable lease, creates
@@ -108,6 +113,16 @@ final assistant answer closes protocol recovery without another provider
 request, its original producing execution and model dispatch are reconciled and
 remain the Result's actual model lineage.
 
+Each dispatch may include `worker_group` with `group_key`, unique `task_key`,
+`expected_worker_count` from 1 to 4, `max_parallel` from 1 to 2, an ISO
+`deadline_at`, and aggregate `max_output_tokens`/`max_duration_ms`. Omitting it
+creates a deterministic singleton Group. Reservation atomically enforces Group
+identity, task-slot uniqueness, expected count, deadline, aggregate budget, a
+four-undelivered-Worker Supervisor limit, and a two-running-claim Supervisor
+limit. A queued Worker blocked by claim capacity keeps no lease and can be
+retried. Parallel execution Workers must name separate Delivery Lineages;
+parallel Reviewers must name distinct completed execution Workers.
+
 `worker_execution_dispatch` is an opt-in `local_write` Action for one execution
 Worker. The Supervisor must name an already-created clean linked Git worktree,
 its exact branch and baseline commit, one or more bounded writable paths,
@@ -125,8 +140,9 @@ completion. Canonical Git and verification evidence determines the Result;
 worker prose is advisory. A lost/expired execution owner becomes
 `paused/outcome_unknown` and is never replayed automatically.
 `vnext worker inspect` is read-only and returns the bounded Task/lock identity,
-lease state, Delivery Lineage, baseline/final snapshots, and verification
-receipts without loading a model or claiming the lease.
+Worker Group envelope and allocation, reserved/available Group budget,
+queue/running counts, lease state, Delivery Lineage, baseline/final snapshots,
+and verification receipts without loading a model or claiming the lease.
 
 After one completed execution Result is delivered to the current Supervisor
 Turn, `worker_review_dispatch` may bind one independent read-only Reviewer to
@@ -162,11 +178,11 @@ commands do not call a model, execute the procedure, write the active vault or
 source, or route through Web/IM. There is currently no CLI operation for
 activation, observation, rollback, or retirement.
 
-There is still no worker parallelism, exclusive Integration Run,
-`signal/cancel`, optional Goal, active or observed learning, local/external
-write Action beyond the one bounded execution-Worker dispatch, resident
-route, or vNext deployment in this slice. The installed v0.2 runtime is frozen
-as the rollback path.
+There is still no exclusive Integration Run, dependency DAG, cancellation
+cascade, automatic retry/background scheduler, remote Worker, `signal/cancel`,
+optional Goal, active or observed learning, source integration, resident route,
+or vNext deployment in this slice. The installed v0.2 runtime is frozen as the
+rollback path.
 
 ## vNext read-only canary command
 
