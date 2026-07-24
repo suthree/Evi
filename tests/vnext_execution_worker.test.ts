@@ -576,7 +576,7 @@ test("expired execution lease becomes outcome_unknown and never transfers to a s
   }
 });
 
-test("schema 8 state upgrades in place to schema 12 and creates singleton Worker Groups", async () => {
+test("schema 8 state upgrades in place to schema 13 and creates singleton Worker Groups", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-schema-8-to-10-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -618,7 +618,7 @@ test("schema 8 state upgrades in place to schema 12 and creates singleton Worker
     const version = inspected.prepare(
       "SELECT value FROM schema_meta WHERE key = 'schema_version'"
     ).get() as { value: string };
-    assert.equal(version.value, "12");
+    assert.equal(version.value, "13");
     const tables = inspected.prepare(`
       SELECT name FROM sqlite_master
       WHERE type = 'table' AND name IN (
@@ -649,7 +649,7 @@ test("schema 8 state upgrades in place to schema 12 and creates singleton Worker
   }
 });
 
-test("schema 9 preserves discussion and execution Worker identities in one schema 12 ledger", async () => {
+test("schema 9 preserves discussion and execution Worker identities in one schema 13 ledger", async () => {
   const fixture = await createGitFixture("schema-nine");
   const sqlite = join(fixture.root, "state", "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -732,7 +732,7 @@ test("schema 9 preserves discussion and execution Worker identities in one schem
       const version = inspected.prepare(
         "SELECT value FROM schema_meta WHERE key = 'schema_version'"
       ).get() as { value: string };
-      assert.equal(version.value, "12");
+      assert.equal(version.value, "13");
       const kinds = inspected.prepare(`
         SELECT worker_kind, COUNT(*) AS count
         FROM worker_sessions GROUP BY worker_kind ORDER BY worker_kind
@@ -815,7 +815,7 @@ test("schema 10 preserves the common Worker ledger exactly while adding review b
       const version = inspected.prepare(
         "SELECT value FROM schema_meta WHERE key = 'schema_version'"
       ).get() as { value: string };
-      assert.equal(version.value, "12");
+      assert.equal(version.value, "13");
       const reviewBindings = inspected.prepare(`
         SELECT COUNT(*) AS count FROM sqlite_master
         WHERE type = 'table' AND name = 'review_worker_bindings'

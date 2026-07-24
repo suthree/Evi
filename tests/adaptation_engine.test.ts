@@ -6,7 +6,9 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
   ADAPTATION_EVALUATOR_VERSION,
+  ActionGateway,
   AdaptationEngine,
+  createRuntimeInspectAction,
   materializeEvaluationReceipt,
   SqliteRuntimeStore,
   type ProcedureCandidateInput
@@ -143,21 +145,19 @@ test("incomplete inactive candidate receives one failed Evaluation Receipt witho
   }
 });
 
-test("a new inactive candidate evaluates against the exact active Self Registry baseline", async () => {
+test("first none-baseline Evaluation remains readable after a real activation and replacement compares to the exact active baseline", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-adaptation-baseline-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const engine = new AdaptationEngine(store);
     const active = engine.propose(validCandidate(completedRun(store, fixture, "Active baseline evidence.")));
-    const raw = new DatabaseSync(sqlite);
-    try {
-      raw.prepare("UPDATE self_registry_versions SET state = 'active', updated_at = ? WHERE id = ?")
-        .run(new Date().toISOString(), active.registry_version.id);
-    } finally {
-      raw.close();
-    }
+    const firstEvaluation = engine.evaluate(active.candidate.id);
+    assert.deepEqual(firstEvaluation.baseline, { kind: "none", version_id: null, digest: null });
+    const firstActivation = engine.activate(active.candidate.id);
+    assert.equal(firstActivation.transition, "activated");
     assert.equal(engine.inspect(active.candidate.id)?.registry_version.state, "active");
+    assert.equal(engine.inspectEvaluation(firstEvaluation.id)?.digest, firstEvaluation.digest);
 
     const proposed = engine.propose({
       ...validCandidate(completedRun(store, fixture, "Replacement candidate evidence.")),
@@ -170,29 +170,6 @@ test("a new inactive candidate evaluates against the exact active Self Registry 
       version_id: active.registry_version.id,
       digest: active.registry_version.artifact_digest
     });
-
-    const forgedNoneBaseline = materializeEvaluationReceipt({
-      candidate: proposed.candidate,
-      baseline: { kind: "none", version_id: null, digest: null },
-      evaluator_version: receipt.evaluator_version,
-      checks: receipt.checks,
-      created_at: receipt.created_at
-    });
-    const tamper = new DatabaseSync(sqlite);
-    try {
-      tamper.prepare(`
-        UPDATE adaptation_evaluations
-        SET id = ?, baseline_kind = 'none', baseline_version_id = NULL,
-            baseline_digest = NULL, evaluation_digest = ?, receipt_json = ?
-        WHERE id = ?
-      `).run(forgedNoneBaseline.id, forgedNoneBaseline.digest, JSON.stringify(forgedNoneBaseline), receipt.id);
-    } finally {
-      tamper.close();
-    }
-    assert.throws(
-      () => engine.inspectEvaluation(forgedNoneBaseline.id),
-      /none baseline drifted/
-    );
 
     const verify = new DatabaseSync(sqlite, { readOnly: true });
     try {
@@ -245,6 +222,16 @@ test("Adaptation Engine rejects occupied target slots, unsupported authority, an
       () => engine.propose({ ...validCandidate(secondRun), active: true } as ProcedureCandidateInput),
       /fields are invalid/
     );
+    const generic = engine.propose({
+      ...validCandidate(secondRun),
+      target_slot: "procedure.runtime-recovery",
+      summary: "A generic adaptation candidate remains outside the P0 Growth Lifecycle slot."
+    });
+    engine.evaluate(generic.candidate.id);
+    assert.throws(
+      () => engine.activate(generic.candidate.id),
+      /only supports procedure\.runtime-inspection/
+    );
     assert.throws(
       () => engine.propose({
         ...validCandidate(secondRun),
@@ -254,7 +241,7 @@ test("Adaptation Engine rejects occupied target slots, unsupported authority, an
     );
     const raw = new DatabaseSync(sqlite, { readOnly: true });
     try {
-      assert.equal(count(raw, "adaptation_candidates"), 1);
+      assert.equal(count(raw, "adaptation_candidates"), 2);
     } finally {
       raw.close();
     }
@@ -406,6 +393,201 @@ test("candidate and Evaluation transactions expose no partial authoritative rows
   }
 });
 
+test("Growth Lifecycle migrates a v12 store and rolls back a failed activation without changing the pending version", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-schema-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  let store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    store.close();
+    const legacy = new DatabaseSync(sqlite);
+    try {
+      legacy.exec(`
+        PRAGMA foreign_keys = OFF;
+        DROP TABLE adaptation_retirements;
+        DROP TABLE adaptation_observations;
+        DROP TABLE adaptation_selections;
+        DROP TABLE adaptation_activations;
+        UPDATE schema_meta SET value = '12' WHERE key = 'schema_version';
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    const migrated = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal((migrated.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as { value: string }).value, "13");
+      for (const table of ["adaptation_activations", "adaptation_selections", "adaptation_observations", "adaptation_retirements"]) {
+        assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+      }
+    } finally {
+      migrated.close();
+    }
+
+    const engine = new AdaptationEngine(store);
+    const candidate = engine.propose(validCandidate(completedRun(store, fixture, "Activation rollback evidence.")));
+    engine.evaluate(candidate.candidate.id);
+    const fail = new DatabaseSync(sqlite);
+    try {
+      fail.exec(`
+        CREATE TRIGGER fail_growth_activation
+        BEFORE INSERT ON adaptation_activations
+        BEGIN SELECT RAISE(ABORT, 'synthetic activation crash'); END
+      `);
+    } finally {
+      fail.close();
+    }
+    assert.throws(() => engine.activate(candidate.candidate.id), /synthetic activation crash/);
+    assert.equal(engine.inspect(candidate.candidate.id)?.registry_version.state, "inactive");
+    const verify = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal(countWhere(verify, "self_registry_versions", "state = 'active'"), 0);
+      assert.equal(count(verify, "adaptation_activations"), 0);
+    } finally {
+      verify.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Growth Lifecycle rejects post-loop selection and keeps a selected rendered context sticky across a replacement", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-selection-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const first = activateInspectionProcedure(engine, store, fixture, "First active procedure evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+
+    const late = store.beginRun({
+      request: "Refuse post-loop selection.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const lateReceipt = await completedRuntimeInspect(gateway, late.run.id, late.run.turn_id, "late-selection");
+    assert.ok(lateReceipt.id);
+    assert.throws(
+      () => engine.selectForRun(late.run.id, late.run.turn_id),
+      /before Run loop activity/
+    );
+    store.failRun(late.execution, "synthetic late-selection failure");
+
+    const selectedRun = store.beginRun({
+      request: "Bind the procedure before loop activity.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(selectedRun.run.id, selectedRun.run.turn_id);
+    const firstContext = engine.renderSelectedContext(selection.id);
+    assert.match(firstContext, new RegExp(first.name));
+
+    const replacement = engine.propose({
+      ...validCandidate(completedRun(store, fixture, "Replacement procedure evidence.")),
+      summary: "Use the bounded runtime inspection proof after a replacement becomes active."
+    });
+    engine.evaluate(replacement.candidate.id);
+    engine.activate(replacement.candidate.id);
+    assert.equal(engine.inspect(first.id)?.registry_version.state, "retired");
+    assert.equal(engine.renderSelectedContext(selection.id), firstContext);
+
+    const raw = new DatabaseSync(sqlite);
+    try {
+      raw.prepare("UPDATE adaptation_selections SET growth_context_digest = ? WHERE id = ?")
+        .run("0".repeat(64), selection.id);
+    } finally {
+      raw.close();
+    }
+    assert.throws(() => engine.renderSelectedContext(selection.id), /stored identity is invalid/);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Growth observations require an exact successful runtime_inspect receipt and fail closed on cross-Run, contract, and idempotency drift", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-observation-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const active = activateInspectionProcedure(engine, store, fixture, "Observation active procedure evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+    const subject = store.beginRun({
+      request: "Bind and verify an exact runtime inspection receipt.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(subject.run.id, subject.run.turn_id);
+
+    const wrongReservation = store.reserveAction({
+      run_id: subject.run.id,
+      turn_id: subject.run.turn_id,
+      invocation_id: "not-runtime-inspect",
+      action_name: "unrelated_read",
+      contract_version: "1",
+      action_digest: "f".repeat(64),
+      effect_class: "local_read",
+      decision_reason: "focused negative observation fixture",
+      arguments: {}
+    });
+    store.markActionDispatching(wrongReservation.reservation.id);
+    const wrongReceipt = store.completeAction(wrongReservation.reservation.id, {
+      outcome: "succeeded",
+      summary: "The unrelated local read completed.",
+      output: {}
+    }, false).receipt;
+    const subjectReceipt = await completedRuntimeInspect(gateway, subject.run.id, subject.run.turn_id, "subject-inspect");
+    store.completeRun(subject.execution, "verified completion after runtime inspection");
+
+    const other = store.beginRun({
+      request: "Produce a different Run receipt.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const otherReceipt = await completedRuntimeInspect(gateway, other.run.id, other.run.turn_id, "other-inspect");
+    store.completeRun(other.execution, "other terminal completion");
+
+    assert.throws(
+      () => engine.observe(selection.id, wrongReceipt.id),
+      /canonical runtime_inspect evidence/
+    );
+    assert.throws(
+      () => engine.observe(selection.id, otherReceipt.id),
+      /canonical runtime_inspect evidence/
+    );
+    const observation = engine.observe(selection.id, subjectReceipt.id);
+    assert.equal(observation.outcome, "completed");
+    assert.equal(observation.effect_receipt_id, subjectReceipt.id);
+    assert.equal(engine.observe(selection.id, subjectReceipt.id).digest, observation.digest);
+    assert.throws(
+      () => engine.observe(selection.id, otherReceipt.id),
+      /request drifted/
+    );
+
+    assert.throws(
+      () => engine.retire(active.id),
+      /requires a failed Observation/
+    );
+
+    const failedRun = store.beginRun({
+      request: "Capture a failed reuse observation before retirement.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const failedSelection = engine.selectForRun(failedRun.run.id, failedRun.run.turn_id);
+    const failedReceipt = await completedRuntimeInspect(gateway, failedRun.run.id, failedRun.run.turn_id, "failed-inspect");
+    store.failRun(failedRun.execution, "synthetic verified reuse failure");
+    const failedObservation = engine.observe(failedSelection.id, failedReceipt.id);
+    assert.equal(failedObservation.outcome, "failed");
+    const retirement = engine.retire(active.id, failedObservation.id);
+    assert.equal(retirement.reason, "observed_failure");
+    assert.equal(engine.retire(active.id, failedObservation.id).digest, retirement.digest);
+    assert.equal(engine.inspect(active.id)?.registry_version.state, "retired");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 function completedRun(store: SqliteRuntimeStore, cwd: string, answer: string): string {
   const started = store.beginRun({
     request: "Produce verified evidence for an inactive adaptation candidate.",
@@ -416,7 +598,7 @@ function completedRun(store: SqliteRuntimeStore, cwd: string, answer: string): s
 
 function validCandidate(runId: string): ProcedureCandidateInput {
   return {
-    target_slot: "procedure.runtime-recovery",
+    target_slot: "procedure.runtime-inspection",
     name: "Recover a paused runtime",
     summary: "Reuse exact persisted evidence before retrying interrupted work.",
     trigger_conditions: ["A vNext Run is paused with canonical recovery evidence."],
@@ -427,6 +609,36 @@ function validCandidate(runId: string): ProcedureCandidateInput {
     rollback_rule: "Retire the candidate if observed reuse causes replay or identity drift.",
     evidence_run_ids: [runId]
   };
+}
+
+function activateInspectionProcedure(
+  engine: AdaptationEngine,
+  store: SqliteRuntimeStore,
+  cwd: string,
+  evidence: string
+) {
+  const candidate = engine.propose(validCandidate(completedRun(store, cwd, evidence)));
+  engine.evaluate(candidate.candidate.id);
+  engine.activate(candidate.candidate.id);
+  return candidate.candidate;
+}
+
+async function completedRuntimeInspect(
+  gateway: ActionGateway,
+  runId: string,
+  turnId: string,
+  invocationId: string
+) {
+  const result = await gateway.invoke({
+    run_id: runId,
+    turn_id: turnId,
+    invocation_id: invocationId,
+    action_name: "runtime_inspect",
+    arguments: {}
+  });
+  assert.equal(result.status, "completed");
+  if (result.status !== "completed") throw new Error("runtime_inspect fixture did not complete");
+  return result.receipt;
 }
 
 function count(db: DatabaseSync, table: string): number {

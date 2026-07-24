@@ -8,11 +8,11 @@ import {
   type WorkerKind
 } from "./worker_group_types.js";
 
-export const RUNTIME_SCHEMA_VERSION = "12";
+export const RUNTIME_SCHEMA_VERSION = "13";
 export const DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY =
   "diagnostic_canary_experience_schema_version";
 export const DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION = "1";
-const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", "11", RUNTIME_SCHEMA_VERSION]);
+const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", "11", "12", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
   readonly code = "schema_incompatible";
@@ -37,7 +37,7 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   if (version !== null && !MIGRATABLE_SCHEMA_VERSIONS.has(version)) {
     throw new RuntimeSchemaIncompatibleError(version);
   }
-  if (version === "8" || version === "9" || version === "10" || version === "11"
+  if (version === "8" || version === "9" || version === "10" || version === "11" || version === "12"
     || version === RUNTIME_SCHEMA_VERSION) {
     assertWorkerLifecycleShape(db, version);
   }
@@ -307,6 +307,88 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
       );
       CREATE INDEX IF NOT EXISTS adaptation_evaluations_candidate_idx
         ON adaptation_evaluations(candidate_id, created_at);
+      CREATE TABLE IF NOT EXISTS adaptation_activations (
+        id TEXT PRIMARY KEY,
+        candidate_id TEXT NOT NULL UNIQUE REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        candidate_digest TEXT NOT NULL,
+        evaluation_id TEXT NOT NULL UNIQUE REFERENCES adaptation_evaluations(id) ON DELETE RESTRICT,
+        evaluation_digest TEXT NOT NULL,
+        target_slot TEXT NOT NULL CHECK (target_slot = 'procedure.runtime-inspection'),
+        baseline_kind TEXT NOT NULL CHECK (baseline_kind IN ('none', 'self_registry_version')),
+        baseline_version_id TEXT,
+        baseline_digest TEXT,
+        previous_version_id TEXT REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        previous_artifact_digest TEXT,
+        activated_version_id TEXT NOT NULL UNIQUE REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        activated_artifact_digest TEXT NOT NULL,
+        activation_digest TEXT NOT NULL UNIQUE,
+        receipt_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK (
+          (baseline_kind = 'none' AND baseline_version_id IS NULL AND baseline_digest IS NULL)
+          OR (baseline_kind = 'self_registry_version'
+            AND baseline_version_id IS NOT NULL AND baseline_digest IS NOT NULL)
+        ),
+        CHECK (
+          (previous_version_id IS NULL AND previous_artifact_digest IS NULL)
+          OR (previous_version_id IS NOT NULL AND previous_artifact_digest IS NOT NULL)
+        )
+      );
+      CREATE TABLE IF NOT EXISTS adaptation_selections (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE RESTRICT,
+        initial_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE RESTRICT,
+        target_slot TEXT NOT NULL CHECK (target_slot = 'procedure.runtime-inspection'),
+        version_id TEXT NOT NULL REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        artifact_digest TEXT NOT NULL,
+        candidate_id TEXT NOT NULL REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        candidate_digest TEXT NOT NULL,
+        growth_context_digest TEXT NOT NULL,
+        selection_digest TEXT NOT NULL UNIQUE,
+        receipt_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (run_id, target_slot)
+      );
+      CREATE TABLE IF NOT EXISTS adaptation_observations (
+        id TEXT PRIMARY KEY,
+        selection_id TEXT NOT NULL UNIQUE REFERENCES adaptation_selections(id) ON DELETE RESTRICT,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE RESTRICT,
+        initial_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE RESTRICT,
+        final_turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE RESTRICT,
+        target_slot TEXT NOT NULL CHECK (target_slot = 'procedure.runtime-inspection'),
+        version_id TEXT NOT NULL REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        artifact_digest TEXT NOT NULL,
+        candidate_id TEXT NOT NULL REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        candidate_digest TEXT NOT NULL,
+        effect_receipt_id TEXT NOT NULL UNIQUE REFERENCES effect_receipts(id) ON DELETE RESTRICT,
+        effect_receipt_digest TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'failed')),
+        observation_digest TEXT NOT NULL UNIQUE,
+        receipt_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS adaptation_retirements (
+        id TEXT PRIMARY KEY,
+        target_slot TEXT NOT NULL CHECK (target_slot = 'procedure.runtime-inspection'),
+        version_id TEXT NOT NULL UNIQUE REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        artifact_digest TEXT NOT NULL,
+        candidate_id TEXT NOT NULL REFERENCES adaptation_candidates(id) ON DELETE RESTRICT,
+        reason TEXT NOT NULL CHECK (reason IN ('failed_evaluation', 'observed_failure', 'superseded')),
+        evaluation_id TEXT UNIQUE REFERENCES adaptation_evaluations(id) ON DELETE RESTRICT,
+        observation_id TEXT UNIQUE REFERENCES adaptation_observations(id) ON DELETE RESTRICT,
+        replacement_version_id TEXT UNIQUE REFERENCES self_registry_versions(id) ON DELETE RESTRICT,
+        retirement_digest TEXT NOT NULL UNIQUE,
+        receipt_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        CHECK (
+          (reason = 'failed_evaluation' AND evaluation_id IS NOT NULL
+            AND observation_id IS NULL AND replacement_version_id IS NULL)
+          OR (reason = 'observed_failure' AND evaluation_id IS NULL
+            AND observation_id IS NOT NULL AND replacement_version_id IS NULL)
+          OR (reason = 'superseded' AND evaluation_id IS NULL
+            AND observation_id IS NULL AND replacement_version_id IS NOT NULL)
+        )
+      );
     `);
     if (version === null) {
       db.prepare("INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?)")
@@ -458,7 +540,7 @@ function quoteIdentifier(value: string): string {
 
 function assertWorkerLifecycleShape(
   db: DatabaseSync,
-  version: "8" | "9" | "10" | "11" | "12"
+  version: "8" | "9" | "10" | "11" | "12" | "13"
 ): void {
   const required = version === "8"
     ? ["worker_sessions"]
@@ -499,7 +581,7 @@ function assertWorkerLifecycleShape(
           : ["execution_worker_sessions"];
   const missing = required.filter((name) => !tableExists(db, name));
   const unexpected = forbidden.filter((name) => tableExists(db, name));
-  const workerSql = (version === "10" || version === "11" || version === "12")
+  const workerSql = (version === "10" || version === "11" || version === "12" || version === "13")
     && tableExists(db, "worker_sessions")
     ? (db.prepare(`
       SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'worker_sessions'
@@ -507,15 +589,15 @@ function assertWorkerLifecycleShape(
     : "";
   const expectedKindConstraint = version === "10"
     ? "worker_kind IN ('discussion', 'execution')"
-    : version === "11" || version === "12"
+    : version === "11" || version === "12" || version === "13"
       ? "worker_kind IN ('discussion', 'execution', 'review')"
       : "";
   const mixedWorkerShape = expectedKindConstraint !== ""
     && !workerSql.includes(expectedKindConstraint);
   const oneKindIndex = indexExists(db, "worker_sessions_one_kind_per_parent_idx");
-  const mixedGroupShape = (version === "12" && oneKindIndex)
+  const mixedGroupShape = ((version === "12" || version === "13") && oneKindIndex)
     || (version === "11" && !oneKindIndex)
-    || (version === "12" && hasMixedWorkerGroupState(db));
+    || ((version === "12" || version === "13") && hasMixedWorkerGroupState(db));
   if (missing.length > 0 || unexpected.length > 0 || mixedWorkerShape || mixedGroupShape) {
     throw new RuntimeSchemaIncompatibleError([
       version,
