@@ -9,6 +9,7 @@ import {
   materializeExecutionLock,
   SqliteRuntimeStore,
   type AgentLoopFactory,
+  type CanaryExperienceInspection,
   type ExecutionLock,
   type ExecutionLockInput,
   type RunExecutionResult,
@@ -46,10 +47,14 @@ export interface VNextCanaryEnvelope {
     run_id?: string;
     turn_id?: string;
     session_id?: string;
-    result?: RunInspection | { answer: string | null; error: string | null };
+    result?: CanaryRunInspection | { answer: string | null; error: string | null };
     diagnostic?: { code: string; message: string };
     boundary: string;
   };
+}
+
+export interface CanaryRunInspection extends RunInspection {
+  canary_experience: CanaryExperienceInspection;
 }
 
 export interface VNextCanaryDependencies {
@@ -77,7 +82,10 @@ export async function executeVNextCanary(
       const runId = requireRunId(input.run_id);
       const inspection = new KernelRuntime(store, gateway, unavailableLoopFactory()).inspect(runId);
       return inspection
-        ? envelope(action, inspection.status, inspection.id, inspection.turn_id, inspection.session_id, inspection)
+        ? envelope(action, inspection.status, inspection.id, inspection.turn_id, inspection.session_id, {
+          ...inspection,
+          canary_experience: store.inspectCanaryExperience(inspection.id)
+        })
         : envelope(action, "not_found", runId);
     }
 
@@ -237,7 +245,7 @@ function envelope(
   runId?: string,
   turnId?: string,
   sessionId?: string,
-  result?: RunInspection | { answer: string | null; error: string | null }
+  result?: CanaryRunInspection | { answer: string | null; error: string | null }
 ): VNextCanaryEnvelope {
   return {
     canary: {

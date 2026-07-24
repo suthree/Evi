@@ -310,6 +310,33 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
   }
 }
 
+/**
+ * Canary-only, append-only projection schema. This is deliberately separate
+ * from the shared runtime schema so stable vNext stores never acquire or read
+ * this experimental evidence surface.
+ */
+export function initializeDiagnosticCanaryExperienceSchema(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS canary_experience_records (
+      id TEXT PRIMARY KEY,
+      receipt_id TEXT NOT NULL UNIQUE REFERENCES effect_receipts(id) ON DELETE CASCADE,
+      reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+      turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+      action_name TEXT NOT NULL,
+      contract_version TEXT NOT NULL,
+      action_digest TEXT NOT NULL,
+      effect_class TEXT NOT NULL CHECK (effect_class = 'local_read'),
+      reconciled INTEGER NOT NULL CHECK (reconciled IN (0, 1)),
+      observed_at TEXT NOT NULL,
+      projected_at TEXT NOT NULL,
+      cost TEXT NOT NULL CHECK (cost = 'unavailable')
+    );
+    CREATE INDEX IF NOT EXISTS canary_experience_records_run_idx
+      ON canary_experience_records(run_id, observed_at, id);
+  `);
+}
+
 function assertWorkerLifecycleShape(
   db: DatabaseSync,
   version: "8" | "9" | "10" | "11" | "12"

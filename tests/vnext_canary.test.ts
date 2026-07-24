@@ -18,10 +18,18 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import {
+  createModels,
+  fauxAssistantMessage,
+  fauxProvider,
+  fauxToolCall
+} from "@earendil-works/pi-ai";
+import {
   ActionGateway,
   type ActionHandler,
   type AgentLoopFactory,
   createRuntimeInspectAction,
+  KernelRuntime,
+  PiAgentHarnessLoopFactory,
   SqliteRuntimeStore
 } from "../packages/kernel/src/index.js";
 import {
@@ -108,6 +116,171 @@ test("vNext canary submit and inspect use one isolated SQLite database and mark 
     ]);
   } finally {
     diagnosticChannel.unsubscribe(recordDispatch);
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext canary projects one successful synthetic Pi runtime_inspect receipt without retaining payloads", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-experience-synthetic-"));
+  const sqlite = join(fixture, "canary.sqlite");
+  const syntheticPrompt = "synthetic-canary-prompt-must-not-enter-experience";
+  const syntheticPiMessage = "synthetic-Pi-message-must-not-enter-experience";
+  const syntheticCredentialReference = "SYNTHETIC_CANARY_CREDENTIAL_MUST_NOT_ENTER_EXPERIENCE";
+  const models = createModels();
+  const faux = fauxProvider({ provider: `canary-experience-${Date.now()}` });
+  models.setProvider(faux.provider);
+  faux.setResponses([
+    (context) => {
+      assert.deepEqual(context.tools.map((tool) => tool.name), ["runtime_inspect"]);
+      return fauxAssistantMessage(
+        fauxToolCall("runtime_inspect", {}, { id: "synthetic-canary-inspect-call" }),
+        { stopReason: "toolUse" }
+      );
+    },
+    (context) => {
+      const toolResult = context.messages.find((message) => message.role === "toolResult");
+      assert.ok(toolResult && toolResult.role === "toolResult");
+      return fauxAssistantMessage(syntheticPiMessage);
+    }
+  ]);
+
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
+  let runId = "";
+  let expectedRecords: unknown[] = [];
+  try {
+    const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+    const runtime = new KernelRuntime(store, gateway, new PiAgentHarnessLoopFactory({
+      store,
+      models,
+      model: faux.getModel(),
+      cwd: fixture
+    }));
+    const executionLock = testExecutionLock({
+      cwd: fixture,
+      model: faux.getModel(),
+      contracts: gateway.contracts()
+    });
+    executionLock.model.credential_ref = syntheticCredentialReference;
+    const outcome = await runtime.submit({
+      request: syntheticPrompt,
+      execution_lock: executionLock
+    });
+
+    runId = outcome.run_id;
+    assert.equal(outcome.status, "completed");
+    assert.equal(runtime.inspect(runId)?.unresolved_action_count, 0);
+    assert.equal(runtime.inspect(runId)?.effect_receipt_count, 1);
+    const experience = store.inspectCanaryExperience(runId);
+    assert.equal(experience.record_count, 1);
+    assert.equal(experience.records.length, 1);
+    const record = experience.records[0]!;
+    assert.equal(record.run_id, runId);
+    assert.equal(record.action_name, "runtime_inspect");
+    assert.equal(record.contract_version, "1");
+    assert.equal(record.effect_class, "local_read");
+    assert.equal(record.cost, "unavailable");
+    assert.match(record.action_digest, /^[a-f0-9]{64}$/);
+    assert.doesNotMatch(JSON.stringify(record), new RegExp(syntheticPrompt));
+    assert.doesNotMatch(JSON.stringify(record), new RegExp(syntheticPiMessage));
+    assert.doesNotMatch(JSON.stringify(record), new RegExp(syntheticCredentialReference));
+    assert.doesNotMatch(JSON.stringify(record), /bounded runtime state was inspected locally/);
+    expectedRecords = experience.records;
+
+    await assert.rejects(runtime.continueRun(runId), /Run cannot continue/);
+    assert.deepEqual(store.inspectCanaryExperience(runId).records, expectedRecords);
+  } finally {
+    store.close();
+  }
+
+  try {
+    const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
+    try {
+      assert.deepEqual(reopened.inspectCanaryExperience(runId).records, expectedRecords);
+    } finally {
+      reopened.close();
+    }
+    const inspected = await executeVNextCanary(
+      { action: "inspect", sqlite, run_id: runId },
+      { path_boundary: isolatedPathBoundary(fixture) }
+    );
+    const result = inspected.canary.result;
+    assert.ok(result && "canary_experience" in result);
+    assert.deepEqual(result.canary_experience.records, expectedRecords);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext canary leaves failed, unknown, and no-tool synthetic Runs without Experience Records", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-experience-negative-synthetic-"));
+  const store = new SqliteRuntimeStore(join(fixture, "canary.sqlite"), { state_profile: "diagnostic_canary" });
+  try {
+    const runtimeInspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [runtimeInspect]);
+    const runtime = new KernelRuntime(store, gateway, {
+      create: () => ({ execute: async () => ({ answer: "Synthetic no-tool completion." }) })
+    });
+    const noTool = await runtime.submit({
+      request: "Synthetic no-tool Run.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    assert.equal(noTool.status, "completed");
+    assert.equal(store.inspectCanaryExperience(noTool.run_id).record_count, 0);
+
+    const failedRuntime = new KernelRuntime(store, gateway, {
+      create: () => ({ execute: async () => { throw new Error("Synthetic Pi failure."); } })
+    });
+    const failed = await failedRuntime.submit({
+      request: "Synthetic failed Run.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(store.inspectCanaryExperience(failed.run_id).record_count, 0);
+
+    const failedReceipt = store.beginRun({
+      request: "Synthetic failed-receipt Run.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, 30_000);
+    const failedReservation = store.reserveAction({
+      run_id: failedReceipt.run.id,
+      turn_id: failedReceipt.run.turn_id,
+      invocation_id: "synthetic-failed-runtime-inspect",
+      action_name: runtimeInspect.contract.name,
+      contract_version: runtimeInspect.contract.version,
+      action_digest: actionDigestForTest(runtimeInspect, {}),
+      effect_class: runtimeInspect.contract.effect_class,
+      decision_reason: "Synthetic failed-receipt fixture.",
+      arguments: {}
+    });
+    store.completeAction(failedReservation.reservation.id, {
+      outcome: "failed",
+      summary: "Synthetic runtime inspection failure.",
+      output: { synthetic: true }
+    }, false);
+    store.completeRun(failedReceipt.execution, "Synthetic Run completed after a failed receipt.");
+    assert.equal(store.inspectCanaryExperience(failedReceipt.run.id).record_count, 0);
+
+    const unknown = store.beginRun({
+      request: "Synthetic unknown Action Run.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, 30_000);
+    const reserved = store.reserveAction({
+      run_id: unknown.run.id,
+      turn_id: unknown.run.turn_id,
+      invocation_id: "synthetic-unknown-runtime-inspect",
+      action_name: runtimeInspect.contract.name,
+      contract_version: runtimeInspect.contract.version,
+      action_digest: actionDigestForTest(runtimeInspect, {}),
+      effect_class: runtimeInspect.contract.effect_class,
+      decision_reason: "Synthetic unknown-action fixture.",
+      arguments: {}
+    });
+    store.markActionOutcomeUnknown(reserved.reservation.id, "Synthetic unknown result.");
+    store.pauseRun(unknown.execution, "Synthetic unknown Action is unresolved.");
+    assert.equal(store.inspectRun(unknown.run.id)?.status, "paused");
+    assert.equal(store.inspectCanaryExperience(unknown.run.id).record_count, 0);
+  } finally {
+    store.close();
     await rm(fixture, { recursive: true, force: true });
   }
 });

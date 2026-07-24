@@ -116,6 +116,7 @@ import {
 } from "./sqlite_runtime_codec.js";
 import { validateRuntimeLeaseDuration } from "./runtime_limits.js";
 import {
+  initializeDiagnosticCanaryExperienceSchema,
   initializeRuntimeSchema,
   RUNTIME_SCHEMA_VERSION,
   RuntimeSchemaIncompatibleError
@@ -182,6 +183,43 @@ export class RuntimeStateProfileIncompatibleError extends Error {
 
 export interface SqliteRuntimeStoreOptions {
   state_profile?: RuntimeStateProfile;
+}
+
+export interface CanaryExperienceRecord {
+  id: string;
+  receipt_id: string;
+  reservation_id: string;
+  run_id: string;
+  turn_id: string;
+  action_name: "runtime_inspect";
+  contract_version: "1";
+  action_digest: string;
+  effect_class: "local_read";
+  reconciled: boolean;
+  observed_at: string;
+  projected_at: string;
+  cost: "unavailable";
+}
+
+export interface CanaryExperienceInspection {
+  record_count: number;
+  records: CanaryExperienceRecord[];
+}
+
+interface CanaryExperienceRecordRow {
+  id: string;
+  receipt_id: string;
+  reservation_id: string;
+  run_id: string;
+  turn_id: string;
+  action_name: "runtime_inspect";
+  contract_version: "1";
+  action_digest: string;
+  effect_class: "local_read";
+  reconciled: number;
+  observed_at: string;
+  projected_at: string;
+  cost: "unavailable";
 }
 
 export class WorkerGroupAdmissionError extends Error {
@@ -328,6 +366,7 @@ interface AdaptationEvaluationRow {
 export class SqliteRuntimeStore {
   readonly dbPath: string;
   private readonly db: DatabaseSync;
+  private readonly stateProfile: RuntimeStateProfile | undefined;
 
   constructor(dbPath: string, options: SqliteRuntimeStoreOptions = {}) {
     this.dbPath = resolve(dbPath);
@@ -335,7 +374,13 @@ export class SqliteRuntimeStore {
     this.db = new DatabaseSync(this.dbPath, { timeout: 5_000 });
     try {
       initializeRuntimeSchema(this.db);
-      if (options.state_profile) this.bindStateProfile(options.state_profile);
+      if (options.state_profile) {
+        this.bindStateProfile(options.state_profile);
+        this.stateProfile = options.state_profile;
+        if (this.stateProfile === "diagnostic_canary") {
+          initializeDiagnosticCanaryExperienceSchema(this.db);
+        }
+      }
     } catch (error) {
       this.db.close();
       throw error;
@@ -856,6 +901,29 @@ export class SqliteRuntimeStore {
   inspectRun(runId: string): RunInspection | null {
     const run = this.getRun(runId);
     return run ? inspectRuntimeRun(this.db, run, this.getExecutionLock(run.id)) : null;
+  }
+
+  inspectCanaryExperience(runId: string): CanaryExperienceInspection {
+    this.requireDiagnosticCanaryProfile();
+    this.requireRun(runId);
+    const count = this.db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM canary_experience_records
+      WHERE run_id = ?
+    `).get(runId) as { count: number };
+    const records = this.db.prepare(`
+      SELECT id, receipt_id, reservation_id, run_id, turn_id, action_name,
+             contract_version, action_digest, effect_class, reconciled,
+             observed_at, projected_at, cost
+      FROM canary_experience_records
+      WHERE run_id = ?
+      ORDER BY observed_at ASC, id ASC
+      LIMIT 16
+    `).all(runId) as unknown as CanaryExperienceRecordRow[];
+    return {
+      record_count: Number(count.count),
+      records: records.map((record) => ({ ...record, reconciled: record.reconciled === 1 }))
+    };
   }
 
   inspectSession(sessionId: string): SessionInspection | null {
@@ -2624,6 +2692,7 @@ export class SqliteRuntimeStore {
         });
       } else if (outcome === "completed") {
         this.insertEvent(run.id, run.turn_id, "run_completed", {});
+        this.projectDiagnosticCanaryExperience(run.id, settledAt);
       } else if (outcome === "paused") {
         this.insertEvent(run.id, run.turn_id, "run_paused", {
           reason: error,
@@ -2656,6 +2725,47 @@ export class SqliteRuntimeStore {
       WHERE id = ? AND status = 'running'
     `).run(status, answer, error, updatedAt, run.turn_id);
     if (Number(turnResult.changes) !== 1) throw new Error(`Turn is not running: ${run.turn_id}`);
+  }
+
+  private projectDiagnosticCanaryExperience(runId: string, projectedAt: string): void {
+    if (this.stateProfile !== "diagnostic_canary") return;
+    this.db.prepare(`
+      INSERT INTO canary_experience_records (
+        id, receipt_id, reservation_id, run_id, turn_id, action_name,
+        contract_version, action_digest, effect_class, reconciled,
+        observed_at, projected_at, cost
+      )
+      SELECT
+        'canary_experience:' || receipts.id,
+        receipts.id,
+        receipts.reservation_id,
+        receipts.run_id,
+        receipts.turn_id,
+        receipts.action_name,
+        receipts.contract_version,
+        receipts.action_digest,
+        receipts.effect_class,
+        receipts.reconciled,
+        receipts.created_at,
+        ?,
+        'unavailable'
+      FROM effect_receipts AS receipts
+      JOIN action_reservations AS reservations ON reservations.id = receipts.reservation_id
+      JOIN runs ON runs.id = receipts.run_id
+      WHERE receipts.run_id = ?
+        AND runs.status = 'completed'
+        AND receipts.outcome = 'succeeded'
+        AND receipts.action_name = 'runtime_inspect'
+        AND receipts.contract_version = '1'
+        AND receipts.effect_class = 'local_read'
+        AND reservations.state = 'terminal'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM action_reservations AS unresolved
+          WHERE unresolved.run_id = receipts.run_id AND unresolved.state != 'terminal'
+        )
+      ON CONFLICT(receipt_id) DO NOTHING
+    `).run(projectedAt, runId);
   }
 
   private insertRunExecution(input: {
@@ -2860,6 +2970,12 @@ export class SqliteRuntimeStore {
         "INSERT INTO schema_meta (key, value) VALUES ('state_profile', ?)"
       ).run(expectedProfile);
     });
+  }
+
+  private requireDiagnosticCanaryProfile(): void {
+    if (this.stateProfile !== "diagnostic_canary") {
+      throw new Error("Canary Experience Records are only available to the diagnostic_canary state profile.");
+    }
   }
 
   private requireSession(sessionId: string): RuntimeSessionRecord {
