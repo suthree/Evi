@@ -152,6 +152,173 @@ test("Kernel Runtime keeps a first no-active Run unbound after activation and re
   }
 });
 
+test("Kernel Runtime closes Growth from an unbound evidence Run through verified reuse and failed reuse retirement", async () => {
+  const fixture = await createFixture();
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite);
+  try {
+    const engine = new AdaptationEngine(store);
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+    let loopOrdinal = 0;
+    const runtime = new KernelRuntime(store, gateway, captureLoops([], async (input) => {
+      loopOrdinal += 1;
+      if (loopOrdinal === 1) return { answer: "initial evidence completed without a Growth binding" };
+      const result = await input.action_gateway.invoke({
+        run_id: input.run_id,
+        turn_id: input.turn_id,
+        invocation_id: loopOrdinal === 2 ? "growth-success" : "growth-failure",
+        action_name: "runtime_inspect",
+        arguments: {}
+      });
+      assert.equal(result.status, "completed");
+      if (loopOrdinal === 2) return { answer: "verified reuse completed" };
+      throw new Error("deterministic failed reuse after canonical runtime inspection");
+    }));
+
+    const evidence = await runtime.submit({
+      request: "Create one no-active Kernel Run as candidate evidence.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    assert.equal(evidence.status, "completed");
+    assert.equal(new GrowthLifecycle(store).readRunBinding(evidence.run_id), null);
+    const candidate = engine.propose({
+      target_slot: "procedure.runtime-inspection",
+      name: "Inspect the bounded Kernel Runtime before continuing.",
+      summary: "Use the exact local runtime inspection Action before terminal reuse acceptance.",
+      trigger_conditions: ["A Kernel Run needs exact local runtime evidence."],
+      steps: ["Invoke runtime_inspect.", "Accept only the canonical terminal receipt."],
+      expected_result: "The same Kernel Run reaches one terminal state with canonical effect evidence.",
+      verification_requirements: ["Read the Run-owned runtime_inspect receipt before accepting the outcome."],
+      failure_modes: ["A failed verified reuse retires the active procedure."],
+      rollback_rule: "Retire the active procedure after one verified failed reuse.",
+      evidence_run_ids: [evidence.run_id]
+    });
+    engine.evaluate(candidate.candidate.id);
+    const activation = engine.activate(candidate.candidate.id);
+
+    const retained = await runtime.submit({
+      request: "Reuse the active procedure through the real Kernel loop.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    assert.equal(retained.status, "completed");
+    const failed = await runtime.submit({
+      request: "Record a failed verified reuse through the real Kernel loop.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    assert.equal(failed.status, "failed");
+
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      const retainedSelection = raw.prepare(`
+        SELECT id, version_id FROM adaptation_selections WHERE run_id = ?
+      `).get(retained.run_id) as { id: string; version_id: string };
+      const failedSelection = raw.prepare(`
+        SELECT id, version_id FROM adaptation_selections WHERE run_id = ?
+      `).get(failed.run_id) as { id: string; version_id: string };
+      assert.deepEqual({ ...retainedSelection }, {
+        id: retainedSelection.id,
+        version_id: activation.activated_version_id
+      });
+      assert.deepEqual({ ...failedSelection }, {
+        id: failedSelection.id,
+        version_id: activation.activated_version_id
+      });
+      const retainedEffect = raw.prepare(`
+        SELECT id, action_name, contract_version, outcome
+        FROM effect_receipts WHERE run_id = ?
+      `).get(retained.run_id) as {
+        id: string;
+        action_name: string;
+        contract_version: string;
+        outcome: string;
+      };
+      const failedEffect = raw.prepare(`
+        SELECT id, action_name, contract_version, outcome
+        FROM effect_receipts WHERE run_id = ?
+      `).get(failed.run_id) as {
+        id: string;
+        action_name: string;
+        contract_version: string;
+        outcome: string;
+      };
+      assert.deepEqual({ ...retainedEffect }, {
+        id: retainedEffect.id,
+        action_name: "runtime_inspect",
+        contract_version: "1",
+        outcome: "succeeded"
+      });
+      assert.deepEqual({ ...failedEffect }, {
+        id: failedEffect.id,
+        action_name: "runtime_inspect",
+        contract_version: "1",
+        outcome: "succeeded"
+      });
+      assert.deepEqual({
+        ...raw.prepare(`
+          SELECT selection_id, effect_receipt_id, outcome
+          FROM adaptation_observations WHERE selection_id = ?
+        `).get(retainedSelection.id) as {
+          selection_id: string;
+          effect_receipt_id: string;
+          outcome: string;
+        }
+      }, {
+        selection_id: retainedSelection.id,
+        effect_receipt_id: retainedEffect.id,
+        outcome: "completed"
+      });
+      const failedObservation = raw.prepare(`
+        SELECT id, selection_id, effect_receipt_id, outcome
+        FROM adaptation_observations WHERE selection_id = ?
+      `).get(failedSelection.id) as {
+        id: string;
+        selection_id: string;
+        effect_receipt_id: string;
+        outcome: string;
+      };
+      assert.deepEqual({ ...failedObservation }, {
+        id: failedObservation.id,
+        selection_id: failedSelection.id,
+        effect_receipt_id: failedEffect.id,
+        outcome: "failed"
+      });
+      assert.deepEqual({
+        ...raw.prepare(`
+          SELECT reason, observation_id, version_id
+          FROM adaptation_retirements WHERE version_id = ?
+        `).get(activation.activated_version_id) as {
+          reason: string;
+          observation_id: string;
+          version_id: string;
+        }
+      }, {
+        reason: "observed_failure",
+        observation_id: failedObservation.id,
+        version_id: activation.activated_version_id
+      });
+      assert.equal(
+        raw.prepare("SELECT state FROM self_registry_versions WHERE id = ?")
+          .get(activation.activated_version_id)?.state,
+        "retired"
+      );
+      assert.equal(
+        raw.prepare(`
+          SELECT COUNT(*) AS count
+          FROM runtime_events
+          WHERE run_id IN (?, ?) AND kind = 'growth_observation_unverified'
+        `).get(retained.run_id, failed.run_id)?.count,
+        0
+      );
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("Kernel Runtime rejects a tampered selected context before any Agent Loop is created", async () => {
   const fixture = await createFixture();
   const sqlite = join(fixture, "runtime.sqlite");
@@ -189,6 +356,19 @@ test("Kernel Runtime rejects a tampered selected context before any Agent Loop i
     assert.equal(loopCreates, 0);
     assert.equal(store.inspectRun(failed.run_id)?.status, "failed");
     assert.equal(store.inspectRun(failed.run_id)?.action_count, 0);
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      const event = raw.prepare(`
+        SELECT payload_json
+        FROM runtime_events
+        WHERE run_id = ? AND kind = 'growth_observation_unverified'
+      `).get(failed.run_id) as { payload_json: string };
+      assert.deepEqual(JSON.parse(event.payload_json), { reason: "invalid_growth_projection" });
+      assert.equal(raw.prepare("SELECT COUNT(*) AS count FROM adaptation_observations").get()?.count, 0);
+      assert.equal(raw.prepare("SELECT COUNT(*) AS count FROM adaptation_retirements").get()?.count, 0);
+    } finally {
+      raw.close();
+    }
   } finally {
     store.close();
     await rm(fixture, { recursive: true, force: true });
