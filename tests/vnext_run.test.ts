@@ -62,6 +62,7 @@ test("stable vNext CLI binds multiple terminal Runs without duplicating or persi
     }
   }), secret);
   try {
+    await writeStableCoreFixture(fixture);
     const first = await executeVNextRun({
       action: "submit",
       task: `Open one durable Session without storing ${secret}.`,
@@ -438,6 +439,7 @@ test("stable vNext CLI preserves one Session across independent CLI processes", 
   const address = server.address();
   assert.ok(address && typeof address === "object");
   try {
+    await writeStableCoreFixture(fixture);
     await writeVNextTestConfig({
       configDir,
       stateRoot,
@@ -870,6 +872,21 @@ async function writeVNextTestConfig(input: {
     id: input.authId ?? "test-credential",
     key: input.secret
   })}\n`, "utf8");
+}
+
+async function writeStableCoreFixture(repoRoot: string): Promise<void> {
+  const docsRoot = join(repoRoot, "docs");
+  await mkdir(docsRoot, { recursive: true });
+  await writeFile(join(docsRoot, "CURRENT_DIRECTION.md"), [
+    "# Current Direction",
+    "",
+    "Deterministic local fixture for stable vNext Run tests."
+  ].join("\n"), "utf8");
+  await writeFile(join(docsRoot, "INDEX.md"), [
+    "# Documentation Index",
+    "",
+    "Stable Core fixture index."
+  ].join("\n"), "utf8");
 }
 
 async function exists(path: string): Promise<boolean> {
