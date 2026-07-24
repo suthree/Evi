@@ -31,7 +31,7 @@ import {
   executeVNextWorker,
   VNEXT_REVIEW_WORKER_MARKER
 } from "../apps/cli/src/vnext_worker.js";
-import { testExecutionLock } from "./vnext_test_support.js";
+import { testExecutionLock, testLegacyConfigPiAdapter } from "./vnext_test_support.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1122,18 +1122,20 @@ test("stable vNext worker CLI inspects and executes the queued review kind", asy
       config_dir: configDir,
       repo_root: fixture.repository
     }, {
-      load_model: async () => ({
-        config_id: "test-test-model",
-        provider: "test-provider",
-        api: "chat_completions",
-        base_url: "https://provider.example.test/v1",
-        model: "test-model",
-        credential_ref: "test-credential",
-        api_key: "synthetic-review-key",
-        reasoning_effort: null,
-        context_window_tokens: 128_000,
-        max_output_tokens: 2_400,
-        timeout_ms: 120_000
+      load_legacy_config_pi_adapter: async () => testLegacyConfigPiAdapter({
+        model: {
+          config_id: "test-test-model",
+          provider: "test-provider",
+          api: "chat_completions",
+          base_url: "https://provider.example.test/v1",
+          model: "test-model",
+          credential_ref: "test-credential",
+          reasoning_effort: null,
+          context_window_tokens: 128_000,
+          max_output_tokens: 2_400,
+          timeout_ms: 120_000
+        },
+        secret: "synthetic-review-key"
       }),
       create_loop_factory: ({ store: cliStore }) => reviewLoop(cliStore, {
         verdict: "approved",
