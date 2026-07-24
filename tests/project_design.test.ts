@@ -77,11 +77,11 @@ test("project design read model bootstraps the first core/basic plan from empty 
     assert.equal(plan.target_slice_id, "next_slice_core_project_design");
     assert.equal(plan.target_selection_origin, "fresh_bootstrap");
     assert.equal(plan.source_artifact_id, "project_design_bootstrap_contract_source");
-    assert.equal(plan.source_iteration_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(plan.source_iteration_ref, "docs/CURRENT_DIRECTION.md");
     assert.equal(plan.source_proposed_slice, "fresh_state_no_verified_iteration");
     assert.equal(plan.proposed_slice, "core_project_design_fresh_bootstrap");
     assert.equal(plan.next_iteration_seed.proposed_slice, "core_project_design_fresh_bootstrap");
-    assert.equal(plan.next_iteration_seed.source_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(plan.next_iteration_seed.source_ref, "docs/CURRENT_DIRECTION.md");
     assert.match(plan.implementation_contract.intent ?? "", /core-project-design successor self-describing/);
     assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("successor acceptance standard")), true);
     assert.equal(plan.implementation_contract.acceptance_criteria?.some((item) => item.includes("rejects missing or drifted acceptance criteria")), true);
