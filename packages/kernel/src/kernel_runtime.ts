@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { ActionGateway } from "./action_gateway.js";
 import type { ActionRecoveryEvidence, JsonObject } from "./action_types.js";
+import { GrowthLifecycle } from "./adaptation_engine.js";
 import type {
   AgentLoopFactory,
   ExecutionLock,
@@ -36,6 +37,7 @@ export class KernelRuntime {
   private readonly executionLeaseMs: number;
   private readonly orchestration: OrchestrationEngine | undefined;
   private readonly runtimeBudget: KernelRuntimeOptions["runtime_budget"];
+  private readonly growth: GrowthLifecycle;
 
   constructor(
     private readonly store: SqliteRuntimeStore,
@@ -46,6 +48,7 @@ export class KernelRuntime {
     this.executionLeaseMs = options.execution_lease_ms ?? DEFAULT_EXECUTION_LEASE_MS;
     validateRuntimeLeaseDuration(this.executionLeaseMs, "Run execution");
     this.orchestration = options.orchestration;
+    this.growth = new GrowthLifecycle(this.store);
     this.runtimeBudget = options.runtime_budget;
     if (this.runtimeBudget) {
       const deadline = Date.parse(this.runtimeBudget.deadline_at);
@@ -63,8 +66,14 @@ export class KernelRuntime {
     workerBinding?: WorkerRunBinding,
     runtimeContext?: JsonObject
   ): Promise<RunExecutionResult> {
+    assertNoReservedGrowthContext(runtimeContext, "Caller runtime context");
     assertExecutionLockMatchesContracts(input.execution_lock, this.actions.contracts());
     const started = this.store.beginRun(input, this.executionLeaseMs, workerBinding);
+    try {
+      this.growth.bindInitialRun(started.run.id, started.run.turn_id);
+    } catch (error) {
+      return toResult(this.store.failRun(started.execution, errorMessage(error)));
+    }
     return this.executeRun(
       started.run,
       started.execution,
@@ -76,8 +85,11 @@ export class KernelRuntime {
 
   async continueRun(runId: string, runtimeContext?: JsonObject): Promise<RunExecutionResult> {
     let inspection = this.requireInspection(runId);
+    assertNoReservedGrowthContext(runtimeContext, "Caller runtime context");
+    const orchestrationRuntimeContext = this.orchestration?.runtimeContextForTurn(runId, inspection.turn_id);
+    assertNoReservedGrowthContext(orchestrationRuntimeContext, "Orchestration runtime context");
     const effectiveRuntimeContext = runtimeContext
-      ?? this.orchestration?.runtimeContextForTurn(runId, inspection.turn_id)
+      ?? orchestrationRuntimeContext
       ?? undefined;
     const executionLock = this.store.getExecutionLock(runId);
     assertExecutionLockMatchesContracts(executionLock, this.actions.contracts());
@@ -217,6 +229,7 @@ export class KernelRuntime {
     }, Math.max(50, Math.floor(this.executionLeaseMs / 3)));
 
     try {
+      const effectiveRuntimeContext = this.withRunGrowthContext(run.id, runtimeContext);
       const loop = this.loops.create({
         run_id: run.id,
         turn_id: run.turn_id,
@@ -224,7 +237,7 @@ export class KernelRuntime {
         action_gateway: this.actions,
         execution,
         execution_lock: executionLock,
-        ...(runtimeContext ? { runtime_context: runtimeContext } : {}),
+        ...(effectiveRuntimeContext ? { runtime_context: effectiveRuntimeContext } : {}),
         ...(this.runtimeBudget ? { runtime_budget: this.runtimeBudget } : {})
       });
       const result = await loop.execute(prompt, controller.signal);
@@ -264,6 +277,22 @@ export class KernelRuntime {
     const inspection = this.store.inspectRun(runId);
     if (!inspection) throw new Error(`Run not found: ${runId}`);
     return inspection;
+  }
+
+  private withRunGrowthContext(runId: string, runtimeContext?: JsonObject): JsonObject | undefined {
+    assertNoReservedGrowthContext(runtimeContext, "Runtime context");
+    const binding = this.growth.readRunBinding(runId);
+    if (!binding) return runtimeContext;
+    return {
+      ...(runtimeContext ?? {}),
+      growth_procedure: this.growth.renderRuntimeContext(binding)
+    };
+  }
+}
+
+function assertNoReservedGrowthContext(context: JsonObject | null | undefined, source: string): void {
+  if (context && Object.hasOwn(context, "growth_procedure")) {
+    throw new Error(`${source} must not supply reserved growth_procedure.`);
   }
 }
 

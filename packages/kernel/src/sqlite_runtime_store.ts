@@ -2576,7 +2576,7 @@ export class SqliteRuntimeStore {
     });
   }
 
-  selectActiveProcedure(runId: string, turnId: string): ProcedureSelectionReceipt {
+  bindInitialProcedureSelection(runId: string, turnId: string): ProcedureSelectionReceipt | null {
     return this.transaction(() => {
       const run = this.requireRun(runId);
       if (run.status !== "running" || run.turn_id !== turnId) {
@@ -2586,7 +2586,7 @@ export class SqliteRuntimeStore {
       if (existing) return this.validateProcedureSelection(existing);
       this.assertProcedureSelectionPreLoop(run);
       const version = this.getActiveAdaptationRegistry(PROCEDURE_RUNTIME_INSPECTION_SLOT);
-      if (!version) throw new Error(`No active Growth Procedure: ${PROCEDURE_RUNTIME_INSPECTION_SLOT}`);
+      if (!version) return null;
       const candidate = this.requireAdaptationCandidate(version.candidate_id);
       this.requireGrowthTargetSlot(candidate.target_slot);
       const selection = materializeProcedureSelectionReceipt({
@@ -2616,6 +2616,16 @@ export class SqliteRuntimeStore {
       );
       return this.requireProcedureSelection(selection.id);
     });
+  }
+
+  /**
+   * Compatibility surface for direct Growth lifecycle tests.  Runtime callers
+   * should use bindInitialProcedureSelection so absence is a normal no-op.
+   */
+  selectActiveProcedure(runId: string, turnId: string): ProcedureSelectionReceipt {
+    const selection = this.bindInitialProcedureSelection(runId, turnId);
+    if (!selection) throw new Error(`No active Growth Procedure: ${PROCEDURE_RUNTIME_INSPECTION_SLOT}`);
+    return selection;
   }
 
   observeProcedureSelection(selectionId: string, effectReceiptId: string): ProcedureObservationReceipt {
@@ -2758,6 +2768,12 @@ export class SqliteRuntimeStore {
       SELECT * FROM adaptation_selections WHERE id = ?
     `).get(selectionId) as AdaptationSelectionRow | undefined;
     return row ? this.validateProcedureSelection(toProcedureSelectionReceipt(row)) : null;
+  }
+
+  readProcedureSelectionForRun(runId: string): ProcedureSelectionReceipt | null {
+    const run = this.requireRun(runId);
+    const selection = this.getAdaptationSelectionForRun(run.id);
+    return selection ? this.validateProcedureSelection(selection) : null;
   }
 
   renderSelectedProcedureContext(selectionId: string): string {

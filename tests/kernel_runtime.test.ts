@@ -14,12 +14,186 @@ import {
   fauxToolCall
 } from "@earendil-works/pi-ai";
 import { ActionGateway } from "../packages/kernel/src/action_gateway.js";
-import type { ActionHandler } from "../packages/kernel/src/action_types.js";
+import type { ActionHandler, JsonObject } from "../packages/kernel/src/action_types.js";
+import { AdaptationEngine, GrowthLifecycle } from "../packages/kernel/src/adaptation_engine.js";
+import type { AgentLoopFactory } from "../packages/kernel/src/contracts.js";
 import { KernelRuntime } from "../packages/kernel/src/kernel_runtime.js";
+import type { OrchestrationEngine } from "../packages/kernel/src/orchestration_engine.js";
 import { PiAgentHarnessLoopFactory } from "../packages/kernel/src/pi_agent_harness_adapter.js";
 import { createRuntimeInspectAction } from "../packages/kernel/src/runtime_inspect_action.js";
 import { SqliteRuntimeStore } from "../packages/kernel/src/sqlite_runtime_store.js";
 import { testExecutionLock } from "./vnext_test_support.js";
+
+test("Kernel Runtime binds one active Growth Procedure before the loop and keeps it sticky for continuation", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const engine = new AdaptationEngine(store);
+    const first = activateInspectionProcedure(engine, store, fixture, "First active Growth Procedure.");
+    const action = recoverableGrowthProbe();
+    const gateway = new ActionGateway(store, [action]);
+    const captured: Array<JsonObject | undefined> = [];
+    let firstLoop = true;
+    const runtime = new KernelRuntime(store, gateway, captureLoops(captured, async (input) => {
+      if (!firstLoop) return { answer: "The same Run resumed with its original Growth Procedure." };
+      firstLoop = false;
+      const unknown = await input.action_gateway.invoke({
+        run_id: input.run_id,
+        turn_id: input.turn_id,
+        invocation_id: "growth-probe",
+        action_name: action.contract.name,
+        arguments: {}
+      });
+      assert.equal(unknown.status, "outcome_unknown");
+      throw new Error("pause after an unresolved Growth Procedure fixture action");
+    }));
+    const workerContext: JsonObject = {
+      kind: "runtime_worker_result_delivery",
+      worker_marker: "preserve the original worker-owned context"
+    };
+
+    const paused = await runtime.submit({
+      request: "Use the active Growth Procedure before this Run starts.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, undefined, workerContext);
+    assert.equal(paused.status, "paused");
+    const firstContext = captured[0];
+    assert.ok(firstContext);
+    assert.equal(firstContext.kind, workerContext.kind);
+    assert.equal(firstContext.worker_marker, workerContext.worker_marker);
+    const growth = firstContext.growth_procedure;
+    assert.ok(growth && typeof growth === "object" && !Array.isArray(growth));
+    const binding = new GrowthLifecycle(store).readRunBinding(paused.run_id);
+    assert.ok(binding);
+    assert.deepEqual(growth, {
+      selection_id: binding.selection.id,
+      selection_digest: binding.selection.digest,
+      target_slot: "procedure.runtime-inspection",
+      version_id: first.registry_version.id,
+      artifact_digest: first.registry_version.artifact_digest,
+      candidate_id: first.candidate.id,
+      candidate_digest: first.candidate.digest,
+      context_digest: binding.selection.growth_context_digest,
+      context: binding.context
+    });
+    assert.match((growth as JsonObject).context as string, /First active Growth Procedure/);
+
+    const replacement = activateInspectionProcedure(engine, store, fixture, "Replacement Growth Procedure.");
+    assert.notEqual(replacement.registry_version.id, first.registry_version.id);
+    const completed = await runtime.continueRun(paused.run_id);
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(captured[1]?.growth_procedure, firstContext.growth_procedure);
+    assert.doesNotMatch(JSON.stringify(captured[1]), /Replacement Growth Procedure/);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Kernel Runtime keeps a first no-active Run unbound after activation and rejects reserved context", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const engine = new AdaptationEngine(store);
+    const action = recoverableGrowthProbe();
+    const gateway = new ActionGateway(store, [action]);
+    const captured: Array<JsonObject | undefined> = [];
+    let firstLoop = true;
+    const runtime = new KernelRuntime(store, gateway, captureLoops(captured, async (input) => {
+      if (!firstLoop) return { answer: "The unbound Run resumed without a Growth Procedure." };
+      firstLoop = false;
+      const unknown = await input.action_gateway.invoke({
+        run_id: input.run_id,
+        turn_id: input.turn_id,
+        invocation_id: "unbound-growth-probe",
+        action_name: action.contract.name,
+        arguments: {}
+      });
+      assert.equal(unknown.status, "outcome_unknown");
+      throw new Error("pause an initially unbound Run");
+    }));
+    const supplied: JsonObject = { kind: "runtime_test_context", value: "preserve me" };
+    const paused = await runtime.submit({
+      request: "Run without an active Growth Procedure.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    }, undefined, supplied);
+    assert.equal(paused.status, "paused");
+    assert.deepEqual(captured, [supplied]);
+    assert.equal(new GrowthLifecycle(store).readRunBinding(paused.run_id), null);
+
+    activateInspectionProcedure(engine, store, fixture, "Activated after the first Run was already bound absent.");
+    assert.equal(new GrowthLifecycle(store).readRunBinding(paused.run_id), null);
+    const orchestrationOverride = new KernelRuntime(store, gateway, captureLoops([]), {
+      orchestration: {
+        runtimeContextForTurn() {
+          return { growth_procedure: "orchestration override" };
+        }
+      } as unknown as OrchestrationEngine
+    });
+    await assert.rejects(
+      orchestrationOverride.continueRun(paused.run_id),
+      /Orchestration runtime context must not supply reserved growth_procedure/
+    );
+
+    const completed = await runtime.continueRun(paused.run_id);
+    assert.equal(completed.status, "completed");
+    assert.deepEqual(captured, [supplied, undefined]);
+
+    await assert.rejects(
+      runtime.submit({
+        request: "Reject an externally supplied reserved growth field.",
+        execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+      }, undefined, { growth_procedure: "external override" }),
+      /reserved growth_procedure/
+    );
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Kernel Runtime rejects a tampered selected context before any Agent Loop is created", async () => {
+  const fixture = await createFixture();
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite);
+  try {
+    const engine = new AdaptationEngine(store);
+    activateInspectionProcedure(engine, store, fixture, "Tamper-detection Growth Procedure.");
+    const bind = store.bindInitialProcedureSelection.bind(store);
+    store.bindInitialProcedureSelection = (runId, turnId) => {
+      const selection = bind(runId, turnId);
+      if (selection) {
+        const raw = new DatabaseSync(sqlite);
+        try {
+          raw.prepare("UPDATE adaptation_selections SET growth_context_digest = ? WHERE id = ?")
+            .run("0".repeat(64), selection.id);
+        } finally {
+          raw.close();
+        }
+      }
+      return selection;
+    };
+    let loopCreates = 0;
+    const runtime = new KernelRuntime(store, new ActionGateway(store, []), {
+      create() {
+        loopCreates += 1;
+        return { execute: async () => ({ answer: "the tampered context must never reach this loop" }) };
+      }
+    });
+    const failed = await runtime.submit({
+      request: "Reject tampered selected context before loop construction.",
+      execution_lock: testExecutionLock({ cwd: fixture })
+    });
+    assert.equal(failed.status, "failed");
+    assert.match(failed.error ?? "", /stored identity is invalid/);
+    assert.equal(loopCreates, 0);
+    assert.equal(store.inspectRun(failed.run_id)?.status, "failed");
+    assert.equal(store.inspectRun(failed.run_id)?.action_count, 0);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
 
 test("vNext executes an ordinary Goal-free Turn through Pi and persists only SQLite state", async () => {
   const fixture = await createFixture();
@@ -787,6 +961,78 @@ test("vNext records a terminal failed Run when Pi returns no text", async () => 
     await rm(fixture, { recursive: true, force: true });
   }
 });
+
+type CapturedLoopInput = Parameters<AgentLoopFactory["create"]>[0];
+
+function captureLoops(
+  captured: Array<JsonObject | undefined>,
+  execute?: (input: CapturedLoopInput) => Promise<{ answer: string }>
+): AgentLoopFactory {
+  return {
+    create(input) {
+      captured.push(input.runtime_context);
+      return {
+        execute: async () => execute ? execute(input) : { answer: "captured loop completed" }
+      };
+    }
+  };
+}
+
+function activateInspectionProcedure(
+  engine: AdaptationEngine,
+  store: SqliteRuntimeStore,
+  cwd: string,
+  evidence: string
+) {
+  const started = store.beginRun({
+    request: "Create completed local evidence for a Growth Procedure.",
+    execution_lock: testExecutionLock({ cwd })
+  }, 30_000);
+  const evidenceRun = store.completeRun(started.execution, evidence);
+  const proposed = engine.propose({
+    target_slot: "procedure.runtime-inspection",
+    name: "Inspect the bounded Kernel Runtime before continuing.",
+    summary: evidence,
+    trigger_conditions: ["A Kernel Run needs exact runtime evidence."],
+    steps: ["Inspect the exact Run.", "Continue only from canonical evidence."],
+    expected_result: "The Run keeps its exact runtime identity.",
+    verification_requirements: ["Inspect the Run and its effect receipts."],
+    failure_modes: ["Mismatched evidence leaves the Run paused."],
+    rollback_rule: "Retire the procedure after verified unsafe reuse.",
+    evidence_run_ids: [evidenceRun.id]
+  });
+  engine.evaluate(proposed.candidate.id);
+  engine.activate(proposed.candidate.id);
+  const inspection = engine.inspect(proposed.candidate.id);
+  assert.ok(inspection);
+  return inspection;
+}
+
+function recoverableGrowthProbe(): ActionHandler {
+  return {
+    contract: {
+      name: "growth_probe",
+      version: "1",
+      label: "Growth pause probe",
+      description: "A synthetic local-read Action that pauses one Run before continuation.",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      effect_class: "local_read"
+    },
+    prepare() {
+      return {};
+    },
+    async execute() {
+      throw new Error("synthetic unknown Growth probe outcome");
+    },
+    async reconcile() {
+      return {
+        outcome: "succeeded",
+        summary: "Recovered the synthetic Growth probe outcome.",
+        output: { recovered: true }
+      };
+    }
+  };
+}
 
 function recoverableProbeHandler(overrides: {
   execute: ActionHandler["execute"];

@@ -9,6 +9,7 @@ import {
   type ProcedureRetirementReceipt,
   type ProcedureSelectionReceipt
 } from "./adaptation_types.js";
+import type { JsonObject } from "./action_types.js";
 import {
   ADAPTATION_EVALUATOR_VERSION,
   procedureReadinessChecks
@@ -16,6 +17,63 @@ import {
 import { SqliteRuntimeStore } from "./sqlite_runtime_store.js";
 
 export { ADAPTATION_EVALUATOR_VERSION } from "./adaptation_evaluation.js";
+
+/**
+ * The exact Growth Procedure binding a Kernel Run may receive.  It is created
+ * once, before the first loop, and stays authoritative across continuations.
+ */
+export interface GrowthRunBinding {
+  selection: ProcedureSelectionReceipt;
+  context: string;
+}
+
+/**
+ * Owns the runtime-facing half of Growth.  Candidate proposal, evaluation,
+ * activation, observation, and retirement remain in AdaptationEngine; this
+ * surface intentionally only binds an already-active artifact to one Run.
+ */
+export class GrowthLifecycle {
+  constructor(private readonly store: SqliteRuntimeStore) {}
+
+  /**
+   * Bind the active procedure at initial Run creation.  A Run without an
+   * active procedure records no binding, so a later activation cannot alter a
+   * continuation of that Run.
+   */
+  bindInitialRun(runId: string, turnId: string): ProcedureSelectionReceipt | null {
+    return this.store.bindInitialProcedureSelection(runId.trim(), turnId.trim());
+  }
+
+  /**
+   * Read an existing binding only.  This never consults the active registry
+   * and therefore cannot select a newly activated procedure on continuation.
+   */
+  readRunBinding(runId: string): GrowthRunBinding | null {
+    const selection = this.store.readProcedureSelectionForRun(runId.trim());
+    return selection ? this.bindingFor(selection) : null;
+  }
+
+  renderRuntimeContext(binding: GrowthRunBinding): JsonObject {
+    return {
+      selection_id: binding.selection.id,
+      selection_digest: binding.selection.digest,
+      target_slot: binding.selection.target_slot,
+      version_id: binding.selection.version_id,
+      artifact_digest: binding.selection.artifact_digest,
+      candidate_id: binding.selection.candidate_id,
+      candidate_digest: binding.selection.candidate_digest,
+      context_digest: binding.selection.growth_context_digest,
+      context: binding.context
+    };
+  }
+
+  private bindingFor(selection: ProcedureSelectionReceipt): GrowthRunBinding {
+    return {
+      selection,
+      context: this.store.renderSelectedProcedureContext(selection.id)
+    };
+  }
+}
 
 export class AdaptationEngine {
   constructor(private readonly store: SqliteRuntimeStore) {}
