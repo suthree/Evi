@@ -1,8 +1,7 @@
 # Documentation Router
 
-After `README.md` and `docs/CURRENT_DIRECTION.md`, load this compact index.
-The following are the remaining default documentation inputs; do not preload
-long documents.
+`README.md` is the default entrypoint. After it, use this compact index for
+the remaining default documentation inputs; do not preload long documents.
 
 - Default architecture and planning direction: `docs/CURRENT_DIRECTION.md`
 - Stable identity and self-modification stance: `core/soul.md`
