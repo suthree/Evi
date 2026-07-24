@@ -5,10 +5,12 @@ hosted service or a multi-user bot. It may run a single-user local service
 process for channel adapters and IM intake.
 
 ADR 0018 is the current v0.3 architecture and planning baseline. This document
-describes implemented commands and operational facts only; it does not claim a
-v0.3 cutover, Pi subagents, autonomous Skill promotion, or complete ingress.
-v0.2 and vNext are retained historical implementation and rollback evidence,
-not a parallel roadmap or default route.
+describes implemented commands and operational facts only. The source includes
+first-version vNext Pi discussion/review workers and evidence-gated local Skill
+promotion behind `runtime.promotion_enabled`; neither fact claims a v0.3
+cutover, default route, complete ingress, or automatic v0.3 acceptance. v0.2
+and vNext are retained historical implementation and rollback evidence, not a
+parallel roadmap or default route.
 
 ## Owner Process
 

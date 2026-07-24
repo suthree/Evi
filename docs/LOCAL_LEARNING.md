@@ -7,10 +7,12 @@ one success; source and runtime evidence determine what is implemented.
 
 ## Historical implementation boundary and v0.3 direction
 
-The first-version mechanisms described below are implementation records, not a
-claim that v0.3 has fully autonomous Skill promotion. Under the current
-baseline, experience can create a candidate only; evaluation and activation
-evidence remain required before a Skill is current.
+The first-version mechanisms described below are implementation records. They
+include evidence-gated autonomous local-vault promotion when
+`runtime.promotion_enabled` is true, but do not make that path the v0.3 default
+or assert automatic v0.3 Skill acceptance. Under the current baseline,
+experience can create a candidate only; evaluation and activation evidence
+remain required before a Skill is current.
 
 The first version supports learning on one machine:
 

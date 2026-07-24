@@ -21,10 +21,12 @@ Skill/Adaptation 生命周期和最终 acceptance；Pi 是 execution surface，�
 
 ## 当前方向与已实现边界
 
-ADR 0018/v0.3 是唯一默认 architecture 与 planning route：先取得 verified Pi tool-execution
-evidence，再评估 experience-to-Skill candidate，最后才考虑受控 Pi subagent。它不授权 broad
-orchestration，也不声称 Pi subagent、fully autonomous Skill promotion 或全部 ingress 已实现。
-v0.2 与 vNext 保留为带日期的 historical implementation/rollback evidence，而不是平行路线。
+ADR 0018/v0.3 是唯一默认 architecture 与 planning route：对于新的 baseline integration，先取得
+verified Pi tool-execution evidence，再评估 experience-to-Skill candidate，最后才考虑受控 Pi
+subagent。它不授权 broad orchestration。既有第一版 vNext Pi discussion/review worker 与
+`runtime.promotion_enabled` 下 evidence-gated 的本地 Skill promotion 是 source fact，但不构成
+v0.3 cutover、默认路线、完整 ingress 或自动 acceptance。v0.2 与 vNext 保留为带日期的 historical
+implementation/rollback evidence，而不是平行路线。
 
 v0.1 是 local-first、single-machine runtime：
 

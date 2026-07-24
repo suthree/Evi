@@ -7,12 +7,13 @@ actions, evidence, verification, and a response.
 v0.3 is the current documentation and planning baseline: Evi is a minimal
 local control plane for task/Run boundaries, tool authorization, context,
 evidence, experience, Skill/Adaptation lifecycle, and final acceptance. Pi is
-an execution surface; a future Pi subagent is a bounded delegated surface, not
-an owner of state, effects, evidence, or completion. Evi uses existing tools
-and adapters through Tool Contracts and Tool Operation Protocols instead of
-rebuilding specialist products. This is not a runtime cutover claim: source,
-tests, and verified runtime evidence remain authoritative for implemented
-behavior.
+an execution surface; the existing first-version vNext Pi discussion/review
+workers, and any later Pi subagent considered by the v0.3 sequence, are bounded
+delegated surfaces rather than owners of state, effects, evidence, or
+completion. Evi uses existing tools and adapters through Tool Contracts and
+Tool Operation Protocols instead of rebuilding specialist products. This is not
+a runtime cutover claim: source, tests, and verified runtime evidence remain
+authoritative for implemented behavior.
 
 ## Start here
 
@@ -83,11 +84,14 @@ projects must not become implementation contracts.
 ## Current direction and historical route
 
 [ADR 0018](docs/adr/0018-v0-3-tool-first-pi-learning-baseline.md) is the
-current architecture and planning route. The immediate evidence sequence is
-verified Pi tool execution, then experience-to-Skill evaluation, then a
-controlled Pi subagent if warranted; it does not authorize broad orchestration.
-Tool or delegated results remain inputs to Evi verification rather than
-completion facts.
+current architecture and planning route. For new v0.3 baseline integration,
+the immediate evidence sequence is verified Pi tool execution, then
+experience-to-Skill evaluation, then a controlled Pi subagent if warranted; it
+does not authorize broad orchestration. Existing first-version vNext worker and
+evidence-gated local-promotion source capabilities do not themselves establish
+a cutover, default route, complete ingress, or v0.3 automatic acceptance. Tool
+or delegated results remain inputs to Evi verification rather than completion
+facts.
 
 v0.2 and vNext ADRs and documents remain dated historical implementation and
 rollback evidence. They are not default context, current runtime claims, or the

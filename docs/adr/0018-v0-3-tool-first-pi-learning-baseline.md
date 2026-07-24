@@ -17,10 +17,11 @@ workflow platform.
 v0.3 is the current architecture and planning baseline. Evi is a minimal,
 local control plane: it owns task and Run boundaries, tool authorization,
 context selection, evidence, experience, the Skill/Adaptation lifecycle, and
-final acceptance. Pi is the execution surface; a future Pi subagent is only a
-bounded execution surface. Neither transfers Evi action authority, durable
-state ownership, evidence ownership, or acceptance authority, and a subagent
-self-report is never completion evidence.
+final acceptance. Pi is the execution surface; existing first-version vNext Pi
+discussion/review workers, and a Pi subagent later considered by this baseline,
+are only bounded execution surfaces. Neither transfers Evi action authority,
+durable state ownership, evidence ownership, or acceptance authority, and a
+subagent self-report is never completion evidence.
 
 Existing tools and adapters perform their specialist functions. Evi supplies a
 thin Tool Contract and Tool Operation Protocol layer, rather than rebuilding
@@ -38,14 +39,18 @@ owner.
 
 ## Implementation status and sequence
 
-This ADR is a documentation and planning baseline, not a runtime cutover. It
-does not claim that Pi subagents, fully autonomous Skill promotion, or every
-v0.3 ingress are implemented. Source, tests, and verified runtime evidence
+This ADR is a documentation and planning baseline, not a runtime cutover.
+Source already contains first-version vNext capabilities, including bounded Pi
+discussion/review workers and evidence-gated local Skill promotion when
+`runtime.promotion_enabled` is true. Those implementation facts do not make
+them a v0.3 cutover, default route, complete ingress, or an assertion of
+automatic v0.3 Skill acceptance. Source, tests, and verified runtime evidence
 remain the authority for implemented behavior.
 
-The next evidence order is: first obtain verified Pi tool-execution evidence;
-then evaluate experience-to-Skill candidates; only then consider a controlled
-Pi subagent. Do not expand broad orchestration ahead of those gates.
+For new v0.3 baseline integration, the next evidence order is: first obtain
+verified Pi tool-execution evidence; then evaluate experience-to-Skill
+candidates; only then consider a controlled Pi subagent. Do not expand broad
+orchestration ahead of those gates.
 
 ## Consequences
 

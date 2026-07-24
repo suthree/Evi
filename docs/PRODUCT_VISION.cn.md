@@ -320,9 +320,10 @@ UI 必须跟随 Runtime Contract。只读 Owner 和 Evidence 稳定后，可以�
 
 ## Historical vNext 有门槛的演进规则
 
-以下原 vNext 顺序仅作为 historical 与 rollback context 保留，不是当前默认或 next-stage
-commitment。ADR 0018 要求先有 verified Pi tool execution，再 experience-to-Skill evaluation，
-最后才是受控 Pi subagent。
+以下原 vNext 顺序仅作为 historical 与 rollback context 保留。其中有界 Pi worker 与
+evidence-gated 本地 promotion slice 已有第一版 source implementation，但这不使该顺序成为当前
+默认或 next-stage commitment。对于新的 baseline integration，ADR 0018 要求先有 verified Pi tool
+execution，再 experience-to-Skill evaluation，最后才是受控 Pi subagent。
 
 ADR 0012 已在 `origin/develop` 关闭前五个 Kernel foundation source slice；Resident v0.2
 仍是已部署 rollback runtime，直到单独验证 cutover。后续顺序必须保持有界：
@@ -384,11 +385,13 @@ Session、Agent、Skill、Memory Entry、Screen 或 Token 数量本身都不是�
 
 Evi 是同一个本地优先的持久 Self 与薄控制面，拥有 task/Run 边界、tool authorization、
 context selection、evidence、experience、Skill/Adaptation 生命周期和最终 acceptance。Pi 提供
-execution leverage；未来 Pi subagent 只是有界 delegated surface，永远不是另一个 Evi，也不拥有
-action authority、state、evidence 或 acceptance。
+execution leverage；既有第一版 vNext Pi discussion/review worker，以及 v0.3 顺序将考虑的任何
+新 Pi subagent，都是有界 delegated surface，永远不是另一个 Evi，也不拥有 action authority、
+state、evidence 或 acceptance。
 
 既有 tool、adapter 和专业服务继续承担专业工作。Evi 用 Tool Contract 与 Tool Operation Protocol
 连接它们，而不重造浏览器、发布器、搜索引擎或 workflow platform。Experience record 保存观察到的
 outcome、cost、failure 与 provenance，可以产生 SOP/Skill candidate，但任何 self-report 都不能证明
-completion 或自动 activation。后续证据顺序是 verified Pi tool execution、experience-to-Skill
+completion。独立的第一版 promotion path 仍是 evidence-gated，并不构成自动 v0.3 activation。对于
+新的 baseline integration，后续证据顺序是 verified Pi tool execution、experience-to-Skill
 evaluation、再到受控 Pi subagent；broad orchestration 不在该顺序内。

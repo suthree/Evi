@@ -14,9 +14,9 @@ platform。
 
 v0.3 是当前 architecture 与 planning baseline。Evi 是最小的本地控制面：它拥有 task
 与 Run 边界、tool authorization、context selection、evidence、experience、Skill/Adaptation
-生命周期和最终验收。Pi 是执行 surface；未来的 Pi subagent 也只是一种有界执行 surface。二者
-都不转移 Evi 的 action authority、durable state、evidence 或 acceptance ownership；subagent
-自报永远不是完成证据。
+生命周期和最终验收。Pi 是执行 surface；既有第一版 vNext 的 Pi discussion/review worker，以及
+本基线后续才考虑的 Pi subagent，都只是一种有界执行 surface。二者都不转移 Evi 的 action
+authority、durable state、evidence 或 acceptance ownership；subagent 自报永远不是完成证据。
 
 已有 tool 与 adapter 承担各自的专业功能。Evi 提供薄的 Tool Contract 与 Tool Operation
 Protocol 层，而不是重建专业产品。Skill 是可验证、可复用的工具使用 procedure。Experience
@@ -30,13 +30,14 @@ route 读取，且不再是 active owner。
 
 ## 实现状态与顺序
 
-本 ADR 是文档与规划基线，不是 runtime cutover。它不声称 Pi subagent、完全 autonomous
-Skill promotion 或全部 v0.3 ingress 已实现。source、tests 和 verified runtime evidence 仍是
-已实现行为的权威。
+本 ADR 是文档与规划基线，不是 runtime cutover。source 已有第一版 vNext 能力，包括有界的 Pi
+discussion/review worker，以及 `runtime.promotion_enabled` 为 true 时 evidence-gated 的本地
+Skill promotion。这些实现事实不构成 v0.3 cutover、默认路线、完整 ingress，或自动接受 v0.3
+Skill 的主张。source、tests 和 verified runtime evidence 仍是已实现行为的权威。
 
-后续证据顺序为：先取得经过验证的 Pi tool-execution evidence；再评估
-experience-to-Skill candidate；最后才考虑受控 Pi subagent。不得在这些 gate 之前扩展宽泛的
-orchestration。
+对于新的 v0.3 baseline integration，后续证据顺序为：先取得经过验证的 Pi tool-execution
+evidence；再评估 experience-to-Skill candidate；最后才考虑受控 Pi subagent。不得在这些 gate
+之前扩展宽泛的 orchestration。
 
 ## 后果
 

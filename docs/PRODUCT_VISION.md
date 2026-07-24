@@ -465,9 +465,11 @@ that the CLI/API, Runtime Kernel, and Action Gateway do not have.
 ## Historical vNext Gated Evolution Policy
 
 The following former vNext sequence is preserved for historical and rollback
-context. It is not the current default or next-stage commitment; ADR 0018
-requires verified Pi tool execution, then experience-to-Skill evaluation, then
-a controlled Pi subagent if warranted.
+context. Its bounded Pi worker and evidence-gated local-promotion slices have
+first-version source implementations, but that does not make this sequence the
+current default or next-stage commitment. ADR 0018 requires verified Pi tool
+execution, then experience-to-Skill evaluation, then a controlled Pi subagent
+if warranted for new baseline integration.
 
 ADR 0012 closed the first five Kernel-foundation source slices on
 `origin/develop`. The resident v0.2 runtime remains the deployed rollback
@@ -545,14 +547,18 @@ success measures by themselves.
 Evi grows as one persistent local-first self and a thin control plane. It owns
 task/Run boundaries, tool authorization, context selection, evidence,
 experience, the Skill/Adaptation lifecycle, and final acceptance. Pi provides
-execution leverage; a future Pi subagent is a bounded delegated surface, never
-another Evi or an owner of action authority, state, evidence, or acceptance.
+execution leverage; existing first-version vNext Pi discussion/review workers,
+and any new Pi subagent considered by the v0.3 sequence, are bounded delegated
+surfaces, never another Evi or an owner of action authority, state, evidence,
+or acceptance.
 
 Existing tools, adapters, and specialist services keep their specialist work.
 Evi supplies Tool Contracts and Tool Operation Protocols rather than rebuilding
 a browser, publisher, search engine, or workflow platform. Experience records
 retain observed outcome, cost, failure, and provenance; they may produce SOP or
-Skill candidates, but no result self-report proves completion or automatically
-activates learning. The next evidence sequence is verified Pi tool execution,
-experience-to-Skill evaluation, then a controlled Pi subagent if warranted;
-broad orchestration remains outside that sequence.
+Skill candidates, but no result self-report proves completion. The separate
+first-version promotion path remains evidence-gated and does not establish
+automatic v0.3 activation. For new baseline integration, the next evidence
+sequence is verified Pi tool execution, experience-to-Skill evaluation, then a
+controlled Pi subagent if warranted; broad orchestration remains outside that
+sequence.
