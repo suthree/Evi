@@ -16,6 +16,7 @@ import {
 } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
   createModels,
@@ -25,6 +26,8 @@ import {
 } from "@earendil-works/pi-ai";
 import {
   ActionGateway,
+  DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY,
+  DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION,
   type ActionHandler,
   type AgentLoopFactory,
   createRuntimeInspectAction,
@@ -105,7 +108,7 @@ test("vNext canary submit and inspect use one isolated SQLite database and mark 
     assert.equal(inspected.canary.marker, VNEXT_CANARY_MARKER);
     assert.equal(inspected.canary.action, "inspect");
     assert.equal(inspected.canary.status, "completed");
-    assert.equal(inspected.canary.result && "event_count" in inspected.canary.result
+    assert.equal(inspected.canary.result && "action_count" in inspected.canary.result
       ? inspected.canary.result.action_count
       : -1, 0);
     assert.deepEqual(canonicalized, [resolve(sqlite), resolve(sqlite)]);
@@ -206,6 +209,132 @@ test("vNext canary projects one successful synthetic Pi runtime_inspect receipt 
     const result = inspected.canary.result;
     assert.ok(result && "canary_experience" in result);
     assert.deepEqual(result.canary_experience.records, expectedRecords);
+    assert.deepEqual(Object.keys(result).sort(), [
+      "action_count",
+      "canary_experience",
+      "continuation_count",
+      "created_at",
+      "effect_receipt_count",
+      "execution_count",
+      "interrupted_execution_count",
+      "model_dispatch_count",
+      "run_id",
+      "session_id",
+      "status",
+      "turn_id",
+      "unknown_model_dispatch_count",
+      "unresolved_action_count",
+      "updated_at"
+    ]);
+    const inspectEnvelope = JSON.stringify(inspected);
+    assert.doesNotMatch(inspectEnvelope, new RegExp(syntheticPrompt));
+    assert.doesNotMatch(inspectEnvelope, new RegExp(syntheticPiMessage));
+    assert.doesNotMatch(inspectEnvelope, new RegExp(syntheticCredentialReference));
+    assert.doesNotMatch(
+      inspectEnvelope,
+      /"request"|"answer"|"error"|"execution_lock"|"credential_ref"|"output"|"message"/
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext canary inspect DTO excludes a synthetic terminal failure body", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-inspect-failure-synthetic-"));
+  const sqlite = join(fixture, "canary.sqlite");
+  const syntheticFailure = "synthetic-failure-body-must-not-enter-inspect";
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });
+  let runId = "";
+  try {
+    const gateway = new ActionGateway(store, [createRuntimeInspectAction(store)]);
+    const runtime = new KernelRuntime(store, gateway, {
+      create: () => ({ execute: async () => { throw new Error(syntheticFailure); } })
+    });
+    const failed = await runtime.submit({
+      request: "Synthetic inspect-failure request.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: gateway.contracts() })
+    });
+    runId = failed.run_id;
+    assert.equal(failed.status, "failed");
+  } finally {
+    store.close();
+  }
+
+  try {
+    const inspected = await executeVNextCanary(
+      { action: "inspect", sqlite, run_id: runId },
+      { path_boundary: isolatedPathBoundary(fixture) }
+    );
+    assert.equal(inspected.canary.status, "failed");
+    const inspectEnvelope = JSON.stringify(inspected);
+    assert.doesNotMatch(inspectEnvelope, new RegExp(syntheticFailure));
+    assert.doesNotMatch(
+      inspectEnvelope,
+      /"request"|"answer"|"error"|"execution_lock"|"credential_ref"|"output"|"message"/
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("vNext canary projection schema is versioned, verified, and absent from stable state", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-vnext-canary-schema-synthetic-"));
+  const compatible = join(fixture, "compatible.sqlite");
+  const incompatibleVersion = join(fixture, "incompatible-version.sqlite");
+  const incompatibleStructure = join(fixture, "incompatible-structure.sqlite");
+  const stable = join(fixture, "stable.sqlite");
+  try {
+    const first = new SqliteRuntimeStore(compatible, { state_profile: "diagnostic_canary" });
+    first.close();
+    const compatibleDb = new DatabaseSync(compatible);
+    try {
+      const version = compatibleDb.prepare("SELECT value FROM schema_meta WHERE key = ?")
+        .get(DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY) as { value: string };
+      assert.equal(version.value, DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION);
+    } finally {
+      compatibleDb.close();
+    }
+    const reopened = new SqliteRuntimeStore(compatible, { state_profile: "diagnostic_canary" });
+    reopened.close();
+
+    const versioned = new SqliteRuntimeStore(incompatibleVersion, { state_profile: "diagnostic_canary" });
+    versioned.close();
+    const incompatibleVersionDb = new DatabaseSync(incompatibleVersion);
+    incompatibleVersionDb.prepare("UPDATE schema_meta SET value = '999' WHERE key = ?")
+      .run(DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY);
+    incompatibleVersionDb.close();
+    assert.throws(
+      () => new SqliteRuntimeStore(incompatibleVersion, { state_profile: "diagnostic_canary" }),
+      /unsupported version 999/
+    );
+
+    const structured = new SqliteRuntimeStore(incompatibleStructure, { state_profile: "diagnostic_canary" });
+    structured.close();
+    const incompatibleStructureDb = new DatabaseSync(incompatibleStructure);
+    incompatibleStructureDb.exec("DROP TABLE canary_experience_records");
+    incompatibleStructureDb.close();
+    assert.throws(
+      () => new SqliteRuntimeStore(incompatibleStructure, { state_profile: "diagnostic_canary" }),
+      /canary_experience_records table is missing/
+    );
+
+    const stableStore = new SqliteRuntimeStore(stable, { state_profile: "stable_cli" });
+    assert.throws(
+      () => stableStore.inspectCanaryExperience("run_synthetic_missing"),
+      /only available to the diagnostic_canary state profile/
+    );
+    stableStore.close();
+    const stableDb = new DatabaseSync(stable);
+    try {
+      const table = stableDb.prepare(`
+        SELECT 1 AS present
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'canary_experience_records'
+      `).get() as { present: number } | undefined;
+      assert.equal(table, undefined);
+    } finally {
+      stableDb.close();
+    }
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -576,7 +705,7 @@ test("vNext canary redacts a credential echoed in a successful provider answer e
       sqlite,
       run_id: result.canary.run_id
     }, { path_boundary: pathBoundary });
-    assert.match(JSON.stringify(inspected), /\[redacted\]/);
+    assert.doesNotMatch(JSON.stringify(inspected), /\[redacted\]/);
     assert.doesNotMatch(JSON.stringify(inspected), new RegExp(secret));
 
     const reopened = new SqliteRuntimeStore(sqlite, { state_profile: "diagnostic_canary" });

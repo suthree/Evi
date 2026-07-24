@@ -53,7 +53,21 @@ export interface VNextCanaryEnvelope {
   };
 }
 
-export interface CanaryRunInspection extends RunInspection {
+export interface CanaryRunInspection {
+  run_id: string;
+  turn_id: string;
+  session_id: string;
+  status: RunInspection["status"];
+  created_at: string;
+  updated_at: string;
+  action_count: number;
+  unresolved_action_count: number;
+  effect_receipt_count: number;
+  continuation_count: number;
+  execution_count: number;
+  interrupted_execution_count: number;
+  model_dispatch_count: number;
+  unknown_model_dispatch_count: number;
   canary_experience: CanaryExperienceInspection;
 }
 
@@ -83,7 +97,7 @@ export async function executeVNextCanary(
       const inspection = new KernelRuntime(store, gateway, unavailableLoopFactory()).inspect(runId);
       return inspection
         ? envelope(action, inspection.status, inspection.id, inspection.turn_id, inspection.session_id, {
-          ...inspection,
+          ...canaryRunInspection(inspection),
           canary_experience: store.inspectCanaryExperience(inspection.id)
         })
         : envelope(action, "not_found", runId);
@@ -237,6 +251,25 @@ function envelopeFromResult(
     result.session_id,
     { answer: result.answer, error: result.error === null ? null : redact(result.error, secret) }
   );
+}
+
+function canaryRunInspection(input: RunInspection): Omit<CanaryRunInspection, "canary_experience"> {
+  return {
+    run_id: input.id,
+    turn_id: input.turn_id,
+    session_id: input.session_id,
+    status: input.status,
+    created_at: input.created_at,
+    updated_at: input.updated_at,
+    action_count: input.action_count,
+    unresolved_action_count: input.unresolved_action_count,
+    effect_receipt_count: input.effect_receipt_count,
+    continuation_count: input.continuation_count,
+    execution_count: input.execution_count,
+    interrupted_execution_count: input.interrupted_execution_count,
+    model_dispatch_count: input.model_dispatch_count,
+    unknown_model_dispatch_count: input.unknown_model_dispatch_count
+  };
 }
 
 function envelope(
