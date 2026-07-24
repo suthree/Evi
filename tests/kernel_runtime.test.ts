@@ -90,6 +90,68 @@ test("Kernel Runtime binds one active Growth Procedure before the loop and keeps
   }
 });
 
+test("Kernel Runtime binds an active Growth Procedure for each new Run in one Session with prior loop history", async () => {
+  const fixture = await createFixture();
+  const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));
+  try {
+    const engine = new AdaptationEngine(store);
+    activateInspectionProcedure(engine, store, fixture, "Session-local Growth Procedure.");
+    let ordinal = 0;
+    const runtime = new KernelRuntime(store, new ActionGateway(store, []), {
+      create(input) {
+        return {
+          execute: async () => {
+            const session = store.getPiSession(input.session_id);
+            assert.ok(session);
+            ordinal += 1;
+            store.appendPiSessionEntry(input.session_id, {
+              id: `session-history-${ordinal}`,
+              parentId: session.leaf_id,
+              type: "test_history",
+              timestamp: new Date().toISOString(),
+              ordinal
+            });
+            return { answer: `completed Run ${ordinal}` };
+          }
+        };
+      }
+    });
+
+    const first = await runtime.submit({
+      request: "Bind the first active procedure before this Run loop.",
+      execution_lock: testExecutionLock({ cwd: fixture })
+    });
+    assert.equal(first.status, "completed");
+    assert.ok(new GrowthLifecycle(store).readRunBinding(first.run_id));
+
+    const second = await runtime.submit({
+      request: "Bind the same active procedure before a second Run loop.",
+      session_id: first.session_id,
+      execution_lock: testExecutionLock({ cwd: fixture })
+    });
+    assert.equal(second.status, "completed");
+    assert.ok(new GrowthLifecycle(store).readRunBinding(second.run_id));
+
+    const afterDispatch = store.beginRun({
+      request: "Reject a selection after this Run has started model dispatch.",
+      session_id: first.session_id,
+      execution_lock: testExecutionLock({ cwd: fixture })
+    }, 30_000);
+    const lock = store.getExecutionLock(afterDispatch.run.id);
+    store.startModelDispatch(afterDispatch.execution, {
+      provider: lock.model.provider,
+      model: lock.model.model
+    });
+    assert.throws(
+      () => store.bindInitialProcedureSelection(afterDispatch.run.id, afterDispatch.run.turn_id),
+      /Procedure Selection must occur before Run loop activity/
+    );
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 test("Kernel Runtime keeps a first no-active Run unbound after activation and rejects reserved context", async () => {
   const fixture = await createFixture();
   const store = new SqliteRuntimeStore(join(fixture, "runtime.sqlite"));

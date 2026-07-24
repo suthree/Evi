@@ -5131,12 +5131,9 @@ export class SqliteRuntimeStore {
     const dispatch = this.db.prepare(`
       SELECT 1 AS present FROM model_dispatches WHERE run_id = ? LIMIT 1
     `).get(run.id) as { present: number } | undefined;
-    const entry = this.db.prepare(`
-      SELECT 1 AS present FROM pi_session_entries WHERE session_id = ? LIMIT 1
-    `).get(run.session_id) as { present: number } | undefined;
     if (!turn || turn.ordinal !== 1
       || executions.length !== 1 || executions[0]?.kind !== "initial"
-      || action || dispatch || entry) {
+      || action || dispatch) {
       throw new Error(`Procedure Selection must occur before Run loop activity: ${run.id}`);
     }
   }
